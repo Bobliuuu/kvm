@@ -15,12 +15,14 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass
 
 import compile_workload as cw
 import ref_ops
+from ref_types import Buf
 
 log = logging.getLogger('kvm.vm')
 
@@ -41,12 +43,13 @@ class _Node:
 
 
 class Runtime:
-    def __init__(self, workers=4, aging_per_second=20.0, deterministic=False):
+    def __init__(self, workers=4, aging_per_second=20.0, deterministic=False, allow_opaque=False):
         if workers < 1 or aging_per_second <= 0 or (deterministic and workers != 1):
             raise ValueError('workers >= 1, aging_per_second > 0, deterministic requires workers == 1')
         self.workers, self.aging, self.deterministic = workers, aging_per_second, deterministic
+        self.allow_opaque = allow_opaque
         self.cv = threading.Condition()
-        self.buffers: dict[str, list] = {}
+        self.buffers: dict[str, Buf] = {}
         self.shapes: dict[str, tuple] = {}
         self.versions: dict[str, int] = {}
         self.projected: dict[str, int] = {}
@@ -60,12 +63,12 @@ class Runtime:
         self.closed = self.started = False
 
     # ------------------------------------------------------------------ admission
-    def submit(self, spec: dict, allow_nonfinite=False) -> cw.Compiled:
+    def submit(self, spec: dict, allow_nonfinite=False, data_dir=None, ops=None) -> cw.Compiled:
         """Compile `spec` against the projected versions and admit it (callable while running)."""
         with self.cv:
             declared = spec.get('variables', []) if isinstance(spec, dict) else []
             base = {v: self.projected[v] for v in declared if isinstance(v, str) and v in self.projected}
-            compiled = cw.compile_spec(spec, base, allow_nonfinite)
+            compiled = cw.compile_spec(spec, base, allow_nonfinite, data_dir, ops)
             return self._admit(compiled)
 
     def submit_compiled(self, compiled: cw.Compiled) -> cw.Compiled:
@@ -81,22 +84,28 @@ class Runtime:
                 raise GraphError(f'variable {v.name!r}: compiled against base_version {v.base_version}, '
                                  f'runtime projects {known}; recompile with base_versions')
         for b in compiled.buffers:
-            if b.name in self.shapes and self.shapes[b.name] != (b.rows, b.cols):
-                raise GraphError(f'buffer {b.name!r} already exists as {self.shapes[b.name]}, got {(b.rows, b.cols)}')
+            if b.name in self.shapes and self.shapes[b.name] != (b.rows, b.cols, b.dtype):
+                raise GraphError(f'buffer {b.name!r} already exists as {self.shapes[b.name]}, got {(b.rows, b.cols, b.dtype)}')
+        missing = sorted({t.op.name for t in compiled.program if t.op.name not in ref_ops.OPS})
+        if missing:
+            raise GraphError(f'no CPU semantics for operator(s) {missing}: add them to runtime/ref_ops.py')
+        opaque = sorted({t.op.name for t in compiled.program if ref_ops.OPS[t.op.name].opaque})
+        if opaque and not self.allow_opaque:
+            raise GraphError(f'operator(s) {opaque} have no CPU semantics (opaque); run with allow_opaque to execute them as noops')
         for b in compiled.buffers:
             if b.name not in self.buffers:
-                self.buffers[b.name], self.shapes[b.name] = list(b.values), (b.rows, b.cols)
+                self.buffers[b.name] = Buf(b.materialize(compiled.data_dir), b.rows, b.cols, b.dtype)
+                self.shapes[b.name] = (b.rows, b.cols, b.dtype)
         for v in compiled.variables:
             self.versions.setdefault(v.name, v.base_version)
             self.projected[v.name] = v.final_version
         batch, now = self.batches, time.monotonic()
         self.batches += 1
         for i, t in enumerate(compiled.program):
-            node = _Node((batch, i), t, len(self.nodes), [(batch, j) for j in compiled.successor_lists[i]], 0)
+            node = _Node((batch, i), t, len(self.nodes), [(batch, j) for j in compiled.successors_of(i)], 0)
             self.nodes[node.key] = node
-        for i in range(len(compiled.program)):
-            for j in compiled.successor_lists[i]:
-                self.nodes[(batch, j)].remaining += 1
+        for j in compiled.succ:
+            self.nodes[(batch, j)].remaining += 1
         for i in range(len(compiled.program)):
             n = self.nodes[(batch, i)]
             if n.remaining == 0:
@@ -167,7 +176,8 @@ class Runtime:
 
     def _execute(self, task):
         ref = ref_ops.OPS[task.op.name]
-        bufs = {a.name: self.buffers[task.args[a.name]] for a in task.op.args if a.type == 'buf'}
+        bufs = {a.name: (None if task.args[a.name] is None else self.buffers[task.args[a.name]])
+                for a in task.op.args if a.type == 'buf'}
         scalars = {a.name: task.args[a.name] for a in task.op.args if a.type != 'buf'}
         ref.run(bufs, scalars)
 
@@ -246,10 +256,10 @@ class Runtime:
                 raise TimeoutError('worker did not stop')
 
 
-def run_spec(spec, workers=4, deterministic=False, base_versions=None, timeout=30):
+def run_spec(spec, workers=4, deterministic=False, base_versions=None, timeout=30, allow_opaque=False, data_dir=None, ops=None):
     """Compile and run one workload to completion; returns (runtime, trace)."""
-    compiled = cw.compile_spec(spec, base_versions)
-    vm = Runtime(1 if deterministic else workers, deterministic=deterministic)
+    compiled = cw.compile_spec(spec, base_versions, data_dir=data_dir, ops=ops)
+    vm = Runtime(1 if deterministic else workers, deterministic=deterministic, allow_opaque=allow_opaque)
     vm.submit_compiled(compiled)
     vm.start()
     try:
@@ -258,9 +268,9 @@ def run_spec(spec, workers=4, deterministic=False, base_versions=None, timeout=3
         vm.shutdown()
 
 
-def run_golden(compiled: cw.Compiled, timeout=60) -> dict:
+def run_golden(compiled: cw.Compiled, timeout=60, allow_opaque=False) -> dict:
     """Deterministic CPU run of a compiled bundle; the reference the GPU executor's output is diffed against."""
-    vm = Runtime(1, deterministic=True)
+    vm = Runtime(1, deterministic=True, allow_opaque=allow_opaque)
     vm.submit_compiled(compiled)
     vm.start()
     try:
@@ -272,7 +282,7 @@ def run_golden(compiled: cw.Compiled, timeout=60) -> dict:
               'version': r['version'], 'observed': seen[r['name']][compiled.variables[r['var']].name]}
              for r in compiled.metadata['reads']]
     return {'abi_version': compiled.metadata['abi_version'], 'schedule': 'deterministic',
-            'buffers': {n: list(v) for n, v in sorted(vm.buffers.items())},
+            'buffers': {n: list(v) for n, v in sorted(vm.buffers.items())}, 'dtypes': {n: v.dtype for n, v in sorted(vm.buffers.items())},
             'versions': dict(vm.versions), 'reads': reads}
 
 
@@ -282,6 +292,8 @@ def main(argv=None):
     p.add_argument('--workers', type=int, default=4)
     p.add_argument('--deterministic', action='store_true', help='one worker, strict priority/submission order')
     p.add_argument('--base-versions', default='')
+    p.add_argument('--allow-opaque', action='store_true', help='execute ops without CPU semantics as noops')
+    p.add_argument('--data-dir', help='where `file` initial values live (default: the workload directory)')
     p.add_argument('--trace', action='store_true', help='log (task, observed versions) per task')
     p.add_argument('--log-level', default='INFO')
     args = p.parse_args(argv)
@@ -289,7 +301,9 @@ def main(argv=None):
                         format='%(asctime)s %(levelname)s %(name)s: %(message)s')
     with open(args.workload) as f:
         spec = json.load(f)
-    vm, trace = run_spec(spec, args.workers, args.deterministic, cw.parse_base_versions(args.base_versions))
+    data_dir = args.data_dir or os.path.dirname(os.path.abspath(args.workload))
+    vm, trace = run_spec(spec, args.workers, args.deterministic, cw.parse_base_versions(args.base_versions),
+                         allow_opaque=args.allow_opaque, data_dir=data_dir)
     if args.trace:
         for e in trace:
             print(f"{e['task']}\tobserved={json.dumps(e['observed'], sort_keys=True)}")

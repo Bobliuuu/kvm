@@ -19,6 +19,27 @@ TASK_FIELDS = ('op_id', 'succ_off', 'succ_cnt', 'indegree', 'priority', 'deadlin
                'wait_var', 'wait_ver', 'pub_var', 'pub_ver', 'workload_id', 'flags', 'reserved0', 'reserved1')
 
 
+FIXTURES = ROOT / 'tests' / 'fixtures'
+
+
+def all_ops():
+    """Every registry (core from include/, gpt/game/comm from tests/fixtures), loaded like the executor does."""
+    import shutil
+    import tempfile
+    global _ALL_OPS
+    if _ALL_OPS is None:
+        d = Path(tempfile.mkdtemp(prefix='kvm-ops-'))
+        shutil.copy(abi.INCLUDE_DIR / 'kvm_ops.def', d)
+        for f in FIXTURES.glob('kvm_ops_*.def'):
+            shutil.copy(f, d)
+        _ALL_OPS = abi.load_ops(d)
+        shutil.rmtree(d)
+    return _ALL_OPS
+
+
+_ALL_OPS = None
+
+
 def EXAMPLE():
     return json.loads((ROOT / 'examples' / 'live_training_inference.json').read_text())
 
@@ -61,7 +82,8 @@ class AbiTests(unittest.TestCase):
                          [('x', 'buf'), ('out', 'buf'), ('alpha', 'f32'), ('n', 'i32')])
 
     def test_every_registered_op_has_reference_semantics(self):
-        self.assertEqual(set(abi.load_ops()), set(ref_ops.OPS))
+        self.assertLessEqual(set(abi.load_ops()), set(ref_ops.OPS))
+        self.assertLessEqual(set(all_ops()), set(ref_ops.OPS))
 
 
 class LayoutTests(unittest.TestCase):
@@ -160,15 +182,16 @@ class SchemaErrorTests(unittest.TestCase):
         self.assertEqual(struct.unpack('<f', c.args[8:12])[0], float('inf'))
 
     def test_buffer_extent_checked_at_compile_time(self):
-        self.fails(self.one('copy', {'src': 'a', 'dst': 'b', 'n': 4}), "buffer 'b'", 'has 1')
-        self.fails(self.one('matmul', {'a': 'a', 'b': 'a', 'out': 'a', 'm': 2, 'n': 2, 'k': 3}), "arg 'a'", 'touches 6')
+        self.fails(self.one('copy', {'src': 'a', 'dst': 'b', 'n': 4}), "buffer 'b'", 'needs 4 element(s)')
+        self.fails(self.one('matmul', {'a': 'a', 'b': 'a', 'out': 'a', 'm': 2, 'n': 2, 'k': 3}), "arg 'a'", 'needs 6 element(s)')
 
     def test_buffer_declaration_errors(self):
         for buffers, needle in [([{'name': 'a'}, {'name': 'a'}], 'duplicate buffer'),
                                 ([{'name': 'a', 'rows': 0}], 'rows must be'),
                                 ([{'name': 'a', 'rows': 2, 'init': {'kind': 'values', 'values': [1]}}], 'list of 2'),
-                                ([{'name': 'a', 'init': {'kind': 'zeros'}}], "'fill' or 'values'"),
-                                ([{'name': 'a', 'dtype': 'bf16'}], 'unknown key')]:
+                                ([{'name': 'a', 'init': {'kind': 'zeros'}}], "'fill', 'values', 'seeded', 'file'"),
+                                ([{'name': 'a', 'dtype': 'bf16'}], 'dtype must be one of'),
+                                ([{'name': 'a', 'layout': 'x'}], 'unknown key')]:
             with self.subTest(needle=needle):
                 self.fails(wl([task('t')], buffers=buffers), needle)
 

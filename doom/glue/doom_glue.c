@@ -25,7 +25,8 @@ void DG_SleepMs(uint32_t ms) { g_slept_ms += ms; }                         // th
 uint32_t DG_GetTicksMs(void) { return (uint32_t)((g_tic * 1000 + 34) / 35 + g_slept_ms); }
 
 void doom_create(const char* wad) {
-  char* argv[] = {"doom", "-iwad", (char*)wad, "-warp", "1", "1", "-skill", "3", "-nomusic", "-nosfx", "-nosound", 0};
+  static char* argv[] = {"doom", "-iwad", 0, "-warp", "1", "1", "-skill", "3", "-nomusic", "-nosfx", "-nosound", 0};
+  argv[2] = (char*)wad;                         // the engine keeps argv: static storage
   g_tic = g_slept_ms = 0; g_deaths = g_was_dead = 0; g_finished_tic = -1; doom_input_word = DOOM_INPUT_SCRIPTED;
   doomgeneric_Create(11, argv);
 }

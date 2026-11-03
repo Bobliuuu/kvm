@@ -39,11 +39,16 @@ persistent grid whose blocks claim instructions with one `atomicAdd`, monotonic 
 starts before step s ends), a loop opcode (one step stored, every step instantiated on the device), and `--runs R` (R training
 runs, a learning-rate sweep, in one kernel). The model is a 2-layer MLP with MSE loss, SGD and TF32 `wmma`. Open gaps:
 - The README's numbers predate the loop opcode (measured at acb3bf4): rerun before quoting them.
+- On an RTX 5070 Laptop GPU (sm_120, 36 SMs) every run passes, but the VM never clearly beats the batched graph: 1.06x, 0.81-0.84x
+  and 0.73-0.78x at 1, 8 and 32 runs with the README's flags (1 block per SM), 0.88-1.12x with `-DKKC=32 -DKSTG=2` (4 blocks per
+  SM) ([results](results/2026-11-03-rtx5070-laptop-sm120/README.md)). Each instruction's claim, wait and signal run serially with
+  its own work, and only other resident blocks overlap them; a controller warp that fetches and waits ahead, as in Hazy's VM
+  below, is the next thing to test.
 - No timeline yet: `run_vm` passes `prof = nullptr`, nothing sets `g_prof_on`, and records carry no SM id (`%smid`).
-- The weights check allows 1e-3 (`e_mode < 1e-3`), though all four modes compute each tile with the same code in the same order;
-  exact equality would make it a race detector.
-- At 32 runs, batching alone gives 9.5x of the 10.7x over sequential launches (3.88 against 3.45 µs per run-step): the VM's own
-  margin is in the single-run and partly filled regimes.
+- The weights check allows 1e-3 (`e_mode < 1e-3`), but the final weights are bitwise identical in all four modes (all 30 runs
+  above): check for exact equality, so that any difference flags a race.
+- On the README's A100, at 32 runs batching alone gives 9.5x of the 10.7x over sequential launches (3.88 against 3.45 µs per
+  run-step): the VM's own margin is in the single-run and partly filled regimes.
 - Not built: attention, norms, embeddings, softmax cross-entropy, AdamW, bf16, data kept on-chip across instructions, TMA and
   wgmma (Hopper), tcgen05 and TMEM (Blackwell).
 

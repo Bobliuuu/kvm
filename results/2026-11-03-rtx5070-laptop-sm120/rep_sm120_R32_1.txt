@@ -1,0 +1,14 @@
+model B=128 D=128 H=256 O=64  runs=32 steps=300  tile=32 kc=64 stg=4  tape=1152000 instrs executed, 3840-entry step template (0.29 MB)
+NVIDIA GeForce RTX 5070 Laptop GPU  SMs=36 occ=1  vm grid=36
+
+mode                                       total ms    us/step/run run-steps/s    vs seq
+sequential, launch-per-op                    453.27          47.22       21180     1.00x
+sequential, CUDA graph/run                   192.82          20.09       49787     2.35x
+batched across runs (vmap-like graph)        103.60          10.79       92660     4.37x
+KVM: all runs, ONE kernel                    137.93          14.37       69601     3.29x
+KVM vs best baseline: 0.75x
+
+loss run0: 0.31605 -> 0.21904 (lr 0.0125)   run31: 0.31605 -> 0.14475 (lr 0.0875)
+max rel loss err vs cpu fp32 (runs 0 and 31, first 100 steps, all modes): 3.82e-05
+max |dW| of VM vs each baseline, all runs: 0.00e+00
+PASS

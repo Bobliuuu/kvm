@@ -6,7 +6,6 @@ import json
 import logging
 import sys
 
-from . import log
 from .analyze import CostModel, analyze
 from .lower import Tiling
 from .nn import ModelConfig

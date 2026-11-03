@@ -35,3 +35,7 @@ logs/
 .vscode/
 .idea/
 CLAUDE.local.md
+
+# ABI headers and executor sources match kvm_* but are source
+!include/kvm_*
+!kvm_exec.cu

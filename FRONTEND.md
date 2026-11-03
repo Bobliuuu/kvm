@@ -62,7 +62,10 @@ an under-declared region shows up as a result change between program order and r
   field (`rows`, `ew_rows`, `cols`, `vocab`, `opt_elems`); presets `cpu`, `a100`, `b200`.
 * A task declares the rectangles it reads and writes (`lower.py`). `dataflow.py` keeps, per buffer, the last writer and the readers
   since, as disjoint rectangles (partial overwrites split them), so edges are exact for the declared regions and do not grow with
-  history. RAW, WAR and WAW all become edges; there are no hand-written edges.
+  history. RAW, WAR and WAW all become edges; there are no hand-written edges. When the same large predecessor set (>= 32
+  tasks) is needed twice (e.g. 50k logits-GEMM tiles that read the LM-head weights, then 590 optimizer chunks that overwrite
+  it) a no-op `join` task is inserted, turning R x W edges into R + W (it costs one dependency hop). Fuzz-tested against the
+  naive all-pairs hazard set.
 * Fusion is the device ops' own: bias, GELU (with the pre-activation kept for backward) and the residual add run in the
   `matmul_tile` epilogue. A residual connection carries one gradient buffer through the network (`res` forwards the output
   gradient; later contributions accumulate in place with `acc`).

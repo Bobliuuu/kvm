@@ -11,7 +11,9 @@ from kvmfe.plan import plan_memory
 
 class DataflowRules(unittest.TestCase):
     def edges(self, *accesses):
-        return [sorted(p) for p in build_edges(list(accesses))]
+        seq, preds = build_edges(list(accesses))
+        self.assertEqual(seq, list(range(len(accesses))), 'small cases need no joins')
+        return [sorted(p) for p in preds]
 
     def test_raw_war_waw(self):
         A = lambda r0, r1: ('a', r0, r1, 0, 4)
@@ -30,6 +32,20 @@ class DataflowRules(unittest.TestCase):
         rw = ('a', 0, 1, 0, 1)
         e = self.edges(*[([rw], [rw])] * 50)
         self.assertEqual(max(len(p) for p in e), 1)           # each depends only on its predecessor (readers pruned by overwrite)
+
+
+    def test_large_war_fan_collapses_through_a_join(self):
+        W = lambda r: ('w', r, r + 1, 0, 1)
+        acc = [([], [('w', 0, 100, 0, 1)])] + [([('w', 0, 100, 0, 1)], []) for _ in range(100)] + [([], [W(r)]) for r in range(20)]
+        seq, preds = build_edges(acc)
+        self.assertEqual(seq.count(-1), 1)
+        self.assertLess(sum(map(len, preds)), 100 + 100 + 3 * 20 + 5)              # not 100 x 20
+        join = seq.index(-1)
+        pos = {s: k for k, s in enumerate(seq) if s >= 0}
+        readers = set(range(1, 101))
+        self.assertEqual({seq[j] for j in preds[join]}, readers)
+        for r in range(20):                                                       # every rewrite still reaches every reader
+            self.assertIn(join, preds[pos[101 + r]])
 
 
 class Planner(unittest.TestCase):

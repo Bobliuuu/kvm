@@ -10,7 +10,7 @@ from pathlib import Path
 from . import log
 from .dataflow import build_edges
 from .ir import FrontendError, LogicalOp, Tensor
-from .lower import Tiling, lower_op
+from .lower import TileTask, Tiling, lower_op
 from .plan import Plan, plan_memory
 
 MATERIALIZE_LIMIT = 1 << 20          # elements per buffer whose initial values are written into the JSON
@@ -62,6 +62,10 @@ class Lowered:
     def edges(self):
         return sum(len(p) for p in self.preds)
 
+    @property
+    def joins(self):
+        return sum(1 for t in self.tasks if t.name.startswith('join.'))
+
 
 def lower_program(ops: list[LogicalOp], tiling: Tiling, reuse='shape', gap=0, prefix='act') -> Lowered:
     tasks = []
@@ -71,9 +75,16 @@ def lower_program(ops: list[LogicalOp], tiling: Tiling, reuse='shape', gap=0, pr
             tasks.append(t)
     plan = plan_memory(ops, reuse, gap, prefix)
     rect = lambda r: (plan.buf(r.t), r.r0, r.r1, r.c0, r.c1)
-    preds = build_edges([([rect(r) for r in t.reads], [rect(r) for r in t.writes]) for t in tasks])
-    log.info('lowered %d logical ops -> %d tile tasks, %d edges', len(ops), len(tasks), sum(map(len, preds)))
-    return Lowered(tasks, plan, preds, [t.name for t in tasks], tiling)
+    seq, preds = build_edges([([rect(r) for r in t.reads], [rect(r) for r in t.writes]) for t in tasks])
+    ordered, nxt = [], None
+    for k in range(len(seq) - 1, -1, -1):                      # a join takes the op of the task that first needed it
+        if seq[k] >= 0:
+            nxt = tasks[seq[k]]
+        ordered.append(nxt if seq[k] >= 0 else TileTask('noop', {}, name=f's{nxt.op.step}/join.{k}', op=nxt.op))
+    ordered.reverse()
+    log.info('lowered %d logical ops -> %d tile tasks (+%d joins), %d edges', len(ops), len(tasks), len(ordered) - len(tasks),
+             sum(map(len, preds)))
+    return Lowered(ordered, plan, preds, [t.name for t in ordered], tiling)
 
 
 def _init_entry(b, limit):

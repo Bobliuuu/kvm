@@ -58,9 +58,12 @@ struct Dev {
         return o;
     }
     std::vector<int32_t> downi(int i) { std::vector<int32_t> o(tab[i].cols); CK(cudaMemcpy(o.data(), tab[i].p, o.size() * 4, cudaMemcpyDeviceToHost)); return o; }
+    size_t tab_cap = 0;
+    // Uploads the buffer table. The device table keeps its address while the buffer count is unchanged, so contexts captured
+    // earlier (staged launches) stay valid; add all buffers before staging.
     void sync_table() {
-        if (tab_d) cudaFree(tab_d);
-        CK(cudaMalloc(&tab_d, tab.size() * sizeof(KvmBuf)));
+        if (tab_d && tab_cap != tab.size()) { cudaFree(tab_d); tab_d = nullptr; }
+        if (!tab_d) { CK(cudaMalloc(&tab_d, tab.size() * sizeof(KvmBuf))); tab_cap = tab.size(); }
         CK(cudaMemcpy(tab_d, tab.data(), tab.size() * sizeof(KvmBuf), cudaMemcpyHostToDevice));
     }
     int geterr() { int e; CK(cudaMemcpy(&e, err, 4, cudaMemcpyDeviceToHost)); CK(cudaMemset(err, 0, 4)); return e; }

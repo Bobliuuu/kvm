@@ -82,7 +82,9 @@ nvcc -O3 -arch=sm_80 -std=c++17 -DKTILE=32 -DKKC=64 -DKSTG=4 kvm.cu -o kvm   # -
 KVM_HOST=user@host ./run_remote.sh --runs 8 --steps 300   # rsync, build and run on a GPU box under flock
 ```
 
-A change is done when `--selftest` passes and the run ends in `PASS` on the GPU its claim is about.
+A change is done when `--selftest` passes and the run ends in `PASS` on the GPU its claim is about. Without a CUDA toolkit or
+root, `micromamba create -p "$HOME/.local/cuda-12.9" -c conda-forge cuda-nvcc=12.9 cuda-cudart-dev=12.9 cuda-version=12.9`
+gives a working `nvcc` in minutes (the pip `nvidia-cuda-nvcc-cu12` wheel ships `ptxas` but no `nvcc`).
 
 ## Measuring
 

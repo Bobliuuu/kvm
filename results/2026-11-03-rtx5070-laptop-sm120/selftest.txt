@@ -1,0 +1,17 @@
+selftest K=64 TA=0 TB=0  max abs err 2.999e-03 [c0 -2.849 ref0 -2.849]  ok
+selftest K=64 TA=1 TB=0  max abs err 2.824e-03 [c0 0.179 ref0 0.178]  ok
+selftest K=64 TA=0 TB=1  max abs err 3.020e-03 [c0 1.205 ref0 1.205]  ok
+selftest K=64 TA=1 TB=1  max abs err 2.848e-03 [c0 -0.086 ref0 -0.087]  ok
+selftest K=128 TA=0 TB=0  max abs err 3.892e-03 [c0 0.633 ref0 0.632]  ok
+selftest K=128 TA=1 TB=0  max abs err 4.048e-03 [c0 -5.984 ref0 -5.984]  ok
+selftest K=128 TA=0 TB=1  max abs err 4.180e-03 [c0 -2.197 ref0 -2.198]  ok
+selftest K=128 TA=1 TB=1  max abs err 4.513e-03 [c0 1.002 ref0 1.000]  ok
+selftest K=192 TA=0 TB=0  max abs err 4.879e-03 [c0 -3.322 ref0 -3.320]  ok
+selftest K=192 TA=1 TB=0  max abs err 4.859e-03 [c0 9.705 ref0 9.707]  ok
+selftest K=192 TA=0 TB=1  max abs err 6.559e-03 [c0 6.544 ref0 6.545]  ok
+selftest K=192 TA=1 TB=1  max abs err 4.959e-03 [c0 -3.331 ref0 -3.332]  ok
+selftest K=256 TA=0 TB=0  max abs err 5.626e-03 [c0 -9.301 ref0 -9.301]  ok
+selftest K=256 TA=1 TB=0  max abs err 6.156e-03 [c0 -0.128 ref0 -0.128]  ok
+selftest K=256 TA=0 TB=1  max abs err 5.615e-03 [c0 6.739 ref0 6.740]  ok
+selftest K=256 TA=1 TB=1  max abs err 5.783e-03 [c0 -2.134 ref0 -2.132]  ok
+selftest exit 0

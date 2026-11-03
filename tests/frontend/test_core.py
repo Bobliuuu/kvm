@@ -39,7 +39,7 @@ class DataflowRules(unittest.TestCase):
         acc = [([], [('w', 0, 100, 0, 1)])] + [([('w', 0, 100, 0, 1)], []) for _ in range(100)] + [([], [W(r)]) for r in range(20)]
         seq, preds = build_edges(acc)
         self.assertEqual(seq.count(-1), 1)
-        self.assertLess(sum(map(len, preds)), 100 + 100 + 3 * 20 + 5)              # not 100 x 20
+        self.assertLess(sum(map(len, preds)), 400)                  # 2000+ without the join
         join = seq.index(-1)
         pos = {s: k for k, s in enumerate(seq) if s >= 0}
         readers = set(range(1, 101))

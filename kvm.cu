@@ -42,14 +42,18 @@ struct Instr {                 // 80 bytes
   int loss_idx, pad0, pad1;
 };
 
-constexpr int TILE = 32, NT = 128;
+#ifndef KTILE
+#define KTILE 64
+#endif
+constexpr int TILE = KTILE, NT = 128, WT = TILE / 2, FR = WT / 16, VPT = TILE / 4;   // warp block, frags/dim, 16B vectors per TILE-wide row
 
 __device__ __forceinline__ int ld_acquire(const int* p) {
   int v; asm volatile("ld.acquire.gpu.global.u32 %0, [%1];" : "=r"(v) : "l"(p) : "memory"); return v;
 }
 
-// ---- pipelined tile GEMM: 4-stage cp.async ring of K-chunks in dynamic smem
-constexpr int KC = 64, STG = 4, LDK = KC + 4, LDM = TILE + 4, SLOT = KC * LDM;   // floats per A or B slot
+// ---- pipelined 64x64 tile GEMM: STG-stage cp.async ring of K-chunks in dynamic smem.
+// 4 warps in a 2x2 grid, each owning a 32x32 output block (2x2 wmma 16x16x8 TF32 fragments).
+constexpr int KC = 32, STG = 3, LDK = KC + 4, LDM = TILE + 4, SLOT = (TILE * LDK > KC * LDM ? TILE * LDK : KC * LDM), NV = TILE * KC / 4 / NT;
 constexpr size_t DSMEM = (size_t)STG * 2 * SLOT * sizeof(float);
 extern __shared__ __align__(128) float dsm[];
 __shared__ unsigned long long g_stamp[2];
@@ -65,11 +69,13 @@ __device__ __forceinline__ void cp_wait_stg() { asm volatile("cp.async.wait_grou
 
 template <bool TA, bool TB>
 __device__ __forceinline__ void load_chunk(float* sA, float* sB, const Buf& A, const Buf& B, int m0, int n0, int k0) {
-  for (int i = threadIdx.x; i < 512; i += NT) {
-    if (TA) { int r = i >> 3, c = (i & 7) * 4; cp16(sA + r * LDM + c, A.p + (size_t)(k0 + r) * A.ld + m0 + c); }
-    else    { int r = i >> 4, c = (i & 15) * 4; cp16(sA + r * LDK + c, A.p + (size_t)(m0 + r) * A.ld + k0 + c); }
-    if (TB) { int r = i >> 4, c = (i & 15) * 4; cp16(sB + r * LDK + c, B.p + (size_t)(n0 + r) * B.ld + k0 + c); }
-    else    { int r = i >> 3, c = (i & 7) * 4; cp16(sB + r * LDM + c, B.p + (size_t)(k0 + r) * B.ld + n0 + c); }
+#pragma unroll
+  for (int j = 0; j < NV; j++) {
+    int i = threadIdx.x + j * NT;      // TILE*KC/4 16-byte vectors per operand chunk
+    if (TA) { int r = i / VPT, c = (i % VPT) * 4; cp16(sA + r * LDM + c, A.p + (size_t)(k0 + r) * A.ld + m0 + c); }
+    else    { int r = i >> 3, c = (i & 7) * 4;    cp16(sA + r * LDK + c, A.p + (size_t)(m0 + r) * A.ld + k0 + c); }
+    if (TB) { int r = i >> 3, c = (i & 7) * 4;    cp16(sB + r * LDK + c, B.p + (size_t)(n0 + r) * B.ld + k0 + c); }
+    else    { int r = i / VPT, c = (i % VPT) * 4; cp16(sB + r * LDM + c, B.p + (size_t)(k0 + r) * B.ld + n0 + c); }
   }
 }
 
@@ -78,10 +84,13 @@ __device__ void gemm_acc(const Buf A, const Buf B, int m0, int n0, int K, float*
   int warp = threadIdx.x >> 5, wm = warp >> 1, wn = warp & 1;
   using AL = typename std::conditional<TA, wmma::col_major, wmma::row_major>::type;
   using BL = typename std::conditional<TB, wmma::col_major, wmma::row_major>::type;
-  wmma::fragment<wmma::matrix_a, 16, 16, 8, wmma::precision::tf32, AL> fa;
-  wmma::fragment<wmma::matrix_b, 16, 16, 8, wmma::precision::tf32, BL> fb;
-  wmma::fragment<wmma::accumulator, 16, 16, 8, float> acc;
-  wmma::fill_fragment(acc, 0.f);
+  wmma::fragment<wmma::matrix_a, 16, 16, 8, wmma::precision::tf32, AL> fa[FR];
+  wmma::fragment<wmma::matrix_b, 16, 16, 8, wmma::precision::tf32, BL> fb[FR];
+  wmma::fragment<wmma::accumulator, 16, 16, 8, float> acc[FR][FR];
+#pragma unroll
+  for (int i = 0; i < FR; i++)
+#pragma unroll
+    for (int j = 0; j < FR; j++) wmma::fill_fragment(acc[i][j], 0.f);
   int nch = K / KC;
   for (int s = 0; s < STG - 1; s++) {
     if (s < nch) load_chunk<TA, TB>(dsm + s * 2 * SLOT, dsm + s * 2 * SLOT + SLOT, A, B, m0, n0, s * KC);
@@ -97,19 +106,31 @@ __device__ void gemm_acc(const Buf A, const Buf B, int m0, int n0, int K, float*
     const float* sA = dsm + (c % STG) * 2 * SLOT; const float* sB = sA + SLOT;
 #pragma unroll
     for (int kk = 0; kk < KC; kk += 8) {
-      wmma::load_matrix_sync(fa, TA ? sA + kk * LDM + wm * 16 : sA + wm * 16 * LDK + kk, TA ? LDM : LDK);
-      wmma::load_matrix_sync(fb, TB ? sB + wn * 16 * LDK + kk : sB + kk * LDM + wn * 16, TB ? LDK : LDM);
 #pragma unroll
-      for (int i = 0; i < fa.num_elements; i++) fa.x[i] = wmma::__float_to_tf32(fa.x[i]);
+      for (int i = 0; i < FR; i++) {
+        wmma::load_matrix_sync(fa[i], TA ? sA + kk * LDM + wm * WT + i * 16 : sA + (wm * WT + i * 16) * LDK + kk, TA ? LDM : LDK);
 #pragma unroll
-      for (int i = 0; i < fb.num_elements; i++) fb.x[i] = wmma::__float_to_tf32(fb.x[i]);
-      wmma::mma_sync(acc, fa, fb, acc);
+        for (int e = 0; e < fa[i].num_elements; e++) fa[i].x[e] = wmma::__float_to_tf32(fa[i].x[e]);
+      }
+#pragma unroll
+      for (int j = 0; j < FR; j++) {
+        wmma::load_matrix_sync(fb[j], TB ? sB + (wn * WT + j * 16) * LDK + kk : sB + kk * LDM + wn * WT + j * 16, TB ? LDK : LDM);
+#pragma unroll
+        for (int e = 0; e < fb[j].num_elements; e++) fb[j].x[e] = wmma::__float_to_tf32(fb[j].x[e]);
+      }
+#pragma unroll
+      for (int i = 0; i < FR; i++)
+#pragma unroll
+        for (int j = 0; j < FR; j++) wmma::mma_sync(acc[i][j], fa[i], fb[j], acc[i][j]);
     }
   }
   cp_wait_stg(); asm volatile("cp.async.wait_all;" ::: "memory");
-  __syncthreads();
-  if (threadIdx.x == 0 && g_prof_on) g_stamp[1] = gtime();   // all smem ring reads done before next instruction reuses it
-  wmma::store_matrix_sync(sm + wm * 16 * TILE + wn * 16, acc, TILE, wmma::mem_row_major);
+  __syncthreads();   // ring reads done before the next instruction reuses it
+  if (threadIdx.x == 0 && g_prof_on) g_stamp[1] = gtime();
+#pragma unroll
+  for (int i = 0; i < FR; i++)
+#pragma unroll
+    for (int j = 0; j < FR; j++) wmma::store_matrix_sync(sm + (wm * WT + i * 16) * TILE + wn * WT + j * 16, acc[i][j], TILE, wmma::mem_row_major);
 }
 
 // Executes one instruction. All NT threads. Caller handles dependencies. Ends with __syncthreads-safe state.
@@ -124,10 +145,11 @@ __device__ void exec_instr(const Instr& in, float* sm, float* loss) {
     float lsum = 0.f;
     Buf X = g_buf[in.aux >= 0 ? in.aux : 0];
     // batched float4 epilogue: issue all global loads first, then compute + store
-    float4 v[2], xa[2], cu[2]; size_t gi[2], xi[2];
+    constexpr int EPI = TILE * TILE / 4 / NT;
+    float4 v[EPI], xa[EPI], cu[EPI]; size_t gi[EPI], xi[EPI];
 #pragma unroll
-    for (int it = 0; it < 2; it++) {
-      int e4 = threadIdx.x + it * NT, r = e4 >> 3, c = (e4 & 7) * 4;
+    for (int it = 0; it < EPI; it++) {
+      int e4 = threadIdx.x + it * NT, r = e4 / VPT, c = (e4 % VPT) * 4;
       v[it] = *reinterpret_cast<const float4*>(sm + r * TILE + c);
       gi[it] = (size_t)(in.m0 + r) * C.ld + in.n0 + c;
       xi[it] = (size_t)(in.m0 + r) * X.ld + in.n0 + c;
@@ -135,7 +157,7 @@ __device__ void exec_instr(const Instr& in, float* sm, float* loss) {
       if (f & F_SGD) cu[it] = __ldcg(reinterpret_cast<const float4*>(C.p + gi[it]));
     }
 #pragma unroll
-    for (int it = 0; it < 2; it++) {
+    for (int it = 0; it < EPI; it++) {
       float* q = &v[it].x; const float* x = &xa[it].x; const float* cc = &cu[it].x;
 #pragma unroll
       for (int j = 0; j < 4; j++) {
@@ -168,7 +190,7 @@ __device__ void exec_instr(const Instr& in, float* sm, float* loss) {
 __device__ __forceinline__ unsigned long long gtime() { unsigned long long t; asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(t)); return t; }
 
 __global__ void __launch_bounds__(NT) vm_kernel(const Instr* tape, int n, int* head, int* ctr, float* loss, unsigned long long* prof) {
-  __shared__ float sm[TILE * TILE];
+  __shared__ __align__(128) float sm[TILE * TILE];
   __shared__ int s_idx;
   for (;;) {
     if (threadIdx.x == 0) s_idx = atomicAdd(head, 1);
@@ -199,7 +221,7 @@ __global__ void __launch_bounds__(NT) vm_kernel(const Instr* tape, int n, int* h
 
 // ---- baseline: one launch per phase, block i runs tape[off+i], no waits
 __global__ void __launch_bounds__(NT) phase_kernel(const Instr* tape, int off, float* loss) {
-  __shared__ float sm[TILE * TILE];
+  __shared__ __align__(128) float sm[TILE * TILE];
   exec_instr(tape[off + blockIdx.x], sm, loss);
 }
 
@@ -208,7 +230,43 @@ struct Rng { uint64_t s; float next() { s = s * 6364136223846793005ULL + 1442695
 
 static double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 
+// ---- self-test: every transpose combo of the tile GEMM vs CPU fp32 (TF32 tolerance)
+static int selftest() {
+  CK(cudaFuncSetAttribute(phase_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)DSMEM));
+  const int M = 128, N = 192;
+  Rng r{777};
+  int bad = 0;
+  for (int K : {32, 64, 96, 256}) for (int combo = 0; combo < 4; combo++) {
+    bool ta = combo & 1, tb = combo & 2;
+    std::vector<float> a(M * K), b(K * N), c(M * N), ref(M * N, 0.f);
+    for (auto& v : a) v = r.next(); for (auto& v : b) v = r.next();
+    // logical A is MxK, B is KxN; physical layouts depend on ta/tb
+    auto Aat = [&](int m, int k) -> float& { return ta ? a[k * M + m] : a[m * K + k]; };
+    auto Bat = [&](int k, int n) -> float& { return tb ? b[n * K + k] : b[k * N + n]; };
+    for (int m = 0; m < M; m++) for (int k = 0; k < K; k++) { float x = Aat(m, k); for (int n = 0; n < N; n++) ref[m * N + n] += x * Bat(k, n); }
+    float *da, *db, *dc; CK(cudaMalloc(&da, a.size() * 4)); CK(cudaMalloc(&db, b.size() * 4)); CK(cudaMalloc(&dc, c.size() * 4));
+    CK(cudaMemcpy(da, a.data(), a.size() * 4, cudaMemcpyHostToDevice)); CK(cudaMemcpy(db, b.data(), b.size() * 4, cudaMemcpyHostToDevice));
+    Buf hb[3] = {{da, ta ? M : K}, {db, tb ? K : N}, {dc, N}};
+    CK(cudaMemcpyToSymbol(g_buf, hb, sizeof hb));
+    std::vector<Instr> t;
+    for (int m = 0; m < M / TILE; m++) for (int n = 0; n < N / TILE; n++) {
+      Instr i; memset(&i, 0, sizeof i); i.op = OP_GEMM; i.flags = (ta ? F_TA : 0) | (tb ? F_TB : 0); i.a = 0; i.b = 1; i.c = 2; i.aux = -1;
+      i.w0c = i.w1c = i.s0 = i.s1 = -1; i.m0 = m * TILE; i.n0 = n * TILE; i.K = K; t.push_back(i);
+    }
+    Instr* dt; CK(cudaMalloc(&dt, t.size() * sizeof(Instr))); CK(cudaMemcpy(dt, t.data(), t.size() * sizeof(Instr), cudaMemcpyHostToDevice));
+    phase_kernel<<<(unsigned)t.size(), NT, DSMEM>>>(dt, 0, nullptr); CK(cudaDeviceSynchronize());
+    CK(cudaMemcpy(c.data(), dc, c.size() * 4, cudaMemcpyDeviceToHost));
+    double me = 0; for (int i = 0; i < M * N; i++) me = std::max(me, (double)fabs(c[i] - ref[i]));
+    printf("selftest K=%d TA=%d TB=%d  max abs err %.3e [c0 %.3f ref0 %.3f]  %s\n", K, ta, tb, me, c[0], ref[0], me < 5e-2 ? "ok" : "BAD");
+    if (me >= 5e-2) { bad++;
+      if (K == 32 && combo == 0) for (int bm = 0; bm < M / 16; bm++) { for (int bn = 0; bn < N / 16; bn++) { double e = 0; for (int i = 0; i < 16; i++) for (int j = 0; j < 16; j++) e = std::max(e, (double)fabs(c[(bm * 16 + i) * N + bn * 16 + j] - ref[(bm * 16 + i) * N + bn * 16 + j])); printf("%c", e < 5e-2 ? '.' : 'X'); } printf("\n"); } }
+    cudaFree(da); cudaFree(db); cudaFree(dc); cudaFree(dt);
+  }
+  return bad;
+}
+
 int main(int argc, char** argv) {
+  if (argc > 1 && std::string(argv[1]) == "--selftest") return selftest() ? 2 : 0;
   int steps = 1000, B = 128, D = 128, Hd = 256, O = 64, NB = 8, ref_steps = 100;
   float lr = 0.05f; bool prof_on = false;
   for (int i = 1; i < argc; i++) {
@@ -219,7 +277,7 @@ int main(int argc, char** argv) {
     else if (a == "--prof") prof_on = true; else if (a == "--lr") lr = nx(); else if (a == "--ref-steps") ref_steps = nx();
   }
   if (B % 64 || D % 64 || Hd % 64 || O % 64) { fprintf(stderr, "dims must be multiples of 64\n"); return 1; }
-  int nRB = B / 32, nHC = Hd / 32, nOC = O / 32, nDC = D / 32;
+  int nRB = B / TILE, nHC = Hd / TILE, nOC = O / TILE, nDC = D / TILE;
 
   // ---- data: teacher-generated regression targets
   Rng rng{12345};
@@ -297,7 +355,7 @@ int main(int argc, char** argv) {
     // H1 = relu(X W1)   (W1 updated by DW1(s-1); H1 buffer read by DW2(s-1))
     begin();
     for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nHC; cn++) {
-      Instr i = mk(); i.op = OP_GEMM; i.flags = F_RELU; i.a = idX + k; i.b = idW1; i.c = idH1; i.m0 = rb * 32; i.n0 = cn * 32; i.K = D;
+      Instr i = mk(); i.op = OP_GEMM; i.flags = F_RELU; i.a = idX + k; i.b = idW1; i.c = idH1; i.m0 = rb * TILE; i.n0 = cn * TILE; i.K = D;
       if (s > 0) { i.w0c = ctr(s - 1, P_DW1, -1); i.w0v = nDC * nHC; i.w1c = ctr(s - 1, P_DW2, -1); i.w1v = nHC * nOC; }
       i.s0 = ctr(s, P_H1, rb); i.s1 = ctr(s, P_H1, -1); tape.push_back(i);
     }
@@ -305,7 +363,7 @@ int main(int argc, char** argv) {
     // dY = 2/(BO) (H1 W2 - T); loss   (W2 updated by DW2(s-1))
     begin();
     for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nOC; cn++) {
-      Instr i = mk(); i.op = OP_GEMM; i.flags = F_MSE; i.a = idH1; i.b = idW2; i.c = idDY; i.aux = idT + k; i.m0 = rb * 32; i.n0 = cn * 32; i.K = Hd;
+      Instr i = mk(); i.op = OP_GEMM; i.flags = F_MSE; i.a = idH1; i.b = idW2; i.c = idDY; i.aux = idT + k; i.m0 = rb * TILE; i.n0 = cn * TILE; i.K = Hd;
       i.scale = 2.f / (B * O); i.loss_idx = s;
       i.w0c = ctr(s, P_H1, rb); i.w0v = nHC;
       if (s > 0) { i.w1c = ctr(s - 1, P_DW2, -1); i.w1v = nHC * nOC; }
@@ -315,14 +373,14 @@ int main(int argc, char** argv) {
     // dH1 = (dY W2^T) * (H1>0)   (reads old W2, so must precede DW2's in-place SGD)
     begin();
     for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nHC; cn++) {
-      Instr i = mk(); i.op = OP_GEMM; i.flags = F_TB | F_RELUMASK; i.a = idDY; i.b = idW2; i.c = idDH; i.aux = idH1; i.m0 = rb * 32; i.n0 = cn * 32; i.K = O;
+      Instr i = mk(); i.op = OP_GEMM; i.flags = F_TB | F_RELUMASK; i.a = idDY; i.b = idW2; i.c = idDH; i.aux = idH1; i.m0 = rb * TILE; i.n0 = cn * TILE; i.K = O;
       i.w0c = ctr(s, P_Y, rb); i.w0v = nOC; i.s1 = ctr(s, P_DH1, -1); tape.push_back(i);
     }
     end();
     // W2 -= lr * H1^T dY   (fused SGD epilogue; waits for all dH1 tiles that read W2)
     begin();
     for (int m = 0; m < nHC; m++) for (int n = 0; n < nOC; n++) {
-      Instr i = mk(); i.op = OP_GEMM; i.flags = F_TA | F_SGD; i.a = idH1; i.b = idDY; i.c = idW2; i.m0 = m * 32; i.n0 = n * 32; i.K = B; i.scale = lr;
+      Instr i = mk(); i.op = OP_GEMM; i.flags = F_TA | F_SGD; i.a = idH1; i.b = idDY; i.c = idW2; i.m0 = m * TILE; i.n0 = n * TILE; i.K = B; i.scale = lr;
       i.w0c = ctr(s, P_Y, -1); i.w0v = nRB * nOC; i.w1c = ctr(s, P_DH1, -1); i.w1v = nRB * nHC;
       i.s1 = ctr(s, P_DW2, -1); tape.push_back(i);
     }
@@ -330,7 +388,7 @@ int main(int argc, char** argv) {
     // W1 -= lr * X^T dH1
     begin();
     for (int m = 0; m < nDC; m++) for (int n = 0; n < nHC; n++) {
-      Instr i = mk(); i.op = OP_GEMM; i.flags = F_TA | F_SGD; i.a = idX + k; i.b = idDH; i.c = idW1; i.m0 = m * 32; i.n0 = n * 32; i.K = B; i.scale = lr;
+      Instr i = mk(); i.op = OP_GEMM; i.flags = F_TA | F_SGD; i.a = idX + k; i.b = idDH; i.c = idW1; i.m0 = m * TILE; i.n0 = n * TILE; i.K = B; i.scale = lr;
       i.w0c = ctr(s, P_DH1, -1); i.w0v = nRB * nHC; i.s1 = ctr(s, P_DW1, -1); tape.push_back(i);
     }
     end();

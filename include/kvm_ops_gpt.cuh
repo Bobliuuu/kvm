@@ -971,8 +971,8 @@ KVM_GPT_DEVI void gradnorm_finish(const KvmCtx& ctx, const int32_t* a) {
         double s = 0;
         for (int i = 0; i < n; i++) s += part[i];
         float nrm = (float)sqrt(s);
-        out[0] = nrm;
-        out[1] = mx > 0.f ? fminf(1.f, mx / (nrm + 1e-6f)) : 1.f;
+        out[0] = mx > 0.f ? fminf(1.f, mx / (nrm + 1e-6f)) : 1.f;   // clip coefficient first: out is directly an adamw gscale
+        out[1] = nrm;
     }
 }
 

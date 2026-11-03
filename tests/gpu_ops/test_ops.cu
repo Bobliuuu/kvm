@@ -351,8 +351,8 @@ static void t_adamw() {
     run1(dv, OP_gradnorm_finish, A().b(part).i(3).b(nrm).f(1.0f));
     double s = 0; for (float x : g1) s += (double)x * x; for (float x : g2) s += (double)x * x;
     double rn = sqrt(s), coef = std::min(1.0, 1.0 / (rn + 1e-6)); auto hn = dv.down(nrm);
-    check("gradnorm_partial+finish norm", {hn[0]}, {rn}, 1e-6);
-    check("gradnorm clip coefficient", {hn[1]}, {coef}, 1e-6);
+    check("gradnorm_partial+finish norm", {hn[1]}, {rn}, 1e-6);
+    check("gradnorm clip coefficient", {hn[0]}, {coef}, 1e-6);
 }
 
 // ---- sampling ---------------------------------------------------------------------------------------------------------

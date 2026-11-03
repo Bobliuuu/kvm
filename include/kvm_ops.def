@@ -1,0 +1,15 @@
+// Single source of truth for the operator registry. Included by the device dispatcher (X-macro) and parsed by
+// runtime/compile_workload.py, so the operator ids, arities and argument types can never drift apart.
+// X(name, id, "arg:type,arg:type,...")   type in {buf, i32, f32}; one 32-bit word per argument (buf = KvmBuf table index).
+// Ids are stable: never renumber, only append.
+X(noop,     0, "")
+X(copy,     1, "src:buf,dst:buf,n:i32")
+X(add,      2, "a:buf,b:buf,out:buf,n:i32")
+X(scale,    3, "x:buf,out:buf,alpha:f32,n:i32")
+X(relu,     4, "x:buf,out:buf,n:i32")
+X(sgd,      5, "w:buf,g:buf,lr:f32,n:i32")
+X(predict,  6, "x:buf,w:buf,out:buf,n:i32")                  // out = w[0] * x   (w is a scalar buffer)
+X(mse_grad, 7, "pred:buf,target:buf,x:buf,loss:buf,grad:buf,n:i32") // loss[0]=mean((p-t)^2); grad[0]=mean(2(p-t)x)
+X(matmul,   8, "a:buf,b:buf,out:buf,m:i32,n:i32,k:i32")      // out[m,n] = a[m,k] @ b[k,n], fp32
+X(fill,     9, "x:buf,value:f32,n:i32")
+X(spin,    10, "us:i32")                                      // busy-wait for deadline/priority tests

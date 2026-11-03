@@ -1,0 +1,75 @@
+// GPT operator library registry (ids 32.., append-only: never renumber). Same X(name, id, "arg:type,...") format as
+// kvm_ops.def; type in {buf, i32, f32}, one 32-bit word per argument (buf = KvmBuf table index, f32 bit-cast).
+// Device entry point of op `name` is  __device__ void kvm_op_<name>(const KvmCtx&, const int32_t* args)  in kvm_ops_gpt.cuh.
+//
+// Conventions
+//  * Matrices are row-major fp32 addressed through the KvmBuf table (element (r,c) at p[r*ld+c]). "Flat" ops (e0/e1, i0/i1)
+//    index a contiguous buffer. Index/int buffers have dtype 1 (i32).
+//  * A buf argument of -1 means "absent" where the op says optional.
+//  * Every op is block-cooperative and must be run by a block of exactly 256 threads (KVM_GPT_THREADS), <= 48 KiB dynamic
+//    shared memory. A task is a tile / row block / head block as named by its range args; many tasks run one logical op.
+//  * Row ranges [r0,r1) are clipped to the buffer; the caller expresses dependencies in the DAG. Ops never wait on other tasks.
+//  * Bad arguments set the first nonzero code in ctx.err (1 buf index, 2 dtype/ptr, 3 range/arg, 4 unsupported shape,
+//    5 token id out of range, 6 kv length overflow) and the task returns without touching memory.
+//  * "acc" = 1 accumulates into the output (out += v), 0 overwrites. Backward ops that sum over tasks are split so each
+//    output element has exactly one writer task and a fixed summation order (bitwise deterministic).
+//  * Layouts: activations [B*T, H*hd] (head h = columns [h*hd,(h+1)*hd)); lse/delta [B*H*T] at (b*H+h)*T+t;
+//    KV cache [B*Hkv*Tmax, hd], row (b*Hkv+kvh)*Tmax+t; lens = int32[B] tokens already cached.
+
+// out[r,:] = wte[ids[r],:] + wpe[(r%T) (+ pos[0] if pos given? no: plain r%T),:] for r in [r0,r1). wpe optional (-1).
+X(embedding_fwd,        32, "ids:buf,wte:buf,wpe:buf,out:buf,r0:i32,r1:i32,T:i32,d:i32")
+// dtab[key,:] (+)= sum over rows r (ascending) with key(r)==key of dout[r,:], keys in [v0,v1). key(r)=ids[r], or r%mod if ids=-1
+// (positional table grad). Deterministic: one task owns a key range and sums rows in order.
+X(embedding_bwd,        33, "ids:buf,dout:buf,dtab:buf,N:i32,mod:i32,v0:i32,v1:i32,d:i32,acc:i32")
+// 64x64 output tile at (m0,n0) of C[M,N] = alpha*op(A)*op(B) with K reduction. flags: 1 transA (A stored [K,M]), 2 transB
+// (B stored [N,K]), 4 accumulate into out, 8 gelu, 16 precise (3xTF32, ~fp32 accuracy; default 1xTF32).
+// Epilogue: v=alpha*acc; +bias[n] (bias!=-1); pre[m,n]=v (pre!=-1, before gelu); gelu(v) if flag 8; +res[m,n] (res!=-1);
+// out = v or out + v.
+X(matmul_tile,          34, "a:buf,b:buf,out:buf,bias:buf,res:buf,pre:buf,m0:i32,n0:i32,M:i32,N:i32,K:i32,flags:i32,alpha:f32")
+X(layernorm_fwd,        35, "x:buf,gamma:buf,beta:buf,out:buf,mean:buf,rstd:buf,r0:i32,r1:i32,d:i32,eps:f32")
+X(rmsnorm_fwd,          36, "x:buf,gamma:buf,out:buf,rstd:buf,r0:i32,r1:i32,d:i32,eps:f32")
+X(layernorm_bwd_dx,     37, "x:buf,dy:buf,gamma:buf,mean:buf,rstd:buf,dx:buf,r0:i32,r1:i32,d:i32,acc:i32")
+X(rmsnorm_bwd_dx,       38, "x:buf,dy:buf,gamma:buf,rstd:buf,dx:buf,r0:i32,r1:i32,d:i32,acc:i32")
+// dgamma[c] (+)= sum_r dy[r,c]*xhat[r,c], dbeta[c] (+)= sum_r dy[r,c], c in [c0,c1), r in [0,R) ascending. mean=-1 selects
+// RMSNorm (xhat = x*rstd); dbeta=-1 skips beta.
+X(norm_bwd_params,      39, "x:buf,dy:buf,mean:buf,rstd:buf,dgamma:buf,dbeta:buf,R:i32,d:i32,c0:i32,c1:i32,acc:i32")
+X(gelu_fwd,             40, "x:buf,out:buf,e0:i32,e1:i32")                       // tanh approximation (GPT-2)
+X(gelu_bwd,             41, "x:buf,dy:buf,dx:buf,e0:i32,e1:i32,acc:i32")         // x = pre-activation
+X(residual_add,         42, "a:buf,b:buf,out:buf,e0:i32,e1:i32")                 // out may alias a or b
+// Rotary embedding on x[R, H*hd], pairs (i, i+hd/2); position = (r%T) + pos[0] (pos optional int buf, serving offset).
+// rope_bwd is the inverse rotation. out may alias x.
+X(rope_fwd,             43, "x:buf,out:buf,pos:buf,r0:i32,r1:i32,T:i32,H:i32,hd:i32,theta:f32")
+X(rope_bwd,             44, "x:buf,out:buf,pos:buf,r0:i32,r1:i32,T:i32,H:i32,hd:i32,theta:f32")
+// Causal flash attention, one task = (batch b, head h, 32 query rows from q0). GQA: kv head = h/(H/Hkv). hd in {16,32,64,128}.
+// q:[B*T,H*hd] k,v:[B*T,Hkv*hd]. Writes o rows and lse (natural log).
+X(attn_fwd,             45, "q:buf,k:buf,v:buf,o:buf,lse:buf,b:i32,h:i32,q0:i32,T:i32,H:i32,Hkv:i32,hd:i32,scale:f32")
+// delta[b,h,t] = sum_d do*o for rows [r0,r1) (r=b*T+t), all heads.
+X(attn_bwd_delta,       46, "o:buf,do:buf,delta:buf,r0:i32,r1:i32,T:i32,H:i32,hd:i32")
+// dq for (b,h,32 rows from q0): overwrites. dk/dv for (b,kv head kvh,32 keys from k0): sums over the whole GQA group and all
+// later queries in fixed order, overwrites dk,dv (deterministic, no atomics).
+X(attn_bwd_dq,          47, "q:buf,k:buf,v:buf,do:buf,lse:buf,delta:buf,dq:buf,b:i32,h:i32,q0:i32,T:i32,H:i32,Hkv:i32,hd:i32,scale:f32")
+X(attn_bwd_dkv,         48, "q:buf,k:buf,v:buf,do:buf,lse:buf,delta:buf,dk:buf,dv:buf,b:i32,kvh:i32,k0:i32,T:i32,H:i32,Hkv:i32,hd:i32,scale:f32")
+// Serving. kv_append writes n_new tokens per sequence b in [b0,b1) at positions lens[b].. from knew/vnew [B*n_new,Hkv*hd].
+// Does not change lens (use counter_inc afterwards). attn_decode: one query row per sequence (q,o:[B,H*hd]) attends to cache
+// positions [0, lens[b]] inclusive (the token just appended).
+X(kv_append,            49, "knew:buf,vnew:buf,kc:buf,vc:buf,lens:buf,b0:i32,b1:i32,n_new:i32,Hkv:i32,hd:i32,Tmax:i32")
+X(attn_decode,          50, "q:buf,kc:buf,vc:buf,lens:buf,o:buf,b:i32,h:i32,H:i32,Hkv:i32,hd:i32,Tmax:i32,scale:f32")
+// Cross entropy. fwd: rowloss[r]=lse-logit[tgt] (0 if tgt==ignore), lse[r]. reduce (single task): loss[0]=sum/count (mean over
+// non-ignored rows, 0 if none), loss[1]=1/max(count,1) or 0 if count==0. bwd: dlogits=(softmax-onehot)*loss[1]*scale, 0 for ignored.
+X(softmax_ce_fwd,       51, "logits:buf,tgt:buf,rowloss:buf,lse:buf,r0:i32,r1:i32,V:i32,ignore:i32")
+X(softmax_ce_reduce,    52, "rowloss:buf,tgt:buf,loss:buf,N:i32,ignore:i32")
+X(softmax_ce_bwd,       53, "logits:buf,tgt:buf,lse:buf,loss:buf,dlogits:buf,r0:i32,r1:i32,V:i32,ignore:i32,scale:f32")
+// AdamW on flat [e0,e1): g' = g*gscale[0] (gscale optional); t = step[0] (int buf, 1-based); fp32 master p; decoupled wd.
+X(adamw,                54, "p:buf,g:buf,m:buf,v:buf,gscale:buf,step:buf,e0:i32,e1:i32,lr:f32,b1:f32,b2:f32,eps:f32,wd:f32")
+// partial[slot] = sum g^2 over [e0,e1) (double accumulate, fixed order). finish (single task): out[0]=sqrt(sum partial[0..n)),
+// out[1]=min(1, max_norm/(out[0]+1e-6)) = clip coefficient, usable as adamw gscale.
+X(gradnorm_partial,     55, "g:buf,partial:buf,slot:i32,e0:i32,e1:i32")
+X(gradnorm_finish,      56, "partial:buf,nslots:i32,out:buf,max_norm:f32")
+// Token selection for rows [r0,r1): temp<=0 -> argmax (lowest index on ties); else softmax(logits/temp) restricted to the topk
+// largest logits (topk<=0: all; ties at the threshold are kept) sampled by inverse CDF in index order with a Philox-4x32-10
+// uniform keyed by (seed, ctr[0], row). No host involvement, bitwise reproducible.
+X(sample,               57, "logits:buf,out:buf,ctr:buf,r0:i32,r1:i32,V:i32,temp:f32,topk:i32,seed:i32")
+X(argmax,               58, "logits:buf,out:buf,r0:i32,r1:i32,V:i32")
+X(zero_buf,             59, "x:buf,e0:i32,e1:i32")                                // any dtype, 4-byte elements
+X(counter_inc,          60, "x:buf,i0:i32,i1:i32,delta:i32")                      // int32 x[i] += delta
+X(colsum,               61, "x:buf,out:buf,R:i32,c0:i32,c1:i32,acc:i32")          // out[c] (+)= sum_r x[r,c] (bias grad)

@@ -42,8 +42,8 @@ The 35 Hz pacing is only `deadline_us` on the tasks; the executor runs flat out.
 Reading it honestly:
 - The serial game tic is the limit, not the scheduler: one tic runs on one CTA (thread 0 plays, 255 threads draw), 3.8 ms median standalone, 4.6-5.5 ms in the
   executor when it stays warm. That is 180-200 fps ceiling, 5x the 35 Hz needed; Doom cannot go faster than one tic per ~4-5 ms however many SMs are free.
-- When idle workers pick the tick up, it lands on a different SM almost every frame (100+ SMs) and takes 12.4 ms (2.3x slower than on a warm SM): the engine's
-  ~1 MB of code and hot state is cold in that SM's L1/instruction cache. With priority under load the freed block is usually the one Doom just left, so it stays
+- When idle workers pick the tick up, it lands on a different SM almost every frame (100+ SMs) and takes 12.4 ms (2.3x slower than on a warm SM), most
+  likely because the engine's code (1.3 MB object) and hot state are cold in that SM's L1/instruction caches (inferred from the one-worker control, not profiled). With priority under load the freed block is usually the one Doom just left, so it stays
   warm (30-59 SMs, 5 ms ticks). An affinity hint (prefer the block that ran the previous task of the same chain) would make the idle case as fast. Not done here.
 - Equal priority under saturation: Doom's task waits behind ~185 queued spins (p99 137 ms queue wait, 205 ms frames): 37.9 fps overall, below 35 Hz in the bad frames.
   Priority fixes it without preemption because a block frees every ~1 ms (200 ms spins over 215 blocks); with non-preemptive 200 ms tasks and fewer blocks it would not.

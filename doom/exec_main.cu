@@ -1,19 +1,19 @@
 // Real Doom through the generic executor: loads a compiled bundle (runtime/compile_workload.py, ABI v2) that holds doom_tick/present/status
 // tasks (and optionally a competing matmul load), runs it on the persistent scheduler, then writes frames.bin + summary.json (same
 // format as cpu_run.py / doomtest, so compare.py diffs them), the per-task trace and the cadence / SM-usage metrics.
-//   nvcc -O3 -arch=sm_80 -std=c++17 -rdc=true -Iinclude --fmad=false -Xcompiler -ffp-contract=off doom/exec_main.cu doom/build/doom_dev.o -o doom_exec
+//   nvcc -O3 -arch=sm_80 -std=c++17 -rdc=true -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off doom/exec_main.cu doom/build/doom_dev.o -o doom_exec
 //   doom_exec <bundle_dir> --wad doom1.wad --out DIR [--blocks N] [--stack BYTES] [--timeout-s S]
 // kvm_exec.cu's own CLI main is renamed so its bundle reader and KvmExec class are reused unchanged.
 #define main kvm_exec_cli_main
 #include "kvm_exec.cu"
 #undef main
-#include <numeric>
+#include <sys/stat.h>
 
 static double pct(std::vector<double> v, double p) { if (v.empty()) return 0; std::sort(v.begin(), v.end()); return v[std::min(v.size() - 1, (size_t)(p * v.size()))]; }
 
 int main(int argc, char** argv) {
   KvmConfig cfg; cfg.stack_bytes = KVM_DOOM_STACK_BYTES; cfg.live_cap = 1 << 14;
-  std::string dir, wad, out; const char* csv = nullptr;
+  std::string dir, wad, out;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto sval = [&]() -> std::string { if (i + 1 >= argc) { fprintf(stderr, "missing value for %s\n", a.c_str()); exit(2); } return argv[++i]; };
@@ -27,12 +27,14 @@ int main(int argc, char** argv) {
   try {
     mkdir(out.c_str(), 0755);
     if (!kvm_doom_host_init(wad.c_str(), (int)cfg.stack_bytes)) return 1;
-    KvmExec ex(cfg);
     Json m = JsonParser(read_file(dir + "/metadata.json")).parse();
     if ((int)m.num("abi_version", -1) != KVM_ABI_VERSION) throw std::runtime_error("abi_version mismatch");
     const int nt = (int)m.num("task_count", -1), ne = (int)m.num("edge_count", -1), nw = (int)m.num("args_words", -1);
     KvmBundle b;
     b.tasks = read_bin<KvmTaskDesc>(dir + "/tasks.bin", nt); b.succ = read_bin<int32_t>(dir + "/successors.bin", ne); b.args = read_bin<int32_t>(dir + "/args.bin", nw);
+    cfg.ring_words = (int)((std::max<size_t>(cfg.ring_words, 2 * b.words()) + 7) / 8 * 8);      // the whole bundle is one admission record
+    if (b.tasks.size() > (size_t)cfg.live_cap) { cfg.live_cap = 1; while ((size_t)cfg.live_cap < b.tasks.size()) cfg.live_cap <<= 1; }
+    KvmExec ex(cfg);
     std::map<std::string, int> buf_idx;
     for (auto& jb : m.get("buffers")->a) {
       const int idx = (int)jb.num("index", -1), rows = (int)jb.num("rows", 0), cols = (int)jb.num("cols", 0);
@@ -72,7 +74,7 @@ int main(int argc, char** argv) {
     int mm_ok = 0, mm_bad = 0; double mm_worst = 0;
     if (buf_idx.count("mm_a")) {
       const std::vector<float> A = ex.read_buffer(buf_idx["mm_a"]), B = ex.read_buffer(buf_idx["mm_b"]);
-      const int n = 128; std::vector<double> ref((size_t)n * n);
+      const int n = (int)std::lround(std::sqrt((double)A.size())); std::vector<double> ref((size_t)n * n);
       for (int i = 0; i < n; ++i) for (int j = 0; j < n; ++j) { double s = 0; for (int k = 0; k < n; ++k) s += (double)A[i * n + k] * B[k * n + j]; ref[i * n + j] = s; }
       for (int c = 0; buf_idx.count("mm_out_" + std::to_string(c)); ++c) {
         const std::vector<float> O = ex.read_buffer(buf_idx["mm_out_" + std::to_string(c)]); bool ok = true;

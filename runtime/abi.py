@@ -70,6 +70,21 @@ def load_ops(path: Path = INCLUDE_DIR / 'kvm_ops.def') -> dict[str, OpSpec]:
 
 
 @lru_cache(maxsize=None)
+def load_all_ops() -> dict[str, OpSpec]:
+    """The core registry plus every optional registry present (kvm_ops_gpt.def, kvm_ops_game.def): the same list the executor's
+    include/kvm_ops_list.inc expands. Ids are global and unique across the files."""
+    ops = dict(load_ops())
+    for extra in ('kvm_ops_gpt.def', 'kvm_ops_game.def'):
+        path = INCLUDE_DIR / extra
+        if path.exists():
+            for name, spec in load_ops(path).items():
+                if name in ops or any(o.id == spec.id for o in ops.values()):
+                    raise AbiError(f'{path}: duplicate operator name or id: {name}={spec.id}')
+                ops[name] = spec
+    return ops
+
+
+@lru_cache(maxsize=None)
 def load_task_abi(path: Path = INCLUDE_DIR / 'kvm_task_abi.h') -> TaskAbi:
     text = Path(path).read_text()
     define = lambda key: int(re.search(rf'#define\s+{key}\s+\(?(-?\d+)\)?', text).group(1))

@@ -25,7 +25,8 @@
 //          Without the magic (a zero-filled buffer, or f beyond its size) the scripted player plays: no cheats, the demo plays itself.
 //  state : [0] booted [1] tics run [2] gamestate (0 level, 1 intermission) [3] health [4] armor [5] kills [6] monsters [7] items
 //          [8] secrets [9] deaths [10] tic the level finished (-1) [11] x [12] y [13] route waypoint, [14..15] reserved,
-//          then 2 words per frame from KVM_DOOM_ST_HASH: sum, xor of the frame fingerprint (doom/glue/frame_hash.h).
+//          then KVM_DOOM_ST_REC (16) words per frame from KVM_DOOM_ST_HASH, written by doom_status(f): [0] sum, [1] xor of the frame
+//          fingerprint (doom/glue/frame_hash.h), [2..15] a copy of header words 0..13 as of tic f (the per-frame game state).
 //  fb    : >= KVM_DOOM_FB_WORDS words = 64000 bytes of palette indices (row-major 320x200) + 256 RGBA/XRGB palette words at word 16000.
 #include <cstdint>
 #include <cstdio>
@@ -42,6 +43,8 @@
 #define KVM_DOOM_ST_BOOTED 0
 #define KVM_DOOM_ST_TICS 1
 #define KVM_DOOM_ST_HASH KVM_DOOM_ST_HEADER
+#define KVM_DOOM_ST_REC 16
+#define KVM_DOOM_STATE_WORDS(frames) (KVM_DOOM_ST_HEADER + KVM_DOOM_ST_REC * (frames))
 #define KVM_DOOM_THREADS 256
 #define KVM_DOOM_STACK_BYTES (16 * 1024)
 
@@ -97,7 +100,7 @@ __device__ inline int kvm_doom_present(float* fb, int n_fb, int row0, int rows, 
 // All threads of the CTA call (any blockDim <= 1024). Records the frame fingerprint of the current screen in state history slot `frame`.
 __device__ inline int kvm_doom_status(int frame, float* state, int n_state) {
   __shared__ uint32_t s_sum[32], s_xor[32];
-  if (frame < 0 || n_state < KVM_DOOM_ST_HASH + 2 * (frame + 1)) return KVM_DOOM_SMALL_BUF;
+  if (frame < 0 || n_state < KVM_DOOM_STATE_WORDS(frame + 1)) return KVM_DOOM_SMALL_BUF;
   if (__float_as_int(__ldcg(state + KVM_DOOM_ST_TICS)) != frame + 1) return KVM_DOOM_BAD_ORDER;
   const unsigned char* vb = I_VideoBuffer;
   uint32_t s = 0, x = 0;
@@ -112,9 +115,10 @@ __device__ inline int kvm_doom_status(int frame, float* state, int n_state) {
   if (threadIdx.x == 0) {
     uint32_t ts = 0, tx = 0;
     for (int w = 0; w < (int)((blockDim.x + 31) >> 5); w++) { ts += s_sum[w]; tx ^= s_xor[w]; }
-    state[KVM_DOOM_ST_HASH + 2 * frame] = __uint_as_float(ts);
-    state[KVM_DOOM_ST_HASH + 2 * frame + 1] = __uint_as_float(tx);
+    state[KVM_DOOM_ST_HASH + KVM_DOOM_ST_REC * frame] = __uint_as_float(ts);
+    state[KVM_DOOM_ST_HASH + KVM_DOOM_ST_REC * frame + 1] = __uint_as_float(tx);
   }
+  if (threadIdx.x < 14) state[KVM_DOOM_ST_HASH + KVM_DOOM_ST_REC * frame + 2 + threadIdx.x] = state[threadIdx.x];
   __syncthreads();
   return KVM_DOOM_OK;
 }

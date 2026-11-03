@@ -21,7 +21,7 @@ OUT=~/kvm-doom-scratch/logs/doomtest; rm -rf $OUT; mkdir -p $OUT
 python3 doom/cpu_run.py --frames $FRAMES --out $OUT/cpu --log info
 $NVCC -O2 -arch=sm_80 -rdc=true -Iinclude doom/tests/doomtest.cu doom/build/doom_dev.o -o doom/build/doomtest
 RUN="doom/build/doomtest doom/third_party/doom1.wad $FRAMES $OUT/gpu"
-if [ -n "$SAN" ]; then RUN="/usr/local/cuda/bin/compute-sanitizer --tool memcheck --print-limit 20 $RUN"; fi
+if [ -n "$SAN" ]; then RUN="$(command -v compute-sanitizer || echo /usr/local/cuda/bin/compute-sanitizer) --tool memcheck --print-limit 20 $RUN"; fi
 flock -w 900 ~/.gpu.lock timeout 600 $RUN
 python3 doom/compare.py $OUT/cpu $OUT/gpu
 REMOTE

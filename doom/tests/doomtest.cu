@@ -17,7 +17,7 @@
 
 __device__ unsigned long long gtimer() { unsigned long long t; asm volatile("mov.u64 %0, %globaltimer;" : "=l"(t)); return t; }
 
-__global__ void run_frames(int n, const float* input, int n_input, float* state, int n_state, float* frames, float* state_hist, unsigned long long* ns) {
+__global__ void run_frames(int n, const float* input, int n_input, float* state, int n_state, float* frames, unsigned long long* ns) {
   for (int f = 0; f < n; f++) {
     const unsigned long long t0 = gtimer();
     int err = kvm_doom_tick(f, input, n_input, state, n_state);
@@ -27,8 +27,6 @@ __global__ void run_frames(int n, const float* input, int n_input, float* state,
     if (err && threadIdx.x == 0) printf("[doomtest] present %d error %d\n", f, err);
     err = kvm_doom_status(f, state, n_state);
     if (err && threadIdx.x == 0) printf("[doomtest] status %d error %d\n", f, err);
-    __syncthreads();
-    if (threadIdx.x < 14) state_hist[f * 14 + threadIdx.x] = state[threadIdx.x];
     __syncthreads();
   }
 }
@@ -44,14 +42,14 @@ int main(int argc, char** argv) {
   std::vector<uint32_t> in_words;
   if (argc > 4) { FILE* f = fopen(argv[4], "rb"); if (!f) { fprintf(stderr, "cannot open %s\n", argv[4]); return 1; } uint32_t w; while (fread(&w, 4, 1, f) == 1) in_words.push_back(w); fclose(f); in_words.insert(in_words.begin(), KVM_DOOM_INPUT_MAGIC); }
   else in_words.assign(1, 0);                                                          // no magic: the scripted player plays
-  const int n_state = KVM_DOOM_ST_HASH + 2 * n;
-  float *d_in, *d_state, *d_frames, *d_hist; unsigned long long* d_ns;
+  const int n_state = KVM_DOOM_STATE_WORDS(n);
+  float *d_in, *d_state, *d_frames; unsigned long long* d_ns;
   CK(cudaMalloc(&d_in, in_words.size() * 4)); CK(cudaMemcpy(d_in, in_words.data(), in_words.size() * 4, cudaMemcpyHostToDevice));
   CK(cudaMalloc(&d_state, n_state * 4)); CK(cudaMemset(d_state, 0, n_state * 4));
-  CK(cudaMalloc(&d_frames, (size_t)n * KVM_DOOM_FB_BYTES)); CK(cudaMalloc(&d_hist, n * 14 * 4)); CK(cudaMalloc(&d_ns, n * 8));
+  CK(cudaMalloc(&d_frames, (size_t)n * KVM_DOOM_FB_BYTES)); CK(cudaMalloc(&d_ns, n * 8));
   fprintf(stderr, "[doomtest] %d frames, stack %d B/thread, %zu-word input\n", n, KVM_DOOM_STACK_BYTES, in_words.size());
   const auto t0 = std::chrono::steady_clock::now();
-  run_frames<<<1, 256>>>(n, d_in, (int)in_words.size(), d_state, n_state, d_frames, d_hist, d_ns);
+  run_frames<<<1, 256>>>(n, d_in, (int)in_words.size(), d_state, n_state, d_frames, d_ns);
   const cudaError_t e = cudaDeviceSynchronize();
   const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
   static char logbuf[1 << 16]; long logn = 0;
@@ -59,8 +57,8 @@ int main(int argc, char** argv) {
     CK(cudaMemcpy(logbuf, d_log, sizeof logbuf, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(&logn, d_n, 8, cudaMemcpyDeviceToHost)); }
   fprintf(stderr, "[doomtest] kernel %s in %.3f s (%.2f ms/frame incl. boot)\n--- engine log ---\n%s\n------------------\n", cudaGetErrorString(e), secs, secs * 1e3 / n, logbuf);
   if (e != cudaSuccess) return 1;
-  std::vector<float> state(n_state), hist(n * 14); std::vector<unsigned long long> ns(n);
-  CK(cudaMemcpy(state.data(), d_state, n_state * 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(hist.data(), d_hist, hist.size() * 4, cudaMemcpyDeviceToHost));
+  std::vector<float> state(n_state); std::vector<unsigned long long> ns(n);
+  CK(cudaMemcpy(state.data(), d_state, n_state * 4, cudaMemcpyDeviceToHost));
   CK(cudaMemcpy(ns.data(), d_ns, n * 8, cudaMemcpyDeviceToHost));
   std::vector<unsigned char> frames((size_t)n * KVM_DOOM_FB_BYTES);
   CK(cudaMemcpy(frames.data(), d_frames, frames.size(), cudaMemcpyDeviceToHost));
@@ -68,9 +66,9 @@ int main(int argc, char** argv) {
   static const char* names[14] = {"booted", "tics", "gamestate", "health", "armor", "kills", "monsters", "items", "secrets", "deaths", "level_finished_tic", "x", "y", "waypoint"};
   FILE* js = fopen((out + "/summary.json").c_str(), "w");
   fprintf(js, "{\"frames\": %d, \"hashes\": [", n);
-  for (int f = 0; f < n; f++) { uint32_t a, b; memcpy(&a, &state[KVM_DOOM_ST_HASH + 2 * f], 4); memcpy(&b, &state[KVM_DOOM_ST_HASH + 2 * f + 1], 4); fprintf(js, "%s[%u, %u]", f ? ", " : "", a, b); }
+  for (int f = 0; f < n; f++) { uint32_t a, b; memcpy(&a, &state[KVM_DOOM_ST_HASH + KVM_DOOM_ST_REC * f], 4); memcpy(&b, &state[KVM_DOOM_ST_HASH + KVM_DOOM_ST_REC * f + 1], 4); fprintf(js, "%s[%u, %u]", f ? ", " : "", a, b); }
   fprintf(js, "], \"states\": [");
-  for (int f = 0; f < n; f++) { fprintf(js, "%s[", f ? ", " : ""); for (int i = 0; i < 14; i++) { int v; memcpy(&v, &hist[f * 14 + i], 4); fprintf(js, "%s%d", i ? ", " : "", v); } fprintf(js, "]"); }
+  for (int f = 0; f < n; f++) { fprintf(js, "%s[", f ? ", " : ""); for (int i = 0; i < 14; i++) { int v; memcpy(&v, &state[KVM_DOOM_ST_HASH + KVM_DOOM_ST_REC * f + 2 + i], 4); fprintf(js, "%s%d", i ? ", " : "", v); } fprintf(js, "]"); }
   fprintf(js, "], \"state_names\": [");
   for (int i = 0; i < 14; i++) fprintf(js, "%s\"%s\"", i ? ", " : "", names[i]);
   fprintf(js, "], \"tick_ns\": [");

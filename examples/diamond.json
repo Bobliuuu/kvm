@@ -1,0 +1,8 @@
+{
+  "tasks": [
+    {"name":"root", "signals":[0,0]},
+    {"name":"left", "waits":[[0,1]], "signals":[1]},
+    {"name":"right", "waits":[[0,2]], "signals":[1]},
+    {"name":"join", "waits":[[1,2]]}
+  ]
+}

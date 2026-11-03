@@ -63,7 +63,7 @@ def main():
             import numpy as np
         except ImportError:
             sys.exit("--video needs: pip install imageio imageio-ffmpeg numpy")
-        w = imageio.get_writer(a.video, fps=a.fps) if a.video.endswith(".gif") else imageio.get_writer(a.video, fps=a.fps, codec="libx264", quality=8, macro_block_size=8)
+        w = imageio.get_writer(a.video, fps=a.fps) if a.video.endswith(".gif") else imageio.get_writer(a.video, fps=a.fps, codec="libx264", quality=5, macro_block_size=8)
         for f in idx:
             fr = data[f * FB:(f + 1) * FB]
             pal = np.frombuffer(fr[W * H:], np.uint8).reshape(256, 4)[:, [2, 1, 0]]

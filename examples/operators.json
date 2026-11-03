@@ -1,1 +1,0 @@
-{"copy": 0, "add": 1, "scale": 2, "relu": 3, "sgd": 4, "predict": 5, "mse_grad": 6}

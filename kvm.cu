@@ -27,7 +27,7 @@ using namespace nvcuda;
   fprintf(stderr, "CUDA error %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(e_)); exit(1);} } while (0)
 
 enum { OP_GEMM = 0, OP_SGD = 1 };
-enum { F_TA = 1, F_TB = 2, F_RELU = 4, F_MSE = 8, F_RELUMASK = 16 };
+enum { F_TA = 1, F_TB = 2, F_RELU = 4, F_MSE = 8, F_RELUMASK = 16, F_SGD = 32 };
 
 struct Buf { float* p; int ld; };
 __constant__ Buf g_buf[64];
@@ -52,6 +52,9 @@ __device__ __forceinline__ int ld_acquire(const int* p) {
 constexpr int KC = 64, STG = 4, LDK = KC + 4, LDM = TILE + 4, SLOT = KC * LDM;   // floats per A or B slot
 constexpr size_t DSMEM = (size_t)STG * 2 * SLOT * sizeof(float);
 extern __shared__ __align__(128) float dsm[];
+__shared__ unsigned long long g_stamp[2];
+__device__ __forceinline__ unsigned long long gtime();
+__device__ bool g_prof_on = false;
 
 __device__ __forceinline__ void cp16(float* dst, const float* src) {
   unsigned d = (unsigned)__cvta_generic_to_shared(dst);
@@ -87,6 +90,7 @@ __device__ void gemm_acc(const Buf A, const Buf B, int m0, int n0, int K, float*
   for (int c = 0; c < nch; c++) {
     cp_wait_stg();
     __syncthreads();
+    if (c == 0 && threadIdx.x == 0 && g_prof_on) g_stamp[0] = gtime();
     int nx = c + STG - 1;
     if (nx < nch) { float* p = dsm + (nx % STG) * 2 * SLOT; load_chunk<TA, TB>(p, p + SLOT, A, B, m0, n0, nx * KC); }
     cp_commit();
@@ -103,7 +107,8 @@ __device__ void gemm_acc(const Buf A, const Buf B, int m0, int n0, int K, float*
     }
   }
   cp_wait_stg(); asm volatile("cp.async.wait_all;" ::: "memory");
-  __syncthreads();   // all smem ring reads done before next instruction reuses it
+  __syncthreads();
+  if (threadIdx.x == 0 && g_prof_on) g_stamp[1] = gtime();   // all smem ring reads done before next instruction reuses it
   wmma::store_matrix_sync(sm + wm * 16 * TILE + wn * 16, acc, TILE, wmma::mem_row_major);
 }
 
@@ -118,18 +123,30 @@ __device__ void exec_instr(const Instr& in, float* sm, float* loss) {
     __syncthreads();
     float lsum = 0.f;
     Buf X = g_buf[in.aux >= 0 ? in.aux : 0];
-    for (int e = threadIdx.x; e < TILE * TILE; e += NT) {
-      int r = e / TILE, c = e % TILE;
-      float v = sm[e];
-      size_t gi = (size_t)(in.m0 + r) * C.ld + in.n0 + c;
-      if (f & F_RELU) v = fmaxf(v, 0.f);
-      if (f & F_RELUMASK) v = (__ldcg(X.p + (size_t)(in.m0 + r) * X.ld + in.n0 + c) > 0.f) ? v : 0.f;
-      if (f & F_MSE) {
-        float d = v - __ldcg(X.p + (size_t)(in.m0 + r) * X.ld + in.n0 + c);
-        lsum += d * d * in.scale * 0.5f;
-        v = d * in.scale;
+    // batched float4 epilogue: issue all global loads first, then compute + store
+    float4 v[2], xa[2], cu[2]; size_t gi[2], xi[2];
+#pragma unroll
+    for (int it = 0; it < 2; it++) {
+      int e4 = threadIdx.x + it * NT, r = e4 >> 3, c = (e4 & 7) * 4;
+      v[it] = *reinterpret_cast<const float4*>(sm + r * TILE + c);
+      gi[it] = (size_t)(in.m0 + r) * C.ld + in.n0 + c;
+      xi[it] = (size_t)(in.m0 + r) * X.ld + in.n0 + c;
+      if (f & (F_RELUMASK | F_MSE)) xa[it] = __ldcg(reinterpret_cast<const float4*>(X.p + xi[it]));
+      if (f & F_SGD) cu[it] = __ldcg(reinterpret_cast<const float4*>(C.p + gi[it]));
+    }
+#pragma unroll
+    for (int it = 0; it < 2; it++) {
+      float* q = &v[it].x; const float* x = &xa[it].x; const float* cc = &cu[it].x;
+#pragma unroll
+      for (int j = 0; j < 4; j++) {
+        float t = q[j];
+        if (f & F_SGD) t = cc[j] - in.scale * t;
+        if (f & F_RELU) t = fmaxf(t, 0.f);
+        if (f & F_RELUMASK) t = (x[j] > 0.f) ? t : 0.f;
+        if (f & F_MSE) { float d = t - x[j]; lsum += d * d * in.scale * 0.5f; t = d * in.scale; }
+        q[j] = t;
       }
-      C.p[gi] = v;
+      *reinterpret_cast<float4*>(C.p + gi[it]) = v[it];
     }
     if (f & F_MSE) {
       for (int o = 16; o; o >>= 1) lsum += __shfl_xor_sync(0xffffffff, lsum, o);
@@ -148,7 +165,9 @@ __device__ void exec_instr(const Instr& in, float* sm, float* loss) {
 }
 
 // ---- the VM: persistent, dynamic tape claim, counter-based deps
-__global__ void __launch_bounds__(NT) vm_kernel(const Instr* tape, int n, int* head, int* ctr, float* loss) {
+__device__ __forceinline__ unsigned long long gtime() { unsigned long long t; asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(t)); return t; }
+
+__global__ void __launch_bounds__(NT) vm_kernel(const Instr* tape, int n, int* head, int* ctr, float* loss, unsigned long long* prof) {
   __shared__ float sm[TILE * TILE];
   __shared__ int s_idx;
   for (;;) {
@@ -157,18 +176,23 @@ __global__ void __launch_bounds__(NT) vm_kernel(const Instr* tape, int n, int* h
     int idx = s_idx;
     if (idx >= n) return;
     Instr in = tape[idx];
+    unsigned long long t0 = 0, t1 = 0, t2 = 0;
+    if (prof) t0 = gtime();
     if (threadIdx.x == 0) {
       if (in.w0c >= 0) while (ld_acquire(ctr + in.w0c) < in.w0v) __nanosleep(32);
       if (in.w1c >= 0) while (ld_acquire(ctr + in.w1c) < in.w1v) __nanosleep(32);
       __threadfence();
     }
     __syncthreads();
+    if (prof) t1 = gtime();
     exec_instr(in, sm, loss);
-    __threadfence();
     __syncthreads();
+    if (prof) t2 = gtime();
     if (threadIdx.x == 0) {
+      __threadfence();   // cumulative over the block's writes via the bar.sync above
       if (in.s0 >= 0) atomicAdd(ctr + in.s0, 1);
       if (in.s1 >= 0) atomicAdd(ctr + in.s1, 1);
+      if (prof) { prof[idx * 6] = t0; prof[idx * 6 + 1] = t1; prof[idx * 6 + 2] = t2; prof[idx * 6 + 3] = gtime(); prof[idx * 6 + 4] = g_stamp[0]; prof[idx * 6 + 5] = g_stamp[1]; }
     }
   }
 }
@@ -186,13 +210,13 @@ static double now_ms() { return std::chrono::duration<double, std::milli>(std::c
 
 int main(int argc, char** argv) {
   int steps = 1000, B = 128, D = 128, Hd = 256, O = 64, NB = 8, ref_steps = 100;
-  float lr = 0.05f;
+  float lr = 0.05f; bool prof_on = false;
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];
     auto nx = [&]() { return atof(argv[++i]); };
     if (a == "--steps") steps = nx(); else if (a == "--B") B = nx(); else if (a == "--D") D = nx();
     else if (a == "--H") Hd = nx(); else if (a == "--O") O = nx(); else if (a == "--nb") NB = nx();
-    else if (a == "--lr") lr = nx(); else if (a == "--ref-steps") ref_steps = nx();
+    else if (a == "--prof") prof_on = true; else if (a == "--lr") lr = nx(); else if (a == "--ref-steps") ref_steps = nx();
   }
   if (B % 64 || D % 64 || Hd % 64 || O % 64) { fprintf(stderr, "dims must be multiples of 64\n"); return 1; }
   int nRB = B / 32, nHC = Hd / 32, nOC = O / 32, nDC = D / 32;
@@ -259,8 +283,8 @@ int main(int argc, char** argv) {
   CK(cudaMemcpyToSymbol(g_buf, hb.data(), nbuf * sizeof(Buf)));
 
   // ---- build tape for the whole run
-  constexpr int NPH = 7;  // H1, Y, DW2, DH1, DW1, SGD2, SGD1
-  enum { P_H1, P_Y, P_DW2, P_DH1, P_DW1, P_S2, P_S1 };
+  constexpr int NPH = 5;  // H1, Y, DH1, DW2(+SGD), DW1(+SGD)
+  enum { P_H1, P_Y, P_DH1, P_DW2, P_DW1 };
   int CPS = NPH * (nRB + 1);   // counters per step
   auto ctr = [&](int s, int ph, int rb) { return s * CPS + ph * (nRB + 1) + (rb < 0 ? nRB : rb); };
   std::vector<Instr> tape;
@@ -270,58 +294,44 @@ int main(int argc, char** argv) {
     int k = s % NB;
     auto begin = [&]() { phase_off.push_back((int)tape.size()); };
     auto end = [&]() { phase_n.push_back((int)tape.size() - phase_off.back()); };
-    // H1 = relu(X W1)
+    // H1 = relu(X W1)   (W1 updated by DW1(s-1); H1 buffer read by DW2(s-1))
     begin();
     for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nHC; cn++) {
       Instr i = mk(); i.op = OP_GEMM; i.flags = F_RELU; i.a = idX + k; i.b = idW1; i.c = idH1; i.m0 = rb * 32; i.n0 = cn * 32; i.K = D;
-      if (s > 0) { i.w0c = ctr(s - 1, P_S1, -1); i.w0v = nDC * nHC; i.w1c = ctr(s - 1, P_DW2, -1); i.w1v = nHC * nOC; }
+      if (s > 0) { i.w0c = ctr(s - 1, P_DW1, -1); i.w0v = nDC * nHC; i.w1c = ctr(s - 1, P_DW2, -1); i.w1v = nHC * nOC; }
       i.s0 = ctr(s, P_H1, rb); i.s1 = ctr(s, P_H1, -1); tape.push_back(i);
     }
     end();
-    // dY = 2/(BO) (H1 W2 - T); loss
+    // dY = 2/(BO) (H1 W2 - T); loss   (W2 updated by DW2(s-1))
     begin();
     for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nOC; cn++) {
       Instr i = mk(); i.op = OP_GEMM; i.flags = F_MSE; i.a = idH1; i.b = idW2; i.c = idDY; i.aux = idT + k; i.m0 = rb * 32; i.n0 = cn * 32; i.K = Hd;
       i.scale = 2.f / (B * O); i.loss_idx = s;
       i.w0c = ctr(s, P_H1, rb); i.w0v = nHC;
-      if (s > 0) { i.w1c = ctr(s - 1, P_S2, -1); i.w1v = nHC * nOC; }
+      if (s > 0) { i.w1c = ctr(s - 1, P_DW2, -1); i.w1v = nHC * nOC; }
       i.s0 = ctr(s, P_Y, rb); i.s1 = ctr(s, P_Y, -1); tape.push_back(i);
     }
     end();
-    // dW2 = H1^T dY
-    begin();
-    for (int m = 0; m < nHC; m++) for (int n = 0; n < nOC; n++) {
-      Instr i = mk(); i.op = OP_GEMM; i.flags = F_TA; i.a = idH1; i.b = idDY; i.c = idG2; i.m0 = m * 32; i.n0 = n * 32; i.K = B;
-      i.w0c = ctr(s, P_Y, -1); i.w0v = nRB * nOC; i.s1 = ctr(s, P_DW2, -1); tape.push_back(i);
-    }
-    end();
-    // dH1 = (dY W2^T) * (H1>0)
+    // dH1 = (dY W2^T) * (H1>0)   (reads old W2, so must precede DW2's in-place SGD)
     begin();
     for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nHC; cn++) {
       Instr i = mk(); i.op = OP_GEMM; i.flags = F_TB | F_RELUMASK; i.a = idDY; i.b = idW2; i.c = idDH; i.aux = idH1; i.m0 = rb * 32; i.n0 = cn * 32; i.K = O;
       i.w0c = ctr(s, P_Y, rb); i.w0v = nOC; i.s1 = ctr(s, P_DH1, -1); tape.push_back(i);
     }
     end();
-    // dW1 = X^T dH1
-    begin();
-    for (int m = 0; m < nDC; m++) for (int n = 0; n < nHC; n++) {
-      Instr i = mk(); i.op = OP_GEMM; i.flags = F_TA; i.a = idX + k; i.b = idDH; i.c = idG1; i.m0 = m * 32; i.n0 = n * 32; i.K = B;
-      i.w0c = ctr(s, P_DH1, -1); i.w0v = nRB * nHC; i.s1 = ctr(s, P_DW1, -1); tape.push_back(i);
-    }
-    end();
-    // SGD W2
+    // W2 -= lr * H1^T dY   (fused SGD epilogue; waits for all dH1 tiles that read W2)
     begin();
     for (int m = 0; m < nHC; m++) for (int n = 0; n < nOC; n++) {
-      Instr i = mk(); i.op = OP_SGD; i.a = idG2; i.c = idW2; i.m0 = m * 32; i.n0 = n * 32; i.scale = lr;
-      i.w0c = ctr(s, P_DW2, -1); i.w0v = nHC * nOC; i.w1c = ctr(s, P_DH1, -1); i.w1v = nRB * nHC;
-      i.s1 = ctr(s, P_S2, -1); tape.push_back(i);
+      Instr i = mk(); i.op = OP_GEMM; i.flags = F_TA | F_SGD; i.a = idH1; i.b = idDY; i.c = idW2; i.m0 = m * 32; i.n0 = n * 32; i.K = B; i.scale = lr;
+      i.w0c = ctr(s, P_Y, -1); i.w0v = nRB * nOC; i.w1c = ctr(s, P_DH1, -1); i.w1v = nRB * nHC;
+      i.s1 = ctr(s, P_DW2, -1); tape.push_back(i);
     }
     end();
-    // SGD W1
+    // W1 -= lr * X^T dH1
     begin();
     for (int m = 0; m < nDC; m++) for (int n = 0; n < nHC; n++) {
-      Instr i = mk(); i.op = OP_SGD; i.a = idG1; i.c = idW1; i.m0 = m * 32; i.n0 = n * 32; i.scale = lr;
-      i.w0c = ctr(s, P_DW1, -1); i.w0v = nDC * nHC; i.s1 = ctr(s, P_S1, -1); tape.push_back(i);
+      Instr i = mk(); i.op = OP_GEMM; i.flags = F_TA | F_SGD; i.a = idX + k; i.b = idDH; i.c = idW1; i.m0 = m * 32; i.n0 = n * 32; i.K = B; i.scale = lr;
+      i.w0c = ctr(s, P_DH1, -1); i.w0v = nRB * nHC; i.s1 = ctr(s, P_DW1, -1); tape.push_back(i);
     }
     end();
   }
@@ -359,7 +369,7 @@ int main(int argc, char** argv) {
 
   std::vector<float> Lv, Lb, Lg, w1v, w2v, w1b, w2b, w1g, w2g;
   // warmup + measure; take best of 3
-  auto run_vm = [&]() { vm_kernel<<<grid, NT, DSMEM>>>(dtape, ntape, dhead, dctr, dloss); };
+  auto run_vm = [&]() { vm_kernel<<<grid, NT, DSMEM>>>(dtape, ntape, dhead, dctr, dloss, nullptr); };
   auto run_launch = [&]() { launch_phases(0); };
   cudaGraph_t graph; cudaGraphExec_t gexec;
   { cudaStream_t cs; cudaStreamCreate(&cs); cudaStreamBeginCapture(cs, cudaStreamCaptureModeGlobal); launch_phases(cs); CK(cudaStreamEndCapture(cs, &graph)); CK(cudaGraphInstantiate(&gexec, graph, 0)); }
@@ -370,6 +380,23 @@ int main(int argc, char** argv) {
   timed(run_launch); for (int r = 0; r < 3; r++) bb = std::min(bb, timed(run_launch)); fetch(Lb, w1b, w2b);
   timed(run_graph); for (int r = 0; r < 3; r++) bg = std::min(bg, timed(run_graph)); fetch(Lg, w1g, w2g);
 
+  if (prof_on) {
+    unsigned long long* dprof; CK(cudaMalloc(&dprof, (size_t)ntape * 48)); CK(cudaMemset(dprof, 0, (size_t)ntape * 48)); { bool on = true; CK(cudaMemcpyToSymbol(g_prof_on, &on, 1)); }
+    reset(); vm_kernel<<<grid, NT, DSMEM>>>(dtape, ntape, dhead, dctr, dloss, dprof); CK(cudaDeviceSynchronize());
+    std::vector<unsigned long long> P((size_t)ntape * 6); CK(cudaMemcpy(P.data(), dprof, (size_t)ntape * 48, cudaMemcpyDeviceToHost));
+    const char* nm[] = {"H1", "Y", "DH1", "DW2", "DW1"};
+    int per = (int)phase_off.size() / steps;
+    double fsum[8] = {0}, msum[8] = {0}, esum[8] = {0}; long cnt[8] = {0};
+    for (int s = steps / 4; s < steps; s++) for (int p = 0; p < per; p++) {
+      int pi = s * per + p;
+      for (int j = 0; j < phase_n[pi]; j++) { size_t i = (size_t)(phase_off[pi] + j) * 6;
+        fsum[p] += (P[i + 4] - P[i + 1]) / 1e3; msum[p] += (P[i + 5] - P[i + 4]) / 1e3; esum[p] += (P[i + 2] - P[i + 5]) / 1e3; cnt[p]++; }
+    }
+    unsigned long long tmin = ~0ull, tmax = 0; for (int i = 0; i < ntape; i++) { tmin = std::min(tmin, P[i * 6]); tmax = std::max(tmax, P[i * 6 + 3]); }
+    printf("\nprofile (us, mean per instr):  phase  first-chunk  mainloop  epilogue\n");
+    for (int p = 0; p < per; p++) printf("  %-4s %9.2f %9.2f %9.2f\n", nm[p], fsum[p] / cnt[p], msum[p] / cnt[p], esum[p] / cnt[p]);
+    printf("  span %.1f us total\n", (tmax - tmin) / 1e3);
+  }
   printf("\n%-34s %10s %12s %10s\n", "mode", "total ms", "us/step", "speedup");
   printf("%-34s %10.2f %12.2f %10s\n", "launch-per-op (classic)", bb, bb * 1000 / steps, "1.00x");
   printf("%-34s %10.2f %12.2f %9.2fx\n", "CUDA graph (same launches)", bg, bg * 1000 / steps, bb / bg);

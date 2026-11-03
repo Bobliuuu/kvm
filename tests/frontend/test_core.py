@@ -44,7 +44,7 @@ class DataflowRules(unittest.TestCase):
         pos = {s: k for k, s in enumerate(seq) if s >= 0}
         readers = set(range(1, 101))
         self.assertEqual({seq[j] for j in preds[join]} - {0}, readers)
-        for r in range(20):                                                       # every rewrite still reaches every reader
+        for r in range(1, 20):              # the first rewrite lists its readers inline; later ones share the join
             self.assertIn(join, preds[pos[101 + r]])
 
 

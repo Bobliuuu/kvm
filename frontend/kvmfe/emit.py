@@ -1,16 +1,16 @@
-"""Program -> tile tasks -> memory plan -> dataflow edges -> workload dict (the compiler's JSON schema, plus buffer views)."""
+"""Program -> tile tasks -> memory plan -> dataflow edges -> workload dict (the compiler's JSON schema)."""
 from __future__ import annotations
 
 import ctypes
 import json
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import log
 from .dataflow import build_edges
-from .ir import FrontendError, LogicalOp, Region, Tensor
-from .lower import TileTask, Tiling, lower_op
+from .ir import FrontendError, LogicalOp, Tensor
+from .lower import Tiling, lower_op
 from .plan import Plan, plan_memory
 
 MATERIALIZE_LIMIT = 1 << 20          # elements per buffer whose initial values are written into the JSON
@@ -87,7 +87,7 @@ def _init_entry(b, limit):
     return {'kind': 'values', 'values': init_values(init, b.rows, b.cols)}, 0
 
 
-def to_workload(low: Lowered, policies: dict[str, GraphPolicy], materialize_limit=MATERIALIZE_LIMIT, extra_buffers=()):
+def to_workload(low: Lowered, policies: dict[str, GraphPolicy], materialize_limit=MATERIALIZE_LIMIT):
     """Build the workload dict. `policies` maps graph name -> GraphPolicy; every graph used by a task must be present."""
     plan, bufs = low.plan, []
     used = {plan.buf(r.t) for t in low.tasks for r in (*t.reads, *t.writes)}
@@ -108,7 +108,6 @@ def to_workload(low: Lowered, policies: dict[str, GraphPolicy], materialize_limi
     weight_bufs = {n for n in plan.buffers if n.startswith('w.')}
 
     graphs: dict[str, list] = {}
-    pub_count: dict[str, int] = {}
     for i, t in enumerate(low.tasks):
         g = t.op.graph
         if g not in policies:

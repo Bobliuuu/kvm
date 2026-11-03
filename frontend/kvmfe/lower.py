@@ -11,8 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
-from . import log
-from .ir import FrontendError, LogicalOp, Region, Tensor
+from .ir import FrontendError, LogicalOp, Tensor
 from .opset import ATTN_Q, F_ACC, F_GELU, F_TA, F_TB, MM_TILE, op as device_op
 
 

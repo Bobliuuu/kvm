@@ -1,13 +1,35 @@
 {
-  "state": {"weight": 0.5, "input": 2.0, "target": 6.0, "live_input": 3.0},
+  "variables": ["weight"],
+  "buffers": [
+    {"name": "x", "init": {"kind": "fill", "value": 2}},
+    {"name": "target", "init": {"kind": "fill", "value": 6}},
+    {"name": "w", "init": {"kind": "fill", "value": 0.5}},
+    {"name": "pred"}, {"name": "loss"}, {"name": "grad"},
+    {"name": "live_x", "init": {"kind": "fill", "value": 3}},
+    {"name": "snap_w"}, {"name": "snap_out"}, {"name": "fresh_out"}
+  ],
   "graphs": [
     {"name": "train", "tasks": [
-      {"id": "forward", "op": "predict", "args": {"input": "input", "weight": "weight", "out": "prediction"}},
-      {"id": "backward", "op": "mse_grad", "after": ["forward"], "args": {"pred": "prediction", "target": "target", "input": "input", "loss": "loss", "grad": "gradient"}},
-      {"id": "update", "op": "sgd", "after": ["backward"], "args": {"weight": "weight", "grad": "gradient", "lr": 0.1}}
+      {"id": "fwd1", "op": "predict", "args": {"x": "x", "w": "w", "out": "pred", "n": 1}},
+      {"id": "bwd1", "op": "mse_grad", "after": ["fwd1"],
+       "args": {"pred": "pred", "target": "target", "x": "x", "loss": "loss", "grad": "grad", "n": 1}},
+      {"id": "upd1", "op": "sgd", "after": ["bwd1"], "publishes": "weight",
+       "args": {"w": "w", "g": "grad", "lr": 0.0625, "n": 1}},
+      {"id": "fwd2", "op": "predict", "after": ["upd1"], "args": {"x": "x", "w": "w", "out": "pred", "n": 1}},
+      {"id": "bwd2", "op": "mse_grad", "after": ["fwd2"],
+       "args": {"pred": "pred", "target": "target", "x": "x", "loss": "loss", "grad": "grad", "n": 1}},
+      {"id": "upd2", "op": "sgd", "after": ["bwd2"], "publishes": "weight",
+       "args": {"w": "w", "g": "grad", "lr": 0.0625, "n": 1}}
     ]},
     {"name": "serve", "tasks": [
-      {"id": "response", "op": "predict", "priority": 10, "args": {"input": "live_input", "weight": "weight", "out": "response"}}
+      {"id": "snapshot", "op": "copy", "priority": 10,
+       "reads": [{"var": "weight", "policy": "exact", "version": 1}],
+       "args": {"src": "w", "dst": "snap_w", "n": 1}},
+      {"id": "answer_snapshot", "op": "predict", "priority": 10, "after": ["snapshot"],
+       "args": {"x": "live_x", "w": "snap_w", "out": "snap_out", "n": 1}},
+      {"id": "answer_fresh", "op": "predict", "priority": 5,
+       "reads": [{"var": "weight", "policy": "at_least", "version": 2}],
+       "args": {"x": "live_x", "w": "w", "out": "fresh_out", "n": 1}}
     ]}
   ]
 }

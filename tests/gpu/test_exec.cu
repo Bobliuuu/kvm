@@ -694,10 +694,13 @@ static bool suite_bench() {
 // Small cases for compute-sanitizer (memcheck/racecheck): every code path, tiny sizes.
 static bool suite_smoke() {
   int before = g_fail;
-  { KvmConfig c = small_cfg(3); c.max_tasks = 4096; c.live_cap = 256; c.ring_words = 1024; long long t = 0; int d; dag_run(3, 3, 60, 6, c, 31, &t, &d); }
+  { KvmConfig c = small_cfg(3); c.max_tasks = 4096; c.live_cap = 256; c.ring_words = 4096; long long t = 0; int d; dag_run(3, 3, 60, 6, c, 31, &t, &d); }
   { int a = 0, b = 0, v = 0; versions_vector(21, 5, 1024, 3, true, &a, &b, &v); versions_scalar(22, 5, 3, true, &a, &b, &v); }
-  { KvmConfig c = small_cfg(2); c.ring_words = 256; c.live_cap = 32; KvmExec ex(c); float* a = ex.arena(300); int x = ex.add_view(a, 1, 300), y = ex.add_view(a, 1, 300);
-    ex.start(); KvmBundleBuilder bb; bb.add("fill", {Bf(x), F(2), I(300)}); bb.add("mse_grad", {Bf(x), Bf(y), Bf(x), Bf(x), Bf(y), I(300)}); bb.add("matmul", {Bf(x), Bf(y), Bf(x), I(3), I(3), I(3)});
+  { KvmConfig c = small_cfg(2); c.ring_words = 256; c.live_cap = 32; KvmExec ex(c); float* a = ex.arena(300);
+    int x = ex.add_view(a, 1, 300), y = ex.add_view(a, 1, 300);
+    int m1 = ex.add_view(a + 100, 3, 3), m2 = ex.add_view(a + 110, 3, 3), m3 = ex.add_view(a + 120, 3, 3);
+    ex.start(); KvmBundleBuilder bb;
+    bb.add("fill", {Bf(x), F(2), I(300)}); bb.add("mse_grad", {Bf(x), Bf(y), Bf(x), Bf(x), Bf(y), I(300)}); bb.add("matmul", {Bf(m1), Bf(m2), Bf(m3), I(3), I(3), I(3)});
     for (int i = 0; i < 20; ++i) ex.submit(bb.build()); ex.close(); CHECK(ex.finish().ok(), "smoke ops"); }
   return g_fail == before;
 }

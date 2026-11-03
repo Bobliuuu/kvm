@@ -11,7 +11,9 @@ import math
 from dataclasses import dataclass
 from typing import Callable
 
-from .defs import read_defs
+from functools import lru_cache
+
+from .defs import default_include_dir, read_defs
 from .ir import FrontendError
 
 MM_TILE = 64        # matmul_tile computes a 64 x 64 output tile (flags: 1 transA, 2 transB, 4 accumulate, 8 gelu)
@@ -61,7 +63,12 @@ def impl(name, flops=None, fixed_us=None):
 
 
 def op(name: str) -> DeviceOp:
-    defs = read_defs()
+    return _op(name, str(default_include_dir()))
+
+
+@lru_cache(maxsize=None)
+def _op(name: str, include_dir: str) -> DeviceOp:
+    defs = read_defs(include_dir)
     if name not in defs:
         raise FrontendError(f'op {name!r} is not defined in include/kvm_ops*.def; defined: {sorted(defs)}')
     ref, flops, fixed = REF.get(name, (None, None, None))

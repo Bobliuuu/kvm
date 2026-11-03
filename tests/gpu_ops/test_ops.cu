@@ -220,7 +220,7 @@ static void attn_case(AttnCfg c) {
         for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += 32)
             b3.add(OP_attn_bwd_dq, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dq).i(bb).i(h).i(q0).i(T).i(H).i(Hkv).i(hd).f((float)scale));
         for (int h = 0; h < Hkv; h++) for (int k0 = 0; k0 < T; k0 += 32)
-            b3.add(OP_attn_bwd_dkv, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dk).b(dvv).i(bb).i(h).i(k0).i(T).i(H).i(Hkv).i(hd).f((float)scale));
+            b3.add(OP_attn_bwd_dkv, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dk).b(dvv).i(bb).i(h).i(k0).i(T).i(H).i(hd).f((float)scale));
     }
     e |= run(dv, b3, smem);
     double fl = T == 1 ? 1e-2 : 1e-30;

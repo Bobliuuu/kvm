@@ -175,7 +175,7 @@ struct Gpu {
             Batch b;
             for (int bb = 0; bb < BT; bb++) {
                 for (int h = 0; h < H; h++) b.add(OP_attn_bwd_dq, A().b(y.qr).b(y.kr).b(y.v).b(y.da).b(y.lse).b(y.delta).b(y.dqr).i(bb).i(h).i(0).i(T).i(H).i(HKV).i(HD).f((float)SCALE));
-                for (int h = 0; h < HKV; h++) b.add(OP_attn_bwd_dkv, A().b(y.qr).b(y.kr).b(y.v).b(y.da).b(y.lse).b(y.delta).b(y.dkr).b(y.dvv).i(bb).i(h).i(0).i(T).i(H).i(HKV).i(HD).f((float)SCALE));
+                for (int h = 0; h < HKV; h++) b.add(OP_attn_bwd_dkv, A().b(y.qr).b(y.kr).b(y.v).b(y.da).b(y.lse).b(y.delta).b(y.dkr).b(y.dvv).i(bb).i(h).i(0).i(T).i(H).i(HD).f((float)SCALE));
             }
             chk(run(dv, b, 64 * 1024), "attn_bwd");
             rope(OP_rope_bwd, y.dqr, y.dq, H); rope(OP_rope_bwd, y.dkr, y.dk, HKV);

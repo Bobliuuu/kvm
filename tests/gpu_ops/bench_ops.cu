@@ -72,7 +72,7 @@ template <int HD> static void bench_attn(int B, int T, int H, int Hkv) {
         }
     }
     for (int k0 = 0; k0 < T; k0 += 32) for (int b = 0; b < B; b++) for (int h = 0; h < Hkv; h++)   // dkv: early key blocks are heaviest
-        bkv.add(OP_attn_bwd_dkv, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dk).b(dvv).i(b).i(h).i(k0).i(T).i(H).i(Hkv).i(HD).f(sc));
+        bkv.add(OP_attn_bwd_dkv, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dk).b(dvv).i(b).i(h).i(k0).i(T).i(H).i(HD).f(sc));
     for (int r0 = 0; r0 < R; r0 += 128) bd.add(OP_attn_bwd_delta, A().b(o).b(dO).b(delta).i(r0).i(std::min(R, r0 + 128)).i(T).i(H).i(HD));
     int smem = kvm_gpt_smem_bytes(HD);
     auto sf = stage(dv, f), sd = stage(dv, bd), sq = stage(dv, bq), skv = stage(dv, bkv);

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -449,11 +450,12 @@ static void usage() {
   fprintf(stderr, "usage: kvm_exec [options] bundle_dir...\n"
     "  bundle_dir: tasks.bin successors.bin args.bin metadata.json (ABI v2)\n"
     "  --blocks N --live-cap N --max-tasks N --ring-words N --aging-us N --timeout-s N\n"
+    "  --golden            compare with <bundle_dir>/golden.json (single bundle): final buffers, versions, observed versions\n"
     "  --trace-csv FILE   per-task timeline  --dump-buffers   print buffers   --quiet   errors only   --check-ops   print registry\n");
 }
 
 int main(int argc, char** argv) {
-  KvmConfig cfg; std::vector<std::string> dirs; const char* csv = nullptr; bool dump = false;
+  KvmConfig cfg; std::vector<std::string> dirs; const char* csv = nullptr; bool dump = false, golden = false;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto val = [&]() -> long long { if (i + 1 >= argc) { usage(); exit(2); } return atoll(argv[++i]); };
@@ -465,6 +467,7 @@ int main(int argc, char** argv) {
     else if (a == "--timeout-s") cfg.timeout_us = (unsigned long long)val() * 1000000ull;
     else if (a == "--trace-csv") { if (i + 1 >= argc) { usage(); return 2; } csv = argv[++i]; }
     else if (a == "--dump-buffers") dump = true;
+    else if (a == "--golden") golden = true;
     else if (a == "--quiet") g_kvm_log = 0;
     else if (a == "--check-ops") { for (auto& o : kKvmOps) printf("%2d %-9s arity %d  (%s)\n", o.id, o.name, o.arity, o.sig); return 0; }
     else if (a[0] == '-') { usage(); return 2; }
@@ -475,6 +478,8 @@ int main(int argc, char** argv) {
     KvmExec ex(cfg);
     std::vector<KvmBundle> bundles;
     std::vector<std::pair<int, int>> shapes;
+    std::vector<std::string> buf_names, var_names; std::map<int, std::string> var_by_id;
+    Json meta0;
     for (auto& dir : dirs) {
       Json m = JsonParser(read_file(dir + "/metadata.json")).parse();
       if ((int)m.num("abi_version", -1) != KVM_ABI_VERSION) throw std::runtime_error(dir + ": abi_version " + std::to_string((int)m.num("abi_version", -1)) + " != " + std::to_string(KVM_ABI_VERSION));
@@ -484,8 +489,10 @@ int main(int argc, char** argv) {
       b.tasks = read_bin<KvmTaskDesc>(dir + "/tasks.bin", nt);
       b.succ = read_bin<int32_t>(dir + "/successors.bin", ne);
       b.args = read_bin<int32_t>(dir + "/args.bin", nw);
+      if (dirs.size() == 1) meta0 = m;
       if (auto* bs = m.get("buffers")) {
         for (auto& jb : bs->a) {
+          if (const Json* nm = jb.get("name")) buf_names.push_back(nm->s);
           int idx = (int)jb.num("index", -1), rows = (int)jb.num("rows", 0), cols = (int)jb.num("cols", 0);
           if (idx < 0 || rows < 1 || cols < 1) throw std::runtime_error(dir + ": bad buffer entry");
           if (idx < (int)shapes.size()) { if (shapes[idx] != std::make_pair(rows, cols)) throw std::runtime_error(dir + ": buffer " + std::to_string(idx) + " shape differs from an earlier bundle"); continue; }
@@ -512,9 +519,48 @@ int main(int argc, char** argv) {
     }
     const KvmResult& r = ex.finish();
     if (csv) kvm_write_trace_csv(r, csv);
+    int golden_bad = 0;
+    if (golden) {
+      if (dirs.size() != 1) throw std::runtime_error("--golden needs exactly one bundle directory");
+      Json g = JsonParser(read_file(dirs[0] + "/golden.json")).parse();
+      if (!r.ok()) { KLOG(0, "golden: skipped, the run failed"); return 1; }
+      int nb = 0, exact = 0; float worst = 0;
+      if (const Json* gb = g.get("buffers")) for (auto& kv : gb->o) {
+        auto it = std::find(buf_names.begin(), buf_names.end(), kv.first);
+        if (it == buf_names.end()) { KLOG(0, "golden: unknown buffer %s", kv.first.c_str()); ++golden_bad; continue; }
+        std::vector<float> got = ex.read_buffer((int)(it - buf_names.begin()));
+        if (got.size() != kv.second.a.size()) { KLOG(0, "golden: buffer %s has %zu values, golden %zu", kv.first.c_str(), got.size(), kv.second.a.size()); ++golden_bad; continue; }
+        for (size_t i = 0; i < got.size(); ++i) {
+          float want = (float)kv.second.a[i].n; ++nb;
+          if (memcmp(&got[i], &want, 4) == 0) { ++exact; continue; }
+          float rel = std::fabs(got[i] - want) / std::max(1e-30f, std::fabs(want)); worst = std::max(worst, rel);
+          if (rel > 1e-6f) { KLOG(0, "golden: %s[%zu] = %.9g, golden %.9g", kv.first.c_str(), i, got[i], want); ++golden_bad; }
+        }
+      }
+      KLOG(2, "golden: %d buffer values compared, %d bitwise equal, worst relative difference %.3g", nb, exact, worst);
+      std::map<std::string, int> var_id;
+      if (const Json* vs = meta0.get("variables")) for (auto& jv : vs->a) var_id[jv.get("name")->s] = (int)jv.num("id", -1);
+      if (const Json* gv = g.get("versions")) for (auto& kv : gv->o) {
+        int want = (int)kv.second.n, got = var_id.count(kv.first) ? r.version[var_id[kv.first]] : -1;
+        if (got != want) { KLOG(0, "golden: version %s = %d, golden %d", kv.first.c_str(), got, want); ++golden_bad; }
+      }
+      int nreads = 0;
+      if (const Json* rs = meta0.get("reads")) for (auto& jr : rs->a) {
+        const Json* gate = jr.get("gate");
+        int slot = (int)jr.num("task", -1); if (gate && gate->t == Json::N) slot = (int)gate->n;  // the task carrying the wait
+        const Json* pol = jr.get("policy"); int need = (int)jr.num("version", 0);
+        const KvmTrace& t = r.trace[slot]; ++nreads;
+        bool ok = t.ver0 >= need;
+        if (pol && pol->s == "exact") ok = ok && t.ver0 == need && t.ver1 == need;
+        KLOG(3, "golden: read %s (%s v%d): observed ver_start %d ver_end %d -> %s", jr.get("name")->s.c_str(), pol->s.c_str(), need, t.ver0, t.ver1, ok ? "ok" : "VIOLATION");
+        golden_bad += !ok;
+      }
+      KLOG(2, "golden: %d reads checked, final versions compared; %d mismatches", nreads, golden_bad);
+    }
     if (dump) for (int i = 0; i < ex.nbufs(); ++i) { auto v = ex.read_buffer(i); printf("buffer %d:", i); for (float x : v) printf(" %.9g", x); printf("\n"); }
-    printf("%s: %d/%d tasks, %.3f ms\n", r.ok() ? "OK" : "FAIL", r.done, r.admitted, r.kernel_ms);
-    return r.ok() ? 0 : 1;
+    bool pass = r.ok() && golden_bad == 0;
+    printf("%s: %d/%d tasks, %.3f ms%s\n", pass ? "OK" : "FAIL", r.done, r.admitted, r.kernel_ms, golden ? (golden_bad ? ", golden MISMATCH" : ", golden match") : "");
+    return pass ? 0 : 1;
   } catch (const std::exception& e) {
     KLOG(0, "%s", e.what());
     return 1;

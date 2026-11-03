@@ -1,0 +1,521 @@
+// KVM GPU executor, host side: bundle building/validation, the admission ring producer, launch, result decoding, and the
+// CLI (compiled out with -DKVM_EXEC_NO_MAIN so tests/gpu can include this file).
+//   nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude kvm_exec.cu -o kvm_exec
+//   KVM_HOST=... ./run_exec_tests.sh        # tests on a GPU box
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cstdarg>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <map>
+#include <mutex>
+#include <set>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <vector>
+#include "kvm_exec.cuh"
+
+// ---------------- logging (levels 0 error .. 3 debug; everything is shown by default) ----------------
+static int g_kvm_log = 3;
+static void kvm_log(int lvl, const char* fmt, ...) {
+  if (lvl > g_kvm_log) return;
+  static const char* nm[] = {"E", "W", "I", "D"};
+  va_list ap; va_start(ap, fmt);
+  fprintf(stderr, "[kvm_exec][%s] ", nm[lvl]); vfprintf(stderr, fmt, ap); fputc('\n', stderr);
+  va_end(ap);
+}
+#define KLOG(lvl, ...) kvm_log(lvl, __VA_ARGS__)
+#define CK(call) do { cudaError_t e_ = (call); if (e_ != cudaSuccess) { \
+  char m_[512]; snprintf(m_, sizeof m_, "%s:%d: %s -> %s", __FILE__, __LINE__, #call, cudaGetErrorString(e_)); throw std::runtime_error(m_); } } while (0)
+
+static const char* kvm_err_name(int c) {
+  static const char* nm[] = {
+#define E(n, s) #n,
+      KVM_ERRORS(E)
+#undef E
+  };
+  return c >= 0 && c < (int)(sizeof nm / sizeof nm[0]) ? nm[c] : "UNKNOWN";
+}
+static const char* kvm_err_text(int c) {
+  static const char* tx[] = {
+#define E(n, s) s,
+      KVM_ERRORS(E)
+#undef E
+  };
+  return c >= 0 && c < (int)(sizeof tx / sizeof tx[0]) ? tx[c] : "unknown error code";
+}
+static int kvm_op_by_name(const std::string& n) {
+  for (const KvmOpInfo& o : kKvmOps) if (n == o.name) return o.id;
+  return -1;
+}
+
+// ---------------- bundles ----------------
+struct KvmArg {
+  int32_t w; int type;
+  static KvmArg buf(int idx) { return {idx, KVM_A_BUF}; }
+  static KvmArg i32(int v) { return {v, KVM_A_I32}; }
+  static KvmArg f32(float v) { int32_t w; memcpy(&w, &v, 4); return {w, KVM_A_F32}; }
+};
+struct KvmTaskOpts { int priority = 0, deadline_us = -1, wait_var = -1, wait_ver = 0, pub_var = -1, pub_ver = 0, workload = 0; };
+
+struct KvmBundle {
+  std::vector<KvmTaskDesc> tasks;
+  std::vector<int32_t> succ, args;
+  // "" if well formed, else the first problem. nbufs/nvars < 0 skip those range checks.
+  std::string validate(int nbufs, int nvars, int live_cap) const {
+    std::ostringstream e;
+    const int nt = (int)tasks.size();
+    if (nt == 0) return "empty bundle";
+    if (live_cap > 0 && nt > live_cap) { e << nt << " tasks > live_cap " << live_cap; return e.str(); }
+    std::vector<int> in(nt, 0);
+    for (int i = 0; i < nt; ++i) {
+      const KvmTaskDesc& t = tasks[i];
+      const KvmOpInfo* op = kvm_op(t.op_id);
+      if (!op) { e << "task " << i << ": bad op_id " << t.op_id; return e.str(); }
+      if (t.args_words != op->arity) { e << "task " << i << ": " << op->name << " takes " << op->arity << " args, got " << t.args_words; return e.str(); }
+      if (t.args_off < 0 || t.args_off + t.args_words > (int)args.size()) { e << "task " << i << ": args range"; return e.str(); }
+      if (t.succ_off < 0 || t.succ_cnt < 0 || t.succ_off + t.succ_cnt > (int)succ.size()) { e << "task " << i << ": successor range"; return e.str(); }
+      if (t.priority < 0 || t.priority >= KVM_NBUCKETS) { e << "task " << i << ": priority " << t.priority << " outside [0," << KVM_NBUCKETS - 1 << "]"; return e.str(); }
+      if (t.deadline_us < -1) { e << "task " << i << ": deadline_us"; return e.str(); }
+      for (int v : {t.wait_var, t.pub_var}) if (v < -1 || (nvars >= 0 && v >= nvars)) { e << "task " << i << ": version variable " << v << " out of range"; return e.str(); }
+      if ((t.wait_var >= 0 && t.wait_ver < 0) || (t.pub_var >= 0 && t.pub_ver < 1)) { e << "task " << i << ": wait_ver >= 0 and pub_ver >= 1 (0 is the initial state)"; return e.str(); }
+      for (int j = 0; j < t.args_words; ++j)
+        if (((op->types >> (2 * j)) & 3u) == KVM_A_BUF) {
+          int b = args[t.args_off + j];
+          if (b < 0 || (nbufs >= 0 && b >= nbufs)) { e << "task " << i << ": " << op->name << " arg " << j << " buffer index " << b << " out of range"; return e.str(); }
+        }
+      for (int k = 0; k < t.succ_cnt; ++k) {
+        int s = succ[t.succ_off + k];
+        if (s < 0 || s >= nt || s == i) { e << "task " << i << ": successor " << s << " out of range"; return e.str(); }
+        ++in[s];
+      }
+    }
+    for (int i = 0; i < nt; ++i) if (in[i] != tasks[i].indegree) { e << "task " << i << ": indegree " << tasks[i].indegree << " != in-edges " << in[i]; return e.str(); }
+    std::vector<int> q, rem = in;  // Kahn: any cycle would deadlock the device
+    for (int i = 0; i < nt; ++i) if (!rem[i]) q.push_back(i);
+    for (size_t h = 0; h < q.size(); ++h) {
+      const KvmTaskDesc& t = tasks[q[h]];
+      for (int k = 0; k < t.succ_cnt; ++k) if (--rem[succ[t.succ_off + k]] == 0) q.push_back(succ[t.succ_off + k]);
+    }
+    if ((int)q.size() != nt) return "dependency cycle";
+    return "";
+  }
+  size_t words() const { return (KVM_REC_HDR + tasks.size() * KVM_TASK_WORDS + succ.size() + args.size() + 7) & ~(size_t)7; }
+};
+
+class KvmBundleBuilder {
+ public:
+  int add(const char* op, std::vector<KvmArg> args, KvmTaskOpts o = {}) {
+    int id = kvm_op_by_name(op);
+    if (id < 0) throw std::invalid_argument(std::string("unknown operator ") + op);
+    const KvmOpInfo* info = kvm_op(id);
+    if ((int)args.size() != info->arity) throw std::invalid_argument(std::string(op) + ": wrong argument count");
+    for (size_t j = 0; j < args.size(); ++j)
+      if (args[j].type != (int)((info->types >> (2 * j)) & 3u)) throw std::invalid_argument(std::string(op) + ": argument " + std::to_string(j) + " has the wrong type");
+    KvmTaskDesc t{};
+    t.op_id = id; t.priority = o.priority; t.deadline_us = o.deadline_us; t.wait_var = o.wait_var; t.wait_ver = o.wait_ver;
+    t.pub_var = o.pub_var; t.pub_ver = o.pub_ver; t.workload_id = o.workload; t.args_words = (int)args.size();
+    t.args_off = (int)args_.size();
+    for (auto& a : args) args_.push_back(a.w);
+    tasks_.push_back(t); out_.emplace_back();
+    return (int)tasks_.size() - 1;
+  }
+  void edge(int from, int to) {  // duplicate edges are removed here (the device counts every in-edge)
+    if (from < 0 || to < 0 || from >= (int)tasks_.size() || to >= (int)tasks_.size() || from == to) throw std::invalid_argument("bad edge");
+    out_[from].insert(to);
+  }
+  KvmBundle build() const {
+    KvmBundle b; b.tasks = tasks_; b.args = args_;
+    for (size_t i = 0; i < tasks_.size(); ++i) {
+      b.tasks[i].succ_off = (int)b.succ.size();
+      b.tasks[i].succ_cnt = (int)out_[i].size();
+      for (int s : out_[i]) { b.succ.push_back(s); ++b.tasks[s].indegree; }
+    }
+    return b;
+  }
+ private:
+  std::vector<KvmTaskDesc> tasks_; std::vector<int32_t> args_; std::vector<std::set<int>> out_;
+};
+
+// ---------------- executor ----------------
+struct KvmConfig {
+  int blocks = 0;               // 0: occupancy-sized (SMs * resident blocks); >= 2 (block 0 admits, the rest work)
+  int max_tasks = 1 << 18;      // slot pool for the whole launch (no recycling)
+  int live_cap = 1 << 14;       // max admitted-but-unfinished tasks; ready rings hold this many each; power of two
+  int succ_cap = 0, args_cap = 0;  // 0: 8 * max_tasks
+  int num_vars = 64;
+  int ring_words = 1 << 16;     // admission ring, multiple of 8
+  int aging_us = 0;             // 0: strict priority; else one priority level per aging_us of waiting
+  unsigned long long timeout_us = 60ull * 1000000;
+};
+enum class KvmSubmit { OK, BACKPRESSURE_TIMEOUT, TOO_BIG, DEVICE_ERROR, CLOSED, INVALID };
+static const char* kvm_submit_name(KvmSubmit s) {
+  static const char* n[] = {"OK", "BACKPRESSURE_TIMEOUT", "TOO_BIG", "DEVICE_ERROR", "CLOSED", "INVALID"};
+  return n[(int)s];
+}
+struct KvmResult {
+  int err_code = 0, err_slot = -1, err_a = 0, err_b = 0, slots_used = 0, admitted = 0, done = 0, grid = 0;
+  float kernel_ms = 0;
+  std::vector<KvmTaskDesc> tasks;
+  std::vector<KvmTrace> trace;
+  std::vector<int> version;
+  bool ok() const { return err_code == 0; }
+};
+struct KvmStats { int bundles = 0, backpressure_waits = 0, pads = 0; };
+
+class KvmExec {
+ public:
+  explicit KvmExec(KvmConfig c) : cfg_(c) {
+    if (cfg_.succ_cap == 0) cfg_.succ_cap = 8 * cfg_.max_tasks;
+    if (cfg_.args_cap == 0) cfg_.args_cap = 8 * cfg_.max_tasks;
+    if (cfg_.ring_words % 8 || cfg_.ring_words < 64) throw std::invalid_argument("ring_words must be a multiple of 8 and >= 64");
+    if (cfg_.live_cap < 2 || (cfg_.live_cap & (cfg_.live_cap - 1))) throw std::invalid_argument("live_cap must be a power of two");
+    int dev; CK(cudaGetDevice(&dev));
+    cudaDeviceProp p; CK(cudaGetDeviceProperties(&p, dev));
+    sms_ = p.multiProcessorCount; name_ = p.name;
+    int occ = 0; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, kvm_exec_kernel, KVM_THREADS, 0));
+    grid_ = cfg_.blocks ? cfg_.blocks : sms_ * occ;
+    if (grid_ < 2) throw std::invalid_argument("need >= 2 blocks (block 0 is the admitter)");
+    KLOG(2, "device %s, %d SMs, %d resident blocks/SM -> grid %d (1 admitter + %d workers)", name_.c_str(), sms_, occ, grid_, grid_ - 1);
+    const size_t T = cfg_.max_tasks;
+    CK(cudaMalloc(&S_.tasks, T * sizeof(KvmTaskDesc)));
+    CK(cudaMalloc(&S_.indeg, T * 4)); CK(cudaMalloc(&S_.state, T * 4)); CK(cudaMalloc(&S_.park_next, T * 4));
+    CK(cudaMalloc(&S_.trace, T * sizeof(KvmTrace)));
+    CK(cudaMalloc(&S_.succ, (size_t)cfg_.succ_cap * 4)); CK(cudaMalloc(&S_.args, (size_t)cfg_.args_cap * 4));
+    CK(cudaMalloc(&S_.version, cfg_.num_vars * 4)); CK(cudaMalloc(&S_.park_head, cfg_.num_vars * 4));
+    CK(cudaMalloc(&S_.cells, (size_t)KVM_NBUCKETS * cfg_.live_cap * sizeof(KvmCell)));
+    CK(cudaMalloc(&S_.qctl, KVM_NBUCKETS * sizeof(KvmQCtl)));
+    CK(cudaMalloc(&S_.cnt, sizeof(KvmCounters)));
+    CK(cudaMemset(S_.tasks, 0, T * sizeof(KvmTaskDesc))); CK(cudaMemset(S_.trace, 0, T * sizeof(KvmTrace)));
+    CK(cudaMemset(S_.version, 0, cfg_.num_vars * 4)); CK(cudaMemset(S_.qctl, 0, KVM_NBUCKETS * sizeof(KvmQCtl)));
+    CK(cudaMemset(S_.cnt, 0, sizeof(KvmCounters)));
+    // host-shared control block: ring + doorbell/ring_head/closed on separate lines + error mirror
+    CK(cudaHostAlloc((void**)&ctl_, 4096, cudaHostAllocMapped)); memset(ctl_, 0, 4096);
+    CK(cudaHostAlloc((void**)&ring_, (size_t)cfg_.ring_words * 4, cudaHostAllocMapped)); memset(ring_, 0, (size_t)cfg_.ring_words * 4);
+    doorbell_ = (unsigned long long*)(ctl_ + 0); ring_head_ = (unsigned long long*)(ctl_ + 128);
+    closed_ = (unsigned*)(ctl_ + 256); herr_ = (KvmHostErr*)(ctl_ + 384);
+    void* d;
+    CK(cudaHostGetDevicePointer(&d, ring_, 0)); S_.ring = (int*)d;
+    CK(cudaHostGetDevicePointer(&d, doorbell_, 0)); S_.doorbell = (unsigned long long*)d;
+    CK(cudaHostGetDevicePointer(&d, ring_head_, 0)); S_.ring_head = (unsigned long long*)d;
+    CK(cudaHostGetDevicePointer(&d, closed_, 0)); S_.closed = (unsigned*)d;
+    CK(cudaHostGetDevicePointer(&d, herr_, 0)); S_.herr = (KvmHostErr*)d;
+    S_.max_tasks = cfg_.max_tasks; S_.live_cap = cfg_.live_cap; S_.succ_cap = cfg_.succ_cap; S_.args_cap = cfg_.args_cap;
+    S_.num_vars = cfg_.num_vars; S_.ring_words = cfg_.ring_words;
+    S_.aging_ns = cfg_.aging_us ? (long long)cfg_.aging_us * 1000 : (1ll << 50);
+    S_.timeout_ns = cfg_.timeout_us * 1000ull;
+    CK(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
+    CK(cudaEventCreate(&e0_)); CK(cudaEventCreate(&e1_));
+  }
+  ~KvmExec() {
+    if (started_ && !finished_) { try { close(); finish(); } catch (...) {} }
+    for (size_t i = 0; i < bufs_.size(); ++i) if (!std::count(views_.begin(), views_.end(), i)) cudaFree(bufs_[i].p);
+    for (float* p : arenas_) cudaFree(p);
+    for (void* p : {(void*)S_.tasks, (void*)S_.indeg, (void*)S_.state, (void*)S_.park_next, (void*)S_.trace, (void*)S_.succ, (void*)S_.args,
+                    (void*)S_.version, (void*)S_.park_head, (void*)S_.cells, (void*)S_.qctl, (void*)S_.cnt, (void*)S_.bufs}) cudaFree(p);
+    cudaFreeHost(ctl_); cudaFreeHost(ring_);
+    cudaStreamDestroy(stream_); cudaEventDestroy(e0_); cudaEventDestroy(e1_);
+  }
+  KvmExec(const KvmExec&) = delete; KvmExec& operator=(const KvmExec&) = delete;
+
+  int add_buffer(int rows, int cols, const std::vector<float>& init = {}) {
+    if (started_) throw std::logic_error("buffers are fixed at start()");
+    if (!init.empty() && (long long)init.size() != (long long)rows * cols) throw std::invalid_argument("buffer init size");
+    KvmBuf b{}; CK(cudaMalloc(&b.p, (size_t)rows * cols * 4));
+    b.rows = rows; b.cols = cols; b.ld = cols; b.dtype = 0;
+    if (init.empty()) CK(cudaMemset(b.p, 0, (size_t)rows * cols * 4)); else CK(cudaMemcpy(b.p, init.data(), init.size() * 4, cudaMemcpyHostToDevice));
+    bufs_.push_back(b);
+    return (int)bufs_.size() - 1;
+  }
+  void set_version(int var, int v) {
+    if (started_) throw std::logic_error("versions are fixed at start()");
+    if (var < 0 || var >= cfg_.num_vars) throw std::invalid_argument("version variable out of range");
+    CK(cudaMemcpy(S_.version + var, &v, 4, cudaMemcpyHostToDevice));
+  }
+  // Pooled device memory for many small buffers: arena() then add_view(). Zero-initialised, freed with the executor.
+  float* arena(size_t floats) {
+    float* p; CK(cudaMalloc(&p, floats * 4)); CK(cudaMemset(p, 0, floats * 4)); arenas_.push_back(p); return p;
+  }
+  int add_view(float* p, int rows, int cols) {
+    if (started_) throw std::logic_error("buffers are fixed at start()");
+    KvmBuf b{}; b.p = p; b.rows = rows; b.cols = cols; b.ld = cols; b.dtype = 0; views_.push_back(bufs_.size());
+    bufs_.push_back(b); return (int)bufs_.size() - 1;
+  }
+  int nbufs() const { return (int)bufs_.size(); }
+  int grid() const { return grid_; }
+  const KvmConfig& config() const { return cfg_; }
+  const KvmStats& stats() const { return stats_; }
+
+  void start() {
+    if (started_) throw std::logic_error("already started");
+    KvmBuf* d; size_t n = std::max<size_t>(bufs_.size(), 1);
+    CK(cudaMalloc(&d, n * sizeof(KvmBuf)));
+    if (!bufs_.empty()) CK(cudaMemcpy(d, bufs_.data(), bufs_.size() * sizeof(KvmBuf), cudaMemcpyHostToDevice));
+    S_.bufs = d; S_.nbufs = (int)bufs_.size();
+    kvm_init_kernel<<<64, KVM_THREADS, 0, stream_>>>(S_);
+    CK(cudaGetLastError());
+    CK(cudaEventRecord(e0_, stream_));
+    kvm_exec_kernel<<<grid_, KVM_THREADS, 0, stream_>>>(S_);
+    CK(cudaGetLastError());
+    CK(cudaEventRecord(e1_, stream_));
+    started_ = true;
+    KLOG(2, "kernel launched: grid %d x %d threads, live_cap %d, max_tasks %d, ring %d words, aging %d us", grid_, KVM_THREADS, cfg_.live_cap, cfg_.max_tasks, cfg_.ring_words, cfg_.aging_us);
+  }
+
+  // Thread-safe producer. Blocks (up to timeout_ms) while the ring is full: that is the backpressure; it never drops.
+  KvmSubmit submit(const KvmBundle& b, int timeout_ms = 10000, bool validate = true) {  // validate=false: tests of the device-side checks
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!started_) throw std::logic_error("submit before start()");
+    if (closed_flag_) { KLOG(1, "submit after close()"); return KvmSubmit::CLOSED; }
+    std::string why = validate ? b.validate(nbufs(), cfg_.num_vars, cfg_.live_cap) : std::string();
+    if (!why.empty()) { KLOG(0, "bundle rejected: %s", why.c_str()); last_error_ = why; return why.find("live_cap") != std::string::npos ? KvmSubmit::TOO_BIG : KvmSubmit::INVALID; }
+    const size_t words = b.words();
+    if (words > (size_t)cfg_.ring_words) { last_error_ = "bundle record larger than the admission ring"; KLOG(0, "%s (%zu > %d words)", last_error_.c_str(), words, cfg_.ring_words); return KvmSubmit::TOO_BIG; }
+    auto t0 = std::chrono::steady_clock::now();
+    bool waited = false;
+    // A record is contiguous. If it does not fit before the ring end, a pad record fills the tail and is published ON ITS OWN
+    // (waiting for pad + record at once could need more than the whole ring); then the record waits for space at lap start.
+    for (;;) {
+      unsigned long long head = __atomic_load_n(ring_head_, __ATOMIC_ACQUIRE);
+      const size_t rem = cfg_.ring_words - wpos_ % cfg_.ring_words, need = words > rem ? rem : words;
+      if (cfg_.ring_words - (wpos_ - head) >= need) {
+        if (need == words) break;
+        write_header(rem, 0, 0, 0, KVM_REC_PAD); wpos_ += rem; ++stats_.pads;
+        std::atomic_thread_fence(std::memory_order_seq_cst);
+        __atomic_store_n(doorbell_, wpos_, __ATOMIC_RELEASE);
+        KLOG(3, "ring wrap: %zu pad words", rem);
+        continue;
+      }
+      if (herr_->code) { last_error_ = "device error"; return KvmSubmit::DEVICE_ERROR; }
+      if (!waited) { waited = true; ++stats_.backpressure_waits; KLOG(3, "ring full (%llu/%d words used): backpressure", (unsigned long long)(wpos_ - head), cfg_.ring_words); }
+      if (std::chrono::steady_clock::now() - t0 > std::chrono::milliseconds(timeout_ms)) {
+        last_error_ = "admission ring full for " + std::to_string(timeout_ms) + " ms";
+        KLOG(1, "%s", last_error_.c_str()); return KvmSubmit::BACKPRESSURE_TIMEOUT;
+      }
+      std::this_thread::sleep_for(std::chrono::microseconds(50));
+    }
+    int* r = ring_ + wpos_ % cfg_.ring_words;
+    write_header(words, (int)b.tasks.size(), (int)b.succ.size(), (int)b.args.size(), KVM_REC_BUNDLE);
+    r += KVM_REC_HDR;
+    memcpy(r, b.tasks.data(), b.tasks.size() * sizeof(KvmTaskDesc)); r += b.tasks.size() * KVM_TASK_WORDS;
+    if (!b.succ.empty()) memcpy(r, b.succ.data(), b.succ.size() * 4);
+    r += b.succ.size();
+    if (!b.args.empty()) memcpy(r, b.args.data(), b.args.size() * 4);
+    wpos_ += words;
+    // Publication: record bytes first (seq_cst fence also orders non-temporal stores), then the doorbell with release.
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+    __atomic_store_n(doorbell_, wpos_, __ATOMIC_RELEASE);
+    ++stats_.bundles;
+    return KvmSubmit::OK;
+  }
+  const std::string& last_error() const { return last_error_; }
+
+  // No more bundles: the kernel exits once everything admitted has finished.
+  void close() {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (closed_flag_) return;
+    closed_flag_ = true;
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+    __atomic_store_n(closed_, 1u, __ATOMIC_RELEASE);
+  }
+
+  const KvmResult& finish() {
+    if (!started_) throw std::logic_error("finish before start()");
+    if (finished_) return res_;
+    close();
+    CK(cudaStreamSynchronize(stream_));
+    CK(cudaGetLastError());
+    KvmCounters c; CK(cudaMemcpy(&c, S_.cnt, sizeof c, cudaMemcpyDeviceToHost));
+    res_.err_code = c.err_code; res_.err_slot = c.err_slot; res_.err_a = c.err_a; res_.err_b = c.err_b;
+    res_.slots_used = c.slots_used; res_.admitted = c.admitted; res_.done = c.done; res_.grid = grid_;
+    CK(cudaEventElapsedTime(&res_.kernel_ms, e0_, e1_));
+    res_.tasks.resize(c.slots_used); res_.trace.resize(c.slots_used); res_.version.resize(cfg_.num_vars);
+    if (c.slots_used) {
+      CK(cudaMemcpy(res_.tasks.data(), S_.tasks, c.slots_used * sizeof(KvmTaskDesc), cudaMemcpyDeviceToHost));
+      CK(cudaMemcpy(res_.trace.data(), S_.trace, c.slots_used * sizeof(KvmTrace), cudaMemcpyDeviceToHost));
+    }
+    CK(cudaMemcpy(res_.version.data(), S_.version, cfg_.num_vars * 4, cudaMemcpyDeviceToHost));
+    finished_ = true;
+    if (res_.ok()) KLOG(2, "kernel done: %d/%d tasks in %.3f ms, %d bundles, %d ring wraps, %d backpressure waits", res_.done, res_.admitted, res_.kernel_ms, stats_.bundles, stats_.pads, stats_.backpressure_waits);
+    else KLOG(0, "DEVICE ERROR %s (%s): slot %d, a=%d, b=%d; done %d/%d", kvm_err_name(res_.err_code), kvm_err_text(res_.err_code), res_.err_slot, res_.err_a, res_.err_b, res_.done, res_.admitted);
+    return res_;
+  }
+
+  std::vector<float> read_buffer(int idx) const {
+    if (idx < 0 || idx >= nbufs()) throw std::out_of_range("buffer index");
+    std::vector<float> v((size_t)bufs_[idx].rows * bufs_[idx].cols);
+    CK(cudaMemcpy(v.data(), bufs_[idx].p, v.size() * 4, cudaMemcpyDeviceToHost));
+    return v;
+  }
+  int sms() const { return sms_; }
+  const std::string& device_name() const { return name_; }
+
+ private:
+  void write_header(size_t total, int nt, int ne, int na, int kind) {
+    int* h = ring_ + wpos_ % cfg_.ring_words;
+    h[0] = KVM_REC_MAGIC; h[1] = (int)total; h[2] = nt; h[3] = ne; h[4] = na; h[5] = stats_.bundles; h[6] = kind; h[7] = 0;
+  }
+  KvmConfig cfg_;
+  KvmDevState S_{};
+  std::vector<KvmBuf> bufs_;
+  std::vector<size_t> views_;
+  std::vector<float*> arenas_;
+  char* ctl_ = nullptr; int* ring_ = nullptr;
+  unsigned long long *doorbell_ = nullptr, *ring_head_ = nullptr; unsigned* closed_ = nullptr; KvmHostErr* herr_ = nullptr;
+  unsigned long long wpos_ = 0;
+  cudaStream_t stream_{}; cudaEvent_t e0_{}, e1_{};
+  int sms_ = 0, grid_ = 0;
+  std::string name_, last_error_;
+  std::mutex mu_;
+  bool started_ = false, finished_ = false, closed_flag_ = false;
+  KvmResult res_;
+  KvmStats stats_;
+};
+
+// Timeline-ready CSV: times in microseconds since the first admission.
+static void kvm_write_trace_csv(const KvmResult& r, const char* path) {
+  FILE* f = fopen(path, "w");
+  if (!f) throw std::runtime_error(std::string("cannot open ") + path);
+  unsigned long long t0 = ~0ull;
+  for (auto& t : r.trace) if (t.admit_ns) t0 = std::min(t0, t.admit_ns);
+  fprintf(f, "slot,op,workload,priority,deadline_us,admit_us,ready_us,start_us,end_us,queue_wait_us,run_us,smid,block,ver_start,ver_end,missed,exec_count\n");
+  for (size_t i = 0; i < r.trace.size(); ++i) {
+    const KvmTrace& t = r.trace[i]; const KvmTaskDesc& d = r.tasks[i];
+    auto us = [&](unsigned long long x) { return x ? (double)(x - t0) / 1e3 : -1.0; };
+    fprintf(f, "%zu,%s,%d,%d,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%d,%d,%d,%d,%d\n", i, kvm_op(d.op_id)->name, d.workload_id, d.priority, d.deadline_us,
+            us(t.admit_ns), us(t.ready_ns), us(t.start_ns), us(t.end_ns), t.start_ns ? (double)(t.start_ns - t.ready_ns) / 1e3 : -1.0,
+            t.end_ns ? (double)(t.end_ns - t.start_ns) / 1e3 : -1.0, t.smid, t.block, t.ver0, t.ver1, (t.flags & KVM_TRACE_MISSED) ? 1 : 0, t.exec_count);
+  }
+  fclose(f);
+  KLOG(2, "trace: %zu tasks -> %s", r.trace.size(), path);
+}
+
+// ======================= CLI =======================
+#ifndef KVM_EXEC_NO_MAIN
+// Minimal JSON reader (objects, arrays, numbers, strings, true/false/null): enough for bundle metadata.json.
+struct Json {
+  enum T { Z, B, N, S, A, O } t = Z;
+  double n = 0; std::string s; std::vector<Json> a; std::vector<std::pair<std::string, Json>> o;
+  const Json* get(const char* k) const { for (auto& kv : o) if (kv.first == k) return &kv.second; return nullptr; }
+  double num(const char* k, double dflt) const { auto* j = get(k); return j && j->t == N ? j->n : dflt; }
+};
+struct JsonParser {
+  const std::string& s; size_t i = 0;
+  explicit JsonParser(const std::string& str) : s(str) {}
+  void ws() { while (i < s.size() && isspace((unsigned char)s[i])) ++i; }
+  [[noreturn]] void bad(const char* m) { throw std::runtime_error(std::string("json: ") + m + " at byte " + std::to_string(i)); }
+  Json parse() { Json j = value(); ws(); if (i != s.size()) bad("trailing data"); return j; }
+  Json value() {
+    ws(); if (i >= s.size()) bad("eof");
+    Json j; char c = s[i];
+    if (c == '{') { j.t = Json::O; ++i; ws(); if (s[i] == '}') { ++i; return j; }
+      for (;;) { ws(); std::string k = str(); ws(); if (s[i++] != ':') bad("expected ':'"); j.o.emplace_back(k, value()); ws();
+        if (s[i] == ',') { ++i; continue; } if (s[i] == '}') { ++i; return j; } bad("expected ',' or '}'"); } }
+    if (c == '[') { j.t = Json::A; ++i; ws(); if (s[i] == ']') { ++i; return j; }
+      for (;;) { j.a.push_back(value()); ws(); if (s[i] == ',') { ++i; continue; } if (s[i] == ']') { ++i; return j; } bad("expected ',' or ']'"); } }
+    if (c == '"') { j.t = Json::S; j.s = str(); return j; }
+    if (!s.compare(i, 4, "true")) { i += 4; j.t = Json::B; j.n = 1; return j; }
+    if (!s.compare(i, 5, "false")) { i += 5; j.t = Json::B; return j; }
+    if (!s.compare(i, 4, "null")) { i += 4; return j; }
+    char* e; j.n = strtod(s.c_str() + i, &e); if (e == s.c_str() + i) bad("bad value");
+    i = e - s.c_str(); j.t = Json::N; return j;
+  }
+  std::string str() {
+    if (s[i] != '"') bad("expected string");
+    std::string r; ++i;
+    while (i < s.size() && s[i] != '"') { if (s[i] == '\\') { ++i; char c = s[i]; r += c == 'n' ? '\n' : c == 't' ? '\t' : c; } else r += s[i]; ++i; }
+    if (i >= s.size()) bad("unterminated string");
+    ++i; return r;
+  }
+};
+static std::string read_file(const std::string& p) {
+  std::ifstream f(p, std::ios::binary); if (!f) throw std::runtime_error("cannot read " + p);
+  std::stringstream ss; ss << f.rdbuf(); return ss.str();
+}
+template <class T> static std::vector<T> read_bin(const std::string& p, size_t count) {
+  std::string raw = read_file(p);
+  if (raw.size() != count * sizeof(T)) throw std::runtime_error(p + ": expected " + std::to_string(count * sizeof(T)) + " bytes, got " + std::to_string(raw.size()));
+  std::vector<T> v(count); if (count) memcpy(v.data(), raw.data(), raw.size()); return v;
+}
+
+static void usage() {
+  fprintf(stderr, "usage: kvm_exec [options] bundle_dir...\n"
+    "  bundle_dir: tasks.bin successors.bin args.bin metadata.json (ABI v2)\n"
+    "  --blocks N --live-cap N --max-tasks N --ring-words N --aging-us N --timeout-s N\n"
+    "  --trace-csv FILE   per-task timeline  --dump-buffers   print buffers   --quiet   errors only   --check-ops   print registry\n");
+}
+
+int main(int argc, char** argv) {
+  KvmConfig cfg; std::vector<std::string> dirs; const char* csv = nullptr; bool dump = false;
+  for (int i = 1; i < argc; ++i) {
+    std::string a = argv[i];
+    auto val = [&]() -> long long { if (i + 1 >= argc) { usage(); exit(2); } return atoll(argv[++i]); };
+    if (a == "--blocks") cfg.blocks = (int)val();
+    else if (a == "--live-cap") cfg.live_cap = (int)val();
+    else if (a == "--max-tasks") cfg.max_tasks = (int)val();
+    else if (a == "--ring-words") cfg.ring_words = (int)val();
+    else if (a == "--aging-us") cfg.aging_us = (int)val();
+    else if (a == "--timeout-s") cfg.timeout_us = (unsigned long long)val() * 1000000ull;
+    else if (a == "--trace-csv") { if (i + 1 >= argc) { usage(); return 2; } csv = argv[++i]; }
+    else if (a == "--dump-buffers") dump = true;
+    else if (a == "--quiet") g_kvm_log = 0;
+    else if (a == "--check-ops") { for (auto& o : kKvmOps) printf("%2d %-9s arity %d  (%s)\n", o.id, o.name, o.arity, o.sig); return 0; }
+    else if (a[0] == '-') { usage(); return 2; }
+    else dirs.push_back(a);
+  }
+  if (dirs.empty()) { usage(); return 2; }
+  try {
+    KvmExec ex(cfg);
+    std::vector<KvmBundle> bundles;
+    std::vector<std::pair<int, int>> shapes;
+    for (auto& dir : dirs) {
+      Json m = JsonParser(read_file(dir + "/metadata.json")).parse();
+      if ((int)m.num("abi_version", -1) != KVM_ABI_VERSION) throw std::runtime_error(dir + ": abi_version " + std::to_string((int)m.num("abi_version", -1)) + " != " + std::to_string(KVM_ABI_VERSION));
+      int nt = (int)m.num("task_count", -1), ne = (int)m.num("edge_count", -1), nw = (int)m.num("args_words", -1);
+      if (nt < 1 || ne < 0 || nw < 0) throw std::runtime_error(dir + ": task_count/edge_count/args_words missing");
+      KvmBundle b;
+      b.tasks = read_bin<KvmTaskDesc>(dir + "/tasks.bin", nt);
+      b.succ = read_bin<int32_t>(dir + "/successors.bin", ne);
+      b.args = read_bin<int32_t>(dir + "/args.bin", nw);
+      if (auto* bs = m.get("buffers")) {
+        for (auto& jb : bs->a) {
+          int idx = (int)jb.num("index", -1), rows = (int)jb.num("rows", 0), cols = (int)jb.num("cols", 0);
+          if (idx < 0 || rows < 1 || cols < 1) throw std::runtime_error(dir + ": bad buffer entry");
+          if (idx < (int)shapes.size()) { if (shapes[idx] != std::make_pair(rows, cols)) throw std::runtime_error(dir + ": buffer " + std::to_string(idx) + " shape differs from an earlier bundle"); continue; }
+          if (idx != (int)shapes.size()) throw std::runtime_error(dir + ": buffer indices must be dense and ascending");
+          std::vector<float> init;
+          if (auto* in = jb.get("init")) {
+            const Json* kind = in->get("kind");
+            if (kind && kind->s == "fill") init.assign((size_t)rows * cols, (float)in->num("value", 0));
+            else if (kind && kind->s == "values") { for (auto& v : in->get("values")->a) init.push_back((float)v.n); }
+            else throw std::runtime_error(dir + ": unknown buffer init kind");
+          }
+          if (ex.add_buffer(rows, cols, init) != idx) throw std::logic_error("buffer index mismatch");
+          shapes.push_back({rows, cols});
+        }
+      }
+      if (auto* vs = m.get("variables")) for (auto& jv : vs->a) ex.set_version((int)jv.num("id", -1), (int)jv.num("base_version", 0));
+      KLOG(2, "%s: %d tasks, %d edges, %d arg words", dir.c_str(), nt, ne, nw);
+      bundles.push_back(std::move(b));
+    }
+    ex.start();
+    for (size_t i = 0; i < bundles.size(); ++i) {
+      KvmSubmit st = ex.submit(bundles[i]);
+      if (st != KvmSubmit::OK) { KLOG(0, "bundle %zu: %s (%s)", i, kvm_submit_name(st), ex.last_error().c_str()); ex.close(); ex.finish(); return 1; }
+    }
+    const KvmResult& r = ex.finish();
+    if (csv) kvm_write_trace_csv(r, csv);
+    if (dump) for (int i = 0; i < ex.nbufs(); ++i) { auto v = ex.read_buffer(i); printf("buffer %d:", i); for (float x : v) printf(" %.9g", x); printf("\n"); }
+    printf("%s: %d/%d tasks, %.3f ms\n", r.ok() ? "OK" : "FAIL", r.done, r.admitted, r.kernel_ms);
+    return r.ok() ? 0 : 1;
+  } catch (const std::exception& e) {
+    KLOG(0, "%s", e.what());
+    return 1;
+  }
+}
+#endif

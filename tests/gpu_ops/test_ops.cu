@@ -232,7 +232,7 @@ static void attn_case(AttnCfg c) {
     check_true(std::string(nm) + " err==0", e == 0);
 }
 static void t_attention() {
-    for (AttnCfg c : {AttnCfg{2, 1, 2, 2, 16}, AttnCfg{1, 2, 2, 2, 16}, AttnCfg{2, 37, 4, 2, 32}, AttnCfg{1, 100, 4, 1, 64}, AttnCfg{1, 70, 2, 2, 128}, AttnCfg{2, 32, 2, 2, 16}, AttnCfg{1, 65, 4, 4, 32}})
+    for (AttnCfg c : {AttnCfg{2, 1, 2, 2, 16}, AttnCfg{1, 2, 2, 2, 16}, AttnCfg{2, 37, 4, 2, 32}, AttnCfg{1, 100, 4, 1, 64}, AttnCfg{1, 70, 2, 2, 128}, AttnCfg{2, 32, 2, 2, 16}, AttnCfg{1, 65, 4, 4, 32}, AttnCfg{2, 70, 16, 4, 64}})
         attn_case(c);
     {   // reference self-check: analytic CPU backward vs central finite differences of the CPU forward
         int B = 1, T = 5, H = 2, Hkv = 1, hd = 4; Rng r(7); double sc = 0.5;

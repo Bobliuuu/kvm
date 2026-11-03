@@ -30,7 +30,7 @@ enum { OP_GEMM = 0, OP_SGD = 1 };
 enum { F_TA = 1, F_TB = 2, F_RELU = 4, F_MSE = 8, F_RELUMASK = 16, F_SGD = 32 };
 
 struct Buf { float* p; int ld; };
-__constant__ Buf g_buf[64];
+__constant__ Buf g_buf[256];
 
 struct Instr {                 // 80 bytes
   int op, flags;
@@ -53,7 +53,13 @@ __device__ __forceinline__ int ld_acquire(const int* p) {
 
 // ---- pipelined 64x64 tile GEMM: STG-stage cp.async ring of K-chunks in dynamic smem.
 // 4 warps in a 2x2 grid, each owning a 32x32 output block (2x2 wmma 16x16x8 TF32 fragments).
-constexpr int KC = 32, STG = 3, LDK = KC + 4, LDM = TILE + 4, SLOT = (TILE * LDK > KC * LDM ? TILE * LDK : KC * LDM), NV = TILE * KC / 4 / NT;
+#ifndef KKC
+#define KKC 32
+#endif
+#ifndef KSTG
+#define KSTG 3
+#endif
+constexpr int KC = KKC, STG = KSTG, VPK = KC / 4, LDK = KC + 4, LDM = TILE + 4, SLOT = (TILE * LDK > KC * LDM ? TILE * LDK : KC * LDM), NV = TILE * KC / 4 / NT;
 constexpr size_t DSMEM = (size_t)STG * 2 * SLOT * sizeof(float);
 extern __shared__ __align__(128) float dsm[];
 __shared__ unsigned long long g_stamp[2];
@@ -73,8 +79,8 @@ __device__ __forceinline__ void load_chunk(float* sA, float* sB, const Buf& A, c
   for (int j = 0; j < NV; j++) {
     int i = threadIdx.x + j * NT;      // TILE*KC/4 16-byte vectors per operand chunk
     if (TA) { int r = i / VPT, c = (i % VPT) * 4; cp16(sA + r * LDM + c, A.p + (size_t)(k0 + r) * A.ld + m0 + c); }
-    else    { int r = i >> 3, c = (i & 7) * 4;    cp16(sA + r * LDK + c, A.p + (size_t)(m0 + r) * A.ld + k0 + c); }
-    if (TB) { int r = i >> 3, c = (i & 7) * 4;    cp16(sB + r * LDK + c, B.p + (size_t)(n0 + r) * B.ld + k0 + c); }
+    else    { int r = i / VPK, c = (i % VPK) * 4;    cp16(sA + r * LDK + c, A.p + (size_t)(m0 + r) * A.ld + k0 + c); }
+    if (TB) { int r = i / VPK, c = (i % VPK) * 4;    cp16(sB + r * LDK + c, B.p + (size_t)(n0 + r) * B.ld + k0 + c); }
     else    { int r = i / VPT, c = (i % VPT) * 4; cp16(sB + r * LDM + c, B.p + (size_t)(k0 + r) * B.ld + n0 + c); }
   }
 }
@@ -267,17 +273,19 @@ static int selftest() {
 
 int main(int argc, char** argv) {
   if (argc > 1 && std::string(argv[1]) == "--selftest") return selftest() ? 2 : 0;
-  int steps = 1000, B = 128, D = 128, Hd = 256, O = 64, NB = 8, ref_steps = 100;
-  float lr = 0.05f; bool prof_on = false;
+  int steps = 1000, B = 128, D = 128, Hd = 256, O = 64, NB = 4, ref_steps = 100, R = 1;
+  float lr = 0.05f;
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];
     auto nx = [&]() { return atof(argv[++i]); };
     if (a == "--steps") steps = nx(); else if (a == "--B") B = nx(); else if (a == "--D") D = nx();
     else if (a == "--H") Hd = nx(); else if (a == "--O") O = nx(); else if (a == "--nb") NB = nx();
-    else if (a == "--prof") prof_on = true; else if (a == "--lr") lr = nx(); else if (a == "--ref-steps") ref_steps = nx();
+    else if (a == "--runs") R = nx(); else if (a == "--lr") lr = nx(); else if (a == "--ref-steps") ref_steps = nx();
   }
-  if (B % 64 || D % 64 || Hd % 64 || O % 64) { fprintf(stderr, "dims must be multiples of 64\n"); return 1; }
+  if (B % TILE || D % TILE || Hd % TILE || O % TILE || B % KC || D % KC || Hd % KC || O % KC) { fprintf(stderr, "dims must be multiples of max(TILE=%d, KC=%d)\n", TILE, KC); return 1; }
   int nRB = B / TILE, nHC = Hd / TILE, nOC = O / TILE, nDC = D / TILE;
+  // run r trains the same model from the same init with its own learning rate (an LR sweep)
+  std::vector<float> lrs(R); for (int r = 0; r < R; r++) lrs[r] = lr * (R == 1 ? 1.f : 0.25f + 1.5f * r / (R - 1));
 
   // ---- data: teacher-generated regression targets
   Rng rng{12345};
@@ -296,12 +304,10 @@ int main(int argc, char** argv) {
     for (int i = 0; i < B; i++) for (int kk = 0; kk < Hd; kk++) { float x = h[i * Hd + kk]; for (int j = 0; j < O; j++) T[k][i * O + j] += x * Wt2[kk * O + j]; }
   }
 
-  // ---- CPU reference (fp32)
-  std::vector<float> ref_loss;
-  std::vector<float> rW1 = W1, rW2 = W2;
+  // ---- CPU reference (fp32) for a given lr
   int rs = std::min(steps, ref_steps);
-  {
-    double t0 = now_ms();
+  auto cpu_ref = [&](float rlr) {
+    std::vector<float> L, rW1 = W1, rW2 = W2;
     std::vector<float> h(B * Hd), dY(B * O), dH(B * Hd), g1(D * Hd), g2(Hd * O);
     for (int s = 0; s < rs; s++) {
       int k = s % NB;
@@ -310,95 +316,90 @@ int main(int argc, char** argv) {
       for (auto& v : h) v = v > 0 ? v : 0;
       std::fill(dY.begin(), dY.end(), 0.f);
       for (int i = 0; i < B; i++) for (int kk = 0; kk < Hd; kk++) { float x = h[i * Hd + kk]; for (int j = 0; j < O; j++) dY[i * O + j] += x * rW2[kk * O + j]; }
-      double L = 0;
-      for (int i = 0; i < B * O; i++) { float d = dY[i] - T[k][i]; L += (double)d * d; dY[i] = d * 2.f / (B * O); }
-      ref_loss.push_back((float)(L / (B * O)));
+      double Ls = 0;
+      for (int i = 0; i < B * O; i++) { float d = dY[i] - T[k][i]; Ls += (double)d * d; dY[i] = d * 2.f / (B * O); }
+      L.push_back((float)(Ls / (B * O)));
       std::fill(g2.begin(), g2.end(), 0.f);
       for (int i = 0; i < B; i++) for (int kk = 0; kk < Hd; kk++) { float x = h[i * Hd + kk]; for (int j = 0; j < O; j++) g2[kk * O + j] += x * dY[i * O + j]; }
       for (int i = 0; i < B; i++) for (int kk = 0; kk < Hd; kk++) { float a = 0; for (int j = 0; j < O; j++) a += dY[i * O + j] * rW2[kk * O + j]; dH[i * Hd + kk] = h[i * Hd + kk] > 0 ? a : 0; }
       std::fill(g1.begin(), g1.end(), 0.f);
       for (int i = 0; i < B; i++) for (int kk = 0; kk < D; kk++) { float x = X[k][i * D + kk]; for (int j = 0; j < Hd; j++) g1[kk * Hd + j] += x * dH[i * Hd + j]; }
-      for (int i = 0; i < D * Hd; i++) rW1[i] -= lr * g1[i];
-      for (int i = 0; i < Hd * O; i++) rW2[i] -= lr * g2[i];
+      for (int i = 0; i < D * Hd; i++) rW1[i] -= rlr * g1[i];
+      for (int i = 0; i < Hd * O; i++) rW2[i] -= rlr * g2[i];
     }
-    printf("cpu ref: %d steps in %.0f ms\n", rs, now_ms() - t0);
-  }
+    return L;
+  };
+  std::vector<float> ref0 = cpu_ref(lrs[0]), refN = R > 1 ? cpu_ref(lrs[R - 1]) : ref0;
 
-  // ---- device buffers
-  enum { bX = 0, bT = 0 + 0 };  // placeholders (ids computed below)
-  int idX = 0, idT = NB, idW1 = 2 * NB, idW2 = idW1 + 1, idH1 = idW1 + 2, idDY = idW1 + 3, idDH = idW1 + 4, idG1 = idW1 + 5, idG2 = idW1 + 6;
-  int nbuf = idG2 + 1;
-  if (nbuf > 64) { fprintf(stderr, "too many buffers\n"); return 1; }
+  // ---- device buffers: shared data X_k, T_k; per-run {W1, W2, H1, dY, dH1}
+  auto idX = [&](int k) { return k; };
+  auto idT = [&](int k) { return NB + k; };
+  auto idW1 = [&](int r) { return 2 * NB + 5 * r; };
+  auto idW2 = [&](int r) { return 2 * NB + 5 * r + 1; };
+  auto idH1 = [&](int r) { return 2 * NB + 5 * r + 2; };
+  auto idDY = [&](int r) { return 2 * NB + 5 * r + 3; };
+  auto idDH = [&](int r) { return 2 * NB + 5 * r + 4; };
+  int nbuf = 2 * NB + 5 * R;
+  if (nbuf > 256) { fprintf(stderr, "too many buffers\n"); return 1; }
   std::vector<Buf> hb(nbuf);
   auto dmalloc = [&](size_t n) { float* p; CK(cudaMalloc(&p, n * 4)); CK(cudaMemset(p, 0, n * 4)); return p; };
   for (int k = 0; k < NB; k++) {
-    hb[idX + k] = {dmalloc(B * D), D}; CK(cudaMemcpy(hb[idX + k].p, X[k].data(), B * D * 4, cudaMemcpyHostToDevice));
-    hb[idT + k] = {dmalloc(B * O), O}; CK(cudaMemcpy(hb[idT + k].p, T[k].data(), B * O * 4, cudaMemcpyHostToDevice));
+    hb[idX(k)] = {dmalloc(B * D), D}; CK(cudaMemcpy(hb[idX(k)].p, X[k].data(), B * D * 4, cudaMemcpyHostToDevice));
+    hb[idT(k)] = {dmalloc(B * O), O}; CK(cudaMemcpy(hb[idT(k)].p, T[k].data(), B * O * 4, cudaMemcpyHostToDevice));
   }
-  hb[idW1] = {dmalloc(D * Hd), Hd}; hb[idW2] = {dmalloc(Hd * O), O};
-  hb[idH1] = {dmalloc(B * Hd), Hd}; hb[idDY] = {dmalloc(B * O), O}; hb[idDH] = {dmalloc(B * Hd), Hd};
-  hb[idG1] = {dmalloc(D * Hd), Hd}; hb[idG2] = {dmalloc(Hd * O), O};
+  for (int r = 0; r < R; r++) {
+    hb[idW1(r)] = {dmalloc(D * Hd), Hd}; hb[idW2(r)] = {dmalloc(Hd * O), O};
+    hb[idH1(r)] = {dmalloc(B * Hd), Hd}; hb[idDY(r)] = {dmalloc(B * O), O}; hb[idDH(r)] = {dmalloc(B * Hd), Hd};
+  }
   CK(cudaMemcpyToSymbol(g_buf, hb.data(), nbuf * sizeof(Buf)));
 
-  // ---- build tape for the whole run
-  constexpr int NPH = 5;  // H1, Y, DH1, DW2(+SGD), DW1(+SGD)
+  // ---- tape builder. Per step and run: H1 -> Y -> DH1 -> DW2(+SGD) -> DW1(+SGD); counters give fine-grained deps.
+  constexpr int NPH = 5;
   enum { P_H1, P_Y, P_DH1, P_DW2, P_DW1 };
-  int CPS = NPH * (nRB + 1);   // counters per step
-  auto ctr = [&](int s, int ph, int rb) { return s * CPS + ph * (nRB + 1) + (rb < 0 ? nRB : rb); };
-  std::vector<Instr> tape;
-  std::vector<int> phase_off, phase_n;   // for baselines
+  int CPS = NPH * (nRB + 1);
+  auto ctr = [&](int r, int s, int ph, int rb) { return (r * steps + s) * CPS + ph * (nRB + 1) + (rb < 0 ? nRB : rb); };
   auto mk = [&]() { Instr i; memset(&i, 0, sizeof i); i.aux = -1; i.w0c = i.w1c = i.s0 = i.s1 = -1; return i; };
-  for (int s = 0; s < steps; s++) {
-    int k = s % NB;
-    auto begin = [&]() { phase_off.push_back((int)tape.size()); };
-    auto end = [&]() { phase_n.push_back((int)tape.size() - phase_off.back()); };
-    // H1 = relu(X W1)   (W1 updated by DW1(s-1); H1 buffer read by DW2(s-1))
-    begin();
-    for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nHC; cn++) {
-      Instr i = mk(); i.op = OP_GEMM; i.flags = F_RELU; i.a = idX + k; i.b = idW1; i.c = idH1; i.m0 = rb * TILE; i.n0 = cn * TILE; i.K = D;
-      if (s > 0) { i.w0c = ctr(s - 1, P_DW1, -1); i.w0v = nDC * nHC; i.w1c = ctr(s - 1, P_DW2, -1); i.w1v = nHC * nOC; }
-      i.s0 = ctr(s, P_H1, rb); i.s1 = ctr(s, P_H1, -1); tape.push_back(i);
+  auto emit_phase = [&](std::vector<Instr>& tape, int r, int s, int ph) {
+    int k = s % NB; float rlr = lrs[r];
+    if (ph == P_H1) for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nHC; cn++) {
+      Instr i = mk(); i.op = OP_GEMM; i.flags = F_RELU; i.a = idX(k); i.b = idW1(r); i.c = idH1(r); i.m0 = rb * TILE; i.n0 = cn * TILE; i.K = D;
+      if (s > 0) { i.w0c = ctr(r, s - 1, P_DW1, -1); i.w0v = nDC * nHC; i.w1c = ctr(r, s - 1, P_DW2, -1); i.w1v = nHC * nOC; }
+      i.s0 = ctr(r, s, P_H1, rb); i.s1 = ctr(r, s, P_H1, -1); tape.push_back(i);
     }
-    end();
-    // dY = 2/(BO) (H1 W2 - T); loss   (W2 updated by DW2(s-1))
-    begin();
-    for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nOC; cn++) {
-      Instr i = mk(); i.op = OP_GEMM; i.flags = F_MSE; i.a = idH1; i.b = idW2; i.c = idDY; i.aux = idT + k; i.m0 = rb * TILE; i.n0 = cn * TILE; i.K = Hd;
-      i.scale = 2.f / (B * O); i.loss_idx = s;
-      i.w0c = ctr(s, P_H1, rb); i.w0v = nHC;
-      if (s > 0) { i.w1c = ctr(s - 1, P_DW2, -1); i.w1v = nHC * nOC; }
-      i.s0 = ctr(s, P_Y, rb); i.s1 = ctr(s, P_Y, -1); tape.push_back(i);
+    if (ph == P_Y) for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nOC; cn++) {
+      Instr i = mk(); i.op = OP_GEMM; i.flags = F_MSE; i.a = idH1(r); i.b = idW2(r); i.c = idDY(r); i.aux = idT(k); i.m0 = rb * TILE; i.n0 = cn * TILE; i.K = Hd;
+      i.scale = 2.f / (B * O); i.loss_idx = r * steps + s;
+      i.w0c = ctr(r, s, P_H1, rb); i.w0v = nHC;
+      if (s > 0) { i.w1c = ctr(r, s - 1, P_DW2, -1); i.w1v = nHC * nOC; }
+      i.s0 = ctr(r, s, P_Y, rb); i.s1 = ctr(r, s, P_Y, -1); tape.push_back(i);
     }
-    end();
-    // dH1 = (dY W2^T) * (H1>0)   (reads old W2, so must precede DW2's in-place SGD)
-    begin();
-    for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nHC; cn++) {
-      Instr i = mk(); i.op = OP_GEMM; i.flags = F_TB | F_RELUMASK; i.a = idDY; i.b = idW2; i.c = idDH; i.aux = idH1; i.m0 = rb * TILE; i.n0 = cn * TILE; i.K = O;
-      i.w0c = ctr(s, P_Y, rb); i.w0v = nOC; i.s1 = ctr(s, P_DH1, -1); tape.push_back(i);
+    if (ph == P_DH1) for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nHC; cn++) {
+      Instr i = mk(); i.op = OP_GEMM; i.flags = F_TB | F_RELUMASK; i.a = idDY(r); i.b = idW2(r); i.c = idDH(r); i.aux = idH1(r); i.m0 = rb * TILE; i.n0 = cn * TILE; i.K = O;
+      i.w0c = ctr(r, s, P_Y, rb); i.w0v = nOC; i.s1 = ctr(r, s, P_DH1, -1); tape.push_back(i);
     }
-    end();
-    // W2 -= lr * H1^T dY   (fused SGD epilogue; waits for all dH1 tiles that read W2)
-    begin();
-    for (int m = 0; m < nHC; m++) for (int n = 0; n < nOC; n++) {
-      Instr i = mk(); i.op = OP_GEMM; i.flags = F_TA | F_SGD; i.a = idH1; i.b = idDY; i.c = idW2; i.m0 = m * TILE; i.n0 = n * TILE; i.K = B; i.scale = lr;
-      i.w0c = ctr(s, P_Y, -1); i.w0v = nRB * nOC; i.w1c = ctr(s, P_DH1, -1); i.w1v = nRB * nHC;
-      i.s1 = ctr(s, P_DW2, -1); tape.push_back(i);
+    if (ph == P_DW2) for (int m = 0; m < nHC; m++) for (int n = 0; n < nOC; n++) {   // W2 -= lr H1^T dY (after all dH1 tiles read W2)
+      Instr i = mk(); i.op = OP_GEMM; i.flags = F_TA | F_SGD; i.a = idH1(r); i.b = idDY(r); i.c = idW2(r); i.m0 = m * TILE; i.n0 = n * TILE; i.K = B; i.scale = rlr;
+      i.w0c = ctr(r, s, P_Y, -1); i.w0v = nRB * nOC; i.w1c = ctr(r, s, P_DH1, -1); i.w1v = nRB * nHC;
+      i.s1 = ctr(r, s, P_DW2, -1); tape.push_back(i);
     }
-    end();
-    // W1 -= lr * X^T dH1
-    begin();
-    for (int m = 0; m < nDC; m++) for (int n = 0; n < nHC; n++) {
-      Instr i = mk(); i.op = OP_GEMM; i.flags = F_TA | F_SGD; i.a = idX + k; i.b = idDH; i.c = idW1; i.m0 = m * TILE; i.n0 = n * TILE; i.K = B; i.scale = lr;
-      i.w0c = ctr(s, P_DH1, -1); i.w0v = nRB * nHC; i.s1 = ctr(s, P_DW1, -1); tape.push_back(i);
+    if (ph == P_DW1) for (int m = 0; m < nDC; m++) for (int n = 0; n < nHC; n++) {   // W1 -= lr X^T dH1
+      Instr i = mk(); i.op = OP_GEMM; i.flags = F_TA | F_SGD; i.a = idX(k); i.b = idDH(r); i.c = idW1(r); i.m0 = m * TILE; i.n0 = n * TILE; i.K = B; i.scale = rlr;
+      i.w0c = ctr(r, s, P_DH1, -1); i.w0v = nRB * nHC; i.s1 = ctr(r, s, P_DW1, -1); tape.push_back(i);
     }
-    end();
-  }
-  int ntape = (int)tape.size(), nctr = steps * CPS;
-  printf("model B=%d D=%d H=%d O=%d  steps=%d  tape=%d instrs (%.1f MB)  phases=%zu\n", B, D, Hd, O, steps, ntape, ntape * sizeof(Instr) / 1e6, phase_off.size());
+  };
+  // phase-major tape (step, phase, run): VM order and "batched across runs" baseline (one launch per phase for all runs)
+  std::vector<Instr> tapeP; std::vector<int> offP, nP;
+  for (int s = 0; s < steps; s++) for (int ph = 0; ph < NPH; ph++) { offP.push_back((int)tapeP.size()); for (int r = 0; r < R; r++) emit_phase(tapeP, r, s, ph); nP.push_back((int)tapeP.size() - offP.back()); }
+  // run-major tape (run, step, phase): sequential baseline, one model at a time
+  std::vector<Instr> tapeR; std::vector<int> offR, nR;
+  for (int r = 0; r < R; r++) for (int s = 0; s < steps; s++) for (int ph = 0; ph < NPH; ph++) { offR.push_back((int)tapeR.size()); emit_phase(tapeR, r, s, ph); nR.push_back((int)tapeR.size() - offR.back()); }
+  int ntape = (int)tapeP.size(), nctr = R * steps * CPS;
+  printf("model B=%d D=%d H=%d O=%d  runs=%d steps=%d  tile=%d kc=%d stg=%d  tape=%d instrs (%.1f MB)\n", B, D, Hd, O, R, steps, TILE, KC, STG, ntape, ntape * sizeof(Instr) / 1e6);
 
-  Instr* dtape; int *dhead, *dctr; float* dloss;
-  CK(cudaMalloc(&dtape, ntape * sizeof(Instr))); CK(cudaMemcpy(dtape, tape.data(), ntape * sizeof(Instr), cudaMemcpyHostToDevice));
-  CK(cudaMalloc(&dhead, 4)); CK(cudaMalloc(&dctr, nctr * 4)); CK(cudaMalloc(&dloss, steps * 4));
+  Instr *dtapeP, *dtapeR; int *dhead, *dctr; float* dloss;
+  CK(cudaMalloc(&dtapeP, ntape * sizeof(Instr))); CK(cudaMemcpy(dtapeP, tapeP.data(), ntape * sizeof(Instr), cudaMemcpyHostToDevice));
+  CK(cudaMalloc(&dtapeR, ntape * sizeof(Instr))); CK(cudaMemcpy(dtapeR, tapeR.data(), ntape * sizeof(Instr), cudaMemcpyHostToDevice));
+  CK(cudaMalloc(&dhead, 4)); CK(cudaMalloc(&dctr, (size_t)nctr * 4)); CK(cudaMalloc(&dloss, (size_t)R * steps * 4));
 
   CK(cudaFuncSetAttribute(vm_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)DSMEM));
   CK(cudaFuncSetAttribute(phase_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)DSMEM));
@@ -408,66 +409,63 @@ int main(int argc, char** argv) {
   printf("%s  SMs=%d occ=%d  vm grid=%d\n", prop.name, prop.multiProcessorCount, occ, grid);
 
   auto reset = [&]() {
-    CK(cudaMemcpy(hb[idW1].p, W1.data(), W1.size() * 4, cudaMemcpyHostToDevice));
-    CK(cudaMemcpy(hb[idW2].p, W2.data(), W2.size() * 4, cudaMemcpyHostToDevice));
-    CK(cudaMemset(dhead, 0, 4)); CK(cudaMemset(dctr, 0, nctr * 4)); CK(cudaMemset(dloss, 0, steps * 4));
+    for (int r = 0; r < R; r++) {
+      CK(cudaMemcpy(hb[idW1(r)].p, W1.data(), W1.size() * 4, cudaMemcpyHostToDevice));
+      CK(cudaMemcpy(hb[idW2(r)].p, W2.data(), W2.size() * 4, cudaMemcpyHostToDevice));
+    }
+    CK(cudaMemset(dhead, 0, 4)); CK(cudaMemset(dctr, 0, (size_t)nctr * 4)); CK(cudaMemset(dloss, 0, (size_t)R * steps * 4));
     CK(cudaDeviceSynchronize());
   };
-  auto launch_phases = [&](cudaStream_t st) {
-    for (size_t p = 0; p < phase_off.size(); p++) phase_kernel<<<phase_n[p], NT, DSMEM, st>>>(dtape, phase_off[p], dloss);
+  auto launch_seq = [&](cudaStream_t st, int rlo, int rhi) {   // run-major phases, runs [rlo, rhi)
+    for (size_t p = (size_t)rlo * steps * NPH; p < (size_t)rhi * steps * NPH; p++) phase_kernel<<<nR[p], NT, DSMEM, st>>>(dtapeR, offR[p], dloss);
   };
+  auto launch_batched = [&](cudaStream_t st) { for (size_t p = 0; p < offP.size(); p++) phase_kernel<<<nP[p], NT, DSMEM, st>>>(dtapeP, offP[p], dloss); };
   cudaEvent_t e0, e1; cudaEventCreate(&e0); cudaEventCreate(&e1);
   auto timed = [&](auto fn) { reset(); cudaEventRecord(e0); fn(); cudaEventRecord(e1); CK(cudaEventSynchronize(e1)); CK(cudaGetLastError()); float ms; cudaEventElapsedTime(&ms, e0, e1); return (double)ms; };
-  auto fetch = [&](std::vector<float>& L, std::vector<float>& w1, std::vector<float>& w2) {
-    L.resize(steps); w1.resize(W1.size()); w2.resize(W2.size());
-    CK(cudaMemcpy(L.data(), dloss, steps * 4, cudaMemcpyDeviceToHost));
-    CK(cudaMemcpy(w1.data(), hb[idW1].p, w1.size() * 4, cudaMemcpyDeviceToHost));
-    CK(cudaMemcpy(w2.data(), hb[idW2].p, w2.size() * 4, cudaMemcpyDeviceToHost));
+  struct Out { std::vector<float> L, w; };
+  auto fetch = [&]() {
+    Out o; o.L.resize((size_t)R * steps);
+    CK(cudaMemcpy(o.L.data(), dloss, o.L.size() * 4, cudaMemcpyDeviceToHost));
+    for (int r = 0; r < R; r++) { std::vector<float> a(W1.size()), b(W2.size());
+      CK(cudaMemcpy(a.data(), hb[idW1(r)].p, a.size() * 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(b.data(), hb[idW2(r)].p, b.size() * 4, cudaMemcpyDeviceToHost));
+      o.w.insert(o.w.end(), a.begin(), a.end()); o.w.insert(o.w.end(), b.begin(), b.end()); }
+    return o;
   };
 
-  std::vector<float> Lv, Lb, Lg, w1v, w2v, w1b, w2b, w1g, w2g;
-  // warmup + measure; take best of 3
-  auto run_vm = [&]() { vm_kernel<<<grid, NT, DSMEM>>>(dtape, ntape, dhead, dctr, dloss, nullptr); };
-  auto run_launch = [&]() { launch_phases(0); };
-  cudaGraph_t graph; cudaGraphExec_t gexec;
-  { cudaStream_t cs; cudaStreamCreate(&cs); cudaStreamBeginCapture(cs, cudaStreamCaptureModeGlobal); launch_phases(cs); CK(cudaStreamEndCapture(cs, &graph)); CK(cudaGraphInstantiate(&gexec, graph, 0)); }
-  auto run_graph = [&]() { CK(cudaGraphLaunch(gexec, 0)); };
+  // graphs: (a) one run's whole training, replayed R times  (b) all runs batched per phase
+  cudaGraph_t gA, gB; cudaGraphExec_t xA, xB;
+  { cudaStream_t cs; cudaStreamCreate(&cs);
+    cudaStreamBeginCapture(cs, cudaStreamCaptureModeGlobal); launch_seq(cs, 0, 1); CK(cudaStreamEndCapture(cs, &gA)); CK(cudaGraphInstantiate(&xA, gA, 0));
+    cudaStreamBeginCapture(cs, cudaStreamCaptureModeGlobal); launch_batched(cs); CK(cudaStreamEndCapture(cs, &gB)); CK(cudaGraphInstantiate(&xB, gB, 0)); }
+  // graph A replays run 0's phases only, so for R>1 build per-run graphs
+  std::vector<cudaGraphExec_t> xRun(R);
+  { cudaStream_t cs; cudaStreamCreate(&cs);
+    for (int r = 0; r < R; r++) { cudaGraph_t g; cudaStreamBeginCapture(cs, cudaStreamCaptureModeGlobal); launch_seq(cs, r, r + 1); CK(cudaStreamEndCapture(cs, &g)); CK(cudaGraphInstantiate(&xRun[r], g, 0)); } }
 
-  double bv = 1e30, bb = 1e30, bg = 1e30;
-  timed(run_vm); for (int r = 0; r < 3; r++) bv = std::min(bv, timed(run_vm)); fetch(Lv, w1v, w2v);
-  timed(run_launch); for (int r = 0; r < 3; r++) bb = std::min(bb, timed(run_launch)); fetch(Lb, w1b, w2b);
-  timed(run_graph); for (int r = 0; r < 3; r++) bg = std::min(bg, timed(run_graph)); fetch(Lg, w1g, w2g);
+  auto run_vm = [&]() { vm_kernel<<<grid, NT, DSMEM>>>(dtapeP, ntape, dhead, dctr, dloss, nullptr); };
+  auto run_seq = [&]() { launch_seq(0, 0, R); };
+  auto run_seqgraph = [&]() { for (int r = 0; r < R; r++) CK(cudaGraphLaunch(xRun[r], 0)); };
+  auto run_batched = [&]() { CK(cudaGraphLaunch(xB, 0)); };
+  double t[4]; Out o[4];
+  auto best = [&](auto fn, int idx) { timed(fn); double b = 1e30; for (int q = 0; q < 3; q++) b = std::min(b, timed(fn)); t[idx] = b; o[idx] = fetch(); };
+  best(run_seq, 0); best(run_seqgraph, 1); best(run_batched, 2); best(run_vm, 3);
 
-  if (prof_on) {
-    unsigned long long* dprof; CK(cudaMalloc(&dprof, (size_t)ntape * 48)); CK(cudaMemset(dprof, 0, (size_t)ntape * 48)); { bool on = true; CK(cudaMemcpyToSymbol(g_prof_on, &on, 1)); }
-    reset(); vm_kernel<<<grid, NT, DSMEM>>>(dtape, ntape, dhead, dctr, dloss, dprof); CK(cudaDeviceSynchronize());
-    std::vector<unsigned long long> P((size_t)ntape * 6); CK(cudaMemcpy(P.data(), dprof, (size_t)ntape * 48, cudaMemcpyDeviceToHost));
-    const char* nm[] = {"H1", "Y", "DH1", "DW2", "DW1"};
-    int per = (int)phase_off.size() / steps;
-    double fsum[8] = {0}, msum[8] = {0}, esum[8] = {0}; long cnt[8] = {0};
-    for (int s = steps / 4; s < steps; s++) for (int p = 0; p < per; p++) {
-      int pi = s * per + p;
-      for (int j = 0; j < phase_n[pi]; j++) { size_t i = (size_t)(phase_off[pi] + j) * 6;
-        fsum[p] += (P[i + 4] - P[i + 1]) / 1e3; msum[p] += (P[i + 5] - P[i + 4]) / 1e3; esum[p] += (P[i + 2] - P[i + 5]) / 1e3; cnt[p]++; }
-    }
-    unsigned long long tmin = ~0ull, tmax = 0; for (int i = 0; i < ntape; i++) { tmin = std::min(tmin, P[i * 6]); tmax = std::max(tmax, P[i * 6 + 3]); }
-    printf("\nprofile (us, mean per instr):  phase  first-chunk  mainloop  epilogue\n");
-    for (int p = 0; p < per; p++) printf("  %-4s %9.2f %9.2f %9.2f\n", nm[p], fsum[p] / cnt[p], msum[p] / cnt[p], esum[p] / cnt[p]);
-    printf("  span %.1f us total\n", (tmax - tmin) / 1e3);
-  }
-  printf("\n%-34s %10s %12s %10s\n", "mode", "total ms", "us/step", "speedup");
-  printf("%-34s %10.2f %12.2f %10s\n", "launch-per-op (classic)", bb, bb * 1000 / steps, "1.00x");
-  printf("%-34s %10.2f %12.2f %9.2fx\n", "CUDA graph (same launches)", bg, bg * 1000 / steps, bb / bg);
-  printf("%-34s %10.2f %12.2f %9.2fx\n", "KVM: whole run in ONE kernel", bv, bv * 1000 / steps, bb / bv);
+  double tot = (double)R * steps;
+  const char* nm[4] = {"sequential, launch-per-op", "sequential, CUDA graph/run", "batched across runs (vmap-like graph)", "KVM: all runs, ONE kernel"};
+  printf("\n%-40s %10s %14s %10s %9s\n", "mode", "total ms", "us/step/run", "run-steps/s", "vs seq");
+  for (int i = 0; i < 4; i++) printf("%-40s %10.2f %14.2f %11.0f %8.2fx\n", nm[i], t[i], t[i] * 1000 / tot, tot / (t[i] / 1000), t[0] / t[i]);
+  printf("KVM vs best baseline: %.2fx\n", std::min(std::min(t[0], t[1]), t[2]) / t[3]);
 
   // ---- correctness
-  auto relerr = [](const std::vector<float>& a, const std::vector<float>& b, int n) { double m = 0; for (int i = 0; i < n; i++) m = std::max(m, (double)fabs(a[i] - b[i]) / (fabs(b[i]) + 1e-6)); return m; };
-  auto maxabs = [](const std::vector<float>& a, const std::vector<float>& b) { double m = 0; for (size_t i = 0; i < a.size(); i++) m = std::max(m, (double)fabs(a[i] - b[i])); return m; };
-  printf("\nloss  step0 %.5f  step%d %.5f  (vm)   | cpu: %.5f -> %.5f at step %d\n", Lv[0], steps - 1, Lv[steps - 1], ref_loss[0], ref_loss[rs - 1], rs - 1);
-  double e_vm = relerr(Lv, ref_loss, rs), e_b = relerr(Lb, ref_loss, rs), e_g = relerr(Lg, ref_loss, rs);
-  printf("max rel loss err vs cpu (first %d steps): vm %.2e  launch %.2e  graph %.2e\n", rs, e_vm, e_b, e_g);
-  printf("max |dW| between modes (final weights): vm-launch %.2e  vm-graph %.2e\n", std::max(maxabs(w1v, w1b), maxabs(w2v, w2b)), std::max(maxabs(w1v, w1g), maxabs(w2v, w2g)));
-  bool ok = e_vm < 2e-2 && e_b < 2e-2 && e_g < 2e-2 && Lv[steps - 1] < Lv[0];
+  auto relerr = [&](const float* a, const std::vector<float>& ref) { double m = 0; for (int i = 0; i < rs; i++) m = std::max(m, (double)fabs(a[i] - ref[i]) / (fabs(ref[i]) + 1e-6)); return m; };
+  double e_ref = 0; for (int i = 0; i < 4; i++) { e_ref = std::max(e_ref, relerr(&o[i].L[0], ref0)); e_ref = std::max(e_ref, relerr(&o[i].L[(size_t)(R - 1) * steps], refN)); }
+  double e_mode = 0; for (int i = 0; i < 3; i++) for (size_t j = 0; j < o[3].w.size(); j++) e_mode = std::max(e_mode, (double)fabs(o[3].w[j] - o[i].w[j]));
+  bool dec = true; for (int r = 0; r < R; r++) dec = dec && o[3].L[(size_t)r * steps + steps - 1] < o[3].L[(size_t)r * steps];
+  printf("\nloss run0: %.5f -> %.5f (lr %.4f)", o[3].L[0], o[3].L[steps - 1], lrs[0]);
+  if (R > 1) printf("   run%d: %.5f -> %.5f (lr %.4f)", R - 1, o[3].L[(size_t)(R - 1) * steps], o[3].L[(size_t)(R - 1) * steps + steps - 1], lrs[R - 1]);
+  printf("\nmax rel loss err vs cpu fp32 (runs 0 and %d, first %d steps, all modes): %.2e\n", R - 1, rs, e_ref);
+  printf("max |dW| of VM vs each baseline, all runs: %.2e\n", e_mode);
+  bool ok = e_ref < 2e-2 && e_mode < 1e-3 && dec;
   printf("%s\n", ok ? "PASS" : "FAIL");
   return ok ? 0 : 2;
 }

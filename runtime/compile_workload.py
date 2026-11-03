@@ -51,8 +51,15 @@ class Read:
     var: str
     policy: str
     version: int
-    waits: bool                  # False when already satisfied at admission (version <= base)
+    waits: bool                  # version 0 always holds; any other wait is kept even if <= base, because an earlier
+                                 # admitted batch may not have published up to base yet
     gate: str | None = None      # name of the gate task carrying this wait, if it is not the task's own slot
+    wait_ver: int = -1           # version the runtime waits for (>= version when ordering after earlier batches)
+    implicit: bool = False       # compiler-added, not declared by the workload
+
+    def __post_init__(self):
+        if self.wait_ver < 0:
+            self.wait_ver = self.version
 
 
 @dataclass
@@ -183,7 +190,8 @@ def _parse_args(where, op, raw, buffers, allow_nonfinite):
         elif a.type == 'i32':
             _need(_is_int(v), f'{loc}: expected an integer, got {v!r}')
             _need(INT32_MIN <= v <= INT32_MAX, f'{loc}: {v} overflows int32')
-            _need(v >= mins.get(a.name, INT32_MIN), f'{loc}: {v} below the minimum {mins[a.name]} for {op.name}')
+            if a.name in mins:
+                _need(v >= mins[a.name], f'{loc}: {v} below the minimum {mins[a.name]} for {op.name}')
             values[a.name], word = v, v
         else:
             v = _f32_value(v, loc, allow_nonfinite)
@@ -337,10 +345,18 @@ def _resolve_versions(decls, variables, succ):
                 _need(not _reaches(succ, nxt, i),
                       f"{where} can never hold: {t.name} is ordered after {decls[nxt].task.name}, which publishes version {n + 1}")
                 succ[i].add(nxt)         # write-after-read: the next update may not start before this reader ends
-            reads.append(Read(var_name, policy, n, waits=n > var.base_version))
+            reads.append(Read(var_name, policy, n, waits=n > 0))
         t.reads = tuple(reads)
 
     for var_name, idxs in publishers.items():
+        base = variables[var_name].base_version
+        if idxs and base > 0:     # total order across admitted batches: the first publisher waits for the live head
+            t = decls[idxs[0]].task
+            own = next((r for r in t.reads if r.var == var_name), None)
+            if own:
+                own.wait_ver = max(own.wait_ver, base)
+            else:
+                t.reads += (Read(var_name, 'at_least', base, waits=True, implicit=True),)
         for a, b in zip(idxs, idxs[1:]):
             _need(_reaches(succ, a, b),
                   f"unordered publishers of {var_name!r}: no dependency path from {decls[a].task.name} "
@@ -349,10 +365,10 @@ def _resolve_versions(decls, variables, succ):
 
     for i, d in enumerate(decls):                           # a reader must not precede the publisher it waits for
         for r in d.task.reads:
-            if r.waits:
-                p = by_version[r.var][r.version]
+            if r.wait_ver > variables[r.var].base_version:
+                p = by_version[r.var][r.wait_ver]
                 _need(not _reaches(succ, i, p),
-                      f"{d.task.name}: waits for {r.var!r} >= {r.version}, published by {decls[p].task.name}, "
+                      f"{d.task.name}: waits for {r.var!r} >= {r.wait_ver}, published by {decls[p].task.name}, "
                       f"which is ordered after it (deadlock)")
 
 
@@ -366,13 +382,13 @@ def _lay_out(decls, succ, ops):
         waiting = [r for r in t.reads if r.waits]
         for k, r in enumerate(waiting[1:], 1):
             gate = Task(f'__gate/{t.name}/{k}', t.graph, t.workload_id, noop, {}, [], t.priority, t.deadline_us,
-                        wait=(r.var, r.version), gate=True)
+                        wait=(r.var, r.wait_ver), gate=True)
             r.gate = gate.name
             gate_of.setdefault(i, []).append(len(tasks))
             tasks.append(gate)
         final[i] = len(tasks)
         if waiting:
-            t.wait = (waiting[0].var, waiting[0].version)
+            t.wait = (waiting[0].var, waiting[0].wait_ver)
         tasks.append(t)
     adj = [set() for _ in tasks]
     for i, outs in enumerate(succ):
@@ -432,7 +448,7 @@ def compile_spec(spec, base_versions=None, allow_nonfinite=False) -> Compiled:
         'reads': [{'task': index_of[t.name], 'name': t.name, 'var': var_id[r.var], 'policy': r.policy,
                    'version': r.version, 'observed': r.version if r.policy == 'exact' else None,
                    'gate': index_of[r.gate] if r.gate else None}
-                  for t in tasks if not t.gate for r in t.reads],
+                  for t in tasks if not t.gate for r in t.reads if not r.implicit],
         'final_versions': {v.name: v.final_version for v in variables.values()},
     }
     log.info('compiled %d tasks (%d gates), %d edges, %d buffers, %d variables',

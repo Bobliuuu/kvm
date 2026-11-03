@@ -1,0 +1,13 @@
+{
+  "state": {"weight": 0.5, "input": 2.0, "target": 6.0, "live_input": 3.0},
+  "graphs": [
+    {"name": "train", "tasks": [
+      {"id": "forward", "op": "predict", "args": {"input": "input", "weight": "weight", "out": "prediction"}},
+      {"id": "backward", "op": "mse_grad", "after": ["forward"], "args": {"pred": "prediction", "target": "target", "input": "input", "loss": "loss", "grad": "gradient"}},
+      {"id": "update", "op": "sgd", "after": ["backward"], "args": {"weight": "weight", "grad": "gradient", "lr": 0.1}}
+    ]},
+    {"name": "serve", "tasks": [
+      {"id": "response", "op": "predict", "priority": 10, "args": {"input": "live_input", "weight": "weight", "out": "response"}}
+    ]}
+  ]
+}

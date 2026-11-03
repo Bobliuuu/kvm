@@ -402,7 +402,7 @@ def _lay_out(decls, succ, ops):
 def compile_spec(spec, base_versions=None, allow_nonfinite=False) -> Compiled:
     """Compile a workload dict. `base_versions` maps variable -> live version for a later-admitted workload."""
     _keys(spec, 'workload', {'variables', 'buffers', 'graphs'}, {'graphs'})
-    ops, task_abi = abi.load_ops(), abi.load_task_abi()
+    ops, task_abi = abi.load_all_ops(), abi.load_task_abi()
     variables = _parse_variables(spec.get('variables', []), base_versions)
     buffers = _parse_buffers(spec.get('buffers', []), allow_nonfinite)
     decls = _parse_tasks(spec['graphs'], ops, buffers, variables, allow_nonfinite)

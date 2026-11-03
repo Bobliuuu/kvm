@@ -46,7 +46,8 @@ fail=0; for p in "${pids[@]}"; do wait "$p" || fail=1; done
 debug "linking $(ls "$OBJ"/*.bc | wc -l) bitcode modules"
 llvm-link "$OBJ"/*.bc -o "$BUILD/doom.bc"
 llvm-dis "$BUILD/doom.bc" -o "$BUILD/doom.ll"
-python3 "$DOOM_DIR/glue/fix_varargs.py" "$BUILD/doom.ll" "$BUILD/doom_nv.ll"
+python3 "$DOOM_DIR/glue/widen_i1_globals.py" "$BUILD/doom.ll" "$BUILD/doom_i8.ll"
+python3 "$DOOM_DIR/glue/fix_varargs.py" "$BUILD/doom_i8.ll" "$BUILD/doom_nv.ll"
 llc -march=nvptx64 -mcpu=sm_80 -mattr=+ptx75 -O2 "$BUILD/doom_nv.ll" -o "$BUILD/doom.ptx"
 # the PTX is always sm_80; ptxas compiles it forward for newer GPUs. Registers are capped so the engine's CTA leaves room for other work.
 "$NVCC" -gencode "arch=compute_80,code=$ARCH" -dc -maxrregcount=112 "$BUILD/doom.ptx" -o "$BUILD/doom_dev.o" 2>&1 | grep -v 'Potential out of bound' || true

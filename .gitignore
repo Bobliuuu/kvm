@@ -1,3 +1,9 @@
 kvm
 kvm_*
 *.o
+# local working files: raw run output, session notes and per-task docs
+logs/
+docs/archives/
+docs/*-20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.md
+*.nsys-rep
+*.ncu-rep

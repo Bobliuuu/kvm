@@ -1189,6 +1189,43 @@ KVM_GPT_DEVI void argmax(const KvmCtx& ctx, const int32_t* a) {
     for (int r = r0; r < r1; r++) { int j = row_argmax(lg + (size_t)r * ld, V, sv, si); if (threadIdx.x == 0) out[r] = j; }
 }
 
+// ---- batch plumbing ---------------------------------------------------------------------------------------------------
+KVM_GPT_DEVI void select_window(const KvmCtx& ctx, const int32_t* a) {
+    Chk k(ctx);
+    int i0 = a[3], i1 = a[4], stride = a[5], off = a[6];
+    k.need(i0 >= 0 && i0 <= i1);
+    if (k.bad) return;
+    const KvmBuf* sb = k.get(a[0], -1, false);
+    const KvmBuf* db = k.get(a[2], -1, false);
+    const int32_t* step = k.ivec(a[1], 1);
+    if (k.bad) return;
+    k.need(sb->dtype == db->dtype && (sb->rows == 1 || sb->ld == sb->cols) && (db->rows == 1 || db->ld == db->cols), KVM_GPT_E_DTYPE);
+    if (k.bad) return;
+    const long base = (long)step[0] * stride + off;
+    k.need(base >= 0 && base + i1 <= (long)sb->rows * sb->cols && i1 <= (long)db->rows * db->cols);
+    if (k.bad) return;
+    const int32_t* src = (const int32_t*)sb->p + base;
+    int32_t* dst = (int32_t*)db->p;
+    for (int i = i0 + threadIdx.x; i < i1; i += KVM_GPT_THREADS) dst[i] = src[i];
+}
+KVM_GPT_DEVI void gather_rows(const KvmCtx& ctx, const int32_t* a) {
+    Chk k(ctx);
+    int r0 = a[3], r1 = a[4], d = a[5], lds, ldd;
+    k.need(r0 >= 0 && r0 <= r1 && d > 0);
+    if (k.bad) return;
+    const float* src = k.mat(a[0], 0, d, &lds);
+    const int32_t* idx = k.ivec(a[1], r1);
+    float* dst = k.mat(a[2], r1, d, &ldd);
+    if (k.bad) return;
+    const int R = ctx.bufs[a[0]].rows;
+    for (int e = threadIdx.x; e < (r1 - r0) * d; e += KVM_GPT_THREADS) {
+        int r = r0 + e / d, c = e % d, id = idx[r];
+        float v = 0.f;
+        if ((unsigned)id < (unsigned)R) v = src[(size_t)id * lds + c]; else k.fail(KVM_GPT_E_TOKEN);
+        dst[(size_t)r * ldd + c] = v;
+    }
+}
+
 }  // namespace kvmgpt
 
 // ---- per-op entry points (same X-macro convention as the executor) -------------------------------------------------------
@@ -1200,7 +1237,7 @@ KVM_GPT_DEVI void argmax(const KvmCtx& ctx, const int32_t* a) {
 #define X(name, id, sig) KVM_GPT_DEVI void kvm_op_##name(const KvmCtx& ctx, const int32_t* args) { kvmgpt::name(ctx, args); }
 #include "kvm_ops_gpt.def"
 #undef X
-// Returns false for an op id outside the GPT library (ids 32..61).
+// Returns false for an op id outside the GPT library (ids 32..63).
 KVM_GPT_DEVI bool kvm_gpt_dispatch(const KvmCtx& ctx, int op, const int32_t* args) {
     switch (op) {
 #define X(name, id, sig) case id: kvm_op_##name(ctx, args); return true;

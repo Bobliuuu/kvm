@@ -1,4 +1,4 @@
-# KVM — a "kittens" GPU virtual machine (V2 of Triad)
+# KVM — a "kittens" GPU virtual machine (version 2 of [open-flapping-airplanes](https://github.com/Bobliuuu/open-flapping-airplanes))
 
 Attempt to reproduce the idea from Flapping Airplanes' "kittens" VM: one persistent kernel takes over
 the whole GPU and interprets an **instruction tape**, so an *entire training run* (every step: forward,

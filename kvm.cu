@@ -48,6 +48,28 @@ __device__ __forceinline__ int ld_acquire(const int* p) {
   int v; asm volatile("ld.acquire.gpu.global.u32 %0, [%1];" : "=r"(v) : "l"(p) : "memory"); return v;
 }
 
+// ---- pipelined tile GEMM: 4-stage cp.async ring of K-chunks in dynamic smem
+constexpr int KC = 64, STG = 4, LDK = KC + 4, LDM = TILE + 4, SLOT = KC * LDM;   // floats per A or B slot
+constexpr size_t DSMEM = (size_t)STG * 2 * SLOT * sizeof(float);
+extern __shared__ __align__(128) float dsm[];
+
+__device__ __forceinline__ void cp16(float* dst, const float* src) {
+  unsigned d = (unsigned)__cvta_generic_to_shared(dst);
+  asm volatile("cp.async.cg.shared.global [%0], [%1], 16;" :: "r"(d), "l"(src) : "memory");
+}
+__device__ __forceinline__ void cp_commit() { asm volatile("cp.async.commit_group;" ::: "memory"); }
+__device__ __forceinline__ void cp_wait_stg() { asm volatile("cp.async.wait_group %0;" :: "n"(STG - 2) : "memory"); }
+
+template <bool TA, bool TB>
+__device__ __forceinline__ void load_chunk(float* sA, float* sB, const Buf& A, const Buf& B, int m0, int n0, int k0) {
+  for (int i = threadIdx.x; i < 512; i += NT) {
+    if (TA) { int r = i >> 3, c = (i & 7) * 4; cp16(sA + r * LDM + c, A.p + (size_t)(k0 + r) * A.ld + m0 + c); }
+    else    { int r = i >> 4, c = (i & 15) * 4; cp16(sA + r * LDK + c, A.p + (size_t)(m0 + r) * A.ld + k0 + c); }
+    if (TB) { int r = i >> 4, c = (i & 15) * 4; cp16(sB + r * LDK + c, B.p + (size_t)(n0 + r) * B.ld + k0 + c); }
+    else    { int r = i >> 3, c = (i & 7) * 4; cp16(sB + r * LDM + c, B.p + (size_t)(k0 + r) * B.ld + n0 + c); }
+  }
+}
+
 template <bool TA, bool TB>
 __device__ void gemm_acc(const Buf A, const Buf B, int m0, int n0, int K, float* sm) {
   int warp = threadIdx.x >> 5, wm = warp >> 1, wn = warp & 1;
@@ -57,18 +79,31 @@ __device__ void gemm_acc(const Buf A, const Buf B, int m0, int n0, int K, float*
   wmma::fragment<wmma::matrix_b, 16, 16, 8, wmma::precision::tf32, BL> fb;
   wmma::fragment<wmma::accumulator, 16, 16, 8, float> acc;
   wmma::fill_fragment(acc, 0.f);
-  int mm = m0 + wm * 16, nn = n0 + wn * 16;
-  for (int k = 0; k < K; k += 8) {
-    const float* ap = TA ? A.p + (size_t)k * A.ld + mm : A.p + (size_t)mm * A.ld + k;
-    const float* bp = TB ? B.p + (size_t)nn * B.ld + k : B.p + (size_t)k * B.ld + nn;
-    wmma::load_matrix_sync(fa, ap, A.ld);
-    wmma::load_matrix_sync(fb, bp, B.ld);
-#pragma unroll
-    for (int i = 0; i < fa.num_elements; i++) fa.x[i] = wmma::__float_to_tf32(fa.x[i]);
-#pragma unroll
-    for (int i = 0; i < fb.num_elements; i++) fb.x[i] = wmma::__float_to_tf32(fb.x[i]);
-    wmma::mma_sync(acc, fa, fb, acc);
+  int nch = K / KC;
+  for (int s = 0; s < STG - 1; s++) {
+    if (s < nch) load_chunk<TA, TB>(dsm + s * 2 * SLOT, dsm + s * 2 * SLOT + SLOT, A, B, m0, n0, s * KC);
+    cp_commit();
   }
+  for (int c = 0; c < nch; c++) {
+    cp_wait_stg();
+    __syncthreads();
+    int nx = c + STG - 1;
+    if (nx < nch) { float* p = dsm + (nx % STG) * 2 * SLOT; load_chunk<TA, TB>(p, p + SLOT, A, B, m0, n0, nx * KC); }
+    cp_commit();
+    const float* sA = dsm + (c % STG) * 2 * SLOT; const float* sB = sA + SLOT;
+#pragma unroll
+    for (int kk = 0; kk < KC; kk += 8) {
+      wmma::load_matrix_sync(fa, TA ? sA + kk * LDM + wm * 16 : sA + wm * 16 * LDK + kk, TA ? LDM : LDK);
+      wmma::load_matrix_sync(fb, TB ? sB + wn * 16 * LDK + kk : sB + kk * LDM + wn * 16, TB ? LDK : LDM);
+#pragma unroll
+      for (int i = 0; i < fa.num_elements; i++) fa.x[i] = wmma::__float_to_tf32(fa.x[i]);
+#pragma unroll
+      for (int i = 0; i < fb.num_elements; i++) fb.x[i] = wmma::__float_to_tf32(fb.x[i]);
+      wmma::mma_sync(acc, fa, fb, acc);
+    }
+  }
+  cp_wait_stg(); asm volatile("cp.async.wait_all;" ::: "memory");
+  __syncthreads();   // all smem ring reads done before next instruction reuses it
   wmma::store_matrix_sync(sm + wm * 16 * TILE + wn * 16, acc, TILE, wmma::mem_row_major);
 }
 
@@ -88,9 +123,9 @@ __device__ void exec_instr(const Instr& in, float* sm, float* loss) {
       float v = sm[e];
       size_t gi = (size_t)(in.m0 + r) * C.ld + in.n0 + c;
       if (f & F_RELU) v = fmaxf(v, 0.f);
-      if (f & F_RELUMASK) v = (X.p[(size_t)(in.m0 + r) * X.ld + in.n0 + c] > 0.f) ? v : 0.f;
+      if (f & F_RELUMASK) v = (__ldcg(X.p + (size_t)(in.m0 + r) * X.ld + in.n0 + c) > 0.f) ? v : 0.f;
       if (f & F_MSE) {
-        float d = v - X.p[(size_t)(in.m0 + r) * X.ld + in.n0 + c];
+        float d = v - __ldcg(X.p + (size_t)(in.m0 + r) * X.ld + in.n0 + c);
         lsum += d * d * in.scale * 0.5f;
         v = d * in.scale;
       }
@@ -106,7 +141,8 @@ __device__ void exec_instr(const Instr& in, float* sm, float* loss) {
     Buf W = g_buf[in.c], G = g_buf[in.a];
     for (int e = threadIdx.x; e < TILE * TILE; e += NT) {
       int r = e / TILE, c = e % TILE;
-      W.p[(size_t)(in.m0 + r) * W.ld + in.n0 + c] -= in.scale * G.p[(size_t)(in.m0 + r) * G.ld + in.n0 + c];
+      float* wp = W.p + (size_t)(in.m0 + r) * W.ld + in.n0 + c;
+      *wp = __ldcg(wp) - in.scale * __ldcg(G.p + (size_t)(in.m0 + r) * G.ld + in.n0 + c);
     }
   }
 }
@@ -158,7 +194,7 @@ int main(int argc, char** argv) {
     else if (a == "--H") Hd = nx(); else if (a == "--O") O = nx(); else if (a == "--nb") NB = nx();
     else if (a == "--lr") lr = nx(); else if (a == "--ref-steps") ref_steps = nx();
   }
-  if (B % 32 || D % 32 || Hd % 32 || O % 32) { fprintf(stderr, "dims must be multiples of 32\n"); return 1; }
+  if (B % 64 || D % 64 || Hd % 64 || O % 64) { fprintf(stderr, "dims must be multiples of 64\n"); return 1; }
   int nRB = B / 32, nHC = Hd / 32, nOC = O / 32, nDC = D / 32;
 
   // ---- data: teacher-generated regression targets
@@ -296,8 +332,10 @@ int main(int argc, char** argv) {
   CK(cudaMalloc(&dtape, ntape * sizeof(Instr))); CK(cudaMemcpy(dtape, tape.data(), ntape * sizeof(Instr), cudaMemcpyHostToDevice));
   CK(cudaMalloc(&dhead, 4)); CK(cudaMalloc(&dctr, nctr * 4)); CK(cudaMalloc(&dloss, steps * 4));
 
+  CK(cudaFuncSetAttribute(vm_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)DSMEM));
+  CK(cudaFuncSetAttribute(phase_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)DSMEM));
   int dev; cudaGetDevice(&dev); cudaDeviceProp prop; cudaGetDeviceProperties(&prop, dev);
-  int occ; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, vm_kernel, NT, 0));
+  int occ; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, vm_kernel, NT, DSMEM));
   int grid = prop.multiProcessorCount * occ;
   printf("%s  SMs=%d occ=%d  vm grid=%d\n", prop.name, prop.multiProcessorCount, occ, grid);
 
@@ -308,7 +346,7 @@ int main(int argc, char** argv) {
     CK(cudaDeviceSynchronize());
   };
   auto launch_phases = [&](cudaStream_t st) {
-    for (size_t p = 0; p < phase_off.size(); p++) phase_kernel<<<phase_n[p], NT, 0, st>>>(dtape, phase_off[p], dloss);
+    for (size_t p = 0; p < phase_off.size(); p++) phase_kernel<<<phase_n[p], NT, DSMEM, st>>>(dtape, phase_off[p], dloss);
   };
   cudaEvent_t e0, e1; cudaEventCreate(&e0); cudaEventCreate(&e1);
   auto timed = [&](auto fn) { reset(); cudaEventRecord(e0); fn(); cudaEventRecord(e1); CK(cudaEventSynchronize(e1)); CK(cudaGetLastError()); float ms; cudaEventElapsedTime(&ms, e0, e1); return (double)ms; };
@@ -321,7 +359,7 @@ int main(int argc, char** argv) {
 
   std::vector<float> Lv, Lb, Lg, w1v, w2v, w1b, w2b, w1g, w2g;
   // warmup + measure; take best of 3
-  auto run_vm = [&]() { vm_kernel<<<grid, NT>>>(dtape, ntape, dhead, dctr, dloss); };
+  auto run_vm = [&]() { vm_kernel<<<grid, NT, DSMEM>>>(dtape, ntape, dhead, dctr, dloss); };
   auto run_launch = [&]() { launch_phases(0); };
   cudaGraph_t graph; cudaGraphExec_t gexec;
   { cudaStream_t cs; cudaStreamCreate(&cs); cudaStreamBeginCapture(cs, cudaStreamCaptureModeGlobal); launch_phases(cs); CK(cudaStreamEndCapture(cs, &graph)); CK(cudaGraphInstantiate(&gexec, graph, 0)); }

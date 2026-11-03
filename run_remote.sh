@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# Usage: [KTILE=32|64] ./run_remote.sh [kvm args]   (host via KVM_HOST, default ubuntu@129.146.78.123)
+# Usage: [KVM_HOST=user@ip] [KVM_KEY=~/.ssh/key] [KVM_ARCH=sm_80] [KTILE= KKC= KSTG=] ./run_remote.sh [kvm args]
 set -euo pipefail
 HOST="${KVM_HOST:-ubuntu@129.146.78.123}"
+ARCH="${KVM_ARCH:-sm_80}"
+SSH="ssh -o StrictHostKeyChecking=no -o BatchMode=yes ${KVM_KEY:+-i $KVM_KEY}"
 DIR="$(cd "$(dirname "$0")" && pwd)"
-rsync -az --exclude kvm --exclude kvm_dbg --exclude .git "$DIR/" "$HOST:~/kittens-vm/"
-ssh "$HOST" "cd ~/kittens-vm && nvcc -O3 -arch=sm_80 -std=c++17 -DKTILE=${KTILE:-64} -DKKC=${KKC:-32} -DKSTG=${KSTG:-3} kvm.cu -o kvm_t${KTILE:-64}_${KKC:-32}_${KSTG:-3} && flock -w 900 ~/.gpu.lock timeout 600 ./kvm_t${KTILE:-64}_${KKC:-32}_${KSTG:-3} $*"
+TAG="${ARCH}_t${KTILE:-32}_${KKC:-64}_${KSTG:-4}"
+rsync -az -e "$SSH" --exclude 'kvm_*' --exclude kvm --exclude .git "$DIR/" "$HOST:~/kittens-vm/"
+$SSH "$HOST" "cd ~/kittens-vm && nvcc -O3 -arch=$ARCH -std=c++17 -DKTILE=${KTILE:-32} -DKKC=${KKC:-64} -DKSTG=${KSTG:-4} ${KVM_NVCC:-} kvm.cu -o kvm_$TAG 2>&1 | grep -v -i 'warning\|remark\|^\s*\^\|^$' ; flock -w 900 ~/.gpu.lock timeout 900 ./kvm_$TAG $*"

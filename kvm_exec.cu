@@ -152,6 +152,7 @@ struct KvmConfig {
   int ring_words = 1 << 16;     // admission ring, multiple of 8
   int aging_us = 0;             // 0: strict priority; else one priority level per aging_us of waiting
   unsigned long long timeout_us = 60ull * 1000000;
+  size_t stack_bytes = 0;       // per-thread stack (cudaLimitStackSize); ops with deep device calls (game ops) need a large one
 };
 enum class KvmSubmit { OK, BACKPRESSURE_TIMEOUT, TOO_BIG, DEVICE_ERROR, CLOSED, INVALID };
 static const char* kvm_submit_name(KvmSubmit s) {
@@ -178,6 +179,7 @@ class KvmExec {
     int dev; CK(cudaGetDevice(&dev));
     cudaDeviceProp p; CK(cudaGetDeviceProperties(&p, dev));
     sms_ = p.multiProcessorCount; name_ = p.name;
+    if (cfg_.stack_bytes) CK(cudaDeviceSetLimit(cudaLimitStackSize, cfg_.stack_bytes));
     int occ = 0; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, kvm_exec_kernel, KVM_THREADS, 0));
     grid_ = cfg_.blocks ? cfg_.blocks : sms_ * occ;
     if (grid_ < 2) throw std::invalid_argument("need >= 2 blocks (block 0 is the admitter)");

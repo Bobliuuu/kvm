@@ -1,243 +1,239 @@
-"""Declarative, operator-extensible CPU reference VM for mixed GPU workloads.
+"""CPU reference VM: executes compiled KVM programs with the executor's semantics.
 
-This is an executable specification for future CUDA lowering, NOT a GPU VM.
-A workload is a JSON DAG of named ops. Nothing in the scheduler knows about
-training, inference, or games. Tasks may be submitted while workers are active.
+It runs the *compiler's output* (same tasks, edges, gates and wait/publish slots the GPU receives), so the two
+cannot disagree about structure. Semantics implemented:
+  * a task runs when all in-batch predecessors finished AND version[wait_var] >= wait_ver;
+  * on completion it sets version[pub_var] = pub_ver;
+  * `exact` reads are verified at start and again at finish (snapshot isolation violation is an error);
+  * priority with aging (or a deterministic mode: one worker, highest priority, lowest submission order);
+  * tasks may be submitted while workers run; each submission is compiled against the projected versions
+    (live versions plus everything already admitted).
+Every op follows runtime/ref_ops.py (float32 per operation).
 """
 from __future__ import annotations
-import heapq
+
+import argparse
 import json
+import logging
 import threading
 import time
-from collections import defaultdict
-from dataclasses import dataclass, field
-from typing import Callable, Any
+from dataclasses import dataclass
+
+import compile_workload as cw
+import ref_ops
+
+log = logging.getLogger('kvm.vm')
+
 
 class GraphError(ValueError):
-    pass
+    """A submission conflicts with the runtime's state (buffer shape clash, version mismatch)."""
+
 
 @dataclass
-class Task:
-    id: str
-    op: str
-    args: dict
-    after: tuple[str, ...] = ()
-    priority: int = 0
-    deadline: float | None = None
-    label: str = ""
+class _Node:
+    key: tuple
+    task: cw.Task
+    seq: int
+    succ: list
+    remaining: int
+    state: str = 'pending'        # pending -> running -> done
+    enqueued: float = 0.0
 
-@dataclass
-class Graph:
-    name: str
-    tasks: list[Task]
-
-    @classmethod
-    def from_dict(cls, spec: dict) -> 'Graph':
-        name = str(spec['name'])
-        tasks = [Task(id=str(t['id']), op=str(t['op']), args=dict(t.get('args', {})),
-                      after=tuple(t.get('after', [])), priority=int(t.get('priority', 0)),
-                      deadline=t.get('deadline'), label=str(t.get('label', '')))
-                 for t in spec['tasks']]
-        ids = [t.id for t in tasks]
-        if len(set(ids)) != len(ids):
-            raise GraphError('duplicate task id')
-        if not tasks:
-            raise GraphError('empty graph')
-        indegree = {i: 0 for i in ids}
-        outgoing = defaultdict(list)
-        for t in tasks:
-            if len(set(t.after)) != len(t.after):
-                raise GraphError(f'duplicate prerequisite for {t.id}')
-            for dep in t.after:
-                if dep not in indegree:
-                    raise GraphError(f'unknown prerequisite {dep}')
-                outgoing[dep].append(t.id)
-                indegree[t.id] += 1
-        ready = [i for i, d in indegree.items() if d == 0]
-        count = 0
-        while ready:
-            i = ready.pop()
-            count += 1
-            for j in outgoing[i]:
-                indegree[j] -= 1
-                if indegree[j] == 0:
-                    ready.append(j)
-        if count != len(tasks):
-            raise GraphError('dependency cycle')
-        return cls(name, tasks)
-
-class Store:
-    """Shared named tensors/scalars; task graph must order conflicting accesses."""
-    def __init__(self, initial: dict | None = None):
-        self._lock = threading.RLock()
-        self.data = dict(initial or {})
-
-    def get(self, key):
-        with self._lock:
-            return self.data[key]
-
-    def put(self, key, value):
-        with self._lock:
-            self.data[key] = value
-
-class Registry:
-    def __init__(self):
-        self.ops: dict[str, Callable[[Store, dict], Any]] = {}
-
-    def register(self, name: str, fn: Callable[[Store, dict], Any]):
-        if name in self.ops:
-            raise ValueError('duplicate operator')
-        self.ops[name] = fn
-
-    def execute(self, op, store, args):
-        return self.ops[op](store, args)
 
 class Runtime:
-    """Threaded, work-conserving ready DAG executor with aging and deadlines.
-
-    A task's effective priority is computed when selecting work, so an old
-    background task eventually outranks newly arriving high-priority tasks.
-    Nonpreemptive: once a task starts, it runs until completion.
-    """
-    def __init__(self, registry: Registry, store: Store, workers=4,
-                 aging_per_second=20.0):
-        if workers < 1 or aging_per_second <= 0:
-            raise ValueError('invalid scheduler configuration')
-        self.registry, self.store = registry, store
-        self.workers, self.aging = workers, aging_per_second
+    def __init__(self, workers=4, aging_per_second=20.0, deterministic=False):
+        if workers < 1 or aging_per_second <= 0 or (deterministic and workers != 1):
+            raise ValueError('workers >= 1, aging_per_second > 0, deterministic requires workers == 1')
+        self.workers, self.aging, self.deterministic = workers, aging_per_second, deterministic
         self.cv = threading.Condition()
-        self.ready: list[str] = []
-        self.nodes: dict[str, Task] = {}
-        self.remaining: dict[str, int] = {}
-        self.successors: dict[str, list[str]] = defaultdict(list)
-        self.enqueued: dict[str, float] = {}
+        self.buffers: dict[str, list] = {}
+        self.shapes: dict[str, tuple] = {}
+        self.versions: dict[str, int] = {}
+        self.projected: dict[str, int] = {}
+        self.nodes: dict[tuple, _Node] = {}
+        self.ready: list[tuple] = []
         self.completed: list[str] = []
         self.errors: list[tuple[str, str]] = []
-        self.inflight = 0
-        self.closed = False
-        self.threads = []
         self.trace: list[dict] = []
-        self.started = False
+        self.threads: list[threading.Thread] = []
+        self.batches = 0
+        self.closed = self.started = False
+
+    # ------------------------------------------------------------------ admission
+    def submit(self, spec: dict, allow_nonfinite=False) -> cw.Compiled:
+        """Compile `spec` against the projected versions and admit it (callable while running)."""
+        with self.cv:
+            declared = spec.get('variables', []) if isinstance(spec, dict) else []
+            base = {v: self.projected[v] for v in declared if isinstance(v, str) and v in self.projected}
+            compiled = cw.compile_spec(spec, base, allow_nonfinite)
+            return self._admit(compiled)
+
+    def submit_compiled(self, compiled: cw.Compiled) -> cw.Compiled:
+        with self.cv:
+            return self._admit(compiled)
+
+    def _admit(self, compiled):
+        if self.closed:
+            raise RuntimeError('runtime closed')
+        for v in compiled.variables:
+            known = self.projected.get(v.name)
+            if known is not None and known != v.base_version:
+                raise GraphError(f'variable {v.name!r}: compiled against base_version {v.base_version}, '
+                                 f'runtime projects {known}; recompile with base_versions')
+        for b in compiled.buffers:
+            if b.name in self.shapes and self.shapes[b.name] != (b.rows, b.cols):
+                raise GraphError(f'buffer {b.name!r} already exists as {self.shapes[b.name]}, got {(b.rows, b.cols)}')
+        for b in compiled.buffers:
+            if b.name not in self.buffers:
+                self.buffers[b.name], self.shapes[b.name] = list(b.values), (b.rows, b.cols)
+        for v in compiled.variables:
+            self.versions.setdefault(v.name, v.base_version)
+            self.projected[v.name] = v.final_version
+        batch, now = self.batches, time.monotonic()
+        self.batches += 1
+        for i, t in enumerate(compiled.program):
+            node = _Node((batch, i), t, len(self.nodes), [(batch, j) for j in compiled.successor_lists[i]], 0)
+            self.nodes[node.key] = node
+        for i in range(len(compiled.program)):
+            for j in compiled.successor_lists[i]:
+                self.nodes[(batch, j)].remaining += 1
+        for i in range(len(compiled.program)):
+            n = self.nodes[(batch, i)]
+            if n.remaining == 0:
+                n.enqueued = now
+                self.ready.append(n.key)
+        log.info('admitted batch %d: %d tasks', batch, len(compiled.program))
+        self.cv.notify_all()
+        return compiled
+
+    # ------------------------------------------------------------------ scheduling
+    def _runnable(self, node):
+        w = node.task.wait
+        return w is None or self.versions[w[0]] >= w[1]
+
+    def _pick(self):
+        now = time.monotonic()
+        cands = [self.nodes[k] for k in self.ready if self._runnable(self.nodes[k])]
+        if not cands:
+            return None
+        if self.deterministic:
+            node = max(cands, key=lambda n: (n.task.priority, -n.seq))
+        else:
+            node = max(cands, key=lambda n: (n.task.priority + self.aging * (now - n.enqueued),
+                                             -(n.task.deadline_us if n.task.deadline_us >= 0 else float('inf')),
+                                             -n.seq))
+        self.ready.remove(node.key)
+        return node
 
     def start(self):
         with self.cv:
             if self.started:
                 return
             self.started = True
-            self.threads = [threading.Thread(target=self._worker, daemon=True)
-                            for _ in range(self.workers)]
+            self.threads = [threading.Thread(target=self._worker, name=f'vm-{i}', daemon=True) for i in range(self.workers)]
             for t in self.threads:
                 t.start()
-
-    def submit(self, graph: Graph):
-        with self.cv:
-            if self.closed:
-                raise RuntimeError('runtime closed')
-            # Validate the entire submission before mutating scheduler state.
-            keys = [f'{graph.name}/{task.id}' for task in graph.tasks]
-            if len(set(keys)) != len(keys):
-                raise GraphError('duplicate task ids in submission')
-            for task, key in zip(graph.tasks, keys):
-                if key in self.nodes:
-                    raise GraphError(f'duplicate submitted task {key}')
-                if task.op not in self.registry.ops:
-                    raise GraphError(f'unregistered operator {task.op}')
-                if len(set(task.after)) != len(task.after):
-                    raise GraphError(f'duplicate prerequisites for {key}')
-                if any(f'{graph.name}/{dep}' not in keys for dep in task.after):
-                    raise GraphError(f'unknown prerequisite for {key}')
-            # Graph.from_dict validates cycles; enforce it even when callers
-            # instantiate Graph directly rather than using the parser.
-            Graph.from_dict({'name': graph.name, 'tasks': [
-                {'id': t.id, 'op': t.op, 'after': list(t.after)}
-                for t in graph.tasks]})
-            now = time.monotonic()
-            for task in graph.tasks:
-                key = f'{graph.name}/{task.id}'
-                self.nodes[key] = task
-                self.remaining[key] = len(task.after)
-                for dep in task.after:
-                    self.successors[f'{graph.name}/{dep}'].append(key)
-                if not task.after:
-                    self.ready.append(key)
-                    self.enqueued[key] = now
-            self.cv.notify_all()
-
-    def _pick(self):
-        now = time.monotonic()
-        def score(key):
-            t = self.nodes[key]
-            age = now - self.enqueued[key]
-            # Deadline is a tie-breaker; priority+aging guarantees eventual
-            # service for a continuously ready task under finite arrival rate.
-            return (t.priority + self.aging * age,
-                    -(t.deadline if t.deadline is not None else float('inf')),
-                    -self.enqueued[key])
-        key = max(self.ready, key=score)
-        self.ready.remove(key)
-        return key
 
     def _worker(self):
         while True:
             with self.cv:
-                while not self.ready and not self.closed:
+                while (node := self._pick()) is None:
+                    if self.closed:
+                        return
                     self.cv.wait()
-                if self.closed and not self.ready:
-                    return
-                key = self._pick()
-                self.inflight += 1
+                node.state = 'running'
+                observed = {r.var: self.versions[r.var] for r in node.task.reads}
                 started = time.monotonic()
-            try:
-                self.registry.execute(self.nodes[key].op, self.store,
-                                      self.nodes[key].args)
-            except Exception as exc:
-                error = repr(exc)
-            else:
-                error = None
-            finished = time.monotonic()
+            error = self._violation(node.task, observed, 'start')
+            if error is None:
+                try:
+                    self._execute(node.task)
+                except Exception as exc:                      # a task bug must not wedge the scheduler
+                    error = repr(exc)
             with self.cv:
-                self.inflight -= 1
-                self.completed.append(key)
-                self.trace.append({'task': key, 'op': self.nodes[key].op,
-                                   'started': started, 'finished': finished,
-                                   'error': error})
-                if error:
-                    self.errors.append((key, error))
-                    # Cancel dependent tasks transitively. Do not run them
-                    # against missing/invalid outputs.
-                    pending = list(self.successors[key])
-                    canceled = set()
-                    while pending:
-                        child = pending.pop()
-                        if child in canceled:
-                            continue
-                        canceled.add(child)
-                        # A descendant cannot be running because its failed
-                        # ancestor was still executing; avoid duplicate cancels
-                        # at diamond joins.
-                        if child in self.ready:
-                            self.ready.remove(child)
-                        self.completed.append(child)
-                        self.errors.append((child, 'dependency failed'))
-                        pending.extend(self.successors[child])
-                else:
-                    for child in self.successors[key]:
-                        self.remaining[child] -= 1
-                        if self.remaining[child] == 0:
-                            self.ready.append(child)
-                            self.enqueued[child] = finished
+                finished = time.monotonic()
+                error = error or self._violation(node.task, {r.var: self.versions[r.var] for r in node.task.reads}, 'finish')
+                self._finish(node, observed, started, finished, error)
                 self.cv.notify_all()
 
+    @staticmethod
+    def _violation(task, seen, when):
+        for r in task.reads:
+            if r.policy == 'exact' and seen[r.var] != r.version:
+                return f'snapshot violated at {when}: exact read of {r.var!r} wants {r.version}, saw {seen[r.var]}'
+            if r.policy == 'at_least' and seen[r.var] < r.wait_ver:
+                return f'at_least violated at {when}: {r.var!r} wants >= {r.wait_ver}, saw {seen[r.var]}'
+        return None
+
+    def _execute(self, task):
+        ref = ref_ops.OPS[task.op.name]
+        bufs = {a.name: self.buffers[task.args[a.name]] for a in task.op.args if a.type == 'buf'}
+        scalars = {a.name: task.args[a.name] for a in task.op.args if a.type != 'buf'}
+        ref.run(bufs, scalars)
+
+    def _finish(self, node, observed, started, finished, error):
+        t = node.task
+        node.state = 'done'
+        self.completed.append(t.name)
+        self.trace.append({'task': t.name, 'op': t.op.name, 'observed': observed, 'started': started,
+                           'finished': finished, 'error': error})
+        log.debug('%s observed=%s%s', t.name, observed, f' ERROR {error}' if error else '')
+        if error:
+            log.error('%s failed: %s', t.name, error)
+            self.errors.append((t.name, error))
+            self._cancel_dependents(node)
+            return
+        if t.pub:
+            var, ver = t.pub
+            if self.versions[var] + 1 != ver:
+                self.errors.append((t.name, f'publish order broken: {var!r} is {self.versions[var]}, publishing {ver}'))
+                self._cancel_dependents(node)
+                return
+            self.versions[var] = ver
+        for k in node.succ:
+            s = self.nodes[k]
+            s.remaining -= 1
+            if s.remaining == 0:
+                s.enqueued = finished
+                self.ready.append(k)
+
+    def _cancel_dependents(self, failed):
+        """Cancel everything that can no longer run: DAG descendants and tasks waiting on a never-published version."""
+        dead: dict[str, int] = {}
+        def mark(n):
+            if n.task.pub:
+                dead[n.task.pub[0]] = min(dead.get(n.task.pub[0], n.task.pub[1]), n.task.pub[1])
+        mark(failed)
+        frontier, seen = [failed], {failed.key}
+        while frontier:
+            nxt = [self.nodes[k] for n in frontier for k in n.succ]
+            nxt += [n for n in self.nodes.values() if n.state == 'pending' and n.task.wait
+                    and n.task.wait[1] >= dead.get(n.task.wait[0], float('inf'))]
+            frontier = []
+            for n in nxt:
+                if n.key in seen or n.state != 'pending':
+                    continue
+                seen.add(n.key)
+                n.state = 'done'
+                if n.key in self.ready:
+                    self.ready.remove(n.key)
+                self.completed.append(n.task.name)
+                self.errors.append((n.task.name, 'dependency failed'))
+                mark(n)
+                frontier.append(n)
+
+    # ------------------------------------------------------------------ lifecycle
     def wait(self, timeout=10):
         end = time.monotonic() + timeout
         with self.cv:
             while len(self.completed) < len(self.nodes):
                 left = end - time.monotonic()
                 if left <= 0:
-                    raise TimeoutError('workload did not finish')
+                    pending = [n.task.name for n in self.nodes.values() if n.state != 'done']
+                    raise TimeoutError(f'workload did not finish; {len(pending)} pending, e.g. {pending[:5]}')
                 self.cv.wait(left)
             if self.errors:
-                raise RuntimeError(f'{len(self.errors)} task errors: {self.errors[:3]}')
+                raise RuntimeError(f'{len(self.errors)} task error(s): {self.errors[:3]}')
             return list(self.trace)
 
     def shutdown(self):
@@ -249,33 +245,56 @@ class Runtime:
             if t.is_alive():
                 raise TimeoutError('worker did not stop')
 
-def default_registry():
-    """Small reference op library. Operators are registered, not hardcoded in VM."""
-    r = Registry()
-    r.register('copy', lambda s,a: s.put(a['out'], s.get(a['src'])))
-    r.register('add', lambda s,a: s.put(a['out'], s.get(a['a']) + s.get(a['b'])))
-    r.register('scale', lambda s,a: s.put(a['out'], s.get(a['src']) * a['factor']))
-    r.register('relu', lambda s,a: s.put(a['out'], max(0, s.get(a['src']))))
-    r.register('sgd', lambda s,a: s.put(a['weight'], s.get(a['weight']) - a['lr'] * s.get(a['grad'])))
-    r.register('predict', lambda s,a: s.put(a['out'], s.get(a['input']) * s.get(a['weight'])))
-    r.register('mse_grad', lambda s,a: (s.put(a['loss'], (s.get(a['pred']) - s.get(a['target']))**2),
-                                      s.put(a['grad'], 2 * (s.get(a['pred']) - s.get(a['target'])) * s.get(a['input']))))
-    return r
 
-if __name__ == '__main__':
-    import argparse
-    p = argparse.ArgumentParser()
-    p.add_argument('workload')
-    p.add_argument('--workers', type=int, default=4)
-    args = p.parse_args()
-    spec = json.load(open(args.workload))
-    vm = Runtime(default_registry(), Store(spec.get('state', {})), args.workers)
+def run_spec(spec, workers=4, deterministic=False, base_versions=None, timeout=30):
+    """Compile and run one workload to completion; returns (runtime, trace)."""
+    compiled = cw.compile_spec(spec, base_versions)
+    vm = Runtime(1 if deterministic else workers, deterministic=deterministic)
+    vm.submit_compiled(compiled)
     vm.start()
     try:
-        for graph in spec['graphs']:
-            vm.submit(Graph.from_dict(graph))
-        vm.wait()
-        print(json.dumps({'state': vm.store.data, 'tasks': len(vm.completed),
-                          'execution_order': [t['task'] for t in vm.trace]}, indent=2))
+        return vm, vm.wait(timeout)
     finally:
         vm.shutdown()
+
+
+def run_golden(compiled: cw.Compiled, timeout=60) -> dict:
+    """Deterministic CPU run of a compiled bundle; the reference the GPU executor's output is diffed against."""
+    vm = Runtime(1, deterministic=True)
+    vm.submit_compiled(compiled)
+    vm.start()
+    try:
+        trace = vm.wait(timeout)
+    finally:
+        vm.shutdown()
+    seen = {e['task']: e['observed'] for e in trace}
+    reads = [{'task': r['name'], 'var': compiled.variables[r['var']].name, 'policy': r['policy'],
+              'version': r['version'], 'observed': seen[r['name']][compiled.variables[r['var']].name]}
+             for r in compiled.metadata['reads']]
+    return {'abi_version': compiled.metadata['abi_version'], 'schedule': 'deterministic',
+            'buffers': {n: list(v) for n, v in sorted(vm.buffers.items())},
+            'versions': dict(vm.versions), 'reads': reads}
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description='Run a workload on the CPU reference VM')
+    p.add_argument('workload')
+    p.add_argument('--workers', type=int, default=4)
+    p.add_argument('--deterministic', action='store_true', help='one worker, strict priority/submission order')
+    p.add_argument('--base-versions', default='')
+    p.add_argument('--trace', action='store_true', help='log (task, observed versions) per task')
+    p.add_argument('--log-level', default='INFO')
+    args = p.parse_args(argv)
+    logging.basicConfig(level='DEBUG' if args.trace else args.log_level.upper(),
+                        format='%(asctime)s %(levelname)s %(name)s: %(message)s')
+    with open(args.workload) as f:
+        spec = json.load(f)
+    vm, trace = run_spec(spec, args.workers, args.deterministic, cw.parse_base_versions(args.base_versions))
+    if args.trace:
+        for e in trace:
+            print(f"{e['task']}\tobserved={json.dumps(e['observed'], sort_keys=True)}")
+    print(json.dumps({'buffers': vm.buffers, 'versions': vm.versions, 'tasks': len(trace)}, indent=2))
+
+
+if __name__ == '__main__':
+    main()

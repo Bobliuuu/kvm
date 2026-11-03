@@ -32,23 +32,25 @@ open-flapping-airplanes' own task code, launched as per-op kernels, trained 13-2
 Megatron + Transformer Engine with CUDA graphs beat the megakernel on a 162M GPT (43.1 s against 48.1 s, B200). Explain every
 result by these costs.
 
-## Where we are (commit 1079f6e; keep this current)
+## Where we are (commit 88c26a4; keep this current)
 
 `kvm.cu`, one file for sm_80: 80-byte instructions (`GEMM` tiles with fused ReLU, ReLU-mask, MSE and SGD epilogues; `SGD`), a
 persistent grid whose blocks claim instructions with one `atomicAdd`, monotonic per-row-block counters for dependencies (step s+1
 starts before step s ends), a loop opcode (one step stored, every step instantiated on the device), and `--runs R` (R training
-runs, a learning-rate sweep, in one kernel). The model is a 2-layer MLP with MSE loss, SGD and TF32 `wmma`. Open gaps:
-- The README's numbers predate the loop opcode (measured at acb3bf4): rerun before quoting them.
+runs, a learning-rate sweep, in one kernel), and a ready-queue mode (the tape's dependencies lowered to a DAG on the host,
+successors released on the device) beside claim-and-wait; every VM spin is bounded by a device watchdog. The model is a 2-layer MLP with MSE loss, SGD and TF32 `wmma`. Open gaps:
+- On an A100-SXM4-40GB (108 SMs) at 88c26a4, claim-and-wait beats the batched graph 1.11x, 1.15x, 1.51x and 1.03x at 1, 2, 8 and
+  32 runs; the ready queue is slower than claim-and-wait everywhere (0.78x at 1 run, 0.94x at 8 and 32: a 6.6 us hop against
+  5.2 us) ([results](results/2026-11-03-a100-queue/README.md)). The ready-scan and windowed-queue experiments were deleted.
 - On an RTX 5070 Laptop GPU (sm_120, 36 SMs) every run passes, but the VM never clearly beats the batched graph: 1.06x, 0.81-0.84x
   and 0.73-0.78x at 1, 8 and 32 runs with the README's flags (1 block per SM), 0.88-1.12x with `-DKKC=32 -DKSTG=2` (4 blocks per
   SM) ([results](results/2026-11-03-rtx5070-laptop-sm120/README.md)). Each instruction's claim, wait and signal run serially with
   its own work, and only other resident blocks overlap them; a controller warp that fetches and waits ahead, as in Hazy's VM
   below, is the next thing to test.
 - No timeline yet: `run_vm` passes `prof = nullptr`, nothing sets `g_prof_on`, and records carry no SM id (`%smid`).
-- The weights check allows 1e-3 (`e_mode < 1e-3`), but the final weights are bitwise identical in all four modes (all 30 runs
-  above): check for exact equality, so that any difference flags a race.
-- On the README's A100, at 32 runs batching alone gives 9.5x of the 10.7x over sequential launches (3.88 against 3.45 µs per
-  run-step): the VM's own margin is in the single-run and partly filled regimes.
+- The weights check is exact: every pass of every mode must match bit for bit (a difference flags a race).
+- On the A100 at 32 runs batching alone gives 9.6x of the 9.9x over sequential launches (3.65 against 3.53 µs per run-step): the
+  VM's own margin is in the single-run and partly filled regimes.
 - Not built: attention, norms, embeddings, softmax cross-entropy, AdamW, bf16, data kept on-chip across instructions, TMA and
   wgmma (Hopper), tcgen05 and TMEM (Blackwell).
 

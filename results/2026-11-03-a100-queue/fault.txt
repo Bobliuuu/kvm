@@ -1,0 +1,14 @@
+=== fault-claim ===
+model B=128 D=128 H=256 O=64  runs=1 steps=10  tile=32 kc=64 stg=4  tape=1200 instrs executed, 120-entry step template (0.01 MB)
+[fault] last template instruction now waits for one more completion than will ever signal it
+NVIDIA A100-SXM4-40GB  SMs=108  driver CUDA 13.0  runtime 12.8  vm grid=216 (occ 2)  queue grid=216 (occ 2)  watchdog 300 ms
+FAIL (watchdog)
+[watchdog] mode 'claim' gave up after 300 ms in block 80
+[watchdog]   claim VM: instruction 120 of 1200 waits counter 24 >= 32, saw 31
+=== fault-queue ===
+[watchdog] mode 'queue' gave up after 300 ms in block 23
+[watchdog]   ready queue: ticket 1199 never published; head 1415 tail 1199 done 1199 of 1200 tasks
+model B=128 D=128 H=256 O=64  runs=1 steps=10  tile=32 kc=64 stg=4  tape=1200 instrs executed, 120-entry step template (0.01 MB)
+[queue] lowered 1200 tasks, 32896 edges (27.4/task), 32 initially ready, 0.2 MB device, 1 ms host
+NVIDIA A100-SXM4-40GB  SMs=108  driver CUDA 13.0  runtime 12.8  vm grid=216 (occ 2)  queue grid=216 (occ 2)  watchdog 300 ms
+FAIL (watchdog)

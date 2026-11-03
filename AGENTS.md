@@ -99,13 +99,17 @@ gives a working `nvcc` in minutes (the pip `nvidia-cuda-nvcc-cu12` wheel ships `
 
 ## Working here
 
-- This repository is public. Never commit email addresses, credentials or anything from other private projects; pass hosts and
-  keys through the environment (`KVM_HOST`, `KVM_KEY`).
+- **This repository is public.** Only code, README files, this file and `results/` are published. Everything else stays local,
+  and `.gitignore` enforces it: all of `docs/` (session notes, per-task docs, plans, drafts), `logs/`, profiler output, `.env`
+  and keys, and agent and editor folders. A new kind of private file gets its `.gitignore` line in the same change.
+  `run_remote.sh` honors `.gitignore`, so ignored files never reach a GPU box either.
+- Tracked files never carry email addresses, credentials, host addresses, personal paths or anything from other private
+  projects. Hosts and keys come from the environment (`KVM_HOST`, `KVM_KEY`). Read `git diff --cached` for them before each
+  commit.
 - The owner pushes straight to `main`. Run `git fetch` and read `git log HEAD..origin/main` before you start and before you push;
   work on a branch, open a pull request, and never force-push or rewrite others' commits. Other agents may share this folder: use
   your own `git worktree`, and never `git stash`.
 - Ask the user before spending money on GPU time, and state the price.
-- Session notes and per-task docs (`docs/kvm-YYYY-MM-DD-HH-MM-*.md`, `docs/archives/`) are local working files, git-ignored.
 
 # User Preferences
 

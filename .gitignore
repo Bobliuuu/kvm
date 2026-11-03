@@ -1,9 +1,37 @@
+# This repository is public. Anything that should not be published is ignored here, and AGENTS.md says why.
+# run_remote.sh honors this file too, so ignored files never reach a remote GPU box either.
+
+# Build outputs
 kvm
 kvm_*
 *.o
-# local working files: raw run output, session notes and per-task docs
+*.ptx
+*.cubin
+*.fatbin
+__pycache__/
+
+# Private: all docs (session notes, per-task docs, plans, drafts) and raw run output
+docs/
 logs/
-docs/archives/
-docs/*-20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.md
+
+# Private: profiler output (it records host names, paths and command lines)
 *.nsys-rep
 *.ncu-rep
+*.qdrep
+*.qdstrm
+*.sqlite
+
+# Private: hosts, keys and local settings
+.env
+.env.*
+*.pem
+*.key
+
+# Private: agent and editor folders
+.claude/
+.codex/
+.cursor/
+.agents/
+.vscode/
+.idea/
+CLAUDE.local.md

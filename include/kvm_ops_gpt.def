@@ -16,7 +16,7 @@
 //  * Layouts: activations [B*T, H*hd] (head h = columns [h*hd,(h+1)*hd)); lse/delta [B*H*T] at (b*H+h)*T+t;
 //    KV cache [B*Hkv*Tmax, hd], row (b*Hkv+kvh)*Tmax+t; lens = int32[B] tokens already cached.
 
-// out[r,:] = wte[ids[r],:] + wpe[(r%T) (+ pos[0] if pos given? no: plain r%T),:] for r in [r0,r1). wpe optional (-1).
+// out[r,:] = wte[ids[r],:] + wpe[r%T,:] for r in [r0,r1). wpe optional (-1). A token id outside [0,V) sets err 5 and yields 0.
 X(embedding_fwd,        32, "ids:buf,wte:buf,wpe:buf,out:buf,r0:i32,r1:i32,T:i32,d:i32")
 // dtab[key,:] (+)= sum over rows r (ascending) with key(r)==key of dout[r,:], keys in [v0,v1). key(r)=ids[r], or r%mod if ids=-1
 // (positional table grad). Deterministic: one task owns a key range and sums rows in order.
@@ -61,8 +61,8 @@ X(softmax_ce_reduce,    52, "rowloss:buf,tgt:buf,loss:buf,N:i32,ignore:i32")
 X(softmax_ce_bwd,       53, "logits:buf,tgt:buf,lse:buf,loss:buf,dlogits:buf,r0:i32,r1:i32,V:i32,ignore:i32,scale:f32")
 // AdamW on flat [e0,e1): g' = g*gscale[0] (gscale optional); t = step[0] (int buf, 1-based); fp32 master p; decoupled wd.
 X(adamw,                54, "p:buf,g:buf,m:buf,v:buf,gscale:buf,step:buf,e0:i32,e1:i32,lr:f32,b1:f32,b2:f32,eps:f32,wd:f32")
-// partial[slot] = sum g^2 over [e0,e1) (double accumulate, fixed order). finish (single task): out[0]=sqrt(sum partial[0..n)),
-// out[1]=min(1, max_norm/(out[0]+1e-6)) = clip coefficient, usable as adamw gscale.
+// partial[slot] = sum g^2 over [e0,e1) (double accumulate, fixed order). finish (single task): out[0]=min(1, max_norm/(norm+1e-6))
+// (the clip coefficient; max_norm<=0 -> 1) so the out buffer can be passed directly as adamw gscale, out[1]=norm=sqrt(sum partial).
 X(gradnorm_partial,     55, "g:buf,partial:buf,slot:i32,e0:i32,e1:i32")
 X(gradnorm_finish,      56, "partial:buf,nslots:i32,out:buf,max_norm:f32")
 // Token selection for rows [r0,r1): temp<=0 -> argmax (lowest index on ties); else softmax(logits/temp) restricted to the topk

@@ -4,9 +4,15 @@
 // one per entry of kvm_ops_gpt.def, plus kvm_gpt_dispatch(). Generic and shape-parametrized: no model-specific code.
 //
 // Requirements on the includer
-//  * KvmCtx must be declared before this header and provide:  const KvmBuf* bufs;  int32_t nbufs;  int32_t* err;
-//    (err: device word, first nonzero code wins; may be null). Everything else the ops need is in this file; if the
-//    executor's KvmCtx names these differently, adapt kvm_gpt_ctx_* below (the only three touch points).
+//  * KvmCtx must be declared before this header and provide:  const KvmBuf* bufs;  int nbufs;  and
+//    __device__ void fail(int code, int a = 0, int b = 0) const  (first error wins, thread safe, callable from any thread).
+//    kvm_exec.cuh's KvmCtx is exactly that; tests/gpu_ops/kvm_ctx_shim.cuh is the standalone equivalent. Nothing else of the
+//    executor is used.
+//  * Included from kvm_exec.cuh (KVM_OP defined) the entry points are KVM_OP(name) { ... } for every X line of
+//    kvm_ops_gpt.def; standalone they are kvm_op_<name> plus kvm_gpt_dispatch().
+//  * Shared memory: ops use DYNAMIC shared memory from offset 0 (extern __shared__), up to KVM_GPT_SMEM_BYTES (matmul 36 KiB,
+//    attention 30..78 KiB by head size). The kernel launch must pass that many dynamic bytes (and call
+//    cudaFuncSetAttribute(MaxDynamicSharedMemorySize) when above 48 KiB). The executor's own static scratch is not used.
 //  * Every op must be run by a block of exactly KVM_GPT_THREADS (256) threads, all threads entering together; ops use
 //    __syncthreads() freely and take dynamic shared memory from offset 0 (kvm_gpt_smem_bytes()). Between two ops of one block
 //    the executor must __syncthreads() (the ops leave shared memory dirty).
@@ -32,15 +38,23 @@
 // Dynamic shared memory an op needs for a launch of the op set: 80 KiB covers hd=128 attention backward; all other ops (matmul
 // uses 36 KiB) and attention with hd<=64 fit in 48 KiB. The executor must opt in with cudaFuncSetAttribute(MaxDynamicSharedMemorySize) if >48 KiB.
 __host__ __device__ constexpr int kvm_gpt_smem_bytes(int max_hd) { return max_hd > 64 ? 80 * 1024 : 48 * 1024; }
+#ifndef KVM_GPT_MAX_HD
+#define KVM_GPT_MAX_HD 64   // largest attention head size the launch must support (16/32/64 -> 48 KiB, 128 -> 80 KiB)
+#endif
+#define KVM_GPT_SMEM_BYTES kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)
 
 extern __shared__ __align__(128) unsigned char kvm_gpt_smem[];
 
-// ---- the three KvmCtx touch points ------------------------------------------------------------------------------------
-KVM_GPT_DEVI const KvmBuf* kvm_gpt_ctx_bufs(const KvmCtx& c) { return c.bufs; }
-KVM_GPT_DEVI int kvm_gpt_ctx_nbufs(const KvmCtx& c) { return c.nbufs; }
-KVM_GPT_DEVI int32_t* kvm_gpt_ctx_err(const KvmCtx& c) { return c.err; }
-
-enum KvmGptErr { KVM_GPT_E_BUF = 1, KVM_GPT_E_DTYPE = 2, KVM_GPT_E_RANGE = 3, KVM_GPT_E_SHAPE = 4, KVM_GPT_E_TOKEN = 5, KVM_GPT_E_KVLEN = 6 };
+// Device error codes reported through ctx.fail (distinct from the executor's own KVM_ERR_* values, which are small).
+#define KVM_GPT_ERR_BASE 1000
+enum KvmGptErr {
+    KVM_GPT_E_BUF = KVM_GPT_ERR_BASE + 1,     // buffer index out of the table
+    KVM_GPT_E_DTYPE = KVM_GPT_ERR_BASE + 2,   // null pointer or wrong dtype (f32 = 0, i32 = 1)
+    KVM_GPT_E_RANGE = KVM_GPT_ERR_BASE + 3,   // range / shape arguments outside the buffer
+    KVM_GPT_E_SHAPE = KVM_GPT_ERR_BASE + 4,   // unsupported shape (head size), bad flags or misaligned buffer
+    KVM_GPT_E_TOKEN = KVM_GPT_ERR_BASE + 5,   // token id / target outside [0, V)
+    KVM_GPT_E_KVLEN = KVM_GPT_ERR_BASE + 6    // KV cache length overflow
+};
 enum { KVM_GPT_F32 = 0, KVM_GPT_I32 = 1 };
 
 namespace kvmgpt {
@@ -50,15 +64,15 @@ struct Chk {
     const KvmCtx& c;
     bool bad;
     KVM_GPT_DEVI explicit Chk(const KvmCtx& cc) : c(cc), bad(false) {}
-    KVM_GPT_DEVI void fail(int code) {
-        if (!bad) { int32_t* e = kvm_gpt_ctx_err(c); if (e) atomicCAS(e, 0, code); }   // any thread may report (token ids fail per thread)
+    KVM_GPT_DEVI void fail(int code) {   // any thread may report (token ids fail per thread); first error wins in ctx.fail
+        if (!bad) c.fail(code);
         bad = true;
     }
     KVM_GPT_DEVI void need(bool ok, int code = KVM_GPT_E_RANGE) { if (!ok) fail(code); }
     KVM_GPT_DEVI const KvmBuf* get(int idx, int dtype, bool opt) {
         if (idx < 0 && opt) return nullptr;
-        if (idx < 0 || idx >= kvm_gpt_ctx_nbufs(c)) { fail(KVM_GPT_E_BUF); return nullptr; }
-        const KvmBuf* b = kvm_gpt_ctx_bufs(c) + idx;
+        if (idx < 0 || idx >= c.nbufs) { fail(KVM_GPT_E_BUF); return nullptr; }
+        const KvmBuf* b = c.bufs + idx;
         if (!b->p || (dtype >= 0 && b->dtype != dtype)) { fail(KVM_GPT_E_DTYPE); return nullptr; }
         return b;
     }
@@ -118,7 +132,7 @@ KVM_GPT_DEVI void embedding_fwd(const KvmCtx& ctx, const int32_t* a) {
     const float* wpe = k.mat(a[2], T, d, &ldp, true);
     float* out = k.mat(a[3], r1, d, &ldo);
     if (k.bad) return;
-    const int V = kvm_gpt_ctx_bufs(ctx)[a[1]].rows;
+    const int V = ctx.bufs[a[1]].rows;
     for (int e = threadIdx.x; e < (r1 - r0) * d; e += KVM_GPT_THREADS) {
         int r = r0 + e / d, c = e % d, id = ids[r];
         float v = 0.f;
@@ -795,8 +809,14 @@ KVM_GPT_DEVI void attn_bwd_dq(const KvmCtx& ctx, const int32_t* a) {
 KVM_GPT_DEVI void attn_bwd_dkv(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
     AttnArgs A{};
-    A.b = a[8]; A.h = a[9]; A.i0 = a[10]; A.T = a[11]; A.H = a[12]; A.Hkv = a[13]; int hd = a[14]; A.scale = af(a, 15);
-    if (!attn_geom(k, A.b, A.h, A.i0, A.T, A.H, A.Hkv, hd, true)) return;
+    A.b = a[8]; A.h = a[9]; A.i0 = a[10]; A.T = a[11]; A.H = a[12]; int hd = a[13]; A.scale = af(a, 14);
+    k.need(hd > 0, KVM_GPT_E_SHAPE);
+    if (k.bad) return;
+    const KvmBuf* kb = k.get(a[1], KVM_GPT_F32, false);   // Hkv is not an argument (15-word task limit): Hkv = k.cols / hd
+    if (k.bad) return;
+    A.Hkv = kb->cols / hd;
+    k.need(A.Hkv > 0 && kb->cols % hd == 0, KVM_GPT_E_SHAPE);
+    if (k.bad || !attn_geom(k, A.b, A.h, A.i0, A.T, A.H, A.Hkv, hd, true)) return;
     long R = (long)(A.b + 1) * A.T, nl = R * A.H;
     A.q = k.mat(a[0], R, (long)A.H * hd, &A.ldq); A.k = k.mat(a[1], R, (long)A.Hkv * hd, &A.ldk);
     A.v = k.mat(a[2], R, (long)A.Hkv * hd, &A.ldv); A.dout = k.mat(a[3], R, (long)A.H * hd, &A.ldo);
@@ -820,8 +840,8 @@ KVM_GPT_DEVI void kv_append(const KvmCtx& ctx, const int32_t* a) {
     float* vc = k.mat(a[3], (long)b1 * Hkv * Tmax, hd);
     const int32_t* lens = k.ivec(a[4], b1);
     if (k.bad) return;
-    const int ldc = kvm_gpt_ctx_bufs(ctx)[a[2]].ld;
-    if (kvm_gpt_ctx_bufs(ctx)[a[3]].ld != ldc) k.fail(KVM_GPT_E_SHAPE);
+    const int ldc = ctx.bufs[a[2]].ld;
+    if (ctx.bufs[a[3]].ld != ldc) k.fail(KVM_GPT_E_SHAPE);
     for (int b = b0; b < b1 && !k.bad; b++) if (lens[b] < 0 || lens[b] + nn > Tmax) k.fail(KVM_GPT_E_KVLEN);
     if (k.bad) return;
     for (int e = threadIdx.x; e < (b1 - b0) * nn * Hkv * hd; e += KVM_GPT_THREADS) {
@@ -847,8 +867,8 @@ KVM_GPT_DEVI void attn_decode(const KvmCtx& ctx, const int32_t* a) {
     const int32_t* lens = k.ivec(a[3], b + 1);
     float* o = k.mat(a[4], b + 1, (long)H * hd, &ldo);
     if (k.bad) return;
-    const int ldc = kvm_gpt_ctx_bufs(ctx)[a[1]].ld;
-    if (kvm_gpt_ctx_bufs(ctx)[a[2]].ld != ldc) k.fail(KVM_GPT_E_SHAPE);
+    const int ldc = ctx.bufs[a[1]].ld;
+    if (ctx.bufs[a[2]].ld != ldc) k.fail(KVM_GPT_E_SHAPE);
     const int n = lens[b] + 1;
     k.need(lens[b] >= 0 && n <= Tmax, KVM_GPT_E_KVLEN);
     if (k.bad) return;
@@ -1171,11 +1191,15 @@ KVM_GPT_DEVI void argmax(const KvmCtx& ctx, const int32_t* a) {
 
 }  // namespace kvmgpt
 
-// ---- per-op entry points and dispatcher (same X-macro convention as the executor) -------------------------------------
+// ---- per-op entry points (same X-macro convention as the executor) -------------------------------------------------------
+#ifdef KVM_OP   // inside kvm_exec.cuh: the executor's dispatcher calls op_<name>
+#define X(name, id, sig) KVM_OP(name) { kvmgpt::name(c, a); }
+#include "kvm_ops_gpt.def"
+#undef X
+#else           // standalone (tests): kvm_op_<name> and a switch dispatcher
 #define X(name, id, sig) KVM_GPT_DEVI void kvm_op_##name(const KvmCtx& ctx, const int32_t* args) { kvmgpt::name(ctx, args); }
 #include "kvm_ops_gpt.def"
 #undef X
-
 // Returns false for an op id outside the GPT library (ids 32..61).
 KVM_GPT_DEVI bool kvm_gpt_dispatch(const KvmCtx& ctx, int op, const int32_t* args) {
     switch (op) {
@@ -1185,3 +1209,4 @@ KVM_GPT_DEVI bool kvm_gpt_dispatch(const KvmCtx& ctx, int op, const int32_t* arg
         default: return false;
     }
 }
+#endif

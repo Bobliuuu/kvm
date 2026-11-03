@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Real Doom through the generic executor on a shared GPU box: compile the workload bundles, run them, diff every frame with the CPU oracle.
-#   KVM_HOST=user@host doom/tests/run_exec.sh [frames=700] [chains=300] [rounds=40]
-# Runs four scenarios (alone, one worker only, on the same scheduler: doom alone; doom + matmul load at EQUAL priority; doom + matmul load with doom at HIGHER priority.
+#   [ONLY='alone load_doom_first'] KVM_HOST=user@host doom/tests/run_exec.sh [frames=700] [chains=300] [rounds=40]
+# Four scenarios on the same scheduler: alone; one worker block only (every task on one SM); beside a spin+matmul load at EQUAL priority;
+# beside the same load with Doom at HIGHER priority. ONLY restricts them.
 set -euo pipefail
 . "$(dirname "$0")/../lib.sh"
 : "${KVM_HOST:?set KVM_HOST=user@host}"
@@ -9,7 +10,7 @@ ROOT="$(cd "$DOOM_DIR/.." && pwd)"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"; LOGDIR="$ROOT/logs/$TS-doomexec"; mkdir -p "$LOGDIR"
 info "logs: $LOGDIR"
 rsync -az --delete --exclude .git --exclude 'doom/build' --exclude 'doom/third_party' --exclude logs "$ROOT/" "$KVM_HOST:kvm-doom-scratch/"
-ssh "$KVM_HOST" "FRAMES=${1:-700} CHAINS=${2:-300} ROUNDS=${3:-40} bash -s" <<'REMOTE' 2>&1 | tee "$LOGDIR/run.log"
+ssh "$KVM_HOST" "ONLY='${ONLY:-}' FRAMES=${1:-700} CHAINS=${2:-300} ROUNDS=${3:-40} bash -s" <<'REMOTE' 2>&1 | tee "$LOGDIR/run.log"
 set -euo pipefail
 cd ~/kvm-doom-scratch
 export NVCC=$(ls /usr/local/cuda*/bin/nvcc | tail -1)
@@ -22,8 +23,9 @@ if grep -q 'kKvmOps\[i\].id != i ||' include/kvm_exec.cuh; then
   echo "[doom] WORKAROUND: scratch copy of include/kvm_exec.cuh without the dense-id check"; sed -i 's/kKvmOps\[i\].id != i || //' include/kvm_exec.cuh
 fi
 $NVCC -O3 -arch=sm_80 -std=c++17 -rdc=true -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off doom/exec_main.cu doom/build/doom_dev.o -o doom/build/doom_exec 2>&1 | grep -v "cannot be statically determined" || true
-run() {   # name, make_workload args; EXEC_ARGS = extra doom_exec options
+run() {   # name, make_workload args; EXEC_ARGS = extra doom_exec options; ONLY="a b" restricts the scenarios
   local name="$1"; shift
+  [ -z "${ONLY:-}" ] || [[ " $ONLY " == *" $name "* ]] || return 0
   python3 doom/make_workload.py --frames $FRAMES "$@" --out $OUT/$name.json
   python3 runtime/compile_workload.py $OUT/$name.json $OUT/$name.bundle 2>&1 | grep -v "no reference semantics"
   echo "=== scenario $name"

@@ -92,9 +92,11 @@ static constexpr KvmOpInfo kKvmOps[] = {
 static constexpr int KVM_NUM_OPS = sizeof(kKvmOps) / sizeof(kKvmOps[0]);
 
 namespace kvm_sig {
-constexpr bool registry_ok() {  // ids dense and equal to position, signatures well formed
-  for (int i = 0; i < KVM_NUM_OPS; ++i)
-    if (kKvmOps[i].id != i || kKvmOps[i].types == 0xFFFFFFFFu) return false;
+constexpr bool registry_ok() {  // ids unique and >= 0 (sparse across the .def packs), signatures well formed
+  for (int i = 0; i < KVM_NUM_OPS; ++i) {
+    if (kKvmOps[i].id < 0 || kKvmOps[i].types == 0xFFFFFFFFu) return false;
+    for (int j = 0; j < i; ++j) if (kKvmOps[j].id == kKvmOps[i].id) return false;
+  }
   return true;
 }
 }  // namespace kvm_sig

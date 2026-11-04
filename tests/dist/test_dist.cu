@@ -313,6 +313,8 @@ struct World {
       for (auto& v : p.vars) if (v.second) ex[r]->set_version(v.first, v.second);
       ex[r]->set_dist(dd[r]->dev());
     }
+    // every executor allocates BEFORE any kernel runs: cudaMalloc may wait for all kernels on the device (see KvmExec::prepare)
+    for (int r = 0; r < W; ++r) if (active(r)) { CK(cudaSetDevice(dev[r])); ex[r]->prepare(); }
     bool need_net = false; for (auto& p : pr) need_net |= p.uses_sendq();
     if (need_net) {
       net.build(W, tcp, f, only, hosts, ports);
@@ -324,6 +326,25 @@ struct World {
         px[r]->start();
       }
     }
+  }
+
+  // A timed-out rank: which tasks never ran, what they waited for, and what the inbox and the executor's version said. Tells a lost
+  // signal (inbox 0) from a lost wakeup (inbox >= need, version < need) from a lost wake after the version moved.
+  void diagnose(int r, const KvmResult& res) {
+    std::vector<unsigned> inbox = dd[r]->read_inbox();
+    int shown = 0, stuck = 0;
+    for (size_t i = 0; i < res.tasks.size() && i < res.trace.size(); ++i) {
+      if (res.trace[i].exec_count != 0) continue;
+      ++stuck;
+      const KvmTaskDesc& t = res.tasks[i];
+      if (shown++ >= 6) continue;
+      const bool w = t.wait_var >= 0;
+      fprintf(stderr, "  diagnosis rank %d: task %zu (%s) never ran; wait var %d >= %d; executor version %d, inbox %u%s\n", r, i, kvm_op(t.op_id)->name, t.wait_var,
+              t.wait_ver, w ? res.version[t.wait_var] : -1, w ? inbox[t.wait_var] : 0u,
+              w && (int)inbox[t.wait_var] >= t.wait_ver && res.version[t.wait_var] < t.wait_ver ? "   <- signal arrived, pump did not publish it" :
+              w && res.version[t.wait_var] >= t.wait_ver ? "   <- version reached, task never woken (lost wakeup)" : "");
+    }
+    fprintf(stderr, "  diagnosis rank %d: %d tasks never ran\n", r, stuck);
   }
 
   std::vector<RankOut> run() {
@@ -349,6 +370,7 @@ struct World {
     for (auto& t : th) t.join();
     for (int r = 0; r < W; ++r) if (px[r]) { if (!px[r]->wait_finished(out[r].ok ? 60000 : 3000)) { out[r].msg += " [proxy shutdown incomplete]"; } }
     for (int r = 0; r < W; ++r) if (px[r]) px[r]->stop();
+    for (int r = 0; r < W; ++r) if (active(r) && !out[r].ok && out[r].res.err_code == KVM_ERR_TIMEOUT) diagnose(r, out[r].res);
     return out;
   }
 };
@@ -502,6 +524,8 @@ static void suite_backpressure() {
   KvmExec e1(c1); e1.add_buffer(1, 4); e1.set_dist(d1.dev());
   CK(cudaSetDevice(device_of(0)));
   KvmExec e0(small_cfg(3, 4)); int flag = e0.add_view(d1.inbox_buf(), 1, 4);
+  CK(cudaSetDevice(device_of(1))); e1.prepare();
+  CK(cudaSetDevice(device_of(0))); e0.prepare();          // before either kernel runs (cudaMalloc can wait for running kernels)
   KvmBundleBuilder a, b, s;
   for (int i = 0; i < 8; ++i) { KvmTaskOpts o; o.wait_var = 0; o.wait_ver = 1; a.add("noop", {}, o); }
   b.add("noop", {});

@@ -41,7 +41,7 @@
 #ifndef KVM_DIST_PUMP_PHASE
 #ifndef KVM_DIST_PHASE1
 #define KVM_DIST_PHASE1
-#include "../dist/wire.hpp"
+#include "kvm_dist_wire.hpp"
 
 struct KvmDistCtl {          // mapped pinned host memory, written by the proxy, read by the pump
   volatile int fail_code;    // 0 or a KVM_ERR_DIST_* code; the pump turns it into a device error

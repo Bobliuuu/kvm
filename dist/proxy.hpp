@@ -14,7 +14,7 @@
 #include <functional>
 
 #include "reliable.hpp"
-#include "wire.hpp"
+#include "../include/kvm_dist_wire.hpp"
 
 namespace kvmd {
 

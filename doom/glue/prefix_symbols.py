@@ -12,6 +12,7 @@ DEF_FN = re.compile(r'^define\b[^@]*@(%s)\(' % NAME)
 DEF_GV = re.compile(r'^@(%s)\s*=\s*(?!external\b)(?!extern_weak\b)' % NAME)
 DECL_FN = re.compile(r'^declare\b[^@]*@(%s)\(' % NAME)
 DECL_GV = re.compile(r'^@(%s)\s*=\s*(?:external|extern_weak)\b' % NAME)
+STR = re.compile(r'c"[^"]*"')   # constant byte strings may contain '@'
 REF = re.compile(r'@(%s)' % NAME)
 
 
@@ -30,12 +31,13 @@ def main(src, dst, prefix):
     defined = {n for n in defined if not n.strip('"').startswith('llvm.')}
     if not defined:
         sys.exit('prefix_symbols: no defined symbols found in %s' % src)
-    out = [REF.sub(lambda m: '@' + rename(m.group(1), prefix) if m.group(1) in defined else m.group(0), ln) for ln in lines]
+    sub = lambda ln: REF.sub(lambda m: '@' + rename(m.group(1), prefix) if m.group(1) in defined else m.group(0), ln)
+    out = [''.join(p if i % 2 else sub(p) for i, p in enumerate(re.split('(%s)' % STR.pattern, ln))) for ln in lines]
     # self-check: every remaining reference is a declaration (shared) or an llvm intrinsic
     new_defined = {rename(n, prefix) for n in defined}
     bad = set()
     for ln in out:
-        for m in REF.finditer(ln):
+        for m in REF.finditer(STR.sub('', ln)):
             n = m.group(1)
             if n not in new_defined and n not in declared and not n.strip('"').startswith('llvm.'):
                 bad.add(n)

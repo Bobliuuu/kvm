@@ -149,6 +149,18 @@ static void t_elementwise() {
     Batch b2; for (int e0 = 0; e0 < n; e0 += 300) b2.add(OP_gelu_bwd, A().b(x).b(dy).b(dx).i(e0).i(std::min(n, e0 + 300)).i(0));
     run(dv, b2); for (int i = 0; i < n; i++) ref[i] = hdy[i] * gelu_grad_d(hx[i]);
     check("gelu_bwd", dv.down(dx), ref, 1e-6);
+    {   // ragged slices (odd starts/lengths exercise the scalar head/tail around the 16-byte path), accumulate and alias variants
+        Batch b3; for (int e0 = 0; e0 < n; e0 += 301) b3.add(OP_gelu_fwd, A().b(x).b(o).i(e0).i(std::min(n, e0 + 301)));
+        run(dv, b3); for (int i = 0; i < n; i++) ref[i] = gelu_d(hx[i]);
+        check("gelu_fwd ragged slices 301", dv.down(o), ref, 1e-6);
+        Batch b4; for (int e0 = 0; e0 < n; e0 += 301) b4.add(OP_gelu_bwd, A().b(x).b(dy).b(dx).i(e0).i(std::min(n, e0 + 301)).i(1));
+        run(dv, b4); for (int i = 0; i < n; i++) ref[i] = 2 * hdy[i] * gelu_grad_d(hx[i]);   // dx held hdy*g from the acc=0 run above
+        check("gelu_bwd acc=1 ragged slices", dv.down(dx), ref, 1e-6);
+        Batch b5; for (int e0 = 0; e0 < n; e0 += 301) b5.add(OP_residual_add, A().b(x).b(y).b(x).i(e0).i(std::min(n, e0 + 301)));
+        run(dv, b5); for (int i = 0; i < n; i++) ref[i] = (double)hx[i] + hy[i];
+        check("residual_add in place ragged slices", dv.down(x), ref, 1e-6);
+        dv.up(x, hx);
+    }
     // gelu derivative vs central finite difference of gelu_d (reference self-check)
     double md = 0; for (int i = 0; i < 50; i++) { double h = 1e-6, fd = (gelu_d(hx[i] + h) - gelu_d(hx[i] - h)) / (2 * h); md = std::max(md, fabs(fd - gelu_grad_d(hx[i]))); }
     check_true("gelu_grad reference vs finite difference", md < 1e-7);

@@ -477,6 +477,50 @@ KVM_GPT_DEVI void colsum(const KvmCtx& ctx, const int32_t* a) {
 }
 
 // ---- elementwise ------------------------------------------------------------------------------------------------------
+// out[i] = fn(in[0][i], ..., in[NI-1][i], out[i] (read only if RMW) for i in [e0,e1). Memory bound, and the executor runs ONE block per SM when the
+// union's registers are high, so each thread keeps U float4 loads of every stream in flight before computing. 16-byte path when
+// every pointer and e0 are 16-byte aligned; scalar loop for the ragged head/tail and for unaligned buffers.
+template <int NI, bool RMW, int U = 4, class Fn>
+KVM_GPT_DEVI void ew_run(const float* const (&in)[NI], float* out, int e0, int e1, Fn fn) {
+    bool vec = ((e0 | (uintptr_t)out) & 15) == 0;
+#pragma unroll
+    for (int j = 0; j < NI; j++) vec = vec && (((uintptr_t)in[j] & 15) == 0);
+    int i = e0;
+    if (vec) {
+        const int n4 = (e1 - e0) >> 2, step = KVM_GPT_THREADS * U;
+        for (int q = threadIdx.x; q < n4; q += step) {
+            float4 v[U][NI + 1];
+#pragma unroll
+            for (int u = 0; u < U; u++) {
+                int qq = q + u * KVM_GPT_THREADS;
+                if (qq < n4) {
+#pragma unroll
+                    for (int j = 0; j < NI; j++) v[u][j] = *reinterpret_cast<const float4*>(in[j] + e0 + 4 * qq);
+                    if (RMW) v[u][NI] = *reinterpret_cast<const float4*>(out + e0 + 4 * qq);
+                }
+            }
+#pragma unroll
+            for (int u = 0; u < U; u++) {
+                int qq = q + u * KVM_GPT_THREADS;
+                if (qq < n4) {
+                    float4 r;
+                    r.x = fn(v[u], 0); r.y = fn(v[u], 1); r.z = fn(v[u], 2); r.w = fn(v[u], 3);
+                    *reinterpret_cast<float4*>(out + e0 + 4 * qq) = r;
+                }
+            }
+        }
+        i = e0 + n4 * 4;
+    }
+    for (int t = i + threadIdx.x; t < e1; t += KVM_GPT_THREADS) {
+        float4 v[NI + 1];
+#pragma unroll
+        for (int j = 0; j < NI; j++) v[j] = make_float4(in[j][t], 0.f, 0.f, 0.f);
+        v[NI] = make_float4(RMW ? out[t] : 0.f, 0.f, 0.f, 0.f);
+        out[t] = fn(v, 0);
+    }
+}
+KVM_GPT_DEVI float lane4(const float4& v, int c) { return c == 0 ? v.x : c == 1 ? v.y : c == 2 ? v.z : v.w; }
+
 KVM_GPT_DEVI void gelu_fwd(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
     int e0 = a[2], e1 = a[3];
@@ -485,7 +529,8 @@ KVM_GPT_DEVI void gelu_fwd(const KvmCtx& ctx, const int32_t* a) {
     const float* x = k.fvec(a[0], e1);
     float* o = k.fvec(a[1], e1);
     if (k.bad) return;
-    for (int i = e0 + threadIdx.x; i < e1; i += KVM_GPT_THREADS) o[i] = gelu_f(x[i]);
+    const float* in[1] = {x};
+    ew_run<1, false>(in, o, e0, e1, [](const float4* v, int c) { return gelu_f(lane4(v[0], c)); });
 }
 KVM_GPT_DEVI void gelu_bwd(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
@@ -496,7 +541,9 @@ KVM_GPT_DEVI void gelu_bwd(const KvmCtx& ctx, const int32_t* a) {
     const float* dy = k.fvec(a[1], e1);
     float* dx = k.fvec(a[2], e1);
     if (k.bad) return;
-    for (int i = e0 + threadIdx.x; i < e1; i += KVM_GPT_THREADS) { float v = dy[i] * gelu_grad(x[i]); dx[i] = acc ? dx[i] + v : v; }
+    const float* in[2] = {x, dy};
+    if (acc) ew_run<2, true>(in, dx, e0, e1, [](const float4* v, int c) { return lane4(v[2], c) + lane4(v[1], c) * gelu_grad(lane4(v[0], c)); });
+    else ew_run<2, false>(in, dx, e0, e1, [](const float4* v, int c) { return lane4(v[1], c) * gelu_grad(lane4(v[0], c)); });
 }
 KVM_GPT_DEVI void residual_add(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
@@ -507,7 +554,8 @@ KVM_GPT_DEVI void residual_add(const KvmCtx& ctx, const int32_t* a) {
     const float* y = k.fvec(a[1], e1);
     float* o = k.fvec(a[2], e1);
     if (k.bad) return;
-    for (int i = e0 + threadIdx.x; i < e1; i += KVM_GPT_THREADS) o[i] = x[i] + y[i];
+    const float* in[2] = {x, y};
+    ew_run<2, false>(in, o, e0, e1, [](const float4* v, int c) { return lane4(v[0], c) + lane4(v[1], c); });
 }
 KVM_GPT_DEVI void zero_buf(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);

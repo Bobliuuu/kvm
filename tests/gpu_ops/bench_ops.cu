@@ -163,13 +163,18 @@ static void bench_mem() {
     }
 }
 
+// BENCH_ONLY=mm|attn|mem runs one group; BENCH_REPS=n sets the repetition count.
+static bool want(const char* g) { const char* e = getenv("BENCH_ONLY"); return !e || !strcmp(e, g); }
+
 int main() {
     cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0)); printf("device: %s, %d SMs, %d MHz\n", pr.name, pr.multiProcessorCount, pr.clockRate / 1000);
+    if (want("mm")) {
     bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 0, 0); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 1, 0, 0); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 1, 0);
     bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 0, 1); bench_mm<OP_matmul_tile>(2048, 2048, 2048, 0, 0, 0); bench_mm<OP_matmul_tile>(8192, 768, 768, 0, 0, 0);
     bench_mm<OP_matmul_tile>(1024, 1024, 1024, 0, 0, 0); bench_mm<OP_matmul_tile>(4096, 3072, 768, 0, 0, 0); bench_mm<OP_matmul_tile>(512, 512, 512, 0, 0, 0);
-    bench_attn<64>(4, 1024, 16, 16); bench_attn<64>(4, 2048, 16, 4); bench_attn<128>(2, 2048, 8, 8);
-    bench_mem();
+    }
+    if (want("attn")) { bench_attn<64>(4, 1024, 16, 16); bench_attn<64>(4, 2048, 16, 4); bench_attn<128>(2, 2048, 8, 8); }
+    if (want("mem")) bench_mem();
     printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

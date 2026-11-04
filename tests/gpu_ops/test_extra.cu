@@ -4,6 +4,9 @@
 #include <algorithm>
 #include <map>
 #include <numeric>
+#ifndef KVM_GPT_MAX_HD
+#define KVM_GPT_MAX_HD 128   // hd=128 attention is covered here
+#endif
 #include "harness.cuh"
 #include "refs.hpp"
 #include "kvm_ops_extra.cuh"
@@ -37,8 +40,8 @@ struct BatchX {
     }
 };
 static int g_attr = 0;
-static int runx(Dev& d, const BatchX& b, int smem = 80 * 1024) {
-    if (!g_attr) { CK(cudaFuncSetAttribute(k_runx, cudaFuncAttributeMaxDynamicSharedMemorySize, 96 * 1024)); g_attr = 1; }
+static int runx(Dev& d, const BatchX& b, int smem = 104 * 1024) {
+    if (!g_attr) { CK(cudaFuncSetAttribute(k_runx, cudaFuncAttributeMaxDynamicSharedMemorySize, 112 * 1024)); g_attr = 1; }
     d.sync_table();
     int32_t* w; int *op, *off;
     CK(cudaMalloc(&w, b.w.size() * 4 + 4)); CK(cudaMalloc(&op, b.op.size() * 4)); CK(cudaMalloc(&off, b.off.size() * 4));
@@ -51,7 +54,7 @@ static int runx(Dev& d, const BatchX& b, int smem = 80 * 1024) {
     cudaFree(w); cudaFree(op); cudaFree(off);
     return d.geterr();
 }
-static int run1x(Dev& d, int id, const A& a, int smem = 80 * 1024) { BatchX b; b.add(id, a); return runx(d, b, smem); }
+static int run1x(Dev& d, int id, const A& a, int smem = 104 * 1024) { BatchX b; b.add(id, a); return runx(d, b, smem); }
 
 static std::string S(int v) { return std::to_string(v); }
 static float f32bits(uint32_t u) { float f; memcpy(&f, &u, 4); return f; }

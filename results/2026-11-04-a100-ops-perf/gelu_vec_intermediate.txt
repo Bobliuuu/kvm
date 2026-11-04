@@ -1,0 +1,20 @@
+      4     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+      1 ptxas info    : Used 94 registers, used 1 barriers, 392 bytes cmem[0]
+      1 ptxas info    : Used 80 registers, used 1 barriers, 8 bytes cumulative stack size, 392 bytes cmem[0]
+      1 ptxas info    : Used 32 registers, used 0 barriers, 392 bytes cmem[0]
+      1 ptxas info    : Used 171 registers, used 1 barriers, 32 bytes cumulative stack size, 400 bytes cmem[0], 368 bytes cmem[2]
+      1 ptxas info    : Used 128 registers, used 1 barriers, 40 bytes cumulative stack size, 392 bytes cmem[0]
+      1 ptxas info    : Used 127 registers, used 1 barriers, 392 bytes cmem[0]
+      1     8 bytes stack frame, 8 bytes spill stores, 8 bytes spill loads
+device: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz
+PASS  bench check: layernorm fwd 16384x1024 (first 64 rows)  relerr 1.438e-07 (tol 1e-05)
+BENCH  layernorm fwd 16384x1024                       full dispatch    0.152 ms [0.152..0.152]      883.2 GB/s  (56.8% of 1555)
+PASS  bench check: adamw 16M (first step; later steps mutate state)  max abs diff 1.91e-07 (sampled)
+BENCH  adamw 16M params                               full dispatch    0.457 ms [0.457..0.458]     1026.9 GB/s  (66.0% of 1555)
+PASS  bench check: gelu fwd 64M  max abs diff 2.82e-07 (sampled)
+BENCH  gelu fwd 64M                                   full dispatch    0.455 ms [0.454..0.456]     1180.6 GB/s  (75.9% of 1555)
+PASS  bench check: softmax_ce fwd 8192x50304  mean of first 64 row losses 15.139536 vs 15.139537
+BENCH  softmax_ce fwd 8192x50304                      full dispatch    1.800 ms [1.755..1.800]      916.0 GB/s (1 read counted)  (58.9% of 1555)
+BENCH  softmax_ce bwd 8192x50304                      full dispatch    3.285 ms [3.285..3.286]     1003.4 GB/s (read+write)  (64.5% of 1555)
+
+4 passed, 0 failed

@@ -141,7 +141,7 @@ class Prog:
 def parse_program(spec) -> Prog:
     """Flatten graphs into one program-ordered task list (ids 'graph.task'). Order respects `after` and version edges."""
     compiled = cw.compile_spec(copy.deepcopy(spec))        # full validation, and gives us the canonical buffer values
-    bufs = {b.name: dict(rows=b.rows, cols=b.cols, values=list(b.values)) for b in compiled.buffers}
+    bufs = {b.name: dict(rows=b.rows, cols=b.cols, values=b.materialize()) for b in compiled.buffers}
     tasks, idx = [], {}
     for g in spec['graphs']:
         for t in g['tasks']:
@@ -1305,7 +1305,7 @@ def write_plan(plan: Plan, out_dir, golden=None):
                 if b.init['kind'] == 'fill':
                     lines.append(f'buf {b.index} local {b.rows} {b.cols} fill {b.init["value"]!r}')
                 else:
-                    lines.append(f'buf {b.index} local {b.rows} {b.cols} values ' + ' '.join(repr(v) for v in b.values))
+                    lines.append(f'buf {b.index} local {b.rows} {b.cols} values ' + ' '.join(repr(v) for v in b.materialize()))
             elif rem['kind'] == 'peer':
                 lines.append(f'buf {b.index} peer {rem["rank"]} {plan.shards[rem["rank"]].buf_index(rem["buf"])} {b.rows} {b.cols}')
             elif rem['kind'] == 'inbox':

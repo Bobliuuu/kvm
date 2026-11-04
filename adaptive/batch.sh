@@ -45,16 +45,19 @@ case "$GROUP" in
       one "multi_n${n}_$c" $rep ${CFG[$c]} --doom-instances $n --serve-rate 40 --doom-min-hi $((n + 4))
     done; done; done
     for rep in $(seq 1 "${REPS_MULTI:-3}"); do for n in 1 2 4 8; do
-      one "unpaced_n${n}_adaptive" $rep ${CFG[adaptive]} --doom-instances $n --fps 1000 --serve-rate 40 --doom-min-hi $((n + 4))
+      one "unpaced_n${n}_adaptive" $rep ${CFG[adaptive]} --doom-instances $n --fps 1000 --duration-s 3 --serve-rate 40 --doom-min-hi $((n + 4))
     done; done;;
-  bw)    # AdamW sweep (bandwidth-bound co-runner) beside Doom + serve (+ train)
+  bw)    # AdamW sweep (bandwidth-bound co-runner, class 3, weight 16 so it really takes the memory system) beside Doom + serve + train
+    W4="--sched dynamic --weights 4,4,1,16 --urgent-us 28571,0,0,0 --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6"
     for rep in $(seq 1 "$REPS"); do
-      one bw_none $rep --sched dynamic --weights 4,4,1,1 --urgent-us 28571,0,0,0 --serve-rate 40
-      one bw_sweep $rep --sched dynamic --weights 4,4,1,1 --urgent-us 28571,0,0,0 --serve-rate 40 --sweep-gb 1.6
-      one bw_sweep_arbiter $rep --sched dynamic --weights 4,4,1,1 --urgent-us 28571,0,0,0 --serve-rate 40 --sweep-gb 1.6 --arbiter
-      one bw_sweep_adaptive $rep ${CFG[adaptive]} --serve-rate 40 --sweep-gb 1.6 --arbiter-assist
-      one bw_sweep_cap $rep --sched dynamic --weights 4,4,1,1 --urgent-us 28571,0,0,0 --serve-rate 40 --sweep-gb 1.6 --bw-cta 1000000,1000000,1000000,24
+      one bw_none $rep --sched dynamic --weights 4,4,1,16 --urgent-us 28571,0,0,0 --serve-rate 40
+      one bw_sweep $rep $W4
+      one bw_sweep_arbiter $rep $W4 --arbiter
+      one bw_sweep_adaptive $rep ${CFG[adaptive]} --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6 --arbiter-assist
+      one bw_sweep_cap $rep $W4 --bw-cta 1000000,1000000,1000000,24
     done;;
+  all_a) mkdir -p "$OUT"; "$0" suites; "$0" main; "$0" main_big;;
+  all_b) mkdir -p "$OUT"; DUR=16 "$0" multi; DUR=16 REPS=4 "$0" bw;;
   suites) mkdir -p "$OUT"
     ./test_adaptive 2>&1 | tee "$OUT/suites_functional.txt"; ./test_adaptive --expect-fail floor_neg 2>&1 | tee "$OUT/suites_negative.txt"
     ./test_adaptive granularity 2>&1 | tee "$OUT/suites_granularity.txt"; ./test_adaptive hol 2>&1 | tee "$OUT/suites_hol.txt";;

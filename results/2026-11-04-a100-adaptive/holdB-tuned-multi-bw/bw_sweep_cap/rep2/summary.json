@@ -1,0 +1,6 @@
+{"tag": "bw_sweep_cap-rep2", "device": "NVIDIA A100-SXM4-40GB", "sms": 108, "grid": 108, "workers": 106, "sched": "dynamic", "ctl": "none", "duration_s": 16.084, "kernel_ms": 16254.396,
+ "doom": {"instances": 1, "frames": 560, "deadline_misses": 0, "frame_time_us": {"p50": 12497, "p99": 26612, "p999": 27970, "max": 27970}, "lateness_us": {"p99": -1954, "p999": -596, "max": -596}, "fps": 0.77},
+ "serve": {"arrivals": 595, "completed": 595, "dropped": 0, "latency_us": {"p50": 17175, "p99": 27631, "p999": 29874, "max": 29874}, "tokens_consistent": 1},
+ "train": {"runs": 3, "steps": 701, "steps_per_s": 43.584},
+ "sweep": {"gb": 1.60, "gbytes_moved": 2920.40, "gb_per_s": 181.6},
+ "tasks": {"admitted": 7977908, "done": 7977908}, "doom_frames_done": 561}

@@ -1,0 +1,4 @@
+compared 792 frames: raw-identical 792/792, fingerprint-identical 792/792, state-identical 792/792
+final ref  {'booted': 1, 'tics': 792, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 3, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 2896, 'y': -2937, 'waypoint': 20} 
+final cand {'booted': 1, 'tics': 792, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 3, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 2896, 'y': -2937, 'waypoint': 20}
+PASS

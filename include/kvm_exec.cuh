@@ -169,7 +169,7 @@ struct KvmCounters {  // device memory; hot fields on separate lines
   alignas(128) int parked;                                                        // tasks parked on a version (not counted against live_cap)
   alignas(128) unsigned long long ftail;                                          // free-slot ring tail (many producers)
 };
-struct KvmWatch { unsigned long long since; int done, admitted; };   // per-block progress watch (thread 0)
+struct KvmWatch { unsigned long long since, checked; int done, admitted; };   // per-block progress watch (thread 0)
 struct KvmHostErr { volatile int slot, a, b; volatile int code; };  // mapped mirror of the first device error
 
 #define KVM_ARG_STRIDE 20   // argument words reserved per slot (>= KVM_MAX_ARGS)
@@ -515,14 +515,17 @@ struct KvmShared {
 // its age. `timeout` must therefore exceed the longest single task (a task cannot be interrupted; see task_limit).
 // require_pending=false (the admitter waiting for room) also counts "nothing pending but still no room" as a stall.
 __device__ __forceinline__ bool kvm_stalled(const KvmDevState& S, KvmWatch& w, bool require_pending = true) {
-  const int d = ld_acq(&S.cnt->done), a = ld_acq(&S.cnt->admitted); const unsigned long long n = kvm_now();
+  const unsigned long long n = kvm_now();
+  if (n - w.checked < 1000000ull) return false;   // look at the hot counters at most once per ms: idle workers poll this in a tight loop
+  w.checked = n;
+  const int d = ld_acq(&S.cnt->done), a = ld_acq(&S.cnt->admitted);
   if (d != w.done || a != w.admitted || (require_pending && a == d)) { w.done = d; w.admitted = a; w.since = n; return false; }
   return n - w.since > S.timeout_ns;
 }
 __device__ __forceinline__ bool kvm_should_exit(const KvmDevState& S, KvmWatch& t0) {  // (declared in kvm_sched.cuh)
   if (*(volatile int*)&S.cnt->err_code) return true;
   if (kvm_stalled(S, t0)) {
-    kvm_fail(S, KVM_ERR_TIMEOUT, -1, ld_acq(&S.cnt->admitted), ld_acq(&S.cnt->done));
+    kvm_fail(S, ld_acq(&S.cnt->parked) > S.live_cap ? KVM_ERR_PARK_STALL : KVM_ERR_TIMEOUT, -1, ld_acq(&S.cnt->admitted), ld_acq(&S.cnt->done));
     return true;
   }
   if (ld_acq(&S.cnt->admit_final)) return ld_acq(&S.cnt->done) >= ld_acq(&S.cnt->admitted);
@@ -756,7 +759,7 @@ __device__ void kvm_admitter(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared&
     if (threadIdx.x == 0) {
       A.action = KVM_ADM_IDLE;
       if (*(volatile int*)&S.cnt->err_code || kvm_stalled(S, t0)) {
-        kvm_fail(S, KVM_ERR_TIMEOUT, -1, ld_acq(&S.cnt->admitted), ld_acq(&S.cnt->done));
+        kvm_fail(S, ld_acq(&S.cnt->parked) > S.live_cap ? KVM_ERR_PARK_STALL : KVM_ERR_TIMEOUT, -1, ld_acq(&S.cnt->admitted), ld_acq(&S.cnt->done));
         A.action = KVM_ADM_EXIT;
       } else {
         unsigned closed = ld_acq_sys(S.closed);                    // BEFORE the doorbell: closed => doorbell is final
@@ -800,7 +803,7 @@ __global__ void __launch_bounds__(KVM_THREADS) kvm_init_kernel(KvmDevState S) {
 __global__ void __launch_bounds__(KVM_THREADS) kvm_exec_kernel(const __grid_constant__ KvmDevState S) {
   __shared__ KvmShared sh;
   __shared__ KvmAdmitShared adm;
-  KvmWatch t0{kvm_now(), -1, -1};
+  KvmWatch t0{kvm_now(), 0, -1, -1};
   auto pow2 = [](unsigned long long v) { return v >= 2 && !(v & (v - 1)); };
   if (gridDim.x < 2 + S.sp.on || !pow2(S.live_cap) || S.rcap != 4 * S.live_cap || !pow2(S.nslots) || !pow2(S.succ_cap) || !pow2(S.win_cap)) {
     if (threadIdx.x == 0 && blockIdx.x == 0) kvm_fail(S, KVM_ERR_BAD_CONFIG, -1, gridDim.x, S.live_cap);

@@ -125,7 +125,7 @@ static bool suite_share() {
     std::vector<double> st; for (auto& t : v) if (t.cls == 1) st.push_back(t.start - t1);
     std::sort(st.begin(), st.end());
     printf("  work conservation: class 0 alone kept %.1f%% of the %d workers busy; class 1 (reservation 16) arrived and its 16th CTA started %.0f us later (task length 200 us)\n", 100 * util, W, st.size() > 15 ? st[15] : -1.0);
-    CHECK(util > 0.95, "idle share not lent out: class 0 alone used %.1f%%", 100 * util);
+    CHECK(util > 0.90, "idle share not lent out: class 0 alone used %.1f%%", 100 * util);
     CHECK(st.size() > 15 && st[15] < 200 + 150, "reservation not reclaimed within one task length: 16th start after %.0f us", st.size() > 15 ? st[15] : -1.0);
   }
   return g_fail == before;

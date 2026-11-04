@@ -1,0 +1,115 @@
+# 2026-11-04T03:40:58Z  Build cuda_12.8.r12.8/compiler.35583870_0  NVIDIA A100-SXM4-40GB, 580.105.08
+BUILD: nvcc -O3 -arch=sm_80 -std=c++17 -rdc=true -DKVM_WITH_GAME -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off doom/exec_main.cu doom/build/doom_dev.o -o doom/build/doom_exec_sched
+[cpu_run 03:41:26] INFO 700 frames; final {"booted": 1, "tics": 700, "gamestate": 0, "health": 100, "armor": 100, "kills": 3, "monsters": 6, "items": 2, "secrets": 0, "deaths": 0, "level_finished_tic": -1, "x": 2458, "y": -2679, "waypoint": 17}
+2026-11-04 03:41:27,755 INFO kvm.compiler: wrote bundle to /home/ubuntu/kvm-sched-final/logs/doomsched/alone.bundle
+2026-11-04 03:41:29,024 INFO kvm.compiler: wrote bundle to /home/ubuntu/kvm-sched-final/logs/doomsched/load.bundle
+=== scenario alone_orig   doom_exec alone 
+[kvm_exec][I] workload 0: 4200 tasks, 4.041 CTA-s, queue wait p50 8.2 p99 13.3 max 16.4 us, 54 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] 35 Hz: 0 of 698 tick gaps over 28.57 ms, 9 ticks flagged missed (absolute deadline)
+[kvm_exec][I] frames 700, achieved 184.4 fps (35 needed), tick gap p50/p99 5.41/9.62 ms, frame latency p50/p99 5.39/9.61 ms, tick queue wait p99 7 us, doom ran on 105 of 105 SMs, block utilization 0.9%
+OK: 4200/4200 tasks, 4008.940 ms
+compared 700 frames: raw-identical 700/700, fingerprint-identical 700/700, state-identical 700/700
+final ref  {'booted': 1, 'tics': 700, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 3, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 2458, 'y': -2679, 'waypoint': 17} 
+METRICS fps 184.4 | tick gap p50 5.41 p99 9.62 max 10.23 ms | gaps over 28.57 ms: 0 | frame latency p99 9.61 ms | tick queue wait p99 7 us | doom on 105 SMs | block util 1%
+=== scenario alone_one_worker   doom_exec alone --blocks 2
+[kvm_exec][I] workload 0: 4200 tasks, 3.962 CTA-s, queue wait p50 61.4 p99 121.9 max 122.9 us, 36 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] 35 Hz: 0 of 698 tick gaps over 28.57 ms, 6 ticks flagged missed (absolute deadline)
+[kvm_exec][I] frames 700, achieved 182.2 fps (35 needed), tick gap p50/p99 5.36/9.65 ms, frame latency p50/p99 5.31/9.64 ms, tick queue wait p99 9 us, doom ran on 1 of 1 SMs, block utilization 98.9%
+OK: 4200/4200 tasks, 4007.517 ms
+compared 700 frames: raw-identical 700/700, fingerprint-identical 700/700, state-identical 700/700
+final ref  {'booted': 1, 'tics': 700, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 3, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 2458, 'y': -2679, 'waypoint': 17} 
+METRICS fps 182.2 | tick gap p50 5.36 p99 9.65 max 10.27 ms | gaps over 28.57 ms: 0 | frame latency p99 9.64 ms | tick queue wait p99 9 us | doom on 1 SMs | block util 99%
+=== scenario alone_dyn   doom_exec alone --sched dynamic --classes 1
+[kvm_exec][I] workload 0: 4200 tasks, 4.101 CTA-s, queue wait p50 12.3 p99 19.5 max 21.5 us, 36 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] 35 Hz: 0 of 698 tick gaps over 28.57 ms, 6 ticks flagged missed (absolute deadline)
+[kvm_exec][I] frames 700, achieved 179.2 fps (35 needed), tick gap p50/p99 5.44/9.82 ms, frame latency p50/p99 5.42/9.81 ms, tick queue wait p99 9 us, doom ran on 106 of 106 SMs, block utilization 0.9%
+OK: 4200/4200 tasks, 4071.709 ms
+compared 700 frames: raw-identical 700/700, fingerprint-identical 700/700, state-identical 700/700
+final ref  {'booted': 1, 'tics': 700, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 3, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 2458, 'y': -2679, 'waypoint': 17} 
+METRICS fps 179.2 | tick gap p50 5.44 p99 9.82 max 10.48 ms | gaps over 28.57 ms: 0 | frame latency p99 9.81 ms | tick queue wait p99 9 us | doom on 106 SMs | block util 1%
+=== scenario alone_dyn_chainaff   doom_exec alone --sched dynamic --classes 1 --affinity-us 2000
+[kvm_exec][I] workload 0: 4200 tasks, 4.174 CTA-s, queue wait p50 82.9 p99 157.7 max 160.8 us, 42 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] 35 Hz: 0 of 698 tick gaps over 28.57 ms, 7 ticks flagged missed (absolute deadline)
+[kvm_exec][I] frames 700, achieved 171.6 fps (35 needed), tick gap p50/p99 5.73/10.16 ms, frame latency p50/p99 5.67/10.14 ms, tick queue wait p99 16 us, doom ran on 1 of 1 SMs, block utilization 0.9%
+OK: 4200/4200 tasks, 4245.336 ms
+compared 700 frames: raw-identical 700/700, fingerprint-identical 700/700, state-identical 700/700
+final ref  {'booted': 1, 'tics': 700, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 3, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 2458, 'y': -2679, 'waypoint': 17} 
+METRICS fps 171.6 | tick gap p50 5.73 p99 10.16 max 10.73 ms | gaps over 28.57 ms: 0 | frame latency p99 10.14 ms | tick queue wait p99 16 us | doom on 1 SMs | block util 1%
+=== scenario alone_dyn_opaff   doom_exec alone --sched dynamic --classes 1 --op-affinity 1 --affinity-us 2000
+[kvm_exec][I] workload 0: 4200 tasks, 4.057 CTA-s, queue wait p50 77.8 p99 148.5 max 150.5 us, 36 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] 35 Hz: 0 of 698 tick gaps over 28.57 ms, 6 ticks flagged missed (absolute deadline)
+[kvm_exec][I] frames 700, achieved 176.8 fps (35 needed), tick gap p50/p99 5.52/9.91 ms, frame latency p50/p99 5.48/9.89 ms, tick queue wait p99 16 us, doom ran on 1 of 1 SMs, block utilization 0.9%
+OK: 4200/4200 tasks, 4124.686 ms
+compared 700 frames: raw-identical 700/700, fingerprint-identical 700/700, state-identical 700/700
+final ref  {'booted': 1, 'tics': 700, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 3, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 2458, 'y': -2679, 'waypoint': 17} 
+METRICS fps 176.8 | tick gap p50 5.52 p99 9.91 max 10.50 ms | gaps over 28.57 ms: 0 | frame latency p99 9.89 ms | tick queue wait p99 16 us | doom on 1 SMs | block util 1%
+=== scenario load_orig   doom_exec load 
+[kvm_exec][I] workload 0: 4200 tasks, 4.045 CTA-s, queue wait p50 8.2 p99 94487.6 max 111837.2 us, 2316 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] workload 1: 24000 tasks, 1012.698 CTA-s, queue wait p50 74146.8 p99 125145.1 max 148099.1 us, 0 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] compute check: 300/300 matmul outputs match A@B (worst rel err 0)
+[kvm_exec][I] 35 Hz: 59 of 698 tick gaps over 28.57 ms, 386 ticks flagged missed (absolute deadline)
+[kvm_exec][I] frames 700, achieved 56.1 fps (35 needed), tick gap p50/p99 5.90/174.17 ms, frame latency p50/p99 5.86/101.52 ms, tick queue wait p99 100351 us, doom ran on 107 of 107 SMs, block utilization 74.4%
+OK: 28200/28200 tasks, 12781.402 ms
+compared 700 frames: raw-identical 700/700, fingerprint-identical 700/700, state-identical 700/700
+final ref  {'booted': 1, 'tics': 700, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 3, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 2458, 'y': -2679, 'waypoint': 17} 
+METRICS fps 56.1 | tick gap p50 5.90 p99 174.17 max 199.94 ms | gaps over 28.57 ms: 59 | frame latency p99 101.52 ms | tick queue wait p99 100351 us | doom on 107 SMs | block util 74%
+=== scenario load_global   doom_exec load --sched global --classes 2
+[kvm_exec][I] workload 0: 4200 tasks, 4.037 CTA-s, queue wait p50 11.3 p99 96105.5 max 136176.6 us, 2340 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] workload 1: 24000 tasks, 1012.695 CTA-s, queue wait p50 74681.3 p99 128267.3 max 148866.0 us, 0 deadline misses, 9.44 GB moved (0.7 GB/s over the run)
+[kvm_exec][I] compute check: 300/300 matmul outputs match A@B (worst rel err 0)
+[kvm_exec][I] 35 Hz: 59 of 698 tick gaps over 28.57 ms, 390 ticks flagged missed (absolute deadline)
+[kvm_exec][I] frames 700, achieved 55.7 fps (35 needed), tick gap p50/p99 5.87/181.60 ms, frame latency p50/p99 5.86/103.03 ms, tick queue wait p99 107408 us, doom ran on 106 of 106 SMs, block utilization 73.9%
+OK: 28200/28200 tasks, 12866.870 ms
+compared 700 frames: raw-identical 700/700, fingerprint-identical 700/700, state-identical 700/700
+final ref  {'booted': 1, 'tics': 700, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 3, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 2458, 'y': -2679, 'waypoint': 17} 
+METRICS fps 55.7 | tick gap p50 5.87 p99 181.60 max 216.07 ms | gaps over 28.57 ms: 59 | frame latency p99 103.03 ms | tick queue wait p99 107408 us | doom on 106 SMs | block util 74%
+=== scenario load_static_10   doom_exec load --sched static --classes 2 --shares 1,9
+[kvm_exec][I] workload 0: 4200 tasks, 4.031 CTA-s, queue wait p50 11.3 p99 20.5 max 22.5 us, 42 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] workload 1: 24000 tasks, 1012.715 CTA-s, queue wait p50 85864.4 p99 151645.2 max 198008.8 us, 0 deadline misses, 9.44 GB moved (0.9 GB/s over the run)
+[kvm_exec][I] compute check: 300/300 matmul outputs match A@B (worst rel err 0)
+[kvm_exec][I] 35 Hz: 0 of 698 tick gaps over 28.57 ms, 7 ticks flagged missed (absolute deadline)
+[kvm_exec][I] frames 700, achieved 182.4 fps (35 needed), tick gap p50/p99 5.37/9.68 ms, frame latency p50/p99 5.28/9.67 ms, tick queue wait p99 10 us, doom ran on 9 of 106 SMs, block utilization 87.4%
+OK: 28200/28200 tasks, 10875.997 ms
+compared 700 frames: raw-identical 700/700, fingerprint-identical 700/700, state-identical 700/700
+final ref  {'booted': 1, 'tics': 700, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 3, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 2458, 'y': -2679, 'waypoint': 17} 
+METRICS fps 182.4 | tick gap p50 5.37 p99 9.68 max 10.35 ms | gaps over 28.57 ms: 0 | frame latency p99 9.67 ms | tick queue wait p99 10 us | doom on 9 SMs | block util 87%
+=== scenario load_static_25   doom_exec load --sched static --classes 2 --shares 1,3
+[kvm_exec][I] workload 0: 4200 tasks, 4.023 CTA-s, queue wait p50 11.3 p99 17.4 max 20.5 us, 42 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] workload 1: 24000 tasks, 1012.705 CTA-s, queue wait p50 111698.9 p99 191191.0 max 208241.7 us, 0 deadline misses, 9.44 GB moved (0.7 GB/s over the run)
+[kvm_exec][I] compute check: 300/300 matmul outputs match A@B (worst rel err 0)
+[kvm_exec][I] 35 Hz: 0 of 698 tick gaps over 28.57 ms, 7 ticks flagged missed (absolute deadline)
+[kvm_exec][I] frames 700, achieved 182.8 fps (35 needed), tick gap p50/p99 5.34/9.65 ms, frame latency p50/p99 5.27/9.64 ms, tick queue wait p99 9 us, doom ran on 25 of 106 SMs, block utilization 73.7%
+OK: 28200/28200 tasks, 12890.510 ms
+compared 700 frames: raw-identical 700/700, fingerprint-identical 700/700, state-identical 700/700
+final ref  {'booted': 1, 'tics': 700, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 3, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 2458, 'y': -2679, 'waypoint': 17} 
+METRICS fps 182.8 | tick gap p50 5.34 p99 9.65 max 10.25 ms | gaps over 28.57 ms: 0 | frame latency p99 9.64 ms | tick queue wait p99 9 us | doom on 25 SMs | block util 74%
+=== scenario load_dyn   doom_exec load --sched dynamic --classes 2 --min 1,0 --urgent-us 20000,0
+[kvm_exec][I] workload 0: 4200 tasks, 4.035 CTA-s, queue wait p50 57.3 p99 167.9 max 174.1 us, 42 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] workload 1: 24000 tasks, 1012.691 CTA-s, queue wait p50 74814.5 p99 128199.7 max 144990.2 us, 0 deadline misses, 9.44 GB moved (0.9 GB/s over the run)
+[kvm_exec][I] compute check: 300/300 matmul outputs match A@B (worst rel err 0)
+[kvm_exec][I] 35 Hz: 0 of 698 tick gaps over 28.57 ms, 7 ticks flagged missed (absolute deadline)
+[kvm_exec][I] frames 700, achieved 177.9 fps (35 needed), tick gap p50/p99 5.49/9.95 ms, frame latency p50/p99 5.44/9.93 ms, tick queue wait p99 18 us, doom ran on 95 of 106 SMs, block utilization 94.3%
+OK: 28200/28200 tasks, 10075.062 ms
+compared 700 frames: raw-identical 700/700, fingerprint-identical 700/700, state-identical 700/700
+final ref  {'booted': 1, 'tics': 700, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 3, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 2458, 'y': -2679, 'waypoint': 17} 
+METRICS fps 177.9 | tick gap p50 5.49 p99 9.95 max 10.46 ms | gaps over 28.57 ms: 0 | frame latency p99 9.93 ms | tick queue wait p99 18 us | doom on 95 SMs | block util 94%
+=== scenario load_dyn_noresv   doom_exec load --sched dynamic --classes 2 --min 0,0 --urgent-us 0,0
+[kvm_exec][I] workload 0: 4200 tasks, 4.041 CTA-s, queue wait p50 56.3 p99 166.9 max 171.0 us, 42 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] workload 1: 24000 tasks, 1012.701 CTA-s, queue wait p50 74547.2 p99 125088.8 max 147355.6 us, 0 deadline misses, 9.44 GB moved (0.9 GB/s over the run)
+[kvm_exec][I] compute check: 300/300 matmul outputs match A@B (worst rel err 0)
+[kvm_exec][I] 35 Hz: 0 of 698 tick gaps over 28.57 ms, 7 ticks flagged missed (absolute deadline)
+[kvm_exec][I] frames 700, achieved 177.7 fps (35 needed), tick gap p50/p99 5.51/9.88 ms, frame latency p50/p99 5.49/9.86 ms, tick queue wait p99 18 us, doom ran on 95 of 106 SMs, block utilization 94.4%
+OK: 28200/28200 tasks, 10068.033 ms
+compared 700 frames: raw-identical 700/700, fingerprint-identical 700/700, state-identical 700/700
+final ref  {'booted': 1, 'tics': 700, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 3, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 2458, 'y': -2679, 'waypoint': 17} 
+METRICS fps 177.7 | tick gap p50 5.51 p99 9.88 max 10.44 ms | gaps over 28.57 ms: 0 | frame latency p99 9.86 ms | tick queue wait p99 18 us | doom on 95 SMs | block util 94%
+=== scenario load_dyn_opaff   doom_exec load --sched dynamic --classes 2 --min 1,0 --urgent-us 20000,0 --op-affinity 1,0 --affinity-us 2000
+[kvm_exec][I] workload 0: 4200 tasks, 4.032 CTA-s, queue wait p50 86.0 p99 165.9 max 169.0 us, 42 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] workload 1: 24000 tasks, 1012.701 CTA-s, queue wait p50 73782.3 p99 129024.0 max 142965.8 us, 0 deadline misses, 9.44 GB moved (0.9 GB/s over the run)
+[kvm_exec][I] compute check: 300/300 matmul outputs match A@B (worst rel err 0)
+[kvm_exec][I] 35 Hz: 0 of 698 tick gaps over 28.57 ms, 7 ticks flagged missed (absolute deadline)
+[kvm_exec][I] frames 700, achieved 177.6 fps (35 needed), tick gap p50/p99 5.49/9.83 ms, frame latency p50/p99 5.45/9.81 ms, tick queue wait p99 17 us, doom ran on 1 of 106 SMs, block utilization 94.4%
+OK: 28200/28200 tasks, 10072.832 ms
+compared 700 frames: raw-identical 700/700, fingerprint-identical 700/700, state-identical 700/700
+final ref  {'booted': 1, 'tics': 700, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 3, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 2458, 'y': -2679, 'waypoint': 17} 
+METRICS fps 177.6 | tick gap p50 5.49 p99 9.83 max 10.45 ms | gaps over 28.57 ms: 0 | frame latency p99 9.81 ms | tick queue wait p99 17 us | doom on 1 SMs | block util 94%

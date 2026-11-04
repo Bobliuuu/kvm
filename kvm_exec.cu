@@ -578,12 +578,12 @@ static void usage() {
   fprintf(stderr, "usage: kvm_exec [options] bundle_dir...\n"
     "  bundle_dir: tasks.bin successors.bin args.bin metadata.json (ABI v2)\n"
     "  --blocks N --live-cap N --max-tasks N --ring-words N --aging-us N --timeout-s N\n"
-    "  --golden            compare with <bundle_dir>/golden.json (single bundle): final buffers, versions, observed versions\n"
+    "  --golden [--golden-tol R]  compare with <bundle_dir>/golden.json (single bundle): final buffers, versions, observed versions\n"
     "  --trace-csv FILE   per-task timeline  --dump-buffers   print buffers   --quiet   errors only   --check-ops   print registry\n");
 }
 
 int main(int argc, char** argv) {
-  KvmConfig cfg; std::vector<std::string> dirs; const char* csv = nullptr; bool dump = false, golden = false;
+  KvmConfig cfg; std::vector<std::string> dirs; const char* csv = nullptr; bool dump = false, golden = false; float golden_tol = 1e-6f;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto val = [&]() -> long long { if (i + 1 >= argc) { usage(); exit(2); } return atoll(argv[++i]); };
@@ -596,6 +596,7 @@ int main(int argc, char** argv) {
     else if (a == "--trace-csv") { if (i + 1 >= argc) { usage(); return 2; } csv = argv[++i]; }
     else if (a == "--dump-buffers") dump = true;
     else if (a == "--golden") golden = true;
+    else if (a == "--golden-tol") { if (i + 1 >= argc) { usage(); return 2; } golden_tol = (float)atof(argv[++i]); }
     else if (a == "--quiet") g_kvm_log = 0;
     else if (a == "--check-ops") { for (auto& o : kKvmOps) printf("%2d %-9s arity %d  (%s)\n", o.id, o.name, o.arity, o.sig); return 0; }
     else if (a[0] == '-') { usage(); return 2; }
@@ -664,16 +665,21 @@ int main(int argc, char** argv) {
         if (it == buf_names.end()) { KLOG(0, "golden: unknown buffer %s", kv.first.c_str()); ++golden_bad; continue; }
         std::vector<float> got = ex.read_buffer((int)(it - buf_names.begin()));
         if (got.size() != kv.second.a.size()) { KLOG(0, "golden: buffer %s has %zu values, golden %zu", kv.first.c_str(), got.size(), kv.second.a.size()); ++golden_bad; continue; }
+        const bool is_int = ex.buffer_dtype((int)(it - buf_names.begin())) == 1;
+        double num = 0, den = 0; size_t ndiff = 0;
         for (size_t i = 0; i < got.size(); ++i) {
           float want = (float)kv.second.a[i].n; ++nb;
-          if (ex.buffer_dtype((int)(it - buf_names.begin())) == 1) { int iv = (int)kv.second.a[i].n; memcpy(&want, &iv, 4); }
-          if (memcmp(&got[i], &want, 4) == 0) { ++exact; continue; }
-          if (ex.buffer_dtype((int)(it - buf_names.begin())) == 1) { KLOG(0, "golden: %s[%zu] differs (i32)", kv.first.c_str(), i); ++golden_bad; continue; }
-          float rel = std::fabs(got[i] - want) / std::max(1e-30f, std::fabs(want)); worst = std::max(worst, rel);
-          if (rel > 1e-6f) { KLOG(0, "golden: %s[%zu] = %.9g, golden %.9g", kv.first.c_str(), i, got[i], want); ++golden_bad; }
+          if (is_int) { int iv = (int)kv.second.a[i].n; memcpy(&want, &iv, 4); }
+          if (memcmp(&got[i], &want, 4) == 0) { ++exact; den += is_int ? 0 : (double)want * want; continue; }
+          ++ndiff;
+          if (is_int) { if (ndiff <= 3) KLOG(0, "golden: %s[%zu] differs (i32)", kv.first.c_str(), i); ++golden_bad; continue; }
+          num += ((double)got[i] - want) * ((double)got[i] - want); den += (double)want * want;
         }
+        // f32 buffers: relative L2 error of the whole buffer (elementwise relative error is meaningless near zero)
+        float rel = (float)(std::sqrt(num) / std::max(1e-30, std::sqrt(den))); worst = std::max(worst, rel);
+        if (rel > golden_tol) { KLOG(0, "golden: buffer %s: relative L2 error %.3g > %.3g (%zu of %zu elements differ)", kv.first.c_str(), rel, golden_tol, ndiff, got.size()); ++golden_bad; }
       }
-      KLOG(2, "golden: %d buffer values compared, %d bitwise equal, worst relative difference %.3g", nb, exact, worst);
+      KLOG(2, "golden: %d buffer values compared, %d bitwise equal, worst buffer relative L2 error %.3g (tolerance %.3g)", nb, exact, worst, golden_tol);
       std::map<std::string, int> var_id;
       if (const Json* vs = meta0.get("variables")) for (auto& jv : vs->a) var_id[jv.get("name")->s] = (int)jv.num("id", -1);
       if (const Json* gv = g.get("versions")) for (auto& kv : gv->o) {

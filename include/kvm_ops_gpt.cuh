@@ -235,22 +235,50 @@ struct TileReg {
     }
 };
 
-// cp.async (16-byte, L2-only) global->shared copy of an R x C tile, zero-filled outside [rmax) x [cmax). In-bounds aligned float4s
-// go through cp.async; ragged or unaligned elements are written with ordinary stores (distinct addresses, made visible by the
-// same barrier that publishes the async copies).
-KVM_GPT_DEVI void cp_async16(float* dst, const float* src) {
-    unsigned d = (unsigned)__cvta_generic_to_shared(dst);
-    asm volatile("cp.async.cg.shared.global [%0], [%1], 16;\n" ::"r"(d), "l"(src));
+// ---- cp.async / ldmatrix / mma.sync primitives -------------------------------------------------------------------------
+KVM_GPT_DEVI unsigned smem_u32(const void* p) { return (unsigned)__cvta_generic_to_shared(p); }
+KVM_GPT_DEVI void cp_async16(float* dst, const float* src, int src_bytes = 16) {   // src_bytes < 16 zero-fills the rest (0 reads nothing)
+    asm volatile("cp.async.cg.shared.global [%0], [%1], 16, %2;\n" ::"r"(smem_u32(dst)), "l"(src), "r"(src_bytes));
 }
 KVM_GPT_DEVI void cp_commit() { asm volatile("cp.async.commit_group;\n" ::); }
-KVM_GPT_DEVI void cp_wait_all() { asm volatile("cp.async.wait_group 0;\n" ::); }
-template <int R, int C>
-KVM_GPT_DEVI void tile_async(float* dst, int sld, const float* src, int ld, int r0, int c0, int rmax, int cmax, bool vec) {
+template <int N> KVM_GPT_DEVI void cp_wait() { asm volatile("cp.async.wait_group %0;\n" ::"n"(N)); }
+// fp32 -> tf32 with round-to-nearest (ties away) in two integer ops (the same value as cvt.rna.tf32.f32, which runs at 1/4 of the
+// integer rate and made the tensor-core loops conversion bound). A carry out of the mantissa bumps the exponent, as it should.
+KVM_GPT_DEVI unsigned f2tf32(float x) {
+    const unsigned u = __float_as_uint(x);
+    return (((u & 0x7fffffffu) > 0x7f800000u) ? u : u + 0x1000u) & 0xffffe000u;   // NaN keeps its bits (the carry would turn 0x7fffffff into -0)
+}
+// Operand for a single (1x) TF32 mma: the tensor core ignores the low 13 bits, so the mask is free and adding the rounding bias is
+// round-to-nearest in ONE op. (Round-toward-zero would save that op for ~8% speed but triples the error: measured 7.6e-4 vs 2.7e-4.)
+KVM_GPT_DEVI unsigned f2tf32_op(float x) { const unsigned u = __float_as_uint(x); return ((u & 0x7fffffffu) > 0x7f800000u) ? u : u + 0x1000u; }
+KVM_GPT_DEVI void ldmatrix_x4(unsigned (&r)[4], const float* p) {   // four 8x8 b16 matrices == four 8x4 tf32 matrices
+    asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0,%1,%2,%3}, [%4];\n" : "=r"(r[0]), "=r"(r[1]), "=r"(r[2]), "=r"(r[3]) : "r"(smem_u32(p)));
+}
+KVM_GPT_DEVI void mma_tf32(float (&c)[4], const unsigned (&a)[4], unsigned b0, unsigned b1) {
+    asm volatile("mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32 {%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3};\n"
+                 : "+f"(c[0]), "+f"(c[1]), "+f"(c[2]), "+f"(c[3]) : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b0), "r"(b1));
+}
+
+// Shared-memory tiles of the matmul are 2048 floats, unpadded, with an XOR swizzle that keeps 16-byte chunks contiguous (so
+// cp.async and ldmatrix work) and makes every fragment access bank-conflict free:
+//  KC: rows x BK floats (BK = 32 or 16), k contiguous (A as [m][k], B as [n][k]);  the 16-byte chunk index is XORed with a row function.
+//  MC: BK rows x (64 or 128) floats, m or n contiguous (A as [k][m], B as [k][n]);  column bits 3..4 are XORed with row&3.
+template <int BK>   // BK = 32: chunk ^= row&7;  BK = 16: chunk ^= (row>>1)&3  (eight consecutive rows hit eight distinct 16-byte bank groups)
+KVM_GPT_DEVI int sw_kc(int r, int c) { return r * BK + ((((c >> 2) ^ (BK == 32 ? r : (r >> 1))) & (BK / 4 - 1)) << 2) + (c & 3); }
+template <int W>
+KVM_GPT_DEVI int sw_mc(int r, int c) { return r * W + (c ^ ((r & 3) << 3)); }
+
+// Copies one ROWS x COLS tile (KC: k along the columns; MC: m/n along the columns) whose origin is (gr0, gc0) in the row-major global matrix [rmax x cmax] into shared
+// memory (ROWS*COLS/4 chunks of 4 floats, spread over the 256 threads). Aligned in-bounds chunks use cp.async (out-of-range rows zero-fill in hardware);
+// ragged chunks (cmax or ld not a multiple of 4, unaligned base) are written with plain stores, published by the same barrier.
+template <bool KC, int ROWS, int COLS>
+KVM_GPT_DEVI void tile_async(float* dst, const float* src, int ld, int gr0, int gc0, int rmax, int cmax, bool vec) {
+    constexpr int CPR = COLS / 4;   // chunks per row
 #pragma unroll
-    for (int s = 0; s < (R * C / 4) / KVM_GPT_THREADS; s++) {
-        int q = threadIdx.x + s * KVM_GPT_THREADS, row = q / (C / 4), c4 = (q % (C / 4)) * 4, gr = r0 + row, gc = c0 + c4;
-        float* d = dst + row * sld + c4;
-        if (gr < rmax && vec && gc + 4 <= cmax) cp_async16(d, src + (size_t)gr * ld + gc);
+    for (int s = 0; s < ROWS * CPR / KVM_GPT_THREADS; s++) {
+        int q = threadIdx.x + s * KVM_GPT_THREADS, row = q / CPR, c4 = (q % CPR) * 4, gr = gr0 + row, gc = gc0 + c4;
+        float* d = dst + (KC ? sw_kc<COLS>(row, c4) : sw_mc<COLS>(row, c4));
+        if (vec && gc + 4 <= cmax) cp_async16(d, gr < rmax ? src + (size_t)gr * ld + gc : src, gr < rmax ? 16 : 0);
         else {
             const float* p = src + (size_t)gr * ld + gc;
             bool rok = gr < rmax;
@@ -262,98 +290,254 @@ KVM_GPT_DEVI void tile_async(float* dst, int sld, const float* src, int ld, int 
     }
 }
 
-// 64x64 output tile, BK=32, 8 warps, two-stage cp.async pipeline (36 KiB shared). Warp (wm, wn, kh): output sub-tile
-// 32x32 at (wm*32, wn*32) as 2x2 16x16x8 TF32 fragments, reducing k-steps {2kh, 2kh+1} of each BK=32 slab; the two k-halves
-// are summed in the epilogue. Shared tiles keep the global orientation (coalesced loads for all four transpose combinations);
-// the fragment layout (row/col major) absorbs the transpose. PREC: 3xTF32 split (a_lo*b_hi + a_hi*b_lo + a_hi*b_hi)
-// restores ~fp32 accuracy.
+// 64x64 output tile, BK=32, 3-stage cp.async pipeline (3 x 16 KiB = 48 KiB, the epilogue reuses it), 8 warps, mma.sync m16n8k8
+// TF32. Warp (wm, wn, kh): 32x32 sub-tile at (wm*32, wn*32) = 2 m16 x 4 n8 fragments, reducing k8-steps {2kh, 2kh+1} of each BK=32
+// slab; the two k-halves are summed in the epilogue. Shared tiles keep the global orientation (coalesced loads for all four
+// transpose combinations). K-contiguous operands (A as [m][k], B as [n][k]) are fed by ldmatrix, the others by 32-bit loads.
+// PREC: 3xTF32 split (a_lo*b_hi + a_hi*b_lo + a_hi*b_hi) restores ~fp32 accuracy.
 template <bool TA, bool TB, bool PREC>
 KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, float* out, int ldo, const float* bias, const float* res,
                           int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, bool gelu, bool accum) {
-    namespace wm = nvcuda::wmma;
-    constexpr int BK = 32, TM = 64, TN = 64;
-    constexpr int ASR = TA ? BK : TM, ASC = TA ? TM : BK, ALD = ASC + 4;
-    constexpr int BSR = TB ? TN : BK, BSC = TB ? BK : TN, BLD = BSC + 4;
-    constexpr int CLD = TN + 4, STAGE = 2304;   // floats per A or B stage (max of 64*36, 32*68)
-    using LA = std::conditional_t<TA, wm::col_major, wm::row_major>;
-    using LB = std::conditional_t<TB, wm::col_major, wm::row_major>;
-    float* sm = reinterpret_cast<float*>(kvm_gpt_smem);   // [stage][A|B]
-    const int warp = threadIdx.x >> 5, wmi = (warp >> 1) & 1, wni = warp & 1, kh = warp >> 2;
-    const bool va = aligned16(A, lda), vb = aligned16(B, ldb);
-    wm::fragment<wm::accumulator, 16, 16, 8, float> acc[2][2];
+    constexpr int BK = 32, TM = 64, TN = 64, TILE = 2048, STAGE = 2 * TILE, NST = 3, CLD = TN + 8;
+    float* sm = reinterpret_cast<float*>(kvm_gpt_smem);   // [stage][A | B]
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, wmi = (warp >> 1) & 1, wni = warp & 1, kh = warp >> 2;
+    const int g = lane >> 2, t = lane & 3;
+    const bool va = aligned16(A, lda) && (!TA || (m0 & 3) == 0), vb = aligned16(B, ldb) && (TB || (n0 & 3) == 0);   // tile origin column too
+    float acc[2][4][4];
 #pragma unroll
-    for (int i = 0; i < 2; i++) for (int j = 0; j < 2; j++) wm::fill_fragment(acc[i][j], 0.f);
-    auto issue = [&](int kk, int st) {
-        float* As = sm + st * 2 * STAGE; float* Bs = As + STAGE;
-        if (TA) tile_async<ASR, ASC>(As, ALD, A, lda, kk, m0, K, M, va); else tile_async<ASR, ASC>(As, ALD, A, lda, m0, kk, M, K, va);
-        if (TB) tile_async<BSR, BSC>(Bs, BLD, B, ldb, n0, kk, N, K, vb); else tile_async<BSR, BSC>(Bs, BLD, B, ldb, kk, n0, K, N, vb);
-        cp_commit();
+    for (int i = 0; i < 2; i++)
+#pragma unroll
+        for (int j = 0; j < 4; j++)
+#pragma unroll
+            for (int e = 0; e < 4; e++) acc[i][j][e] = 0.f;
+    const int nk = (K + BK - 1) / BK;
+    auto issue = [&](int it) {
+        float* As = sm + (it % NST) * STAGE; float* Bs = As + TILE;
+        const int kk = it * BK;
+        if (TA) tile_async<false, 32, 64>(As, A, lda, kk, m0, K, M, va); else tile_async<true, 64, 32>(As, A, lda, m0, kk, M, K, va);
+        if (TB) tile_async<true, 64, 32>(Bs, B, ldb, n0, kk, N, K, vb); else tile_async<false, 32, 64>(Bs, B, ldb, kk, n0, K, N, vb);
     };
-    issue(0, 0);
-    for (int kk = 0, st = 0; kk < K; kk += BK, st ^= 1) {
-        cp_wait_all();
-        __syncthreads();   // tile kk landed everywhere; everyone finished the slab that used the other stage
-        if (kk + BK < K) issue(kk + BK, st ^ 1);
-        const float* As = sm + st * 2 * STAGE; const float* Bs = As + STAGE;
+    issue(0); cp_commit();
+    if (nk > 1) issue(1);
+    cp_commit();   // always commit, empty groups included, so wait_group counts stay uniform
+    for (int it = 0; it < nk; it++) {
+        cp_wait<1>();
+        __syncthreads();   // tile `it` landed everywhere; everyone finished the slab that used the stage refilled next
+        if (it + 2 < nk) issue(it + 2);
+        cp_commit();
+        const float* As = sm + (it % NST) * STAGE; const float* Bs = As + TILE;
 #pragma unroll
         for (int kq = 0; kq < 2; kq++) {
-            const int ks = kh * 2 + kq;
-            wm::fragment<wm::matrix_a, 16, 16, 8, wm::precision::tf32, LA> ah[2], al[2];
-            wm::fragment<wm::matrix_b, 16, 16, 8, wm::precision::tf32, LB> bh[2], bl[2];
+            const int kk = (kh * 2 + kq) * 8;
+            unsigned ah[2][4], al[2][4], bh[4][2], bl[4][2];
 #pragma unroll
             for (int i = 0; i < 2; i++) {
-                const float* ap = TA ? As + (ks * 8) * ALD + wmi * 32 + i * 16 : As + (wmi * 32 + i * 16) * ALD + ks * 8;
-                wm::load_matrix_sync(ah[i], ap, ALD);
+                const int mb = wmi * 32 + i * 16;
+                if (!TA) ldmatrix_x4(ah[i], As + sw_kc<32>(mb + (lane & 7) + 8 * ((lane >> 3) & 1), kk + 4 * (lane >> 4)));
+                else {   // A stored [k][m]: a0=(m g, k t) a1=(m g+8, k t) a2=(m g, k t+4) a3=(m g+8, k t+4)
+                    ah[i][0] = __float_as_uint(As[sw_mc<64>(kk + t, mb + g)]);     ah[i][1] = __float_as_uint(As[sw_mc<64>(kk + t, mb + g + 8)]);
+                    ah[i][2] = __float_as_uint(As[sw_mc<64>(kk + t + 4, mb + g)]); ah[i][3] = __float_as_uint(As[sw_mc<64>(kk + t + 4, mb + g + 8)]);
+                }
 #pragma unroll
-                for (int e = 0; e < ah[i].num_elements; e++) {
-                    float x = ah[i].x[e], h = wm::__float_to_tf32(x);
-                    ah[i].x[e] = h;
-                    if (PREC) al[i].x[e] = wm::__float_to_tf32(x - h);
+                for (int e = 0; e < 4; e++) {
+                    float x = __uint_as_float(ah[i][e]);
+                    if (PREC) { unsigned h = f2tf32(x); al[i][e] = __float_as_uint(x - __uint_as_float(h)); ah[i][e] = h; }
+                    else ah[i][e] = f2tf32_op(x);
                 }
             }
 #pragma unroll
-            for (int j = 0; j < 2; j++) {
-                const float* bp = TB ? Bs + (wni * 32 + j * 16) * BLD + ks * 8 : Bs + (ks * 8) * BLD + wni * 32 + j * 16;
-                wm::load_matrix_sync(bh[j], bp, BLD);
+            for (int jp = 0; jp < 2; jp++) {
+                const int nb = wni * 32 + jp * 16;
+                if (TB) {
+                    unsigned r[4];
+                    ldmatrix_x4(r, Bs + sw_kc<32>(nb + (lane & 7) + 8 * (lane >> 4), kk + 4 * ((lane >> 3) & 1)));
+                    bh[2 * jp][0] = r[0]; bh[2 * jp][1] = r[1]; bh[2 * jp + 1][0] = r[2]; bh[2 * jp + 1][1] = r[3];
+                } else {   // B stored [k][n]: b0=(k t, n g) b1=(k t+4, n g)
+                    bh[2 * jp][0] = __float_as_uint(Bs[sw_mc<64>(kk + t, nb + g)]);          bh[2 * jp][1] = __float_as_uint(Bs[sw_mc<64>(kk + t + 4, nb + g)]);
+                    bh[2 * jp + 1][0] = __float_as_uint(Bs[sw_mc<64>(kk + t, nb + 8 + g)]);  bh[2 * jp + 1][1] = __float_as_uint(Bs[sw_mc<64>(kk + t + 4, nb + 8 + g)]);
+                }
 #pragma unroll
-                for (int e = 0; e < bh[j].num_elements; e++) {
-                    float x = bh[j].x[e], h = wm::__float_to_tf32(x);
-                    bh[j].x[e] = h;
-                    if (PREC) bl[j].x[e] = wm::__float_to_tf32(x - h);
+                for (int jj = 0; jj < 2; jj++)
+#pragma unroll
+                    for (int e = 0; e < 2; e++) {
+                    float x = __uint_as_float(bh[2 * jp + jj][e]);
+                    if (PREC) { unsigned h = f2tf32(x); bl[2 * jp + jj][e] = __float_as_uint(x - __uint_as_float(h)); bh[2 * jp + jj][e] = h; }
+                    else bh[2 * jp + jj][e] = f2tf32_op(x);
                 }
             }
 #pragma unroll
-            for (int i = 0; i < 2; i++) for (int j = 0; j < 2; j++) {
-                if (PREC) { wm::mma_sync(acc[i][j], al[i], bh[j], acc[i][j]); wm::mma_sync(acc[i][j], ah[i], bl[j], acc[i][j]); }
-                wm::mma_sync(acc[i][j], ah[i], bh[j], acc[i][j]);
-            }
+            for (int i = 0; i < 2; i++)
+#pragma unroll
+                for (int j = 0; j < 4; j++) {
+                    if (PREC) { mma_tf32(acc[i][j], al[i], bh[j][0], bh[j][1]); mma_tf32(acc[i][j], ah[i], bl[j][0], bl[j][1]); }
+                    mma_tf32(acc[i][j], ah[i], bh[j][0], bh[j][1]);
+                }
         }
     }
     __syncthreads();   // all warps done reading the last stage; reuse shared memory for the two k-half partial tiles
+    cp_wait<0>();
     float* Cs = sm + kh * TM * CLD;
 #pragma unroll
-    for (int i = 0; i < 2; i++) for (int j = 0; j < 2; j++)
-        wm::store_matrix_sync(Cs + (wmi * 32 + i * 16) * CLD + wni * 32 + j * 16, acc[i][j], CLD, wm::mem_row_major);
+    for (int i = 0; i < 2; i++)
+#pragma unroll
+        for (int j = 0; j < 4; j++) {   // c0,c1 = (row g, cols 2t,2t+1); c2,c3 = (row g+8, ...)
+        const int r = wmi * 32 + i * 16 + g, c = wni * 32 + j * 8 + 2 * t;
+        *reinterpret_cast<float2*>(Cs + r * CLD + c) = make_float2(acc[i][j][0], acc[i][j][1]);
+        *reinterpret_cast<float2*>(Cs + (r + 8) * CLD + c) = make_float2(acc[i][j][2], acc[i][j][3]);
+    }
     __syncthreads();
-    for (int e = threadIdx.x; e < TM * TN; e += KVM_GPT_THREADS) {
-        int r = e / TN, c = e % TN, gm = m0 + r, gn = n0 + c;
+    // Epilogue: four consecutive columns per thread, 16-byte accesses when every operand allows them.
+    const bool vec = ((n0 & 3) == 0) && aligned16(out, ldo) && (!bias || aligned16(bias, 0)) && (!res || aligned16(res, ldr)) && (!pre || aligned16(pre, ldp));
+    for (int q = threadIdx.x; q < TM * TN / 4; q += KVM_GPT_THREADS) {
+        const int r = q / (TN / 4), c = (q % (TN / 4)) * 4, gm = m0 + r, gn = n0 + c;
         if (gm >= M || gn >= N) continue;
-        float v = (sm[r * CLD + c] + sm[TM * CLD + r * CLD + c]) * alpha;
-        if (bias) v += bias[gn];
-        if (pre) pre[(size_t)gm * ldp + gn] = v;
-        if (gelu) v = gelu_f(v);
-        if (res) v += res[(size_t)gm * ldr + gn];
-        float* o = out + (size_t)gm * ldo + gn;
-        *o = accum ? *o + v : v;
+        const float4 p0 = *reinterpret_cast<const float4*>(sm + r * CLD + c), p1 = *reinterpret_cast<const float4*>(sm + TM * CLD + r * CLD + c);
+        float v[4] = {(p0.x + p1.x) * alpha, (p0.y + p1.y) * alpha, (p0.z + p1.z) * alpha, (p0.w + p1.w) * alpha};
+        if (vec && gn + 4 <= N) {
+            if (bias) { const float4 b4 = *reinterpret_cast<const float4*>(bias + gn); v[0] += b4.x; v[1] += b4.y; v[2] += b4.z; v[3] += b4.w; }
+            if (pre) *reinterpret_cast<float4*>(pre + (size_t)gm * ldp + gn) = make_float4(v[0], v[1], v[2], v[3]);
+            if (gelu) { v[0] = gelu_f(v[0]); v[1] = gelu_f(v[1]); v[2] = gelu_f(v[2]); v[3] = gelu_f(v[3]); }
+            if (res) { const float4 r4 = *reinterpret_cast<const float4*>(res + (size_t)gm * ldr + gn); v[0] += r4.x; v[1] += r4.y; v[2] += r4.z; v[3] += r4.w; }
+            float4* o = reinterpret_cast<float4*>(out + (size_t)gm * ldo + gn);
+            if (accum) { const float4 o4 = *o; v[0] += o4.x; v[1] += o4.y; v[2] += o4.z; v[3] += o4.w; }
+            *o = make_float4(v[0], v[1], v[2], v[3]);
+        } else {
+            for (int i = 0; i < 4 && gn + i < N; i++) {
+                float x = v[i];
+                if (bias) x += bias[gn + i];
+                if (pre) pre[(size_t)gm * ldp + gn + i] = x;
+                if (gelu) x = gelu_f(x);
+                if (res) x += res[(size_t)gm * ldr + gn + i];
+                float* o = out + (size_t)gm * ldo + gn + i;
+                *o = accum ? *o + x : x;
+            }
+        }
+    }
+}
+
+// 128x128 output tile (flag 32): the same math as mm_tile with a quarter of the shared-to-L2 traffic per FLOP, which is what bounds
+// the 64x64 tile. BK=16, 3-stage cp.async pipeline (3 x 16 KiB = 48 KiB), 8 warps as 2 (m) x 4 (n), each owning a 64x32 sub-tile
+// = 4 m16 x 4 n8 fragments over the whole K (no split-K); the epilogue runs straight from the accumulator registers.
+template <bool TA, bool TB, bool PREC>
+KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, float* out, int ldo, const float* bias, const float* res,
+                              int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, bool gelu, bool accum) {
+    constexpr int BK = 16, TILE = 2048, STAGE = 2 * TILE, NST = 3;
+    float* sm = reinterpret_cast<float*>(kvm_gpt_smem);   // [stage][A | B]
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, wmi = warp >> 2, wni = warp & 3, g = lane >> 2, t = lane & 3;
+    const bool va = aligned16(A, lda) && (!TA || (m0 & 3) == 0), vb = aligned16(B, ldb) && (TB || (n0 & 3) == 0);   // tile origin column too
+    float acc[4][4][4];
+#pragma unroll
+    for (int i = 0; i < 4; i++)
+#pragma unroll
+        for (int j = 0; j < 4; j++)
+#pragma unroll
+            for (int e = 0; e < 4; e++) acc[i][j][e] = 0.f;
+    const int nk = (K + BK - 1) / BK;
+    auto issue = [&](int it) {
+        float* As = sm + (it % NST) * STAGE; float* Bs = As + TILE;
+        const int kk = it * BK;
+        if (TA) tile_async<false, 16, 128>(As, A, lda, kk, m0, K, M, va); else tile_async<true, 128, 16>(As, A, lda, m0, kk, M, K, va);
+        if (TB) tile_async<true, 128, 16>(Bs, B, ldb, n0, kk, N, K, vb); else tile_async<false, 16, 128>(Bs, B, ldb, kk, n0, K, N, vb);
+    };
+    issue(0); cp_commit();
+    if (nk > 1) issue(1);
+    cp_commit();
+    for (int it = 0; it < nk; it++) {
+        cp_wait<1>();
+        __syncthreads();
+        if (it + 2 < nk) issue(it + 2);
+        cp_commit();
+        const float* As = sm + (it % NST) * STAGE; const float* Bs = As + TILE;
+#pragma unroll
+        for (int kq = 0; kq < 2; kq++) {
+            const int kk = kq * 8;
+            unsigned ah[4][4], al[4][4], bh[4][2], bl[4][2];
+#pragma unroll
+            for (int i = 0; i < 4; i++) {
+                const int mb = wmi * 64 + i * 16;
+                if (!TA) ldmatrix_x4(ah[i], As + sw_kc<16>(mb + (lane & 7) + 8 * ((lane >> 3) & 1), kk + 4 * (lane >> 4)));
+                else {
+                    ah[i][0] = __float_as_uint(As[sw_mc<128>(kk + t, mb + g)]);     ah[i][1] = __float_as_uint(As[sw_mc<128>(kk + t, mb + g + 8)]);
+                    ah[i][2] = __float_as_uint(As[sw_mc<128>(kk + t + 4, mb + g)]); ah[i][3] = __float_as_uint(As[sw_mc<128>(kk + t + 4, mb + g + 8)]);
+                }
+#pragma unroll
+                for (int e = 0; e < 4; e++) {
+                    float x = __uint_as_float(ah[i][e]);
+                    if (PREC) { unsigned h = f2tf32(x); al[i][e] = __float_as_uint(x - __uint_as_float(h)); ah[i][e] = h; }
+                    else ah[i][e] = f2tf32_op(x);
+                }
+            }
+#pragma unroll
+            for (int jp = 0; jp < 2; jp++) {
+                const int nb = wni * 32 + jp * 16;
+                if (TB) {
+                    unsigned r[4];
+                    ldmatrix_x4(r, Bs + sw_kc<16>(nb + (lane & 7) + 8 * (lane >> 4), kk + 4 * ((lane >> 3) & 1)));
+                    bh[2 * jp][0] = r[0]; bh[2 * jp][1] = r[1]; bh[2 * jp + 1][0] = r[2]; bh[2 * jp + 1][1] = r[3];
+                } else {
+                    bh[2 * jp][0] = __float_as_uint(Bs[sw_mc<128>(kk + t, nb + g)]);          bh[2 * jp][1] = __float_as_uint(Bs[sw_mc<128>(kk + t + 4, nb + g)]);
+                    bh[2 * jp + 1][0] = __float_as_uint(Bs[sw_mc<128>(kk + t, nb + 8 + g)]);  bh[2 * jp + 1][1] = __float_as_uint(Bs[sw_mc<128>(kk + t + 4, nb + 8 + g)]);
+                }
+#pragma unroll
+                for (int jj = 0; jj < 2; jj++)
+#pragma unroll
+                    for (int e = 0; e < 2; e++) {
+                    float x = __uint_as_float(bh[2 * jp + jj][e]);
+                    if (PREC) { unsigned h = f2tf32(x); bl[2 * jp + jj][e] = __float_as_uint(x - __uint_as_float(h)); bh[2 * jp + jj][e] = h; }
+                    else bh[2 * jp + jj][e] = f2tf32_op(x);
+                }
+            }
+#pragma unroll
+            for (int i = 0; i < 4; i++)
+#pragma unroll
+                for (int j = 0; j < 4; j++) {
+                    if (PREC) { mma_tf32(acc[i][j], al[i], bh[j][0], bh[j][1]); mma_tf32(acc[i][j], ah[i], bl[j][0], bl[j][1]); }
+                    mma_tf32(acc[i][j], ah[i], bh[j][0], bh[j][1]);
+                }
+        }
+    }
+    cp_wait<0>();
+    // Epilogue from registers: thread holds (row g | g+8, columns 2t, 2t+1) of every fragment. Pairs of columns go out as float2
+    // when every operand is 8-byte aligned.
+    const bool pair = ((n0 & 1) == 0) && (((uintptr_t)out | (uintptr_t)(ldo * 4)) & 7) == 0 && (!bias || (((uintptr_t)bias) & 7) == 0) &&
+                      (!res || (((uintptr_t)res | (uintptr_t)(ldr * 4)) & 7) == 0) && (!pre || (((uintptr_t)pre | (uintptr_t)(ldp * 4)) & 7) == 0);
+#pragma unroll
+    for (int i = 0; i < 4; i++)
+#pragma unroll
+        for (int j = 0; j < 4; j++)
+#pragma unroll
+            for (int hf = 0; hf < 2; hf++) {
+        const int gm = m0 + wmi * 64 + i * 16 + g + hf * 8, gn = n0 + wni * 32 + j * 8 + 2 * t;
+        if (gm >= M || gn >= N) continue;
+        float v[2] = {acc[i][j][2 * hf] * alpha, acc[i][j][2 * hf + 1] * alpha};
+        if (pair && gn + 1 < N) {
+            if (bias) { const float2 b2 = *reinterpret_cast<const float2*>(bias + gn); v[0] += b2.x; v[1] += b2.y; }
+            if (pre) *reinterpret_cast<float2*>(pre + (size_t)gm * ldp + gn) = make_float2(v[0], v[1]);
+            if (gelu) { v[0] = gelu_f(v[0]); v[1] = gelu_f(v[1]); }
+            if (res) { const float2 r2 = *reinterpret_cast<const float2*>(res + (size_t)gm * ldr + gn); v[0] += r2.x; v[1] += r2.y; }
+            float2* o = reinterpret_cast<float2*>(out + (size_t)gm * ldo + gn);
+            if (accum) { const float2 o2 = *o; v[0] += o2.x; v[1] += o2.y; }
+            *o = make_float2(v[0], v[1]);
+        } else {
+            for (int e = 0; e < 2 && gn + e < N; e++) {
+                float x = v[e];
+                if (bias) x += bias[gn + e];
+                if (pre) pre[(size_t)gm * ldp + gn + e] = x;
+                if (gelu) x = gelu_f(x);
+                if (res) x += res[(size_t)gm * ldr + gn + e];
+                float* o = out + (size_t)gm * ldo + gn + e;
+                *o = accum ? *o + x : x;
+            }
+        }
     }
 }
 
 KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
     int m0 = a[6], n0 = a[7], M = a[8], N = a[9], K = a[10], fl = a[11];
-    bool ta = fl & 1, tb = fl & 2, accum = fl & 4, gelu = fl & 8, prec = fl & 16;
+    bool ta = fl & 1, tb = fl & 2, accum = fl & 4, gelu = fl & 8, prec = fl & 16, big = fl & 32;
     k.need(M > 0 && N > 0 && K > 0 && m0 >= 0 && m0 < M && n0 >= 0 && n0 < N);
-    k.need((fl & ~31) == 0, KVM_GPT_E_SHAPE);
+    k.need((fl & ~63) == 0, KVM_GPT_E_SHAPE);
     if (k.bad) return;
     int lda, ldb, ldo, ldr = 0, ldp = 0;
     const float* A = k.mat(a[0], ta ? K : M, ta ? M : K, &lda);
@@ -364,14 +548,13 @@ KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
     float* pre = k.mat(a[5], M, N, &ldp, true);
     if (k.bad) return;
     float alpha = af(a, 12);
-#define KVM_GPT_MM(TA, TB, P) mm_tile<TA, TB, P>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, gelu, accum)
-    if (prec) {
-        if (!ta && !tb) KVM_GPT_MM(false, false, true); else if (ta && !tb) KVM_GPT_MM(true, false, true);
-        else if (!ta && tb) KVM_GPT_MM(false, true, true); else KVM_GPT_MM(true, true, true);
-    } else {
-        if (!ta && !tb) KVM_GPT_MM(false, false, false); else if (ta && !tb) KVM_GPT_MM(true, false, false);
-        else if (!ta && tb) KVM_GPT_MM(false, true, false); else KVM_GPT_MM(true, true, false);
-    }
+#define KVM_GPT_MM(F, TA, TB, P) F<TA, TB, P>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, gelu, accum)
+#define KVM_GPT_MM_T(F, P)                                                                                                   \
+    if (!ta && !tb) KVM_GPT_MM(F, false, false, P); else if (ta && !tb) KVM_GPT_MM(F, true, false, P);                       \
+    else if (!ta && tb) KVM_GPT_MM(F, false, true, P); else KVM_GPT_MM(F, true, true, P)
+    if (big) { if (prec) { KVM_GPT_MM_T(mm_tile_big, true); } else { KVM_GPT_MM_T(mm_tile_big, false); } }
+    else if (prec) { KVM_GPT_MM_T(mm_tile, true); } else { KVM_GPT_MM_T(mm_tile, false); }
+#undef KVM_GPT_MM_T
 #undef KVM_GPT_MM
 }
 

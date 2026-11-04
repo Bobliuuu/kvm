@@ -1,0 +1,53 @@
+# exec-fuzz @ 20261104T040501Z  commit 5274867
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 580.105.08, 1410 MHz
+BUILD: tests/gpu/build.sh
+baseline gen seed: OK
+baseline live seed: OK
+T01 REJECT                    0.3s  task0.succ_off=INT_MAX, succ_cnt=1 (sum wraps negative, passes the range check)
+      -> [kvm_exec][I] kernel done: 0/0 tasks in 0.041 ms, 0 records, 0 ring wraps, 0 backpressure waits
+T02 REJECT                    0.3s  task0.succ_cnt=INT_MAX (succ_off+succ_cnt wraps)
+      -> [kvm_exec][I] kernel done: 0/0 tasks in 0.039 ms, 0 records, 0 ring wraps, 0 backpressure waits
+T03 REJECT                    0.3s  task0.args_off=INT_MAX (args_off+args_words wraps negative)
+      -> [kvm_exec][I] kernel done: 0/0 tasks in 0.038 ms, 0 records, 0 ring wraps, 0 backpressure waits
+T04 REJECT                    0.3s  task0.args_off=INT_MAX-1
+      -> [kvm_exec][I] kernel done: 0/0 tasks in 0.037 ms, 0 records, 0 ring wraps, 0 backpressure waits
+T05 REJECT                    0.3s  task0.succ_off=-1 succ_cnt=2
+      -> [kvm_exec][I] kernel done: 0/0 tasks in 0.038 ms, 0 records, 0 ring wraps, 0 backpressure waits
+T06 REJECT                    0.3s  reads[0] has no "policy" (golden)
+      -> [kvm_exec][E] metadata: malformed reads[] entry (task index out of range or no policy)
+T07 REJECT                    0.3s  reads[0] has no "name" (golden)
+      -> [kvm_exec][E] metadata/golden: missing key 'name'
+T08 REJECT                    0.3s  reads[0].task=-1, no gate (golden)
+      -> [kvm_exec][E] metadata: malformed reads[] entry (task index out of range or no policy)
+T09 REJECT                    0.3s  reads[0].task=1000000 (golden)
+      -> [kvm_exec][E] metadata: malformed reads[] entry (task index out of range or no policy)
+T10 REJECT                    0.3s  variables[0] has no "name" (golden)
+      -> [kvm_exec][E] metadata/golden: missing key 'name'
+T11 REJECT                    0.3s  buffer init kind "values" without "values"
+      -> [kvm_exec][E] metadata/golden: missing key 'values'
+T12 REJECT                    0.3s  metadata.json nested 200000 deep
+      -> [kvm_exec][E] json: nesting too deep at byte 64
+T13 REJECT                    0.3s  spin us=100000000 (100 s task) with --timeout-s 3
+      -> FAIL: 4/8 tasks, 0.126 ms
+T14 SLOW_REJECT               3.3s  task0.wait_var=0 wait_ver=INT_MAX (never satisfied)
+      -> FAIL: 4/8 tasks, 3001.116 ms
+T15 USAGE                     0.0s  cli --timeout-s -1 (wraps to ~infinite) + wait_ver never satisfied
+      -> --timeout-s: integer in [1,86400] expected, got '-1'
+T16 USAGE                     0.0s  cli --timeout-s 0
+      -> --timeout-s: integer in [1,86400] expected, got '0'
+T17 USAGE                     0.0s  cli --aging-us -2000000 (negative aging)
+      -> --aging-us: integer in [0,1000000000] expected, got '-2000000'
+T18 OK                        0.3s  cli --blocks 100000
+      -> OK: 8/8 tasks, 2.848 ms
+T19 USAGE                     0.0s  cli --max-tasks 536870913 (8*max_tasks wraps the int pool caps)
+      -> --max-tasks: integer in [2,67108864] expected, got '536870913'
+T20 USAGE                     0.0s  cli --live-cap 1073741824
+      -> --live-cap: integer in [2,16777216] expected, got '1073741824'
+T21 OK                        0.8s  buffers[0].rows=46341 cols=46341 (8.6 GB buffer)
+      -> OK: 8/8 tasks, 0.205 ms
+T22 REJECT                    0.3s  task_count in metadata larger than file
+      -> [kvm_exec][E] out/fuzz_out/case_T22/tasks.bin: expected 576 bytes, got 512
+targeted findings: []
+exit: 0

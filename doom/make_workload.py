@@ -24,6 +24,7 @@ def main():
     ap.add_argument("--chains", type=int, default=0, help="compute chains (0: no competing load)")
     ap.add_argument("--rounds", type=int, default=40, help="rounds per chain; each round is one matmul then one spin")
     ap.add_argument("--spin-us", type=int, default=200000, help="a spin task holds a block this long (sustains the load for the whole run)")
+    ap.add_argument("--burst", action="store_true", help="bursty load: each spin lasts 5, 40 or 200 ms (seeded), chains start staggered")
     ap.add_argument("--doom-priority", type=int, default=10)
     ap.add_argument("--compute-priority", type=int, default=0)
     ap.add_argument("--out", required=True)
@@ -59,7 +60,8 @@ def main():
             for r in range(a.rounds):
                 ct.append({"id": f"mm_{c}_{r}", "op": "matmul", "priority": a.compute_priority, "after": [f"spin_{c}_{r - 1}"] if r else [],
                            "args": {"a": "mm_a", "b": "mm_b", "out": f"mm_out_{c}", "m": N, "n": N, "k": N}})
-                ct.append({"id": f"spin_{c}_{r}", "op": "spin", "priority": a.compute_priority, "after": [f"mm_{c}_{r}"], "args": {"us": a.spin_us}})
+                us = rng.choice([5000, 40000, 200000]) if a.burst else a.spin_us
+                ct.append({"id": f"spin_{c}_{r}", "op": "spin", "priority": a.compute_priority, "after": [f"mm_{c}_{r}"], "args": {"us": us}})
         graphs.append({"name": "compute", "tasks": ct})
     json.dump({"buffers": buffers, "graphs": graphs}, open(a.out, "w"))
     print(f"wrote {a.out}: {len(tasks)} doom tasks, {len(graphs[1]['tasks']) if a.chains else 0} compute tasks, {len(buffers)} buffers")

@@ -21,6 +21,7 @@ int main(int argc, char** argv) {
     else if (a == "--blocks") cfg.blocks = atoi(sval().c_str()); else if (a == "--stack") cfg.stack_bytes = (size_t)atol(sval().c_str());
     else if (a == "--timeout-s") cfg.timeout_us = (unsigned long long)atoll(sval().c_str()) * 1000000ull;
     else if (a == "--live-cap") cfg.live_cap = atoi(sval().c_str());
+    else if (int r = kvm_cli_sched_option(cfg, i, argc, argv)) { if (r < 0) { fprintf(stderr, "missing value for %s\n", a.c_str()); return 2; } }   // --sched/--min/--urgent-us/--op-affinity/...
     else if (a[0] == '-') { fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; } else dir = a;
   }
   if (dir.empty() || wad.empty() || out.empty()) { fprintf(stderr, "usage: doom_exec <bundle_dir> --wad doom1.wad --out DIR [--blocks N] [--stack BYTES] [--timeout-s S]\n"); return 2; }
@@ -52,6 +53,7 @@ int main(int argc, char** argv) {
     if (st != KvmSubmit::OK) { KLOG(0, "submit: %s (%s)", kvm_submit_name(st), ex.last_error().c_str()); ex.close(); ex.finish(); return 1; }
     const KvmResult& r = ex.finish();
     if (!r.ok()) return 1;
+    kvm_print_class_report(r);
     kvm_write_trace_csv(r, (out + "/trace.csv").c_str());
 
     // ---- Doom outputs: per-frame hashes + state from d_state, raw frames from fb_<f>
@@ -101,17 +103,20 @@ int main(int argc, char** argv) {
     { int f = 0; for (size_t i = 0; i < r.trace.size(); ++i) if (r.tasks[i].op_id == op_tick && f < frames) { const KvmTrace& t = r.trace[i]; tick_s[f] = us(t.start_ns); tick_e[f] = us(t.end_ns); tick_wait.push_back((double)(t.start_ns - t.ready_ns) / 1e3); ++f; } }
     { int f = -1; for (size_t i = 0; i < r.trace.size(); ++i) { const int op = r.tasks[i].op_id; if (op == op_tick) ++f; if (f >= 0 && f < frames && (op == op_tick || op == kvm_op_by_name("doom_present") || op == kvm_op_by_name("doom_status"))) frame_done[f] = std::max(frame_done[f], us(r.trace[i].end_ns)); } }
     std::vector<double> gap, lat; for (int f = 2; f < frames; ++f) gap.push_back(tick_s[f] - tick_s[f - 1]); for (int f = 1; f < frames; ++f) lat.push_back(frame_done[f] - tick_s[f]);
+    int gap_miss = 0, tick_missed = 0; for (double g : gap) gap_miss += g > 1e6 / 35;   // a tick later than one 35 Hz period after the previous one
+    for (size_t i = 0; i < r.trace.size(); ++i) tick_missed += r.tasks[i].op_id == op_tick && (r.trace[i].flags & KVM_TRACE_MISSED);   // absolute deadlines (frames 0-6 are late because of the 170-330 ms boot tick)
     const double span_s = frames > 2 ? (tick_s[frames - 1] - tick_s[1]) / 1e6 : 0;
     const int workers = r.grid - 1; const double busy_total = doom_run + other_run;
     FILE* mj = fopen((out + "/metrics.json").c_str(), "w");
     fprintf(mj, "{\"device\": \"%s\", \"sms\": %d, \"grid\": %d, \"frames\": %d, \"kernel_ms\": %.3f, \"boot_tick_ms\": %.3f, \"achieved_fps\": %.2f, "
                 "\"tick_gap_us\": {\"p50\": %.1f, \"p99\": %.1f, \"max\": %.1f}, \"frame_latency_us\": {\"p50\": %.1f, \"p99\": %.1f, \"max\": %.1f}, "
                 "\"tick_queue_wait_us\": {\"p50\": %.1f, \"p99\": %.1f, \"max\": %.1f}, \"sms_used\": %zu, \"sms_used_by_doom\": %zu, "
-                "\"busy_us\": {\"doom\": %.0f, \"other\": %.0f}, \"worker_blocks\": %d, \"mean_block_utilization\": %.3f, \"matmul_ok\": %d, \"matmul_bad\": %d}\n",
+                "\"tick_gap_over_28571us\": %d, \"ticks_flagged_missed\": %d, \"busy_us\": {\"doom\": %.0f, \"other\": %.0f}, \"worker_blocks\": %d, \"mean_block_utilization\": %.3f, \"matmul_ok\": %d, \"matmul_bad\": %d}\n",
             ex.device_name().c_str(), ex.sms(), r.grid, frames, r.kernel_ms, (tick_e[0] - tick_s[0]) / 1e3, span_s > 0 ? (frames - 2) / span_s : 0.0,
             pct(gap, .5), pct(gap, .99), pct(gap, 1), pct(lat, .5), pct(lat, .99), pct(lat, 1), pct(tick_wait, .5), pct(tick_wait, .99), pct(tick_wait, 1),
-            all_sms.size(), doom_sms.size(), doom_run, other_run, workers, t_end > 0 ? busy_total / (t_end * workers) : 0.0, mm_ok, mm_bad);
+            all_sms.size(), doom_sms.size(), gap_miss, tick_missed, doom_run, other_run, workers, t_end > 0 ? busy_total / (t_end * workers) : 0.0, mm_ok, mm_bad);
     fclose(mj);
+    KLOG(2, "35 Hz: %d of %zu tick gaps over 28.57 ms, %d ticks flagged missed (absolute deadline)", gap_miss, gap.size(), tick_missed);
     KLOG(2, "frames %d, achieved %.1f fps (35 needed), tick gap p50/p99 %.2f/%.2f ms, frame latency p50/p99 %.2f/%.2f ms, tick queue wait p99 %.0f us, doom ran on %zu of %zu SMs, block utilization %.1f%%",
          frames, span_s > 0 ? (frames - 2) / span_s : 0.0, pct(gap, .5) / 1e3, pct(gap, .99) / 1e3, pct(lat, .5) / 1e3, pct(lat, .99) / 1e3, pct(tick_wait, .99), doom_sms.size(), all_sms.size(),
          t_end > 0 ? 100.0 * busy_total / (t_end * workers) : 0.0);

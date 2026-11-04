@@ -25,7 +25,7 @@ X(embedding_fwd,        32, "ids:buf,wte:buf,wpe:buf?,out:buf,r0:i32,r1:i32,T:i3
 X(embedding_bwd,        33, "ids:buf?,dout:buf,dtab:buf,N:i32,mod:i32,v0:i32,v1:i32,d:i32,acc:i32")
 // Output tile at (m0,n0) of C[M,N] = alpha*op(A)*op(B) with K reduction: 64x64, or 128x128 with flag 32 (a quarter of the L2->SM
 // traffic per FLOP: ~1.4x faster per FLOP; the caller steps m0,n0 by 128 and gets a quarter of the tasks). flags: 1 transA (A stored
-// [K,M]), 2 transB (B stored [N,K]), 4 accumulate into out, 8 gelu, 16 precise (3xTF32, ~fp32 accuracy; default 1xTF32), 32 big tile.
+// [K,M]), 2 transB (B stored [N,K]), 4 accumulate into out, 8 gelu, 16 precise (3xTF32, ~fp32 accuracy; default 1xTF32), 32 big tile, 64 huge tile (256x128: m0 steps by 256, n0 by 128; 72 KiB smem; ~1.1x the 128x128 tile; do not combine with a 128-register cap).
 // Epilogue: v=alpha*acc; +bias[n] (bias!=-1); pre[m,n]=v (pre!=-1, before gelu); gelu(v) if flag 8; +res[m,n] (res!=-1);
 // out = v or out + v.
 X(matmul_tile,          34, "a:buf,b:buf,out:buf,bias:buf?,res:buf?,pre:buf?,m0:i32,n0:i32,M:i32,N:i32,K:i32,flags:i32,alpha:f32")

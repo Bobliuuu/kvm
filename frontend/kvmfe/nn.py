@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass
 
-from .ir import FrontendError
+from .ir import FrontendError, Tensor
 from .opset import ATTN_Q
 
 
@@ -94,8 +94,9 @@ class Linear(Module):
         self.w = self.add('w', din, dout, ('normal', std), decay=True)
         self.b = self.add('b', 1, dout, ('fill', 0.0)) if bias else None
 
-    def __call__(self, b, x, w, res=None, gelu=False):
-        return b.linear(x, w[self.w], w[self.b] if self.b else None, res, gelu)
+    def __call__(self, b, x, w, res=None, gelu=False, bf16=False):
+        out = b.linear(x, w[self.w], w[self.b] if self.b else None, res, gelu, bf16=bf16)
+        return b.cast(out) if bf16 else out          # bf16 mode: activations are stored rounded as well
 
 
 class Norm(Module):
@@ -165,3 +166,28 @@ class GPT(Module):
         for blk in self.blocks:
             x = blk(b, x, w)
         return self.head(b, self.nf(b, x, w), w)
+
+
+    # ---- the training-program protocol (train.build_training): data streams and loss roots
+    def batch_streams(self, micros):
+        return token_streams(self.cfg, micros)
+
+    def losses(self, b, batch, w, grad_scale=1.0):
+        return [('loss', b.ce_loss(self(b, batch['ids'], w), batch['tgt'], grad_scale))]
+
+
+@dataclass
+class Stream:
+    """A host-provided input stream consumed one window per microbatch: micro m is elements [m*rows*cols, (m+1)*rows*cols)."""
+    name: str
+    rows: int            # rows per microbatch
+    cols: int
+    dtype: str           # f32 | i32
+    values: list         # micros * rows * cols numbers
+
+
+def token_streams(cfg, micros):
+    """Next-token bigram-chain batches (see train.batch_tokens) for `micros` microbatches: streams ids and tgt."""
+    from .train import batch_stream
+    ids, tgt = batch_stream(cfg, micros)
+    return [Stream('ids', cfg.tokens, 1, 'i32', ids), Stream('tgt', cfg.tokens, 1, 'i32', tgt)]

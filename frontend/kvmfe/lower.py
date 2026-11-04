@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
-from .ir import FrontendError, LogicalOp, Tensor
+from .ir import Builder, FrontendError, LogicalOp, Tensor
 from .opset import ATTN_Q, F_ACC, F_GELU, F_TA, F_TB, MM_TILE, op as device_op
 
 
@@ -104,7 +104,7 @@ def _task(dev, reads, writes, **args):
 
 
 # ------------------------------------------------------------------------------------------------ matmul family
-def _mm_tiles(a, b, out, M, N, K, ta, tb, flags, bias=None, res=None, pre=None, acc=False):
+def _mm_tiles(a, b, out, M, N, K, ta, tb, flags, bias=None, res=None, pre=None, acc=False, dev='matmul_tile'):
     for m0 in range(0, M, MM_TILE):
         m1 = min(m0 + MM_TILE, M)
         for n0 in range(0, N, MM_TILE):
@@ -114,15 +114,20 @@ def _mm_tiles(a, b, out, M, N, K, ta, tb, flags, bias=None, res=None, pre=None, 
             tile = out.region(m0, m1, n0, n1)
             reads = [ra, rb, bias.region(0, 1, n0, n1) if bias else None, res.region(m0, m1, n0, n1) if res else None,
                      tile if acc else None]
-            yield _task('matmul_tile', reads, [tile, pre.region(m0, m1, n0, n1) if pre else None],
+            yield _task(dev, reads, [tile, pre.region(m0, m1, n0, n1) if pre else None],
                         a=a, b=b, out=out, bias=bias, res=res, pre=pre, m0=m0, n0=n0, M=M, N=N, K=K, flags=flags, alpha=1.0)
+
+
+def _mm_dev(op):
+    return 'matmul_tile_bf16' if op.attrs.get('bf16') else 'matmul_tile'
 
 
 @lowers('linear')
 def _(op, tc):
     x, w, out = op.ins['x'], op.ins['w'], op.outs['out']
-    yield from _mm_tiles(x, w, out, x.rows, w.cols, x.cols, False, False, F_GELU if op.attrs['gelu'] else 0,
-                         op.ins.get('bias'), op.ins.get('res'), op.outs.get('pre'))
+    wt = op.attrs['wt']
+    yield from _mm_tiles(x, w, out, x.rows, out.cols, x.cols, False, wt, (F_GELU if op.attrs['gelu'] else 0) | (F_TB if wt else 0),
+                         op.ins.get('bias'), op.ins.get('res'), op.outs.get('pre'), dev=_mm_dev(op))
 
 
 @lowers('mm')
@@ -131,7 +136,8 @@ def _(op, tc):
     M, K = (a.cols, a.rows) if ta else (a.rows, a.cols)
     N = b.rows if tb else b.cols
     acc = 'into' in op.ins
-    yield from _mm_tiles(a, b, out, M, N, K, ta, tb, (F_TA if ta else 0) | (F_TB if tb else 0) | (F_ACC if acc else 0), acc=acc)
+    yield from _mm_tiles(a, b, out, M, N, K, ta, tb, (F_TA if ta else 0) | (F_TB if tb else 0) | (F_ACC if acc else 0), acc=acc,
+                         dev=_mm_dev(op))
 
 
 # ------------------------------------------------------------------------------------------------ data / row-wise ops
@@ -242,27 +248,38 @@ def _seq_blocks(n, size):
     return [(a, min(a + size, n)) for a in range(0, n, size)]
 
 
+def _attn_geom(op):
+    q, k = op.ins['q'], op.ins['k']
+    T, H, Hkv = op.attrs['seq'], op.attrs['heads'], op.attrs['kv_heads']
+    return T, H, Hkv, q.cols // H, H // Hkv, op.attrs['causal']
+
+
+def _kv_rows(b, T, q1, causal):
+    """Rows of K/V a query block ending at q1 reads: the causal prefix, or the whole sequence."""
+    return (b * T, b * T + (q1 if causal else T))
+
+
 @lowers('attention')
 def _(op, tc):
     q, k, v, out, lse = op.ins['q'], op.ins['k'], op.ins['v'], op.outs['out'], op.outs['lse']
-    T, H = op.attrs['seq'], op.attrs['heads']
-    hd = q.cols // H
+    T, H, Hkv, hd, G, causal = _attn_geom(op)
     for b in range(q.rows // T):
         for h in range(H):
-            hc = (h * hd, (h + 1) * hd)
+            hc, kc = (h * hd, (h + 1) * hd), (h // G * hd, (h // G + 1) * hd)
             for q0, q1 in _seq_blocks(T, ATTN_Q):
-                R, KV = (b * T + q0, b * T + q1), (b * T, b * T + q1)
-                yield _task('attn_fwd', [q.region(*R, *hc), k.region(*KV, *hc), v.region(*KV, *hc)],
+                R, KV = (b * T + q0, b * T + q1), _kv_rows(b, T, q1, causal)
+                yield _task('attn_fwd' if causal else 'attn_full_fwd',
+                            [q.region(*R, *hc), k.region(*KV, *kc), v.region(*KV, *kc)],
                             [out.region(*R, *hc), lse.region(b * H + h, b * H + h + 1, q0, q1)],
-                            q=q, k=k, v=v, o=out, lse=lse, b=b, h=h, q0=q0, T=T, H=H, Hkv=H, hd=hd, scale=hd ** -0.5)
+                            q=q, k=k, v=v, o=out, lse=lse, b=b, h=h, q0=q0, T=T, H=H, Hkv=Hkv, hd=hd, scale=hd ** -0.5)
 
 
 @lowers('attention_bwd')
 def _(op, tc):
     q, k, v, o, do, lse = (op.ins[n] for n in ('q', 'k', 'v', 'o', 'do', 'lse'))
     dq, dk, dv, delta = (op.outs[n] for n in ('dq', 'dk', 'dv', 'delta'))
-    T, H = op.attrs['seq'], op.attrs['heads']
-    hd, B = q.cols // H, q.rows // op.attrs['seq']
+    T, H, Hkv, hd, G, causal = _attn_geom(op)
+    B = q.rows // T
     for b in range(B):                                            # delta = rowsum(do * o), per sequence, all heads
         for t0, t1 in blocks(T, tc.rows):
             yield _task('attn_bwd_delta', [o.region(b * T + t0, b * T + t1), do.region(b * T + t0, b * T + t1)],
@@ -270,19 +287,25 @@ def _(op, tc):
                         T=T, H=H, hd=hd)
     for b in range(B):
         for h in range(H):
-            hc, bh = (h * hd, (h + 1) * hd), (b * H + h, b * H + h + 1)
+            hc, kc, bh = (h * hd, (h + 1) * hd), (h // G * hd, (h // G + 1) * hd), (b * H + h, b * H + h + 1)
             for q0, q1 in _seq_blocks(T, ATTN_Q):
-                R, KV = (b * T + q0, b * T + q1), (b * T, b * T + q1)
-                yield _task('attn_bwd_dq', [q.region(*R, *hc), k.region(*KV, *hc), v.region(*KV, *hc), do.region(*R, *hc),
-                                            lse.region(*bh, q0, q1), delta.region(*bh, q0, q1)], [dq.region(*R, *hc)],
-                            q=q, k=k, v=v, do=do, lse=lse, delta=delta, dq=dq, b=b, h=h, q0=q0, T=T, H=H, Hkv=H, hd=hd,
+                R, KV = (b * T + q0, b * T + q1), _kv_rows(b, T, q1, causal)
+                yield _task('attn_bwd_dq' if causal else 'attn_full_bwd_dq',
+                            [q.region(*R, *hc), k.region(*KV, *kc), v.region(*KV, *kc), do.region(*R, *hc),
+                             lse.region(*bh, q0, q1), delta.region(*bh, q0, q1)], [dq.region(*R, *hc)],
+                            q=q, k=k, v=v, do=do, lse=lse, delta=delta, dq=dq, b=b, h=h, q0=q0, T=T, H=H, Hkv=Hkv, hd=hd,
                             scale=hd ** -0.5)
+        for kvh in range(Hkv):                                    # dk/dv sum over the whole GQA group of query heads
+            qc = (kvh * G * hd, (kvh + 1) * G * hd)
+            kc, bh = (kvh * hd, (kvh + 1) * hd), (b * H + kvh * G, b * H + (kvh + 1) * G)
             for k0, k1 in _seq_blocks(T, ATTN_Q):
-                Q, K = (b * T + k0, b * T + T), (b * T + k0, b * T + k1)
-                yield _task('attn_bwd_dkv', [q.region(*Q, *hc), k.region(*K, *hc), v.region(*K, *hc), do.region(*Q, *hc),
-                                             lse.region(*bh, k0, T), delta.region(*bh, k0, T)],
-                            [dk.region(*K, *hc), dv.region(*K, *hc)],
-                            q=q, k=k, v=v, do=do, lse=lse, delta=delta, dk=dk, dv=dv, b=b, kvh=h, k0=k0, T=T, H=H, hd=hd,
+                lo = k0 if causal else 0
+                Q, K = (b * T + lo, b * T + T), (b * T + k0, b * T + k1)
+                yield _task('attn_bwd_dkv' if causal else 'attn_full_bwd_dkv',
+                            [q.region(*Q, *qc), k.region(*K, *kc), v.region(*K, *kc), do.region(*Q, *qc),
+                             lse.region(*bh, lo, T), delta.region(*bh, lo, T)],
+                            [dk.region(*K, *kc), dv.region(*K, *kc)],
+                            q=q, k=k, v=v, do=do, lse=lse, delta=delta, dk=dk, dv=dv, b=b, kvh=kvh, k0=k0, T=T, H=H, hd=hd,
                             scale=hd ** -0.5)
 
 
@@ -298,11 +321,11 @@ def _(op, tc):
 @lowers('attn_decode')
 def _(op, tc):
     q, kc, vc, lens, out = op.ins['q'], op.ins['kc'], op.ins['vc'], op.ins['lens'], op.outs['out']
-    H = op.attrs['heads']
+    H, Hkv = op.attrs['heads'], op.attrs['kv_heads']
     hd = q.cols // H
     for h in range(H):
         yield _task('attn_decode', [q.region(0, 1, h * hd, (h + 1) * hd), _full(kc), _full(vc), _full(lens)],
-                    [out.region(0, 1, h * hd, (h + 1) * hd)], q=q, kc=kc, vc=vc, lens=lens, o=out, b=0, h=h, H=H, Hkv=H, hd=hd,
+                    [out.region(0, 1, h * hd, (h + 1) * hd)], q=q, kc=kc, vc=vc, lens=lens, o=out, b=0, h=h, H=H, Hkv=Hkv, hd=hd,
                     Tmax=op.attrs['tmax'], scale=hd ** -0.5)
 
 
@@ -321,7 +344,7 @@ def _(op, tc):
     lg, tgt, lse, loss, out = op.ins['logits'], op.ins['tgt'], op.ins['lse'], op.ins['loss'], op.outs['out']
     for r0, r1 in blocks(lg.rows, tc.rows):
         yield _task('softmax_ce_bwd', [_rows(lg, r0, r1), _rows(tgt, r0, r1), _rows(lse, r0, r1), _full(loss)], [_rows(out, r0, r1)],
-                    logits=lg, tgt=tgt, lse=lse, loss=loss, dlogits=out, r0=r0, r1=r1, V=lg.cols, ignore=-1, scale=1.0)
+                    logits=lg, tgt=tgt, lse=lse, loss=loss, dlogits=out, r0=r0, r1=r1, V=lg.cols, ignore=-1, scale=op.attrs['grad_scale'])
 
 
 @lowers('argmax')
@@ -334,12 +357,12 @@ def _(op, tc):
 @lowers('adamw')
 def _(op, tc):
     w, g, m, v, step = (op.ins[n] for n in ('w', 'g', 'm', 'v', 'step'))
-    a, gs, tok = op.attrs, op.ins.get('gscale'), op.ins.get('tok')
+    a, gs, tok, lrb = op.attrs, op.ins.get('gscale'), op.ins.get('tok'), op.ins.get('lr_buf')
     for r0, r1 in _opt_chunks(w, tc):
         rw = [_rows(w, r0, r1), _rows(m, r0, r1), _rows(v, r0, r1)]
-        yield _task('adamw', rw + [_rows(g, r0, r1), _full(step), _full(tok) if tok else None, _full(gs) if gs else None], rw,
-                    p=w, g=g, m=m, v=v, gscale=gs, step=step, e0=r0 * w.cols, e1=r1 * w.cols,
-                    lr=a['lr'], b1=a['b1'], b2=a['b2'], eps=a['eps'], wd=a['wd'])
+        reads = rw + [_rows(g, r0, r1), _full(step), _full(tok) if tok else None, _full(gs) if gs else None, _full(lrb) if lrb else None]
+        hp = dict(p=w, g=g, m=m, v=v, gscale=gs, step=step, e0=r0 * w.cols, e1=r1 * w.cols, b1=a['b1'], b2=a['b2'], eps=a['eps'], wd=a['wd'])
+        yield _task('adamw_lr', reads, rw, lr=lrb, **hp) if lrb else _task('adamw', reads, rw, lr=a['lr'], **hp)
 
 
 def _opt_chunks(w, tc):
@@ -365,7 +388,7 @@ def _(op, tc):
     src, step, dst = op.ins['src'], op.ins['step'], op.outs['dst']
     for r0, r1 in blocks(dst.rows, tc.rows):
         yield _task('select_window', [_full(src), _full(step)], [_rows(dst, r0, r1)], src=src, step=step, dst=dst,
-                    i0=r0, i1=r1, stride=op.attrs['stride'], off=op.attrs['off'])
+                    i0=r0 * dst.cols, i1=r1 * dst.cols, stride=op.attrs['stride'], off=op.attrs['off'])
 
 
 @lowers('sgd')
@@ -384,3 +407,209 @@ def _(op, tc):
 def _(op, tc):
     yield TileTask('noop', {}, [t.region() for t in op.ins.values()], [t.region() for t in op.outs.values()],
                    publishes=op.attrs.get('publishes'))
+
+
+# ------------------------------------------------------------------------------------------------ extra pack
+def _flat_blocks(t, tc):
+    for r0, r1 in blocks(t.rows, tc.ew_rows):
+        yield r0, r1, r0 * t.cols, r1 * t.cols
+
+
+@lowers('act')
+def _(op, tc):
+    x, out = op.ins['x'], op.outs['out']
+    for r0, r1, e0, e1 in _flat_blocks(x, tc):
+        yield _task('act_fwd', [_rows(x, r0, r1)], [_rows(out, r0, r1)], x=x, out=out, kind=Builder.ACT_KINDS[op.attrs['fn']], e0=e0, e1=e1)
+
+
+@lowers('act_bwd')
+def _(op, tc):
+    x, dy, out, acc = op.ins['x'], op.ins['dy'], op.outs['out'], 'into' in op.ins
+    for r0, r1, e0, e1 in _flat_blocks(x, tc):
+        yield _task('act_bwd', [_rows(x, r0, r1), _rows(dy, r0, r1), _rows(out, r0, r1) if acc else None], [_rows(out, r0, r1)],
+                    x=x, dy=dy, dx=out, kind=Builder.ACT_KINDS[op.attrs['fn']], e0=e0, e1=e1, acc=int(acc))
+
+
+@lowers('silu_mul')
+def _(op, tc):
+    g, u, out = op.ins['gate'], op.ins['up'], op.outs['out']
+    for r0, r1, e0, e1 in _flat_blocks(g, tc):
+        yield _task('silu_mul_fwd', [_rows(g, r0, r1), _rows(u, r0, r1)], [_rows(out, r0, r1)], gate=g, up=u, out=out, e0=e0, e1=e1)
+
+
+@lowers('silu_mul_bwd')
+def _(op, tc):
+    g, u, dy, dg, du = (*(op.ins[n] for n in ('gate', 'up', 'dy')), op.outs['dgate'], op.outs['dup'])
+    for r0, r1, e0, e1 in _flat_blocks(g, tc):
+        yield _task('silu_mul_bwd', [_rows(g, r0, r1), _rows(u, r0, r1), _rows(dy, r0, r1)], [_rows(dg, r0, r1), _rows(du, r0, r1)],
+                    gate=g, up=u, dy=dy, dgate=dg, dup=du, e0=e0, e1=e1, acc=0)
+
+
+@lowers('softmax')
+def _(op, tc):
+    x, out = op.ins['x'], op.outs['out']
+    for r0, r1 in blocks(x.rows, tc.rows):
+        yield _task('softmax_rows_fwd', [_rows(x, r0, r1)], [_rows(out, r0, r1)], x=x, out=out, r0=r0, r1=r1, d=x.cols,
+                    scale=op.attrs['scale'])
+
+
+@lowers('softmax_bwd')
+def _(op, tc):
+    p, dp, out, acc = op.ins['p'], op.ins['dp'], op.outs['out'], 'into' in op.ins
+    for r0, r1 in blocks(p.rows, tc.rows):
+        yield _task('softmax_rows_bwd', [_rows(p, r0, r1), _rows(dp, r0, r1), _rows(out, r0, r1) if acc else None], [_rows(out, r0, r1)],
+                    p=p, dp=dp, dx=out, r0=r0, r1=r1, d=p.cols, scale=op.attrs['scale'], acc=int(acc))
+
+
+def _idx_rows(t, idx0, n):
+    return t.region(idx0, idx0 + n, 0, 1) if t is not None else None
+
+
+@lowers('gather')
+def _(op, tc):
+    src, idx, sc, out, acc = op.ins['src'], op.ins['idx'], op.ins.get('scale'), op.outs['out'], 'into' in op.ins
+    o = op.attrs['idx0']
+    for r0, r1 in blocks(op.attrs['n'], tc.rows):
+        yield _task('gather_rows_scaled', [_full(src), _idx_rows(idx, o + r0, r1 - r0), _idx_rows(sc, o + r0, r1 - r0),
+                                           _rows(out, r0, r1) if acc else None], [_rows(out, r0, r1)],
+                    src=src, idx=idx, scale=sc, dst=out, r0=r0, r1=r1, d=src.cols, acc=int(acc), idx0=o)
+
+
+@lowers('scatter_add')
+def _(op, tc):
+    src, idx, sc, out, acc = op.ins['src'], op.ins['idx'], op.ins.get('scale'), op.outs['out'], 'into' in op.ins
+    o, N = op.attrs['idx0'], src.rows
+    for v0, v1 in blocks(out.rows, tc.rows):
+        yield _task('scatter_add_rows', [_full(src), _idx_rows(idx, o, N), _idx_rows(sc, o, N), _rows(out, v0, v1) if acc else None],
+                    [_rows(out, v0, v1)], src=src, idx=idx, scale=sc, dst=out, N=N, v0=v0, v1=v1, d=src.cols, acc=int(acc), idx0=o)
+
+
+@lowers('row_dot')
+def _(op, tc):
+    a, b, idx, out, o = op.ins['a'], op.ins['b'], op.ins['idx'], op.outs['out'], op.attrs['idx0']
+    for r0, r1 in blocks(b.rows, tc.rows):
+        yield _task('row_dot', [_full(a), _rows(b, r0, r1), _idx_rows(idx, o + r0, r1 - r0)], [_idx_rows(out, o + r0, r1 - r0)],
+                    a=a, b=b, idx=idx, out=out, r0=r0, r1=r1, d=b.cols, acc=0, idx0=o)
+
+
+@lowers('moe_route')
+def _(op, tc):
+    probs, sel, slot, eidx = op.ins['probs'], op.outs['sel'], op.outs['slot'], op.outs['eidx']
+    yield _task('moe_route', [_full(probs)], [_full(sel), _full(slot), _full(eidx)], probs=probs, sel=sel, slot=slot, eidx=eidx,
+                N=probs.rows, E=probs.cols, k=sel.cols, C=op.attrs['capacity'])
+
+
+@lowers('moe_gates')
+def _(op, tc):
+    probs, sel, slot, gs = op.ins['probs'], op.ins['sel'], op.ins['slot'], op.outs['out']
+    yield _task('moe_gates_fwd', [_full(probs), _full(sel), _full(slot)], [_full(gs)], probs=probs, sel=sel, slot=slot, gs=gs,
+                N=probs.rows, E=probs.cols, k=sel.cols, renorm=int(op.attrs['renorm']))
+
+
+@lowers('moe_gates_bwd')
+def _(op, tc):
+    probs, sel, slot, dgs, out, acc = (*(op.ins[n] for n in ('probs', 'sel', 'slot', 'dgs')), op.outs['dprobs'], 'into' in op.ins)
+    yield _task('moe_gates_bwd', [_full(probs), _full(sel), _full(slot), _full(dgs), _full(out) if acc else None], [_full(out)],
+                probs=probs, sel=sel, slot=slot, dgs=dgs, dprobs=out, N=probs.rows, E=probs.cols, k=sel.cols,
+                renorm=int(op.attrs['renorm']), acc=int(acc))
+
+
+@lowers('moe_balance')
+def _(op, tc):
+    probs, sel, loss = op.ins['probs'], op.ins['sel'], op.outs['loss']
+    yield _task('moe_balance_fwd', [_full(probs), _full(sel)], [_full(loss)], probs=probs, sel=sel, loss=loss, N=probs.rows,
+                E=probs.cols, k=sel.cols, coef=op.attrs['coef'])
+
+
+@lowers('moe_balance_bwd')
+def _(op, tc):
+    probs, sel, out, acc = op.ins['probs'], op.ins['sel'], op.outs['out'], 'into' in op.ins
+    yield _task('moe_balance_bwd', [_full(probs), _full(sel), _full(out) if acc else None], [_full(out)], probs=probs, sel=sel,
+                dprobs=out, N=probs.rows, E=probs.cols, k=sel.cols, coef=op.attrs['coef'], acc=int(acc))
+
+
+@lowers('add_rowtile')
+def _(op, tc):
+    x, pos, out = op.ins['x'], op.ins['pos'], op.outs['out']
+    for r0, r1 in blocks(x.rows, tc.rows):
+        yield _task('add_rowtile', [_rows(x, r0, r1), _full(pos)], [_rows(out, r0, r1)], x=x, pos=pos, out=out, r0=r0, r1=r1,
+                    T=op.attrs['seq'], d=x.cols)
+
+
+@lowers('pos_bwd')
+def _(op, tc):
+    dout, dpos, acc = op.ins['dout'], op.outs['dpos'], 'into' in op.ins
+    for v0, v1 in blocks(dpos.rows, tc.vocab):
+        yield _task('embedding_bwd', [_full(dout), _rows(dpos, v0, v1) if acc else None], [_rows(dpos, v0, v1)], ids=None, dout=dout,
+                    dtab=dpos, N=dout.rows, mod=op.attrs['seq'], v0=v0, v1=v1, d=dpos.cols, acc=int(acc))
+
+
+@lowers('cast')
+def _(op, tc):
+    x, out = op.ins['x'], op.outs['out']
+    for r0, r1, e0, e1 in _flat_blocks(x, tc):
+        yield _task('round_bf16', [_rows(x, r0, r1)], [_rows(out, r0, r1)], x=x, out=out, e0=e0, e1=e1)
+
+
+@lowers('lr_schedule')
+def _(op, tc):
+    step, lr, a = op.ins['step'], op.outs['lr'], op.attrs
+    yield _task('lr_schedule', [_full(step)], [_full(lr)], step=step, lr=lr, kind=a['kind'], base=a['base'], warmup=a['warmup'],
+                total=a['total'], min_ratio=a['min_ratio'])
+
+
+@lowers('scale_flat')
+def _(op, tc):
+    x = op.ins['x']
+    yield _task('scale_flat', [_full(x)], [_full(x)], x=x, out=x, alpha=op.attrs['alpha'], e0=0, e1=op.attrs['elems'])
+
+
+# ------------------------------------------------------------------------------------------------ fused matmul epilogues (fuse.py)
+def _mm_grid(a, b, M, N, K, ta, tb):
+    for m0 in range(0, M, MM_TILE):
+        m1 = min(m0 + MM_TILE, M)
+        for n0 in range(0, N, MM_TILE):
+            n1 = min(n0 + MM_TILE, N)
+            ra = a.region(0, K, m0, m1) if ta else a.region(m0, m1, 0, K)
+            rb = b.region(n0, n1, 0, K) if tb else b.region(0, K, n0, n1)
+            yield m0, m1, n0, n1, ra, rb
+
+
+@lowers('mm_dgelu')
+def _(op, tc):
+    a, b, pre, out, ta, tb = op.ins['a'], op.ins['b'], op.ins['pre'], op.outs['out'], op.attrs['ta'], op.attrs['tb']
+    M, K = (a.cols, a.rows) if ta else (a.rows, a.cols)
+    N = b.rows if tb else b.cols
+    for m0, m1, n0, n1, ra, rb in _mm_grid(a, b, M, N, K, ta, tb):
+        tile = out.region(m0, m1, n0, n1)
+        yield _task('matmul_tile_dgelu', [ra, rb, pre.region(m0, m1, n0, n1)], [tile], a=a, b=b, out=out, pre=pre, m0=m0, n0=n0,
+                    M=M, N=N, K=K, flags=(F_TA if ta else 0) | (F_TB if tb else 0), alpha=1.0)
+
+
+@lowers('linear_silu_mul')
+def _(op, tc):
+    x, w, gate, out, up = op.ins['x'], op.ins['w'], op.ins['gate'], op.outs['out'], op.outs['up']
+    for m0, m1, n0, n1, ra, rb in _mm_grid(x, w, x.rows, w.cols, x.cols, False, False):
+        t = (m0, m1, n0, n1)
+        yield _task('matmul_tile_silu_mul', [ra, rb, gate.region(*t)], [out.region(*t), up.region(*t)], a=x, b=w, out=out, gate=gate,
+                    up=up, m0=m0, n0=n0, M=x.rows, N=w.cols, K=x.cols, flags=0, alpha=1.0)
+
+
+@lowers('mm_silu_mul_bwd')
+def _(op, tc):
+    a, b, gate, up = op.ins['a'], op.ins['b'], op.ins['gate'], op.ins['up']
+    dg, du, ta, tb = op.outs['dgate'], op.outs['dup'], op.attrs['ta'], op.attrs['tb']
+    M, K = (a.cols, a.rows) if ta else (a.rows, a.cols)
+    N = b.rows if tb else b.cols
+    for m0, m1, n0, n1, ra, rb in _mm_grid(a, b, M, N, K, ta, tb):
+        t = (m0, m1, n0, n1)
+        yield _task('matmul_tile_silu_mul_bwd', [ra, rb, gate.region(*t), up.region(*t)], [dg.region(*t), du.region(*t)], a=a, b=b,
+                    gate=gate, up=up, dgate=dg, dup=du, m0=m0, n0=n0, M=M, N=N, K=K, flags=(F_TA if ta else 0) | (F_TB if tb else 0),
+                    alpha=1.0)
+
+
+@lowers('add')
+def _(op, tc):
+    a, b, out = op.ins['a'], op.ins['b'], op.outs['out']
+    for r0, r1, e0, e1 in _flat_blocks(a, tc):
+        yield _task('residual_add', [_rows(a, r0, r1), _rows(b, r0, r1)], [_rows(out, r0, r1)], a=a, b=b, out=out, e0=e0, e1=e1)

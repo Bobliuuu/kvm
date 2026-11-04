@@ -39,3 +39,7 @@ CLAUDE.local.md
 # ABI headers and executor sources match kvm_* but are source
 !include/kvm_*
 !kvm_exec.cu
+
+# Doom: the GPL engine source and the WAD are fetched by doom/setup.sh, never committed; build outputs
+doom/third_party/
+doom/build/

@@ -1,0 +1,19 @@
+// Game operators: real Doom (doomgeneric, compiled to a relocatable device object by doom/build.sh).
+// Same X(name, id, "arg:type,...") format as kvm_ops.def; included after it by the dispatcher, the compiler and the frontend.
+// Ids 128 and up are reserved for this file and are append-only (kvm_ops.def keeps 0..127).
+//
+// All buf arguments are ordinary f32 table buffers (rows*cols 32-bit words); the ops reinterpret the words as bytes/ints.
+// Layouts and the executor requirements are in include/kvm_ops_game.cuh.
+//
+//   doom_tick(frame, input, state)  one 35 Hz game tic of the real engine, in one CTA (blockDim must be 256).
+//     frame  = tic number, must run in order 0,1,2,...; frame 0 boots the engine (loads E1M1). Chain frame f -> f+1 with DAG edges.
+//     input  = per-tic key/mouse words written by the host; if word 0 is not KVM_DOOM_INPUT_MAGIC (a zero buffer), the scripted
+//              player plays (no cheats). A word of 0xFFFFFFFF for a tic means "scripted for this tic".
+//     state  = KVM_DOOM_STATE_WORDS header (tic, kills, items, deaths, health, level-finished tic, ...) + per-frame hash history.
+//   doom_present(fb, row0, rows)    copy screen rows [row0,row0+rows) of the 8-bit frame (+ the 256-entry RGBA palette when row0 == 0)
+//                                   into fb: >= 16256 words (64000 palette indices, then 256 RGBA words). Depends on tick f only.
+//   doom_status(frame, state)       record the hash of the current screen+palette into state history slot `frame`
+//                                   (proof of pixel identity against the CPU build without copying every frame out).
+X(doom_tick,    128, "frame:i32,input:buf,state:buf")
+X(doom_present, 129, "fb:buf,row0:i32,rows:i32")
+X(doom_status,  130, "frame:i32,state:buf")

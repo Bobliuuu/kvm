@@ -32,6 +32,7 @@
 #include <cstdint>
 #include <cuda_runtime.h>
 #include "kvm_task_abi.h"
+#include "kvm_sched.h"      // SCHED: scheduling policy data (host+device); policy code is include/kvm_sched.cuh
 
 #define KVM_THREADS    256        // blockDim contract: all 256 threads enter every op (game ops: thread 0 = game thread)
 #define KVM_NBUCKETS   32          // priority levels 0..31; larger runs first (validated, never silently clamped)
@@ -93,12 +94,14 @@ static constexpr int KVM_NUM_OPS = sizeof(kKvmOps) / sizeof(kKvmOps[0]);
 
 namespace kvm_sig {
 constexpr bool registry_ok() {  // ids dense and equal to position, signatures well formed
-  for (int i = 0; i < KVM_NUM_OPS; ++i)
-    if (kKvmOps[i].id != i || kKvmOps[i].types == 0xFFFFFFFFu) return false;
+  for (int i = 0; i < KVM_NUM_OPS; ++i) {   // ids are sparse (0-31 core, 32-127 gpt, 128+ game) but unique and >= 0
+    if (kKvmOps[i].id < 0 || kKvmOps[i].types == 0xFFFFFFFFu) return false;
+    for (int j = 0; j < i; ++j) if (kKvmOps[j].id == kKvmOps[i].id) return false;
+  }
   return true;
 }
 }  // namespace kvm_sig
-static_assert(kvm_sig::registry_ok(), "operator registry: ids must be unique and >= 0, every signature name:type with type buf|i32|f32");
+static_assert(kvm_sig::registry_ok(), "operator registry: ids must be unique and >= 0 (sparse is fine), every signature name:type with type buf|i32|f32");
 
 // Compile-time view of the registry usable in device static_asserts (no device-side array odr-use).
 __host__ __device__ constexpr int kvm_op_arity(int id) {
@@ -148,7 +151,7 @@ struct KvmTrace {  // one per slot, 64 B
 };
 #define KVM_TRACE_MISSED 1
 
-struct KvmCell { unsigned long long seq, ready_ns; int slot, pad[3]; };            // 32 B
+struct KvmCell { unsigned long long seq, ready_ns, deadline_ns; int slot, res; };   // 32 B; deadline_ns 0 = none, res = KvmRes (SCHED)
 struct alignas(128) KvmQCtl { unsigned long long head, tail; };                    // own cache line
 
 struct KvmCounters {  // device memory; hot fields on separate lines
@@ -174,6 +177,7 @@ struct KvmDevState {
   unsigned long long *doorbell, *ring_head;
   unsigned int* closed;
   KvmHostErr* herr;
+  KvmSchedPtrs sp;   // SCHED: scheduler state; sp.on == 0 reproduces the original single-queue executor
 };
 
 #ifdef __CUDACC__
@@ -368,59 +372,9 @@ __device__ __forceinline__ uint32_t kvm_dev_types(int op) {
   return 0;
 }
 
-// ---------------- ready queue ----------------
-// bucket b = priority (validated 0..31). A pop picks, over the head of every bucket, the max of
-//   score = b * aging_ns + (now - ready_ns)        (aging_ns = 1<<50 when aging is off: strict priority)
-// Within a bucket the head is the oldest, so this is exact "priority + aging" over all ready tasks; FIFO within bucket.
-__device__ __forceinline__ void kvm_enqueue(const KvmDevState& S, int slot) {
-  int b = S.tasks[slot].priority;
-  KvmQCtl* q = S.qctl + b;
-  unsigned long long pos = atom_add64(&q->tail, 1ull);
-  KvmCell* cell = S.cells + (size_t)b * S.live_cap + (pos & (unsigned long long)(S.live_cap - 1));
-  // The cell frees when its previous occupant was popped; the occupant's popper recycles it right after its head CAS.
-  for (int spin = 0; ld_acq64(&cell->seq) != pos; ++spin) {
-    if (spin > (1 << 22)) { kvm_fail(S, KVM_ERR_QUEUE_OVERFLOW, slot, b, (int)pos); return; }
-    __nanosleep(32);
-  }
-  unsigned long long now = kvm_now();
-  S.trace[slot].ready_ns = now;
-  cell->slot = slot;
-  cell->ready_ns = now;
-  st_rel64(&cell->seq, pos + 1);
-}
-
-// Warp-wide (all 32 lanes call). Returns a slot, or -1 if nothing was claimed.
-__device__ __forceinline__ int kvm_pop(const KvmDevState& S, unsigned long long now) {
-  const int lane = threadIdx.x & 31;
-  for (int attempt = 0; attempt < 4; ++attempt) {
-    KvmQCtl* q = S.qctl + lane;
-    unsigned long long h = ld_acq64(&q->head);
-    KvmCell* cell = S.cells + (size_t)lane * S.live_cap + (h & (unsigned long long)(S.live_cap - 1));
-    long long score = -1;
-    if (ld_acq64(&cell->seq) == h + 1) {
-      long long age = (long long)(now - cell->ready_ns);
-      score = (long long)lane * S.aging_ns + (age > 0 ? age : 0);
-    }
-    long long best = score; int bl = lane;
-#pragma unroll
-    for (int off = 16; off > 0; off >>= 1) {
-      long long o = __shfl_xor_sync(0xffffffffu, best, off);
-      int ol = __shfl_xor_sync(0xffffffffu, bl, off);
-      if (o > best || (o == best && ol > bl)) { best = o; bl = ol; }
-    }
-    if (best < 0) return -1;
-    int got = -2;
-    if (lane == bl) {
-      if (atom_cas64(&q->head, h, h + 1) == h) {
-        got = cell->slot;
-        st_rel64(&cell->seq, h + (unsigned long long)S.live_cap);  // recycle before running
-      }
-    }
-    got = __shfl_sync(0xffffffffu, got, bl);
-    if (got >= 0) return got;
-  }
-  return -1;
-}
+// ---------------- ready queue and scheduling policy ----------------
+// SCHED: kvm_enqueue / kvm_pop (per-class rings, tiers, caps) and the policy block live in kvm_sched.cuh.
+#include "kvm_sched.cuh"
 
 // ---------------- release: indegree reached 0 ----------------
 // Enqueue now if the version wait is satisfied, else park (see header comment for the lost-wakeup argument).
@@ -429,14 +383,14 @@ __device__ __forceinline__ void kvm_release_task(const KvmDevState& S, int slot)
   const KvmTaskDesc* d = S.tasks + slot;
   int var = d->wait_var;
   if (var < 0 || ld_acq(S.version + var) >= d->wait_ver) kvm_enqueue(S, slot);
-  else { S.state[slot] = 1; kvm_park(S, slot, var, d->wait_ver); }
+  else { S.state[slot] = 1; kvm_sched_park(S, slot); kvm_park(S, slot, var, d->wait_ver); }  // SCHED: count the parked waiter first
 }
 __device__ __forceinline__ void kvm_park(const KvmDevState& S, int slot, int var, int need) {
   int* head = S.park_head + var;
   int old;
   do { old = *(volatile int*)head; S.park_next[slot] = old; } while (atom_cas(head, old, slot) != old);
   __threadfence();  // seq_cst fence: push -> fence -> load version   (publisher: store version -> fence -> exchange)
-  if (ld_acq(S.version + var) >= need && atom_cas(S.state + slot, 1, 2) == 1) kvm_enqueue(S, slot);
+  if (ld_acq(S.version + var) >= need && atom_cas(S.state + slot, 1, 2) == 1) { kvm_sched_unpark(S, slot); kvm_enqueue(S, slot); }
 }
 
 // version[pub_var]: N-1 -> N. Caller has passed a block barrier after the op's stores.
@@ -449,7 +403,7 @@ __device__ __forceinline__ void kvm_publish(const KvmDevState& S, int slot, int 
   while (n >= 0) {
     int next = S.park_next[n];                                  // read before a re-park rewrites it
     int need = S.tasks[n].wait_ver;
-    if (ld_acq(S.version + var) >= need) { if (atom_cas(S.state + n, 1, 2) == 1) kvm_enqueue(S, n); }
+    if (ld_acq(S.version + var) >= need) { if (atom_cas(S.state + n, 1, 2) == 1) { kvm_sched_unpark(S, n); kvm_enqueue(S, n); } }
     else kvm_park(S, n, var, need);
     n = next;
   }
@@ -458,12 +412,12 @@ __device__ __forceinline__ void kvm_publish(const KvmDevState& S, int slot, int 
 // ---------------- worker ----------------
 struct KvmShared {
   KvmTaskDesc d;
-  int cmd, skip;
+  int cmd, skip, how, part;   // how: KVM_TRACE_* start reason from kvm_pop; part: STATIC-mode class of this worker's SM
   float smem[KVM_SMEM_FLOATS];
 };
 #define KVM_POP_EXIT (-2)
 
-__device__ __forceinline__ bool kvm_should_exit(const KvmDevState& S, unsigned long long t0) {
+__device__ __forceinline__ bool kvm_should_exit(const KvmDevState& S, unsigned long long t0) {  // (declared in kvm_sched.cuh)
   if (*(volatile int*)&S.cnt->err_code) return true;
   if (kvm_now() - t0 > S.timeout_ns) {
     kvm_fail(S, KVM_ERR_TIMEOUT, -1, ld_acq(&S.cnt->admitted), ld_acq(&S.cnt->done));
@@ -481,6 +435,8 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   if (threadIdx.x == 0) {
     bool bad = false;
     tr->start_ns = kvm_now(); tr->smid = kvm_smid(); tr->block = blockIdx.x; tr->ver0 = tr->ver1 = -1;
+    tr->flags |= sh.how;
+    kvm_sched_start(S, slot, sh.how, tr->start_ns);
     if (atomicAdd(&tr->exec_count, 1) != 0) { kvm_fail(S, KVM_ERR_DOUBLE_EXEC, slot); bad = true; }
     if (d.wait_var >= 0) {
       int v = ld_acq(S.version + d.wait_var);  // acquire: pairs with the publisher's release (header comment)
@@ -502,7 +458,8 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
     unsigned long long end = kvm_now();
     tr->end_ns = end;
     if (d.wait_var >= 0) tr->ver1 = ld_acq(S.version + d.wait_var);
-    if (d.deadline_us >= 0 && end - tr->admit_ns > (unsigned long long)d.deadline_us * 1000ull) tr->flags |= KVM_TRACE_MISSED;
+    const bool missed = d.deadline_us >= 0 && end - tr->admit_ns > (unsigned long long)d.deadline_us * 1000ull;
+    if (missed) tr->flags |= KVM_TRACE_MISSED;
 #ifndef KVM_BREAK_FENCE
     if (d.pub_var >= 0 && !sh.skip) kvm_publish(S, slot, d.pub_var, d.pub_ver);  // publish THEN wake successors
 #endif
@@ -512,20 +469,26 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
     __threadfence();
     for (int e = threadIdx.x; e < d.succ_cnt; e += blockDim.x) {
       int s = S.succ[d.succ_off + e];
-      if (atom_add(S.indeg + s, -1) == 1) kvm_release_task(S, s);
+      if (atom_add(S.indeg + s, -1) == 1) { kvm_sched_pref(S, s); kvm_release_task(S, s); }  // SCHED: affinity = this block
     }
   }
   __syncthreads();
-  if (threadIdx.x == 0) atom_add(&S.cnt->done, 1);
+  if (threadIdx.x == 0) {
+    kvm_sched_done(S, slot, tr->start_ns, tr->end_ns, tr->flags & KVM_TRACE_MISSED);  // SCHED: frees the class's running/BW slot once the CTA is really free
+    atom_add(&S.cnt->done, 1);
+  }
 }
 
 __device__ void kvm_worker(const KvmDevState& S, unsigned long long t0, KvmShared& sh) {
   unsigned backoff = 0;
+  if (threadIdx.x == 0) sh.part = kvm_sched_part(S);
+  __syncthreads();
+  const int part = sh.part;
   for (;;) {
     if (threadIdx.x < 32) {
-      int r = kvm_pop(S, kvm_now());
+      int how, r = kvm_pop(S, kvm_now(), part, how);
       if (r < 0 && threadIdx.x == 0 && kvm_should_exit(S, t0)) r = KVM_POP_EXIT;
-      if (threadIdx.x == 0) sh.cmd = r;
+      if (threadIdx.x == 0) { sh.cmd = r; sh.how = how; }
     }
     __syncthreads();
     int cmd = sh.cmd;
@@ -585,6 +548,7 @@ __device__ void kvm_admit_record(const KvmDevState& S, unsigned long long t0, Kv
     int code = 0;
     if (kvm_dev_arity(op) < 0) code = KVM_ERR_BAD_OP;
     else if (aw != kvm_dev_arity(op)) code = KVM_ERR_BAD_ARITY;
+    else if (!kvm_sched_class_ok(S, w[12])) code = KVM_ERR_BAD_TASK;
     else if (so < 0 || sc < 0 || so + sc > ne || ao < 0 || aw < 0 || ao + aw > na || ind < 0 || ind > nt || pr < 0 || pr >= KVM_NBUCKETS || w[5] < -1) code = KVM_ERR_BAD_TASK;
     else if (wv < -1 || wv >= S.num_vars || pv < -1 || pv >= S.num_vars) code = KVM_ERR_BAD_VAR;
     else {
@@ -609,6 +573,7 @@ __device__ void kvm_admit_record(const KvmDevState& S, unsigned long long t0, Kv
   }
   for (int j = threadIdx.x; j < na; j += blockDim.x) S.args[A.abase + j] = ld_sys(ra + j);
   __syncthreads();
+  for (int i = threadIdx.x; i < nt; i += blockDim.x) kvm_sched_admit_task(S, A.base + i);  // SCHED: cost metadata, publisher classes
   if (threadIdx.x == 0) {
     if (!*(volatile int*)&S.cnt->err_code) {
       __threadfence();
@@ -661,7 +626,7 @@ __device__ void kvm_admitter(const KvmDevState& S, unsigned long long t0, KvmAdm
 }
 
 __global__ void __launch_bounds__(KVM_THREADS) kvm_init_kernel(KvmDevState S) {
-  size_t n = (size_t)KVM_NBUCKETS * S.live_cap;
+  size_t n = (size_t)S.sp.nc * KVM_NBUCKETS * S.live_cap;
   for (size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x; i < n; i += (size_t)gridDim.x * blockDim.x) {
     S.cells[i].seq = i % (size_t)S.live_cap; S.cells[i].slot = -1;
   }
@@ -672,11 +637,13 @@ __global__ void __launch_bounds__(KVM_THREADS) kvm_exec_kernel(const __grid_cons
   __shared__ KvmShared sh;
   __shared__ KvmAdmitShared adm;
   const unsigned long long t0 = kvm_now();
-  if (gridDim.x < 2 || (S.live_cap & (S.live_cap - 1)) || S.live_cap < 2) {
+  if (gridDim.x < 2 + S.sp.on || (S.live_cap & (S.live_cap - 1)) || S.live_cap < 2) {
     if (threadIdx.x == 0 && blockIdx.x == 0) kvm_fail(S, KVM_ERR_BAD_CONFIG, -1, gridDim.x, S.live_cap);
     return;
   }
+  __shared__ KvmPolShared pol;
   if (blockIdx.x == 0) kvm_admitter(S, t0, adm);
+  else if (S.sp.on && blockIdx.x == 1) kvm_policy(S, t0, pol);  // SCHED: block 1 is the policy block when the scheduler is on
   else kvm_worker(S, t0, sh);
 }
 #endif  // __CUDACC__

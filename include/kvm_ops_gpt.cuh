@@ -4,9 +4,15 @@
 // one per entry of kvm_ops_gpt.def, plus kvm_gpt_dispatch(). Generic and shape-parametrized: no model-specific code.
 //
 // Requirements on the includer
-//  * KvmCtx must be declared before this header and provide:  const KvmBuf* bufs;  int32_t nbufs;  int32_t* err;
-//    (err: device word, first nonzero code wins; may be null). Everything else the ops need is in this file; if the
-//    executor's KvmCtx names these differently, adapt kvm_gpt_ctx_* below (the only three touch points).
+//  * KvmCtx must be declared before this header and provide:  const KvmBuf* bufs;  int nbufs;  and
+//    __device__ void fail(int code, int a = 0, int b = 0) const  (first error wins, thread safe, callable from any thread).
+//    kvm_exec.cuh's KvmCtx is exactly that; tests/gpu_ops/kvm_ctx_shim.cuh is the standalone equivalent. Nothing else of the
+//    executor is used.
+//  * Included from kvm_exec.cuh (KVM_OP defined) the entry points are KVM_OP(name) { ... } for every X line of
+//    kvm_ops_gpt.def; standalone they are kvm_op_<name> plus kvm_gpt_dispatch().
+//  * Shared memory: ops use DYNAMIC shared memory from offset 0 (extern __shared__), up to KVM_GPT_SMEM_BYTES (matmul 36 KiB,
+//    attention 30..78 KiB by head size). The kernel launch must pass that many dynamic bytes (and call
+//    cudaFuncSetAttribute(MaxDynamicSharedMemorySize) when above 48 KiB). The executor's own static scratch is not used.
 //  * Every op must be run by a block of exactly KVM_GPT_THREADS (256) threads, all threads entering together; ops use
 //    __syncthreads() freely and take dynamic shared memory from offset 0 (kvm_gpt_smem_bytes()). Between two ops of one block
 //    the executor must __syncthreads() (the ops leave shared memory dirty).
@@ -29,18 +35,26 @@
 #define KVM_GPT_THREADS 256
 #define KVM_GPT_DEVI __device__ __forceinline__
 
-// Dynamic shared memory an op needs for a launch of the op set: 80 KiB covers hd=128 attention backward; all other ops and
-// attention with hd<=64 fit in 48 KiB. The executor must opt in with cudaFuncSetAttribute(MaxDynamicSharedMemorySize) if >48 KiB.
+// Dynamic shared memory an op needs for a launch of the op set: 80 KiB covers hd=128 attention backward; all other ops (matmul
+// uses 36 KiB) and attention with hd<=64 fit in 48 KiB. The executor must opt in with cudaFuncSetAttribute(MaxDynamicSharedMemorySize) if >48 KiB.
 __host__ __device__ constexpr int kvm_gpt_smem_bytes(int max_hd) { return max_hd > 64 ? 80 * 1024 : 48 * 1024; }
+#ifndef KVM_GPT_MAX_HD
+#define KVM_GPT_MAX_HD 64   // largest attention head size the launch must support (16/32/64 -> 48 KiB, 128 -> 80 KiB)
+#endif
+#define KVM_GPT_SMEM_BYTES kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)
 
 extern __shared__ __align__(128) unsigned char kvm_gpt_smem[];
 
-// ---- the three KvmCtx touch points ------------------------------------------------------------------------------------
-KVM_GPT_DEVI const KvmBuf* kvm_gpt_ctx_bufs(const KvmCtx& c) { return c.bufs; }
-KVM_GPT_DEVI int kvm_gpt_ctx_nbufs(const KvmCtx& c) { return c.nbufs; }
-KVM_GPT_DEVI int32_t* kvm_gpt_ctx_err(const KvmCtx& c) { return c.err; }
-
-enum KvmGptErr { KVM_GPT_E_BUF = 1, KVM_GPT_E_DTYPE = 2, KVM_GPT_E_RANGE = 3, KVM_GPT_E_SHAPE = 4, KVM_GPT_E_TOKEN = 5, KVM_GPT_E_KVLEN = 6 };
+// Device error codes reported through ctx.fail (distinct from the executor's own KVM_ERR_* values, which are small).
+#define KVM_GPT_ERR_BASE 1000
+enum KvmGptErr {
+    KVM_GPT_E_BUF = KVM_GPT_ERR_BASE + 1,     // buffer index out of the table
+    KVM_GPT_E_DTYPE = KVM_GPT_ERR_BASE + 2,   // null pointer or wrong dtype (f32 = 0, i32 = 1)
+    KVM_GPT_E_RANGE = KVM_GPT_ERR_BASE + 3,   // range / shape arguments outside the buffer
+    KVM_GPT_E_SHAPE = KVM_GPT_ERR_BASE + 4,   // unsupported shape (head size), bad flags or misaligned buffer
+    KVM_GPT_E_TOKEN = KVM_GPT_ERR_BASE + 5,   // token id / target outside [0, V)
+    KVM_GPT_E_KVLEN = KVM_GPT_ERR_BASE + 6    // KV cache length overflow
+};
 enum { KVM_GPT_F32 = 0, KVM_GPT_I32 = 1 };
 
 namespace kvmgpt {
@@ -50,15 +64,15 @@ struct Chk {
     const KvmCtx& c;
     bool bad;
     KVM_GPT_DEVI explicit Chk(const KvmCtx& cc) : c(cc), bad(false) {}
-    KVM_GPT_DEVI void fail(int code) {
-        if (!bad) { int32_t* e = kvm_gpt_ctx_err(c); if (e) atomicCAS(e, 0, code); }   // any thread may report (token ids fail per thread)
+    KVM_GPT_DEVI void fail(int code) {   // any thread may report (token ids fail per thread); first error wins in ctx.fail
+        if (!bad) c.fail(code);
         bad = true;
     }
     KVM_GPT_DEVI void need(bool ok, int code = KVM_GPT_E_RANGE) { if (!ok) fail(code); }
     KVM_GPT_DEVI const KvmBuf* get(int idx, int dtype, bool opt) {
         if (idx < 0 && opt) return nullptr;
-        if (idx < 0 || idx >= kvm_gpt_ctx_nbufs(c)) { fail(KVM_GPT_E_BUF); return nullptr; }
-        const KvmBuf* b = kvm_gpt_ctx_bufs(c) + idx;
+        if (idx < 0 || idx >= c.nbufs) { fail(KVM_GPT_E_BUF); return nullptr; }
+        const KvmBuf* b = c.bufs + idx;
         if (!b->p || (dtype >= 0 && b->dtype != dtype)) { fail(KVM_GPT_E_DTYPE); return nullptr; }
         return b;
     }
@@ -118,7 +132,7 @@ KVM_GPT_DEVI void embedding_fwd(const KvmCtx& ctx, const int32_t* a) {
     const float* wpe = k.mat(a[2], T, d, &ldp, true);
     float* out = k.mat(a[3], r1, d, &ldo);
     if (k.bad) return;
-    const int V = kvm_gpt_ctx_bufs(ctx)[a[1]].rows;
+    const int V = ctx.bufs[a[1]].rows;
     for (int e = threadIdx.x; e < (r1 - r0) * d; e += KVM_GPT_THREADS) {
         int r = r0 + e / d, c = e % d, id = ids[r];
         float v = 0.f;
@@ -214,9 +228,37 @@ struct TileReg {
     }
 };
 
-// 64x64 output tile, BK=32, 8 warps (4 along m x 2 along n, each 16x32 = two 16x16x8 TF32 fragments). Shared tiles keep the
-// global orientation (so global loads stay coalesced for all four transpose combinations); the fragment layout (row/col
-// major) absorbs the transpose. Register-prefetched single stage. PREC: 3xTF32 split (a_lo*b_hi + a_hi*b_lo + a_hi*b_hi)
+// cp.async (16-byte, L2-only) global->shared copy of an R x C tile, zero-filled outside [rmax) x [cmax). In-bounds aligned float4s
+// go through cp.async; ragged or unaligned elements are written with ordinary stores (distinct addresses, made visible by the
+// same barrier that publishes the async copies).
+KVM_GPT_DEVI void cp_async16(float* dst, const float* src) {
+    unsigned d = (unsigned)__cvta_generic_to_shared(dst);
+    asm volatile("cp.async.cg.shared.global [%0], [%1], 16;\n" ::"r"(d), "l"(src));
+}
+KVM_GPT_DEVI void cp_commit() { asm volatile("cp.async.commit_group;\n" ::); }
+KVM_GPT_DEVI void cp_wait_all() { asm volatile("cp.async.wait_group 0;\n" ::); }
+template <int R, int C>
+KVM_GPT_DEVI void tile_async(float* dst, int sld, const float* src, int ld, int r0, int c0, int rmax, int cmax, bool vec) {
+#pragma unroll
+    for (int s = 0; s < (R * C / 4) / KVM_GPT_THREADS; s++) {
+        int q = threadIdx.x + s * KVM_GPT_THREADS, row = q / (C / 4), c4 = (q % (C / 4)) * 4, gr = r0 + row, gc = c0 + c4;
+        float* d = dst + row * sld + c4;
+        if (gr < rmax && vec && gc + 4 <= cmax) cp_async16(d, src + (size_t)gr * ld + gc);
+        else {
+            const float* p = src + (size_t)gr * ld + gc;
+            bool rok = gr < rmax;
+            d[0] = rok && gc < cmax ? p[0] : 0.f;
+            d[1] = rok && gc + 1 < cmax ? p[1] : 0.f;
+            d[2] = rok && gc + 2 < cmax ? p[2] : 0.f;
+            d[3] = rok && gc + 3 < cmax ? p[3] : 0.f;
+        }
+    }
+}
+
+// 64x64 output tile, BK=32, 8 warps, two-stage cp.async pipeline (36 KiB shared). Warp (wm, wn, kh): output sub-tile
+// 32x32 at (wm*32, wn*32) as 2x2 16x16x8 TF32 fragments, reducing k-steps {2kh, 2kh+1} of each BK=32 slab; the two k-halves
+// are summed in the epilogue. Shared tiles keep the global orientation (coalesced loads for all four transpose combinations);
+// the fragment layout (row/col major) absorbs the transpose. PREC: 3xTF32 split (a_lo*b_hi + a_hi*b_lo + a_hi*b_hi)
 // restores ~fp32 accuracy.
 template <bool TA, bool TB, bool PREC>
 KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, float* out, int ldo, const float* bias, const float* res,
@@ -225,65 +267,71 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
     constexpr int BK = 32, TM = 64, TN = 64;
     constexpr int ASR = TA ? BK : TM, ASC = TA ? TM : BK, ALD = ASC + 4;
     constexpr int BSR = TB ? TN : BK, BSC = TB ? BK : TN, BLD = BSC + 4;
-    constexpr int CLD = TN + 4, STAGE = 2304;
+    constexpr int CLD = TN + 4, STAGE = 2304;   // floats per A or B stage (max of 64*36, 32*68)
     using LA = std::conditional_t<TA, wm::col_major, wm::row_major>;
     using LB = std::conditional_t<TB, wm::col_major, wm::row_major>;
-    float* As = reinterpret_cast<float*>(kvm_gpt_smem);
-    float* Bs = As + STAGE;
-    float* Cs = As;
-    const int warp = threadIdx.x >> 5, wmi = warp >> 1, wni = warp & 1;
+    float* sm = reinterpret_cast<float*>(kvm_gpt_smem);   // [stage][A|B]
+    const int warp = threadIdx.x >> 5, wmi = (warp >> 1) & 1, wni = warp & 1, kh = warp >> 2;
     const bool va = aligned16(A, lda), vb = aligned16(B, ldb);
-    wm::fragment<wm::accumulator, 16, 16, 8, float> acc[2];
-    wm::fill_fragment(acc[0], 0.f);
-    wm::fill_fragment(acc[1], 0.f);
-    TileReg<ASR, ASC> ra;
-    TileReg<BSR, BSC> rb;
-    auto fetch = [&](int kk) {
-        if (TA) ra.load(A, lda, kk, m0, K, M, va); else ra.load(A, lda, m0, kk, M, K, va);
-        if (TB) rb.load(B, ldb, n0, kk, N, K, vb); else rb.load(B, ldb, kk, n0, K, N, vb);
+    wm::fragment<wm::accumulator, 16, 16, 8, float> acc[2][2];
+#pragma unroll
+    for (int i = 0; i < 2; i++) for (int j = 0; j < 2; j++) wm::fill_fragment(acc[i][j], 0.f);
+    auto issue = [&](int kk, int st) {
+        float* As = sm + st * 2 * STAGE; float* Bs = As + STAGE;
+        if (TA) tile_async<ASR, ASC>(As, ALD, A, lda, kk, m0, K, M, va); else tile_async<ASR, ASC>(As, ALD, A, lda, m0, kk, M, K, va);
+        if (TB) tile_async<BSR, BSC>(Bs, BLD, B, ldb, n0, kk, N, K, vb); else tile_async<BSR, BSC>(Bs, BLD, B, ldb, kk, n0, K, N, vb);
+        cp_commit();
     };
-    fetch(0);
-    for (int kk = 0; kk < K; kk += BK) {
-        __syncthreads();
-        ra.store(As, ALD);
-        rb.store(Bs, BLD);
-        __syncthreads();
-        if (kk + BK < K) fetch(kk + BK);
+    issue(0, 0);
+    for (int kk = 0, st = 0; kk < K; kk += BK, st ^= 1) {
+        cp_wait_all();
+        __syncthreads();   // tile kk landed everywhere; everyone finished the slab that used the other stage
+        if (kk + BK < K) issue(kk + BK, st ^ 1);
+        const float* As = sm + st * 2 * STAGE; const float* Bs = As + STAGE;
 #pragma unroll
-        for (int ks = 0; ks < BK / 8; ks++) {
-            wm::fragment<wm::matrix_a, 16, 16, 8, wm::precision::tf32, LA> ah, al;
-            const float* ap = TA ? As + (ks * 8) * ALD + wmi * 16 : As + (wmi * 16) * ALD + ks * 8;
-            wm::load_matrix_sync(ah, ap, ALD);
+        for (int kq = 0; kq < 2; kq++) {
+            const int ks = kh * 2 + kq;
+            wm::fragment<wm::matrix_a, 16, 16, 8, wm::precision::tf32, LA> ah[2], al[2];
+            wm::fragment<wm::matrix_b, 16, 16, 8, wm::precision::tf32, LB> bh[2], bl[2];
 #pragma unroll
-            for (int e = 0; e < ah.num_elements; e++) {
-                float x = ah.x[e], h = wm::__float_to_tf32(x);
-                ah.x[e] = h;
-                if (PREC) al.x[e] = wm::__float_to_tf32(x - h);
+            for (int i = 0; i < 2; i++) {
+                const float* ap = TA ? As + (ks * 8) * ALD + wmi * 32 + i * 16 : As + (wmi * 32 + i * 16) * ALD + ks * 8;
+                wm::load_matrix_sync(ah[i], ap, ALD);
+#pragma unroll
+                for (int e = 0; e < ah[i].num_elements; e++) {
+                    float x = ah[i].x[e], h = wm::__float_to_tf32(x);
+                    ah[i].x[e] = h;
+                    if (PREC) al[i].x[e] = wm::__float_to_tf32(x - h);
+                }
             }
 #pragma unroll
             for (int j = 0; j < 2; j++) {
-                wm::fragment<wm::matrix_b, 16, 16, 8, wm::precision::tf32, LB> bh, bl;
                 const float* bp = TB ? Bs + (wni * 32 + j * 16) * BLD + ks * 8 : Bs + (ks * 8) * BLD + wni * 32 + j * 16;
-                wm::load_matrix_sync(bh, bp, BLD);
+                wm::load_matrix_sync(bh[j], bp, BLD);
 #pragma unroll
-                for (int e = 0; e < bh.num_elements; e++) {
-                    float x = bh.x[e], h = wm::__float_to_tf32(x);
-                    bh.x[e] = h;
-                    if (PREC) bl.x[e] = wm::__float_to_tf32(x - h);
+                for (int e = 0; e < bh[j].num_elements; e++) {
+                    float x = bh[j].x[e], h = wm::__float_to_tf32(x);
+                    bh[j].x[e] = h;
+                    if (PREC) bl[j].x[e] = wm::__float_to_tf32(x - h);
                 }
-                if (PREC) { wm::mma_sync(acc[j], al, bh, acc[j]); wm::mma_sync(acc[j], ah, bl, acc[j]); }
-                wm::mma_sync(acc[j], ah, bh, acc[j]);
+            }
+#pragma unroll
+            for (int i = 0; i < 2; i++) for (int j = 0; j < 2; j++) {
+                if (PREC) { wm::mma_sync(acc[i][j], al[i], bh[j], acc[i][j]); wm::mma_sync(acc[i][j], ah[i], bl[j], acc[i][j]); }
+                wm::mma_sync(acc[i][j], ah[i], bh[j], acc[i][j]);
             }
         }
     }
-    __syncthreads();
-    wm::store_matrix_sync(Cs + (wmi * 16) * CLD + wni * 32, acc[0], CLD, wm::mem_row_major);
-    wm::store_matrix_sync(Cs + (wmi * 16) * CLD + wni * 32 + 16, acc[1], CLD, wm::mem_row_major);
+    __syncthreads();   // all warps done reading the last stage; reuse shared memory for the two k-half partial tiles
+    float* Cs = sm + kh * TM * CLD;
+#pragma unroll
+    for (int i = 0; i < 2; i++) for (int j = 0; j < 2; j++)
+        wm::store_matrix_sync(Cs + (wmi * 32 + i * 16) * CLD + wni * 32 + j * 16, acc[i][j], CLD, wm::mem_row_major);
     __syncthreads();
     for (int e = threadIdx.x; e < TM * TN; e += KVM_GPT_THREADS) {
         int r = e / TN, c = e % TN, gm = m0 + r, gn = n0 + c;
         if (gm >= M || gn >= N) continue;
-        float v = Cs[r * CLD + c] * alpha;
+        float v = (sm[r * CLD + c] + sm[TM * CLD + r * CLD + c]) * alpha;
         if (bias) v += bias[gn];
         if (pre) pre[(size_t)gm * ldp + gn] = v;
         if (gelu) v = gelu_f(v);
@@ -761,8 +809,14 @@ KVM_GPT_DEVI void attn_bwd_dq(const KvmCtx& ctx, const int32_t* a) {
 KVM_GPT_DEVI void attn_bwd_dkv(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
     AttnArgs A{};
-    A.b = a[8]; A.h = a[9]; A.i0 = a[10]; A.T = a[11]; A.H = a[12]; A.Hkv = a[13]; int hd = a[14]; A.scale = af(a, 15);
-    if (!attn_geom(k, A.b, A.h, A.i0, A.T, A.H, A.Hkv, hd, true)) return;
+    A.b = a[8]; A.h = a[9]; A.i0 = a[10]; A.T = a[11]; A.H = a[12]; int hd = a[13]; A.scale = af(a, 14);
+    k.need(hd > 0, KVM_GPT_E_SHAPE);
+    if (k.bad) return;
+    const KvmBuf* kb = k.get(a[1], KVM_GPT_F32, false);   // Hkv is not an argument (15-word task limit): Hkv = k.cols / hd
+    if (k.bad) return;
+    A.Hkv = kb->cols / hd;
+    k.need(A.Hkv > 0 && kb->cols % hd == 0, KVM_GPT_E_SHAPE);
+    if (k.bad || !attn_geom(k, A.b, A.h, A.i0, A.T, A.H, A.Hkv, hd, true)) return;
     long R = (long)(A.b + 1) * A.T, nl = R * A.H;
     A.q = k.mat(a[0], R, (long)A.H * hd, &A.ldq); A.k = k.mat(a[1], R, (long)A.Hkv * hd, &A.ldk);
     A.v = k.mat(a[2], R, (long)A.Hkv * hd, &A.ldv); A.dout = k.mat(a[3], R, (long)A.H * hd, &A.ldo);
@@ -786,8 +840,8 @@ KVM_GPT_DEVI void kv_append(const KvmCtx& ctx, const int32_t* a) {
     float* vc = k.mat(a[3], (long)b1 * Hkv * Tmax, hd);
     const int32_t* lens = k.ivec(a[4], b1);
     if (k.bad) return;
-    const int ldc = kvm_gpt_ctx_bufs(ctx)[a[2]].ld;
-    if (kvm_gpt_ctx_bufs(ctx)[a[3]].ld != ldc) k.fail(KVM_GPT_E_SHAPE);
+    const int ldc = ctx.bufs[a[2]].ld;
+    if (ctx.bufs[a[3]].ld != ldc) k.fail(KVM_GPT_E_SHAPE);
     for (int b = b0; b < b1 && !k.bad; b++) if (lens[b] < 0 || lens[b] + nn > Tmax) k.fail(KVM_GPT_E_KVLEN);
     if (k.bad) return;
     for (int e = threadIdx.x; e < (b1 - b0) * nn * Hkv * hd; e += KVM_GPT_THREADS) {
@@ -813,8 +867,8 @@ KVM_GPT_DEVI void attn_decode(const KvmCtx& ctx, const int32_t* a) {
     const int32_t* lens = k.ivec(a[3], b + 1);
     float* o = k.mat(a[4], b + 1, (long)H * hd, &ldo);
     if (k.bad) return;
-    const int ldc = kvm_gpt_ctx_bufs(ctx)[a[1]].ld;
-    if (kvm_gpt_ctx_bufs(ctx)[a[2]].ld != ldc) k.fail(KVM_GPT_E_SHAPE);
+    const int ldc = ctx.bufs[a[1]].ld;
+    if (ctx.bufs[a[2]].ld != ldc) k.fail(KVM_GPT_E_SHAPE);
     const int n = lens[b] + 1;
     k.need(lens[b] >= 0 && n <= Tmax, KVM_GPT_E_KVLEN);
     if (k.bad) return;
@@ -872,13 +926,24 @@ KVM_GPT_DEVI void softmax_ce_fwd(const KvmCtx& ctx, const int32_t* a) {
         if (t == ign) { if (lane == 0) { rl[r] = 0.f; ls[r] = 0.f; } continue; }
         if ((unsigned)t >= (unsigned)V) { k.fail(KVM_GPT_E_TOKEN); continue; }
         const float* row = lg + (size_t)r * ld;
-        float mx = -INFINITY;
-        for (int c = lane; c < V; c += 32) mx = fmaxf(mx, row[c]);
-        mx = wmax(mx);
-        float s = 0.f;
-        for (int c = lane; c < V; c += 32) s += expf(row[c] - mx);
-        s = wsum(s);
-        if (lane == 0) { float l = mx + logf(s); ls[r] = l; rl[r] = l - row[t]; }
+        // single pass: per-lane running (max, sum exp(x-max)), merged across the warp afterwards
+        float mx = -INFINITY, sm_ = 0.f;
+        auto acc1 = [&](float x) { if (x > mx) { sm_ = sm_ * expf(mx - x); mx = x; } sm_ += expf(x - mx); };   // expf(-inf)=0
+        if (aligned16(row, ld) && (V & 3) == 0) {
+            int c = lane * 4;
+            for (; c + 384 < V; c += 512) {   // 4 independent 16-byte loads in flight per lane (latency hiding at low occupancy)
+                float4 x0 = *reinterpret_cast<const float4*>(row + c), x1 = *reinterpret_cast<const float4*>(row + c + 128);
+                float4 x2 = *reinterpret_cast<const float4*>(row + c + 256), x3 = *reinterpret_cast<const float4*>(row + c + 384);
+                acc1(x0.x); acc1(x0.y); acc1(x0.z); acc1(x0.w); acc1(x1.x); acc1(x1.y); acc1(x1.z); acc1(x1.w);
+                acc1(x2.x); acc1(x2.y); acc1(x2.z); acc1(x2.w); acc1(x3.x); acc1(x3.y); acc1(x3.z); acc1(x3.w);
+            }
+            for (; c < V; c += 128) { float4 x = *reinterpret_cast<const float4*>(row + c); acc1(x.x); acc1(x.y); acc1(x.z); acc1(x.w); }
+        } else {
+            for (int c = lane; c < V; c += 32) acc1(row[c]);
+        }
+        float M = wmax(mx);
+        float s = wsum(mx == -INFINITY ? 0.f : sm_ * expf(mx - M));
+        if (lane == 0) { float l = M + logf(s); ls[r] = l; rl[r] = l - row[t]; }
     }
 }
 KVM_GPT_DEVI void softmax_ce_reduce(const KvmCtx& ctx, const int32_t* a) {
@@ -916,7 +981,19 @@ KVM_GPT_DEVI void softmax_ce_bwd(const KvmCtx& ctx, const int32_t* a) {
         float* o = dl + (size_t)r * ldd;
         bool skip = t == ign;
         if (!skip && (unsigned)t >= (unsigned)V) { k.fail(KVM_GPT_E_TOKEN); skip = true; }
-        for (int c = lane; c < V; c += 32) o[c] = skip ? 0.f : (expf(row[c] - ls[r]) - (c == t ? 1.f : 0.f)) * f;
+        const float lr = ls[r];
+        if (aligned16(row, ld) && aligned16(o, ldd) && (V & 3) == 0) {
+            for (int c = lane * 4; c < V; c += 128) {
+                float4 x = *reinterpret_cast<const float4*>(row + c), y;
+                y.x = skip ? 0.f : (expf(x.x - lr) - (c == t ? 1.f : 0.f)) * f;
+                y.y = skip ? 0.f : (expf(x.y - lr) - (c + 1 == t ? 1.f : 0.f)) * f;
+                y.z = skip ? 0.f : (expf(x.z - lr) - (c + 2 == t ? 1.f : 0.f)) * f;
+                y.w = skip ? 0.f : (expf(x.w - lr) - (c + 3 == t ? 1.f : 0.f)) * f;
+                *reinterpret_cast<float4*>(o + c) = y;
+            }
+        } else {
+            for (int c = lane; c < V; c += 32) o[c] = skip ? 0.f : (expf(row[c] - lr) - (c == t ? 1.f : 0.f)) * f;
+        }
     }
 }
 
@@ -939,10 +1016,20 @@ KVM_GPT_DEVI void adamw(const KvmCtx& ctx, const int32_t* a) {
     if (k.bad) return;
     const float gsc = gs ? gs[0] : 1.f;
     const float bc1 = 1.f - (float)pow((double)b1, (double)t), bc2 = 1.f - (float)pow((double)b2, (double)t);
-    for (int i = e0 + threadIdx.x; i < e1; i += KVM_GPT_THREADS) {
-        float gi = g[i] * gsc, mi = b1 * m[i] + (1.f - b1) * gi, vi = b2 * v[i] + (1.f - b2) * gi * gi;
-        m[i] = mi; v[i] = vi;
-        p[i] = p[i] - lr * wd * p[i] - lr * (mi / bc1) / (sqrtf(vi / bc2) + eps);
+    auto upd = [&](float& pi, float gi_, float& mi_, float& vi_) {
+        float gi = gi_ * gsc, mi = b1 * mi_ + (1.f - b1) * gi, vi = b2 * vi_ + (1.f - b2) * gi * gi;
+        mi_ = mi; vi_ = vi;
+        pi = pi - lr * wd * pi - lr * (mi / bc1) / (sqrtf(vi / bc2) + eps);
+    };
+    if (((e0 | e1) & 3) == 0 && aligned16(p, 0) && aligned16(g, 0) && aligned16(m, 0) && aligned16(v, 0)) {   // 16-byte path
+        for (int i = e0 + 4 * threadIdx.x; i < e1; i += 4 * KVM_GPT_THREADS) {
+            float4 pp = *reinterpret_cast<float4*>(p + i), gg = *reinterpret_cast<const float4*>(g + i);
+            float4 mm = *reinterpret_cast<float4*>(m + i), vv = *reinterpret_cast<float4*>(v + i);
+            upd(pp.x, gg.x, mm.x, vv.x); upd(pp.y, gg.y, mm.y, vv.y); upd(pp.z, gg.z, mm.z, vv.z); upd(pp.w, gg.w, mm.w, vv.w);
+            *reinterpret_cast<float4*>(p + i) = pp; *reinterpret_cast<float4*>(m + i) = mm; *reinterpret_cast<float4*>(v + i) = vv;
+        }
+    } else {
+        for (int i = e0 + threadIdx.x; i < e1; i += KVM_GPT_THREADS) upd(p[i], g[i], m[i], v[i]);
     }
 }
 KVM_GPT_DEVI void gradnorm_partial(const KvmCtx& ctx, const int32_t* a) {
@@ -971,8 +1058,8 @@ KVM_GPT_DEVI void gradnorm_finish(const KvmCtx& ctx, const int32_t* a) {
         double s = 0;
         for (int i = 0; i < n; i++) s += part[i];
         float nrm = (float)sqrt(s);
-        out[0] = nrm;
-        out[1] = mx > 0.f ? fminf(1.f, mx / (nrm + 1e-6f)) : 1.f;
+        out[0] = mx > 0.f ? fminf(1.f, mx / (nrm + 1e-6f)) : 1.f;   // clip coefficient first: out is directly an adamw gscale
+        out[1] = nrm;
     }
 }
 
@@ -1102,14 +1189,55 @@ KVM_GPT_DEVI void argmax(const KvmCtx& ctx, const int32_t* a) {
     for (int r = r0; r < r1; r++) { int j = row_argmax(lg + (size_t)r * ld, V, sv, si); if (threadIdx.x == 0) out[r] = j; }
 }
 
+// ---- batch plumbing ---------------------------------------------------------------------------------------------------
+KVM_GPT_DEVI void select_window(const KvmCtx& ctx, const int32_t* a) {
+    Chk k(ctx);
+    int i0 = a[3], i1 = a[4], stride = a[5], off = a[6];
+    k.need(i0 >= 0 && i0 <= i1);
+    if (k.bad) return;
+    const KvmBuf* sb = k.get(a[0], -1, false);
+    const KvmBuf* db = k.get(a[2], -1, false);
+    const int32_t* step = k.ivec(a[1], 1);
+    if (k.bad) return;
+    k.need(sb->dtype == db->dtype && (sb->rows == 1 || sb->ld == sb->cols) && (db->rows == 1 || db->ld == db->cols), KVM_GPT_E_DTYPE);
+    if (k.bad) return;
+    const long base = (long)step[0] * stride + off;
+    k.need(base >= 0 && base + i1 <= (long)sb->rows * sb->cols && i1 <= (long)db->rows * db->cols);
+    if (k.bad) return;
+    const int32_t* src = (const int32_t*)sb->p + base;
+    int32_t* dst = (int32_t*)db->p;
+    for (int i = i0 + threadIdx.x; i < i1; i += KVM_GPT_THREADS) dst[i] = src[i];
+}
+KVM_GPT_DEVI void gather_rows(const KvmCtx& ctx, const int32_t* a) {
+    Chk k(ctx);
+    int r0 = a[3], r1 = a[4], d = a[5], lds, ldd;
+    k.need(r0 >= 0 && r0 <= r1 && d > 0);
+    if (k.bad) return;
+    const float* src = k.mat(a[0], 0, d, &lds);
+    const int32_t* idx = k.ivec(a[1], r1);
+    float* dst = k.mat(a[2], r1, d, &ldd);
+    if (k.bad) return;
+    const int R = ctx.bufs[a[0]].rows;
+    for (int e = threadIdx.x; e < (r1 - r0) * d; e += KVM_GPT_THREADS) {
+        int r = r0 + e / d, c = e % d, id = idx[r];
+        float v = 0.f;
+        if ((unsigned)id < (unsigned)R) v = src[(size_t)id * lds + c]; else k.fail(KVM_GPT_E_TOKEN);
+        dst[(size_t)r * ldd + c] = v;
+    }
+}
+
 }  // namespace kvmgpt
 
-// ---- per-op entry points and dispatcher (same X-macro convention as the executor) -------------------------------------
+// ---- per-op entry points (same X-macro convention as the executor) -------------------------------------------------------
+#ifdef KVM_OP   // inside kvm_exec.cuh: the executor's dispatcher calls op_<name>
+#define X(name, id, sig) KVM_OP(name) { kvmgpt::name(c, a); }
+#include "kvm_ops_gpt.def"
+#undef X
+#else           // standalone (tests): kvm_op_<name> and a switch dispatcher
 #define X(name, id, sig) KVM_GPT_DEVI void kvm_op_##name(const KvmCtx& ctx, const int32_t* args) { kvmgpt::name(ctx, args); }
 #include "kvm_ops_gpt.def"
 #undef X
-
-// Returns false for an op id outside the GPT library (ids 32..61).
+// Returns false for an op id outside the GPT library (ids 32..63).
 KVM_GPT_DEVI bool kvm_gpt_dispatch(const KvmCtx& ctx, int op, const int32_t* args) {
     switch (op) {
 #define X(name, id, sig) case id: kvm_op_##name(ctx, args); return true;
@@ -1118,3 +1246,4 @@ KVM_GPT_DEVI bool kvm_gpt_dispatch(const KvmCtx& ctx, int op, const int32_t* arg
         default: return false;
     }
 }
+#endif

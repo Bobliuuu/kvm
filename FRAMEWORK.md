@@ -14,11 +14,15 @@ workload.json --compile--> tasks.bin  successors.bin  args.bin  metadata.json --
 | What | File | Parsed by |
 |---|---|---|
 | Descriptor layout (`KvmTaskDesc`, 64 B), `KVM_ABI_VERSION`, `KVM_NO_VAR` | `include/kvm_task_abi.h` | `runtime/abi.py` |
-| Operators: name, id, `arg:type` list (`buf`/`i32`/`f32`) | `include/kvm_ops.def` | `runtime/abi.py` |
-| What an op does + buffer extents it needs | `runtime/ref_ops.py` | compiler (bounds), CPU VM |
+| Operators: name, id, `arg:type` list (`buf`/`buf?`/`i32`/`f32`) | `include/kvm_ops.def`, then `kvm_ops_gpt.def`, `kvm_ops_game.def`, `kvm_ops_comm.def` when present (executor order) | `runtime/abi.py` |
+| What an op does + buffer extents / dtypes it needs | `runtime/ref_ops.py` (core), `ref_gpt.py` (GPT) | compiler (bounds), CPU VM |
 
-Add an op: append an `X(...)` line to `kvm_ops.def` (never renumber), add its CUDA body, add its entry to `ref_ops.OPS`
-(a test fails until you do).
+Ids are sparse and unique across registry files. `buf?` marks an optional buffer argument: the workload passes JSON `null`
+and the word is `-1` (`abi.ABSENT_BUF`); a required `buf` given `null` is a compile error, so `-1` can only reach an
+argument the registry declared optional.
+
+Add an op: append an `X(...)` line to a registry (never renumber), add its CUDA body, add its entry to `ref_ops.OPS`
+(a test fails until you do). An op with no CPU model goes in `OPAQUE_OPS` (below).
 
 ## Workload schema
 
@@ -31,10 +35,26 @@ Add an op: append an `X(...)` line to `kvm_ops.def` (never renumber), add its CU
        "reads": [{"var": "weight", "policy": "exact", "version": 1}]}]}] }
 ```
 
-Buffer args are buffer names (resolved to `KvmBuf` table indices = declaration order); `i32`/`f32` are JSON numbers.
+Buffer args are buffer names or `null` (absent optional); they resolve to `KvmBuf` table indices = declaration order.
+`i32`/`f32` are JSON numbers. A buffer has `dtype` `f32` (default, `KvmBuf.dtype` 0) or `i32` (1, index and counter
+buffers); each op declares which of its buffer args are `i32` (checked at compile time, e.g. `ids`, `tgt`, `step`).
 Unknown keys, ops or args, missing/extra/mistyped args, int32/float32 overflow, NaN/inf (unless `--allow-nonfinite`), values
 below an op's minimum, and tasks that touch more elements than their buffer holds are `CompileError`s naming `graph/task`
-and the argument. `init.kind` is `fill` or `values`; `rows`/`cols` default to 1 (a scalar buffer).
+and the argument. `rows`/`cols` default to 1 (a scalar buffer).
+
+Initial contents (`init`): `{"kind":"fill","value":v}`, `{"kind":"values","values":[...]}` (small buffers), and for
+large ones, without huge JSON:
+
+| kind | JSON | metadata for the executor / host |
+|---|---|---|
+| `seeded` (f32) | `{"seed":S,"scale":c,"dist":"normal"\|"uniform"}` | `seed, scale, dist, draws, bias, coef` |
+| `file` | `{"path":"data/w.f32"}` little-endian f32 (or i32), `rows*cols` elements | `path`, copied into the bundle at that relative path |
+
+`seeded` is counter-based (SplitMix64 at counter `i*draws+d`, `u = (z>>40)*2^-24`, `value = ((acc - bias) * coef)`, `acc` = `u`
+or `(u0+u1)+(u2+u3)`, one rounded float32 operation per step, no fma); exact formulas in `runtime/initgen.py`. `normal` is an
+Irwin-Hall sum of 4 (std `scale`, bounded tails), `uniform` is U(-scale, scale). Any consumer can fill element `i` alone and
+get the CPU reference's bits. `file` paths must be relative without `..`; the compiler reads them from `--data-dir` (default:
+the workload's directory) and `write_bundle` copies them into the bundle.
 
 ## Bundle (all little-endian)
 
@@ -43,7 +63,7 @@ and the argument. `init.kind` is `fill` or `values`; `rows`/`cols` default to 1 
 | `tasks.bin` | `task_count` x 64-byte `KvmTaskDesc` in header field order |
 | `successors.bin` | int32 batch-local task indices, CSR via `succ_off`/`succ_cnt` |
 | `args.bin` | int32 words; `f32` args are bit-cast; a task's words start at `args_off`, count = operator arity |
-| `metadata.json` | `abi_version, task_count, edge_count, args_words, task_names, initial_ready, operator_ids, buffers, variables, publishers`, plus `reads` (`task, var, policy, version, observed, gate`) and `final_versions` |
+| `metadata.json` | `abi_version, task_count, edge_count, args_words, task_names, initial_ready, operator_ids, buffers (name, index, rows, cols, dtype 0/1, init), variables, publishers`, plus `reads` (`task, var, policy, version, observed, gate`) and `final_versions` |
 
 `workload_id` = index of the graph. Output is byte-identical for identical input.
 
@@ -83,10 +103,27 @@ fails the task on a violation.
 `python3 runtime/compile_workload.py wl.json out --emit-golden` also runs a deterministic CPU schedule and writes
 `golden.json`: final buffers, final versions, and each reader's observed version.
 
-Float32: every operation rounds to float32, reductions run in index order, multiply-add is not fused. Integer-valued data
+Operators with no CPU model (`doom_*`, the comm ops) are *opaque*: the VM refuses them unless run with
+`allow_opaque` (`--allow-opaque`), then executes them as noops after checking their declared extents. Nothing silently skips an op.
+
+GPT operators (`ref_gpt.py`) compute reductions and transcendentals in double and round every stored value to float32
+(AdamW follows the device's float32 step order). That matches the device to its documented tolerance (norms, activations, loss,
+optimizer 1e-5; attention 2e-5; TF32 matmul 4e-3), not bitwise. `sample` and `argmax` are exact: same Philox-4x32-10 stream.
+
+Core-op float32: every operation rounds to float32, reductions run in index order, multiply-add is not fused. Integer-valued data
 matches a GPU bit for bit; other data can differ by 1 ulp per fused operation.
 
+## Compile cost
+
+Roughly 15 us per task plus 0.3 us per edge: a 315k-task, 6.6M-edge graph (the 162M GPT tiling shape) compiles in about 5 s
+plus 3 s to parse the JSON, peaking near 1.2 GB (mostly the JSON itself). The hot path is a per-operator decode plan,
+array-based CSR graph, one topological pass for cycle detection and a topological-position bound for reachability queries, and
+the cyclic GC is paused during compilation.
+
 ## Honest limits
+
+- The CPU GPT reference is pure Python: fine for tiny shapes and per-op diffs, hopeless for the 162M model (use the
+  frontend's own float64 VM or the GPU as the oracle there). `seeded` generation costs ~10 us/element in the reference.
 
 - No automatic buffer hazard detection: ordering of buffer reads and writes is the author's job (`after` or versions).
   Only version-variable ordering is checked.

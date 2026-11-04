@@ -14,8 +14,9 @@
 //                       while boosted; the weight follows the boost between w_lo and w_hi.
 //   BATCH               holds `floor_cta` workers in reserve while it has work (anti-starvation: no latency class can take them), takes
 //                       whatever the others leave (the device lends idle CTAs, no explicit action).
-// Invariant: sum of reservations <= workers - floor_cta of the batch classes, and each latency class's cap is what the others leave, so
-// a flood of requests can not starve training below its floor and an idle reservation costs nothing (the device lends it).
+// Invariant: sum of reservations <= workers - floor_cta of the batch classes, and the batch class's own reservation is served first, so a
+// flood of requests can not starve training below its floor, while an idle reservation costs nothing (the device lends it). No caps are
+// set: a cap would only change when demand jitters and every change is a parameter write.
 #include "kvm_sched.h"
 #include <condition_variable>
 #include <mutex>
@@ -36,6 +37,7 @@ struct KvmAdaptConfig {
   int period_us = 1000;
   double alpha = 0.3;                       // smoothing of demand
   int slack = 0;                            // CTAs reserved above the smoothed demand
+  int deadband = 2;                         // a reservation falls only by more than this many CTAs at a time (it rises at once)
   int release_periods = 50;                 // calm periods before the boost halves
   double wait_frac = 0.02;                  // a LATENCY class is under pressure when more than this fraction of its tasks waited over target
   bool arbiter_assist = false;              // switch the device's bandwidth arbiter (KVM_SF_ARBITER) on while a protected class is under pressure
@@ -92,13 +94,12 @@ class KvmAdaptive {
       if (c.role == KvmRole::BATCH) {
         const int want = (now.running + now.ready > 0) ? c.floor_cta : 0;
         dirty |= set(q.min_cta, want);
-        dirty |= set(q.max_cta, (int)KVM_UNLIMITED);
         want_min[i] = 0;
         continue;
       }
       if (pressure) { s.boost = std::min(c.boost_max, s.boost * 2 + 1); s.calm = 0; }
       else if (s.boost > 0 && ++s.calm >= cfg_.release_periods) { s.boost /= 2; s.calm = 0; }
-      const int base = (int)std::ceil(s.demand) + cfg_.slack;
+      const int base = (int)std::lround(s.demand) + cfg_.slack;   // nearest, not ceil: a decaying average must reach 0 so an idle class releases
       want_min[i] = std::max(c.min_lo, std::min(std::min(c.min_hi, budget), base + s.boost));
       // weight: w_lo calm, w_hi at the boost level that has used up the whole reservation range
       const int span = std::max(1, std::min(c.min_hi, budget) - c.min_lo);
@@ -121,8 +122,9 @@ class KvmAdaptive {
     for (int i = 0; i < n; ++i) {
       const KvmAdaptClass& c = cfg_.classes[i]; if (c.role == KvmRole::BATCH) continue;
       KvmClassParams& q = p_.cls[c.cls];
-      dirty |= set(q.min_cta, want_min[i]);
-      dirty |= set(q.max_cta, std::max(want_min[i], budget - (tot - want_min[i])));   // the cap above the reservation: what the other reservations leave
+      // hysteresis: a rise applies at once, a fall only when it exceeds the deadband (or goes to 0): no parameter write per millisecond of demand jitter
+      const int cur = q.min_cta, nxt = (want_min[i] >= cur || want_min[i] == 0 || cur - want_min[i] > cfg_.deadband) ? want_min[i] : cur;
+      dirty |= set(q.min_cta, nxt);
     }
     if (cfg_.arbiter_assist) {
       const bool saturated = g.bw_peak_mbps > 0 && (long long)g.bw_mbps * 100 >= (long long)cfg_.bw_sat_pct * g.bw_peak_mbps;

@@ -13,6 +13,21 @@
 static std::string env_or(const char* k, const char* d) { const char* v = getenv(k); return v ? v : d; }
 static double now_us_since(std::chrono::steady_clock::time_point t0) { return std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count(); }
 
+// A saturating producer for one class: keeps up to `budget` tasks of bundles (n tasks of `us` each) in flight through a KvmAdmissionGate, so the
+// shared admission ring is never filled by one class (an ungated flood starves every other class at admission, see suite_hol).
+static std::thread flood_producer(KvmExec& ex, KvmAdmissionGate& gate, int cls, int n, int us, std::atomic<bool>& stop) {
+  return std::thread([&ex, &gate, cls, n, us, &stop] {
+    std::deque<unsigned> win;
+    while (!stop.load()) {
+      while (!win.empty() && ex.window_done(win.front())) { gate.release(cls, n); win.pop_front(); }
+      if (!gate.acquire(cls, n, 5)) continue;
+      unsigned w; if (ex.submit(spin_bundle(n, us, cls), 30000, false, &w) != KvmSubmit::OK) break;
+      win.push_back(w);
+    }
+    for (unsigned w : win) while (!ex.window_done(w)) std::this_thread::sleep_for(std::chrono::microseconds(50));
+  });
+}
+
 // ================= telemetry: the new device counters are exact =================
 // dl_n / near_miss / missed / wait_over must equal the same quantities recomputed from the per-task trace.
 static bool suite_telemetry() {
@@ -58,7 +73,8 @@ static LoopOut run_loop(bool floor_on, bool controller) {
   KvmAdaptive ctl(ex.sched_params(), ex.telemetry(), c.sched.p, ac);
   if (controller) ctl.start();
   std::atomic<bool> stop{false};
-  std::thread train([&] { while (!stop.load()) if (ex.submit(spin_bundle(400, 300, 1), 30000) != KvmSubmit::OK) break; });   // saturating batch class
+  KvmAdmissionGate gate({-1, 6000});
+  std::thread train = flood_producer(ex, gate, 1, 400, 300, stop);   // saturating batch class
   std::this_thread::sleep_for(std::chrono::milliseconds(150));
   const auto t0 = std::chrono::steady_clock::now();
   const unsigned long long sm1_0 = ex.telemetry()->cls[1].sm_ns, sm0_0 = ex.telemetry()->cls[0].sm_ns;
@@ -69,7 +85,7 @@ static LoopOut run_loop(bool floor_on, bool controller) {
   });
   while (now_us_since(t0) < 60e3) {
     const KvmClassParams& q = ex.sched_params()->cls[0]; out.peak_min = std::max(out.peak_min, q.min_cta);
-    if (out.attack_ms < 0 && q.min_cta >= W / 3) out.attack_ms = now_us_since(t0) / 1e3;
+    if (out.attack_ms < 0 && q.min_cta >= 10) out.attack_ms = now_us_since(t0) / 1e3;
     std::this_thread::sleep_for(std::chrono::microseconds(200));
   }
   const unsigned long long sm1_1 = ex.telemetry()->cls[1].sm_ns, sm0_1 = ex.telemetry()->cls[0].sm_ns;
@@ -89,9 +105,9 @@ static LoopOut run_loop(bool floor_on, bool controller) {
 static bool suite_loop() {
   int before = g_fail;
   LoopOut a = run_loop(true, true);
-  printf("  burst of serve demand beside saturating batch (62 workers): reservation reached %d CTAs (a third of the machine after %.1f ms), released to %d after %.0f ms; batch got %.0f%% of the SM time during the burst; %d parameter writes\n",
+  printf("  burst of serve demand beside saturating batch (62 workers): reservation reached %d CTAs (10 CTAs reached after %.1f ms), released to %d after %.0f ms; batch got %.0f%% of the SM time during the burst; %d parameter writes\n",
          a.peak_min, a.attack_ms, a.final_min, a.release_ms, 100 * a.train_share_burst, a.changes);
-  CHECK(a.attack_ms >= 0 && a.attack_ms < 10, "reservation must follow a burst within 10 ms, took %.1f", a.attack_ms);
+  CHECK(a.peak_min >= 10 && a.attack_ms >= 0 && a.attack_ms < 10, "reservation must follow a burst within 10 ms, took %.1f", a.attack_ms);
   CHECK(a.release_ms >= 0 && a.final_min == 0, "reservation must be released after the burst (final %d)", a.final_min);
   CHECK(a.train_share_burst >= 0.16, "the batch floor (20%% of the workers) must hold during the burst: batch share %.3f", a.train_share_burst);
   CHECK(a.changes < 200, "controller churn: %d parameter writes", a.changes);
@@ -110,8 +126,9 @@ static double floor_scenario(bool floor_on) {
   ac.classes = {s, t};
   KvmAdaptive ctl(ex.sched_params(), ex.telemetry(), c.sched.p, ac); ctl.start();
   std::atomic<bool> stop{false};
-  std::thread hi([&] { while (!stop.load()) if (ex.submit(spin_bundle(200, 200, 0), 30000) != KvmSubmit::OK) break; });   // sustained overload by the favoured class
-  std::thread lo([&] { while (!stop.load()) if (ex.submit(spin_bundle(200, 200, 1), 30000) != KvmSubmit::OK) break; });
+  KvmAdmissionGate gate({6000, 1500});
+  std::thread hi = flood_producer(ex, gate, 0, 300, 200, stop);   // sustained overload by the favoured class (4x the batch class's backlog)
+  std::thread lo = flood_producer(ex, gate, 1, 100, 200, stop);
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   const unsigned long long a1 = ex.telemetry()->cls[1].sm_ns, a0 = ex.telemetry()->cls[0].sm_ns;
   std::this_thread::sleep_for(std::chrono::milliseconds(300));

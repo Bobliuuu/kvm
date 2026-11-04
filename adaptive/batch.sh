@@ -14,7 +14,10 @@ CFG[fixed_prio]="--sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0
 CFG[fixed_resv_peak]="--sched dynamic --weights 4,4,1 --min 2,40,0 --urgent-us 28571,0,0"
 CFG[v1_demand]="--sched dynamic --weights 4,4,1 --urgent-us 28571,0,0 --ctl v1 --doom-min-hi 8"
 CFG[adaptive]="--sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8"
-CFG[adaptive_gated]="${CFG[adaptive]} --gate-serve 20000 --gate-train 25000"
+GATE="${GATE:---gate-serve 20000 --gate-train 25000}"   # tasks in flight per class; the live window is --live-cap (65536)
+CFG[adaptive_gated]="${CFG[adaptive]} $GATE"
+CFG[fixed_prio_gated]="${CFG[fixed_prio]} $GATE"
+CFG[global_gated]="${CFG[global]} $GATE"
 # the phased load: serve burst, training pause, Doom scene change (extra work in every frame)
 PHASES="--serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000"
 ORACLE_FRAMES=$(( DUR * FPS + 40 )); [ -d oracle ] || python3 doom/cpu_run.py --frames "$ORACLE_FRAMES" --out oracle --log warn
@@ -22,7 +25,7 @@ ORACLE_FRAMES=$(( DUR * FPS + 40 )); [ -d oracle ] || python3 doom/cpu_run.py --
 one() {   # name rep extra-args...   -> $OUT/$name/rep$rep
   local name="$1" rep="$2"; shift 2; local d="$OUT/$name/rep$rep"; rm -rf "$d"; mkdir -p "$d"
   echo "=== $(date -u +%T) $name rep$rep: adaptive_run scn --out $d $*"
-  ${BIN:-./adaptive_run} scn --out "$d" --wad "$WAD" --tag "$name-rep$rep" --duration-s "$DUR" --seed "$rep" "$@" > "$d/run.log" 2>&1; local rc=$?
+  ${BIN:-./adaptive_run} "${SCN:-scn}" --out "$d" --live-cap ${LIVE_CAP:-65536} --ring-words ${RING_WORDS:-4194304} --wad "$WAD" --tag "$name-rep$rep" --duration-s "$DUR" --seed "$rep" "$@" > "$d/run.log" 2>&1; local rc=$?
   grep -E "doom:|FAIL|ERROR|error" "$d/run.log" | tail -3
   local ok=1
   for k in "$d"/doom[0-9]*; do [ -d "$k" ] || continue
@@ -33,7 +36,10 @@ one() {   # name rep extra-args...   -> $OUT/$name/rep$rep
 echo "# batch $GROUP @ $(date -u +%FT%TZ)  commit ${BATCH_COMMIT:-?}  reps $REPS dur $DUR  $(nvidia-smi --query-gpu=name,driver_version --format=csv,noheader)"
 case "$GROUP" in
   smoke) mkdir -p "$OUT"; "$0" suites; REPS=1 "$0" main; REPS=1 "$0" bw;;
-  main)  for rep in $(seq 1 "$REPS"); do for c in global static fixed_fair fixed_prio fixed_resv_peak v1_demand adaptive adaptive_gated; do one $c $rep ${CFG[$c]} $PHASES; done; done;;
+  main)  for rep in $(seq 1 "$REPS"); do for c in global global_gated static fixed_fair fixed_prio fixed_prio_gated fixed_resv_peak v1_demand adaptive adaptive_gated; do one $c $rep ${CFG[$c]} $PHASES; done; done;;
+  main_big) export SCN=scn_big LIVE_CAP=131072 RING_WORDS=8388608 GATE="--gate-serve 50000 --gate-train 60000"
+    for g in adaptive fixed_prio global; do CFG[${g}_gated]="${CFG[$g]} $GATE"; done
+    for rep in $(seq 1 "${REPS_BIG:-3}"); do for c in global global_gated static fixed_prio fixed_prio_gated v1_demand adaptive adaptive_gated; do one big_$c $rep ${CFG[$c]} $PHASES; done; done;;
   multi) export BIN=./adaptive_run_n8   # N Doom instances beside training + serve (steady load), paced at 35 Hz, then unpaced (max fps) to find the breaking point
     for rep in $(seq 1 "${REPS_MULTI:-3}"); do for n in 1 2 4 8; do for c in global fixed_prio adaptive; do
       one "multi_n${n}_$c" $rep ${CFG[$c]} --doom-instances $n --serve-rate 40 --doom-min-hi $((n + 4))

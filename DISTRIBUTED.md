@@ -215,12 +215,11 @@ sequence 4096, global batch 4096 sequences (16.8M tokens), 4096 GPUs = TP 8 x PP
   for this executor deadlocks until the peer's timeout. One process per GPU (the normal multi-GPU layout) never meets this. The same
   work found that the executor's constructor memsets and table upload were not ordered before the kernel (legacy vs non-blocking
   stream); `prepare()` also fixes that. Both are small hooks in `kvm_exec.cu`.
-* **Unresolved flake of the single-GPU emulation.** With several persistent kernels from ONE process on ONE GPU, about 4% of runs (about
-  10 of 230 on an idle A100 after the two fixes above, regardless of `CUDA_DEVICE_MAX_CONNECTIONS` and `CUDA_MODULE_LOADING`) never run one executor's kernel until the
-  others time out: every rank thread sits in `finish()`, the delayed executor's event-measured kernel time is tiny (0.14 ms) because it
-  started late, and its peers' pumps poll millions of times for signals it has not yet sent. The cause is below the code in this
-  repository as far as was established (kernel scheduling of co-resident persistent kernels in one context); it was NOT seen with one
-  process per rank (`gpu-multiprocess-tcp`) and cannot occur with one device per rank. The script therefore retries those in-process
-  single-GPU stages up to 3 times and prints every failed attempt; multi-process and multi-GPU stages are never retried. If the
-  multi-GPU stage shows the same signature (all threads in `finish()`, one rank's kernel time ~0), treat it as a real problem.
+* **Concurrent kernel launches (found and avoided).** Launching the persistent kernels of several executors on ONE GPU from one host
+  thread each left one executor's kernel unscheduled until its peers' stall timeouts fired in about 7% of runs (6/80 on an idle A100;
+  every rank thread sat in `finish()`, the delayed executor's event-measured kernel time was ~0.14 ms because it started late). Launching
+  them sequentially from one thread, or 3 ms apart, gave 0/80, and with sequential launch 0/600 plan runs. Not affected by
+  `CUDA_DEVICE_MAX_CONNECTIONS` or `CUDA_MODULE_LOADING`; the CUDA-internal reason was not established. `World::run` therefore launches
+  from the main thread (`KVM_DIST_LAUNCH=threads` restores the concurrent launch). A host that drives several GPUs from several
+  threads in one process (the in-process multi-GPU mode of `test_dist`) launches from one thread too; one process per GPU is unaffected.
 * x86-64 and aarch64 little-endian hosts only (wire structs are not byte-swapped).

@@ -18,7 +18,7 @@ from .ir import FrontendError
 
 MM_TILE = 64        # matmul_tile computes a 64 x 64 output tile (flags: 1 transA, 2 transB, 4 accumulate, 8 gelu)
 ATTN_Q = 32         # attn_fwd / attn_bwd_dq: 32 query rows per task; attn_bwd_dkv: 32 keys per task
-F_TA, F_TB, F_ACC, F_GELU = 1, 2, 4, 8
+F_TA, F_TB, F_ACC, F_GELU, F_PRECISE = 1, 2, 4, 8, 16
 
 
 class Buf:

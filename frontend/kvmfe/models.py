@@ -376,8 +376,20 @@ _REGISTRY = {LlamaConfig: Llama, MLPConfig: MLPClassifier, ViTConfig: ViT}
 PRESETS = {**LLAMA_PRESETS, **MLP_PRESETS, **VIT_PRESETS}
 
 
+FAMILIES = {'llama': LlamaConfig, 'mlp': MLPConfig, 'vit': ViTConfig}
+
+
 def build(cfg):
-    """Config object, preset name or JSON -> model object."""
+    """Config object, preset name or JSON -> model object. A JSON/dict config may carry "family": llama | mlp | vit to pick the
+    class; without it the first config class that accepts every field wins."""
+    if isinstance(cfg, str) and cfg.lstrip().startswith('{'):
+        cfg = json.loads(cfg)
+    if isinstance(cfg, dict) and 'family' in cfg:
+        cfg = dict(cfg)
+        fam = cfg.pop('family')
+        if fam not in FAMILIES:
+            raise FrontendError(f'unknown model family {fam!r}; known: {sorted(FAMILIES)}')
+        return _REGISTRY[FAMILIES[fam]](FAMILIES[fam](**cfg))
     if isinstance(cfg, (str, dict)):
         for cls in _REGISTRY:
             try:

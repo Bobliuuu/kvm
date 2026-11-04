@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from .ir import Builder, FrontendError, LogicalOp, Tensor
-from .opset import ATTN_Q, F_ACC, F_GELU, F_TA, F_TB, MM_TILE, op as device_op
+from .opset import ATTN_Q, F_ACC, F_GELU, F_PRECISE, F_TA, F_TB, MM_TILE, op as device_op
 
 
 @dataclass(frozen=True)
@@ -22,6 +22,7 @@ class Tiling:
     cols: int = 128          # column block of column reductions (colsum, norm parameter gradients)
     vocab: int = 1024        # key block of the embedding gradient
     opt_elems: int = 16384   # AdamW chunk (rounded down to whole rows)
+    precise: bool = False    # GEMM tiles use 3xTF32 (matmul_tile flag 16, fp32 accuracy) instead of the default 1xTF32
 
     PRESETS = {
         'cpu': dict(rows=8, ew_rows=8, cols=32, vocab=16, opt_elems=256),
@@ -37,6 +38,8 @@ class Tiling:
 
     def __post_init__(self):
         for k, v in vars(self).items():
+            if k == 'precise':
+                continue
             if not isinstance(v, int) or v < 1:
                 raise FrontendError(f'Tiling.{k} must be a positive int, got {v!r}')
 
@@ -104,7 +107,8 @@ def _task(dev, reads, writes, **args):
 
 
 # ------------------------------------------------------------------------------------------------ matmul family
-def _mm_tiles(a, b, out, M, N, K, ta, tb, flags, bias=None, res=None, pre=None, acc=False, dev='matmul_tile'):
+def _mm_tiles(a, b, out, M, N, K, ta, tb, flags, bias=None, res=None, pre=None, acc=False, dev='matmul_tile', precise=False):
+    flags |= F_PRECISE if precise else 0
     for m0 in range(0, M, MM_TILE):
         m1 = min(m0 + MM_TILE, M)
         for n0 in range(0, N, MM_TILE):
@@ -127,7 +131,7 @@ def _(op, tc):
     x, w, out = op.ins['x'], op.ins['w'], op.outs['out']
     wt = op.attrs['wt']
     yield from _mm_tiles(x, w, out, x.rows, out.cols, x.cols, False, wt, (F_GELU if op.attrs['gelu'] else 0) | (F_TB if wt else 0),
-                         op.ins.get('bias'), op.ins.get('res'), op.outs.get('pre'), dev=_mm_dev(op))
+                         op.ins.get('bias'), op.ins.get('res'), op.outs.get('pre'), dev=_mm_dev(op), precise=tc.precise)
 
 
 @lowers('mm')
@@ -137,7 +141,7 @@ def _(op, tc):
     N = b.rows if tb else b.cols
     acc = 'into' in op.ins
     yield from _mm_tiles(a, b, out, M, N, K, ta, tb, (F_TA if ta else 0) | (F_TB if tb else 0) | (F_ACC if acc else 0), acc=acc,
-                         dev=_mm_dev(op))
+                         dev=_mm_dev(op), precise=tc.precise)
 
 
 # ------------------------------------------------------------------------------------------------ data / row-wise ops
@@ -583,7 +587,7 @@ def _(op, tc):
     for m0, m1, n0, n1, ra, rb in _mm_grid(a, b, M, N, K, ta, tb):
         tile = out.region(m0, m1, n0, n1)
         yield _task('matmul_tile_dgelu', [ra, rb, pre.region(m0, m1, n0, n1)], [tile], a=a, b=b, out=out, pre=pre, m0=m0, n0=n0,
-                    M=M, N=N, K=K, flags=(F_TA if ta else 0) | (F_TB if tb else 0), alpha=1.0)
+                    M=M, N=N, K=K, flags=(F_TA if ta else 0) | (F_TB if tb else 0) | (F_PRECISE if tc.precise else 0), alpha=1.0)
 
 
 @lowers('linear_silu_mul')
@@ -592,7 +596,7 @@ def _(op, tc):
     for m0, m1, n0, n1, ra, rb in _mm_grid(x, w, x.rows, w.cols, x.cols, False, False):
         t = (m0, m1, n0, n1)
         yield _task('matmul_tile_silu_mul', [ra, rb, gate.region(*t)], [out.region(*t), up.region(*t)], a=x, b=w, out=out, gate=gate,
-                    up=up, m0=m0, n0=n0, M=x.rows, N=w.cols, K=x.cols, flags=0, alpha=1.0)
+                    up=up, m0=m0, n0=n0, M=x.rows, N=w.cols, K=x.cols, flags=F_PRECISE if tc.precise else 0, alpha=1.0)
 
 
 @lowers('mm_silu_mul_bwd')
@@ -604,8 +608,8 @@ def _(op, tc):
     for m0, m1, n0, n1, ra, rb in _mm_grid(a, b, M, N, K, ta, tb):
         t = (m0, m1, n0, n1)
         yield _task('matmul_tile_silu_mul_bwd', [ra, rb, gate.region(*t), up.region(*t)], [dg.region(*t), du.region(*t)], a=a, b=b,
-                    gate=gate, up=up, dgate=dg, dup=du, m0=m0, n0=n0, M=M, N=N, K=K, flags=(F_TA if ta else 0) | (F_TB if tb else 0),
-                    alpha=1.0)
+                    gate=gate, up=up, dgate=dg, dup=du, m0=m0, n0=n0, M=M, N=N, K=K,
+                    flags=(F_TA if ta else 0) | (F_TB if tb else 0) | (F_PRECISE if tc.precise else 0), alpha=1.0)
 
 
 @lowers('add')

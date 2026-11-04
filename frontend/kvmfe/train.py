@@ -29,25 +29,52 @@ def weights_version(updates: int) -> int:
 
 
 @dataclass(frozen=True)
+class Schedule:
+    """Learning-rate schedule evaluated ON THE DEVICE by a task each step from the step counter (lr is a buffer, so the program
+    text of every step is identical and window templates still work). kind: const | cosine | linear; linear warmup of
+    `warmup` steps first; decays to min_ratio * base at `total` (default: the whole run)."""
+    kind: str = 'cosine'
+    warmup: int = 0
+    total: int | None = None
+    min_ratio: float = 0.1
+
+    KINDS = {'const': 0, 'cosine': 1, 'linear': 2}
+
+    def __post_init__(self):
+        if self.kind not in self.KINDS or self.warmup < 0 or not 0 <= self.min_ratio <= 1:
+            raise FrontendError(f'bad schedule {self}: kind in {sorted(self.KINDS)}, warmup >= 0, 0 <= min_ratio <= 1')
+
+
+@dataclass(frozen=True)
 class TrainConfig:
     """steps: optimizer steps unrolled in this program. total_steps: length of the token stream (>= first_step + steps; default
     first_step + steps). first_step > 0 builds a later window of a longer run: the device step counter already holds first_step,
-    so the same program text works for any window (see window/loop options in demo.py)."""
+    so the same program text works for any window (see window/loop options in demo.py).
+    accum: microbatches per optimizer step (gradients accumulate on the device; each microbatch's loss gradient is scaled 1/accum).
+    schedule: device-side LR schedule (AdamW). loss_scale: static loss scale S for low-precision runs: the backward starts from
+    S * dL, and the clip coefficient (AdamW's gscale) is multiplied by 1/S, so weights see the unscaled gradient."""
     steps: int = 20
     optim: OptimConfig = OptimConfig()
     clip: float = 1.0              # global gradient-norm clip (AdamW only); <= 0 disables
     first_step: int = 0
     total_steps: int | None = None
+    accum: int = 1
+    schedule: Schedule | None = None
+    loss_scale: float = 1.0
 
 
 @dataclass
 class Program:
     b: Builder
-    model: GPT
+    model: object
     weights: dict = field(default_factory=dict)
-    losses: list = field(default_factory=list)       # one 1x2 tensor per step; loss[0,0] is the mean cross-entropy
+    losses: list = field(default_factory=list)       # per (step, micro): {name: 1x2/1x1 tensor}; ['loss'][0,0] is the mean cross-entropy
     state: State | None = None
     clip_coef: Tensor | None = None
+    lr: Tensor | None = None
+
+    def loss_buffer(self, name, step, micro=0, accum=1):
+        return f'{name}.{step}' if accum == 1 else f'{name}.{step}.{micro}'
 
 
 def batch_stream(cfg: ModelConfig, steps: int):
@@ -83,39 +110,62 @@ def weight_tensor(spec, seed):
     return Tensor(spec.name, spec.rows, spec.cols, 'param', buf=f'w.{spec.name}', init=param_init(spec, seed), rg=True)
 
 
-def build_training(model: GPT, tc: TrainConfig) -> Program:
+def build_training(model, tc: TrainConfig) -> Program:
+    """Unrolled training program for any model implementing the protocol (nn.GPT is one; see models.py):
+         model.cfg.seed, model.specs {name: ParamSpec}
+         model.batch_streams(micros) -> [nn.Stream]           host data, one window per microbatch
+         model.losses(b, batch {stream: tensor}, w {param: tensor}, grad_scale) -> [(name, 1x1|1x2 loss tensor)]
+    The first loss is the primary one; every returned loss is a backward root with gradient 1."""
     cfg = model.cfg
-    if tc.steps < 1:
-        raise FrontendError('steps must be >= 1')
+    if tc.steps < 1 or tc.accum < 1:
+        raise FrontendError('steps and accum must be >= 1')
     total = tc.total_steps or tc.first_step + tc.steps
     if total < tc.first_step + tc.steps:
         raise FrontendError(f'total_steps {total} < first_step + steps = {tc.first_step + tc.steps}')
-    clip = tc.clip > 0 and tc.optim.kind == 'adamw'
+    adamw = tc.optim.kind == 'adamw'
+    if not adamw and (tc.schedule or tc.loss_scale != 1.0):
+        raise FrontendError('schedule and loss_scale need the AdamW optimizer (sgd has a baked lr and no gradient scale input)')
+    if not tc.loss_scale > 0:
+        raise FrontendError(f'loss_scale must be positive, got {tc.loss_scale}')
+    clip = adamw and (tc.clip > 0 or tc.loss_scale != 1.0)
     b = Builder('train')
     w = {n: weight_tensor(s, cfg.seed) for n, s in model.specs.items()}
     token = Tensor('version_token', 1, 1, 'state', buf='version_token', init=('fill', 0.0))
     state = State(b, model.specs, tc.optim)
     coef = Tensor('clip_coef', 1, 2, 'state', buf='clip_coef', init=('fill', 1.0)) if clip else None
-    ids_all, tgt_all = batch_stream(cfg, total)
-    stream = [Tensor(f'stream_{n}', total * cfg.tokens, 1, 'input', buf=f'stream_{n}', dtype='i32', init=('values', v))
-              for n, v in (('ids', ids_all), ('tgt', tgt_all))]
-    b.tensors += [*w.values(), token, *stream, *([coef] if clip else [])]
-    prog = Program(b, model, w, [], state, coef)
+    lr = Tensor('lr', 1, 1, 'state', buf='lr', init=('fill', tc.optim.lr)) if tc.schedule else None
+    streams = model.batch_streams(total * tc.accum)
+    src = [Tensor(f'stream_{st.name}', total * tc.accum * st.rows, st.cols, 'input', buf=f'stream_{st.name}', dtype=st.dtype,
+                  init=('values', st.values)) for st in streams]
+    b.tensors += [*w.values(), token, *src, *([coef] if clip else []), *([lr] if lr else [])]
+    prog = Program(b, model, w, [], state, coef, lr)
+    params = [w[n] for n in model.specs]
     for s in range(tc.steps):
-        b.step, b.phase = s, 'data'
-        ids, tgt = (b.select_window(st, state.step, cfg.tokens, cfg.tokens, name=n) for st, n in zip(stream, ('ids', 'tgt')))
-        b.phase, mark = 'fwd', len(b.ops)
-        loss = b.ce_loss(model(b, ids, w), tgt)
-        loss.buf = f'loss.{s}'                      # tiny and pinned: the loss curve stays readable after the run
-        prog.losses.append(loss)
-        grads = autodiff.backward(b, loss, b.ops[mark:], [w[n] for n in model.specs])
+        b.step, grads = s, None
+        for m in range(tc.accum):
+            b.phase = 'data'
+            batch = {st.name: b.select_window(t, state.step, st.rows, tc.accum * st.rows * st.cols, m * st.rows * st.cols,
+                                              f'{st.name}{m}', st.cols)
+                     for st, t in zip(streams, src)}
+            b.phase, mark = 'fwd', len(b.ops)
+            roots = model.losses(b, batch, w, tc.loss_scale / tc.accum)
+            for name, t in roots:
+                t.buf = prog.loss_buffer(name, s, m, tc.accum)       # tiny and pinned: the curves stay readable after the run
+            prog.losses.append(dict(roots))
+            grads = autodiff.backward(b, [t for _, t in roots], b.ops[mark:], params, accumulate=grads)
         b.phase = 'opt'
+        step_grads = [grads[p] for p in params]
         if clip:
-            b.grad_clip(list(grads.values()), tc.clip, coef)
+            b.grad_clip(step_grads, tc.clip * tc.loss_scale if tc.clip > 0 else 1e30, coef)
+            if tc.loss_scale != 1.0:
+                b.scale_scalar(coef, 1.0 / tc.loss_scale)
         step_begin(b, tc.optim, state)                                 # step counter: s -> s + 1 (AdamW's 1-based step)
-        b.barrier(list(grads.values()) + [token], [token], publishes=WEIGHTS_VAR)          # pre: 2s+1
+        if lr:
+            sch = tc.schedule
+            b.lr_schedule(state.step, lr, Schedule.KINDS[sch.kind], tc.optim.lr, sch.warmup, sch.total or total, sch.min_ratio)
+        b.barrier(step_grads + [token], [token], publishes=WEIGHTS_VAR)          # pre: 2s+1
         for n, sp in model.specs.items():
-            update(b, tc.optim, sp, w[n], grads[w[n]], state, token, coef)
+            update(b, tc.optim, sp, w[n], grads[w[n]], state, token, coef, lr)
         b.barrier(list(w.values()) + [token], [token], publishes=WEIGHTS_VAR)               # post: 2s+2
         log.debug('step %d: %d logical ops so far', s, len(b.ops))
     return prog

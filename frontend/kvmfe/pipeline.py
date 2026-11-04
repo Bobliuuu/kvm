@@ -22,12 +22,26 @@ class Compiled:
         return execute(self.spec, data_files=self.low.data_files, **kw)
 
 
-def compile_training(model_cfg: ModelConfig, tc: TrainConfig, tiling: Tiling, reuse='shape', gap=0, with_spec=True) -> Compiled:
-    model = GPT(model_cfg)
-    log.info('model %s: %.1fM parameters, %d layers, d=%d, heads=%d, seq=%d, batch=%d, vocab=%d', model_cfg.name,
-             model_cfg.params / 1e6, model_cfg.layers, model_cfg.d_model, model_cfg.heads, model_cfg.seq, model_cfg.batch,
-             model_cfg.vocab)
+def build_model(cfg):
+    """Config -> model object. A model object (anything with .specs) is returned unchanged."""
+    if hasattr(cfg, 'specs'):
+        return cfg
+    if isinstance(cfg, ModelConfig):
+        return GPT(cfg)
+    from . import models
+    return models.build(cfg)
+
+
+def compile_training(model_cfg, tc: TrainConfig, tiling: Tiling, reuse='shape', gap=0, with_spec=True, fuse=False) -> Compiled:
+    """model_cfg: nn.ModelConfig (GPT), a models.* config, or a model object. fuse=True applies fuse.py before lowering."""
+    model = build_model(model_cfg)
+    n = sum(s.rows * s.cols for s in model.specs.values())
+    log.info('model %s: %.2fM parameters, %d tensors', model.cfg.name, n / 1e6, len(model.specs))
     prog = build_training(model, tc)
-    low = lower_program(prog.b.ops, tiling, reuse, gap, prefix='act')
+    ops = prog.b.ops
+    if fuse:
+        from .fuse import fuse as run_fuse
+        ops, _ = run_fuse(ops)
+    low = lower_program(ops, tiling, reuse, gap, prefix='act')
     spec = to_workload(low, {'train': GraphPolicy()}) if with_spec else None
     return Compiled(low, spec, prog)

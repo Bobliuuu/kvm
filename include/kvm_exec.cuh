@@ -92,9 +92,12 @@ static constexpr KvmOpInfo kKvmOps[] = {
 static constexpr int KVM_NUM_OPS = sizeof(kKvmOps) / sizeof(kKvmOps[0]);
 
 namespace kvm_sig {
-constexpr bool registry_ok() {  // ids dense and equal to position, signatures well formed
-  for (int i = 0; i < KVM_NUM_OPS; ++i)
-    if (kKvmOps[i].id != i || kKvmOps[i].types == 0xFFFFFFFFu) return false;
+constexpr bool registry_ok() {  // ids unique and >= 0, signatures well formed
+  // KVM_DIST_HOOK: ids are sparse (comm ops live at 64..95), so uniqueness replaces "dense and equal to position".
+  for (int i = 0; i < KVM_NUM_OPS; ++i) {
+    if (kKvmOps[i].id < 0 || kKvmOps[i].types == 0xFFFFFFFFu) return false;
+    for (int j = 0; j < i; ++j) if (kKvmOps[j].id == kKvmOps[i].id) return false;
+  }
   return true;
 }
 }  // namespace kvm_sig
@@ -158,6 +161,7 @@ struct KvmCounters {  // device memory; hot fields on separate lines
 };
 struct KvmHostErr { volatile int slot, a, b; volatile int code; };  // mapped mirror of the first device error
 
+struct KvmDistDev;  // KVM_DIST_HOOK: include/kvm_dist.cuh
 struct KvmDevState {
   int max_tasks, live_cap, succ_cap, args_cap, num_vars, nbufs, ring_words, pad;
   long long aging_ns;
@@ -174,6 +178,7 @@ struct KvmDevState {
   unsigned long long *doorbell, *ring_head;
   unsigned int* closed;
   KvmHostErr* herr;
+  const KvmDistDev* dist;  // KVM_DIST_HOOK: nullptr = single-device executor (all dist code is skipped)
 };
 
 #ifdef __CUDACC__
@@ -340,6 +345,10 @@ KVM_OP(spin) {
 }
 
 // Optional operator packs: each defines KVM_OP(name) for every X line of its .def.
+#include "kvm_dist.cuh"  // KVM_DIST_HOOK: phase 1 (types, primitives); phase 2 (inbox pump) follows kvm_publish
+#if __has_include("kvm_ops_comm.cuh")
+#include "kvm_ops_comm.cuh"  // KVM_DIST_HOOK
+#endif
 #if __has_include("kvm_ops_gpt.cuh")
 #include "kvm_ops_gpt.cuh"
 #endif
@@ -454,6 +463,9 @@ __device__ __forceinline__ void kvm_publish(const KvmDevState& S, int slot, int 
     n = next;
   }
 }
+
+#define KVM_DIST_PUMP_PHASE 1  // KVM_DIST_HOOK: remote-publish pump (kvm_dist_poll / kvm_dist_pump)
+#include "kvm_dist.cuh"
 
 // ---------------- worker ----------------
 struct KvmShared {
@@ -649,8 +661,8 @@ __device__ void kvm_admitter(const KvmDevState& S, unsigned long long t0, KvmAdm
     int action = A.action;
     __syncthreads();
     if (action == KVM_ADM_EXIT) return;
-    if (action == KVM_ADM_FINAL) { if (threadIdx.x == 0) st_rel(&S.cnt->admit_final, 1); return; }
-    if (action == KVM_ADM_IDLE) { __nanosleep(256); continue; }
+    if (action == KVM_ADM_FINAL) { if (threadIdx.x == 0) st_rel(&S.cnt->admit_final, 1); kvm_dist_pump(S, t0); return; }  // KVM_DIST_HOOK
+    if (action == KVM_ADM_IDLE) { kvm_dist_poll(S); __nanosleep(256); continue; }  // KVM_DIST_HOOK
     if (A.hdr[6] == KVM_REC_BUNDLE) kvm_admit_record(S, t0, A, pos);
     __syncthreads();
     if (A.action == KVM_ADM_EXIT) return;

@@ -1,0 +1,43 @@
+# sched-negative @ 20261104T010601Z  commit eeada13
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 580.105.08, 1410 MHz
+BUILD: nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DKVM_EXEC_NO_MAIN tests/gpu/test_sched.cu -o test_sched
+    double span = 0, w0 = 1e30, w1 = 0; for (auto& t : v) if (t.cls == 1) { w0 = std::min(w0, t.start); w1 = std::max(w1, t.end); }
+$ ./test_sched --expect-fail starve_neg
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+== starve_neg
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 3 resident blocks/SM -> grid 34 (1 admitter + 1 policy + 32 workers)
+[kvm_exec][I] kernel launched: grid 34 x 256 threads, live_cap 8192, max_tasks 65536, ring 16384 words, aging 0 us, sched dynamic
+[kvm_exec][D] ring wrap: 3592 pad words
+[kvm_exec][D] ring full (16384/16384 words used): backpressure
+[kvm_exec][D] ring full (16384/16384 words used): backpressure
+[kvm_exec][D] ring wrap: 3592 pad words
+[kvm_exec][D] ring full (16384/16384 words used): backpressure
+[kvm_exec][D] ring wrap: 3592 pad words
+[kvm_exec][D] ring full (16384/16384 words used): backpressure
+[kvm_exec][D] ring full (16384/16384 words used): backpressure
+[kvm_exec][D] ring wrap: 3592 pad words
+[kvm_exec][D] ring full (16384/16384 words used): backpressure
+[kvm_exec][D] ring wrap: 3592 pad words
+[kvm_exec][D] ring full (16384/16384 words used): backpressure
+[kvm_exec][I] kernel done: 4240/4240 tasks in 41.444 ms, 56 bundles, 5 ring wraps, 7 backpressure waits
+  guarantee DISABLED: max wait 36905 us, 10 violations
+== starve_neg: FAIL (0.2s, 2 new failures)
+58 checks, 2 failed, 1 suites failed
+NEGATIVE TEST PASS: the harness detected the injected violation
+  FAIL tests/gpu/test_sched.cu:192: r.violations == 0 -- STARVATION DETECTED: 10 tasks waited beyond 472 us below the reservation
+  FAIL tests/gpu/test_sched.cu:193: r.max_wait_us <= r.grace_us -- STARVATION DETECTED: worst wait 36905 us exceeds the reclaim bound 472 us
+exit: 0
+$ ./test_sched --expect-fail inherit_neg
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+== inherit_neg
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 3 resident blocks/SM -> grid 6 (1 admitter + 1 policy + 4 workers)
+[kvm_exec][I] kernel launched: grid 6 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us, sched dynamic
+  inheritance DISABLED: serve finished within 400 ms: no (stalled, released by the host afterwards)
+== inherit_neg: FAIL (0.5s, 1 new failures)
+4 checks, 1 failed, 1 suites failed
+NEGATIVE TEST PASS: the harness detected the injected violation
+[kvm_exec][I] kernel done: 39/39 tasks in 400.528 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+  FAIL tests/gpu/test_sched.cu:284: ok -- DEADLOCK DETECTED: the waiter did not finish in 400 ms behind a throttled publisher
+exit: 0

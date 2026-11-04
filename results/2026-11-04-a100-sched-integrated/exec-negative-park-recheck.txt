@@ -1,0 +1,59 @@
+# exec-negative-park @ 20261104T025221Z  commit 0a76fc1+dirty
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 580.105.08, 1410 MHz
+BUILD: tests/gpu/build.sh -DKVM_BREAK_PARK_RECHECK
+initgen vectors: regenerated from runtime/initgen.py, identical to the committed file
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+== litmus
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, slots 8192, succ ring 16384 words, ring 32768 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 156000/156000 tasks in 2898.683 ms, 6000 records, 82 ring wraps, 5565 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, slots 8192, succ ring 16384 words, ring 32768 words, aging 0 us, sched off
+[kvm_exec][E] DEVICE ERROR TIMEOUT (device timeout (deadlock or stalled admission)): slot -1, a=156000, b=155978; done 155978/156000
+  FAIL tests/gpu/test_exec.cu:953: ok -- park/publish: blocks 3: TIMEOUT, done 155978/156000, version 6000/6000
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, slots 8192, succ ring 16384 words, ring 32768 words, aging 0 us, sched off
+[kvm_exec][E] DEVICE ERROR TIMEOUT (device timeout (deadlock or stalled admission)): slot -1, a=156000, b=155976; done 155976/156000
+  FAIL tests/gpu/test_exec.cu:953: ok -- park/publish: blocks 3: TIMEOUT, done 155976/156000, version 6000/6000
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 5 (1 admitter + 4 workers)
+[kvm_exec][I] kernel launched: grid 5 x 256 threads, live_cap 4096, slots 8192, succ ring 16384 words, ring 32768 words, aging 0 us, sched off
+[kvm_exec][E] DEVICE ERROR TIMEOUT (device timeout (deadlock or stalled admission)): slot -1, a=156000, b=155977; done 155977/156000
+  FAIL tests/gpu/test_exec.cu:953: ok -- park/publish: blocks 5: TIMEOUT, done 155977/156000, version 6000/6000
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 5 (1 admitter + 4 workers)
+[kvm_exec][I] kernel launched: grid 5 x 256 threads, live_cap 4096, slots 8192, succ ring 16384 words, ring 32768 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 156000/156000 tasks in 1713.128 ms, 6000 records, 82 ring wraps, 5152 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 5 (1 admitter + 4 workers)
+[kvm_exec][I] kernel launched: grid 5 x 256 threads, live_cap 4096, slots 8192, succ ring 16384 words, ring 32768 words, aging 0 us, sched off
+[kvm_exec][E] DEVICE ERROR TIMEOUT (device timeout (deadlock or stalled admission)): slot -1, a=156000, b=155976; done 155976/156000
+  FAIL tests/gpu/test_exec.cu:953: ok -- park/publish: blocks 5: TIMEOUT, done 155976/156000, version 6000/6000
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 9 (1 admitter + 8 workers)
+[kvm_exec][I] kernel launched: grid 9 x 256 threads, live_cap 4096, slots 8192, succ ring 16384 words, ring 32768 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 156000/156000 tasks in 1474.349 ms, 6000 records, 82 ring wraps, 4802 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 9 (1 admitter + 8 workers)
+[kvm_exec][I] kernel launched: grid 9 x 256 threads, live_cap 4096, slots 8192, succ ring 16384 words, ring 32768 words, aging 0 us, sched off
+[kvm_exec][E] DEVICE ERROR TIMEOUT (device timeout (deadlock or stalled admission)): slot -1, a=156000, b=155976; done 155976/156000
+  FAIL tests/gpu/test_exec.cu:953: ok -- park/publish: blocks 9: TIMEOUT, done 155976/156000, version 6000/6000
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 9 (1 admitter + 8 workers)
+[kvm_exec][I] kernel launched: grid 9 x 256 threads, live_cap 4096, slots 8192, succ ring 16384 words, ring 32768 words, aging 0 us, sched off
+[kvm_exec][E] DEVICE ERROR TIMEOUT (device timeout (deadlock or stalled admission)): slot -1, a=156000, b=155976; done 155976/156000
+  FAIL tests/gpu/test_exec.cu:953: ok -- park/publish: blocks 9: TIMEOUT, done 155976/156000, version 6000/6000
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 33 (1 admitter + 32 workers)
+[kvm_exec][I] kernel launched: grid 33 x 256 threads, live_cap 4096, slots 8192, succ ring 16384 words, ring 32768 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 156000/156000 tasks in 1459.328 ms, 6000 records, 82 ring wraps, 4788 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 33 (1 admitter + 32 workers)
+[kvm_exec][I] kernel launched: grid 33 x 256 threads, live_cap 4096, slots 8192, succ ring 16384 words, ring 32768 words, aging 0 us, sched off
+  FAIL tests/gpu/test_exec.cu:948: false -- park/publish: submit 252
+[kvm_exec][E] DEVICE ERROR TIMEOUT (device timeout (deadlock or stalled admission)): slot -1, a=4628, b=208; done 208/4628
+  FAIL tests/gpu/test_exec.cu:953: ok -- park/publish: blocks 33: TIMEOUT, done 208/156000, version 8/6000
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 33 (1 admitter + 32 workers)
+[kvm_exec][I] kernel launched: grid 33 x 256 threads, live_cap 4096, slots 8192, succ ring 16384 words, ring 32768 words, aging 0 us, sched off
+  FAIL tests/gpu/test_exec.cu:948: false -- park/publish: submit 249
+[kvm_exec][E] DEVICE ERROR TIMEOUT (device timeout (deadlock or stalled admission)): slot -1, a=4550, b=130; done 130/4550
+  FAIL tests/gpu/test_exec.cu:953: ok -- park/publish: blocks 33: TIMEOUT, done 130/156000, version 5/6000
+  litmus: 12 runs, 1872000 tasks; each iteration races a waiter's park against the publish of its version; no lost wakeup, early run or double run
+== litmus: FAIL (139.9s, 10 new failures)
+14 checks, 10 failed, 1 suites failed
+NEGATIVE TEST PASS: the harness detected the injected violation
+exit: 0

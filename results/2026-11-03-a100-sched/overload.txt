@@ -1,0 +1,19 @@
+# sched-bench @ 20261104T010431Z  commit eeada13
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 580.105.08, 1410 MHz
+BUILD: nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DKVM_EXEC_NO_MAIN tests/gpu/test_sched.cu -o test_sched
+    double span = 0, w0 = 1e30, w1 = 0; for (auto& t : v) if (t.cls == 1) { w0 = std::min(w0, t.start); w1 = std::max(w1, t.end); }
+$ ./test_sched --quiet overload
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+== overload
+  serve flood: 9000 req/s x 48 matmul tasks (~115 CTAs of demand on 106 workers) for 300 ms, train saturating; train reservation 26 CTAs (25%) in the dynamic row
+    [global queue, serve prio 20] chain hop run p50 249.9 us, stream CTA gap p50 7.2 us
+  global queue, serve prio 20 req p50   21979 [21097,38410] p99    38262 [36678,48759] us | hop-wait p99 37909.5 [36341.8,48325.6] | miss  92.2% [89.4,96.9] | train    1.7 [1.1,2.0] kt/s    5.9 [3.9,7.1] GB/s burst    1.9 [1.2,2.2] kt/s | util 93.8% [93.7,94.7]
+    [dynamic, train min 26 CTAs] chain hop run p50 263.2 us, stream CTA gap p50 86.0 us
+  dynamic, train min 26 CTAs req p50   43836 [42873,44419] p99    57415 [56877,57614] us | hop-wait p99 57021.4 [56484.9,57247.7] | miss  97.9% [97.0,98.4] | train   19.3 [17.9,21.0] kt/s   63.2 [56.6,67.0] GB/s burst   21.1 [19.5,23.0] kt/s | util 93.6% [93.5,93.7]
+  train throughput under the flood: global-prio 1.7 ktask/s, dynamic with reservation 19.3 ktask/s (11.1x); 
+== overload: PASS (5.1s, 0 new failures)
+2 checks, 0 failed, 0 suites failed
+PASS
+exit: 0

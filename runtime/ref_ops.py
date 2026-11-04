@@ -1,4 +1,4 @@
-"""Reference (CPU, float32) semantics of every operator in include/kvm_ops.def.
+"""Reference (CPU, float32) semantics of the operators in include/kvm_ops*.def.
 
 The operator *table* (names, ids, argument types) lives in kvm_ops.def; this module only adds what a table
 cannot say: what an operator does and which buffer extents / value ranges it needs. The compiler uses the
@@ -8,24 +8,8 @@ Float32 model: every arithmetic result is rounded to float32 (IEEE round-to-near
 operation, and reductions run in ascending index order, so integer-valued data is bit-exact against the GPU.
 Multiply-add is NOT fused here: a GPU that fuses may differ by 1 ulp on non-integer data.
 """
-import ctypes
-from dataclasses import dataclass
-from typing import Callable
-
-F32_MAX = 3.4028234663852886e38
-_C = ctypes.c_float
-
-
-def f32(x: float) -> float:
-    """Round a Python float to the nearest float32 (overflow gives +-inf)."""
-    return _C(x).value
-
-
-@dataclass(frozen=True)
-class RefOp:
-    run: Callable[[dict, dict], None]        # (buffers by arg name -> flat list, scalar args) -> None
-    extents: Callable[[dict], dict]          # scalar args -> {buf arg name: elements touched}
-    mins: dict                               # i32 arg name -> smallest legal value
+from ref_gpt import GPT_OPS
+from ref_types import F32_MAX, Buf, RefOp, f32   # noqa: F401  (re-exported)
 
 
 def _copy(b, a):
@@ -99,7 +83,7 @@ def _spin(b, a):
 
 _N = {'n': 1}
 OPS: dict[str, RefOp] = {
-    'noop': RefOp(lambda b, a: None, lambda a: {}, {}),
+    'noop': RefOp(lambda b, a: None, lambda a: {}),
     'copy': RefOp(_copy, lambda a: {'src': a['n'], 'dst': a['n']}, _N),
     'add': RefOp(_add, lambda a: {'a': a['n'], 'b': a['n'], 'out': a['n']}, _N),
     'scale': RefOp(_scale, lambda a: {'x': a['n'], 'out': a['n']}, _N),
@@ -112,3 +96,18 @@ OPS: dict[str, RefOp] = {
     'fill': RefOp(_fill, lambda a: {'x': a['n']}, _N),
     'spin': RefOp(_spin, lambda a: {}, {'us': 0}),
 }
+
+
+def _opaque(extents=lambda a: {}):
+    return RefOp(lambda b, a: None, extents, opaque=True)
+
+
+# Operators with no CPU semantics: they execute as noops with their declared extents, only when the runtime is told to
+# allow opaque operators. The game engine (doomgeneric) and the inter-device communication ops have no CPU model here.
+OPAQUE_OPS = {
+    'doom_tick': _opaque(), 'doom_status': _opaque(),
+    'doom_present': _opaque(lambda a: {'fb': 16256}),
+    **{n: _opaque() for n in ('put', 'put_signal', 'signal', 'reduce2', 'reduce_put_signal', 'send_proxy', 'pack_bf16', 'unpack_bf16')},
+}
+OPS.update(GPT_OPS)
+OPS.update(OPAQUE_OPS)

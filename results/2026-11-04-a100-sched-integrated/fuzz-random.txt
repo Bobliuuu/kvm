@@ -1,0 +1,12 @@
+# exec-fuzz @ 20261104T040225Z  commit 5274867
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 580.105.08, 1410 MHz
+BUILD: tests/gpu/build.sh
+baseline gen seed: OK
+baseline live seed: OK
+[  30] SLOW_REJECT   3.3s live: task[8].wait_var=1
+
+300 cases in 86s: {'OK': 58, 'REJECT': 231, 'USAGE': 10, 'SLOW_REJECT': 1}
+findings (CRASH/HANG/SANITY): 0
+exit: 0

@@ -123,6 +123,7 @@ class LoopbackTransport : public Transport {
 struct FaultSpec {
   double drop = 0, dup = 0, delay = 0;   // probabilities per send
   int delay_ms_max = 20;                  // a delayed message is held 1..delay_ms_max ms (later sends overtake it: reordering)
+  int latency_ms = 0;                     // EVERY message is held this long (order preserved): a long-fat-pipe / WAN emulation
   uint64_t seed = 1;
 };
 
@@ -139,11 +140,11 @@ class FaultyTransport : public Transport {
     int copies = u(rng_) < f_.dup ? 2 : 1;
     if (copies == 2) ++duplicated;
     for (int c = 0; c < copies; ++c) {
-      if (u(rng_) < f_.delay) {
-        ++delayed;
-        int ms = 1 + (int)(rng_() % (uint64_t)std::max(1, f_.delay_ms_max));
-        held_.push_back({Clock::now() + std::chrono::milliseconds(ms), dst, std::vector<uint8_t>((const uint8_t*)p, (const uint8_t*)p + n)});
-      } else if (!in_.send(dst, p, n)) return false;
+      int hold_ms = 0;                                   // 0 = send now
+      if (u(rng_) < f_.delay) { ++delayed; hold_ms = 1 + (int)(rng_() % (uint64_t)std::max(1, f_.delay_ms_max)); }   // overtaken: reordering
+      else hold_ms = f_.latency_ms;
+      if (hold_ms > 0) held_.push_back({Clock::now() + std::chrono::milliseconds(hold_ms), dst, std::vector<uint8_t>((const uint8_t*)p, (const uint8_t*)p + n)});
+      else if (!in_.send(dst, p, n)) return false;
     }
     return true;
   }

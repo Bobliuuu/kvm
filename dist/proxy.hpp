@@ -11,6 +11,7 @@
 // data, so receiving peer P's FIN means all of P's data for us has been delivered to the Sink. With a dead peer the wait ends
 // at the peer's deadline instead: the proxy never waits forever.
 #include <atomic>
+#include <functional>
 
 #include "reliable.hpp"
 #include "wire.hpp"
@@ -31,11 +32,12 @@ class Sink {
 class SendQ {
  public:
   explicit SendQ(void* base = nullptr) : base_((uint8_t*)base) {}
-  static void init(void* base, uint32_t slots, uint32_t slot_bytes, uint64_t timeout_ns) {
+  // tail_dev: the ticket counter the producers increment (device memory for a GPU; any u64 for a host-emulated device).
+  static void init(void* base, uint32_t slots, uint32_t slot_bytes, uint64_t timeout_ns, unsigned long long* tail_dev) {
     if (slot_bytes % 64) throw std::invalid_argument("slot_bytes must be a multiple of 64");
     memset(base, 0, kvm_sq_bytes(slots, slot_bytes));
     KvmSqHdr* h = (KvmSqHdr*)base;
-    h->slots = slots; h->slot_bytes = slot_bytes; h->version = 1; h->timeout_ns = timeout_ns;
+    h->slots = slots; h->slot_bytes = slot_bytes; h->version = 1; h->timeout_ns = timeout_ns; h->tail_dev = tail_dev;
     __atomic_store_n(&h->magic, KVM_SQ_MAGIC, __ATOMIC_RELEASE);
   }
   bool valid() const { return base_ != nullptr; }
@@ -48,7 +50,10 @@ class SendQ {
     return true;
   }
   void pop() { ++head_; __atomic_store_n(&hdr()->head, head_, __ATOMIC_RELEASE); }
-  uint64_t tickets() const { return __atomic_load_n(&hdr()->tail, __ATOMIC_ACQUIRE); }
+  // Tickets handed out so far. Only meaningful once producers have stopped (the proxy asks after the kernel ended).
+  // A GPU's counter is device memory, so its owner supplies a reader; host-emulated devices use the header pointer.
+  uint64_t tickets() const { return tickets_fn_ ? tickets_fn_() : __atomic_load_n(hdr()->tail_dev, __ATOMIC_ACQUIRE); }
+  void set_tickets_reader(std::function<uint64_t()> f) { tickets_fn_ = std::move(f); }
   uint64_t head() const { return head_; }
   uint32_t slot_bytes() const { return hdr()->slot_bytes; }
   KvmSqHdr* hdr() const { return (KvmSqHdr*)base_; }
@@ -56,6 +61,7 @@ class SendQ {
   const KvmSqSlot* slot(uint64_t i) const { return (const KvmSqSlot*)(base_ + sizeof(KvmSqHdr) + i * kvm_sq_stride(hdr()->slot_bytes)); }
   uint8_t* base_;
   uint64_t head_ = 0;
+  std::function<uint64_t()> tickets_fn_;
 };
 
 struct ProxyStats { long sent = 0, delivered = 0, dropped_dead = 0, rejected = 0, full_stalls = 0; unsigned long long bytes_out = 0, bytes_in = 0; };
@@ -87,12 +93,15 @@ class Proxy {
       sink_.heartbeat();
       bool busy = drain_queue();
       Reliable::Delivery d;
-      if (rel_.poll(d, busy ? 0 : 1)) {
-        busy = true;
+      if (rel_.poll(d, 0)) {              // never block here: the device queue above must be re-checked at once (a blocking poll
+        busy = true;                      // would add its whole timeout to every outbound hop)
         receive(d);
         for (int i = 0; i < 64 && rel_.poll(d, 0); ++i) receive(d);
         sink_.flush();
       }
+      if (busy) idle_ = 0;
+      else if (++idle_ < 4000) std::this_thread::yield();                  // spin briefly, then back off to 50 us naps
+      else std::this_thread::sleep_for(std::chrono::microseconds(50));
       int dead = rel_.dead_peer();
       if (dead >= 0) { KD_LOG(0, "proxy", "rank %d: reporting dead peer %d to the device", rank_, dead); sink_.fail(KVM_ERR_DIST_PEER_DOWN, dead); fin_seen_[dead] = true; }
       if (kernel_done_ && !fin_sent && q_empty() && unacked_alive() == 0) {
@@ -105,7 +114,6 @@ class Proxy {
         KD_LOG(2, "proxy", "rank %d proxy done: sent %ld delivered %ld rejected %ld dropped(dead) %ld full-stalls %ld, retx %ld dups %ld", rank_,
                st.sent, st.delivered, st.rejected, st.dropped_dead, st.full_stalls, rel_.st.retx, rel_.st.dups);
       }
-      if (!busy && finished_) std::this_thread::sleep_for(std::chrono::microseconds(200));
     }
   }
   bool q_empty() { return !q_.valid() || q_.head() == q_.tickets(); }
@@ -163,6 +171,7 @@ class Proxy {
   Reliable& rel_;
   Sink& sink_;
   std::vector<bool> fin_seen_;
+  int idle_ = 0;
   std::atomic<bool> stop_{false}, kernel_done_{false}, finished_{false};
   std::thread th_;
 };

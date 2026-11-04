@@ -24,7 +24,9 @@
 //  enough: no PCIe atomics are required on peer memory.
 //  Host side (proxy): x86-64 TSO needs only the compiler/atomic acquire on the queue slot sequence; aarch64 (Grace) needs the
 //  hardware acquire/release that std::atomic emits. The proxy uses std::atomic with acquire/release throughout, never volatile.
-//  The inter-node send queue lives in mapped pinned host memory: the device writes payload with plain stores, then publishes
+//  The inter-node send queue lives in mapped pinned host memory (slots and the host-written head); its ticket counter is in
+//  DEVICE memory, because atomics on pinned host memory need PCIe AtomicOps (cudaDevAttrHostNativeAtomicSupported is 0 on x86
+//  hosts). The device writes payload with plain stores, then publishes
 //  the slot sequence with st.release.sys; the proxy loads it with acquire, so payload reads are ordered (formally sound, unlike
 //  host-side cudaMemcpy of device memory while a kernel runs). Receive: cudaMemcpyAsync(data) then cudaMemcpyAsync(inbox word)
 //  in ONE stream; stream order completes the data copy before the inbox write starts (engine-level ordering, see DISTRIBUTED.md).
@@ -115,18 +117,26 @@ __device__ __forceinline__ void kvm_dist_wake(const KvmDevState& S, int var) {
   while (n >= 0) {
     int next = S.park_next[n];
     int need = S.tasks[n].wait_ver;
-    if (ld_acq(S.version + var) >= need) { if (atom_cas(S.state + n, 1, 2) == 1) kvm_enqueue(S, n); }
-    else kvm_park(S, n, var, need);
+    if (ld_acq(S.version + var) >= need) {
+      if (atom_cas(S.state + n, 1, 2) == 1) {
+#if __has_include("kvm_sched.cuh")
+        kvm_sched_unpark(S, n);                       // feat/sched keeps a count of parked waiters: release it like kvm_publish does
+#endif
+        kvm_enqueue(S, n);
+      }
+    } else kvm_park(S, n, var, need);
     n = next;
   }
 }
 
-// Every thread of the admitter block calls with the same S; work is split by variable. Returns nothing: effects are version
-// stores and wakeups. Single writer per variable (this poller), so a plain release store is race-free.
-__device__ __forceinline__ void kvm_dist_poll(const KvmDevState& S) {
+// Poll the inbox variables i = tid, tid+nthreads, ... Effects are version stores and wakeups. Single writer per variable (this
+// poller), so a plain release store is race-free. Callers: all threads of the admitter block (tid = threadIdx.x), or thread 0
+// alone (0, 1) from inside the admission backpressure wait, which is thread-0 code: without that call a live window full of
+// tasks parked on remote variables would wait for the very signals the blocked admitter never gets to publish.
+__device__ __forceinline__ void kvm_dist_poll_strided(const KvmDevState& S, int tid, int nthreads) {
   const KvmDistDev* D = S.dist;
   if (D == nullptr) return;
-  for (int i = threadIdx.x; i < D->n_in; i += blockDim.x) {
+  for (int i = tid; i < D->n_in; i += nthreads) {
     const int v = D->in_vars[i];
     const int got = (int)ld_acq_sys(D->inbox + v);              // acquire.sys: pairs with the remote release (header)
     if (got > ld_acq(S.version + v)) {
@@ -135,7 +145,7 @@ __device__ __forceinline__ void kvm_dist_poll(const KvmDevState& S) {
       kvm_dist_wake(S, v);
     }
   }
-  if (threadIdx.x == 0 && D->ctl != nullptr) {
+  if (tid == 0 && D->ctl != nullptr) {
     int code = *(volatile int*)&D->ctl->fail_code;
     if (code) kvm_fail(S, code, -1, *(volatile int*)&D->ctl->fail_arg, D->rank);
     else if (D->ctl->dead_ns && *(volatile unsigned*)&D->ctl->heartbeat) {         // a stalled proxy would hang every remote wait
@@ -146,6 +156,7 @@ __device__ __forceinline__ void kvm_dist_poll(const KvmDevState& S) {
     }
   }
 }
+__device__ __forceinline__ void kvm_dist_poll(const KvmDevState& S) { kvm_dist_poll_strided(S, threadIdx.x, blockDim.x); }
 
 // Called by the admitter block after the last bundle: keep pumping until the device is done (or failed / timed out).
 __device__ void kvm_dist_pump(const KvmDevState& S, unsigned long long t0) {

@@ -578,6 +578,9 @@ __device__ void kvm_admit_record(const KvmDevState& S, unsigned long long t0, Kv
       // backpressure: wait until the live window (admitted - done) has room; a stall here is reported by the timeout
       while (ld_acq(&c->admitted) - ld_acq(&c->done) + nt > S.live_cap) {
         if (*(volatile int*)&c->err_code || kvm_now() - t0 > S.timeout_ns) { A.action = KVM_ADM_EXIT; break; }
+#ifndef KVM_DIST_NO_BP_POLL  // (negative test: tests/dist backpressure suite must then fail)
+        kvm_dist_poll_strided(S, 0, 1);  // KVM_DIST_HOOK: remote publishes must keep flowing while admission waits for room
+#endif
         __nanosleep(256);
       }
       if (A.action != KVM_ADM_EXIT) { A.base = c->slots_used; A.sbase = c->succ_used; A.abase = c->args_used; }

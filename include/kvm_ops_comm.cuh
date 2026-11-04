@@ -64,7 +64,7 @@ KVM_OP(send_proxy) {
     else if (rank < 0 || dbuf < 0 || doff < 0 || dld < cols || (var >= 0 && ver < 1)) st = KVM_ERR_DIST_BAD_MSG;
     if (st) { c.fail(st, rows, cols); sm[0] = st; }
     else {
-      unsigned long long t; asm volatile("atom.relaxed.sys.global.add.u64 %0,[%1],1;" : "=l"(t) : "l"(&H->tail) : "memory");
+      const unsigned long long t = atomicAdd(H->tail_dev, 1ull);        // device memory: no PCIe atomics needed
       const unsigned long long t0 = kvm_now();
       while (t - ld_acq_sys64(&H->head) >= H->slots) {
         if (kvm_now() - t0 > H->timeout_ns) { st = KVM_ERR_DIST_SENDQ_TIMEOUT; break; }

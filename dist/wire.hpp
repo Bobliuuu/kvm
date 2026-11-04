@@ -4,7 +4,7 @@
 //
 // SEND QUEUE (device -> host proxy), in mapped pinned host memory:
 //   [KvmSqHdr 384 B][slot 0][slot 1]...   slot = KvmSqSlot (64 B) + payload capacity `slot_bytes`.
-//   Multi-producer (any worker block), single consumer (the proxy). Ticket t = fetch_add(tail); slot t % slots.
+//   Multi-producer (any worker block), single consumer (the proxy). Ticket t = fetch_add(*tail_dev); slot t % slots.
 //   Producer: wait until t - head < slots; write payload and slot fields; fence.sc.sys; store.release.sys seq = t + 1.
 //   Consumer: for head = 0,1,2,...: wait acquire seq(head % slots) == head + 1; read; store.release head = head + 1.
 //   Strict ticket order, so a producer that took a ticket always completes it (no gaps), and head-of-line blocking is bounded
@@ -15,12 +15,14 @@
 #define KVM_SQ_SLOT_HDR 64
 
 struct alignas(128) KvmSqHdr {
-  uint32_t magic, slots, slot_bytes, version;   // slot_bytes: payload capacity, multiple of 64
-  unsigned long long timeout_ns;                          // a producer that cannot get a slot for this long fails the device
-  alignas(128) unsigned long long tail;
-  alignas(128) unsigned long long head;
+  unsigned int magic, slots, slot_bytes, version;   // slot_bytes: payload capacity, multiple of 64
+  unsigned long long timeout_ns;                    // a producer that cannot get a slot for this long fails the device
+  unsigned long long* tail_dev;                     // ticket counter in DEVICE memory: atomics on pinned host memory need PCIe
+                                                    // atomics (cudaDevAttrHostNativeAtomicSupported is 0 on x86 hosts); the host
+                                                    // reads it only after the kernel ended, or from a host-emulated device in tests
+  alignas(128) unsigned long long head;             // host-written (release), device-read (acquire.sys)
 };
-static_assert(sizeof(KvmSqHdr) == 384, "KvmSqHdr size");
+static_assert(sizeof(KvmSqHdr) == 256, "KvmSqHdr size");
 
 struct KvmSqSlot {
   unsigned long long seq;

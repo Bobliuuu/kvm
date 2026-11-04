@@ -96,11 +96,14 @@ class Cluster:
 
     @staticmethod
     def from_dict(d):
+        """{"devices": [{"node": 0}, ...], "links": {"intra": {"kind": "p2p", "bandwidth_gbs": 300, "latency_us": 2},
+        "inter": {"kind": "proxy", ...}}, "tflops": 19.5, "hbm_gbs": 1500, "comm_lanes": 4, "max_msg_bytes": 262144}"""
         node_of = [dv.get('node', 0) for dv in d['devices']]
         kw = {k: d[k] for k in ('tflops', 'hbm_gbs', 'task_overhead_us', 'comm_lanes', 'max_msg_bytes', 'gbytes') if k in d}
         for k, key in (('intra', 'intra'), ('inter', 'inter')):
             if key in d.get('links', {}):
-                kw[k] = Link(**d['links'][key])
+                l = d['links'][key]
+                kw[k] = Link(l['kind'], l.get('bandwidth_gbs', l.get('bw_gbs')), l.get('latency_us', l.get('lat_us')))
         return Cluster(node_of, **kw)
 
 
@@ -822,8 +825,8 @@ class ShardPlanner(Planner):
         va, vb = self.view(A, la), self.view(B, lb)
         lm, ln, lk = (m // self.P if lo == ROWS else m), (n // self.P if lo == COLS else n), (k // self.P if lo == PART else k)
         direct = not want or want == lo
+        self.decide(O, lo if direct else want)       # an annotated layout wins; the product is resharded into it below
         if direct:
-            self.decide(O, lo)
             outn = O
         else:
             outn = self._alloc(O + '.mm', (m, n), lo)

@@ -1,0 +1,19 @@
+test_ops memcheck exit 0
+1396 passed, 0 failed
+========= ERROR SUMMARY: 0 errors
+test_ops racecheck exit 0
+1396 passed, 0 failed
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+test_ops synccheck exit 0
+1396 passed, 0 failed
+========= ERROR SUMMARY: 0 errors
+test_ops initcheck exit 0
+1396 passed, 0 failed
+========= ERROR SUMMARY: 0 errors
+test_extra memcheck exit 0
+2089 passed, 0 failed
+========= ERROR SUMMARY: 0 errors
+test_extra racecheck exit 0
+2089 passed, 0 failed
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+JOB_DONE

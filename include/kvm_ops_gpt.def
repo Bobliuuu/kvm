@@ -7,7 +7,7 @@
 //    index a contiguous buffer. Index/int buffers have dtype 1 (i32).
 //  * Type `buf?` = optional buffer argument: word -1 means absent; plain `buf` is required.
 //  * Every op is block-cooperative and must be run by a block of exactly 256 threads (KVM_GPT_THREADS) with KVM_GPT_SMEM_BYTES
-//    of dynamic shared memory (48 KiB, 80 KiB if hd=128 attention is used). A task is a tile / row block / head block as named by its range args; many tasks run one logical op.
+//    of dynamic shared memory (56 KiB, 104 KiB if hd=128 attention is used). A task is a tile / row block / head block as named by its range args; many tasks run one logical op.
 //  * Row ranges [r0,r1) are clipped to the buffer; the caller expresses dependencies in the DAG. Ops never wait on other tasks.
 //  * Bad arguments are reported through ctx.fail with code 1000+k (1 buf index, 2 null ptr/dtype, 3 range/arg, 4 unsupported
 //    shape/flags/alignment, 5 token id out of range, 6 kv length overflow) and the task returns without touching memory.
@@ -23,8 +23,9 @@ X(embedding_fwd,        32, "ids:buf,wte:buf,wpe:buf?,out:buf,r0:i32,r1:i32,T:i3
 // dtab[key,:] (+)= sum over rows r (ascending) with key(r)==key of dout[r,:], keys in [v0,v1). key(r)=ids[r], or r%mod if ids=-1
 // (positional table grad). Deterministic: one task owns a key range and sums rows in order.
 X(embedding_bwd,        33, "ids:buf?,dout:buf,dtab:buf,N:i32,mod:i32,v0:i32,v1:i32,d:i32,acc:i32")
-// 64x64 output tile at (m0,n0) of C[M,N] = alpha*op(A)*op(B) with K reduction. flags: 1 transA (A stored [K,M]), 2 transB
-// (B stored [N,K]), 4 accumulate into out, 8 gelu, 16 precise (3xTF32, ~fp32 accuracy; default 1xTF32).
+// Output tile at (m0,n0) of C[M,N] = alpha*op(A)*op(B) with K reduction: 64x64, or 128x128 with flag 32 (a quarter of the L2->SM
+// traffic per FLOP: ~1.4x faster per FLOP; the caller steps m0,n0 by 128 and gets a quarter of the tasks). flags: 1 transA (A stored
+// [K,M]), 2 transB (B stored [N,K]), 4 accumulate into out, 8 gelu, 16 precise (3xTF32, ~fp32 accuracy; default 1xTF32), 32 big tile.
 // Epilogue: v=alpha*acc; +bias[n] (bias!=-1); pre[m,n]=v (pre!=-1, before gelu); gelu(v) if flag 8; +res[m,n] (res!=-1);
 // out = v or out + v.
 X(matmul_tile,          34, "a:buf,b:buf,out:buf,bias:buf?,res:buf?,pre:buf?,m0:i32,n0:i32,M:i32,N:i32,K:i32,flags:i32,alpha:f32")

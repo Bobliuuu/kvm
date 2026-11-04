@@ -45,12 +45,13 @@ static void report(const char* name, const char* mode, double ms, double work, c
     printf("BENCH  %-46s %-13s %8.3f ms [%.3f..%.3f]  %9.1f %s  (%.1f%% of %.0f)\n", name, mode, ms, g_tmin, g_tmax, work / ms * 1e-6, unit, work / ms * 1e-6 / peak * 100, peak);
 }
 
-template <int ID> static void bench_mm(int M, int N, int K, int ta, int tb, int prec) {
+template <int ID> static void bench_mm(int M, int N, int K, int ta, int tb, int prec, int big = 0) {
     Rng r(3); Dev dv;
     int ia = dv.addf(ta ? K : M, ta ? M : K), ib = dv.addf(tb ? N : K, tb ? K : N), io = dv.addf(M, N);
     auto ha = rnd(r, (size_t)M * K), hb = rnd(r, (size_t)K * N); dv.up(ia, ha); dv.up(ib, hb);
-    Batch b; for (int m0 = 0; m0 < M; m0 += 64) for (int n0 = 0; n0 < N; n0 += 64)
-        b.add(OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(m0).i(n0).i(M).i(N).i(K).i(ta | (tb << 1) | (prec << 4)).f(1.f));
+    const int step = big ? 128 : 64;
+    Batch b; for (int m0 = 0; m0 < M; m0 += step) for (int n0 = 0; n0 < N; n0 += step)
+        b.add(OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(m0).i(n0).i(M).i(N).i(K).i(ta | (tb << 1) | (prec << 4) | (big << 5)).f(1.f));
     auto s = stage(dv, b); launch_full(s, 48 * 1024); CK(cudaDeviceSynchronize());
     auto o = dv.down(io); Rng rs(9); double me = 0, mx = 0;   // sampled elements vs double dot products
     for (int t = 0; t < 400; t++) {
@@ -58,7 +59,7 @@ template <int ID> static void bench_mm(int M, int N, int K, int ta, int tb, int 
         for (int k = 0; k < K; k++) acc += (double)(ta ? ha[(size_t)k * M + m] : ha[(size_t)m * K + k]) * (tb ? hb[(size_t)n * K + k] : hb[(size_t)k * N + n]);
         me = std::max(me, fabs(o[(size_t)m * N + n] - acc)); mx = std::max(mx, fabs(acc));
     }
-    char nm[96]; snprintf(nm, sizeof nm, "matmul %s %c%c %dx%dx%d", prec ? "3xTF32" : "TF32", ta ? 'T' : 'N', tb ? 'T' : 'N', M, N, K);
+    char nm[96]; snprintf(nm, sizeof nm, "matmul %s%s %c%c %dx%dx%d", big ? "128tile " : "", prec ? "3xTF32" : "TF32", ta ? 'T' : 'N', tb ? 'T' : 'N', M, N, K);
     double tol = prec ? 2e-6 * sqrt((double)K) : 6e-3; char d[64]; snprintf(d, sizeof d, "400 sampled elements relerr %.2e", me / mx);
     verdict(std::string("bench check: ") + nm, me / mx < tol, d);
     double flops = 2.0 * M * N * K;   // nominal 2MNK (3xTF32 performs 3x the tensor work)
@@ -196,6 +197,8 @@ int main() {
     bench_mm<OP_matmul_tile>(1024, 1024, 1024, 0, 0, 0); bench_mm<OP_matmul_tile>(4096, 3072, 768, 0, 0, 0); bench_mm<OP_matmul_tile>(512, 512, 512, 0, 0, 0);
     }
     if (want("attn")) { bench_attn<64>(4, 1024, 16, 16); bench_attn<64>(4, 2048, 16, 4); bench_attn<128>(2, 2048, 8, 8); }
+    for (int bg = 1; bg <= 1; bg++) { bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 0, 0, bg); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 1, 0, 0, bg); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 1, 0, bg); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 0, 1, bg);
+        bench_mm<OP_matmul_tile>(2048, 2048, 2048, 0, 0, 0, bg); bench_mm<OP_matmul_tile>(8192, 768, 768, 0, 0, 0, bg); bench_mm<OP_matmul_tile>(1024, 1024, 1024, 0, 0, 0, bg); bench_mm<OP_matmul_tile>(4096, 3072, 768, 0, 0, 0, bg); bench_mm<OP_matmul_tile>(512, 512, 512, 0, 0, 0, bg); }
     if (want("mem")) bench_mem();
     printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;

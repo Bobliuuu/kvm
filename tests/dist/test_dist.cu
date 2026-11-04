@@ -5,7 +5,7 @@
 //        runs every rank of a partitioner plan (runtime/partition.py --plan) as threads of this process
 //   ./test_dist plan DIR --rank R --peers host:port,host:port,...      one rank of a MULTI-PROCESS / multi-node run
 //   ./test_dist --expect-fail=stale pingpong     negative test (-DKVM_DIST_BREAK_ORDER): exits 0 only if the suite DETECTS stale data;
-//   ./test_dist --expect-fail=timeout backpressure   (-DKVM_DIST_NO_BP_POLL) exits 0 only if the receiver hits the device timeout
+//   ./test_dist --expect-fail=timeout backpressure   (-DKVM_DIST_NO_BP_POLL) exits 0 only if the receiver hits the device stall timeout (TIMEOUT / PARK_STALL)
 // Everything that needs more than one physical GPU prints "SKIP: needs 2 GPUs" when fewer are present; with >= 2 GPUs the same
 // suites place rank r on device r % ngpus and use real peer-to-peer.
 #include "../../kvm_exec.cu"
@@ -542,8 +542,9 @@ static void suite_errors() {
 }
 
 // ==================================================================================================== pump during admission backpressure
-// Device 1's live window (8) is full of tasks parked on a remote variable, and a second bundle is waiting for room. The signal
-// that releases the parked tasks arrives while the admitter is blocked in that wait: the pump must keep running there.
+// Parked (version-waiting) tasks have their own budget of live_cap. Device 1 admits two bundles of 8 tasks parked on a remote
+// variable (16 parked > live_cap 8); a third bundle then waits for the parked count to drop. The signal that releases them arrives
+// while the admitter is blocked in that wait: the pump must keep running there.
 static void suite_backpressure() {
   fprintf(stderr, "== backpressure: remote publishes keep flowing while admission waits for room\n");
   DistDevice d0(0, 2, device_of(0), 4), d1(1, 2, device_of(1), 4);
@@ -556,22 +557,22 @@ static void suite_backpressure() {
   KvmExec e0(small_cfg(3, 4)); int flag = e0.add_view(d1.inbox_buf(), 1, 4);
   CK(cudaSetDevice(device_of(1))); e1.prepare();
   CK(cudaSetDevice(device_of(0))); e0.prepare();          // before either kernel runs (cudaMalloc can wait for running kernels)
-  KvmBundleBuilder a, b, s;
-  for (int i = 0; i < 8; ++i) { KvmTaskOpts o; o.wait_var = 0; o.wait_ver = 1; a.add("noop", {}, o); }
+  KvmBundleBuilder a, a2, b, s;
+  for (int i = 0; i < 8; ++i) { KvmTaskOpts o; o.wait_var = 0; o.wait_ver = 1; a.add("noop", {}, o); a2.add("noop", {}, o); }
   b.add("noop", {});
   s.add("signal", {Bf(flag), I(0), I(1)});
   KvmResult r1;
   std::thread t1([&] {
     CK(cudaSetDevice(device_of(1)));
-    e1.start(); e1.submit(a.build()); e1.submit(b.build()); r1 = e1.finish();
+    e1.start(); e1.submit(a.build()); e1.submit(a2.build()); e1.submit(b.build()); r1 = e1.finish();
   });
   std::this_thread::sleep_for(std::chrono::milliseconds(300));     // let the window fill and admission block
   CK(cudaSetDevice(device_of(0)));
   e0.start(); e0.submit(s.build()); const KvmResult& r0 = e0.finish();
   t1.join();
   CHECK(r0.ok(), "signaller: %s", kvm_err_name(r0.err_code));
-  g_timeouts += r1.err_code == KVM_ERR_TIMEOUT;
-  CHECK(r1.ok() && r1.done == 9, "receiver: %s, %d/9 tasks done", kvm_err_name(r1.err_code), r1.done);
+  g_timeouts += r1.err_code == KVM_ERR_TIMEOUT || r1.err_code == KVM_ERR_PARK_STALL;
+  CHECK(r1.ok() && r1.done == 17, "receiver: %s, %d/17 tasks done", kvm_err_name(r1.err_code), r1.done);
 }
 
 // ==================================================================================================== bandwidth (needs 2 GPUs for the NVLink number)

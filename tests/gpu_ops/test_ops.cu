@@ -220,7 +220,7 @@ static void attn_case(AttnCfg c) {
         for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += 32)
             b3.add(OP_attn_bwd_dq, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dq).i(bb).i(h).i(q0).i(T).i(H).i(Hkv).i(hd).f((float)scale));
         for (int h = 0; h < Hkv; h++) for (int k0 = 0; k0 < T; k0 += 32)
-            b3.add(OP_attn_bwd_dkv, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dk).b(dvv).i(bb).i(h).i(k0).i(T).i(H).i(Hkv).i(hd).f((float)scale));
+            b3.add(OP_attn_bwd_dkv, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dk).b(dvv).i(bb).i(h).i(k0).i(T).i(H).i(hd).f((float)scale));
     }
     e |= run(dv, b3, smem);
     double fl = T == 1 ? 1e-2 : 1e-30;
@@ -232,8 +232,9 @@ static void attn_case(AttnCfg c) {
     check_true(std::string(nm) + " err==0", e == 0);
 }
 static void t_attention() {
-    for (AttnCfg c : {AttnCfg{2, 1, 2, 2, 16}, AttnCfg{1, 2, 2, 2, 16}, AttnCfg{2, 37, 4, 2, 32}, AttnCfg{1, 100, 4, 1, 64}, AttnCfg{1, 70, 2, 2, 128}, AttnCfg{2, 32, 2, 2, 16}, AttnCfg{1, 65, 4, 4, 32}})
+    for (AttnCfg c : {AttnCfg{2, 1, 2, 2, 16}, AttnCfg{1, 2, 2, 2, 16}, AttnCfg{2, 37, 4, 2, 32}, AttnCfg{1, 100, 4, 1, 64}, AttnCfg{1, 70, 2, 2, 128}, AttnCfg{2, 32, 2, 2, 16}, AttnCfg{1, 65, 4, 4, 32}, AttnCfg{2, 70, 16, 4, 64}})
         attn_case(c);
+    for (int T : {2, 3, 15, 31, 33, 63, 95, 97}) attn_case(AttnCfg{1, T, 2, 1, 32});   // prefill with a clipped final partial q block
     {   // reference self-check: analytic CPU backward vs central finite differences of the CPU forward
         int B = 1, T = 5, H = 2, Hkv = 1, hd = 4; Rng r(7); double sc = 0.5;
         D q(B * T * H * hd), k(B * T * Hkv * hd), v(k.size()), dO(q.size()), o, lse, dq, dk, dv, o2, l2;
@@ -351,8 +352,25 @@ static void t_adamw() {
     run1(dv, OP_gradnorm_finish, A().b(part).i(3).b(nrm).f(1.0f));
     double s = 0; for (float x : g1) s += (double)x * x; for (float x : g2) s += (double)x * x;
     double rn = sqrt(s), coef = std::min(1.0, 1.0 / (rn + 1e-6)); auto hn = dv.down(nrm);
-    check("gradnorm_partial+finish norm", {hn[0]}, {rn}, 1e-6);
-    check("gradnorm clip coefficient", {hn[1]}, {coef}, 1e-6);
+    check("gradnorm_partial+finish norm", {hn[1]}, {rn}, 1e-6);
+    check("gradnorm clip coefficient", {hn[0]}, {coef}, 1e-6);
+
+    {   // clipping must actually clip: norm above the threshold, coefficient flows into adamw through the buffer
+        int n2 = 600; Rng rc(5); auto big = rnd(rc, n2, 3.0), p0 = rnd(rc, n2);
+        int pc = dv.addf(1, n2), gc = dv.addf(1, n2), mc = dv.addf(1, n2), vc = dv.addf(1, n2), partc = dv.addf(1, 2), nrmc = dv.addf(1, 2), stc = dv.addi(1);
+        dv.up(pc, p0); dv.up(gc, big); dv.upi(stc, {1});
+        Batch bg; bg.add(OP_gradnorm_partial, A().b(gc).b(partc).i(0).i(0).i(300)); bg.add(OP_gradnorm_partial, A().b(gc).b(partc).i(1).i(300).i(n2)); run(dv, bg);
+        run1(dv, OP_gradnorm_finish, A().b(partc).i(2).b(nrmc).f(1.0f));
+        auto hn2 = dv.down(nrmc); double s2 = 0; for (float x : big) s2 += (double)x * x;
+        double nr = sqrt(s2), cf = std::min(1.0, 1.0 / (nr + 1e-6));
+        check_true("clip: norm exceeds threshold and coefficient < 1", nr > 10 && cf < 0.1 && fabs(hn2[0] - cf) < 1e-6 * cf, "");
+        run1(dv, OP_adamw, A().b(pc).b(gc).b(mc).b(vc).b(nrmc).b(stc).i(0).i(n2).f(1e-2f).f(.9f).f(.99f).f(1e-8f).f(0.f));
+        D P2 = dbl(p0), M2(n2, 0.0), V2(n2, 0.0); adamw_d(P2, dbl(big), M2, V2, (float)1e-2, (float).9, (float).99, (float)1e-8, 0.0, 1, (double)hn2[0]);
+        check("clip: adamw with gscale = clip coefficient vs double reference", dv.down(pc), P2, 1e-5);
+        // the m buffer holds (1-b1)*clipped grad: proves the gradient really was scaled
+        auto mm_ = dv.down(mc); double ratio = 0; for (int i = 0; i < n2; i++) ratio = std::max(ratio, fabs(mm_[i]) / (0.1 * fabs(big[i]) + 1e-30));
+        check_true("clip: first moment equals 0.1 * coef * g (max ratio <= coef)", ratio <= cf * 1.001, "");
+    }
 }
 
 // ---- sampling ---------------------------------------------------------------------------------------------------------
@@ -367,6 +385,7 @@ static int sample_ref(const float* row, int V, double temp, int topk, int seed, 
     for (int i = 0; i < V; i++) if (row[i] >= thr) { run += exp((double)(row[i] - mx) / temp); last = i; if (run > target) return i; }
     return last;
 }
+static FILE* g_vec = nullptr;
 static void t_sample() {
     Rng r(101);
     {   // argmax: ties resolve to the lowest index; V=1; large V
@@ -391,6 +410,25 @@ static void t_sample() {
         }
         check_true("sample topk=" + std::to_string(topk) + " V=" + std::to_string(V) + " matches double CDF reference exactly (96 draws)", ok);
     }
+    if (g_vec) {   // test vectors for independent reimplementations (verified above: GPU == double CPU reference)
+        fprintf(g_vec, "{\n \"spec\": \"See include/kvm_ops_gpt.def (sample) and the sample reference in tests/gpu_ops/test_ops.cu. Philox4x32-10: counter=(row,ctr,0,0) uint32, key=(seed,0x9E3779B9); rounds: p0=0xD2511F53*c0, p1=0xCD9E8D57*c2 (64-bit products); c=(hi(p1)^c1^k0, lo(p1), hi(p0)^c3^k1, lo(p0)); k0+=0x9E3779B9, k1+=0xBB67AE85; 10 rounds. u=float32(out0>>8)*2^-24. temp<=0: argmax, lowest index on ties. Else mx=max logit; topk in (0,V): threshold = topk-th largest logit, candidates = logits >= threshold (ties kept), else all; w_j=exp(double(float32(x_j-mx))/double(temp)) for candidates; Z=sum w (index order, double); target=double(u)*Z; token = first candidate j whose inclusive prefix sum of w (index order) is > target, else the last candidate.\",\n");
+        fprintf(g_vec, " \"philox_kat\": [{\"counter\":[0,0,0,0],\"key\":[0,0],\"out\":[\"0x6627e8d5\",\"0xe169c58d\",\"0xbc57ac4c\",\"0x9b00dbd8\"]},{\"counter\":[\"0xffffffff\",\"0xffffffff\",\"0xffffffff\",\"0xffffffff\"],\"key\":[\"0xffffffff\",\"0xffffffff\"],\"out\":[\"0x408f276d\",\"0x41c83b0e\",\"0xa20bc7c6\",\"0x6d5451fd\"]}],\n \"cases\": [\n");
+        bool first = true, vok = true;
+        for (int V : {16, 50}) for (int topk : {0, 5}) for (double temp : {0.0, 0.7, 1.0}) for (int sd : {1, 4242}) {
+            int N = 8, ct = V + sd; Dev dv; int lg = dv.addf(N, V), out = dv.addi(N), ctr = dv.addi(1); auto hl = rnd(r, N * V, 2.0);
+            dv.up(lg, hl); dv.upi(ctr, {ct});
+            run1(dv, OP_sample, A().b(lg).b(out).b(ctr).i(0).i(N).i(V).f((float)temp).i(topk).i(sd)); auto o = dv.downi(out);
+            for (int i = 0; i < N; i++) { int want; if (temp <= 0) { want = 0; for (int c = 1; c < V; c++) if (hl[i * V + c] > hl[i * V + want]) want = c; } else want = sample_ref(&hl[i * V], V, (float)temp, topk, sd, ct, i); vok &= o[i] == want; }
+            fprintf(g_vec, "%s  {\"V\":%d,\"rows\":%d,\"temp\":%.9g,\"topk\":%d,\"seed\":%d,\"ctr\":%d,\n   \"logits\":[", first ? "" : ",\n", V, N, (double)(float)temp, topk, sd, ct);
+            for (int i = 0; i < N * V; i++) fprintf(g_vec, "%s%.9g", i ? "," : "", hl[i]);
+            fprintf(g_vec, "],\n   \"expected\":[");
+            for (int i = 0; i < N; i++) fprintf(g_vec, "%s%d", i ? "," : "", o[i]);
+            fprintf(g_vec, "]}");
+            first = false;
+        }
+        fprintf(g_vec, "\n ]\n}\n");
+        check_true("sample_vectors.json: all 24 cases x 8 rows equal the double reference", vok);
+    }
     {   // distribution and determinism
         int N = 4096, V = 8; Dev dv; int lg = dv.addf(N, V), out = dv.addi(N), ctr = dv.addi(1); std::vector<float> hl(N * V);
         float base[8] = {0.f, 1.f, 2.f, -1.f, 0.5f, 1.5f, 3.f, -3.f}; for (int i = 0; i < N; i++) for (int c = 0; c < V; c++) hl[i * V + c] = base[c];
@@ -401,6 +439,30 @@ static void t_sample() {
         bool ok = true; for (int c = 0; c < V; c++) { double pp = p[c] / Z, sd = sqrt(N * pp * (1 - pp)); ok &= fabs(cnt[c] - N * pp) < 5 * sd + 1; }
         check_true("sample empirical frequencies within 5 sigma of softmax (4096 draws)", ok);
     }
+}
+
+
+static void t_batch() {
+    Rng r(121); const int steps = 5, N = 12, V = 20, d = 7;
+    Dev dv; int src = dv.addi(steps * N), st = dv.addi(1), dst = dv.addi(N), tab = dv.addf(V, d, d + 1), idx = dv.addi(N), g = dv.addf(N, d);
+    std::vector<int32_t> hs(steps * N); for (auto& x : hs) x = r.u32() % V; dv.upi(src, hs);
+    bool ok = true;
+    for (int s = 0; s < steps; s++) {
+        dv.upi(st, {s});
+        ok &= run1(dv, OP_select_window, A().b(src).b(st).b(dst).i(0).i(N).i(N).i(0)) == 0;
+        auto o = dv.downi(dst); for (int i = 0; i < N; i++) ok &= o[i] == hs[s * N + i];
+    }
+    check_true("select_window: step-indexed token window, steps 0..4", ok);
+    dv.upi(st, {3});  // shifted-by-one targets: off=1 reads the next token
+    run1(dv, OP_select_window, A().b(src).b(st).b(dst).i(0).i(N - 1).i(N).i(1));
+    auto o = dv.downi(dst); ok = true; for (int i = 0; i < N - 1; i++) ok &= o[i] == hs[3 * N + 1 + i];
+    check_true("select_window: offset window (targets = tokens shifted by one)", ok);
+    dv.upi(st, {5});
+    check_true("select_window: step past the buffer -> err 3", run1(dv, OP_select_window, A().b(src).b(st).b(dst).i(0).i(N).i(N).i(0)) == KVM_GPT_E_RANGE);
+    auto ht = rnd(r, V * d); dv.up(tab, ht); dv.upi(idx, std::vector<int32_t>(hs.begin(), hs.begin() + N));
+    run1(dv, OP_gather_rows, A().b(tab).b(idx).b(g).i(0).i(N).i(d));
+    D ref(N * d); for (int i = 0; i < N; i++) for (int c = 0; c < d; c++) ref[i * d + c] = ht[hs[i] * d + c];
+    check("gather_rows", dv.down(g), ref, 1e-9);
 }
 
 // ---- error codes ------------------------------------------------------------------------------------------------------
@@ -418,10 +480,12 @@ static void t_errors() {
     check_true("unknown op id -> flagged", run(dv, b) == 99);
 }
 
-int main() {
+int main(int argc, char** argv) {
+    if (argc > 2 && !strcmp(argv[1], "--emit-vectors")) g_vec = fopen(argv[2], "w");
     cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0));
     printf("device: %s, %d SMs, cc %d.%d\n", pr.name, pr.multiProcessorCount, pr.major, pr.minor);
-    t_philox(); t_embedding(); t_matmul(); t_norms(); t_elementwise(); t_rope(); t_attention(); t_decode(); t_ce(); t_adamw(); t_sample(); t_errors();
+    t_philox(); t_embedding(); t_matmul(); t_norms(); t_elementwise(); t_rope(); t_attention(); t_decode(); t_ce(); t_adamw(); t_sample(); t_batch(); t_errors();
+    if (g_vec) fclose(g_vec);
     printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

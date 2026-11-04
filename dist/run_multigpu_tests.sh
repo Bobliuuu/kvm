@@ -8,7 +8,8 @@
 #   KVM_HOST=user@gpu-box dist/run_multigpu_tests.sh --remote     rsync the sources to the box and run it there
 #   KVM_NODES=nodeA,nodeB dist/run_multigpu_tests.sh              also run the multi-node TCP stage
 #                      (nodes: [user@]host[:ranks]; ssh key login; same CUDA arch; the sources are rsynced to ~/kvm-dist-run)
-# Env: KVM_ARCH (default: detected, else sm_80), KVM_GPU_LOCK (flock file; default ~/.gpu.lock if it exists), KVM_STAGE_TIMEOUT
+# Env: KVM_ARCH (default: detected, else sm_80), KVM_GPU_LOCK (flock file, taken once for the whole run; default ~/.gpu.lock if it
+#      exists), KVM_LOCK_WAIT (seconds to wait for it, default 3000), KVM_STAGE_TIMEOUT
 #      (seconds per stage, default 600), KVM_ONLY="ops pingpong" (run just those stages by name substring).
 # Stages that need more than one physical GPU print "SKIP: needs 2 GPUs" on a smaller machine and run automatically otherwise.
 # Logs: logs/<UTC>-dist/<stage>.log (git-ignored).
@@ -39,8 +40,13 @@ NVCC="$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc 2>/dev/null | tail -1 ||
 ARCH="${KVM_ARCH:-}"
 if [ -z "$ARCH" ] && [ "$NGPU" -gt 0 ]; then cc="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -1 | tr -d '.')"; [ -n "$cc" ] && ARCH="sm_$cc"; fi
 ARCH="${ARCH:-sm_80}"
-LOCKF="${KVM_GPU_LOCK:-$HOME/.gpu.lock}"; LOCKWAIT="${KVM_LOCK_WAIT:-3000}"; LOCK=""     # a shared box serialises GPU users with flock
-if [ -e "$LOCKF" ] && command -v flock >/dev/null 2>&1; then LOCK="flock -w $LOCKWAIT $LOCKF"; fi
+LOCKF="${KVM_GPU_LOCK:-$HOME/.gpu.lock}"; LOCKWAIT="${KVM_LOCK_WAIT:-3000}"     # a shared box serialises GPU users with flock
+# One acquisition for the whole run: the stages (and the two-executor tests in particular, which need both kernels resident at
+# once) must not be interleaved with other users' jobs, and queueing per stage can take far longer than the run itself.
+if [ "$DRY" = 0 ] && [ "$CPU_ONLY" = 0 ] && [ "$NGPU" -gt 0 ] && [ -e "$LOCKF" ] && command -v flock >/dev/null 2>&1 && [ -z "${KVM_LOCK_HELD:-}" ]; then
+  echo "== waiting for $LOCKF (up to ${LOCKWAIT}s); held for the whole run"
+  exec flock -w "$LOCKWAIT" "$LOCKF" env KVM_LOCK_HELD=1 bash "$0" "$@"
+fi
 NVFLAGS="-O3 -arch=$ARCH -std=c++17 -I$ROOT/include --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DKVM_EXEC_NO_MAIN"
 
 echo "== KVM distributed test run $STAMP  commit ${KVM_COMMIT:-$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo '?')}  GPUs: $NGPU  arch: $ARCH  nvcc: $([ "$HAVE_NVCC" = 1 ] && echo "$NVCC" || echo none)  dry-run: $DRY"
@@ -65,9 +71,7 @@ stage() {
   fi
   echo "---- RUN  $name  (timeout ${TMO}s)"
   local t0=$SECONDS rc
-  # GPU stages hold the lock for the whole stage; the stage timeout starts when the lock is granted, not while queueing
-  if [ -n "$LOCK" ] && [[ "$needs" == gpu* ]] && [ "$name" != gpu-build ]; then timeout $((TMO + LOCKWAIT)) $LOCK timeout "$TMO" bash -c "$cmd" > "$LOG/$name.log" 2>&1; rc=$?
-  else timeout "$TMO" bash -c "$cmd" > "$LOG/$name.log" 2>&1; rc=$?; fi
+  timeout "$TMO" bash -c "$cmd" > "$LOG/$name.log" 2>&1; rc=$?
   local dt=$((SECONDS - t0))
   if [ $rc -eq 0 ]; then echo "PASS $name (${dt}s)"; RESULTS+=("PASS"); NOTES+=("${dt}s")
   else echo "FAIL $name (exit $rc, ${dt}s)  log: $LOG/$name.log"; tail -15 "$LOG/$name.log" | sed 's/^/     | /'; RESULTS+=("FAIL"); NOTES+=("exit $rc"); FAILED=1; fi

@@ -1,0 +1,1729 @@
+# exec @ 20261103T232515Z  commit d84d618
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 580.105.08, 1410 MHz
+BUILD: nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DKVM_EXEC_NO_MAIN tests/gpu/test_exec.cu -o test_exec
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+== checker
+  checker: 7 hand-made reader observations classified correctly; trace checker flagged 2/2 injected faults
+== checker: PASS (0.0s, 0 new failures)
+== ops
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 110/110 tasks in 0.687 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+  ops: 48074 integer elements bitwise equal, 48074 fp elements within 1e-5 rel (max rel err 0); spin(300us) ran 302.1 us
+== ops: PASS (0.2s, 0 new failures)
+== errors
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][E] DEVICE ERROR BAD_OP (op_id not in registry): slot 0, a=99, b=0; done 0/0
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][E] DEVICE ERROR BAD_ARITY (args_words != operator arity): slot 0, a=0, b=0; done 0/0
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][E] DEVICE ERROR BAD_BUF_INDEX (buffer index outside the device table): slot 0, a=9, b=0; done 0/0
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][E] DEVICE ERROR BOUNDS (element count exceeds buffer): slot 0, a=9, b=0; done 1/1
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][E] DEVICE ERROR BOUNDS (element count exceeds buffer): slot 0, a=-1, b=0; done 1/1
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][E] DEVICE ERROR BAD_TASK (task descriptor out of range (succ/args/priority/indegree)): slot 0, a=0, b=0; done 0/0
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][E] DEVICE ERROR BAD_VAR (version variable out of range): slot 0, a=0, b=0; done 0/0
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][E] DEVICE ERROR VERSION_GAP (pub_ver != version[pub_var]+1 (publisher not contiguous or two writers)): slot 0, a=0, b=5; done 1/1
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][E] DEVICE ERROR BAD_TASK (task descriptor out of range (succ/args/priority/indegree)): slot 0, a=5, b=0; done 0/0
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, max_tasks 8, ring 16384 words, aging 0 us
+[kvm_exec][E] DEVICE ERROR SLOTS (task slot pool exhausted (max_tasks)): slot -1, a=9, b=0; done 0/0
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][E] DEVICE ERROR BATCH_TOO_LARGE (bundle larger than live_cap): slot -1, a=9, b=0; done 0/0
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][E] DEVICE ERROR POOL (successor/args pool exhausted): slot -1, a=1, b=0; done 0/0
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][E] DEVICE ERROR TIMEOUT (device timeout (deadlock or stalled admission)): slot -1, a=1, b=0; done 0/1
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][E] bundle rejected: task 0: priority 99 outside [0,31]
+[kvm_exec][E] bundle rejected: dependency cycle
+[kvm_exec][E] bundle rejected: 4097 tasks > live_cap 4096
+[kvm_exec][W] submit after close()
+[kvm_exec][I] kernel done: 1/1 tasks in 0.678 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+  error bad op id          -> BAD_OP (slot 0 a=99 b=0)
+  error bad arity          -> BAD_ARITY (slot 0 a=0 b=0)
+  error bad buffer index   -> BAD_BUF_INDEX (slot 0 a=9 b=0)
+  error n beyond buffer    -> BOUNDS (slot 0 a=9 b=0)
+  error negative n         -> BOUNDS (slot 0 a=-1 b=0)
+  error bad priority       -> BAD_TASK (slot 0 a=0 b=0)
+  error bad version var    -> BAD_VAR (slot 0 a=0 b=0)
+  error version gap        -> VERSION_GAP (slot 0 a=0 b=5)
+  error bad successor      -> BAD_TASK (slot 0 a=5 b=0)
+  error slot pool exhausted -> SLOTS (slot -1 a=9 b=0)
+  error batch > live_cap   -> BATCH_TOO_LARGE (slot -1 a=9 b=0)
+  error args pool exhausted -> POOL (slot -1 a=1 b=0)
+  error unsatisfied wait -> timeout -> TIMEOUT (slot -1 a=1 b=0)
+== errors: PASS (0.4s, 0 new failures)
+== dag
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 2400/2400 tasks in 15.374 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 2400/2400 tasks in 8.163 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 2400/2400 tasks in 4.046 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 2400/2400 tasks in 9.147 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 4500/4500 tasks in 28.396 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 4500/4500 tasks in 15.057 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 4500/4500 tasks in 7.215 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 4500/4500 tasks in 16.160 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1800/1800 tasks in 11.829 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1800/1800 tasks in 6.594 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1800/1800 tasks in 3.510 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1800/1800 tasks in 7.197 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1800/1800 tasks in 11.398 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1800/1800 tasks in 6.132 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1800/1800 tasks in 2.991 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1800/1800 tasks in 6.506 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3600/3600 tasks in 22.849 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3600/3600 tasks in 12.058 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3600/3600 tasks in 5.770 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3600/3600 tasks in 12.849 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1500/1500 tasks in 10.004 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1500/1500 tasks in 5.504 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1500/1500 tasks in 2.874 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1500/1500 tasks in 5.830 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3600/3600 tasks in 23.197 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3600/3600 tasks in 12.460 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3600/3600 tasks in 5.978 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3600/3600 tasks in 13.545 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 2700/2700 tasks in 17.174 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 2700/2700 tasks in 9.135 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 2700/2700 tasks in 4.358 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 2700/2700 tasks in 9.773 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1200/1200 tasks in 8.007 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1200/1200 tasks in 4.460 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1200/1200 tasks in 2.319 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1200/1200 tasks in 4.914 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3000/3000 tasks in 19.422 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3000/3000 tasks in 10.360 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3000/3000 tasks in 5.001 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3000/3000 tasks in 10.860 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 5400/5400 tasks in 34.201 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 5400/5400 tasks in 18.145 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 5400/5400 tasks in 8.619 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 5400/5400 tasks in 19.123 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 900/900 tasks in 6.049 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 900/900 tasks in 3.345 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 900/900 tasks in 1.748 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 900/900 tasks in 3.509 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 2400/2400 tasks in 15.541 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 2400/2400 tasks in 8.301 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 2400/2400 tasks in 3.967 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 2400/2400 tasks in 8.836 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 4500/4500 tasks in 28.658 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 4500/4500 tasks in 15.128 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 4500/4500 tasks in 7.151 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 4500/4500 tasks in 16.188 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1800/1800 tasks in 11.970 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1800/1800 tasks in 6.648 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1800/1800 tasks in 3.459 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1800/1800 tasks in 7.059 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1800/1800 tasks in 11.643 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1800/1800 tasks in 6.217 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1800/1800 tasks in 3.014 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1800/1800 tasks in 6.541 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3600/3600 tasks in 23.119 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3600/3600 tasks in 12.165 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3600/3600 tasks in 5.749 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3600/3600 tasks in 12.816 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1500/1500 tasks in 10.049 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1500/1500 tasks in 5.538 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1500/1500 tasks in 2.884 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1500/1500 tasks in 5.873 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3600/3600 tasks in 23.432 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3600/3600 tasks in 12.525 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3600/3600 tasks in 6.012 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3600/3600 tasks in 13.311 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 2700/2700 tasks in 17.257 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 2700/2700 tasks in 9.105 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 2700/2700 tasks in 4.290 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 2700/2700 tasks in 9.640 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1200/1200 tasks in 8.065 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1200/1200 tasks in 4.489 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1200/1200 tasks in 2.309 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 1200/1200 tasks in 4.504 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3000/3000 tasks in 19.519 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3000/3000 tasks in 10.471 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3000/3000 tasks in 4.965 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 3000/3000 tasks in 11.031 ms, 2 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 5400/5400 tasks in 34.543 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 5400/5400 tasks in 18.285 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 5400/5400 tasks in 8.593 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 5400/5400 tasks in 19.138 ms, 3 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 900/900 tasks in 6.068 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 900/900 tasks in 3.417 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 16 (1 admitter + 15 workers)
+[kvm_exec][I] kernel launched: grid 16 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 900/900 tasks in 1.698 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 900/900 tasks in 3.642 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 8 (1 admitter + 7 workers)
+[kvm_exec][I] kernel launched: grid 8 x 256 threads, live_cap 64, max_tasks 65536, ring 4096 words, aging 0 us
+[kvm_exec][D] ring wrap: 592 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (3224/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 576 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (3224/4096 words used): backpressure
+[kvm_exec][D] ring full (4088/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 608 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (3240/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 560 pad words
+[kvm_exec][D] ring full (4072/4096 words used): backpressure
+[kvm_exec][D] ring full (4072/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 592 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 600 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (3224/4096 words used): backpressure
+[kvm_exec][D] ring full (3256/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 560 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4056/4096 words used): backpressure
+[kvm_exec][D] ring full (4072/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 600 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4088/4096 words used): backpressure
+[kvm_exec][D] ring full (4072/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 616 pad words
+[kvm_exec][D] ring full (4088/4096 words used): backpressure
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 608 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (3232/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 568 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4088/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 576 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (3224/4096 words used): backpressure
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 568 pad words
+[kvm_exec][D] ring full (4088/4096 words used): backpressure
+[kvm_exec][D] ring full (4080/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 592 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4080/4096 words used): backpressure
+[kvm_exec][D] ring full (4088/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 640 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 616 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (3224/4096 words used): backpressure
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 600 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4080/4096 words used): backpressure
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 600 pad words
+[kvm_exec][D] ring full (3248/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 568 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4088/4096 words used): backpressure
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 576 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4080/4096 words used): backpressure
+[kvm_exec][D] ring full (4064/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 616 pad words
+[kvm_exec][D] ring full (3224/4096 words used): backpressure
+[kvm_exec][D] ring full (3232/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 600 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4088/4096 words used): backpressure
+[kvm_exec][D] ring full (3224/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 584 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4088/4096 words used): backpressure
+[kvm_exec][D] ring full (4088/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 584 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (3232/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 560 pad words
+[kvm_exec][D] ring full (4088/4096 words used): backpressure
+[kvm_exec][D] ring full (4088/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 576 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4088/4096 words used): backpressure
+[kvm_exec][D] ring full (4080/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 600 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (3224/4096 words used): backpressure
+[kvm_exec][D] ring full (3232/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 592 pad words
+[kvm_exec][D] ring full (4088/4096 words used): backpressure
+[kvm_exec][D] ring full (4072/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 616 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (3224/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 600 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4072/4096 words used): backpressure
+[kvm_exec][D] ring full (4072/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 624 pad words
+[kvm_exec][D] ring full (3232/4096 words used): backpressure
+[kvm_exec][D] ring full (3256/4096 words used): backpressure
+[kvm_exec][D] ring full (3240/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 616 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (3240/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 608 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4080/4096 words used): backpressure
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 592 pad words
+[kvm_exec][D] ring full (3232/4096 words used): backpressure
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4088/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 600 pad words
+[kvm_exec][D] ring full (4088/4096 words used): backpressure
+[kvm_exec][D] ring full (3224/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 568 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 576 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][I] kernel done: 6000/6000 tasks in 12.288 ms, 150 bundles, 37 ring wraps, 91 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 8 (1 admitter + 7 workers)
+[kvm_exec][I] kernel launched: grid 8 x 256 threads, live_cap 64, max_tasks 65536, ring 4096 words, aging 0 us
+[kvm_exec][D] ring wrap: 616 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 560 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (3224/4096 words used): backpressure
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 568 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4080/4096 words used): backpressure
+[kvm_exec][D] ring full (4064/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 608 pad words
+[kvm_exec][D] ring full (4088/4096 words used): backpressure
+[kvm_exec][D] ring full (3232/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 592 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 568 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (3256/4096 words used): backpressure
+[kvm_exec][D] ring full (3240/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 544 pad words
+[kvm_exec][D] ring full (4088/4096 words used): backpressure
+[kvm_exec][D] ring full (4056/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 568 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4080/4096 words used): backpressure
+[kvm_exec][D] ring full (3200/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 576 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (3224/4096 words used): backpressure
+[kvm_exec][D] ring full (4080/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 600 pad words
+[kvm_exec][D] ring full (3232/4096 words used): backpressure
+[kvm_exec][D] ring full (3232/4096 words used): backpressure
+[kvm_exec][D] ring full (3248/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 552 pad words
+[kvm_exec][D] ring full (4072/4096 words used): backpressure
+[kvm_exec][D] ring full (4072/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 584 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4080/4096 words used): backpressure
+[kvm_exec][D] ring full (4064/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 624 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (3280/4096 words used): backpressure
+[kvm_exec][D] ring wrap: 576 pad words
+[kvm_exec][D] ring full (4096/4096 words used): backpressure
+[kvm_exec][D] ring full (4072/4096 words used): backpressure
+[kvm_exec][D] ring full (3216/4096 words used): backpressure
+[kvm_exec][I] kernel done: 2400/2400 tasks in 5.065 ms, 60 bundles, 14 ring wraps, 36 backpressure waits
+  wraparound: 6000 tasks through 32 rings of 64 cells (one ring took all of them: 93 wraps)
+  dag: 267600 tasks over seeds x grids {1,2,15,auto workers}, all exactly-once, edges ordered by timestamps, values bitwise vs CPU; 1570 duplicate edges removed by the builder
+== dag: PASS (2.3s, 0 new failures)
+== sched
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 341/341 tasks in 21.390 ms, 42 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 401/401 tasks in 42.535 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 2000 us
+[kvm_exec][I] kernel done: 401/401 tasks in 42.538 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 3/3 tasks in 0.471 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] trace: 3 tasks -> trace_sched.csv
+  priority: 340 queued tasks ran in non-increasing priority order (0 inversions), FIFO within a priority (0 violations)
+  aging    0 us/level: low-priority task ran after 400 of 400 high-priority chain tasks, waited 42.41 ms of a 42.33 ms chain
+  aging 2000 us/level: low-priority task ran after 189 of 400 high-priority chain tasks, waited 20.09 ms of a 42.33 ms chain
+  deadlines: missed flag set only for the 1 us deadline; smid/block recorded; CSV written
+== sched: PASS (0.1s, 0 new failures)
+== admission
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 256, max_tasks 16384, ring 512 words, aging 0 us
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 240 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 8 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (272/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (504/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring wrap: 240 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 240 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 240 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 240 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (504/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (256/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 8 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (264/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 8 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (264/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring wrap: 256 pad words
+[kvm_exec][D] ring wrap: 248 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][I] kernel done: 3600/3600 tasks in 32.749 ms, 300 bundles, 218 ring wraps, 258 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 64, max_tasks 32768, ring 256 words, aging 0 us
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][I] kernel done: 90/90 tasks in 27.350 ms, 30 bundles, 0 ring wraps, 13 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 16, max_tasks 32768, ring 128 words, aging 0 us
+[kvm_exec][E] bundle record larger than the admission ring (200 > 128 words)
+[kvm_exec][I] kernel done: 0/0 tasks in 0.045 ms, 0 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 16, max_tasks 32768, ring 512 words, aging 0 us
+[kvm_exec][D] ring wrap: 8 pad words
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][D] ring full (512/512 words used): backpressure
+[kvm_exec][W] admission ring full for 300 ms
+[kvm_exec][E] DEVICE ERROR TIMEOUT (device timeout (deadlock or stalled admission)): slot -1, a=16, b=0; done 0/16
+[kvm_exec][W] submit after close()
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 0/0 tasks in 0.031 ms, 0 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 50/50 tasks in 2.674 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 6 (1 admitter + 5 workers)
+[kvm_exec][I] kernel launched: grid 6 x 256 threads, live_cap 4096, max_tasks 32768, ring 2048 words, aging 0 us
+[kvm_exec][D] ring wrap: 104 pad words
+[kvm_exec][D] ring wrap: 96 pad words
+[kvm_exec][D] ring full (2040/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 96 pad words
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring full (1840/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 96 pad words
+[kvm_exec][D] ring full (1832/2048 words used): backpressure
+[kvm_exec][D] ring full (1840/2048 words used): backpressure
+[kvm_exec][D] ring full (1840/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 88 pad words
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring full (1840/2048 words used): backpressure
+[kvm_exec][D] ring full (1856/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 64 pad words
+[kvm_exec][D] ring full (2040/2048 words used): backpressure
+[kvm_exec][D] ring full (2032/2048 words used): backpressure
+  admission ring: 300 bundles / 3600 tasks through a 512-word ring: 218 wraps (pad records), 258 backpressure waits, values bitwise vs CPU
+  backpressure: 30 bundles x 3 x 300 us on one worker, 256-word ring: host waited 13 times, nothing dropped (90/90 done)
+  explicit failures: TOO_BIG for an oversized record; BACKPRESSURE_TIMEOUT after 22 submits against a stalled live window; device ended with TIMEOUT (admitted 16, done 0)
+  close(): empty launch exits; close() right after submit drains all 50 tasks
+  4 producer threads x 60 bundles concurrently: 2400 tasks, exactly-once, values bitwise vs CPU
+== admission: PASS (1.6s, 0 new failures)
+== versions
+[kvm_exec][D] ring full (2032/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 80 pad words
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring full (1832/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 88 pad words
+[kvm_exec][D] ring full (1832/2048 words used): backpressure
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 96 pad words
+[kvm_exec][D] ring full (2040/2048 words used): backpressure
+[kvm_exec][D] ring full (2040/2048 words used): backpressure
+[kvm_exec][D] ring full (2040/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 104 pad words
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring full (2032/2048 words used): backpressure
+[kvm_exec][D] ring full (2040/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 104 pad words
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 112 pad words
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring full (1840/2048 words used): backpressure
+[kvm_exec][D] ring full (1840/2048 words used): backpressure
+[kvm_exec][D] ring full (1848/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 88 pad words
+[kvm_exec][D] ring full (2040/2048 words used): backpressure
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 96 pad words
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring full (1840/2048 words used): backpressure
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 104 pad words
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring full (2040/2048 words used): backpressure
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 88 pad words
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring full (2032/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 112 pad words
+[kvm_exec][D] ring full (1832/2048 words used): backpressure
+[kvm_exec][D] ring full (1848/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 96 pad words
+[kvm_exec][D] ring full (2040/2048 words used): backpressure
+[kvm_exec][D] ring full (2040/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 104 pad words
+[kvm_exec][D] ring full (1832/2048 words used): backpressure
+[kvm_exec][D] ring full (1840/2048 words used): backpressure
+[kvm_exec][D] ring full (1848/2048 words used): backpressure
+[kvm_exec][D] ring full (1856/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 80 pad words
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring full (2040/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 88 pad words
+[kvm_exec][D] ring full (1832/2048 words used): backpressure
+[kvm_exec][D] ring full (1832/2048 words used): backpressure
+[kvm_exec][D] ring full (1840/2048 words used): backpressure
+[kvm_exec][D] ring full (1848/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 72 pad words
+[kvm_exec][D] ring full (2032/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 88 pad words
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring full (1840/2048 words used): backpressure
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 88 pad words
+[kvm_exec][D] ring full (2032/2048 words used): backpressure
+[kvm_exec][D] ring full (2032/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 96 pad words
+[kvm_exec][D] ring full (2048/2048 words used): backpressure
+[kvm_exec][D] ring full (1848/2048 words used): backpressure
+[kvm_exec][D] ring wrap: 80 pad words
+[kvm_exec][D] ring full (1832/2048 words used): backpressure
+[kvm_exec][I] kernel done: 2400/2400 tasks in 15.231 ms, 240 bundles, 26 ring wraps, 63 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 74/74 tasks in 3.618 ms, 15 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 77/77 tasks in 1.747 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 69/69 tasks in 1.966 ms, 15 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 74/74 tasks in 1.171 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 63/63 tasks in 1.615 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 73/73 tasks in 1.271 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 60/60 tasks in 3.160 ms, 16 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 75/75 tasks in 1.842 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 49/49 tasks in 2.001 ms, 9 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 63/63 tasks in 1.359 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 51/51 tasks in 2.260 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 56/56 tasks in 0.588 ms, 9 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 81/81 tasks in 4.003 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 80/80 tasks in 1.610 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 96/96 tasks in 3.735 ms, 17 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 82/82 tasks in 2.105 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 89/89 tasks in 2.678 ms, 15 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 85/85 tasks in 1.550 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 58/58 tasks in 2.589 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 80/80 tasks in 1.577 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 57/57 tasks in 2.462 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 67/67 tasks in 1.120 ms, 9 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 82/82 tasks in 2.978 ms, 20 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 67/67 tasks in 1.167 ms, 10 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 67/67 tasks in 3.028 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 89/89 tasks in 2.342 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 94/94 tasks in 3.157 ms, 18 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 108/108 tasks in 1.884 ms, 15 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 75/75 tasks in 3.178 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 84/84 tasks in 1.531 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 65/65 tasks in 2.943 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 81/81 tasks in 1.297 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 66/66 tasks in 2.826 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 83/83 tasks in 1.773 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 64/64 tasks in 2.491 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 85/85 tasks in 2.568 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 109/109 tasks in 5.521 ms, 17 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 101/101 tasks in 1.983 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 121/121 tasks in 4.036 ms, 17 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 101/101 tasks in 1.968 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 86/86 tasks in 2.647 ms, 16 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 94/94 tasks in 1.588 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 69/69 tasks in 3.068 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 94/94 tasks in 1.588 ms, 15 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 73/73 tasks in 3.460 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 98/98 tasks in 1.782 ms, 17 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 86/86 tasks in 3.068 ms, 20 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 89/89 tasks in 1.385 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 105/105 tasks in 5.023 ms, 16 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 112/112 tasks in 2.216 ms, 10 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 99/99 tasks in 2.860 ms, 17 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 140/140 tasks in 2.610 ms, 18 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 102/102 tasks in 3.858 ms, 19 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 121/121 tasks in 1.880 ms, 16 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 38/38 tasks in 1.692 ms, 9 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 52/52 tasks in 0.743 ms, 8 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 53/53 tasks in 2.154 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 64/64 tasks in 1.238 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 46/46 tasks in 1.914 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 58/58 tasks in 1.262 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 77/77 tasks in 4.190 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 70/70 tasks in 1.419 ms, 9 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 70/70 tasks in 3.449 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 70/70 tasks in 1.650 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 61/61 tasks in 2.921 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 70/70 tasks in 1.079 ms, 10 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 56/56 tasks in 2.468 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 61/61 tasks in 1.201 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 49/49 tasks in 2.162 ms, 10 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 59/59 tasks in 1.391 ms, 9 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 64/64 tasks in 2.304 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 69/69 tasks in 1.693 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 66/66 tasks in 3.152 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 81/81 tasks in 1.767 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 81/81 tasks in 2.689 ms, 16 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 96/96 tasks in 2.300 ms, 16 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 79/79 tasks in 2.096 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 85/85 tasks in 1.236 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 65/65 tasks in 3.123 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 67/67 tasks in 1.370 ms, 10 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 68/68 tasks in 2.189 ms, 16 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 77/77 tasks in 1.030 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 69/69 tasks in 2.765 ms, 16 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 70/70 tasks in 0.985 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 101/101 tasks in 5.221 ms, 16 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 109/109 tasks in 2.629 ms, 15 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 87/87 tasks in 3.557 ms, 18 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 95/95 tasks in 1.464 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 66/66 tasks in 2.025 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 81/81 tasks in 1.187 ms, 10 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 84/84 tasks in 5.034 ms, 20 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 87/87 tasks in 1.921 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 73/73 tasks in 2.788 ms, 16 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 87/87 tasks in 1.397 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 71/71 tasks in 2.972 ms, 15 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 88/88 tasks in 2.317 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 89/89 tasks in 4.111 ms, 16 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 111/111 tasks in 2.583 ms, 16 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 82/82 tasks in 3.460 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 122/122 tasks in 1.977 ms, 18 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 110/110 tasks in 3.075 ms, 19 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 107/107 tasks in 1.617 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 72/72 tasks in 3.299 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 86/86 tasks in 1.462 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 92/92 tasks in 3.615 ms, 19 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 110/110 tasks in 2.107 ms, 21 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 76/76 tasks in 3.226 ms, 15 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 91/91 tasks in 1.620 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 112/112 tasks in 5.256 ms, 21 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 119/119 tasks in 2.340 ms, 15 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 122/122 tasks in 3.844 ms, 21 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 128/128 tasks in 1.805 ms, 16 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 107/107 tasks in 3.300 ms, 17 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 94/94 tasks in 1.193 ms, 10 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 55/55 tasks in 3.123 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 60/60 tasks in 1.148 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 53/53 tasks in 1.987 ms, 15 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 50/50 tasks in 0.766 ms, 8 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 51/51 tasks in 2.294 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 53/53 tasks in 0.545 ms, 8 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 65/65 tasks in 3.275 ms, 10 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 69/69 tasks in 1.168 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 67/67 tasks in 2.914 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 91/91 tasks in 2.139 ms, 15 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 77/77 tasks in 2.940 ms, 16 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 70/70 tasks in 1.185 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 61/61 tasks in 3.373 ms, 15 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 67/67 tasks in 1.909 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 57/57 tasks in 2.246 ms, 15 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 63/63 tasks in 0.841 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 60/60 tasks in 2.777 ms, 15 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 59/59 tasks in 0.655 ms, 7 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 71/71 tasks in 3.434 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 80/80 tasks in 1.591 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 76/76 tasks in 2.822 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 91/91 tasks in 1.175 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 85/85 tasks in 3.335 ms, 17 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 82/82 tasks in 1.510 ms, 10 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 51/51 tasks in 2.673 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 72/72 tasks in 1.588 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 57/57 tasks in 2.152 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 72/72 tasks in 1.315 ms, 10 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 55/55 tasks in 2.138 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 75/75 tasks in 1.132 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 74/74 tasks in 3.200 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 110/110 tasks in 2.728 ms, 15 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 103/103 tasks in 3.041 ms, 17 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 88/88 tasks in 1.536 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 85/85 tasks in 3.503 ms, 16 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 94/94 tasks in 1.328 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 67/67 tasks in 3.382 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 80/80 tasks in 1.568 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 79/79 tasks in 4.355 ms, 18 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 80/80 tasks in 1.149 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 62/62 tasks in 2.968 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 91/91 tasks in 1.622 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 99/99 tasks in 5.004 ms, 19 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 96/96 tasks in 1.855 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 81/81 tasks in 2.700 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 100/100 tasks in 1.493 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 106/106 tasks in 2.799 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 118/118 tasks in 1.810 ms, 18 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 78/78 tasks in 4.806 ms, 16 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 110/110 tasks in 2.815 ms, 17 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 92/92 tasks in 3.793 ms, 21 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 100/100 tasks in 1.570 ms, 17 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 76/76 tasks in 2.809 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 87/87 tasks in 1.693 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 89/89 tasks in 4.313 ms, 17 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 115/115 tasks in 2.382 ms, 17 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 92/92 tasks in 3.807 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 120/120 tasks in 1.996 ms, 15 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 132/132 tasks in 4.974 ms, 25 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 102/102 tasks in 1.639 ms, 13 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 59/59 tasks in 2.657 ms, 14 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 50/50 tasks in 0.713 ms, 7 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 45/45 tasks in 2.227 ms, 11 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 49/49 tasks in 0.620 ms, 6 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 46/46 tasks in 2.037 ms, 12 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 24 (1 admitter + 23 workers)
+[kvm_exec][I] kernel launched: grid 24 x 256 threads, live_cap 4096, max_tasks 32768, ring 16384 words, aging 0 us
+[kvm_exec][I] kernel done: 60/60 tasks in 1.172 ms, 10 bundles, 0 ring wraps, 0 backpressure waits
+  versions: 180 runs (vector 64Ki-float weights and the real predict->mse_grad->sgd graph): 3225 exact + 653 at_least readers checked, 0 violations
+== versions: PASS (1.6s, 0 new failures)
+8505 checks, 0 failed, 0 suites failed
+PASS
+exit: 0

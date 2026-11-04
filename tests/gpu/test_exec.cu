@@ -388,19 +388,31 @@ static bool suite_admission() {
   }
   {
     KvmConfig c = small_cfg(2); c.ring_words = 512; c.live_cap = 16; c.timeout_us = 1500000; KvmExec ex(c); ex.start();
-    // 16 tasks waiting on a version nobody publishes fill the live window, so the admitter stops consuming the ring
+    // Version-waiting tasks have their own budget of live_cap (they do not shrink the runnable window): two bundles of 16 tasks waiting for
+    // a version nobody publishes use it up (32 parked > 16), and then the admitter stops consuming the ring.
     KvmBundleBuilder w; KvmTaskOpts o; o.wait_var = 1; o.wait_ver = 1; for (int i = 0; i < 16; ++i) w.add("noop", {}, o);
     KvmBundleBuilder one; one.add("noop", {});
     KvmBundle sb = one.build();
-    CHECK(ex.submit(w.build()) == KvmSubmit::OK, "waiting bundle");
+    CHECK(ex.submit(w.build()) == KvmSubmit::OK, "waiting bundle"); CHECK(ex.submit(w.build()) == KvmSubmit::OK, "second waiting bundle");
     KvmSubmit s = KvmSubmit::OK; int n = 0;
     for (; n < 100 && s == KvmSubmit::OK; ++n) s = ex.submit(sb, 300);
     CHECK(s == KvmSubmit::BACKPRESSURE_TIMEOUT, "stalled admission must surface as BACKPRESSURE_TIMEOUT, got %s", kvm_submit_name(s));
     ex.close();
     const KvmResult& res = ex.finish();
     CHECK(ex.submit(sb) == KvmSubmit::CLOSED, "submit after close");
-    CHECK(res.err_code == KVM_ERR_TIMEOUT, "device must end with TIMEOUT, got %s", kvm_err_name(res.err_code));
+    CHECK(res.err_code == KVM_ERR_PARK_STALL, "device must end with PARK_STALL (more than live_cap parked, admission needs room), got %s", kvm_err_name(res.err_code));
     printf("  explicit failures: TOO_BIG for an oversized record; %s after %d submits against a stalled live window; device ended with %s (admitted %d, done %d)\n", kvm_submit_name(s), n, kvm_err_name(res.err_code), res.err_a, res.err_b);
+  }
+  // (3b) a valid cross-bundle wait must not deadlock: live_cap waiters admitted first, the bundle that publishes their version second
+  {
+    KvmConfig c = small_cfg(4); c.live_cap = 8; c.ring_words = 1024; c.timeout_us = 3000000; KvmExec ex(c);
+    int b = ex.add_buffer(1, 1), o = ex.add_buffer(1, 1); ex.start();
+    KvmBundleBuilder waiters; for (int i = 0; i < 8; ++i) { KvmTaskOpts t; t.wait_var = 0; t.wait_ver = 1; waiters.add("copy", {Bf(b), Bf(o), I(1)}, t); }
+    KvmBundleBuilder pub; { KvmTaskOpts t; t.pub_var = 0; t.pub_ver = 1; pub.add("fill", {Bf(b), F(1), I(1)}, t); }
+    CHECK(ex.submit(waiters.build()) == KvmSubmit::OK, "waiters"); CHECK(ex.submit(pub.build()) == KvmSubmit::OK, "publisher");
+    const KvmResult& res = ex.finish();
+    CHECK(res.ok() && res.done == 9, "valid cross-bundle wait: err %s done %d/9", kvm_err_name(res.err_code), res.done);
+    printf("  cross-bundle wait: 8 waiters (a full live_cap) admitted before the bundle that publishes their version: %d/9 done, %s\n", res.done, res.ok() ? "no deadlock" : "FAILED");
   }
   // (4) close() with nothing submitted, and close() while work is queued: kernel exits, everything admitted finishes
   {

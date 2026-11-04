@@ -27,7 +27,7 @@ if [ "$REMOTE" = 1 ]; then
   echo "[remote] rsync -> $HOST:$RDIR"
   [ "$DRY" = 1 ] || rsync -az --delete -e "$SSH" --include 'include/***' --include 'dist/***' --include 'runtime/***' --include 'examples/***' \
       --include 'tests/' --include 'tests/dist/***' --include 'tests/gpu/***' --include 'kvm_exec.cu' --exclude '*' "$ROOT/" "$HOST:$RDIR/"
-  exec $SSH "$HOST" "cd $RDIR && KVM_COMMIT='$COMMIT' KVM_NODES='${KVM_NODES:-}' KVM_ARCH='${KVM_ARCH:-}' KVM_ONLY='${KVM_ONLY:-}' KVM_STAGE_TIMEOUT='${KVM_STAGE_TIMEOUT:-600}' bash dist/run_multigpu_tests.sh ${fwd[*]:-}"
+  exec $SSH "$HOST" "cd $RDIR && KVM_LOCK_HELD='${KVM_LOCK_HELD:-}' KVM_COMMIT='$COMMIT' KVM_NODES='${KVM_NODES:-}' KVM_ARCH='${KVM_ARCH:-}' KVM_ONLY='${KVM_ONLY:-}' KVM_STAGE_TIMEOUT='${KVM_STAGE_TIMEOUT:-600}' bash dist/run_multigpu_tests.sh ${fwd[*]:-}"
 fi
 
 cd "$ROOT"

@@ -1,8 +1,8 @@
-"""Host-side view of the communication operators: the merged operator registry and their reference (CPU) semantics.
+"""Reference (CPU) semantics of the communication operators.
 
 include/kvm_ops_comm.def is the single source of truth for ids/signatures (parsed by runtime/abi.py, never copied here).
-`install()` makes runtime/compile_workload.py (which loads only kvm_ops.def) accept the comm ops, and registers their
-reference semantics + extents in runtime/ref_ops.py, so shards compile to the very bytes the GPU executor receives.
+`install()` replaces the opaque placeholders for them in runtime/ref_ops.py by real semantics + extents, so shards compile to
+the very bytes the GPU executor receives and the simulator can run them.
 Remote buffers, inboxes and send queues are resolved by the caller (tests/dist/sim.py) to ordinary Python lists, so a
 `put` into a peer is a plain list write: the reference semantics do not know where a buffer lives.
 """
@@ -17,15 +17,14 @@ import ref_ops      # noqa: E402
 
 COMM_DEF = ROOT / 'include' / 'kvm_ops_comm.def'
 _installed = False
-_orig = abi.load_ops        # the parser, before install() replaces it with the merged view
 
 
 def merged_ops():
-    ops = dict(_orig())
-    for name, spec in _orig(COMM_DEF).items():
-        if name in ops or any(o.id == spec.id for o in ops.values()):
-            raise abi.AbiError(f'comm op {name}={spec.id} collides with the core registry')
-        ops[name] = spec
+    """Every operator the compiler knows (the registries of include/, comm ops included: runtime/abi.py loads them all)."""
+    ops = abi.load_ops()
+    missing = {n for n, o in ops.items() if 64 <= o.id <= 95} - set(_ref())
+    if missing:
+        raise abi.AbiError(f'comm ops without reference semantics: {sorted(missing)}')
     return ops
 
 
@@ -138,16 +137,10 @@ def _ref():
 
 
 def install():
-    """Idempotent: compile_workload and the CPU VM now know the comm ops."""
+    """Idempotent: replaces the opaque placeholders in ref_ops.OPS by the real comm-op semantics (extents, tile copies, signals)."""
     global _installed
     if _installed:
         return
-    ops = merged_ops()
-    ref = _ref()
-    missing = set(_orig(COMM_DEF)) - set(ref)
-    if missing:
-        raise abi.AbiError(f'comm ops without reference semantics: {sorted(missing)}')
-    ref_ops.OPS.update(ref)
-    abi.load_ops = lambda path=abi.INCLUDE_DIR / 'kvm_ops.def': ops if Path(path) == abi.INCLUDE_DIR / 'kvm_ops.def' else _orig(path)
+    merged_ops()
+    ref_ops.OPS.update(_ref())
     _installed = True
-

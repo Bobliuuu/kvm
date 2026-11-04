@@ -30,7 +30,7 @@ class Device:
         self.rank = shard.rank
         self.shard = shard
         self.c = pt.compile_shard(shard)
-        self.buf = {b.name: list(b.values) for b in self.c.buffers}
+        self.buf = {b.name: b.materialize() for b in self.c.buffers}
         self.index = [b.name for b in self.c.buffers]
         self.vars = [v.name for v in self.c.variables]
         self.version = {v.name: (0 if v.name in shard.in_vars else v.base_version) for v in self.c.variables}
@@ -38,8 +38,8 @@ class Device:
         self.sendq = []
         n = len(self.c.program)
         self.indeg = [0] * n
-        for outs in self.c.successor_lists:
-            for j in outs:
+        for i in range(n):
+            for j in self.c.successors_of(i):
                 self.indeg[j] += 1
         self.ready = [i for i in range(n) if self.indeg[i] == 0]
         self.done = 0
@@ -105,7 +105,7 @@ def run(plan, seed, max_steps=10_000_000, pump_bias=0.3, check_fresh=True):
             if t.pub:
                 d.version[t.pub[0]] = t.pub[1]
             d.done += 1
-            for j in d.c.successor_lists[i]:
+            for j in d.c.successors_of(i):
                 d.indeg[j] -= 1
                 if d.indeg[j] == 0:
                     d.ready.append(j)

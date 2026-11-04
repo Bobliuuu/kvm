@@ -7,3 +7,7 @@
 #if __has_include("kvm_ops_game.def")
 #include "kvm_ops_game.def"
 #endif
+// Test and extension hook: -DKVM_EXTRA_OPS_DEF='"my_ops.def"' (with the implementation via -DKVM_EXTRA_OPS_CUH='"my_ops.cuh"').
+#ifdef KVM_EXTRA_OPS_DEF
+#include KVM_EXTRA_OPS_DEF
+#endif

@@ -1,0 +1,25 @@
+# 2026-11-04T06:08:15Z Build cuda_12.8.r12.8/compiler.35583870_0 NVIDIA A100-SXM4-40GB, 580.105.08
+[doom 06:08:15] INFO  building doom_dev.o for sm_80 with Ubuntu clang version 14.0.0-1ubuntu1.1, Build cuda_12.8.r12.8/compiler.35583870_0
+prefix_symbols: ~/kvm-adaptive-doom-scratch/doom/build_n8/doom_i1.ll: 3355 symbols renamed with 'i1_', 16 shared declarations kept
+prefix_symbols: ~/kvm-adaptive-doom-scratch/doom/build_n8/doom_i2.ll: 3355 symbols renamed with 'i2_', 16 shared declarations kept
+prefix_symbols: ~/kvm-adaptive-doom-scratch/doom/build_n8/doom_i3.ll: 3355 symbols renamed with 'i3_', 16 shared declarations kept
+prefix_symbols: ~/kvm-adaptive-doom-scratch/doom/build_n8/doom_i4.ll: 3355 symbols renamed with 'i4_', 16 shared declarations kept
+prefix_symbols: ~/kvm-adaptive-doom-scratch/doom/build_n8/doom_i5.ll: 3355 symbols renamed with 'i5_', 16 shared declarations kept
+prefix_symbols: ~/kvm-adaptive-doom-scratch/doom/build_n8/doom_i6.ll: 3355 symbols renamed with 'i6_', 16 shared declarations kept
+prefix_symbols: ~/kvm-adaptive-doom-scratch/doom/build_n8/doom_i7.ll: 3355 symbols renamed with 'i7_', 16 shared declarations kept
+[doom 06:10:50] INFO  built ~/kvm-adaptive-doom-scratch/doom/build_n8/doom_dev.o (1308768 bytes, sm_80)
+engine build: 155 s
+1308768 ~/kvm-adaptive-doom-scratch/doom/build_n8/doom_dev.o
+1310760 ~/kvm-adaptive-doom-scratch/doom/build_n8/doom_dev_i1.o
+1310792 ~/kvm-adaptive-doom-scratch/doom/build_n8/doom_dev_i2.o
+1310856 ~/kvm-adaptive-doom-scratch/doom/build_n8/doom_dev_i3.o
+1310760 ~/kvm-adaptive-doom-scratch/doom/build_n8/doom_dev_i4.o
+1310760 ~/kvm-adaptive-doom-scratch/doom/build_n8/doom_dev_i5.o
+1310856 ~/kvm-adaptive-doom-scratch/doom/build_n8/doom_dev_i6.o
+1310728 ~/kvm-adaptive-doom-scratch/doom/build_n8/doom_dev_i7.o
+[cpu_run 06:10:50] INFO 300 frames; final {"booted": 1, "tics": 300, "gamestate": 0, "health": 100, "armor": 100, "kills": 0, "monsters": 6, "items": 2, "secrets": 0, "deaths": 0, "level_finished_tic": -1, "x": 1135, "y": -2940, "waypoint": 4}
+build N=1: 0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads size 9580104
+build N=2: 0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads size 7254304
+build N=4: 0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads size 11970296
+build N=8: 0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads size 21369472
+run failed

@@ -1,0 +1,492 @@
+# batch all_b @ 2026-11-04T08:20:17Z  commit cf69b4b  reps 5 dur 24  NVIDIA A100-SXM4-40GB, 580.105.08
+# batch tuned @ 2026-11-04T08:20:17Z  commit cf69b4b  reps 5 dur 24  NVIDIA A100-SXM4-40GB, 580.105.08
+=== 08:20:17 alone rep1: adaptive_run scn --out runs-b/alone/rep1 --sched dynamic --weights 2,1,1 --no-train --no-serve --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 0 past their deadline, frame time p50/p99/max 7.2/16.5/16.9 ms | serve: 0 done, p50/p99 0.0/0.0 ms, 0 dropped | train: 0 steps (0.00/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 08:20:42 adaptive_gated rep1: adaptive_run scn --out runs-b/adaptive_gated/rep1 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --gate-serve 20000 --gate-train 25000 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 21 past their deadline, frame time p50/p99/max 13.6/30.1/32.7 ms | serve: 1991 done, p50/p99 28.7/44.6 ms, 110 dropped | train: 847 steps (35.23/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 08:21:09 adaptive_tuned rep1: adaptive_run scn --out runs-b/adaptive_tuned/rep1 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --gate-serve 20000 --gate-train 25000 --gate-tune --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 9 past their deadline, frame time p50/p99/max 9.7/28.6/30.3 ms | serve: 1305 done, p50/p99 17.1/40.1 ms, 796 dropped | train: 561 steps (23.28/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 08:21:35 fixed_prio_gated rep1: adaptive_run scn --out runs-b/fixed_prio_gated/rep1 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --gate-serve 20000 --gate-train 25000 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 35 past their deadline, frame time p50/p99/max 12.8/30.7/37.2 ms | serve: 2019 done, p50/p99 25.8/46.0 ms, 82 dropped | train: 835 steps (34.70/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 08:22:03 alone rep2: adaptive_run scn --out runs-b/alone/rep2 --sched dynamic --weights 2,1,1 --no-train --no-serve --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 0 past their deadline, frame time p50/p99/max 7.2/16.7/17.0 ms | serve: 0 done, p50/p99 0.0/0.0 ms, 0 dropped | train: 0 steps (0.00/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 08:22:27 adaptive_gated rep2: adaptive_run scn --out runs-b/adaptive_gated/rep2 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --gate-serve 20000 --gate-train 25000 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 23 past their deadline, frame time p50/p99/max 12.7/30.1/40.0 ms | serve: 1963 done, p50/p99 28.1/45.8 ms, 92 dropped | train: 850 steps (35.35/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 08:22:55 adaptive_tuned rep2: adaptive_run scn --out runs-b/adaptive_tuned/rep2 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --gate-serve 20000 --gate-train 25000 --gate-tune --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 7 past their deadline, frame time p50/p99/max 9.8/28.3/30.3 ms | serve: 1269 done, p50/p99 14.2/32.5 ms, 786 dropped | train: 568 steps (23.56/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 08:23:21 fixed_prio_gated rep2: adaptive_run scn --out runs-b/fixed_prio_gated/rep2 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --gate-serve 20000 --gate-train 25000 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 26 past their deadline, frame time p50/p99/max 12.7/30.5/39.6 ms | serve: 1993 done, p50/p99 25.7/45.3 ms, 62 dropped | train: 837 steps (34.80/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 08:23:48 alone rep3: adaptive_run scn --out runs-b/alone/rep3 --sched dynamic --weights 2,1,1 --no-train --no-serve --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 0 past their deadline, frame time p50/p99/max 7.2/16.7/17.0 ms | serve: 0 done, p50/p99 0.0/0.0 ms, 0 dropped | train: 0 steps (0.00/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 08:24:13 adaptive_gated rep3: adaptive_run scn --out runs-b/adaptive_gated/rep3 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --gate-serve 20000 --gate-train 25000 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 22 past their deadline, frame time p50/p99/max 12.9/30.2/36.1 ms | serve: 2040 done, p50/p99 28.3/45.4 ms, 132 dropped | train: 845 steps (35.14/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 08:24:40 adaptive_tuned rep3: adaptive_run scn --out runs-b/adaptive_tuned/rep3 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --gate-serve 20000 --gate-train 25000 --gate-tune --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 11 past their deadline, frame time p50/p99/max 9.8/28.7/30.5 ms | serve: 1307 done, p50/p99 15.3/35.0 ms, 865 dropped | train: 565 steps (23.43/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 08:25:07 fixed_prio_gated rep3: adaptive_run scn --out runs-b/fixed_prio_gated/rep3 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --gate-serve 20000 --gate-train 25000 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 29 past their deadline, frame time p50/p99/max 13.2/31.1/39.9 ms | serve: 2084 done, p50/p99 25.1/45.3 ms, 88 dropped | train: 830 steps (34.52/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 08:25:34 alone rep4: adaptive_run scn --out runs-b/alone/rep4 --sched dynamic --weights 2,1,1 --no-train --no-serve --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 0 past their deadline, frame time p50/p99/max 7.1/16.5/16.9 ms | serve: 0 done, p50/p99 0.0/0.0 ms, 0 dropped | train: 0 steps (0.00/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 08:25:59 adaptive_gated rep4: adaptive_run scn --out runs-b/adaptive_gated/rep4 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --gate-serve 20000 --gate-train 25000 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 25 past their deadline, frame time p50/p99/max 13.4/30.4/35.5 ms | serve: 2025 done, p50/p99 28.1/45.4 ms, 106 dropped | train: 846 steps (35.17/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 08:26:26 adaptive_tuned rep4: adaptive_run scn --out runs-b/adaptive_tuned/rep4 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --gate-serve 20000 --gate-train 25000 --gate-tune --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 8 past their deadline, frame time p50/p99/max 9.8/28.5/31.2 ms | serve: 1309 done, p50/p99 16.2/35.4 ms, 822 dropped | train: 578 steps (24.00/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 08:26:53 fixed_prio_gated rep4: adaptive_run scn --out runs-b/fixed_prio_gated/rep4 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --gate-serve 20000 --gate-train 25000 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 24 past their deadline, frame time p50/p99/max 13.0/31.2/39.6 ms | serve: 2056 done, p50/p99 25.4/45.3 ms, 75 dropped | train: 833 steps (34.62/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 08:27:20 alone rep5: adaptive_run scn --out runs-b/alone/rep5 --sched dynamic --weights 2,1,1 --no-train --no-serve --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 0 past their deadline, frame time p50/p99/max 7.2/16.6/17.1 ms | serve: 0 done, p50/p99 0.0/0.0 ms, 0 dropped | train: 0 steps (0.00/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 08:27:45 adaptive_gated rep5: adaptive_run scn --out runs-b/adaptive_gated/rep5 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --gate-serve 20000 --gate-train 25000 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 25 past their deadline, frame time p50/p99/max 13.7/30.0/32.9 ms | serve: 1970 done, p50/p99 27.8/44.0 ms, 98 dropped | train: 849 steps (35.31/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 08:28:12 adaptive_tuned rep5: adaptive_run scn --out runs-b/adaptive_tuned/rep5 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --gate-serve 20000 --gate-train 25000 --gate-tune --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 8 past their deadline, frame time p50/p99/max 9.7/27.8/31.0 ms | serve: 1271 done, p50/p99 15.8/35.0 ms, 797 dropped | train: 577 steps (23.94/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 08:28:38 fixed_prio_gated rep5: adaptive_run scn --out runs-b/fixed_prio_gated/rep5 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --gate-serve 20000 --gate-train 25000 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 20 past their deadline, frame time p50/p99/max 12.9/30.3/36.0 ms | serve: 2011 done, p50/p99 24.6/41.9 ms, 57 dropped | train: 836 steps (34.75/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+# batch tuned done 2026-11-04T08:29:05Z
+# batch multi @ 2026-11-04T08:29:05Z  commit cf69b4b  reps 5 dur 16  NVIDIA A100-SXM4-40GB, 580.105.08
+=== 08:29:05 multi_n1_global rep1: adaptive_run scn --out runs-b/multi_n1_global/rep1 --sched global --doom-instances 1 --serve-rate 40 --doom-min-hi 5
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 13.7/25.5/28.6 ms | serve: 625 done, p50/p99 57.4/73.9 ms, 0 dropped | train: 868 steps (54.12/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:29:25 multi_n1_fixed_prio rep1: adaptive_run scn --out runs-b/multi_n1_fixed_prio/rep1 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --doom-instances 1 --serve-rate 40 --doom-min-hi 5
+[kvm_exec][I] doom: 560 frames, 1 past their deadline, frame time p50/p99/max 13.8/25.8/28.7 ms | serve: 625 done, p50/p99 17.7/27.5 ms, 0 dropped | train: 848 steps (52.86/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:29:44 multi_n1_adaptive rep1: adaptive_run scn --out runs-b/multi_n1_adaptive/rep1 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 1 --serve-rate 40 --doom-min-hi 5
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 13.2/25.0/26.5 ms | serve: 625 done, p50/p99 17.7/28.0 ms, 0 dropped | train: 851 steps (53.08/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:30:03 multi_n2_global rep1: adaptive_run scn --out runs-b/multi_n2_global/rep1 --sched global --doom-instances 2 --serve-rate 40 --doom-min-hi 6
+[kvm_exec][I] doom: 1120 frames, 0 past their deadline, frame time p50/p99/max 14.3/25.6/27.7 ms | serve: 625 done, p50/p99 57.7/75.6 ms, 0 dropped | train: 865 steps (53.95/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:30:22 multi_n2_fixed_prio rep1: adaptive_run scn --out runs-b/multi_n2_fixed_prio/rep1 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --doom-instances 2 --serve-rate 40 --doom-min-hi 6
+[kvm_exec][I] doom: 1120 frames, 1 past their deadline, frame time p50/p99/max 13.6/25.8/28.8 ms | serve: 625 done, p50/p99 17.8/27.9 ms, 0 dropped | train: 845 steps (52.68/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:30:41 multi_n2_adaptive rep1: adaptive_run scn --out runs-b/multi_n2_adaptive/rep1 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 2 --serve-rate 40 --doom-min-hi 6
+[kvm_exec][I] doom: 1120 frames, 0 past their deadline, frame time p50/p99/max 13.4/25.8/28.5 ms | serve: 625 done, p50/p99 17.9/28.8 ms, 0 dropped | train: 849 steps (52.95/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:31:01 multi_n4_global rep1: adaptive_run scn --out runs-b/multi_n4_global/rep1 --sched global --doom-instances 4 --serve-rate 40 --doom-min-hi 8
+[kvm_exec][I] doom: 2240 frames, 0 past their deadline, frame time p50/p99/max 14.2/26.2/28.6 ms | serve: 625 done, p50/p99 56.8/73.9 ms, 0 dropped | train: 866 steps (54.00/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom2: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom3: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:31:21 multi_n4_fixed_prio rep1: adaptive_run scn --out runs-b/multi_n4_fixed_prio/rep1 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --doom-instances 4 --serve-rate 40 --doom-min-hi 8
+[kvm_exec][I] doom: 2240 frames, 4 past their deadline, frame time p50/p99/max 13.6/25.8/29.5 ms | serve: 625 done, p50/p99 18.3/28.2 ms, 0 dropped | train: 845 steps (52.69/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom2: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom3: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:31:40 multi_n4_adaptive rep1: adaptive_run scn --out runs-b/multi_n4_adaptive/rep1 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 4 --serve-rate 40 --doom-min-hi 8
+[kvm_exec][I] doom: 2240 frames, 5 past their deadline, frame time p50/p99/max 13.9/26.2/29.4 ms | serve: 625 done, p50/p99 18.1/28.2 ms, 0 dropped | train: 848 steps (52.90/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom2: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom3: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:32:00 multi_n8_global rep1: adaptive_run scn --out runs-b/multi_n8_global/rep1 --sched global --doom-instances 8 --serve-rate 40 --doom-min-hi 12
+[kvm_exec][I] doom: 4480 frames, 0 past their deadline, frame time p50/p99/max 14.3/25.2/28.0 ms | serve: 625 done, p50/p99 57.0/75.4 ms, 0 dropped | train: 863 steps (53.80/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom2: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom3: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom4: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom5: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom6: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom7: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:32:21 multi_n8_fixed_prio rep1: adaptive_run scn --out runs-b/multi_n8_fixed_prio/rep1 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --doom-instances 8 --serve-rate 40 --doom-min-hi 12
+[kvm_exec][I] doom: 4480 frames, 4 past their deadline, frame time p50/p99/max 13.7/26.9/30.3 ms | serve: 625 done, p50/p99 18.0/28.4 ms, 0 dropped | train: 842 steps (52.52/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom2: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom3: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom4: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom5: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom6: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom7: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:32:42 multi_n8_adaptive rep1: adaptive_run scn --out runs-b/multi_n8_adaptive/rep1 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 8 --serve-rate 40 --doom-min-hi 12
+[kvm_exec][I] doom: 4480 frames, 17 past their deadline, frame time p50/p99/max 14.7/27.4/32.2 ms | serve: 625 done, p50/p99 19.0/29.1 ms, 0 dropped | train: 848 steps (52.85/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom2: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom3: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom4: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom5: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom6: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom7: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:33:03 multi_n1_global rep2: adaptive_run scn --out runs-b/multi_n1_global/rep2 --sched global --doom-instances 1 --serve-rate 40 --doom-min-hi 5
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 13.9/25.9/28.2 ms | serve: 595 done, p50/p99 56.4/73.2 ms, 0 dropped | train: 871 steps (54.28/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:33:22 multi_n1_fixed_prio rep2: adaptive_run scn --out runs-b/multi_n1_fixed_prio/rep2 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --doom-instances 1 --serve-rate 40 --doom-min-hi 5
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 13.4/24.7/26.2 ms | serve: 595 done, p50/p99 17.8/28.2 ms, 0 dropped | train: 851 steps (53.05/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:33:41 multi_n1_adaptive rep2: adaptive_run scn --out runs-b/multi_n1_adaptive/rep2 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 1 --serve-rate 40 --doom-min-hi 5
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 14.2/25.9/27.4 ms | serve: 595 done, p50/p99 17.9/29.5 ms, 0 dropped | train: 855 steps (53.29/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:34:00 multi_n2_global rep2: adaptive_run scn --out runs-b/multi_n2_global/rep2 --sched global --doom-instances 2 --serve-rate 40 --doom-min-hi 6
+[kvm_exec][I] doom: 1120 frames, 2 past their deadline, frame time p50/p99/max 14.3/26.3/29.2 ms | serve: 595 done, p50/p99 57.1/73.2 ms, 0 dropped | train: 868 steps (54.14/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:34:20 multi_n2_fixed_prio rep2: adaptive_run scn --out runs-b/multi_n2_fixed_prio/rep2 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --doom-instances 2 --serve-rate 40 --doom-min-hi 6
+[kvm_exec][I] doom: 1120 frames, 0 past their deadline, frame time p50/p99/max 13.7/25.0/27.7 ms | serve: 595 done, p50/p99 17.6/27.9 ms, 0 dropped | train: 850 steps (52.99/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:34:39 multi_n2_adaptive rep2: adaptive_run scn --out runs-b/multi_n2_adaptive/rep2 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 2 --serve-rate 40 --doom-min-hi 6
+[kvm_exec][I] doom: 1120 frames, 2 past their deadline, frame time p50/p99/max 13.7/25.4/29.0 ms | serve: 595 done, p50/p99 17.9/27.7 ms, 0 dropped | train: 852 steps (53.11/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:34:58 multi_n4_global rep2: adaptive_run scn --out runs-b/multi_n4_global/rep2 --sched global --doom-instances 4 --serve-rate 40 --doom-min-hi 8
+[kvm_exec][I] doom: 2240 frames, 0 past their deadline, frame time p50/p99/max 14.3/26.2/28.1 ms | serve: 595 done, p50/p99 57.9/72.2 ms, 0 dropped | train: 868 steps (54.12/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom2: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom3: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:35:18 multi_n4_fixed_prio rep2: adaptive_run scn --out runs-b/multi_n4_fixed_prio/rep2 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --doom-instances 4 --serve-rate 40 --doom-min-hi 8
+[kvm_exec][I] doom: 2240 frames, 2 past their deadline, frame time p50/p99/max 13.7/25.5/29.8 ms | serve: 595 done, p50/p99 17.5/27.2 ms, 0 dropped | train: 847 steps (52.80/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom2: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom3: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:35:38 multi_n4_adaptive rep2: adaptive_run scn --out runs-b/multi_n4_adaptive/rep2 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 4 --serve-rate 40 --doom-min-hi 8
+[kvm_exec][I] doom: 2240 frames, 1 past their deadline, frame time p50/p99/max 13.6/26.2/29.0 ms | serve: 595 done, p50/p99 18.0/27.0 ms, 0 dropped | train: 853 steps (53.18/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom2: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom3: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:35:58 multi_n8_global rep2: adaptive_run scn --out runs-b/multi_n8_global/rep2 --sched global --doom-instances 8 --serve-rate 40 --doom-min-hi 12
+[kvm_exec][I] doom: 4480 frames, 1 past their deadline, frame time p50/p99/max 14.6/25.9/28.6 ms | serve: 595 done, p50/p99 57.0/71.6 ms, 0 dropped | train: 866 steps (53.98/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom2: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom3: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom4: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom5: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom6: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom7: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:36:19 multi_n8_fixed_prio rep2: adaptive_run scn --out runs-b/multi_n8_fixed_prio/rep2 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --doom-instances 8 --serve-rate 40 --doom-min-hi 12
+[kvm_exec][I] doom: 4480 frames, 1 past their deadline, frame time p50/p99/max 13.8/25.4/28.7 ms | serve: 595 done, p50/p99 17.5/28.7 ms, 0 dropped | train: 846 steps (52.75/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom2: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom3: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom4: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom5: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom6: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom7: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:36:40 multi_n8_adaptive rep2: adaptive_run scn --out runs-b/multi_n8_adaptive/rep2 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 8 --serve-rate 40 --doom-min-hi 12
+[kvm_exec][I] doom: 4480 frames, 9 past their deadline, frame time p50/p99/max 14.5/26.5/29.9 ms | serve: 595 done, p50/p99 17.5/28.8 ms, 0 dropped | train: 849 steps (52.91/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom2: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom3: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom4: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom5: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom6: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom7: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:37:01 multi_n1_global rep3: adaptive_run scn --out runs-b/multi_n1_global/rep3 --sched global --doom-instances 1 --serve-rate 40 --doom-min-hi 5
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 14.0/25.7/27.0 ms | serve: 634 done, p50/p99 58.0/72.2 ms, 0 dropped | train: 866 steps (53.99/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:37:20 multi_n1_fixed_prio rep3: adaptive_run scn --out runs-b/multi_n1_fixed_prio/rep3 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --doom-instances 1 --serve-rate 40 --doom-min-hi 5
+[kvm_exec][I] doom: 560 frames, 1 past their deadline, frame time p50/p99/max 13.9/26.3/29.5 ms | serve: 634 done, p50/p99 18.0/28.1 ms, 0 dropped | train: 845 steps (52.72/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:37:39 multi_n1_adaptive rep3: adaptive_run scn --out runs-b/multi_n1_adaptive/rep3 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 1 --serve-rate 40 --doom-min-hi 5
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 13.6/26.3/27.7 ms | serve: 634 done, p50/p99 18.3/27.8 ms, 0 dropped | train: 849 steps (52.95/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:37:58 multi_n2_global rep3: adaptive_run scn --out runs-b/multi_n2_global/rep3 --sched global --doom-instances 2 --serve-rate 40 --doom-min-hi 6
+[kvm_exec][I] doom: 1120 frames, 0 past their deadline, frame time p50/p99/max 14.3/26.2/28.4 ms | serve: 634 done, p50/p99 57.5/72.2 ms, 0 dropped | train: 864 steps (53.89/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:38:17 multi_n2_fixed_prio rep3: adaptive_run scn --out runs-b/multi_n2_fixed_prio/rep3 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --doom-instances 2 --serve-rate 40 --doom-min-hi 6
+[kvm_exec][I] doom: 1120 frames, 0 past their deadline, frame time p50/p99/max 13.0/25.9/27.9 ms | serve: 634 done, p50/p99 17.7/27.1 ms, 0 dropped | train: 845 steps (52.68/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:38:37 multi_n2_adaptive rep3: adaptive_run scn --out runs-b/multi_n2_adaptive/rep3 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 2 --serve-rate 40 --doom-min-hi 6
+[kvm_exec][I] doom: 1120 frames, 2 past their deadline, frame time p50/p99/max 13.4/26.4/29.3 ms | serve: 634 done, p50/p99 18.2/28.4 ms, 0 dropped | train: 847 steps (52.84/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:38:56 multi_n4_global rep3: adaptive_run scn --out runs-b/multi_n4_global/rep3 --sched global --doom-instances 4 --serve-rate 40 --doom-min-hi 8
+[kvm_exec][I] doom: 2240 frames, 0 past their deadline, frame time p50/p99/max 14.3/26.4/28.3 ms | serve: 634 done, p50/p99 57.1/72.4 ms, 0 dropped | train: 864 steps (53.89/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom2: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom3: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:39:16 multi_n4_fixed_prio rep3: adaptive_run scn --out runs-b/multi_n4_fixed_prio/rep3 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --doom-instances 4 --serve-rate 40 --doom-min-hi 8
+[kvm_exec][I] doom: 2240 frames, 3 past their deadline, frame time p50/p99/max 13.5/25.6/29.3 ms | serve: 634 done, p50/p99 18.3/27.8 ms, 0 dropped | train: 845 steps (52.69/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom2: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom3: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:39:36 multi_n4_adaptive rep3: adaptive_run scn --out runs-b/multi_n4_adaptive/rep3 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 4 --serve-rate 40 --doom-min-hi 8
+[kvm_exec][I] doom: 2240 frames, 4 past their deadline, frame time p50/p99/max 14.3/27.0/29.0 ms | serve: 634 done, p50/p99 17.5/27.5 ms, 0 dropped | train: 847 steps (52.80/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom2: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom3: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:39:55 multi_n8_global rep3: adaptive_run scn --out runs-b/multi_n8_global/rep3 --sched global --doom-instances 8 --serve-rate 40 --doom-min-hi 12
+[kvm_exec][I] doom: 4480 frames, 0 past their deadline, frame time p50/p99/max 14.2/26.3/27.7 ms | serve: 634 done, p50/p99 57.5/71.2 ms, 0 dropped | train: 862 steps (53.77/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom2: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom3: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom4: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom5: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom6: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom7: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:40:16 multi_n8_fixed_prio rep3: adaptive_run scn --out runs-b/multi_n8_fixed_prio/rep3 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --doom-instances 8 --serve-rate 40 --doom-min-hi 12
+[kvm_exec][I] doom: 4480 frames, 5 past their deadline, frame time p50/p99/max 14.4/26.3/29.1 ms | serve: 634 done, p50/p99 17.5/27.4 ms, 0 dropped | train: 842 steps (52.53/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom2: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom3: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom4: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom5: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom6: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom7: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:40:37 multi_n8_adaptive rep3: adaptive_run scn --out runs-b/multi_n8_adaptive/rep3 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 8 --serve-rate 40 --doom-min-hi 12
+[kvm_exec][I] doom: 4480 frames, 0 past their deadline, frame time p50/p99/max 14.4/26.2/28.3 ms | serve: 634 done, p50/p99 18.8/27.4 ms, 0 dropped | train: 846 steps (52.75/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom1: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom2: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom3: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom4: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom5: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom6: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  doom7: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:40:58 unpaced_n1_adaptive rep1: adaptive_run scn --out runs-b/unpaced_n1_adaptive/rep1 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 1 --fps 1000 --duration-s 3 --serve-rate 40 --doom-min-hi 5
+[kvm_exec][I] doom: 184 frames, 184 past their deadline, frame time p50/p99/max 16.8/26.1/47.5 ms | serve: 106 done, p50/p99 16.7/27.8 ms, 0 dropped | train: 162 steps (53.23/s)
+  doom0: compared 185 frames: raw-identical 185/185, fingerprint-identical 185/185, state-identical 185/185
+  exit 0, oracle PASS
+=== 08:41:03 unpaced_n2_adaptive rep1: adaptive_run scn --out runs-b/unpaced_n2_adaptive/rep1 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 2 --fps 1000 --duration-s 3 --serve-rate 40 --doom-min-hi 6
+[kvm_exec][I] doom: 366 frames, 366 past their deadline, frame time p50/p99/max 16.8/26.1/48.7 ms | serve: 106 done, p50/p99 19.9/26.3 ms, 0 dropped | train: 161 steps (53.00/s)
+  doom0: compared 184 frames: raw-identical 184/184, fingerprint-identical 184/184, state-identical 184/184
+  doom1: compared 184 frames: raw-identical 184/184, fingerprint-identical 184/184, state-identical 184/184
+  exit 0, oracle PASS
+=== 08:41:07 unpaced_n4_adaptive rep1: adaptive_run scn --out runs-b/unpaced_n4_adaptive/rep1 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 4 --fps 1000 --duration-s 3 --serve-rate 40 --doom-min-hi 8
+[kvm_exec][I] doom: 734 frames, 734 past their deadline, frame time p50/p99/max 16.6/27.3/49.6 ms | serve: 106 done, p50/p99 19.1/28.1 ms, 0 dropped | train: 161 steps (53.00/s)
+  doom0: compared 186 frames: raw-identical 186/186, fingerprint-identical 186/186, state-identical 186/186
+  doom1: compared 184 frames: raw-identical 184/184, fingerprint-identical 184/184, state-identical 184/184
+  doom2: compared 183 frames: raw-identical 183/183, fingerprint-identical 183/183, state-identical 183/183
+  doom3: compared 185 frames: raw-identical 185/185, fingerprint-identical 185/185, state-identical 185/185
+  exit 0, oracle PASS
+=== 08:41:13 unpaced_n8_adaptive rep1: adaptive_run scn --out runs-b/unpaced_n8_adaptive/rep1 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 8 --fps 1000 --duration-s 3 --serve-rate 40 --doom-min-hi 12
+[kvm_exec][I] doom: 1461 frames, 1461 past their deadline, frame time p50/p99/max 16.6/26.8/50.4 ms | serve: 106 done, p50/p99 18.8/27.1 ms, 0 dropped | train: 160 steps (52.56/s)
+  doom0: compared 181 frames: raw-identical 181/181, fingerprint-identical 181/181, state-identical 181/181
+  doom1: compared 183 frames: raw-identical 183/183, fingerprint-identical 183/183, state-identical 183/183
+  doom2: compared 185 frames: raw-identical 185/185, fingerprint-identical 185/185, state-identical 185/185
+  doom3: compared 183 frames: raw-identical 183/183, fingerprint-identical 183/183, state-identical 183/183
+  doom4: compared 183 frames: raw-identical 183/183, fingerprint-identical 183/183, state-identical 183/183
+  doom5: compared 187 frames: raw-identical 187/187, fingerprint-identical 187/187, state-identical 187/187
+  doom6: compared 183 frames: raw-identical 183/183, fingerprint-identical 183/183, state-identical 183/183
+  doom7: compared 184 frames: raw-identical 184/184, fingerprint-identical 184/184, state-identical 184/184
+  exit 0, oracle PASS
+=== 08:41:18 unpaced_n1_adaptive rep2: adaptive_run scn --out runs-b/unpaced_n1_adaptive/rep2 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 1 --fps 1000 --duration-s 3 --serve-rate 40 --doom-min-hi 5
+[kvm_exec][I] doom: 184 frames, 184 past their deadline, frame time p50/p99/max 16.9/26.7/47.5 ms | serve: 99 done, p50/p99 18.5/27.9 ms, 0 dropped | train: 162 steps (53.29/s)
+  doom0: compared 185 frames: raw-identical 185/185, fingerprint-identical 185/185, state-identical 185/185
+  exit 0, oracle PASS
+=== 08:41:23 unpaced_n2_adaptive rep2: adaptive_run scn --out runs-b/unpaced_n2_adaptive/rep2 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 2 --fps 1000 --duration-s 3 --serve-rate 40 --doom-min-hi 6
+[kvm_exec][I] doom: 363 frames, 363 past their deadline, frame time p50/p99/max 16.8/25.4/47.6 ms | serve: 99 done, p50/p99 17.5/27.8 ms, 0 dropped | train: 161 steps (53.15/s)
+  doom0: compared 182 frames: raw-identical 182/182, fingerprint-identical 182/182, state-identical 182/182
+  doom1: compared 183 frames: raw-identical 183/183, fingerprint-identical 183/183, state-identical 183/183
+  exit 0, oracle PASS
+=== 08:41:28 unpaced_n4_adaptive rep2: adaptive_run scn --out runs-b/unpaced_n4_adaptive/rep2 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 4 --fps 1000 --duration-s 3 --serve-rate 40 --doom-min-hi 8
+[kvm_exec][I] doom: 727 frames, 727 past their deadline, frame time p50/p99/max 17.0/25.6/49.0 ms | serve: 99 done, p50/p99 17.5/26.6 ms, 0 dropped | train: 161 steps (53.02/s)
+  doom0: compared 183 frames: raw-identical 183/183, fingerprint-identical 183/183, state-identical 183/183
+  doom1: compared 182 frames: raw-identical 182/182, fingerprint-identical 182/182, state-identical 182/182
+  doom2: compared 183 frames: raw-identical 183/183, fingerprint-identical 183/183, state-identical 183/183
+  doom3: compared 183 frames: raw-identical 183/183, fingerprint-identical 183/183, state-identical 183/183
+  exit 0, oracle PASS
+=== 08:41:33 unpaced_n8_adaptive rep2: adaptive_run scn --out runs-b/unpaced_n8_adaptive/rep2 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 8 --fps 1000 --duration-s 3 --serve-rate 40 --doom-min-hi 12
+[kvm_exec][I] doom: 1426 frames, 1426 past their deadline, frame time p50/p99/max 17.1/25.3/50.3 ms | serve: 99 done, p50/p99 18.2/28.0 ms, 0 dropped | train: 161 steps (52.90/s)
+  doom0: compared 179 frames: raw-identical 179/179, fingerprint-identical 179/179, state-identical 179/179
+  doom1: compared 178 frames: raw-identical 178/178, fingerprint-identical 178/178, state-identical 178/178
+  doom2: compared 181 frames: raw-identical 181/181, fingerprint-identical 181/181, state-identical 181/181
+  doom3: compared 180 frames: raw-identical 180/180, fingerprint-identical 180/180, state-identical 180/180
+  doom4: compared 179 frames: raw-identical 179/179, fingerprint-identical 179/179, state-identical 179/179
+  doom5: compared 178 frames: raw-identical 178/178, fingerprint-identical 178/178, state-identical 178/178
+  doom6: compared 178 frames: raw-identical 178/178, fingerprint-identical 178/178, state-identical 178/178
+  doom7: compared 181 frames: raw-identical 181/181, fingerprint-identical 181/181, state-identical 181/181
+  exit 0, oracle PASS
+=== 08:41:39 unpaced_n1_adaptive rep3: adaptive_run scn --out runs-b/unpaced_n1_adaptive/rep3 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 1 --fps 1000 --duration-s 3 --serve-rate 40 --doom-min-hi 5
+[kvm_exec][I] doom: 184 frames, 184 past their deadline, frame time p50/p99/max 16.9/24.1/47.9 ms | serve: 112 done, p50/p99 17.4/26.0 ms, 0 dropped | train: 160 steps (52.82/s)
+  doom0: compared 185 frames: raw-identical 185/185, fingerprint-identical 185/185, state-identical 185/185
+  exit 0, oracle PASS
+=== 08:41:44 unpaced_n2_adaptive rep3: adaptive_run scn --out runs-b/unpaced_n2_adaptive/rep3 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 2 --fps 1000 --duration-s 3 --serve-rate 40 --doom-min-hi 6
+[kvm_exec][I] doom: 370 frames, 370 past their deadline, frame time p50/p99/max 16.4/26.2/47.9 ms | serve: 112 done, p50/p99 18.2/26.3 ms, 0 dropped | train: 160 steps (52.67/s)
+  doom0: compared 186 frames: raw-identical 186/186, fingerprint-identical 186/186, state-identical 186/186
+  doom1: compared 186 frames: raw-identical 186/186, fingerprint-identical 186/186, state-identical 186/186
+  exit 0, oracle PASS
+=== 08:41:48 unpaced_n4_adaptive rep3: adaptive_run scn --out runs-b/unpaced_n4_adaptive/rep3 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 4 --fps 1000 --duration-s 3 --serve-rate 40 --doom-min-hi 8
+[kvm_exec][I] doom: 719 frames, 719 past their deadline, frame time p50/p99/max 16.9/26.3/48.9 ms | serve: 112 done, p50/p99 19.7/28.3 ms, 0 dropped | train: 160 steps (52.64/s)
+  doom0: compared 181 frames: raw-identical 181/181, fingerprint-identical 181/181, state-identical 181/181
+  doom1: compared 181 frames: raw-identical 181/181, fingerprint-identical 181/181, state-identical 181/181
+  doom2: compared 181 frames: raw-identical 181/181, fingerprint-identical 181/181, state-identical 181/181
+  doom3: compared 180 frames: raw-identical 180/180, fingerprint-identical 180/180, state-identical 180/180
+  exit 0, oracle PASS
+=== 08:41:54 unpaced_n8_adaptive rep3: adaptive_run scn --out runs-b/unpaced_n8_adaptive/rep3 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --doom-instances 8 --fps 1000 --duration-s 3 --serve-rate 40 --doom-min-hi 12
+[kvm_exec][I] doom: 1467 frames, 1467 past their deadline, frame time p50/p99/max 16.7/27.1/48.9 ms | serve: 112 done, p50/p99 18.3/27.2 ms, 0 dropped | train: 159 steps (52.29/s)
+  doom0: compared 183 frames: raw-identical 183/183, fingerprint-identical 183/183, state-identical 183/183
+  doom1: compared 183 frames: raw-identical 183/183, fingerprint-identical 183/183, state-identical 183/183
+  doom2: compared 186 frames: raw-identical 186/186, fingerprint-identical 186/186, state-identical 186/186
+  doom3: compared 184 frames: raw-identical 184/184, fingerprint-identical 184/184, state-identical 184/184
+  doom4: compared 184 frames: raw-identical 184/184, fingerprint-identical 184/184, state-identical 184/184
+  doom5: compared 185 frames: raw-identical 185/185, fingerprint-identical 185/185, state-identical 185/185
+  doom6: compared 185 frames: raw-identical 185/185, fingerprint-identical 185/185, state-identical 185/185
+  doom7: compared 185 frames: raw-identical 185/185, fingerprint-identical 185/185, state-identical 185/185
+  exit 0, oracle PASS
+# batch multi done 2026-11-04T08:41:59Z
+# batch bw @ 2026-11-04T08:41:59Z  commit cf69b4b  reps 4 dur 16  NVIDIA A100-SXM4-40GB, 580.105.08
+=== 08:41:59 bw_none rep1: adaptive_run scn --out runs-b/bw_none/rep1 --sched dynamic --weights 4,4,1,16 --urgent-us 28571,0,0,0 --serve-rate 40
+[kvm_exec][I] doom: 560 frames, 1 past their deadline, frame time p50/p99/max 12.6/24.8/29.5 ms | serve: 625 done, p50/p99 17.5/27.3 ms, 0 dropped | train: 820 steps (51.15/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:42:18 bw_sweep rep1: adaptive_run scn --out runs-b/bw_sweep/rep1 --sched dynamic --weights 4,4,1,16 --urgent-us 28571,0,0,0 --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 9.5/23.1/26.3 ms | serve: 625 done, p50/p99 14.6/28.3 ms, 0 dropped | train: 275 steps (17.13/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:42:36 bw_sweep_arbiter rep1: adaptive_run scn --out runs-b/bw_sweep_arbiter/rep1 --sched dynamic --weights 4,4,1,16 --urgent-us 28571,0,0,0 --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6 --arbiter
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 10.0/25.2/26.5 ms | serve: 625 done, p50/p99 14.2/27.4 ms, 0 dropped | train: 270 steps (16.82/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:42:54 bw_sweep_adaptive rep1: adaptive_run scn --out runs-b/bw_sweep_adaptive/rep1 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6 --arbiter-assist
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 13.0/26.6/28.5 ms | serve: 625 done, p50/p99 17.4/27.2 ms, 0 dropped | train: 693 steps (43.19/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:43:13 bw_sweep_cap rep1: adaptive_run scn --out runs-b/bw_sweep_cap/rep1 --sched dynamic --weights 4,4,1,16 --urgent-us 28571,0,0,0 --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6 --bw-cta 1000000,1000000,1000000,24
+[kvm_exec][I] doom: 560 frames, 1 past their deadline, frame time p50/p99/max 11.9/27.0/29.0 ms | serve: 625 done, p50/p99 16.3/28.4 ms, 0 dropped | train: 698 steps (43.42/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:43:32 bw_none rep2: adaptive_run scn --out runs-b/bw_none/rep2 --sched dynamic --weights 4,4,1,16 --urgent-us 28571,0,0,0 --serve-rate 40
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 12.7/25.3/28.4 ms | serve: 595 done, p50/p99 16.8/27.5 ms, 0 dropped | train: 822 steps (51.24/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:43:50 bw_sweep rep2: adaptive_run scn --out runs-b/bw_sweep/rep2 --sched dynamic --weights 4,4,1,16 --urgent-us 28571,0,0,0 --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 9.9/24.6/25.6 ms | serve: 595 done, p50/p99 14.5/28.7 ms, 0 dropped | train: 275 steps (17.14/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:44:08 bw_sweep_arbiter rep2: adaptive_run scn --out runs-b/bw_sweep_arbiter/rep2 --sched dynamic --weights 4,4,1,16 --urgent-us 28571,0,0,0 --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6 --arbiter
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 9.7/24.2/25.2 ms | serve: 595 done, p50/p99 14.2/28.0 ms, 0 dropped | train: 270 steps (16.83/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:44:26 bw_sweep_adaptive rep2: adaptive_run scn --out runs-b/bw_sweep_adaptive/rep2 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6 --arbiter-assist
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 12.9/25.4/26.7 ms | serve: 595 done, p50/p99 17.3/27.7 ms, 0 dropped | train: 694 steps (43.27/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:44:45 bw_sweep_cap rep2: adaptive_run scn --out runs-b/bw_sweep_cap/rep2 --sched dynamic --weights 4,4,1,16 --urgent-us 28571,0,0,0 --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6 --bw-cta 1000000,1000000,1000000,24
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 12.5/26.6/28.0 ms | serve: 595 done, p50/p99 17.2/27.6 ms, 0 dropped | train: 701 steps (43.58/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:45:04 bw_none rep3: adaptive_run scn --out runs-b/bw_none/rep3 --sched dynamic --weights 4,4,1,16 --urgent-us 28571,0,0,0 --serve-rate 40
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 12.7/24.9/27.9 ms | serve: 634 done, p50/p99 16.5/26.5 ms, 0 dropped | train: 819 steps (51.10/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:45:22 bw_sweep rep3: adaptive_run scn --out runs-b/bw_sweep/rep3 --sched dynamic --weights 4,4,1,16 --urgent-us 28571,0,0,0 --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 10.0/24.6/27.1 ms | serve: 634 done, p50/p99 14.6/28.6 ms, 0 dropped | train: 274 steps (17.08/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:45:40 bw_sweep_arbiter rep3: adaptive_run scn --out runs-b/bw_sweep_arbiter/rep3 --sched dynamic --weights 4,4,1,16 --urgent-us 28571,0,0,0 --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6 --arbiter
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 9.8/24.1/28.0 ms | serve: 634 done, p50/p99 14.3/28.5 ms, 0 dropped | train: 269 steps (16.77/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:45:58 bw_sweep_adaptive rep3: adaptive_run scn --out runs-b/bw_sweep_adaptive/rep3 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6 --arbiter-assist
+[kvm_exec][I] doom: 560 frames, 1 past their deadline, frame time p50/p99/max 12.9/26.6/28.7 ms | serve: 634 done, p50/p99 16.4/27.8 ms, 0 dropped | train: 693 steps (43.20/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:46:17 bw_sweep_cap rep3: adaptive_run scn --out runs-b/bw_sweep_cap/rep3 --sched dynamic --weights 4,4,1,16 --urgent-us 28571,0,0,0 --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6 --bw-cta 1000000,1000000,1000000,24
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 12.1/26.0/28.4 ms | serve: 634 done, p50/p99 17.0/29.0 ms, 0 dropped | train: 698 steps (43.40/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:46:36 bw_none rep4: adaptive_run scn --out runs-b/bw_none/rep4 --sched dynamic --weights 4,4,1,16 --urgent-us 28571,0,0,0 --serve-rate 40
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 13.9/24.8/27.3 ms | serve: 642 done, p50/p99 17.3/28.2 ms, 0 dropped | train: 818 steps (51.02/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:46:54 bw_sweep rep4: adaptive_run scn --out runs-b/bw_sweep/rep4 --sched dynamic --weights 4,4,1,16 --urgent-us 28571,0,0,0 --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 9.9/25.1/26.8 ms | serve: 642 done, p50/p99 14.8/28.0 ms, 0 dropped | train: 274 steps (17.08/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:47:12 bw_sweep_arbiter rep4: adaptive_run scn --out runs-b/bw_sweep_arbiter/rep4 --sched dynamic --weights 4,4,1,16 --urgent-us 28571,0,0,0 --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6 --arbiter
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 9.7/24.5/25.1 ms | serve: 642 done, p50/p99 13.9/28.1 ms, 0 dropped | train: 269 steps (16.77/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:47:30 bw_sweep_adaptive rep4: adaptive_run scn --out runs-b/bw_sweep_adaptive/rep4 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6 --arbiter-assist
+[kvm_exec][I] doom: 560 frames, 1 past their deadline, frame time p50/p99/max 12.3/26.4/30.4 ms | serve: 642 done, p50/p99 16.4/27.5 ms, 0 dropped | train: 692 steps (43.16/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+=== 08:47:49 bw_sweep_cap rep4: adaptive_run scn --out runs-b/bw_sweep_cap/rep4 --sched dynamic --weights 4,4,1,16 --urgent-us 28571,0,0,0 --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6 --bw-cta 1000000,1000000,1000000,24
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 12.6/26.3/28.2 ms | serve: 642 done, p50/p99 16.8/28.3 ms, 0 dropped | train: 697 steps (43.34/s)
+  doom0: compared 561 frames: raw-identical 561/561, fingerprint-identical 561/561, state-identical 561/561
+  exit 0, oracle PASS
+# batch bw done 2026-11-04T08:48:08Z
+# batch all_b done 2026-11-04T08:48:08Z

@@ -121,6 +121,14 @@ class Features(unittest.TestCase):
         self.assertLess(len(b.low.tasks), len(a.low.tasks))
         self.assertEqual(weights(a.run()), weights(b.run()))
 
+    def test_precise_tiling_sets_gemm_flag_on_every_matmul_variant(self):
+        for fuse in (False, True):
+            spec = compile_training(SMALL, TrainConfig(steps=1), Tiling.preset('cpu', precise=True), fuse=fuse).spec
+            gemms = [t for t in spec['graphs'][0]['tasks'] if t['op'].startswith('matmul_tile')]
+            self.assertTrue(gemms and all(t['args']['flags'] & 16 for t in gemms), fuse)
+        plain = compile_training(SMALL, TrainConfig(steps=1), CPU).spec
+        self.assertFalse(any(t.get('args', {}).get('flags', 0) & 16 for t in plain['graphs'][0]['tasks']))
+
     def test_remat_same_result_less_memory(self):
         base = models.LlamaConfig(**{**SMALL.__dict__, 'layers': 3})
         rm = models.LlamaConfig(**{**base.__dict__, 'remat': True})

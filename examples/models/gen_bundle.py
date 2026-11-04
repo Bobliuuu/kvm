@@ -6,7 +6,7 @@
 
 --model: a preset (llama_tiny, llama_gqa_tied, moe_tiny, mlp_tiny, vit_tiny, gpt_tiny, ...), a JSON file or a JSON string of a model
 config (the class is picked by its fields). Buffers are never reused (--reuse none) so step-1 activations and gradients survive for
-the comparison. --precise sets matmul flag 16 (3xTF32, fp32 accuracy) on every GEMM tile op: with it the GPU matches the golden to
+the comparison. --precise (Tiling.precise) sets matmul flag 16 (3xTF32, fp32 accuracy) on every GEMM tile op (bf16 tiles ignore it): with it the GPU matches the golden to
 fp32 level; without it the GEMMs are 1xTF32 (see tests/gptdiff for why only the first step is comparable then).
 Writes OUT_DIR/workload.json, OUT_DIR/bundle/ (tasks.bin, ..., golden.json) and OUT_DIR/meta.json (task counts, config).
 """
@@ -18,8 +18,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'frontend'))
-F_PRECISE = 16
-GEMM_OPS = ('matmul_tile', 'matmul_tile_dgelu', 'matmul_tile_silu_mul', 'matmul_tile_silu_mul_bwd')   # bf16 tiles ignore the flag
 
 
 def load_model(spec):
@@ -40,12 +38,7 @@ def build(model, steps, tiling='cpu', precise=False, fuse=False, accum=1, schedu
     cfg = load_model(model)
     tc = TrainConfig(steps=steps, accum=accum, clip=clip, loss_scale=loss_scale,
                      schedule=Schedule(schedule, warmup=warmup) if schedule else None)
-    c = compile_training(cfg, tc, Tiling.preset(tiling), reuse=reuse, fuse=fuse)
-    if precise:
-        for g in c.spec['graphs']:
-            for t in g['tasks']:
-                if t['op'] in GEMM_OPS:
-                    t['args']['flags'] |= F_PRECISE
+    c = compile_training(cfg, tc, Tiling.preset(tiling, precise=precise), reuse=reuse, fuse=fuse)
     return c, cfg
 
 

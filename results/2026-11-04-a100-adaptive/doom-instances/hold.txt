@@ -1,11 +1,11 @@
-2026-11-04 06:30:31,672 INFO kvm.compiler: wrote bundle to /home/ubuntu/kvm-adaptive-doom-scratch/logs/doominst/n1_alone.bundle
+2026-11-04 06:30:31,672 INFO kvm.compiler: wrote bundle to ~/kvm-adaptive-doom-scratch/logs/doominst/n1_alone.bundle
 === n1_alone
 [kvm_exec][I] 35 Hz: 0 of 298 tick gaps over 28.57 ms, 9 ticks flagged missed (absolute deadline)
 [kvm_exec][I] frames 300, achieved 166.4 fps (35 needed), tick gap p50/p99 6.31/10.35 ms, frame latency p50/p99 6.28/10.34 ms, tick queue wait p99 10 us, doom ran on 105 of 105 SMs, block utilization 0.9%
 OK: 1800/1800 tasks, 2012.346 ms
 compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300, state-identical 300/300
 final ref  {'booted': 1, 'tics': 300, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 0, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 1135, 'y': -2940, 'waypoint': 4} 
-2026-11-04 06:30:34,721 INFO kvm.compiler: wrote bundle to /home/ubuntu/kvm-adaptive-doom-scratch/logs/doominst/n1_load.bundle
+2026-11-04 06:30:34,721 INFO kvm.compiler: wrote bundle to ~/kvm-adaptive-doom-scratch/logs/doominst/n1_load.bundle
 === n1_load
 [kvm_exec][I] compute check: 300/300 matmul outputs match A@B (worst rel err 0)
 [kvm_exec][I] 35 Hz: 0 of 298 tick gaps over 28.57 ms, 7 ticks flagged missed (absolute deadline)
@@ -13,7 +13,7 @@ final ref  {'booted': 1, 'tics': 300, 'gamestate': 0, 'health': 100, 'armor': 10
 OK: 9000/9000 tasks, 3135.097 ms
 compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300, state-identical 300/300
 final ref  {'booted': 1, 'tics': 300, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 0, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 1135, 'y': -2940, 'waypoint': 4} 
-2026-11-04 06:30:38,727 INFO kvm.compiler: wrote bundle to /home/ubuntu/kvm-adaptive-doom-scratch/logs/doominst/n2_alone.bundle
+2026-11-04 06:30:38,727 INFO kvm.compiler: wrote bundle to ~/kvm-adaptive-doom-scratch/logs/doominst/n2_alone.bundle
 === n2_alone
 [kvm_exec][I] instance 0: 165.7 fps, tick gap p50/p99/max 6.43/10.39/10.54 ms, 0 gaps over 28.57 ms
 [kvm_exec][I] instance 1: 166.6 fps, tick gap p50/p99/max 6.37/10.20/10.43 ms, 0 gaps over 28.57 ms
@@ -22,7 +22,7 @@ final ref  {'booted': 1, 'tics': 300, 'gamestate': 0, 'health': 100, 'armor': 10
 OK: 3600/3600 tasks, 1972.838 ms
 inst0: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300, state-identical 300/300
 inst1: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300, state-identical 300/300
-2026-11-04 06:30:42,020 INFO kvm.compiler: wrote bundle to /home/ubuntu/kvm-adaptive-doom-scratch/logs/doominst/n2_load.bundle
+2026-11-04 06:30:42,020 INFO kvm.compiler: wrote bundle to ~/kvm-adaptive-doom-scratch/logs/doominst/n2_load.bundle
 === n2_load
 [kvm_exec][I] compute check: 300/300 matmul outputs match A@B (worst rel err 0)
 [kvm_exec][I] instance 0: 165.1 fps, tick gap p50/p99/max 6.37/10.34/10.47 ms, 0 gaps over 28.57 ms
@@ -32,7 +32,7 @@ inst1: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300
 OK: 10800/10800 tasks, 3106.045 ms
 inst0: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300, state-identical 300/300
 inst1: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300, state-identical 300/300
-2026-11-04 06:30:46,377 INFO kvm.compiler: wrote bundle to /home/ubuntu/kvm-adaptive-doom-scratch/logs/doominst/n4_alone.bundle
+2026-11-04 06:30:46,377 INFO kvm.compiler: wrote bundle to ~/kvm-adaptive-doom-scratch/logs/doominst/n4_alone.bundle
 === n4_alone
 [kvm_exec][I] instance 0: 166.1 fps, tick gap p50/p99/max 6.31/10.43/10.50 ms, 0 gaps over 28.57 ms
 [kvm_exec][I] instance 1: 165.1 fps, tick gap p50/p99/max 6.36/10.52/10.54 ms, 0 gaps over 28.57 ms
@@ -45,7 +45,7 @@ inst0: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300
 inst1: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300, state-identical 300/300
 inst2: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300, state-identical 300/300
 inst3: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300, state-identical 300/300
-2026-11-04 06:30:50,265 INFO kvm.compiler: wrote bundle to /home/ubuntu/kvm-adaptive-doom-scratch/logs/doominst/n4_load.bundle
+2026-11-04 06:30:50,265 INFO kvm.compiler: wrote bundle to ~/kvm-adaptive-doom-scratch/logs/doominst/n4_load.bundle
 === n4_load
 [kvm_exec][I] compute check: 300/300 matmul outputs match A@B (worst rel err 0)
 [kvm_exec][I] instance 0: 166.4 fps, tick gap p50/p99/max 6.29/10.49/10.66 ms, 0 gaps over 28.57 ms
@@ -59,7 +59,7 @@ inst0: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300
 inst1: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300, state-identical 300/300
 inst2: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300, state-identical 300/300
 inst3: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300, state-identical 300/300
-2026-11-04 06:30:55,324 INFO kvm.compiler: wrote bundle to /home/ubuntu/kvm-adaptive-doom-scratch/logs/doominst/n8_alone.bundle
+2026-11-04 06:30:55,324 INFO kvm.compiler: wrote bundle to ~/kvm-adaptive-doom-scratch/logs/doominst/n8_alone.bundle
 === n8_alone
 [kvm_exec][I] instance 0: 163.8 fps, tick gap p50/p99/max 6.40/10.45/10.76 ms, 0 gaps over 28.57 ms
 [kvm_exec][I] instance 1: 165.0 fps, tick gap p50/p99/max 6.40/10.38/10.61 ms, 0 gaps over 28.57 ms
@@ -80,7 +80,7 @@ inst4: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300
 inst5: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300, state-identical 300/300
 inst6: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300, state-identical 300/300
 inst7: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300, state-identical 300/300
-2026-11-04 06:31:00,356 INFO kvm.compiler: wrote bundle to /home/ubuntu/kvm-adaptive-doom-scratch/logs/doominst/n8_load.bundle
+2026-11-04 06:31:00,356 INFO kvm.compiler: wrote bundle to ~/kvm-adaptive-doom-scratch/logs/doominst/n8_load.bundle
 === n8_load
 [kvm_exec][I] compute check: 300/300 matmul outputs match A@B (worst rel err 0)
 [kvm_exec][I] instance 0: 164.2 fps, tick gap p50/p99/max 6.42/10.53/10.71 ms, 0 gaps over 28.57 ms
@@ -103,7 +103,7 @@ inst5: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300
 inst6: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300, state-identical 300/300
 inst7: compared 300 frames: raw-identical 300/300, fingerprint-identical 300/300, state-identical 300/300
 === memcheck N=2, 12 frames
-2026-11-04 06:31:05,717 INFO kvm.compiler: wrote bundle to /home/ubuntu/kvm-adaptive-doom-scratch/logs/doominst/mc.bundle
+2026-11-04 06:31:05,717 INFO kvm.compiler: wrote bundle to ~/kvm-adaptive-doom-scratch/logs/doominst/mc.bundle
 OK: 144/144 tasks, 26501.371 ms
 ========= ERROR SUMMARY: 0 errors
 sanitizer exit: 0

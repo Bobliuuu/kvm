@@ -389,6 +389,9 @@ KVM_OP(spin) {
 #if __has_include("kvm_ops_gpt.cuh")
 #include "kvm_ops_gpt.cuh"
 #endif
+#if __has_include("kvm_ops_extra.cuh")      // KVM_MODELS_HOOK: extra generic pack (needs the gpt pack's helpers and dynamic smem)
+#include "kvm_ops_extra.cuh"
+#endif
 #if defined(KVM_WITH_GAME) && __has_include("kvm_ops_game.cuh")
 #include "kvm_ops_game.cuh"
 #endif

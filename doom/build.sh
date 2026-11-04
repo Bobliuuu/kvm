@@ -5,6 +5,7 @@
 set -euo pipefail
 . "$(dirname "$0")/lib.sh"
 ARCH="${ARCH:-sm_80}"
+DOOM_INSTANCES="${DOOM_INSTANCES:-1}"   # N > 1 also builds doom_dev_i<k>.o (k = 1..N-1): the same engine with every symbol prefixed i<k>_ (independent globals)
 for t in clang llvm-link llvm-dis llc python3; do need "$t" "install clang+llvm with the NVPTX target (apt install clang llvm)"; done
 NVCC="${NVCC:-$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc 2>/dev/null | tail -1 || true)}"
 [ -x "${NVCC:-}" ] || die "nvcc not found: set NVCC=/path/to/nvcc"
@@ -14,7 +15,7 @@ clang --print-targets | grep -q nvptx64 || die "this clang has no nvptx64 target
 
 mkdir -p "$BUILD"
 STAMP="$(cat "$DOOM_DIR"/patch_engine.py "$DOOM_DIR"/build.sh "$DOOM_DIR"/lib.sh "$DOOM_DIR"/glue/*.[ch] "$DOOM_DIR"/glue/*.py "$DOOM_DIR"/glue/libc/*.h "$DOOM_DIR"/glue/libc/sys/*.h \
-  "$DOOM_DIR"/player/player.c "$DOOM_DIR"/player/route_e1m1.h | md5sum | cut -d' ' -f1)-$(git -C "$TP/doomgeneric" rev-parse HEAD)-$ARCH"
+  "$DOOM_DIR"/player/player.c "$DOOM_DIR"/player/route_e1m1.h | md5sum | cut -d' ' -f1)-$(git -C "$TP/doomgeneric" rev-parse HEAD)-$ARCH-n$DOOM_INSTANCES"
 if [ -s "$BUILD/doom_dev.o" ] && [ "$(cat "$BUILD/stamp" 2>/dev/null)" = "$STAMP" ] && [ -z "${FORCE:-}" ]; then
   info "doom_dev.o up to date ($ARCH)"; exit 0
 fi
@@ -52,5 +53,11 @@ llc -march=nvptx64 -mcpu=sm_80 -mattr=+ptx75 -O2 "$BUILD/doom_nv.ll" -o "$BUILD/
 # the PTX is always sm_80; ptxas compiles it forward for newer GPUs. Registers are capped so the engine's CTA leaves room for other work.
 "$NVCC" -gencode "arch=compute_80,code=$ARCH" -dc -maxrregcount=112 "$BUILD/doom.ptx" -o "$BUILD/doom_dev.o" 2>&1 | grep -v 'Potential out of bound' || true
 [ -s "$BUILD/doom_dev.o" ] || die "nvcc produced no doom_dev.o"
+for k in $(seq 1 $((DOOM_INSTANCES - 1))); do
+  python3 "$DOOM_DIR/glue/prefix_symbols.py" "$BUILD/doom_nv.ll" "$BUILD/doom_i$k.ll" "i${k}_"
+  llc -march=nvptx64 -mcpu=sm_80 -mattr=+ptx75 -O2 "$BUILD/doom_i$k.ll" -o "$BUILD/doom_i$k.ptx"
+  "$NVCC" -gencode "arch=compute_80,code=$ARCH" -dc -maxrregcount=112 "$BUILD/doom_i$k.ptx" -o "$BUILD/doom_dev_i$k.o" 2>&1 | grep -v 'Potential out of bound' || true
+  [ -s "$BUILD/doom_dev_i$k.o" ] || die "nvcc produced no doom_dev_i$k.o"
+done
 echo "$STAMP" > "$BUILD/stamp"
 info "built $BUILD/doom_dev.o ($(wc -c < "$BUILD/doom_dev.o") bytes, $ARCH)"

@@ -17,3 +17,9 @@
 X(doom_tick,    128, "frame:i32,input:buf,state:buf")
 X(doom_present, 129, "fb:buf,row0:i32,rows:i32")
 X(doom_status,  130, "frame:i32,state:buf")
+// Instance-indexed variants (ids 131-133, same behavior as 128-130 for inst = 0). inst selects one of KVM_DOOM_INSTANCES independent
+// engines (doom/build.sh DOOM_INSTANCES=N); each instance needs its own state and framebuffer buffers. An inst outside the built range
+// fails the task with KVM_ERR_BOUNDS (arg b = KVM_DOOM_BAD_INSTANCE).
+X(doom_tick_n,    131, "frame:i32,input:buf,state:buf,inst:i32")
+X(doom_present_n, 132, "fb:buf,row0:i32,rows:i32,inst:i32")
+X(doom_status_n,  133, "frame:i32,state:buf,inst:i32")

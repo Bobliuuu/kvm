@@ -60,6 +60,7 @@ class DistDevice {
     KD_CK(cudaMalloc(&dev_, sizeof(KvmDistDev)));
     host_ = KvmDistDev{rank, world, 0, 0, in_vars_, inbox_, ctl_dev};
     KD_CK(cudaMemcpy(dev_, &host_, sizeof host_, cudaMemcpyHostToDevice));
+    KD_CK(cudaStreamSynchronize(0));    // pageable H2D copies can return before the DMA lands; kernels run in non-blocking streams
   }
   ~DistDevice() {
     cudaSetDevice(device_);
@@ -72,6 +73,7 @@ class DistDevice {
     host_.n_in = (int)v.size();
     if (!v.empty()) KD_CK(cudaMemcpy(in_vars_, v.data(), v.size() * 4, cudaMemcpyHostToDevice));
     KD_CK(cudaMemcpy(dev_, &host_, sizeof host_, cudaMemcpyHostToDevice));
+    KD_CK(cudaStreamSynchronize(0));
   }
   const KvmDistDev* dev() const { return dev_; }
   float* inbox_buf() const { return (float*)inbox_; }       // as a KvmBuf: rows 1, cols num_vars

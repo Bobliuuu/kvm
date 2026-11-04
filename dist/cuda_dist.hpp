@@ -52,7 +52,8 @@ class DistDevice {
     ctl_->dead_ns = dead_ns;
     sq_bytes_ = kvm_sq_bytes(sq_slots, sq_slot_bytes);
     KD_CK(cudaHostAlloc(&sq_, sq_bytes_, cudaHostAllocMapped));
-    SendQ::init(sq_, sq_slots, sq_slot_bytes, sq_timeout_ns);
+    KD_CK(cudaMalloc(&tail_, 8)); KD_CK(cudaMemset(tail_, 0, 8));
+    SendQ::init(sq_, sq_slots, sq_slot_bytes, sq_timeout_ns, tail_);
     void* d;
     KD_CK(cudaHostGetDevicePointer(&d, sq_, 0)); sq_dev_ = (float*)d;
     KD_CK(cudaHostGetDevicePointer(&d, (void*)ctl_, 0)); KvmDistCtl* ctl_dev = (KvmDistCtl*)d;
@@ -62,7 +63,7 @@ class DistDevice {
   }
   ~DistDevice() {
     cudaSetDevice(device_);
-    cudaFree(inbox_); cudaFree(in_vars_); cudaFree(dev_); cudaFreeHost((void*)ctl_); cudaFreeHost(sq_);
+    cudaFree(inbox_); cudaFree(in_vars_); cudaFree(dev_); cudaFree(tail_); cudaFreeHost((void*)ctl_); cudaFreeHost(sq_);
   }
   DistDevice(const DistDevice&) = delete; DistDevice& operator=(const DistDevice&) = delete;
 
@@ -78,6 +79,12 @@ class DistDevice {
   float* sendq_buf() const { return sq_dev_; }             // as a KvmBuf: rows 1, cols sq_bytes/4
   size_t sendq_floats() const { return sq_bytes_ / 4; }
   void* sendq_host() const { return sq_; }
+  // The proxy's SendQ reads the device-resident ticket counter through this (only after the kernel ended; cudaMemcpy is synchronous).
+  SendQ make_sendq() const {
+    SendQ q(sq_);
+    q.set_tickets_reader([this]() { unsigned long long t = 0; cudaSetDevice(device_); cudaMemcpy(&t, tail_, 8, cudaMemcpyDeviceToHost); return (uint64_t)t; });
+    return q;
+  }
   KvmDistCtl* ctl() const { return ctl_; }
   int device() const { return device_; }
   std::vector<unsigned> read_inbox() const {
@@ -89,7 +96,7 @@ class DistDevice {
   int rank_, world_, device_, num_vars_;
   unsigned* inbox_ = nullptr; int* in_vars_ = nullptr;
   KvmDistCtl* ctl_ = nullptr;
-  void* sq_ = nullptr; size_t sq_bytes_ = 0; float* sq_dev_ = nullptr;
+  void* sq_ = nullptr; size_t sq_bytes_ = 0; float* sq_dev_ = nullptr; unsigned long long* tail_ = nullptr;
   KvmDistDev host_{}, *dev_ = nullptr;
 };
 

@@ -79,6 +79,18 @@ static void test_arbiter_assist() {
   q.run(0, 1, 0, 10, 0, 0); b.update(q.s, 1000, 0, {900, 1000}); q.run(0, 1, 0, 10, 2, 0); b.update(q.s, 1000, 1, {900, 1000});
   CHECK(!(b.params().flags & KVM_SF_ARBITER), "assist disabled by default: the flag is never touched");
 }
+static void test_gate_tuner() {
+  KvmAdmissionGate g({-1, 1000, 1000}); KvmGateTuner t(g, {1, 2}, 100, 1000, 0.25, 0.5, 0.5, 0.1, 3);
+  CHECK(g.budget(1) == 1000, "starts at the maximum");
+  t.report_slack(0.1); CHECK(g.budget(1) == 500 && g.budget(2) == 500, "pressure halves every tuned class at once, got %lld", g.budget(1));
+  t.report_slack(0.0); t.report_slack(0.0); t.report_slack(0.0); CHECK(g.budget(1) == 100, "floor holds, got %lld", g.budget(1));
+  t.report_slack(0.7); t.report_slack(0.7); CHECK(g.budget(1) == 100, "growth needs 3 calm reports");
+  t.report_slack(0.7); CHECK(g.budget(1) == 200, "additive increase by 10%% of max, got %lld", g.budget(1));
+  for (int i = 0; i < 100; ++i) t.report_slack(0.9);
+  CHECK(g.budget(1) == 1000, "never above the maximum, got %lld", g.budget(1));
+  CHECK(g.in_flight(0) == 0 && g.acquire(0, 1 << 30, 10), "untuned classes are untouched");
+  bool threw = false; try { KvmGateTuner bad(g, {1}, 0, 10); } catch (const std::invalid_argument&) { threw = true; } CHECK(threw, "min 0 rejected");
+}
 static void test_config_errors() {
   auto bad = [](auto f) { KvmAdaptConfig c = cfg3(); f(c); try { KvmAdaptive a(KvmSchedParams{}, c); return false; } catch (const std::invalid_argument&) { return true; } };
   CHECK(bad([](KvmAdaptConfig& c) { c.workers = 0; }), "workers 0 rejected");
@@ -89,7 +101,7 @@ static void test_config_errors() {
 int main() {
   struct { const char* n; void (*f)(); } T[] = {{"tracks demand, releases when idle", test_tracks_demand_and_releases}, {"near-miss attack, slow release", test_near_miss_attack_and_slow_release},
     {"flood cannot starve batch", test_flood_cannot_starve_batch}, {"idle batch releases its floor", test_idle_batch_releases_floor},
-    {"no churn in steady state", test_no_churn_in_steady_state}, {"arbiter assist", test_arbiter_assist}, {"config errors", test_config_errors}};
+    {"no churn in steady state", test_no_churn_in_steady_state}, {"arbiter assist", test_arbiter_assist}, {"gate tuner", test_gate_tuner}, {"config errors", test_config_errors}};
   for (auto& t : T) { int b = g_fail; t.f(); printf("%s %s\n", g_fail == b ? "ok  " : "FAIL", t.n); }
   printf(g_fail ? "FAILED: %d checks\n" : "ALL PASS\n", g_fail);
   return g_fail != 0;

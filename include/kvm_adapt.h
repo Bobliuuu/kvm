@@ -191,6 +191,29 @@ class KvmAdmissionGate {
   }
   void release(int cls, long long tasks) { { std::lock_guard<std::mutex> lk(mu_); used_.at(cls) -= tasks; } cv_.notify_all(); }
   long long in_flight(int cls) { std::lock_guard<std::mutex> lk(mu_); return used_.at(cls); }
+  long long budget(int cls) { std::lock_guard<std::mutex> lk(mu_); return budget_.at(cls); }
+  void set_budget(int cls, long long b) { { std::lock_guard<std::mutex> lk(mu_); budget_.at(cls) = b; } cv_.notify_all(); }
  private:
   std::vector<long long> budget_, used_; std::mutex mu_; std::condition_variable cv_;
+};
+
+// Closed loop on the admission budgets. The device's near-miss counters can not see the time a bundle spent in the admission ring (its
+// deadline starts at admission), so the application reports what its deadline class experienced end to end: slack = (deadline - completion)
+// / period per completed unit of work (a game frame). A slack below `low` shrinks every tuned class's budget multiplicatively (fast: the
+// ring drains within one budget's worth of work); sustained slack above `high` grows it back additively. Budgets stay in [min, max].
+class KvmGateTuner {
+ public:
+  KvmGateTuner(KvmAdmissionGate& g, std::vector<int> classes, long long min_budget, long long max_budget, double low = 0.25, double high = 0.5, double decrease = 0.5, double increase_frac = 0.04, int calm_reports = 8)
+      : g_(g), cls_(std::move(classes)), lo_(min_budget), hi_(max_budget), low_(low), high_(high), dec_(decrease), inc_(increase_frac), calm_need_(calm_reports) {
+    if (lo_ < 1 || hi_ < lo_ || dec_ <= 0 || dec_ >= 1) throw std::invalid_argument("KvmGateTuner: 1 <= min <= max, 0 < decrease < 1");
+    for (int c : cls_) g_.set_budget(c, hi_);
+  }
+  void report_slack(double slack_frac) {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (slack_frac < low_) { calm_ = 0; ++shrinks_; for (int c : cls_) g_.set_budget(c, std::max(lo_, (long long)(g_.budget(c) * dec_))); }
+    else if (slack_frac > high_ && ++calm_ >= calm_need_) { calm_ = 0; for (int c : cls_) g_.set_budget(c, std::min(hi_, g_.budget(c) + std::max(1LL, (long long)(hi_ * inc_)))); }
+  }
+  int shrinks() { std::lock_guard<std::mutex> lk(mu_); return shrinks_; }
+ private:
+  KvmAdmissionGate& g_; std::vector<int> cls_; long long lo_, hi_; double low_, high_, dec_, inc_; int calm_need_, calm_ = 0, shrinks_ = 0; std::mutex mu_;
 };

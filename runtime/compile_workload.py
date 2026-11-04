@@ -6,6 +6,7 @@ The operator schema comes from include/kvm_ops*.def and the descriptor layout fr
 (runtime/abi.py parses them); semantics for range checks come from runtime/ref_ops.py. See FRAMEWORK.md.
 """
 import argparse
+import gc
 import json
 import logging
 import math
@@ -14,6 +15,7 @@ import struct
 import sys
 import time
 from array import array
+from itertools import chain
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -28,6 +30,9 @@ SEED_MAX = 2**63 - 1
 POLICIES = ('exact', 'at_least')
 DTYPES = {'f32': 0, 'i32': 1}              # KvmBuf.dtype
 _warned_ops: set = set()
+_F32 = struct.Struct('<f')
+_I32 = struct.Struct('<i')
+_MISSING = object()
 
 
 class CompileError(ValueError):
@@ -244,61 +249,91 @@ def _parse_buffers(decls, allow_nonfinite, data_dir):
     return out
 
 
-def _parse_args(where, op, raw, buffers, allow_nonfinite):
+class _ArgPlan:
+    """Per-operator argument decoding plan, built once: the per-task loop is the compiler's hot path."""
+    __slots__ = ('op', 'ref', 'items', 'n', 'sig', 'dtype_checks')
+
+    def __init__(self, op):
+        self.op, self.ref = op, ref_ops.OPS.get(op.name)
+        mins = self.ref.mins if self.ref else {}
+        self.items = tuple((a.name, a.type, a.optional, mins.get(a.name)) for a in op.args)
+        self.n = len(op.args)
+        self.sig = ', '.join(f'{a.name}:{a.type}{"?" if a.optional else ""}' for a in op.args)
+        self.dtype_checks = ()
+        if self.ref and not self.ref.opaque:
+            self.dtype_checks = tuple((a.name, 'i32' if a.name in self.ref.ints else 'f32')
+                                      for a in op.args if a.type == 'buf' and a.name not in self.ref.anydt)
+
+
+def _arg_error(where, plan, raw):
+    """Raise the precise CompileError for args that failed the fast path (called only on the failure path)."""
+    names = [i[0] for i in plan.items]
+    missing = [n for n in names if n not in raw]
+    extra = sorted(set(raw) - set(names))
+    _need(not missing, f"{where}: op '{plan.op.name}' missing arg(s) {missing}; signature ({plan.sig})")
+    _need(not extra, f"{where}: op '{plan.op.name}' has no arg(s) {extra}; takes {names}")
+
+
+def _parse_args(where, plan, raw, buffers, allow_nonfinite):
     """Resolve a JSON args object to (values by arg name, int32 words) against the operator schema."""
-    _need(isinstance(raw, dict), f'{where}: args must be an object, got {type(raw).__name__}')
-    names = [a.name for a in op.args]
-    if len(raw) != len(names) or any(n not in raw for n in names):
-        missing = [n for n in names if n not in raw]
-        extra = sorted(set(raw) - set(names))
-        _need(not missing, f"{where}: op '{op.name}' missing arg(s) {missing}; signature "
-                           f"({', '.join(f'{a.name}:{a.type}{"?" if a.optional else ""}' for a in op.args)})")
-        _need(not extra, f"{where}: op '{op.name}' has no arg(s) {extra}; takes {names}")
-    ref = ref_ops.OPS.get(op.name)
-    mins = ref.mins if ref else {}
+    if raw.__class__ is not dict:
+        raise CompileError(f'{where}: args must be an object, got {type(raw).__name__}')
+    if len(raw) != plan.n:
+        _arg_error(where, plan, raw)
     values, words = {}, []
-    for a in op.args:
-        v, loc = raw[a.name], None
-        if a.type == 'buf':
+    for name, typ, optional, lo in plan.items:
+        v = raw.get(name, _MISSING)
+        if v is _MISSING:
+            _arg_error(where, plan, raw)
+        if typ == 'buf':
             if v is None:
-                _need(a.optional, f"{where} arg '{a.name}': null is only allowed for optional buffers (buf?) and "
-                                  f"'{a.name}' of op '{op.name}' is required")
-                values[a.name], word = None, abi.ABSENT_BUF
+                if not optional:
+                    raise CompileError(f"{where} arg '{name}': null is only allowed for optional buffers (buf?) and "
+                                       f"'{name}' of op '{plan.op.name}' is required")
+                word = abi.ABSENT_BUF
             else:
-                _need(isinstance(v, str), f"{where} arg '{a.name}': expected a buffer name (string), got {v!r}")
-                _need(v in buffers, f"{where} arg '{a.name}': unknown buffer {v!r}; declared: {sorted(buffers)[:20]}")
-                values[a.name], word = v, buffers[v].index
-        elif a.type == 'i32':
-            loc = f"{where} arg '{a.name}'"
-            _need(_is_int(v), f'{loc}: expected an integer, got {v!r}')
-            _need(INT32_MIN <= v <= INT32_MAX, f'{loc}: {v} overflows int32')
-            if a.name in mins:
-                _need(v >= mins[a.name], f'{loc}: {v} below the minimum {mins[a.name]} for {op.name}')
-            values[a.name], word = v, v
+                buf = buffers.get(v) if v.__class__ is str else None
+                if buf is None:
+                    if v.__class__ is not str:
+                        raise CompileError(f"{where} arg '{name}': expected a buffer name (string), got {v!r}")
+                    raise CompileError(f"{where} arg '{name}': unknown buffer {v!r}; declared: {sorted(buffers)[:20]}")
+                word = buf.index
+        elif typ == 'i32':
+            if v.__class__ is not int:
+                raise CompileError(f"{where} arg '{name}': expected an integer, got {v!r}")
+            if not INT32_MIN <= v <= INT32_MAX:
+                raise CompileError(f"{where} arg '{name}': {v} overflows int32")
+            if lo is not None and v < lo:
+                raise CompileError(f"{where} arg '{name}': {v} below the minimum {lo} for {plan.op.name}")
+            word = v
         else:
-            v = _f32_value(v, f"{where} arg '{a.name}'", allow_nonfinite)
-            values[a.name] = v
-            word = struct.unpack('<i', struct.pack('<f', v))[0]
+            if v.__class__ is not float and v.__class__ is not int:
+                raise CompileError(f"{where} arg '{name}': expected a number, got {v!r}")
+            try:
+                packed = _F32.pack(v)
+            except OverflowError:
+                raise CompileError(f"{where} arg '{name}': {v!r} overflows float32") from None
+            word = _I32.unpack(packed)[0]
+            v = _F32.unpack(packed)[0]
+            if (word >> 23) & 0xFF == 0xFF and not allow_nonfinite:
+                raise CompileError(f"{where} arg '{name}': non-finite value {v} rejected (pass allow_nonfinite to permit)")
+        values[name] = v
         words.append(word)
     return values, words
 
 
-def _check_semantics(where, op, values, buffers):
+def _check_semantics(where, plan, values, buffers):
     """Dtype and extent checks of the buffer arguments against the operator's reference semantics."""
-    ref = ref_ops.OPS.get(op.name)
+    ref, op = plan.ref, plan.op
     if ref is None:
         if op.name not in _warned_ops:
             _warned_ops.add(op.name)
             log.warning('op %r has no reference semantics: dtypes and extents are not checked for it', op.name)
         return
-    if not ref.opaque:
-        for a in op.args:
-            name = values.get(a.name) if a.type == 'buf' else None
-            if name is None or a.name in ref.anydt:
-                continue
-            want = 'i32' if a.name in ref.ints else 'f32'
-            _need(buffers[name].dtype == want,
-                  f"{where} arg '{a.name}': op '{op.name}' needs a {want} buffer, '{name}' is {buffers[name].dtype}")
+    for arg, want in plan.dtype_checks:
+        name = values[arg]
+        if name is not None and buffers[name].dtype != want:
+            raise CompileError(f"{where} arg '{arg}': op '{op.name}' needs a {want} buffer, '{name}' is {buffers[name].dtype}")
     try:
         extents = ref.extents(values)
     except ValueError as e:
@@ -308,13 +343,14 @@ def _check_semantics(where, op, values, buffers):
         if name is None:
             continue
         buf = buffers[name]
-        if isinstance(need, tuple):
+        if need.__class__ is tuple:
             ok = buf.rows >= need[0] and buf.cols >= need[1]
             what = f'{need[0]}x{need[1]}'
         else:
-            ok = buf.numel >= need
+            ok = buf.rows * buf.cols >= need
             what = f'{need} element(s)'
-        _need(ok, f"{where} arg '{arg}': op '{op.name}' needs {what} but buffer '{name}' is {buf.rows}x{buf.cols}")
+        if not ok:
+            raise CompileError(f"{where} arg '{arg}': op '{op.name}' needs {what} but buffer '{name}' is {buf.rows}x{buf.cols}")
 
 
 @dataclass
@@ -332,7 +368,7 @@ _READ_KEYS = {'var', 'policy', 'version'}
 
 def _parse_tasks(graphs, ops, buffers, variables, allow_nonfinite):
     _need(isinstance(graphs, list) and graphs, "workload: 'graphs' must be a nonempty list")
-    decls, graph_names = [], set()
+    decls, graph_names, plans = [], set(), {}
     for gi, graph in enumerate(graphs):
         _keys(graph, f'graphs[{gi}]', {'name', 'tasks'}, {'name', 'tasks'})
         gname = graph['name']
@@ -343,43 +379,58 @@ def _parse_tasks(graphs, ops, buffers, variables, allow_nonfinite):
         _need(isinstance(tasks, list) and tasks, f'graph {gname!r}: tasks must be a nonempty list')
         base, index = len(decls), {}
         for ti, t in enumerate(tasks):
-            _keys(t, f'graph {gname!r} tasks[{ti}]', _TASK_KEYS, ('id', 'op'))
+            if t.__class__ is not dict or not _TASK_KEYS >= t.keys() or 'id' not in t or 'op' not in t:
+                _keys(t, f'graph {gname!r} tasks[{ti}]', _TASK_KEYS, ('id', 'op'))
             tid = t['id']
-            _need(isinstance(tid, str) and tid, f'graph {gname!r} tasks[{ti}]: id must be a non-empty string')
-            _need(tid not in index, f'graph {gname!r}: duplicate task id {tid!r}')
+            if tid.__class__ is not str or not tid:
+                raise CompileError(f'graph {gname!r} tasks[{ti}]: id must be a non-empty string')
+            if tid in index:
+                raise CompileError(f'graph {gname!r}: duplicate task id {tid!r}')
             index[tid] = base + ti
-        for t in tasks:
+        for ti, t in enumerate(tasks):
             where = f"{gname}/{t['id']}"
-            op = ops.get(t['op'])
-            _need(op is not None, f"{where}: unknown op {t['op']!r}; known: {sorted(ops)}")
-            values, words = _parse_args(where, op, t.get('args', {}), buffers, allow_nonfinite)
-            _check_semantics(where, op, values, buffers)
+            plan = plans.get(t['op'])
+            if plan is None:
+                op = ops.get(t['op'])
+                _need(op is not None, f"{where}: unknown op {t['op']!r}; known: {sorted(ops)}")
+                plan = plans[t['op']] = _ArgPlan(op)
+            values, words = _parse_args(where, plan, t.get('args', {}), buffers, allow_nonfinite)
+            _check_semantics(where, plan, values, buffers)
             prio, dl = t.get('priority', 0), t.get('deadline_us', -1)
-            _need(_is_int(prio) and INT32_MIN <= prio <= INT32_MAX, f'{where}: priority must be an int32, got {prio!r}')
-            _need(_is_int(dl) and -1 <= dl <= INT32_MAX, f'{where}: deadline_us must be -1 or an int32 >= 0, got {dl!r}')
+            if prio.__class__ is not int or not INT32_MIN <= prio <= INT32_MAX:
+                raise CompileError(f'{where}: priority must be an int32, got {prio!r}')
+            if dl.__class__ is not int or not -1 <= dl <= INT32_MAX:
+                raise CompileError(f'{where}: deadline_us must be -1 or an int32 >= 0, got {dl!r}')
             after = t.get('after', ())
-            _need(isinstance(after, (list, tuple)), f'{where}: after must be a list of task ids')
-            deps = []
-            for dep in after:
-                j = index.get(dep)
-                _need(j is not None, f"{where}: after names unknown task {dep!r} in graph {gname!r}")
-                deps.append(j)
-            _need(len(set(deps)) == len(deps), f'{where}: duplicate dependency in after {list(after)[:8]}')
+            try:
+                deps = [index[d] for d in after]
+            except (KeyError, TypeError):
+                _need(isinstance(after, (list, tuple)), f'{where}: after must be a list of task ids')
+                bad = next(d for d in after if d not in index)
+                raise CompileError(f"{where}: after names unknown task {bad!r} in graph {gname!r}") from None
+            if deps:
+                if len(set(deps)) != len(deps):
+                    raise CompileError(f'{where}: duplicate dependency in after {list(after)[:8]}')
+                if base + ti in deps:
+                    raise CompileError(f'{where}: depends on itself')
             pub = t.get('publishes')
-            _need(pub is None or pub in variables, f"{where}: publishes undeclared variable {pub!r}; declared: {list(variables)}")
-            reads, seen = [], set()
+            if pub is not None and pub not in variables:
+                raise CompileError(f"{where}: publishes undeclared variable {pub!r}; declared: {list(variables)}")
+            reads = []
             raw_reads = t.get('reads', ())
-            _need(isinstance(raw_reads, (list, tuple)), f'{where}: reads must be a list')
-            for ri, r in enumerate(raw_reads):
-                _keys(r, f'{where} reads[{ri}]', _READ_KEYS, _READ_KEYS)
-                _need(r['var'] in variables, f"{where} reads[{ri}]: undeclared variable {r['var']!r}; declared: {list(variables)}")
-                _need(r['policy'] in POLICIES, f"{where} reads[{ri}]: policy must be one of {POLICIES}, got {r['policy']!r}")
-                _need(_is_int(r['version']) and 0 <= r['version'] <= INT32_MAX,
-                      f"{where} reads[{ri}]: version must be an int32 >= 0, got {r['version']!r}")
-                _need(r['var'] not in seen, f"{where}: reads variable {r['var']!r} twice")
-                seen.add(r['var'])
-                reads.append((r['var'], r['policy'], r['version']))
-            decls.append(_Decl(Task(where, gname, gi, op, values, words, prio, dl), deps, pub, reads))
+            if raw_reads:
+                _need(isinstance(raw_reads, (list, tuple)), f'{where}: reads must be a list')
+                seen = set()
+                for ri, r in enumerate(raw_reads):
+                    _keys(r, f'{where} reads[{ri}]', _READ_KEYS, _READ_KEYS)
+                    _need(r['var'] in variables, f"{where} reads[{ri}]: undeclared variable {r['var']!r}; declared: {list(variables)}")
+                    _need(r['policy'] in POLICIES, f"{where} reads[{ri}]: policy must be one of {POLICIES}, got {r['policy']!r}")
+                    _need(_is_int(r['version']) and 0 <= r['version'] <= INT32_MAX,
+                          f"{where} reads[{ri}]: version must be an int32 >= 0, got {r['version']!r}")
+                    _need(r['var'] not in seen, f"{where}: reads variable {r['var']!r} twice")
+                    seen.add(r['var'])
+                    reads.append((r['var'], r['policy'], r['version']))
+            decls.append(_Decl(Task(where, gname, gi, plan.op, values, words, prio, dl), deps, pub, reads))
     return decls
 
 
@@ -465,19 +516,17 @@ class _Graph:
 
     def __init__(self, preds):
         n = len(preds)
-        deg = array('i', bytes(4 * (n + 1)))
-        for ps in preds:
-            for p in ps:
-                deg[p + 1] += 1
-        for i in range(n):
-            deg[i + 1] += deg[i]
-        fill, succ = array('i', deg[:n]), array('i', bytes(4 * deg[n]))
+        outs = [[] for _ in range(n)]
         for i, ps in enumerate(preds):             # ascending destination => each successor list comes out sorted
             for p in ps:
-                succ[fill[p]] = i
-                fill[p] += 1
-        self.n, self.off, self.succ = n, deg, succ
-        self.indegree = array('i', (len(ps) for ps in preds))
+                outs[p].append(i)
+        off = array('i', [0])
+        total = 0
+        for o in outs:
+            total += len(o)
+            off.append(total)
+        self.n, self.off, self.succ = n, off, array('i', chain.from_iterable(outs))
+        self.indegree = array('i', map(len, preds))
         self.pos = self._topo()
 
     def _topo(self):
@@ -562,15 +611,24 @@ def _check_versions(graph, decls, final, variables, publishers, by_version):
 def compile_spec(spec, base_versions=None, allow_nonfinite=False, data_dir=None, ops=None) -> Compiled:
     """Compile a workload dict. `base_versions` maps variable -> live version for a later-admitted workload.
     `data_dir` is where `file` initial values are looked up (validated when given).
-    `ops` overrides the operator registry (default: every registry file in include/)."""
+    `ops` overrides the operator registry (default: every registry file in include/).
+    The cyclic GC is paused meanwhile: millions of acyclic containers make generational collection dominate otherwise."""
+    was_enabled = gc.isenabled()
+    gc.disable()
+    try:
+        return _compile_spec(spec, base_versions, allow_nonfinite, data_dir, ops)
+    finally:
+        if was_enabled:
+            gc.enable()
+
+
+def _compile_spec(spec, base_versions, allow_nonfinite, data_dir, ops) -> Compiled:
     t0 = time.perf_counter()
     _keys(spec, 'workload', {'variables', 'buffers', 'graphs'}, {'graphs'})
     ops, task_abi = ops or abi.load_ops(), abi.load_task_abi()
     variables = _parse_variables(spec.get('variables', []), base_versions)
     buffers = _parse_buffers(spec.get('buffers', []), allow_nonfinite, data_dir)
     decls = _parse_tasks(spec['graphs'], ops, buffers, variables, allow_nonfinite)
-    for j, d in enumerate(decls):
-        _need(j not in d.after, f'{d.task.name}: depends on itself')
     t1 = time.perf_counter()
     publishers, by_version, exact_edges = _plan_versions(decls, variables)
     tasks, final, preds = _lay_out(decls, ops, exact_edges)

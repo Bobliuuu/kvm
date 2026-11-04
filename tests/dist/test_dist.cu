@@ -419,6 +419,11 @@ static void suite_pingpong(bool proxy, FaultSpec f = {}, bool tcp = false, int R
   auto out = w.run();
   double ms = ms_since(t0);
   report(label, out, w);
+  if (!out[0].ok || !out[1].ok) {      // diagnosis for the log: how far did each side get?
+    std::vector<unsigned> i0 = w.dd[0]->read_inbox(), i1 = w.dd[1]->read_inbox();
+    fprintf(stderr, "  diagnosis: inbox[0] = %u on rank 0, %u on rank 1 (rounds published to each side); executor version[0] = %d / %d; tasks done %d / %d\n",
+            i0[0], i1[0], out[0].res.version.empty() ? -1 : out[0].res.version[0], out[1].res.version.empty() ? -1 : out[1].res.version[0], out[0].res.done, out[1].res.done);
+  }
   if (out[0].ok && out[1].ok) {
     check_pingpong(w, R, N, label);
     std::vector<unsigned> in0 = w.dd[0]->read_inbox(), in1 = w.dd[1]->read_inbox();

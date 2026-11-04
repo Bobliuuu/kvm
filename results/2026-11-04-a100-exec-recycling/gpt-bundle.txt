@@ -1,0 +1,16 @@
+[kvm_exec][I] golden: 86868 buffer values compared, 5255 bitwise equal, worst buffer relative L2 error 0.0809 (tolerance 1e-09)
+[kvm_exec][I] golden: 0 reads checked, final versions compared; 105 mismatches
+FAIL: 544/544 tasks, 7.819 ms, golden MISMATCH
+== memcheck
+OK: 544/544 tasks, 68.580 ms
+========= ERROR SUMMARY: 0 errors
+exit ${PIPESTATUS[0]}
+== racecheck
+OK: 544/544 tasks, 2704.360 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+exit ${PIPESTATUS[0]}
+== synccheck
+OK: 544/544 tasks, 35.629 ms
+========= ERROR SUMMARY: 0 errors
+exit ${PIPESTATUS[0]}
+EXIT

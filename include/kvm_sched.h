@@ -29,6 +29,8 @@ enum KvmRes { KVM_RES_COMPUTE = 0, KVM_RES_BW = 1, KVM_RES_LAT = 2, KVM_RES_MIXE
 #define KVM_SF_INHERIT   2   // priority inheritance across version waits; clear = the deadlock the design prevents
 #define KVM_SF_ARBITER   4   // global concurrent-BW-task limit, adapted online by the policy block
 #define KVM_SF_DEFAULT   (KVM_SF_GUARANTEE | KVM_SF_INHERIT)
+#define KVM_CF_PROTECT 1
+#define KVM_CF_OPAFF   2     // a ready task is offered first to the block that last ran a task of the same op (warm code/state), for affinity_us
 // Bits the device records in KvmTrace.flags for how a task was started (bit0 is KVM_TRACE_MISSED).
 #define KVM_TRACE_RESV    2    // started while its class was below its reservation
 #define KVM_TRACE_BOOST   4    // started under priority inheritance
@@ -40,7 +42,7 @@ struct KvmClassParams {        // 32 B; written by the host at any time through 
   int max_cta;                 // concurrency cap; KVM_UNLIMITED = none, 0 = fully throttled (reservations/inheritance override)
   int bw_cta;                  // cap on this class's concurrent bandwidth-bound tasks (KVM_UNLIMITED = none)
   int urgent_us;               // a ready task whose deadline is within this many us is served by EDF first (0 = off)
-  int protect;                 // 1: this class's queue wait feeds the bandwidth arbiter's pressure signal
+  int protect;                 // bit0 (KVM_CF_PROTECT): this class's queue wait feeds the arbiter's pressure signal; bit1 (KVM_CF_OPAFF): op affinity
   int target_wait_us;          // queue-wait target of a protected class (arbiter and controller)
   int sm_hi;                   // STATIC mode: this class owns SM ids below this bound (cumulative)
 };
@@ -87,6 +89,7 @@ struct alignas(128) KvmSchedDev {
   alignas(128) int bw_total;                   // concurrently running bandwidth-bound CTAs
   alignas(128) unsigned long long bw_bytes;    // cumulative bytes of finished bandwidth-bound tasks
   alignas(128) unsigned ema_ns[KVM_OP_SLOTS];  // running-time estimate per op id
+  int op_blk[KVM_OP_SLOTS];                    // block that last finished a task of this op (-1 none)
   KvmClsDev cls[KVM_MAX_CLS];
 };
 // Pointers and launch-time constants carried in KvmDevState (kernel parameter space).

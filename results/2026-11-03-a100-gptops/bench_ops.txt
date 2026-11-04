@@ -1,0 +1,47 @@
+device: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz
+PASS  bench check: matmul TF32 NN 4096x4096x4096  400 sampled elements relerr 2.67e-04
+BENCH  matmul TF32 NN 4096x4096x4096                  full dispatch    4.674 ms    29404.0 GFLOP/s  (18.8% of 156000)
+BENCH  matmul TF32 NN 4096x4096x4096                  single-op        3.858 ms    35624.2 GFLOP/s  (22.8% of 156000)
+PASS  bench check: matmul TF32 TN 4096x4096x4096  400 sampled elements relerr 3.04e-04
+BENCH  matmul TF32 TN 4096x4096x4096                  full dispatch    4.842 ms    28386.6 GFLOP/s  (18.2% of 156000)
+BENCH  matmul TF32 TN 4096x4096x4096                  single-op        3.966 ms    34650.2 GFLOP/s  (22.2% of 156000)
+PASS  bench check: matmul TF32 NT 4096x4096x4096  400 sampled elements relerr 2.64e-04
+BENCH  matmul TF32 NT 4096x4096x4096                  full dispatch    6.379 ms    21546.2 GFLOP/s  (13.8% of 156000)
+BENCH  matmul TF32 NT 4096x4096x4096                  single-op        4.729 ms    29060.9 GFLOP/s  (18.6% of 156000)
+PASS  bench check: matmul 3xTF32 NN 4096x4096x4096  400 sampled elements relerr 1.77e-05
+BENCH  matmul 3xTF32 NN 4096x4096x4096                full dispatch    8.019 ms    17139.9 GFLOP/s  (33.0% of 52000)
+BENCH  matmul 3xTF32 NN 4096x4096x4096                single-op        6.931 ms    19830.3 GFLOP/s  (38.1% of 52000)
+PASS  bench check: matmul TF32 NN 2048x2048x2048  400 sampled elements relerr 2.51e-04
+BENCH  matmul TF32 NN 2048x2048x2048                  full dispatch    0.637 ms    26968.7 GFLOP/s  (17.3% of 156000)
+BENCH  matmul TF32 NN 2048x2048x2048                  single-op        0.531 ms    32369.7 GFLOP/s  (20.7% of 156000)
+PASS  bench check: matmul TF32 NN 8192x768x768  400 sampled elements relerr 2.44e-04
+BENCH  matmul TF32 NN 8192x768x768                    full dispatch    0.413 ms    23388.3 GFLOP/s  (15.0% of 156000)
+BENCH  matmul TF32 NN 8192x768x768                    single-op        0.327 ms    29509.6 GFLOP/s  (18.9% of 156000)
+PASS  bench check: attn fwd B=4 T=1024 H=16 Hkv=16 hd=64 (b0,h0 all rows)  relerr 1.56e-07
+PASS  bench check: attn bwd dq B=4 T=1024 H=16 hd=64 (b0,h0)  relerr 4.03e-07
+PASS  bench check: attn bwd dk B=4 T=1024 H=16 hd=64 (b0,h0)  relerr 1.46e-06
+BENCH  attn fwd B=4 T=1024 H=16 Hkv=16 hd=64          full dispatch    2.071 ms     4147.4 GFLOP/s  (21.3% of 19500)
+BENCH  attn fwd B=4 T=1024 H=16 Hkv=16 hd=64          single-op        1.683 ms     5103.8 GFLOP/s  (26.2% of 19500)
+BENCH  attn bwd B=4 T=1024 H=16 Hkv=16 hd=64          full dispatch    6.629 ms     3239.6 GFLOP/s  (16.6% of 19500)
+BENCH  attn bwd B=4 T=1024 H=16 Hkv=16 hd=64          single-op        5.754 ms     3732.3 GFLOP/s  (19.1% of 19500)
+PASS  bench check: attn fwd B=4 T=2048 H=16 Hkv=4 hd=64 (b0,h0 all rows)  relerr 1.86e-07
+BENCH  attn fwd B=4 T=2048 H=16 Hkv=4 hd=64           full dispatch    7.521 ms     4568.3 GFLOP/s  (23.4% of 19500)
+BENCH  attn fwd B=4 T=2048 H=16 Hkv=4 hd=64           single-op        6.453 ms     5324.2 GFLOP/s  (27.3% of 19500)
+BENCH  attn bwd B=4 T=2048 H=16 Hkv=4 hd=64           full dispatch   23.581 ms     3642.8 GFLOP/s  (18.7% of 19500)
+BENCH  attn bwd B=4 T=2048 H=16 Hkv=4 hd=64           single-op       21.060 ms     4078.8 GFLOP/s  (20.9% of 19500)
+PASS  bench check: attn fwd B=2 T=2048 H=8 Hkv=8 hd=128 (b0,h0 all rows)  relerr 1.88e-07
+PASS  bench check: attn bwd dq B=2 T=2048 H=8 hd=128 (b0,h0)  relerr 5.36e-07
+PASS  bench check: attn bwd dk B=2 T=2048 H=8 hd=128 (b0,h0)  relerr 1.96e-06
+BENCH  attn fwd B=2 T=2048 H=8 Hkv=8 hd=128           full dispatch    5.343 ms     3215.6 GFLOP/s  (16.5% of 19500)
+BENCH  attn fwd B=2 T=2048 H=8 Hkv=8 hd=128           single-op        4.922 ms     3490.7 GFLOP/s  (17.9% of 19500)
+BENCH  attn bwd B=2 T=2048 H=8 Hkv=8 hd=128           full dispatch   16.597 ms     2587.8 GFLOP/s  (13.3% of 19500)
+BENCH  attn bwd B=2 T=2048 H=8 Hkv=8 hd=128           single-op       16.048 ms     2676.3 GFLOP/s  (13.7% of 19500)
+PASS  bench check: layernorm fwd 16384x1024 (first 64 rows)  relerr 1.438e-07 (tol 1e-05)
+BENCH  layernorm fwd 16384x1024                       full dispatch    0.151 ms      886.8 GB/s  (57.0% of 1555)
+PASS  bench check: adamw 16M (first step; later steps mutate state)  max abs diff 1.91e-07 (sampled)
+BENCH  adamw 16M params                               full dispatch    0.458 ms     1024.6 GB/s  (65.9% of 1555)
+PASS  bench check: softmax_ce fwd 8192x50304  mean of first 64 row losses 15.677631 vs 15.677631
+BENCH  softmax_ce fwd 8192x50304                      full dispatch    1.802 ms      914.5 GB/s (1 read counted)  (58.8% of 1555)
+BENCH  softmax_ce bwd 8192x50304                      full dispatch    3.729 ms      884.0 GB/s (read+write)  (56.8% of 1555)
+
+16 passed, 0 failed

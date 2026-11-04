@@ -1,0 +1,5 @@
+// Test-only operators (ids 200+), loaded with -DKVM_EXTRA_OPS_DEF: optional buffers and i32 buffers.
+X(opt_add, 200, "a:buf,b:buf?,out:buf,n:i32")             // out = a + (b ? b : 0)
+X(gather,  201, "idx:buf,src:buf,out:buf,n:i32")          // idx is an i32 buffer: out[i] = src[idx[i]]
+X(iota_i,  202, "out:buf,n:i32")                          // out (i32 buffer)[i] = i
+X(opt_i,   203, "x:buf?,out:buf,n:i32")                   // out[i] = x ? x[i] : -1   (x i32 optional)

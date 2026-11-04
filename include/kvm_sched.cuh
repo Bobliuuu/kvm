@@ -88,7 +88,7 @@ static inline bool kvm_cost_names_registered() {
 __device__ __forceinline__ void red_add(int* p, int v) { asm volatile("red.relaxed.gpu.global.add.s32 [%0],%1;" ::"l"(p), "r"(v) : "memory"); }
 __device__ __forceinline__ int kvm_vol(const int* p) { return *(const volatile int*)p; }
 __device__ __forceinline__ unsigned long long kvm_voll(const unsigned long long* p) { return *(const volatile unsigned long long*)p; }
-__device__ __forceinline__ bool kvm_should_exit(const KvmDevState& S, unsigned long long t0);
+__device__ __forceinline__ bool kvm_should_exit(const KvmDevState& S, KvmWatch& t0);
 
 // ---------------- enqueue / ready accounting ----------------
 // Called by kvm_enqueue before the cell is published (ready is a hint that is never below the number of published cells).
@@ -110,7 +110,7 @@ __device__ __forceinline__ void kvm_enqueue(const KvmDevState& S, int slot) {
   const size_t qi = (size_t)c * KVM_NBUCKETS + b;
   KvmQCtl* q = S.qctl + qi;
   unsigned long long pos = atom_add64(&q->tail, 1ull);
-  KvmCell* cell = S.cells + qi * S.live_cap + (pos & (unsigned long long)(S.live_cap - 1));
+  KvmCell* cell = S.cells + qi * S.rcap + (pos & (unsigned long long)(S.rcap - 1));
   // The cell frees when its previous occupant was popped; the occupant's popper recycles it right after its head CAS.
   for (int spin = 0; ld_acq64(&cell->seq) != pos; ++spin) {
     if (spin > (1 << 22)) { kvm_fail(S, KVM_ERR_QUEUE_OVERFLOW, slot, b, (int)pos); return; }
@@ -121,7 +121,11 @@ __device__ __forceinline__ void kvm_enqueue(const KvmDevState& S, int slot) {
   cell->slot = slot;
   cell->ready_ns = now;
   cell->deadline_ns = d->deadline_us >= 0 ? S.trace[slot].admit_ns + (unsigned long long)d->deadline_us * 1000ull : 0ull;
-  cell->res = S.sp.on ? (S.sp.info[slot].res | ((S.sp.info[slot].pref + 1) << 8)) : KVM_RES_MIXED;
+  if (S.sp.on) {
+    int pref = S.sp.info[slot].pref;   // the block that released the task (chain affinity) ...
+    if ((kvm_vol(&S.sp.dev->cls[c].protect) & KVM_CF_OPAFF) && d->op_id < KVM_OP_SLOTS) { int ob = kvm_vol(&S.sp.dev->op_blk[d->op_id]); if (ob >= 0) pref = ob; }   // ... or the one that last ran this op
+    cell->res = S.sp.info[slot].res | ((pref + 1) << 8);
+  } else cell->res = KVM_RES_MIXED;
   if (S.sp.on) { kvm_sched_ready(S, c); if (cell->deadline_ns) atom_add(&S.sp.dev->cls[c].dl_ready, 1); }
   st_rel64(&cell->seq, pos + 1);
 }
@@ -137,7 +141,7 @@ __device__ __forceinline__ KvmCand kvm_scan(const KvmDevState& S, int c, unsigne
   const size_t qi = (size_t)c * KVM_NBUCKETS + lane;
   KvmQCtl* q = S.qctl + qi;
   unsigned long long h = ld_acq64(&q->head);
-  KvmCell* cell = S.cells + qi * S.live_cap + (h & (unsigned long long)(S.live_cap - 1));
+  KvmCell* cell = S.cells + qi * S.rcap + (h & (unsigned long long)(S.rcap - 1));
   long long score = -1; unsigned long long dl = 0; int res = 0;
   if (ld_acq64(&cell->seq) == h + 1) {
     dl = cell->deadline_ns; res = cell->res & 0xff;
@@ -172,9 +176,9 @@ __device__ __forceinline__ int kvm_claim(const KvmDevState& S, int c, const KvmC
     const size_t qi = (size_t)c * KVM_NBUCKETS + lane;
     KvmQCtl* q = S.qctl + qi;
     if (atom_cas64(&q->head, cd.head, cd.head + 1) == cd.head) {
-      KvmCell* cell = S.cells + qi * S.live_cap + (cd.head & (unsigned long long)(S.live_cap - 1));
+      KvmCell* cell = S.cells + qi * S.rcap + (cd.head & (unsigned long long)(S.rcap - 1));
       got = cell->slot;
-      st_rel64(&cell->seq, cd.head + (unsigned long long)S.live_cap);  // recycle before running
+      st_rel64(&cell->seq, cd.head + (unsigned long long)S.rcap);  // recycle before running
     }
   }
   return __shfl_sync(0xffffffffu, got, cd.lane);
@@ -324,6 +328,7 @@ __device__ __forceinline__ void kvm_sched_done(const KvmDevState& S, int slot, u
   }
   atomicAdd(&k.sm_ns, run); atomicAdd(&k.tasks, 1ull); atomicAdd(&k.bytes, in.bytes);
   if (missed) { atomicAdd(&k.missed, 1ull); atomicAdd(&k.w_miss, 1ull); }
+  if (d.op_id < KVM_OP_SLOTS) D->op_blk[d.op_id] = (int)blockIdx.x;
   if (d.op_id < KVM_OP_SLOTS) {  // racy by design: an estimate
     unsigned old = D->ema_ns[d.op_id];
     D->ema_ns[d.op_id] = old ? (unsigned)((old * 7ull + min(run, 0xffffffffull)) / 8) : (unsigned)min(run, 0xffffffffull);
@@ -366,7 +371,7 @@ struct KvmPolShared {
 
 // One block, all threads. Every tick (~2 us): pick up new host parameters, recompute the inheritance boost, every window_us
 // measure achieved bandwidth and run the arbiter (AIMD on the global concurrent-BW-task limit), every ~20 us export telemetry.
-__device__ void kvm_policy(const KvmDevState& S, unsigned long long t0, KvmPolShared& P) {
+__device__ void kvm_policy(const KvmDevState& S, KvmWatch& t0, KvmPolShared& P) {
   const KvmSchedPtrs& sp = S.sp;
   KvmSchedDev* D = sp.dev;
   const int tid = threadIdx.x, nc = sp.nc;
@@ -427,7 +432,7 @@ __device__ void kvm_policy(const KvmDevState& S, unsigned long long t0, KvmPolSh
           P.win_n[c] = (int)wn; P.win_avg_us[c] = wn ? (int)(ws / wn / 1000) : 0; P.win_max_us[c] = (int)(wm / 1000);
           int tgt = kvm_vol(&k.target_wait_us);
           (void)mi;   // deadline misses are reported, not used: an unattainable SLO would pin the limit at its floor
-          if (kvm_vol(&k.protect) && wn && tgt > 0 && (int)(wm / 1000) > tgt) pressure = true;
+          if ((kvm_vol(&k.protect) & KVM_CF_PROTECT) && wn && tgt > 0 && (int)(wm / 1000) > tgt) pressure = true;
         }
         if (flags & KVM_SF_ARBITER) {
           int lim = kvm_vol(&D->bw_limit), lo = P.lim_lo, hi = P.lim_hi;

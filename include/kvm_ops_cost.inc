@@ -20,3 +20,15 @@ KC(mse_grad, BW,      12ull * U(5), 6ull * U(5))                       // pred,t
 KC(matmul,   MIXED,   4ull * (U(3) * U(5) + U(5) * U(4) + U(3) * U(4)), 2ull * U(3) * U(4) * U(5))  // a,b,out,m,n,k
 KC(fill,     BW,      4ull * U(2), 0)                                  // x,value,n
 KC(spin,     LAT,     0, 0)                                            // us
+// ---- GPT pack (include/kvm_ops_gpt.def). Only the operators that stream memory are listed (bytes from the element ranges); GEMM tiles,
+// attention and the small reductions keep the default (MIXED, 0 bytes). Without these entries the bandwidth arbiter and bw_cta caps could
+// not see AdamW or the other sweeps at all.
+KC(adamw,            BW, 28ull * (U(7) - U(6)), 10ull * (U(7) - U(6)))          // p,g,m,v read; p,m,v written: 7 words per element
+KC(gradnorm_partial, BW, 4ull * (U(4) - U(3)), 2ull * (U(4) - U(3)))            // g read
+KC(residual_add,     BW, 12ull * (U(4) - U(3)), U(4) - U(3))                    // a,b read; out written
+KC(gelu_fwd,         BW, 8ull * (U(3) - U(2)), 8ull * (U(3) - U(2)))
+KC(gelu_bwd,         BW, 12ull * (U(4) - U(3)), 10ull * (U(4) - U(3)))
+KC(zero_buf,         BW, 4ull * (U(2) - U(1)), 0)
+KC(embedding_fwd,    BW, 8ull * (U(5) - U(4)) * U(7), 0)                        // rows (r1-r0) of width d: gather + write
+KC(softmax_ce_fwd,   BW, 4ull * (U(5) - U(4)) * U(6), 5ull * (U(5) - U(4)) * U(6))
+KC(softmax_ce_bwd,   BW, 8ull * (U(6) - U(5)) * U(7), 6ull * (U(6) - U(5)) * U(7))

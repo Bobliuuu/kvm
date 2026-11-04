@@ -60,52 +60,101 @@ extern __device__ char doom_log[1 << 16];
 extern __device__ volatile long doom_log_n;
 }
 
+// ---- instances. KVM_DOOM_INSTANCES engines (default 1) with independent globals: instance 0 is doom_dev.o as built, instance k >= 1 is
+// doom_dev_i<k>.o (doom/build.sh with DOOM_INSTANCES=N): the same code with every symbol prefixed i<k>_. Link all of them.
+#ifndef KVM_DOOM_INSTANCES
+#define KVM_DOOM_INSTANCES 1
+#endif
+static_assert(KVM_DOOM_INSTANCES >= 1 && KVM_DOOM_INSTANCES <= 8, "KVM_DOOM_INSTANCES must be 1..8");
+#define KVM_DOOM_PFX_0
+#define KVM_DOOM_PFX_1 i1_
+#define KVM_DOOM_PFX_2 i2_
+#define KVM_DOOM_PFX_3 i3_
+#define KVM_DOOM_PFX_4 i4_
+#define KVM_DOOM_PFX_5 i5_
+#define KVM_DOOM_PFX_6 i6_
+#define KVM_DOOM_PFX_7 i7_
+#define KVM_DOOM_CAT_(a, b) a##b
+#define KVM_DOOM_CAT(a, b) KVM_DOOM_CAT_(a, b)
+#define KVM_DOOM_SYM(k, name) KVM_DOOM_CAT(KVM_DOOM_PFX_##k, name)
+#define KVM_DOOM_DECL(k)                                                                                  \
+  extern "C" {                                                                                            \
+  __device__ void KVM_DOOM_SYM(k, gpu_doom_boot)(const unsigned char* wad, long wad_len);                 \
+  __device__ void KVM_DOOM_SYM(k, gpu_doom_tic)(uint32_t input);                                          \
+  __device__ void KVM_DOOM_SYM(k, gpu_doom_worker)(int tid);                                              \
+  __device__ void KVM_DOOM_SYM(k, gpu_doom_abort_tic)();                                                  \
+  __device__ void KVM_DOOM_SYM(k, doom_state)(int32_t* out);                                              \
+  extern __device__ unsigned char* KVM_DOOM_SYM(k, I_VideoBuffer);                                        \
+  extern __device__ uint32_t KVM_DOOM_SYM(k, colors)[256];                                                \
+  }
+KVM_DOOM_DECL(1)
+KVM_DOOM_DECL(2)
+KVM_DOOM_DECL(3)
+KVM_DOOM_DECL(4)
+KVM_DOOM_DECL(5)
+KVM_DOOM_DECL(6)
+KVM_DOOM_DECL(7)
+// Dispatch on the instance id: KVM_DOOM_SWITCH(inst, M) runs the statement M(k) for k == inst; M uses KVM_DOOM_SYM(k, name).
+// Instances beyond KVM_DOOM_INSTANCES are discarded by `if constexpr` (no reference, so their objects need not be linked); the caller
+// bounds-checks `inst` first.
+#define KVM_DOOM_ARM(k, M) case k: if constexpr (KVM_DOOM_INSTANCES > k) { M(k) } break;
+#define KVM_DOOM_SWITCH(inst, M) switch (inst) { KVM_DOOM_ARM(0, M) KVM_DOOM_ARM(1, M) KVM_DOOM_ARM(2, M) KVM_DOOM_ARM(3, M) KVM_DOOM_ARM(4, M) KVM_DOOM_ARM(5, M) KVM_DOOM_ARM(6, M) KVM_DOOM_ARM(7, M) default: break; }
+
 __device__ const unsigned char* g_kvm_doom_wad;   // uploaded by kvm_doom_host_init()
 __device__ long g_kvm_doom_wad_len;
 
-enum KvmDoomStatus { KVM_DOOM_OK = 0, KVM_DOOM_BAD_ORDER = 1, KVM_DOOM_NO_WAD = 2, KVM_DOOM_SMALL_BUF = 3 };
+enum KvmDoomStatus { KVM_DOOM_OK = 0, KVM_DOOM_BAD_ORDER = 1, KVM_DOOM_NO_WAD = 2, KVM_DOOM_SMALL_BUF = 3, KVM_DOOM_BAD_INSTANCE = 4 };
 
 // All threads of the CTA call; the return value is meaningful on thread 0 only (workers return KVM_DOOM_OK).
-__device__ inline int kvm_doom_tick(int frame, const float* input, int n_input, float* state, int n_state) {
+__device__ inline int kvm_doom_tick(int frame, const float* input, int n_input, float* state, int n_state, int inst = 0) {
   const int tid = threadIdx.x;
   if (tid >= KVM_DOOM_THREADS) return KVM_DOOM_OK;
-  if (tid != 0) { gpu_doom_worker(tid); return KVM_DOOM_OK; }
+  if (inst < 0 || inst >= KVM_DOOM_INSTANCES) return KVM_DOOM_BAD_INSTANCE;
+#define KVM_DOOM_M_WORKER(k) KVM_DOOM_SYM(k, gpu_doom_worker)(tid);
+  if (tid != 0) { KVM_DOOM_SWITCH(inst, KVM_DOOM_M_WORKER) return KVM_DOOM_OK; }
   int err = KVM_DOOM_OK;
   if (n_state < KVM_DOOM_ST_HEADER) err = KVM_DOOM_SMALL_BUF;
   else if (frame == 0 && g_kvm_doom_wad == nullptr) err = KVM_DOOM_NO_WAD;
   else if (frame != 0 && __float_as_int(__ldcg(state + KVM_DOOM_ST_TICS)) != frame) err = KVM_DOOM_BAD_ORDER;
-  if (err != KVM_DOOM_OK) { gpu_doom_abort_tic(); return err; }
-  if (frame == 0) gpu_doom_boot(g_kvm_doom_wad, g_kvm_doom_wad_len);
+#define KVM_DOOM_M_ABORT(k) KVM_DOOM_SYM(k, gpu_doom_abort_tic)();
+#define KVM_DOOM_M_BOOT(k) KVM_DOOM_SYM(k, gpu_doom_boot)(g_kvm_doom_wad, g_kvm_doom_wad_len);
+  if (err != KVM_DOOM_OK) { KVM_DOOM_SWITCH(inst, KVM_DOOM_M_ABORT) return err; }
+  if (frame == 0) { KVM_DOOM_SWITCH(inst, KVM_DOOM_M_BOOT) }
   uint32_t in = KVM_DOOM_INPUT_SCRIPTED;
   if (input && n_input > frame + 1 && __float_as_uint(__ldcg(input)) == KVM_DOOM_INPUT_MAGIC) in = __float_as_uint(__ldcg(input + frame + 1));
-  gpu_doom_tic(in);
   int32_t st[16] = {};
-  doom_state(st);
+#define KVM_DOOM_M_TIC(k) KVM_DOOM_SYM(k, gpu_doom_tic)(in); KVM_DOOM_SYM(k, doom_state)(st);
+  KVM_DOOM_SWITCH(inst, KVM_DOOM_M_TIC)
   for (int i = 0; i < 14; i++) state[i] = __int_as_float(st[i]);
   return KVM_DOOM_OK;
 }
 
 // All threads of the CTA call. Copies screen rows [row0, row0+rows) and, with row0 == 0, the palette.
 // With state != nullptr it also checks that tick `frame` is the last one completed.
-__device__ inline int kvm_doom_present(float* fb, int n_fb, int row0, int rows, const float* state, int n_state, int frame) {
+__device__ inline int kvm_doom_present(float* fb, int n_fb, int row0, int rows, const float* state, int n_state, int frame, int inst = 0) {
+  if (inst < 0 || inst >= KVM_DOOM_INSTANCES) return KVM_DOOM_BAD_INSTANCE;
   if (n_fb < KVM_DOOM_FB_WORDS || row0 < 0 || rows < 0 || row0 + rows > DOOM_H) return KVM_DOOM_SMALL_BUF;
   if (state && frame >= 0 && __float_as_int(__ldcg(state + KVM_DOOM_ST_TICS)) != frame + 1) return KVM_DOOM_BAD_ORDER;
-  const unsigned char* vb = I_VideoBuffer;
+  const unsigned char* vb = nullptr; const uint32_t* pal = nullptr;
+#define KVM_DOOM_M_VB(k) vb = KVM_DOOM_SYM(k, I_VideoBuffer); pal = KVM_DOOM_SYM(k, colors);
+  KVM_DOOM_SWITCH(inst, KVM_DOOM_M_VB)
   unsigned char* out = reinterpret_cast<unsigned char*>(fb);
   for (int i = row0 * DOOM_W + threadIdx.x; i < (row0 + rows) * DOOM_W; i += blockDim.x) out[i] = __ldcg(vb + i);
-  if (row0 == 0 && threadIdx.x < 256) fb[KVM_DOOM_PAL_WORD + threadIdx.x] = __uint_as_float(__ldcg(colors + threadIdx.x));
+  if (row0 == 0 && threadIdx.x < 256) fb[KVM_DOOM_PAL_WORD + threadIdx.x] = __uint_as_float(__ldcg(pal + threadIdx.x));
   return KVM_DOOM_OK;
 }
 
 // All threads of the CTA call (any blockDim <= 1024). Records the frame fingerprint of the current screen in state history slot `frame`.
-__device__ inline int kvm_doom_status(int frame, float* state, int n_state) {
+__device__ inline int kvm_doom_status(int frame, float* state, int n_state, int inst = 0) {
+  if (inst < 0 || inst >= KVM_DOOM_INSTANCES) return KVM_DOOM_BAD_INSTANCE;
   __shared__ uint32_t s_sum[32], s_xor[32];
   if (frame < 0 || n_state < KVM_DOOM_STATE_WORDS(frame + 1)) return KVM_DOOM_SMALL_BUF;
   if (__float_as_int(__ldcg(state + KVM_DOOM_ST_TICS)) != frame + 1) return KVM_DOOM_BAD_ORDER;
-  const unsigned char* vb = I_VideoBuffer;
+  const unsigned char* vb = nullptr; const uint32_t* pal = nullptr;
+  KVM_DOOM_SWITCH(inst, KVM_DOOM_M_VB)
   uint32_t s = 0, x = 0;
   for (int i = threadIdx.x; i < DOOM_PIXELS + 256; i += blockDim.x) {
-    const uint32_t v = i < DOOM_PIXELS ? __ldcg(vb + i) : __ldcg(colors + (i - DOOM_PIXELS));
+    const uint32_t v = i < DOOM_PIXELS ? __ldcg(vb + i) : __ldcg(pal + (i - DOOM_PIXELS));
     const uint32_t t = dh_term(i, v);
     s += t; x ^= t;
   }
@@ -153,6 +202,21 @@ KVM_OP(doom_tick) {
   KvmView in = ARG_BUF(1), st = ARG_BUF(2);
   const int err = kvm_doom_tick(ARG_I32(0), in.p, in.rows * in.cols, st.p, st.rows * st.cols);
   if (err) c.fail(KVM_ERR_USER, 128, err);
+}
+KVM_OP(doom_tick_n) {
+  KvmView in = ARG_BUF(1), st = ARG_BUF(2);
+  const int err = kvm_doom_tick(ARG_I32(0), in.p, in.rows * in.cols, st.p, st.rows * st.cols, ARG_I32(3));
+  if (err) c.fail(KVM_ERR_USER, 131, err);
+}
+KVM_OP(doom_present_n) {
+  KvmView fb = ARG_BUF(0);
+  const int err = kvm_doom_present(fb.p, fb.rows * fb.cols, ARG_I32(1), ARG_I32(2), nullptr, 0, -1, ARG_I32(3));
+  if (err) c.fail(KVM_ERR_USER, 132, err);
+}
+KVM_OP(doom_status_n) {
+  KvmView st = ARG_BUF(1);
+  const int err = kvm_doom_status(ARG_I32(0), st.p, st.rows * st.cols, ARG_I32(2));
+  if (err) c.fail(KVM_ERR_USER, 133, err);
 }
 KVM_OP(doom_present) {
   KvmView fb = ARG_BUF(0);

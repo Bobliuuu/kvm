@@ -353,18 +353,30 @@ struct World {
   std::vector<RankOut> run() {
     int W = (int)pr.size();
     std::vector<RankOut> out(W); std::vector<std::thread> th;
+    std::vector<std::atomic<int>> where(W);       // 0 not started, 1 in start(), 2 in submit(), 3 in finish(), 4 done: for the watchdog
+    for (auto& x : where) x = 0;
+    std::atomic<bool> all_done{false};
+    std::thread watchdog([&] {                      // a rank thread stuck outside the kernel is the failure we are hunting: say where
+      for (int i = 0; i < 150 && !all_done; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      if (all_done) return;
+      for (int r = 0; r < W; ++r) if (active(r)) fprintf(stderr, "  watchdog (15 s): rank %d thread is %s\n", r, (const char*[]){"before start()", "in start()", "in submit()", "in finish()", "done"}[where[r].load()]);
+    });
     for (int r = 0; r < W; ++r) {
       if (!active(r)) continue;
       th.emplace_back([&, r] {
         try {
           CK(cudaSetDevice(dev[r]));
           auto t0 = Clock::now();
+          where[r] = 1;
           ex[r]->start();
+          where[r] = 2;
           out[r].start_ms = (double)ms_since(t0);
           KvmSubmit s = ex[r]->submit(pr[r].bundle);
           out[r].submit_ms = (double)ms_since(t0);
           if (s != KvmSubmit::OK) throw std::runtime_error(std::string("submit: ") + kvm_submit_name(s));
+          where[r] = 3;
           out[r].res = ex[r]->finish();
+          where[r] = 4;
           out[r].ms = (double)ms_since(t0);
           out[r].finish_ms = out[r].ms;
           if (px[r]) px[r]->kernel_done();
@@ -374,6 +386,7 @@ struct World {
       });
     }
     for (auto& t : th) t.join();
+    all_done = true; watchdog.join();
     for (int r = 0; r < W; ++r) if (px[r]) { if (!px[r]->wait_finished(out[r].ok ? 60000 : 3000)) { out[r].msg += " [proxy shutdown incomplete]"; } }
     for (int r = 0; r < W; ++r) if (px[r]) px[r]->stop();
     bool any_timeout = false;
@@ -446,7 +459,7 @@ static void suite_pingpong(bool proxy, FaultSpec f = {}, bool tcp = false, int R
   char label[160]; snprintf(label, sizeof label, "%s%s%s", proxy ? "proxy" : "p2p", tcp ? "+tcp" : "", (f.drop > 0 || f.dup > 0 || f.delay > 0) ? "+faults" : "");
   fprintf(stderr, "== pingpong[%s]: %d rounds x %d floats between two executors (%d device%s)\n", label, R, N, std::min(g_ngpu, 2), g_ngpu > 1 ? "s" : "");
   World w; w.pr = make_pingpong(R, N, proxy); w.dev = {device_of(0), device_of(1)};
-  w.cfg.blocks = 4; w.cfg.timeout_us = 40ull * 1000000;
+  w.cfg.blocks = 4; w.cfg.timeout_us = 20ull * 1000000;
   w.build(tcp, f);
   auto t0 = Clock::now();
   auto out = w.run();
@@ -602,7 +615,7 @@ static int suite_plan(int argc, char** argv) {
   if (!W) { fprintf(stderr, "no rank* directories in %s\n", dir.c_str()); return 2; }
   for (int r = 0; r < W; ++r) w.pr.push_back(load_rank(dir + "/rank" + std::to_string(r)));
   for (int r = 0; r < W; ++r) w.dev.push_back(device_of(r));
-  w.only = only; w.cfg = small_cfg(blocks); w.cfg.timeout_us = 60ull * 1000000; w.cfg.max_tasks = 1 << 16; w.cfg.live_cap = 1 << 13;
+  w.only = only; w.cfg = small_cfg(blocks); w.cfg.timeout_us = 20ull * 1000000; w.cfg.max_tasks = 1 << 16; w.cfg.live_cap = 1 << 13;
   fprintf(stderr, "== plan %s: %d ranks on %d GPU(s), net %s%s\n", dir.c_str(), W, g_ngpu, only >= 0 ? "tcp (multi-process)" : tcp ? "tcp" : "loopback", (f.drop > 0 || f.dup > 0 || f.delay > 0) ? " + faults" : "");
   if (only >= 0 && hosts.size() != (size_t)W) { fprintf(stderr, "--rank needs --peers with %d entries\n", W); return 2; }
   w.build(tcp || only >= 0, f, hosts, ports);

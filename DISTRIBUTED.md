@@ -215,6 +215,12 @@ sequence 4096, global batch 4096 sequences (16.8M tokens), 4096 GPUs = TP 8 x PP
   for this executor deadlocks until the peer's timeout. One process per GPU (the normal multi-GPU layout) never meets this. The same
   work found that the executor's constructor memsets and table upload were not ordered before the kernel (legacy vs non-blocking
   stream); `prepare()` also fixes that. Both are small hooks in `kvm_exec.cu`.
-* On a GPU shared with unlocked jobs the two-executor tests need both kernels resident at once and can end in a device TIMEOUT (a
-  per-task diagnosis is printed); the script takes the GPU lock once for the whole run for that reason.
+* **Unresolved flake of the single-GPU emulation.** With several persistent kernels from ONE process on ONE GPU, about 3% of runs (6 of
+  ~175 on an idle A100, regardless of `CUDA_DEVICE_MAX_CONNECTIONS` and `CUDA_MODULE_LOADING`) never run one executor's kernel until the
+  others time out: every rank thread sits in `finish()`, the delayed executor's event-measured kernel time is tiny (0.14 ms) because it
+  started late, and its peers' pumps poll millions of times for signals it has not yet sent. The cause is below the code in this
+  repository as far as was established (kernel scheduling of co-resident persistent kernels in one context); it was NOT seen with one
+  process per rank (`gpu-multiprocess-tcp`) and cannot occur with one device per rank. The script therefore retries those in-process
+  single-GPU stages up to 3 times and prints every failed attempt; multi-process and multi-GPU stages are never retried. If the
+  multi-GPU stage shows the same signature (all threads in `finish()`, one rank's kernel time ~0), treat it as a real problem.
 * x86-64 and aarch64 little-endian hosts only (wire structs are not byte-swapped).

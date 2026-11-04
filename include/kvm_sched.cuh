@@ -140,7 +140,7 @@ __device__ __forceinline__ KvmCand kvm_scan(const KvmDevState& S, int c, unsigne
   const int lane = threadIdx.x & 31;
   const size_t qi = (size_t)c * KVM_NBUCKETS + lane;
   KvmQCtl* q = S.qctl + qi;
-  unsigned long long h = ld_acq64(&q->head);
+  unsigned long long h = kvm_voll(&q->head);   // a hint (the claim CAS validates it); the acquire is the cell's seq below
   KvmCell* cell = S.cells + qi * S.rcap + (h & (unsigned long long)(S.rcap - 1));
   long long score = -1; unsigned long long dl = 0; int res = 0;
   if (ld_acq64(&cell->seq) == h + 1) {
@@ -224,6 +224,7 @@ __device__ __forceinline__ int kvm_pop(const KvmDevState& S, unsigned long long 
       int got = kvm_claim(S, c, cd);
       if (got < 0) { if (acct && lane == 0) { red_add(&k.running, -1); if (isbw) { red_add(&k.bw_running, -1); red_add(&D->bw_total, -1); } } continue; }
       if (lane == 0) { red_add(&k.ready, -1); if (cd.dl) red_add(&k.dl_ready, -1); }
+      if (isbw) how |= KVM_HOW_BW;
       return got;
     }
     return -1;
@@ -301,7 +302,7 @@ __device__ __forceinline__ int kvm_pop(const KvmDevState& S, unsigned long long 
       S.sp.info[got].est_ns = (int)est;
       atomicAdd(&bk.vtime, (unsigned long long)est * (unsigned long long)kvm_vol(&bk.vt_mul));
     }
-    how = (btier == 0 ? KVM_TRACE_BOOST : 0) | (btier == 1 ? KVM_TRACE_RESV : 0) | (btier == 2 ? KVM_TRACE_URGENT : 0);
+    how = (btier == 0 ? KVM_TRACE_BOOST : 0) | (btier == 1 ? KVM_TRACE_RESV : 0) | (btier == 2 ? KVM_TRACE_URGENT : 0) | (isbw ? KVM_HOW_BW : 0);
     return got;
   }
   return -1;
@@ -316,16 +317,20 @@ __device__ __forceinline__ void kvm_sched_start(const KvmDevState& S, int slot, 
   atomicAdd(&k.w_wait_sum, w); atomicAdd(&k.w_n, 1ull); atomicMax(&k.w_wait_max, w);
   if (how & KVM_TRACE_RESV) { atomicAdd(&k.resv_starts, 1ull); atomicMax(&k.resv_wait_max_ns, w); }
 }
-__device__ __forceinline__ void kvm_sched_done(const KvmDevState& S, int slot, unsigned long long start, unsigned long long end, bool missed) {
+// Before the next pop of this block (thread 0): the class stops counting this CTA as running. Posted adds only, no loads.
+__device__ __forceinline__ void kvm_sched_release(const KvmDevState& S, int cls, bool bw) {
+  if (!S.sp.on) return;
+  KvmSchedDev* D = S.sp.dev; KvmClsDev& k = D->cls[cls];
+  red_add(&k.running, -1);
+  if (bw) { red_add(&k.bw_running, -1); red_add(&D->bw_total, -1); }
+}
+// Deferred (helper thread, during the next pop): statistics and the running-time estimate; must run before the slot is recycled.
+__device__ __forceinline__ void kvm_sched_account(const KvmDevState& S, int slot, unsigned long long start, unsigned long long end, bool missed) {
   if (!S.sp.on) return;
   KvmSchedDev* D = S.sp.dev; const KvmTaskDesc& d = S.tasks[slot]; KvmClsDev& k = D->cls[d.workload_id];
   const KvmSlotInfo& in = S.sp.info[slot];
   const unsigned long long run = end - start;
-  red_add(&k.running, -1);
-  if (in.res == KVM_RES_BW) {
-    red_add(&k.bw_running, -1); red_add(&D->bw_total, -1);
-    atomicAdd(&D->bw_bytes, in.bytes);
-  }
+  if (in.res == KVM_RES_BW) atomicAdd(&D->bw_bytes, in.bytes);
   atomicAdd(&k.sm_ns, run); atomicAdd(&k.tasks, 1ull); atomicAdd(&k.bytes, in.bytes);
   if (missed) { atomicAdd(&k.missed, 1ull); atomicAdd(&k.w_miss, 1ull); }
   if (d.op_id < KVM_OP_SLOTS) D->op_blk[d.op_id] = (int)blockIdx.x;

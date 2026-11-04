@@ -35,6 +35,8 @@ enum KvmRes { KVM_RES_COMPUTE = 0, KVM_RES_BW = 1, KVM_RES_LAT = 2, KVM_RES_MIXE
 #define KVM_TRACE_RESV    2    // started while its class was below its reservation
 #define KVM_TRACE_BOOST   4    // started under priority inheritance
 #define KVM_TRACE_URGENT  8    // started by the deadline (EDF) tier
+#define KVM_HOW_BW        0x100  // kvm_pop only: the claimed task is bandwidth-bound (its BW counters were incremented); never stored in the trace
+#define KVM_URGENT_ALL    (1 << 30)  // KvmClassParams.urgent_us: every deadline task of the class is in the EDF tier (pure EDF, no window)
 
 struct KvmClassParams {        // 32 B; written by the host at any time through the mapped control block
   int weight;                  // >= 1: relative share of CTA-time among classes that compete

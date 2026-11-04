@@ -615,7 +615,7 @@ static int suite_plan(int argc, char** argv) {
   if (!W) { fprintf(stderr, "no rank* directories in %s\n", dir.c_str()); return 2; }
   for (int r = 0; r < W; ++r) w.pr.push_back(load_rank(dir + "/rank" + std::to_string(r)));
   for (int r = 0; r < W; ++r) w.dev.push_back(device_of(r));
-  w.only = only; w.cfg = small_cfg(blocks); w.cfg.timeout_us = 20ull * 1000000; w.cfg.max_tasks = 1 << 16; w.cfg.live_cap = 1 << 13;
+  w.only = only; w.cfg = small_cfg(blocks); w.cfg.timeout_us = (only >= 0 ? 180ull : 20ull) * 1000000;   // processes/hosts start with skew w.cfg.max_tasks = 1 << 16; w.cfg.live_cap = 1 << 13;
   fprintf(stderr, "== plan %s: %d ranks on %d GPU(s), net %s%s\n", dir.c_str(), W, g_ngpu, only >= 0 ? "tcp (multi-process)" : tcp ? "tcp" : "loopback", (f.drop > 0 || f.dup > 0 || f.delay > 0) ? " + faults" : "");
   if (only >= 0 && hosts.size() != (size_t)W) { fprintf(stderr, "--rank needs --peers with %d entries\n", W); return 2; }
   w.build(tcp || only >= 0, f, hosts, ports);

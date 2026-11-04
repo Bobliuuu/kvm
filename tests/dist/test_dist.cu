@@ -374,6 +374,7 @@ static std::vector<PlanRank> make_pingpong(int R, int N, bool proxy) {
   pr[0].bufs = {src, local(1, N), local(1, R * N), peer(1, 0, 1, R * N), inbox(1), sq};
   // rank 1: 0 landing[R*N], 1 back0 (peer of rank0 buf 2), 2 inbox of rank 0, 3 sendq
   pr[1].bufs = {local(1, R * N), peer(0, 2, 1, R * N), inbox(0), sq};
+  if (!proxy) { pr[0].bufs.pop_back(); pr[1].bufs.pop_back(); }   // peer pointers only: no send queue, so no proxy threads either
   if (proxy) { pr[0].bufs[3] = local(1, 1); pr[0].bufs[4] = local(1, 1); pr[1].bufs[1] = local(1, 1); pr[1].bufs[2] = local(1, 1); }   // no peer pointers: all traffic via the queue
   KvmBundleBuilder b0, b1;
   for (int r = 1; r <= R; ++r) {

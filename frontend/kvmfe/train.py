@@ -72,6 +72,7 @@ class Program:
     state: State | None = None
     clip_coef: Tensor | None = None
     lr: Tensor | None = None
+    grads: dict = field(default_factory=dict)        # last step's {param name: gradient tensor} (pre-clip, loss-scaled)
 
     def loss_buffer(self, name, step, micro=0, accum=1):
         return f'{name}.{step}' if accum == 1 else f'{name}.{step}.{micro}'
@@ -168,4 +169,5 @@ def build_training(model, tc: TrainConfig) -> Program:
             update(b, tc.optim, sp, w[n], grads[w[n]], state, token, coef, lr)
         b.barrier(list(w.values()) + [token], [token], publishes=WEIGHTS_VAR)               # post: 2s+2
         log.debug('step %d: %d logical ops so far', s, len(b.ops))
+    prog.grads = {n: grads[w[n]] for n in model.specs}
     return prog

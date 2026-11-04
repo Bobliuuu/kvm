@@ -131,17 +131,34 @@ def _mm_flops(a):
     return 2.0 * max(0, min(MM_TILE, a['M'] - a['m0'])) * max(0, min(MM_TILE, a['N'] - a['n0'])) * a['K']
 
 
+def _mm_acc(A, B, fl, m0, m1, n0, n1, K):
+    """alpha-free product tile of op(A) @ op(B) for rows m0:m1, cols n0:n1 as a list of rows. numpy float64 (BLAS) when available:
+    the sum order differs from a sequential loop only at the 1e-16 level, and is deterministic for given shapes."""
+    try:
+        import numpy as np
+    except ImportError:
+        np = None
+    if np is None:
+        bcols = [[(B.a[n * B.cols + k] if fl & F_TB else B.a[k * B.cols + n]) for k in range(K)] for n in range(n0, n1)]
+        return [[sum(x * y for x, y in zip([(A.a[k * A.cols + m] if fl & F_TA else A.a[m * A.cols + k]) for k in range(K)], bc)) for bc in bcols]
+                for m in range(m0, m1)]
+    a = np.array(A.a, dtype=np.float64).reshape(A.rows, A.cols)
+    b = np.array(B.a, dtype=np.float64).reshape(B.rows, B.cols)
+    a = a[:K, m0:m1].T if fl & F_TA else a[m0:m1, :K]
+    b = b[n0:n1, :K].T if fl & F_TB else b[:K, n0:n1]
+    return (a @ b).tolist()
+
+
 @impl('matmul_tile', _mm_flops)
 def _matmul_tile(b, a):
     M, N, K, fl = a['M'], a['N'], a['K'], a['flags']
     A, B, out = b['a'], b['b'], b['out']
     m1, n1 = min(a['m0'] + MM_TILE, M), min(a['n0'] + MM_TILE, N)
-    bcols = [[(B.a[n * B.cols + k] if fl & F_TB else B.a[k * B.cols + n]) for k in range(K)] for n in range(a['n0'], n1)]
-    for m in range(a['m0'], m1):
-        arow = [(A.a[k * A.cols + m] if fl & F_TA else A.a[m * A.cols + k]) for k in range(K)]
+    prod = _mm_acc(A, B, fl, a['m0'], m1, a['n0'], n1, K)
+    for i, m in enumerate(range(a['m0'], m1)):
         vals = []
         for j, n in enumerate(range(a['n0'], n1)):
-            v = a['alpha'] * sum(x * y for x, y in zip(arow, bcols[j]))
+            v = a['alpha'] * prod[i][j]
             if b['bias'] is not None:
                 v += b['bias'].a[n]
             if b['pre'] is not None:

@@ -23,6 +23,11 @@ edges and weight versions. It has no notion of train, serve or game, and nothing
    runtime/compile_workload.py (bundle)   refvm.py  CPU golden VM (float64) = oracle for the GPU run
 ```
 
+Beyond GPT, `models.py` holds a Llama-style decoder (RMSNorm, RoPE, GQA, SwiGLU, tied or untied head, optional top-k MoE feed-forward
+with capacity, gather/scatter dispatch and a load-balance loss), an MLP classifier and a conv-free ViT. They are built only from `Builder`
+ops, so autodiff, fusion, rematerialization, gradient accumulation, LR schedules, loss scaling and bf16 apply to all of them
+(section "Model zoo" below).
+
 Tools (run from `frontend/`, or put it on `PYTHONPATH`):
 
 ```
@@ -85,6 +90,48 @@ an under-declared region shows up as a result change between program order and r
   buffer, `deadline_us = (f+1)/35 s`, frames double-buffered and published as versions of `frame`. Ops come from
   `include/kvm_ops_game.def`; if absent, building fails with the op name. The Doom engine itself is the port in `include/`.
 
+## Model zoo and generality (nothing here is a hand-written kernel)
+
+`models.py` implements the training protocol `train.build_training` consumes: `cfg`, `specs`, `batch_streams(micros)`,
+`losses(b, batch, w, grad_scale)`. The extra generic op pack `include/kvm_ops_extra.def` (ids 96-121; `.cuh` device code,
+`runtime/ref_extra.py` float32 golden, `opset.py` float64 oracle semantics) adds only shape-parametrized building blocks:
+activations (relu/silu/tanh/sigmoid), SwiGLU, row softmax, `gather_rows_scaled` / `scatter_add_rows` / `row_dot` (each other's VJP),
+MoE routing (`moe_route`, `moe_gates_*`, `moe_balance_*`), bidirectional attention, bf16 matmul and rounding, `adamw_lr` /
+`lr_schedule`, `add_rowtile`, and three matmul-epilogue wrappers used by fusion.
+
+| Model (preset) | Built from |
+|---|---|
+| `llama_tiny`, `llama_gqa_tied` | `rmsnorm`, `rope` (q and k with their own head counts), `attention(kv_heads=..)` (GQA), `silu_mul`, `linear(wt=True)` for the tied head |
+| `moe_tiny` | `softmax` -> `moe_route` -> per-expert `gather` (idx0 = e*C) -> SwiGLU expert -> `scatter_add` with `moe_gates` as scale; `moe_balance` is a second backward root |
+| `mlp_tiny` | `linear`, `act` (relu), `ce_loss` on Gaussian clusters |
+| `vit_tiny` | patch embedding = `linear` over pre-cut patches, `add_rowtile` (learned positions), `attention(causal=False)`, mean pooling = `scatter_add` |
+
+Checks (`tests/frontend/test_models.py`, `oracle_models.py`): the CPU VM's loss equals an independent numpy float64 forward
+(rel 1e-9); the autodiff gradient of every parameter tensor (largest element plus a pseudo-random one) matches a central finite
+difference of that oracle; any topological order gives bitwise identical state; KV-cache decode (GQA, RoPE offset) equals
+full-forward greedy decode. GPU: `examples/models/run.sh` (bundles, one `flock` hold, `check.py`).
+
+Frontend features added with them:
+
+* **Gradient accumulation** (`TrainConfig.accum`): K microbatches per optimizer step; backward ops accumulate in place into the
+  gradients of the previous microbatch (`autodiff.backward(accumulate=..)`), each loss root is scaled 1/K; the stream window
+  of microbatch m is `select_window(stride=K*rows, off=m*rows)`.
+* **Rematerialization** (`with b.remat():`, `LlamaConfig.remat`): the region's forward ops are re-emitted right before their
+  backward with fresh tensors; the originals die at their last forward use, so the planner reuses their memory. Results are
+  bitwise identical, the pool is smaller, the task count grows by the recomputed forward.
+* **LR schedules** (`TrainConfig.schedule`): `lr` is a device buffer written each step by an `lr_schedule` task from the step
+  counter; `adamw_lr` reads it. The program text of every step stays identical (window templates still work).
+* **Loss scaling + bf16** (`precision='bf16'`, `TrainConfig.loss_scale`): matmuls run on bf16 operands with fp32 accumulation
+  (`matmul_tile_bf16`), activations are stored rounded (`cast`), parameters stay fp32 masters; the backward starts from S*dL and the
+  clip coefficient (AdamW's gscale) is multiplied by 1/S. bf16 values live in fp32 containers: the ABI v2 dtype ids (0 f32, 1 i32) are
+  unchanged, so there is no memory saving and no fp16/overflow-skipping dynamic scaling.
+* **Tied embeddings** (`linear(wt=True)`), **GQA** (`attention(kv_heads=)`, `kv_append/attn_decode` with cache heads), **multiple
+  loss roots** (cross-entropy + auxiliary), **float input streams** (`select_window(cols=)`).
+* **Fusion** (`fuse.py`, `compile_training(fuse=True)`): `gelu_bwd(mm(..))` -> `mm_dgelu`, SwiGLU up-projection + gating ->
+  `linear_silu_mul`, SwiGLU backward -> `mm_silu_mul_bwd`. Only intermediates with a single reader are fused and a fused tile's
+  reference is the unfused reference, so the CPU result is bitwise equal (tested). Bias+GELU and the residual add were already
+  fused in the `matmul_tile` epilogue.
+
 ## Cost model (`inspect`)
 
 Task time = max(FLOPs / 1.8e11, bytes / 1.4e10) + 5 us hop (one A100 SM's share of fp32 CUDA-core peak and HBM bandwidth;
@@ -131,12 +178,23 @@ curve against the independent float64 oracle (rel. 2e-5) and served tokens again
 
 ## Honest limits
 
-* Not run on a GPU yet. The golden path is the CPU VM; the GPU must match it (fp32/TF32 tolerance), not bit-for-bit.
-* `gather_rows` is unused: `embedding_fwd` already gathers; batches come from `select_window` over a host-provided token stream
-  (sized total_steps x tokens; no on-device data loading beyond that).
-* The learning rate is a constant baked into each task (a schedule would break template reuse; it needs an lr buffer in `adamw`).
+* **Static shapes and a static DAG, by design.** A program is a fixed set of tasks: no dynamic shapes, no data-dependent control flow
+  at the frontend level. What is data-dependent lives in buffers: `select_window` (batch picked by the step counter), `lens` in decode,
+  `moe_route` (expert choice and capacity are computed on the device, but the expert matmuls always run `capacity` rows, padded with
+  zero rows), `lr_schedule`. Loops are unrolled or re-admitted as windows; there is no `while`/`if` over tensor values, and no
+  early-exit decoding.
+* MoE routing ops are single-task over all N tokens of a microbatch (O(N*E*k) serial work, fine up to a few thousand tokens); dropped tokens
+  (over capacity) get no expert and keep only the residual, as in Switch Transformer.
+* bf16 is *emulated storage*: values are bfloat16-representable but live in fp32 buffers (ABI v2 dtype ids unchanged). No fp16, no dynamic
+  loss scaling (no overflow detection or step skipping).
+* Fused tiles save a task and a dependency hop per tile, nothing more: the matmul epilogue cannot hold a full row, so norms are never
+  fused into a matmul.
+* The GPU matches the CPU golden to fp32 level only with 3xTF32 GEMMs (matmul flag 16; `gen_bundle.py --precise`); 1xTF32 runs are compared on
+  step-1 activations/gradients and losses (see `results/2026-11-04-a100-gpt-golden`). The frontend still has no flag for flag 16.
+* `gather_rows` (id 63) is unused; the extra pack's `gather_rows_scaled` replaces it (padding rows are zeros instead of errors).
 * Per-step losses of a window are pinned buffers `loss.<i>` reused by the next window: a host reads them between windows.
-* Absolute learned positions are not supported (RoPE only); no GQA, no dropout, no mixed precision, SGD does not clip.
-* Serving assumes `attn_fwd` clips a final partial 32-row block when P-1 is not a multiple of 32; greedy decoding only.
+* Dropout is not implemented (needs a counter-based RNG op); SGD does not clip; serving is greedy; MoE serving is not supported (routing
+  capacity is defined per training microbatch).
 * Doom ops have no CPU reference (opaque; `--allow-opaque` runs them as no-ops); the real engine is the port.
-* The CPU VM is pure Python: golden runs are for tiny configs. The 162M config is compiled and inspected, not executed.
+* The CPU VM is pure Python: golden runs are for tiny configs (the model tests take minutes). The 162M config is compiled and inspected,
+  not executed.

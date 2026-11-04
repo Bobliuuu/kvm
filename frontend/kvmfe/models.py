@@ -149,8 +149,15 @@ class LlamaBlock(Module):
         return (b.rope(self.q(b, h, w, bf16=self.lp), c.heads, seq, c.rope_theta, pos),
                 b.rope(self.k(b, h, w, bf16=self.lp), c.kv_heads, seq, c.rope_theta, pos), self.v(b, h, w, bf16=self.lp))
 
+    # decoder-block interface shared with nn.TransformerBlock (used by serve.py)
+    def attn_inputs(self, b, x, w, seq, pos=None):
+        return self.qkv(b, self.n1(b, x, w), w, seq, pos)
+
     def attn_out(self, b, a, w, res):
         return self.o(b, a, w, res=res, bf16=self.lp)
+
+    def ffn_block(self, b, x, w):
+        return self.ffn(b, self.n2(b, x, w), w, x, [])
 
     def __call__(self, b, x, w, aux):
         c = self.cfg
@@ -177,9 +184,16 @@ class Llama(Module):
         out = b.linear(h, w[self.wte], wt=True, bf16=self.lp)              # tied: logits = h @ wte^T
         return b.cast(out) if self.lp else out
 
+    @property
+    def kv_heads(self):
+        return self.cfg.kv_heads
+
+    def embed(self, b, ids, w, seq):
+        x = b.embedding(ids, w[self.wte], seq)
+        return b.cast(x) if self.lp else x
+
     def __call__(self, b, ids, w, aux=None):
-        x = b.embedding(ids, w[self.wte], self.cfg.seq)
-        x = b.cast(x) if self.lp else x
+        x = self.embed(b, ids, w, self.cfg.seq)
         aux = [] if aux is None else aux
         for blk in self.blocks:
             x = blk(b, x, w, aux)

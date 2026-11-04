@@ -399,9 +399,9 @@ class Builder:
         self.emit('cast', {'x': x}, {'out': out}, dtype=dtype)
         return out
 
-    def lr_schedule(self, step, lr, kind, base, warmup, total, min_ratio):
+    def lr_schedule(self, step, lr, sched, base, warmup, total, min_ratio):
         """lr[0] = base * schedule(step[0]): the learning rate lives in a device buffer that a task updates every step."""
-        self.emit('lr_schedule', {'step': step}, {'lr': lr}, kind=kind, base=base, warmup=warmup, total=total, min_ratio=min_ratio)
+        self.emit('lr_schedule', {'step': step}, {'lr': lr}, sched=sched, base=base, warmup=warmup, total=total, min_ratio=min_ratio)
 
     def scale_scalar(self, x, alpha, elems=1):
         """x[:elems] *= alpha in place (the loss-scale unscale of the clip coefficient)."""

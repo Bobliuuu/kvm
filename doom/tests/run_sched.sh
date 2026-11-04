@@ -8,18 +8,18 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"; LOGDIR="$ROOT/logs/$TS-doomsched"; mkdir -p "$LOGDIR"
 SSH="ssh -o StrictHostKeyChecking=no -o BatchMode=yes"
-rsync -az -e "$SSH" --delete --include 'include/***' --include 'runtime/***' --include 'doom/' --include 'doom/*.py' --include 'doom/*.cu' --include 'doom/*.sh' --include 'doom/glue/***' --include 'doom/tests/***' --include 'kvm_exec.cu' --exclude '*' "$ROOT/" "$KVM_HOST:kvm-sched-scratch/"
-$SSH "$KVM_HOST" "FRAMES=${1:-700} CHAINS=${2:-300} ROUNDS=${3:-40} ONLY='${ONLY:-}' bash -s" <<'REMOTE' 2>&1 | tee "$LOGDIR/run.log"
+rsync -az -e "$SSH" --delete --include 'include/***' --include 'runtime/***' --include 'doom/' --include 'doom/*.py' --include 'doom/*.cu' --include 'doom/*.sh' --include 'doom/glue/***' --include 'doom/tests/***' --include 'kvm_exec.cu' --exclude '*' "$ROOT/" "$KVM_HOST:${KVM_REMOTE:-kvm-sched-scratch}/"
+$SSH "$KVM_HOST" "FRAMES=${1:-700} CHAINS=${2:-300} ROUNDS=${3:-40} KVM_REMOTE='${KVM_REMOTE:-~/kvm-sched-scratch}' ONLY='${ONLY:-}' KVM_NO_LOCK=${KVM_NO_LOCK:-} bash -s" <<'REMOTE' 2>&1 | tee "$LOGDIR/run.log"
 set -euo pipefail
-cd ~/kvm-sched-scratch
+cd "${KVM_REMOTE/#\~/$HOME}"
 for d in build third_party; do ln -sfn ~/kvm-doom-scratch/doom/$d doom/$d; done
 NVCC=$(ls /usr/local/cuda*/bin/nvcc | tail -1)
 echo "# $(date -u +%FT%TZ)  $($NVCC --version | tail -1)  $(nvidia-smi --query-gpu=name,driver_version --format=csv,noheader)"
 echo "BUILD: nvcc -O3 -arch=sm_80 -std=c++17 -rdc=true -DKVM_WITH_GAME -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off doom/exec_main.cu doom/build/doom_dev.o -o doom/build/doom_exec_sched"
 $NVCC -O3 -arch=sm_80 -std=c++17 -rdc=true -DKVM_WITH_GAME -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off doom/exec_main.cu doom/build/doom_dev.o -o doom/build/doom_exec_sched 2>&1 | grep -v "cannot be statically determined" | grep -i "error" || true
-OUT=~/kvm-sched-scratch/logs/doomsched; rm -rf $OUT; mkdir -p $OUT
+OUT=$PWD/logs/doomsched; rm -rf $OUT; mkdir -p $OUT
 python3 doom/cpu_run.py --frames $FRAMES --out $OUT/cpu --log info 2>&1 | tail -2
-L="flock -w 7200 $HOME/.gpu.lock timeout 900"
+L="timeout 900"; [ -n "${KVM_NO_LOCK:-}" ] || L="flock -w 7200 $HOME/.gpu.lock timeout 900"
 wl() { python3 doom/make_workload.py --frames $FRAMES "$@" ; }
 # bundles: doom alone, and doom + bursty load, both with ALL priorities 0
 wl --doom-priority 0 --out $OUT/alone.json >/dev/null

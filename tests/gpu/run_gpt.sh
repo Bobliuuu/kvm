@@ -6,7 +6,7 @@ set -u
 ARCH="${KVM_ARCH:-sm_80}"; NV="$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc | tail -1)"; mkdir -p out
 ( cd frontend && rm -rf ../out/demo && PYTHONPATH=. python3 -m kvmfe.demo --all --out ../out/demo --train-steps 2 2>&1 | grep -E "demo:" )
 $NV -O3 -arch=$ARCH -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo kvm_exec.cu -o out/kvm_exec_gpt 2>&1 | grep -i " error"
-B=out/demo/bundles/train_w0; L="flock -w 7200 $HOME/.gpu.lock timeout 900"; fail=0; ref=""
+B=out/demo/bundles/train_w0; L="timeout 900"; [ -n "${KVM_NO_LOCK:-}" ] || L="flock -w 7200 $HOME/.gpu.lock timeout 900"; fail=0; ref=""
 run() {  # name args...
   local n="$1"; shift; local o; o="$($L out/kvm_exec_gpt --quiet --dump-buffers "$@" $B 2>&1)"; local line; line="$(echo "$o" | grep -E '^(OK|FAIL):' | tail -1)"
   local h; h="$(echo "$o" | grep '^buffer' | md5sum | cut -c1-12)"; echo "$n: $line  buffers md5 $h"

@@ -101,7 +101,7 @@ static constexpr KvmOpInfo kKvmOps[] = {
 static constexpr int KVM_NUM_OPS = sizeof(kKvmOps) / sizeof(kKvmOps[0]);
 
 namespace kvm_sig {
-constexpr bool registry_ok() {  // ids unique and >= 0 (sparse across the .def packs), signatures well formed
+constexpr bool registry_ok() {  // KVM_DIST_HOOK: ids unique and >= 0 (sparse across the .def packs), signatures well formed
   for (int i = 0; i < KVM_NUM_OPS; ++i) {
     if (kKvmOps[i].id < 0 || kKvmOps[i].types == kvm_sig::KVM_BAD_SIG) return false;
     for (int j = 0; j < i; ++j) if (kKvmOps[j].id == kKvmOps[i].id) return false;
@@ -178,6 +178,7 @@ struct KvmCounters {  // device memory; hot fields on separate lines
 struct KvmWatch { unsigned long long since, checked; int done, admitted; };   // per-block progress watch (thread 0)
 struct KvmHostErr { volatile int slot, a, b; volatile int code; };  // mapped mirror of the first device error
 
+struct KvmDistDev;  // KVM_DIST_HOOK: include/kvm_dist.cuh
 #define KVM_ARG_STRIDE 20   // argument words reserved per slot (>= KVM_MAX_ARGS)
 static_assert(KVM_ARG_STRIDE >= KVM_MAX_ARGS, "slot argument stride");
 
@@ -203,6 +204,7 @@ struct KvmDevState {
   unsigned int *closed, *win_done;                  // win_done[w & (win_cap-1)] == w+1 once window w has finished
   KvmHostErr* herr;
   KvmSchedPtrs sp;   // SCHED: scheduler state; sp.on == 0 reproduces the original single-queue executor
+  const KvmDistDev* dist;  // KVM_DIST_HOOK: nullptr = single-device executor (all dist code is skipped)
 };
 
 #ifdef __CUDACC__
@@ -392,8 +394,15 @@ KVM_OP(spin) {
 }
 
 // Optional operator packs: each defines KVM_OP(name) for every X line of its .def.
+#include "kvm_dist.cuh"  // KVM_DIST_HOOK: phase 1 (types, primitives); phase 2 (inbox pump) follows kvm_publish
+#if __has_include("kvm_ops_comm.cuh")
+#include "kvm_ops_comm.cuh"  // KVM_DIST_HOOK
+#endif
 #if __has_include("kvm_ops_gpt.cuh")
 #include "kvm_ops_gpt.cuh"
+#endif
+#if __has_include("kvm_ops_extra.cuh")      // KVM_MODELS_HOOK: extra generic pack (needs the gpt pack's helpers and dynamic smem)
+#include "kvm_ops_extra.cuh"
 #endif
 #if defined(KVM_WITH_GAME) && __has_include("kvm_ops_game.cuh")
 #include "kvm_ops_game.cuh"
@@ -549,6 +558,9 @@ __device__ __forceinline__ bool kvm_should_exit(const KvmDevState& S, KvmWatch& 
   if (ld_acq(&S.cnt->admit_final)) return ld_acq(&S.cnt->done) >= ld_acq(&S.cnt->admitted);
   return false;
 }
+
+#define KVM_DIST_PUMP_PHASE 1  // KVM_DIST_HOOK: remote-publish pump, after kvm_stalled and kvm_scan_parked (kvm_dist_poll / kvm_dist_pump)
+#include "kvm_dist.cuh"
 
 __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   KVM_PG(7); KVM_PG(8);   // sh.d was filled from the pop's prefetched words and published by the barrier that follows the pop
@@ -718,6 +730,9 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
           kvm_fail(S, ld_acq(&S.cnt->parked) > S.live_cap ? KVM_ERR_PARK_STALL : KVM_ERR_TIMEOUT, -1, ld_acq(&S.cnt->admitted), ld_acq(&S.cnt->done));
           A.action = KVM_ADM_EXIT; break;
         }
+#ifndef KVM_DIST_NO_BP_POLL  // (negative test: tests/dist backpressure suite must then fail)
+        kvm_dist_poll_strided(S, 0, 1);  // KVM_DIST_HOOK: remote publishes must keep flowing while admission waits for room
+#endif
         __nanosleep(256);
       }
     }
@@ -828,8 +843,8 @@ __device__ void kvm_admitter(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared&
     int action = A.action;
     __syncthreads();
     if (action == KVM_ADM_EXIT) return;
-    if (action == KVM_ADM_FINAL) { if (threadIdx.x == 0) st_rel(&S.cnt->admit_final, 1); return; }
-    if (action == KVM_ADM_IDLE) { __nanosleep(256); continue; }
+    if (action == KVM_ADM_FINAL) { if (threadIdx.x == 0) st_rel(&S.cnt->admit_final, 1); kvm_dist_pump(S, t0); return; }  // KVM_DIST_HOOK
+    if (action == KVM_ADM_IDLE) { kvm_dist_poll(S); __nanosleep(256); continue; }  // KVM_DIST_HOOK
     if (A.hdr[6] == KVM_REC_BUNDLE) kvm_admit_record(S, t0, A, pos);
     __syncthreads();
     if (A.action == KVM_ADM_EXIT) return;

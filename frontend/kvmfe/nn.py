@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass
 
-from .ir import FrontendError
+from .ir import FrontendError, Tensor
 from .opset import ATTN_Q
 
 
@@ -94,8 +94,9 @@ class Linear(Module):
         self.w = self.add('w', din, dout, ('normal', std), decay=True)
         self.b = self.add('b', 1, dout, ('fill', 0.0)) if bias else None
 
-    def __call__(self, b, x, w, res=None, gelu=False):
-        return b.linear(x, w[self.w], w[self.b] if self.b else None, res, gelu)
+    def __call__(self, b, x, w, res=None, gelu=False, bf16=False):
+        out = b.linear(x, w[self.w], w[self.b] if self.b else None, res, gelu, bf16=bf16)
+        return b.cast(out) if bf16 else out          # bf16 mode: activations are stored rounded as well
 
 
 class Norm(Module):
@@ -118,11 +119,15 @@ class CausalSelfAttention(Module):
         self.proj = Linear(f'{name}.proj', cfg.d_model, cfg.d_model, cfg.bias, std / (2 * cfg.layers) ** 0.5)
         self.absorb(self.q, self.k, self.v, self.proj)
 
+    def qkv(self, b, h, w, seq, pos=None):
+        c = self.cfg
+        return (b.rope(self.q(b, h, w), c.heads, seq, c.rope_theta, pos), b.rope(self.k(b, h, w), c.heads, seq, c.rope_theta, pos),
+                self.v(b, h, w))
+
     def __call__(self, b, h, w, res):
         c = self.cfg
-        q = b.rope(self.q(b, h, w), c.heads, c.seq, c.rope_theta)
-        k = b.rope(self.k(b, h, w), c.heads, c.seq, c.rope_theta)
-        return self.proj(b, b.attention(q, k, self.v(b, h, w), c.heads, c.seq), w, res=res)
+        q, k, v = self.qkv(b, h, w, c.seq)
+        return self.proj(b, b.attention(q, k, v, c.heads, c.seq), w, res=res)
 
 
 class MLP(Module):
@@ -143,10 +148,20 @@ class TransformerBlock(Module):
         self.n2, self.mlp = Norm(f'{name}.n2', cfg.d_model, cfg.norm), MLP(f'{name}.mlp', cfg)
         self.absorb(self.n1, self.attn, self.n2, self.mlp)
 
+    # decoder-block interface shared with models.LlamaBlock (used by serve.py): attention inputs, attention output, feed-forward
+    def attn_inputs(self, b, x, w, seq, pos=None):
+        return self.attn.qkv(b, self.n1(b, x, w), w, seq, pos)
+
+    def attn_out(self, b, a, w, res):
+        return self.attn.proj(b, a, w, res=res)
+
+    def ffn_block(self, b, x, w):
+        return self.mlp(b, self.n2(b, x, w), w, res=x)
+
     def __call__(self, b, x, w):
         with b.scope(self.name):
             x = self.attn(b, self.n1(b, x, w), w, res=x)
-            return self.mlp(b, self.n2(b, x, w), w, res=x)
+            return self.ffn_block(b, x, w)
 
 
 class GPT(Module):
@@ -160,8 +175,41 @@ class GPT(Module):
         self.head = Linear('gpt.head', cfg.d_model, cfg.vocab, False, cfg.init_std)
         self.absorb(*self.blocks, self.nf, self.head)
 
+    kv_heads = property(lambda self: self.cfg.heads)
+
+    def embed(self, b, ids, w, seq):
+        return b.embedding(ids, w[self.wte], seq)
+
+    def logits(self, b, x, w):
+        return self.head(b, self.nf(b, x, w), w)
+
     def __call__(self, b, ids, w):
-        x = b.embedding(ids, w[self.wte], self.cfg.seq)
+        x = self.embed(b, ids, w, self.cfg.seq)
         for blk in self.blocks:
             x = blk(b, x, w)
-        return self.head(b, self.nf(b, x, w), w)
+        return self.logits(b, x, w)
+
+
+    # ---- the training-program protocol (train.build_training): data streams and loss roots
+    def batch_streams(self, micros):
+        return token_streams(self.cfg, micros)
+
+    def losses(self, b, batch, w, grad_scale=1.0):
+        return [('loss', b.ce_loss(self(b, batch['ids'], w), batch['tgt'], grad_scale))]
+
+
+@dataclass
+class Stream:
+    """A host-provided input stream consumed one window per microbatch: micro m is elements [m*rows*cols, (m+1)*rows*cols)."""
+    name: str
+    rows: int            # rows per microbatch
+    cols: int
+    dtype: str           # f32 | i32
+    values: list         # micros * rows * cols numbers
+
+
+def token_streams(cfg, micros):
+    """Next-token bigram-chain batches (see train.batch_tokens) for `micros` microbatches: streams ids and tgt."""
+    from .train import batch_stream
+    ids, tgt = batch_stream(cfg, micros)
+    return [Stream('ids', cfg.tokens, 1, 'i32', ids), Stream('tgt', cfg.tokens, 1, 'i32', tgt)]

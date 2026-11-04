@@ -63,6 +63,7 @@ class LogicalOp:
     step: int = 0
     phase: str = 'fwd'              # data | fwd | bwd | opt | serve | game
     graph: str = 'main'
+    remat: int | None = None        # rematerialization group (ops recomputed in the backward pass), see Builder.remat
 
     def tensors(self):
         return list(self.ins.values()) + list(self.outs.values())
@@ -74,6 +75,7 @@ class Builder:
     def __init__(self, graph='main'):
         self.graph, self.ops, self.tensors = graph, [], []
         self.step, self.phase, self._scope, self._n = 0, 'fwd', [], itertools.count()
+        self._remat, self._remat_ids = None, itertools.count()
 
     def scope(self, name):
         b = self
@@ -86,6 +88,19 @@ class Builder:
                 b._scope.pop()
         return _S()
 
+    def remat(self, enabled=True):
+        """Context: forward ops emitted inside are recomputed just before their backward (activation checkpointing). Only the
+        tensors the region READS from outside stay alive across the forward/backward gap."""
+        b = self
+
+        class _R:
+            def __enter__(s):
+                s.prev, b._remat = b._remat, (next(b._remat_ids) if enabled else None)
+
+            def __exit__(s, *a):
+                b._remat = s.prev
+        return _R()
+
     def tensor(self, name, rows, cols, kind='act', **kw):
         t = Tensor('.'.join(self._scope + [name]), rows, cols, kind, **kw)
         self.tensors.append(t)
@@ -95,10 +110,11 @@ class Builder:
         return self.tensor(f'{name}{next(self._n)}', rows, cols, **kw)
 
     def emit(self, kind, ins, outs, **attrs):
-        op = LogicalOp(kind, ins, outs, attrs, '.'.join(self._scope + [kind]), self.step, self.phase, self.graph)
+        op = LogicalOp(kind, ins, outs, attrs, '.'.join(self._scope + [kind]), self.step, self.phase, self.graph,
+                       self._remat if self.phase == 'fwd' else None)
         if self.phase == 'fwd':
             for t in outs.values():
-                t.rg = t.rg or any(i.rg for i in ins.values())
+                t.rg = t.rg or (t.dtype == 'f32' and any(i.rg for i in ins.values()))
         self.ops.append(op)
         return op
 
@@ -114,16 +130,18 @@ class Builder:
         self.emit('embedding', {'ids': ids, 'wte': wte}, {'out': out}, seq=seq)
         return out
 
-    def linear(self, x, w, bias=None, res=None, gelu=False):
-        """out = [gelu](x @ w + bias) [+ res]; one fused matmul_tile epilogue. With gelu the pre-activation is also kept."""
-        self._check(x.cols == w.rows, 'linear', f'inner dims {x.cols} != {w.rows}', x, w)
-        self._check(bias is None or bias.shape == (1, w.cols), 'linear', 'bias must be 1 x N', w)
-        self._check(res is None or res.shape == (x.rows, w.cols), 'linear', 'res must match the output', x, w)
+    def linear(self, x, w, bias=None, res=None, gelu=False, wt=False, bf16=False):
+        """out = [gelu](x @ w + bias) [+ res]; one fused matmul_tile epilogue. With gelu the pre-activation is also kept.
+        wt: w is stored [N, K] and used transposed (tied embeddings). bf16: operands rounded to bfloat16, fp32 accumulate."""
+        K, N = (w.cols, w.rows) if wt else (w.rows, w.cols)
+        self._check(x.cols == K, 'linear', f'inner dims {x.cols} != {K}', x, w)
+        self._check(bias is None or bias.shape == (1, N), 'linear', 'bias must be 1 x N', w)
+        self._check(res is None or res.shape == (x.rows, N), 'linear', 'res must match the output', x, w)
         ins = {'x': x, 'w': w, **({'bias': bias} if bias else {}), **({'res': res} if res else {})}
-        outs = {'out': self._out('lin', x.rows, w.cols)}
+        outs = {'out': self._out('lin', x.rows, N)}
         if gelu:
-            outs['pre'] = self._out('pre', x.rows, w.cols)
-        self.emit('linear', ins, outs, gelu=gelu)
+            outs['pre'] = self._out('pre', x.rows, N)
+        self.emit('linear', ins, outs, gelu=gelu, wt=wt, bf16=bf16)
         return outs['out']
 
     def norm(self, x, g, beta=None, kind='layernorm', eps=1e-5):
@@ -145,29 +163,36 @@ class Builder:
         return out
 
     def kv_append(self, knew, vnew, kc, vc, lens, n_new, heads, tmax):
-        """Write n_new rows of knew/vnew (post-rope) into the per-head KV cache at positions lens[0].. (one sequence)."""
+        """Write n_new rows of knew/vnew (post-rope) into the per-head KV cache at positions lens[0].. (one sequence); `heads` = KV heads."""
         self.emit('kv_append', {'knew': knew, 'vnew': vnew, 'kc': kc, 'vc': vc, 'lens': lens}, {'kc': kc, 'vc': vc},
                   n_new=n_new, heads=heads, tmax=tmax)
 
-    def attn_decode(self, q, kc, vc, lens, heads, tmax):
-        """One query row attends to cache positions [0, lens[0]] inclusive."""
+    def attn_decode(self, q, kc, vc, lens, heads, tmax, kv_heads=None):
+        """One query row attends to cache positions [0, lens[0]] inclusive (GQA: kv_heads cache heads)."""
         out = self._out('dec', 1, q.cols)
-        self.emit('attn_decode', {'q': q, 'kc': kc, 'vc': vc, 'lens': lens}, {'out': out}, heads=heads, tmax=tmax)
+        self.emit('attn_decode', {'q': q, 'kc': kc, 'vc': vc, 'lens': lens}, {'out': out}, heads=heads, tmax=tmax,
+                  kv_heads=kv_heads or heads)
         return out
 
-    def attention(self, q, k, v, heads, seq):
-        self._check(q.shape == k.shape == v.shape and q.cols % heads == 0 and q.rows % seq == 0, 'attention',
-                    'q/k/v must share a shape, cols % heads == 0, rows % seq == 0', q, k, v)
+    def attention(self, q, k, v, heads, seq, kv_heads=None, causal=True):
+        """Multi-head attention over sequences of `seq` rows. GQA: k/v have kv_heads heads (heads % kv_heads == 0), each shared by
+        heads/kv_heads query heads. causal=False attends to the whole sequence (ViT, encoders)."""
+        kvh = kv_heads or heads
+        hd = q.cols // heads
+        self._check(q.cols % heads == 0 and heads % kvh == 0 and k.shape == v.shape and k.cols == kvh * hd and k.rows == q.rows
+                    and q.rows % seq == 0, 'attention',
+                    'q [B*T, H*hd], k/v [B*T, Hkv*hd], H % Hkv == 0, rows % seq == 0', q, k, v)
         out, lse = self._out('attn', q.rows, q.cols), self._out('lse', q.rows // seq * heads, seq)
-        self.emit('attention', {'q': q, 'k': k, 'v': v}, {'out': out, 'lse': lse}, heads=heads, seq=seq)
+        self.emit('attention', {'q': q, 'k': k, 'v': v}, {'out': out, 'lse': lse}, heads=heads, seq=seq, kv_heads=kvh, causal=causal)
         return out
 
-    def ce_loss(self, logits, tgt):
-        """Mean softmax cross-entropy over rows (loss[0,0]); loss[0,1] holds 1/count for the backward."""
+    def ce_loss(self, logits, tgt, grad_scale=1.0):
+        """Mean softmax cross-entropy over rows (loss[0,0]); loss[0,1] holds 1/count for the backward. grad_scale multiplies the
+        backward only (loss scaling, 1/microbatches when gradients are accumulated)."""
         self._check(tgt.shape == (logits.rows, 1) and tgt.dtype == 'i32', 'ce_loss', 'tgt must be an i32 column', logits, tgt)
         outs = {'loss': self._out('loss', 1, 2), 'rowloss': self._out('rowloss', logits.rows, 1),
                 'lse': self._out('lse', logits.rows, 1)}
-        self.emit('ce_loss', {'logits': logits, 'tgt': tgt}, outs)
+        self.emit('ce_loss', {'logits': logits, 'tgt': tgt}, outs, grad_scale=grad_scale)
         return outs['loss']
 
     def argmax(self, logits, out=None):
@@ -176,14 +201,14 @@ class Builder:
         return out
 
     # ---- backward-capable building blocks (emitted by VJP rules; `into` accumulates in place into an existing gradient)
-    def mm(self, a, b, ta=False, tb=False, into=None):
+    def mm(self, a, b, ta=False, tb=False, into=None, bf16=False):
         """out = op(a) @ op(b) (device matmul_tile without epilogue)."""
         M, K = (a.cols, a.rows) if ta else (a.rows, a.cols)
         K2, N = (b.cols, b.rows) if tb else (b.rows, b.cols)
         self._check(K == K2, 'mm', f'inner dims {K} != {K2} (ta={ta}, tb={tb})', a, b)
         out = into or self._out('mm', M, N)
         self._check(out.shape == (M, N), 'mm', 'into has the wrong shape', out)
-        self.emit('mm', {'a': a, 'b': b, **({'into': into} if into else {})}, {'out': out}, ta=ta, tb=tb)
+        self.emit('mm', {'a': a, 'b': b, **({'into': into} if into else {})}, {'out': out}, ta=ta, tb=tb, bf16=bf16)
         return out
 
     def colsum(self, x, into=None):
@@ -216,7 +241,7 @@ class Builder:
 
     def attention_bwd(self, fwd, dout):
         q, k, v = (fwd.ins[n] for n in 'qkv')
-        outs = {n: self._out('d' + n, *q.shape) for n in ('dq', 'dk', 'dv')}
+        outs = {'dq': self._out('dq', *q.shape), 'dk': self._out('dk', *k.shape), 'dv': self._out('dv', *v.shape)}
         outs['delta'] = self._out('delta', *fwd.outs['lse'].shape)
         self.emit('attention_bwd', {'q': q, 'k': k, 'v': v, 'o': fwd.outs['out'], 'do': dout, 'lse': fwd.outs['lse']}, outs, **fwd.attrs)
         return outs['dq'], outs['dk'], outs['dv']
@@ -234,14 +259,15 @@ class Builder:
     def ce_bwd(self, fwd):
         out = self._out('dlogits', *fwd.ins['logits'].shape)
         self.emit('ce_bwd', {'logits': fwd.ins['logits'], 'tgt': fwd.ins['tgt'], 'lse': fwd.outs['lse'], 'loss': fwd.outs['loss']},
-                  {'out': out})
+                  {'out': out}, grad_scale=fwd.attrs['grad_scale'])
         return out
 
     # ---- optimizer / bookkeeping
-    def adamw(self, w, g, m, v, step, tok=None, gscale=None, **hp):
-        """In-place AdamW on w (device op adamw). `tok` is the version token the update must wait for (see train.py)."""
+    def adamw(self, w, g, m, v, step, tok=None, gscale=None, lr_buf=None, **hp):
+        """In-place AdamW on w (device op adamw). `tok` is the version token the update must wait for (see train.py). With
+        lr_buf the learning rate is read from that scalar buffer on the device (adamw_lr) instead of the baked `lr` attribute."""
         self.emit('adamw', {'w': w, 'g': g, 'm': m, 'v': v, 'step': step, **({'tok': tok} if tok else {}),
-                            **({'gscale': gscale} if gscale else {})},
+                            **({'gscale': gscale} if gscale else {}), **({'lr_buf': lr_buf} if lr_buf else {})},
                   {'w': w, 'm': m, 'v': v}, **hp)
 
     def sgd(self, w, g, lr, tok=None):
@@ -253,9 +279,10 @@ class Builder:
         self.emit('grad_clip', {f'g{i:04d}': g for i, g in enumerate(grads)}, {'coef': coef, 'partial': partial}, max_norm=max_norm)
         return coef
 
-    def select_window(self, src, step, rows, stride, off=0, name='win'):
-        """dst[i] = src[step[0]*stride + off + i]: a per-step window of a stream, selected on the device from a counter."""
-        dst = self._out(name, rows, 1, dtype=src.dtype)
+    def select_window(self, src, step, rows, stride, off=0, name='win', cols=1):
+        """dst[i] = src[step[0]*stride + off + i] over the rows x cols elements: a per-step window of a stream, selected on the
+        device from a counter (stride and off are in elements)."""
+        dst = self._out(name, rows, cols, dtype=src.dtype)
         self.emit('select_window', {'src': src, 'step': step}, {'dst': dst}, stride=stride, off=off)
         return dst
 
@@ -265,3 +292,137 @@ class Builder:
     def barrier(self, reads, writes, publishes=None):
         """No-op task ordered after every region read and before every region written; may publish a version."""
         self.emit('barrier', {f'r{i}': t for i, t in enumerate(reads)}, {f'w{i}': t for i, t in enumerate(writes)}, publishes=publishes)
+
+    # ---- activations, SwiGLU, softmax (extra pack)
+    ACT_KINDS = {'relu': 0, 'silu': 1, 'tanh': 2, 'sigmoid': 3}
+
+    def act(self, x, kind):
+        self._check(kind in self.ACT_KINDS, 'act', f'unknown activation {kind!r}; known {sorted(self.ACT_KINDS)}', x)
+        out = self._out(kind, x.rows, x.cols)
+        self.emit('act', {'x': x}, {'out': out}, fn=kind)
+        return out
+
+    def act_bwd(self, x, dy, kind, into=None):
+        out = into or self._out('d' + kind, x.rows, x.cols)
+        self.emit('act_bwd', {'x': x, 'dy': dy, **({'into': into} if into else {})}, {'out': out}, fn=kind)
+        return out
+
+    def silu_mul(self, gate, up):
+        """SwiGLU gating: silu(gate) * up."""
+        self._check(gate.shape == up.shape, 'silu_mul', 'gate and up must match', gate, up)
+        out = self._out('swiglu', gate.rows, gate.cols)
+        self.emit('silu_mul', {'gate': gate, 'up': up}, {'out': out})
+        return out
+
+    def silu_mul_bwd(self, gate, up, dy):
+        outs = {'dgate': self._out('dgate', *gate.shape), 'dup': self._out('dup', *gate.shape)}
+        self.emit('silu_mul_bwd', {'gate': gate, 'up': up, 'dy': dy}, outs)
+        return outs['dgate'], outs['dup']
+
+    def softmax(self, x, scale=1.0):
+        out = self._out('softmax', x.rows, x.cols)
+        self.emit('softmax', {'x': x}, {'out': out}, scale=scale)
+        return out
+
+    def softmax_bwd(self, fwd, dp, into=None):
+        out = into or self._out('dsoftmax', *dp.shape)
+        self.emit('softmax_bwd', {'p': fwd.outs['out'], 'dp': dp, **({'into': into} if into else {})}, {'out': out}, scale=fwd.attrs['scale'])
+        return out
+
+    # ---- row gather / scatter-add (index buffers are i32 columns; idx0 offsets idx/scale so one table serves several experts)
+    def gather(self, src, idx, n, idx0=0, scale=None, into=None):
+        """out[r,:] (+)= scale[idx0+r] * src[idx[idx0+r],:] for r < n; an index outside src's rows (-1 = padding) gives zeros."""
+        self._check(idx.dtype == 'i32' and idx.cols == 1 and idx0 + n <= idx.rows, 'gather', 'idx must be an i32 column covering idx0+n rows', idx)
+        self._check(scale is None or (scale.cols == 1 and idx0 + n <= scale.rows), 'gather', 'scale must be a column covering idx0+n rows', idx)
+        out = into or self._out('gather', n, src.cols)
+        self._check(out.shape == (n, src.cols), 'gather', 'into has the wrong shape', out)
+        self.emit('gather', {'src': src, 'idx': idx, **({'scale': scale} if scale else {}), **({'into': into} if into else {})},
+                  {'out': out}, n=n, idx0=idx0)
+        return out
+
+    def scatter_add(self, src, idx, rows, idx0=0, scale=None, into=None):
+        """out[v,:] (+)= sum over r with idx[idx0+r]==v of scale[idx0+r] * src[r,:] (out has `rows` rows; ascending r)."""
+        self._check(idx.dtype == 'i32' and idx.cols == 1 and idx0 + src.rows <= idx.rows, 'scatter_add',
+                    'idx must be an i32 column covering idx0+src.rows rows', idx)
+        self._check(scale is None or (scale.cols == 1 and idx0 + src.rows <= scale.rows), 'scatter_add', 'scale must be a column', idx)
+        out = into or self._out('scatter', rows, src.cols)
+        self._check(out.shape == (rows, src.cols), 'scatter_add', 'into has the wrong shape', out)
+        self.emit('scatter_add', {'src': src, 'idx': idx, **({'scale': scale} if scale else {}), **({'into': into} if into else {})},
+                  {'out': out}, idx0=idx0)
+        return out
+
+    def row_dot(self, a, b, idx, idx0, out):
+        """out[idx0+r] = dot(a[idx[idx0+r],:], b[r,:]) for r < b.rows: writes its own range of `out` (overwrite)."""
+        self.emit('row_dot', {'a': a, 'b': b, 'idx': idx}, {'out': out}, idx0=idx0)
+        return out
+
+    # ---- mixture-of-experts routing
+    def moe_route(self, probs, k, capacity):
+        """Top-k expert choice per token with per-expert capacity (earlier tokens win). Returns (sel [N,k], slot [N,k], eidx [E*C,1])."""
+        N, E = probs.shape
+        self._check(0 < k <= E and capacity >= 1, 'moe_route', f'need 0 < k <= E ({E}) and capacity >= 1', probs)
+        outs = {'sel': self._out('sel', N, k, dtype='i32'), 'slot': self._out('slot', N, k, dtype='i32'),
+                'eidx': self._out('eidx', E * capacity, 1, dtype='i32')}
+        self.emit('moe_route', {'probs': probs}, outs, k=k, capacity=capacity)
+        return outs['sel'], outs['slot'], outs['eidx']
+
+    def moe_gates(self, probs, sel, slot, rows, renorm=True):
+        """Gate value of every expert slot: probs[t,e] (/ sum of the token's k chosen probs when renorm); 0 for empty slots."""
+        out = self._out('gates', rows, 1)
+        self.emit('moe_gates', {'probs': probs, 'sel': sel, 'slot': slot}, {'out': out}, renorm=renorm)
+        return out
+
+    def moe_balance(self, probs, sel, coef):
+        """Load-balancing auxiliary loss coef * E * sum_e f_e P_e (a 1x1 scalar; its gradient is seeded with 1)."""
+        out = self._out('aux', 1, 1)
+        self.emit('moe_balance', {'probs': probs, 'sel': sel}, {'loss': out}, coef=coef)
+        return out
+
+    # ---- positions, precision, schedules
+    def add_rowtile(self, x, pos, seq):
+        """x + pos[r % seq]: learned absolute position embedding added to every sequence."""
+        self._check(pos.shape == (seq, x.cols) and x.rows % seq == 0, 'add_rowtile', 'pos must be seq x d and rows % seq == 0', x, pos)
+        out = self._out('addpos', x.rows, x.cols)
+        self.emit('add_rowtile', {'x': x, 'pos': pos}, {'out': out}, seq=seq)
+        return out
+
+    def pos_bwd(self, fwd, dout, into=None):
+        pos = fwd.ins['pos']
+        out = into or self._out('dpos', *pos.shape)
+        self.emit('pos_bwd', {'dout': dout, **({'into': into} if into else {})}, {'dpos': out}, seq=fwd.attrs['seq'])
+        return out
+
+    def cast(self, x, dtype='bf16'):
+        """Round x to a lower-precision value set (bf16 values stay in fp32 containers). Gradients pass straight through, rounded the same way."""
+        self._check(dtype == 'bf16', 'cast', f'unsupported dtype {dtype!r}; supported: bf16', x)
+        out = self._out('cast', x.rows, x.cols)
+        self.emit('cast', {'x': x}, {'out': out}, dtype=dtype)
+        return out
+
+    def lr_schedule(self, step, lr, sched, base, warmup, total, min_ratio):
+        """lr[0] = base * schedule(step[0]): the learning rate lives in a device buffer that a task updates every step."""
+        self.emit('lr_schedule', {'step': step}, {'lr': lr}, sched=sched, base=base, warmup=warmup, total=total, min_ratio=min_ratio)
+
+    def scale_scalar(self, x, alpha, elems=1):
+        """x[:elems] *= alpha in place (the loss-scale unscale of the clip coefficient)."""
+        self.emit('scale_flat', {'x': x}, {'x': x}, alpha=alpha, elems=elems)
+
+    def moe_gates_bwd(self, fwd, dgs, into=None):
+        out = into or self._out('dprobs', *fwd.ins['probs'].shape)
+        ins = {n: fwd.ins[n] for n in ('probs', 'sel', 'slot')}
+        self.emit('moe_gates_bwd', {**ins, 'dgs': dgs, **({'into': into} if into else {})}, {'dprobs': out}, renorm=fwd.attrs['renorm'])
+        return out
+
+    def moe_balance_bwd(self, fwd, into=None):
+        probs = fwd.ins['probs']
+        out = into or self._out('dprobs', *probs.shape)
+        self.emit('moe_balance_bwd', {'probs': probs, 'sel': fwd.ins['sel'], **({'into': into} if into else {})}, {'out': out},
+                  coef=fwd.attrs['coef'])
+        return out
+
+    def add(self, a, b):
+        """out = a + b (elementwise, same shape)."""
+        self._check(a.shape == b.shape, 'add', 'shape mismatch', a, b)
+        out = self._out('sum', *a.shape)
+        self.emit('add', {'a': a, 'b': b}, {'out': out})
+        return out

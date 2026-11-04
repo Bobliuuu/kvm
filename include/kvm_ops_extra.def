@@ -1,0 +1,91 @@
+// Extra generic operator pack (ids 96..127, append-only): activations, SwiGLU, row softmax, gather / scatter-add, MoE routing,
+// bidirectional attention, bf16 matmul, LR schedule, and matmul epilogue wrappers. Same X(name, id, "arg:type,...") format as
+// kvm_ops.def; type in {buf, buf?, i32, f32}. Device code: include/kvm_ops_extra.cuh (entry points kvmextra::<name>, X-macro
+// wrappers as in kvm_ops_gpt.cuh). CPU references: runtime/ref_extra.py (float32, compiler golden) and
+// frontend/kvmfe/opset.py (float64, frontend oracle).
+//
+// Conventions are those of kvm_ops_gpt.def: fp32 row-major matrices through the KvmBuf table, "flat" ops need ld == cols, index
+// buffers have dtype 1, every op is block-cooperative on 256 threads, bad arguments are reported with ctx.fail(1000+k) and the
+// task returns without touching memory, `acc`=1 accumulates into the output, `buf?` word -1 = absent. No op depends on another
+// running task; output elements have exactly one writer task and a fixed summation order (bitwise deterministic).
+// A model never appears here: these are shape-parametrized building blocks the frontend composes.
+
+// ---- elementwise -----------------------------------------------------------------------------------------------------------
+// out[i] = f(x[i]) for flat i in [e0,e1); kind 0 relu, 1 silu (x*sigmoid x), 2 tanh, 3 sigmoid. out may alias x.
+X(act_fwd,              96, "x:buf,out:buf,kind:i32,e0:i32,e1:i32")
+// dx[i] (+)= f'(x[i]) * dy[i]; x = the forward INPUT (pre-activation). relu'(0) = 0.
+X(act_bwd,              97, "x:buf,dy:buf,dx:buf,kind:i32,e0:i32,e1:i32,acc:i32")
+// SwiGLU: out = silu(gate) * up over flat [e0,e1).
+X(silu_mul_fwd,         98, "gate:buf,up:buf,out:buf,e0:i32,e1:i32")
+// dgate (+)= dy * up * silu'(gate);  dup (+)= dy * silu(gate)   (silu'(x) = s*(1+x*(1-s)), s = sigmoid x)
+X(silu_mul_bwd,         99, "gate:buf,up:buf,dy:buf,dgate:buf,dup:buf,e0:i32,e1:i32,acc:i32")
+// out[r,:d] = softmax(scale * x[r,:d]) for rows [r0,r1).  Backward: dx[r,:] (+)= scale * p * (dp - sum_c p*dp).
+X(softmax_rows_fwd,    100, "x:buf,out:buf,r0:i32,r1:i32,d:i32,scale:f32")
+X(softmax_rows_bwd,    101, "p:buf,dp:buf,dx:buf,r0:i32,r1:i32,d:i32,scale:f32,acc:i32")
+
+// ---- gather / scatter-add (row dispatch and combine) ---------------------------------------------------------------------
+// dst[r,:] (+)= s * src[idx[idx0+r],:] for r in [r0,r1), s = scale[idx0+r] (scale optional, else 1). idx/scale are index/[R,1]
+// buffers addressed with the row offset idx0 (one routing table serves E experts: expert e uses idx0 = e*C). idx values outside
+// [0,src.rows) -> a ZERO contribution (no error: -1 marks padding).
+X(gather_rows_scaled,  102, "src:buf,idx:buf,scale:buf?,dst:buf,r0:i32,r1:i32,d:i32,acc:i32,idx0:i32")
+// For dst rows v in [v0,v1): dst[v,:] (+)= sum over r = 0..N-1 ascending with idx[idx0+r]==v of s_r * src[r,:], s_r = scale[idx0+r]
+// or 1. idx values outside [0,dst.rows) are skipped. One task owns a dst row range: deterministic, no atomics. VJP partner of
+// gather_rows_scaled.
+X(scatter_add_rows,    103, "src:buf,idx:buf,scale:buf?,dst:buf,N:i32,v0:i32,v1:i32,d:i32,acc:i32,idx0:i32")
+// out[idx0+r,0] (+)= dot(a[j,:d], b[r,:d]) with j = idx ? idx[idx0+r] : r; j outside [0,a.rows) -> 0 (gradient of the scale operand).
+X(row_dot,             104, "a:buf,b:buf,idx:buf?,out:buf,r0:i32,r1:i32,d:i32,acc:i32,idx0:i32")
+
+// ---- mixture-of-experts routing (SINGLE-TASK ops over all N tokens; N is small: a router is O(N*E*k)) ---------------------
+// probs:[N,E] f32 row-softmax. sel:[N,k] i32, slot:[N,k] i32, eidx:[E*C,1] i32.
+// sel[t,:] = expert ids of the k largest probs of token t, descending, ties -> lowest expert id.
+// Capacity assignment, tokens ascending then choices ascending: expert e = sel[t,j] with count[e] < C gets slot[t,j] = e*C+count[e]
+// (eidx[slot] = t, count[e]++); otherwise the token is DROPPED for that choice: slot[t,j] = -1. Unused eidx entries = -1.
+X(moe_route,           105, "probs:buf,sel:buf,slot:buf,eidx:buf,N:i32,E:i32,k:i32,C:i32")
+// gs:[E*C,1] f32, zero-filled, then for each (t,j) with slot[t,j] >= 0: gs[slot] = p_j / Z with p_j = probs[t,sel[t,j]] and
+// Z = sum_i p_i over all k choices if renorm else 1 (dropped choices still count in Z).
+X(moe_gates_fwd,       106, "probs:buf,sel:buf,slot:buf,gs:buf,N:i32,E:i32,k:i32,renorm:i32")
+// Backward of the above: dg_j = slot_j>=0 ? dgs[slot_j] : 0;  dp_j = renorm ? dg_j/Z - (sum_i dg_i p_i)/Z^2 : dg_j;
+// dprobs[t,sel[t,j]] (+)= dp_j. acc=0 first zero-fills the whole dprobs [N,E].
+X(moe_gates_bwd,       107, "probs:buf,sel:buf,slot:buf,dgs:buf,dprobs:buf,N:i32,E:i32,k:i32,renorm:i32,acc:i32")
+// Load-balance auxiliary loss: loss[0] = coef * E * sum_e f_e * P_e, f_e = #{(t,j): sel[t,j]==e} / (N*k), P_e = mean_t probs[t,e].
+X(moe_balance_fwd,     108, "probs:buf,sel:buf,loss:buf,N:i32,E:i32,k:i32,coef:f32")
+// d loss / d probs[t,e] = coef * E * f_e / N (loss seeded with 1); (+)= when acc.
+X(moe_balance_bwd,     109, "probs:buf,sel:buf,dprobs:buf,N:i32,E:i32,k:i32,coef:f32,acc:i32")
+
+// ---- bidirectional (non-causal) attention, GQA, fp32 SIMT; layouts and block sizes exactly as attn_fwd / attn_bwd_dq / attn_bwd_dkv
+// in kvm_ops_gpt.def with the causal mask removed (query t attends to ALL keys 0..T-1 of its sequence). The delta op is the
+// existing attn_bwd_delta. hd in {16,32,64,128}. T may be any value >= 1 (final partial 32-row block clipped).
+X(attn_full_fwd,       110, "q:buf,k:buf,v:buf,o:buf,lse:buf,b:i32,h:i32,q0:i32,T:i32,H:i32,Hkv:i32,hd:i32,scale:f32")
+X(attn_full_bwd_dq,    111, "q:buf,k:buf,v:buf,do:buf,lse:buf,delta:buf,dq:buf,b:i32,h:i32,q0:i32,T:i32,H:i32,Hkv:i32,hd:i32,scale:f32")
+X(attn_full_bwd_dkv,   112, "q:buf,k:buf,v:buf,do:buf,lse:buf,delta:buf,dk:buf,dv:buf,b:i32,kvh:i32,k0:i32,T:i32,H:i32,hd:i32,scale:f32")
+
+// ---- mixed precision --------------------------------------------------------------------------------------------------------
+// bf16 values live in f32 containers (ABI v2 dtypes unchanged: 0 f32, 1 i32). out[i] = x[i] rounded to bfloat16 (round to nearest
+// even; inf/nan kept) over flat [e0,e1); out may alias x.
+X(round_bf16,          113, "x:buf,out:buf,e0:i32,e1:i32")
+// matmul_tile (same arguments, flags and epilogue) with bf16 operands: A and B are rounded to bfloat16 on load, the product is
+// accumulated in fp32 on the bf16 tensor cores. flag 16 (precise) is ignored. Output stays fp32.
+X(matmul_tile_bf16,    114, "a:buf,b:buf,out:buf,bias:buf?,res:buf?,pre:buf?,m0:i32,n0:i32,M:i32,N:i32,K:i32,flags:i32,alpha:f32")
+
+// ---- optimizer schedule -----------------------------------------------------------------------------------------------------
+// adamw (kvm_ops_gpt.def) with the learning rate read from a scalar f32 buffer lr[0] instead of an argument.
+X(adamw_lr,            115, "p:buf,g:buf,m:buf,v:buf,gscale:buf?,step:buf,e0:i32,e1:i32,lr:buf,b1:f32,b2:f32,eps:f32,wd:f32")
+// lr[0] = base * factor(t), t = step[0] (i32, 1-based after counter_inc). warm = (warmup>0 && t<=warmup) ? t/warmup : 1;
+// prog = clamp((t-warmup)/max(total-warmup,1), 0, 1); kind 0 constant f=1; kind 1 cosine f = mr + (1-mr)*0.5*(1+cos(pi*prog));
+// kind 2 linear f = 1 - (1-mr)*prog   (mr = min_ratio). lr[0] = base * warm * f.
+X(lr_schedule,         116, "step:buf,lr:buf,kind:i32,base:f32,warmup:i32,total:i32,min_ratio:f32")
+// out[i] = alpha * x[i] over flat [e0,e1) (out may alias x): e.g. the loss-scale unscale of the clip coefficient.
+X(scale_flat,          117, "x:buf,out:buf,alpha:f32,e0:i32,e1:i32")
+// out[r,:] = x[r,:] + pos[r % T, :] for rows [r0,r1), columns [0,d) (learned absolute positions). out may alias x. Its gradient
+// for pos is embedding_bwd with ids = -1, mod = T.
+X(add_rowtile,         118, "x:buf,pos:buf,out:buf,r0:i32,r1:i32,T:i32,d:i32")
+
+// ---- matmul epilogue wrappers (fusion): the 64x64 tile of C = alpha*op(A)*op(B) as in matmul_tile (flags 1 transA, 2 transB,
+// 16 precise; 4 and 8 are rejected), then a second pass over the same tile inside the same task. Result identical (bitwise) to
+// running matmul_tile and the elementwise op as two tasks. -----------------------------------------------------------------
+// out[m,n] = C[m,n] * gelu'(pre[m,n])   (fused gelu_bwd; pre = the forward pre-activation)
+X(matmul_tile_dgelu,   119, "a:buf,b:buf,out:buf,pre:buf,m0:i32,n0:i32,M:i32,N:i32,K:i32,flags:i32,alpha:f32")
+// up[m,n] = C[m,n];  out[m,n] = silu(gate[m,n]) * C[m,n]   (SwiGLU forward fused into the up-projection)
+X(matmul_tile_silu_mul, 120, "a:buf,b:buf,out:buf,gate:buf,up:buf,m0:i32,n0:i32,M:i32,N:i32,K:i32,flags:i32,alpha:f32")
+// dh = C[m,n] (the SwiGLU output gradient, not stored);  dgate[m,n] = dh * up * silu'(gate);  dup[m,n] = dh * silu(gate)
+X(matmul_tile_silu_mul_bwd, 121, "a:buf,b:buf,gate:buf,up:buf,dgate:buf,dup:buf,m0:i32,n0:i32,M:i32,N:i32,K:i32,flags:i32,alpha:f32")

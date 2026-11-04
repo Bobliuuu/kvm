@@ -132,6 +132,28 @@ static void bench_mem() {
         int n = 1 << 24; Dev dv; int p = dv.addf(1, n), g = dv.addf(1, n), m = dv.addf(1, n), v = dv.addf(1, n), st = dv.addi(1);
         auto hp = rnd(r, n), hg = rnd(r, n); dv.up(p, hp); dv.up(g, hg); dv.upi(st, {1});
         Batch b; for (int e0 = 0; e0 < n; e0 += 8192) b.add(OP_adamw, A().b(p).b(g).b(m).b(v).b(-1).b(st).i(e0).i(e0 + 8192).f(1e-3f).f(.9f).f(.99f).f(1e-8f).f(.01f));
+    {   // layernorm bwd dx and param grads [16384 x 1024]
+        int R = 16384, d = 1024; Dev dv; int x = dv.addf(R, d), g = dv.addf(1, d), dy = dv.addf(R, d), mean = dv.addf(1, R), rstd = dv.addf(1, R), dx = dv.addf(R, d), dg = dv.addf(1, d), db = dv.addf(1, d);
+        auto hx = rnd(r, (size_t)R * d), hg = rnd(r, d), hdy = rnd(r, (size_t)R * d), hm = rnd(r, R, 0.1), hr = rnd(r, R, 0.1); for (auto& v : hr) v = 1.f + fabsf(v);
+        dv.up(x, hx); dv.up(g, hg); dv.up(dy, hdy); dv.up(mean, hm); dv.up(rstd, hr);
+        Batch b, bp; for (int r0 = 0; r0 < R; r0 += 64) b.add(OP_layernorm_bwd_dx, A().b(x).b(dy).b(g).b(mean).b(rstd).b(dx).i(r0).i(r0 + 64).i(d).i(0));
+        for (int c0 = 0; c0 < d; c0 += 64) bp.add(OP_norm_bwd_params, A().b(x).b(dy).b(mean).b(rstd).b(dg).b(db).i(R).i(d).i(c0).i(c0 + 64).i(0));
+        Batch bp16; for (int c0 = 0; c0 < d; c0 += 16) bp16.add(OP_norm_bwd_params, A().b(x).b(dy).b(mean).b(rstd).b(dg).b(db).i(R).i(d).i(c0).i(c0 + 16).i(0));
+        auto sp16 = stage(dv, bp16);
+        auto s = stage(dv, b), sp = stage(dv, bp); launch_full(s, 48 * 1024); launch_full(sp, 48 * 1024); CK(cudaDeviceSynchronize());
+        auto gdx = dv.down(dx), gdg = dv.down(dg);
+        double me = 0, ms_ = 0; for (int rr = 0; rr < 8; rr++) {   // row-local reference for 8 rows
+            double s1 = 0, s2 = 0; for (int c = 0; c < d; c++) { double gc = (double)hdy[(size_t)rr * d + c] * hg[c], xh = (hx[(size_t)rr * d + c] - (double)hm[rr]) * hr[rr]; s1 += gc; s2 += gc * xh; }
+            s1 /= d; s2 /= d;
+            for (int c = 0; c < d; c++) { double gc = (double)hdy[(size_t)rr * d + c] * hg[c], xh = (hx[(size_t)rr * d + c] - (double)hm[rr]) * hr[rr], v = hr[rr] * (gc - s1 - xh * s2); me = std::max(me, fabs(gdx[(size_t)rr * d + c] - v)); ms_ = std::max(ms_, fabs(v)); }
+        }
+        char dd[64]; snprintf(dd, sizeof dd, "relerr %.2e", me / ms_); verdict("bench check: layernorm bwd dx 16384x1024 (8 rows)", me / ms_ < 1e-5, dd);
+        double eg = 0, mg = 0; for (int c = 0; c < d; c += 37) { double acc = 0; for (int rr = 0; rr < R; rr++) acc += (double)hdy[(size_t)rr * d + c] * (hx[(size_t)rr * d + c] - (double)hm[rr]) * hr[rr]; eg = std::max(eg, fabs(gdg[c] - acc)); mg = std::max(mg, fabs(acc)); }
+        snprintf(dd, sizeof dd, "relerr %.2e", eg / mg); verdict("bench check: norm_bwd_params dgamma 16384x1024 (sampled cols)", eg / mg < 1e-4, dd);
+        double ms = time_ms([&] { launch_full(s, 48 * 1024); }, 20); report("layernorm bwd dx 16384x1024", "full dispatch", ms, 3.0 * R * d * 4, "GB/s", 1555);
+        ms = time_ms([&] { launch_full(sp, 48 * 1024); }, 20); report("norm_bwd_params 16384x1024 (16 tasks of 64 cols)", "full dispatch", ms, 2.0 * R * d * 4, "GB/s", 1555);
+        ms = time_ms([&] { launch_full(sp16, 48 * 1024); }, 20); report("norm_bwd_params 16384x1024 (64 tasks of 16 cols)", "full dispatch", ms, 2.0 * R * d * 4, "GB/s", 1555);
+    }
         auto s = stage(dv, b); launch_full(s, 48 * 1024); CK(cudaDeviceSynchronize());
         auto gp = dv.down(p); D P = dbl(hp), M(n, 0.0), Vv(n, 0.0); adamw_d(P, dbl(hg), M, Vv, 1e-3f, .9f, .99f, 1e-8f, .01f, 1, 1.0);
         double me = 0; for (int i = 0; i < n; i += 1009) me = std::max(me, fabs(gp[i] - P[i]));

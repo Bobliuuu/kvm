@@ -96,16 +96,17 @@ static void t_matmul() {
     }
 }
 
-static void norm_case(bool rms, int R, int d) {
+// ld_pad = 0: dense rows (16-byte vector fast paths when d%4==0); otherwise the leading dimensions are d+2 / d+1 (scalar paths).
+static void norm_case(bool rms, int R, int d, int ld_pad) {
     Rng r(31 + d);
     Dev dv;
-    int x = dv.addf(R, d, d + 2), g = dv.addf(1, d), be = dv.addf(1, d), o = dv.addf(R, d), mean = dv.addf(1, R), rstd = dv.addf(1, R);
-    int dy = dv.addf(R, d), dx = dv.addf(R, d, d + 1), dg = dv.addf(1, d), db = dv.addf(1, d);
+    int x = dv.addf(R, d, d + (ld_pad ? 2 : 0)), g = dv.addf(1, d), be = dv.addf(1, d), o = dv.addf(R, d), mean = dv.addf(1, R), rstd = dv.addf(1, R);
+    int dy = dv.addf(R, d), dx = dv.addf(R, d, d + (ld_pad ? 1 : 0)), dg = dv.addf(1, d), db = dv.addf(1, d);
     auto hx = rnd(r, R * d, 2.0), hg = rnd(r, d), hb = rnd(r, d), hdy = rnd(r, R * d);
     for (auto& v : hx) v += 0.5f;
     dv.up(x, hx); dv.up(g, hg); dv.up(be, hb); dv.up(dy, hdy);
     const float eps = 1e-5f;
-    std::string nm = std::string(rms ? "rmsnorm" : "layernorm") + " R=" + std::to_string(R) + " d=" + std::to_string(d);
+    std::string nm = std::string(rms ? "rmsnorm" : "layernorm") + " R=" + std::to_string(R) + " d=" + std::to_string(d) + (ld_pad ? " ld>d" : " dense");
     Batch b;
     for (int r0 = 0; r0 < R; r0 += 5) {
         if (rms) b.add(OP_rmsnorm_fwd, A().b(x).b(g).b(o).b(rstd).i(r0).i(std::min(R, r0 + 5)).i(d).f(eps));
@@ -135,7 +136,7 @@ static void norm_case(bool rms, int R, int d) {
     }
     if (e) check_true(nm + " err", false);
 }
-static void t_norms() { for (int rms = 0; rms < 2; rms++) for (int R : {1, 13}) for (int d : {1, 7, 32, 100, 1000}) norm_case(rms, R, d); }
+static void t_norms() { for (int rms = 0; rms < 2; rms++) for (int R : {1, 13}) for (int d : {1, 7, 32, 100, 1000, 1024, 1028, 4}) for (int pad : {0, 1}) norm_case(rms, R, d, pad); }
 
 static void t_elementwise() {
     Rng r(41);

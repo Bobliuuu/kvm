@@ -34,7 +34,16 @@ static void kvm_log(int lvl, const char* fmt, ...) {
 #define CK(call) do { cudaError_t e_ = (call); if (e_ != cudaSuccess) { \
   char m_[512]; snprintf(m_, sizeof m_, "%s:%d: %s -> %s", __FILE__, __LINE__, #call, cudaGetErrorString(e_)); throw std::runtime_error(m_); } } while (0)
 
+static const char* kvm_dist_err(int c, bool text) {  // KVM_DIST_HOOK: codes 64.. come from dist/wire.hpp
+  switch (c) {
+#define E(n, code, str) case code: return text ? str : #n;
+    KVM_DIST_ERRORS(E)
+#undef E
+  }
+  return nullptr;
+}
 static const char* kvm_err_name(int c) {
+  if (const char* d = kvm_dist_err(c, false)) return d;
   static const char* nm[] = {
 #define E(n, s) #n,
       KVM_ERRORS(E)
@@ -43,6 +52,7 @@ static const char* kvm_err_name(int c) {
   return c >= 0 && c < (int)(sizeof nm / sizeof nm[0]) ? nm[c] : "UNKNOWN";
 }
 static const char* kvm_err_text(int c) {
+  if (const char* d = kvm_dist_err(c, true)) return d;
   static const char* tx[] = {
 #define E(n, s) s,
       KVM_ERRORS(E)
@@ -240,6 +250,8 @@ class KvmExec {
     if (var < 0 || var >= cfg_.num_vars) throw std::invalid_argument("version variable out of range");
     CK(cudaMemcpy(S_.version + var, &v, 4, cudaMemcpyHostToDevice));
   }
+  // KVM_DIST_HOOK: attach the distributed-execution descriptor (inbox, in_vars, ctl). Device-visible memory, outlives the run.
+  void set_dist(const KvmDistDev* d) { if (started_) throw std::logic_error("dist is fixed at start()"); S_.dist = d; }
   // Pooled device memory for many small buffers: arena() then add_view(). Zero-initialised, freed with the executor.
   float* arena(size_t floats) {
     float* p; CK(cudaMalloc(&p, floats * 4)); CK(cudaMemset(p, 0, floats * 4)); arenas_.push_back(p); return p;

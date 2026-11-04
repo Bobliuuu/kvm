@@ -379,7 +379,7 @@ KVM_OP(spin) {
 #if __has_include("kvm_ops_gpt.cuh")
 #include "kvm_ops_gpt.cuh"
 #endif
-#if __has_include("kvm_ops_game.cuh")
+#if defined(KVM_WITH_GAME) && __has_include("kvm_ops_game.cuh")
 #include "kvm_ops_game.cuh"
 #endif
 #ifdef KVM_EXTRA_OPS_CUH

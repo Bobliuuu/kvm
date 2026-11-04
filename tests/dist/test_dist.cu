@@ -361,9 +361,11 @@ struct World {
       if (all_done) return;
       for (int r = 0; r < W; ++r) if (active(r)) fprintf(stderr, "  watchdog (15 s): rank %d thread is %s\n", r, (const char*[]){"before start()", "in start()", "in submit()", "in finish()", "done"}[where[r].load()]);
     });
-    // Experiment knobs for the single-GPU scheduling flake (see DISTRIBUTED.md): KVM_DIST_LAUNCH=main starts every kernel from this
-    // thread before any rank thread runs; KVM_DIST_STAGGER_MS=n sleeps n ms between launches.
-    const bool main_launch = getenv("KVM_DIST_LAUNCH") && std::string(getenv("KVM_DIST_LAUNCH")) == "main";
+    // Kernels are launched from THIS thread, one executor after another, before any rank thread runs. Launching the persistent kernels
+    // of several executors concurrently from one host thread each left one executor's kernel unscheduled until its peers timed out
+    // in ~7% of runs (6/80 vs 0/80 for sequential or 3 ms-staggered launches; see DISTRIBUTED.md). KVM_DIST_LAUNCH=threads restores
+    // the concurrent launch for experiments; KVM_DIST_STAGGER_MS=n sleeps n ms between launches.
+    const bool main_launch = !(getenv("KVM_DIST_LAUNCH") && std::string(getenv("KVM_DIST_LAUNCH")) == "threads");
     const int stagger = getenv("KVM_DIST_STAGGER_MS") ? atoi(getenv("KVM_DIST_STAGGER_MS")) : 0;
     if (main_launch) for (int r = 0; r < W; ++r) if (active(r)) { CK(cudaSetDevice(dev[r])); ex[r]->start(); if (stagger) std::this_thread::sleep_for(std::chrono::milliseconds(stagger)); }
     for (int r = 0; r < W; ++r) {

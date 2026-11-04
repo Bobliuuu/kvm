@@ -238,13 +238,26 @@ class Builder:
         return out
 
     # ---- optimizer / bookkeeping
-    def adamw(self, w, g, m, v, step, tok=None, **hp):
+    def adamw(self, w, g, m, v, step, tok=None, gscale=None, **hp):
         """In-place AdamW on w (device op adamw). `tok` is the version token the update must wait for (see train.py)."""
-        self.emit('adamw', {'w': w, 'g': g, 'm': m, 'v': v, 'step': step, **({'tok': tok} if tok else {})},
+        self.emit('adamw', {'w': w, 'g': g, 'm': m, 'v': v, 'step': step, **({'tok': tok} if tok else {}),
+                            **({'gscale': gscale} if gscale else {})},
                   {'w': w, 'm': m, 'v': v}, **hp)
 
     def sgd(self, w, g, lr, tok=None):
         self.emit('sgd', {'w': w, 'g': g, **({'tok': tok} if tok else {})}, {'w': w}, lr=lr)
+
+    def grad_clip(self, grads, max_norm, coef):
+        """Global gradient norm over `grads` -> coef[0] = min(1, max_norm/norm), coef[1] = norm (coef is adamw's gscale)."""
+        partial = self._out('gnpartial', sum(g.rows for g in grads), 1)      # >= chunks of any tiling (a chunk has >= 1 row)
+        self.emit('grad_clip', {f'g{i:04d}': g for i, g in enumerate(grads)}, {'coef': coef, 'partial': partial}, max_norm=max_norm)
+        return coef
+
+    def select_window(self, src, step, rows, stride, off=0, name='win'):
+        """dst[i] = src[step[0]*stride + off + i]: a per-step window of a stream, selected on the device from a counter."""
+        dst = self._out(name, rows, 1, dtype=src.dtype)
+        self.emit('select_window', {'src': src, 'step': step}, {'dst': dst}, stride=stride, off=off)
+        return dst
 
     def counter_inc(self, x, delta=1):
         self.emit('counter_inc', {'x': x}, {'x': x}, delta=delta)

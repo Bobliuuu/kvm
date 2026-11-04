@@ -7,18 +7,35 @@ test that the dataflow analysis found every hazard. This is the oracle the GPU r
 from __future__ import annotations
 
 import random
+import struct
 
 from . import log
 from .ir import FrontendError
 from .opset import Buf, op as device_op
 
 
+def initial_values(init, n, dtype, data_files):
+    k = init['kind']
+    if k == 'fill':
+        return [init['value']] * n
+    if k == 'values':
+        return list(init['values'])
+    if k == 'seeded':
+        from . import _runtime
+        draws, bias, coef = _runtime.initgen.params(init['dist'], init['scale'])
+        return _runtime.initgen.seeded_values(init['seed'], n, draws, bias, coef)
+    if k == 'file':
+        raw = data_files[init['path']]
+        return list(struct.unpack(f'<{n}{"i" if dtype == "i32" else "f"}', raw))
+    raise FrontendError(f'unknown init kind {k!r}')
+
+
 class Memory:
-    def __init__(self, spec, f32=False):
+    def __init__(self, spec, f32=False, data_files=None):
         self.bufs = {}
         for b in spec['buffers']:
             init, n = b['init'], b['rows'] * b['cols']
-            vals = [init['value']] * n if init['kind'] == 'fill' else list(init['values'])
+            vals = initial_values(init, n, b.get('dtype', 'f32'), data_files or {})
             self.bufs[b['name']] = Buf(vals, b['rows'], b['cols'], f32)
         self.f32 = f32
 
@@ -27,8 +44,8 @@ class Memory:
         return [b.row(r) for r in range(b.rows)]
 
 
-def execute(spec, order='program', seed=0, f32=False, mem: Memory | None = None) -> Memory:
-    mem = mem or Memory(spec, f32)
+def execute(spec, order='program', seed=0, f32=False, mem: Memory | None = None, data_files=None) -> Memory:
+    mem = mem or Memory(spec, f32, data_files)
     tasks = []
     for g in spec['graphs']:
         base = len(tasks)
@@ -81,5 +98,5 @@ def _run_task(t, mem):
     if d.ref is None:
         raise FrontendError(f"task {t['id']}: op {t['op']!r} has no CPU reference (opaque engine op)")
     args = t.get('args', {})
-    bufs = {a: (mem.bufs[args[a]] if args[a] is not None else None) for a, ty in d.sig if ty == 'buf'}
-    d.ref(bufs, {a: args[a] for a, ty in d.sig if ty != 'buf'})
+    bufs = {a: (mem.bufs[args[a]] if args[a] is not None else None) for a, ty in d.sig if ty in ('buf', 'buf?')}
+    d.ref(bufs, {a: args[a] for a, ty in d.sig if ty not in ('buf', 'buf?')})

@@ -16,9 +16,13 @@ class Compiled:
     spec: dict
     program: Program | None = None
 
+    def run(self, **kw):
+        """Execute the workload on the CPU golden VM (float64)."""
+        from .refvm import execute
+        return execute(self.spec, data_files=self.low.data_files, **kw)
 
-def compile_training(model_cfg: ModelConfig, tc: TrainConfig, tiling: Tiling, reuse='shape', gap=0,
-                     materialize=True, with_spec=True) -> Compiled:
+
+def compile_training(model_cfg: ModelConfig, tc: TrainConfig, tiling: Tiling, reuse='shape', gap=0, with_spec=True) -> Compiled:
     model = GPT(model_cfg)
     log.info('model %s: %.1fM parameters, %d layers, d=%d, heads=%d, seq=%d, batch=%d, vocab=%d', model_cfg.name,
              model_cfg.params / 1e6, model_cfg.layers, model_cfg.d_model, model_cfg.heads, model_cfg.seq, model_cfg.batch,

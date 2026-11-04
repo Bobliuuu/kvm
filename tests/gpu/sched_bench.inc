@@ -343,9 +343,27 @@ static bool suite_affinity() {
   return g_fail == before;
 }
 
+// ================= overload: a serve flood that alone would take every CTA; who gets starved? =================
+static bool suite_overload() {
+  int before = g_fail; const int N = 5;
+  LoadSpec L = rebalance_load(); L.phases = {{300, 9000}}; L.slo_us = 5000;
+  printf("  serve flood: 9000 req/s x 48 matmul tasks (~115 CTAs of demand on 106 workers) for 300 ms, train saturating; train reservation 26 CTAs (25%%) in the dynamic row\n");
+  struct Cfg { const char* name; int mode; int prio; int train_min; };
+  std::vector<std::pair<std::string, Rep>> res;
+  for (const Cfg& cf : std::vector<Cfg>{{"global queue, serve prio 20", KVM_SCHED_GLOBAL, 20, 0}, {"dynamic, train min 26 CTAs", KVM_SCHED_DYNAMIC, 0, 26}}) {
+    KvmConfig c = mode_cfg(cf.mode, 108); c.sched.p.cls[0].weight = 4; c.sched.p.cls[0].urgent_us = 0; c.sched.p.cls[1].min_cta = cf.train_min;
+    LoadSpec l = L; l.serve_prio = cf.prio; Rep r = repeat(c, l, N); CHECK(reps_ok(r), "%s", cf.name); print_rep(cf.name, r); res.push_back({cf.name, r});
+  }
+  auto kt = [](const Metrics& m) { return m.train_ktasks_s; };
+  double g = sp(res[0].second, kt).med, d = sp(res[1].second, kt).med;
+  printf("  train throughput under the flood: global-prio %.1f ktask/s, dynamic with reservation %.1f ktask/s (%.1fx); \n", g, d, d / std::max(g, 1e-9));
+  return g_fail == before;
+}
+
 static bool sched_bench_suite(const std::string& s, bool& ok) {
   if (s == "calib") { ok = suite_calib(); return true; }
   if (s == "dispatch") { ok = suite_dispatch(); return true; }
+  if (s == "overload") { ok = suite_overload(); return true; }
   if (s == "affinity") { ok = suite_affinity(); return true; }
   if (s == "arbiter") { ok = suite_arbiter(); return true; }
   if (s == "rebalance") { ok = suite_rebalance(); return true; }

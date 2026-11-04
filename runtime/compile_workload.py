@@ -719,6 +719,7 @@ def main(argv=None):
     p.add_argument('--emit-golden', action='store_true', help='run the CPU reference and write golden.json')
     p.add_argument('--allow-nonfinite', action='store_true', help='accept NaN/inf float32 literals')
     p.add_argument('--allow-opaque', action='store_true', help='golden run: execute ops without CPU semantics as noops')
+    p.add_argument('--golden-timeout', type=float, default=60, help='seconds the pure-Python golden run may take (large bundles need more)')
     p.add_argument('--data-dir', help='where `file` initial values live (default: the workload file directory)')
     p.add_argument('--log-level', default='INFO')
     args = p.parse_args(argv)
@@ -730,7 +731,7 @@ def main(argv=None):
         write_bundle(compiled, args.out_dir)
         if args.emit_golden:
             import workload_vm
-            golden = workload_vm.run_golden(compiled, allow_opaque=args.allow_opaque)
+            golden = workload_vm.run_golden(compiled, timeout=args.golden_timeout, allow_opaque=args.allow_opaque)
             with open(Path(args.out_dir) / 'golden.json', 'w') as f:
                 json.dump(golden, f, indent=2)
                 f.write('\n')

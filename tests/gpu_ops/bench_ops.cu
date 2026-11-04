@@ -24,16 +24,25 @@ template <int ID> static void launch_one(const Staged& s, int smem) {
     k_one<ID><<<s.n, 256, smem>>>(s.c, s.w, s.off);
 }
 static void launch_full(const Staged& s, int smem) { k_run<<<s.n, 256, smem>>>(s.c, s.w, s.op, s.off); }
+static double g_tmin = 0, g_tmax = 0;   // spread of the last time_ms: min / max over the repetitions
+// Median over BENCH_REPS (default 7) repetitions of `iters` back-to-back launches each; min/max land in g_tmin/g_tmax.
 template <typename F> static double time_ms(F f, int iters) {
+    static const int reps = getenv("BENCH_REPS") ? atoi(getenv("BENCH_REPS")) : 7;
     cudaEvent_t a, b; cudaEventCreate(&a); cudaEventCreate(&b);
     for (int i = 0; i < 3; i++) f();
-    CK(cudaDeviceSynchronize()); cudaEventRecord(a);
-    for (int i = 0; i < iters; i++) f();
-    cudaEventRecord(b); CK(cudaEventSynchronize(b)); float ms; cudaEventElapsedTime(&ms, a, b); CK(cudaGetLastError());
-    return ms / iters;
+    CK(cudaDeviceSynchronize());
+    std::vector<double> t;
+    for (int r = 0; r < reps; r++) {
+        cudaEventRecord(a);
+        for (int i = 0; i < iters; i++) f();
+        cudaEventRecord(b); CK(cudaEventSynchronize(b)); float ms; cudaEventElapsedTime(&ms, a, b); CK(cudaGetLastError());
+        t.push_back(ms / iters);
+    }
+    std::sort(t.begin(), t.end()); g_tmin = t.front(); g_tmax = t.back();
+    return t[t.size() / 2];
 }
 static void report(const char* name, const char* mode, double ms, double work, const char* unit, double peak) {
-    printf("BENCH  %-46s %-13s %8.3f ms  %9.1f %s  (%.1f%% of %.0f)\n", name, mode, ms, work / ms * 1e-6, unit, work / ms * 1e-6 / peak * 100, peak);
+    printf("BENCH  %-46s %-13s %8.3f ms [%.3f..%.3f]  %9.1f %s  (%.1f%% of %.0f)\n", name, mode, ms, g_tmin, g_tmax, work / ms * 1e-6, unit, work / ms * 1e-6 / peak * 100, peak);
 }
 
 template <int ID> static void bench_mm(int M, int N, int K, int ta, int tb, int prec) {
@@ -129,6 +138,15 @@ static void bench_mem() {
         char d[64]; snprintf(d, sizeof d, "max abs diff %.2e (sampled)", me); verdict("bench check: adamw 16M (first step; later steps mutate state)", me < 1e-6, d);
         double ms = time_ms([&] { launch_full(s, 48 * 1024); }, 20); report("adamw 16M params", "full dispatch", ms, 7.0 * n * 4, "GB/s", 1555);
     }
+    {   // gelu fwd 64M
+        int n = 1 << 26; Dev dv; int x = dv.addf(1, n), o = dv.addf(1, n);
+        auto hx = rnd(r, n); dv.up(x, hx);
+        Batch b; for (int e0 = 0; e0 < n; e0 += 16384) b.add(OP_gelu_fwd, A().b(x).b(o).i(e0).i(e0 + 16384));
+        auto s = stage(dv, b); launch_full(s, 48 * 1024); CK(cudaDeviceSynchronize()); auto go = dv.down(o);
+        double me = 0; for (int i = 0; i < n; i += 997) { double v = hx[i], t = 0.5 * v * (1 + tanh(0.7978845608028654 * (v + 0.044715 * v * v * v))); me = std::max(me, fabs(go[i] - t)); }
+        char d[64]; snprintf(d, sizeof d, "max abs diff %.2e (sampled)", me); verdict("bench check: gelu fwd 64M", me < 1e-5, d);
+        double ms = time_ms([&] { launch_full(s, 48 * 1024); }, 10); report("gelu fwd 64M", "full dispatch", ms, 2.0 * n * 4, "GB/s", 1555);
+    }
     {   // softmax CE fwd+bwd [8192 x 50304]
         int N = 8192, Vv = 50304; Dev dv; int lg = dv.addf(N, Vv), tg = dv.addi(N), rl = dv.addf(1, N), ls = dv.addf(1, N), loss = dv.addf(1, 2), dl = dv.addf(N, Vv);
         auto hl = rnd(r, (size_t)N * Vv, 3.0); std::vector<int32_t> ht(N); for (auto& t : ht) t = r.u32() % Vv; dv.up(lg, hl); dv.upi(tg, ht);
@@ -149,6 +167,7 @@ int main() {
     cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0)); printf("device: %s, %d SMs, %d MHz\n", pr.name, pr.multiProcessorCount, pr.clockRate / 1000);
     bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 0, 0); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 1, 0, 0); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 1, 0);
     bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 0, 1); bench_mm<OP_matmul_tile>(2048, 2048, 2048, 0, 0, 0); bench_mm<OP_matmul_tile>(8192, 768, 768, 0, 0, 0);
+    bench_mm<OP_matmul_tile>(1024, 1024, 1024, 0, 0, 0); bench_mm<OP_matmul_tile>(4096, 3072, 768, 0, 0, 0); bench_mm<OP_matmul_tile>(512, 512, 512, 0, 0, 0);
     bench_attn<64>(4, 1024, 16, 16); bench_attn<64>(4, 2048, 16, 4); bench_attn<128>(2, 2048, 8, 8);
     bench_mem();
     printf("\n%d passed, %d failed\n", g_pass, g_fail);

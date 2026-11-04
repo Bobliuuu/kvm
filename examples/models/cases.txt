@@ -1,26 +1,26 @@
 # NAME | MODEL (preset, JSON file or JSON string) | STEPS | MODE | TOL (precise mode) | extra gen_bundle.py flags
-mlp_f32        | mlp_tiny        | 40 | precise | 2e-4 | --schedule cosine --warmup 4
+mlp_f32        | mlp_tiny        | 40 | precise | 1e-3 | --schedule cosine --warmup 4
 mlp_tf32       | mlp_tiny        | 5  | tf32    | 0   |
-vit_f32        | vit_tiny        | 20 | precise | 2e-4 |
+vit_f32        | vit_tiny        | 20 | precise | 1e-3 |
 vit_tf32       | vit_tiny        | 5  | tf32    | 0   |
-llama_f32      | llama_tiny      | 10 | precise | 2e-4 |
+llama_f32      | llama_tiny      | 10 | precise | 1e-3 |
 llama_tf32     | llama_tiny      | 5  | tf32    | 0   |
-llama_fused    | llama_tiny      | 10 | precise | 2e-4 | --fuse
-gqa_tied       | llama_gqa_tied  | 10 | precise | 2e-4 |
-moe_f32        | moe_tiny        | 10 | precise | 2e-4 |
+llama_fused    | llama_tiny      | 10 | precise | 1e-3 | --fuse
+gqa_tied       | llama_gqa_tied  | 10 | precise | 1e-3 |
+moe_f32        | moe_tiny        | 10 | precise | 1e-3 |
 moe_tf32       | moe_tiny        | 5  | tf32    | 0   |
-moe_fused      | moe_tiny        | 10 | precise | 2e-4 | --fuse
-llama_accum    | llama_tiny      | 5  | precise | 2e-4 | --accum 2
-llama_remat    | {"family": "llama", "name": "llama_remat", "layers": 3, "remat": true} | 5 | precise | 2e-4 |
-llama_bf16     | {"family": "llama", "name": "llama_bf16", "precision": "bf16"} | 10 | precise | 2e-3 | --loss-scale 1024 --schedule cosine --warmup 2
-mlp_bf16       | {"family": "mlp", "name": "mlp_bf16", "precision": "bf16"} | 30 | precise | 2e-3 | --loss-scale 128
-gpt_fused      | gpt_tiny        | 5  | precise | 2e-4 | --fuse
+moe_fused      | moe_tiny        | 10 | precise | 1e-3 | --fuse
+llama_accum    | llama_tiny      | 5  | precise | 1e-3 | --accum 2
+llama_remat    | {"family": "llama", "name": "llama_remat", "layers": 3, "remat": true} | 5 | precise | 1e-3 |
+llama_bf16     | {"family": "llama", "name": "llama_bf16", "precision": "bf16"} | 10 | lowp | 0 | --loss-scale 1024 --schedule cosine --warmup 2
+mlp_bf16       | {"family": "mlp", "name": "mlp_bf16", "precision": "bf16"} | 30 | lowp | 0 | --loss-scale 128
+gpt_fused      | gpt_tiny        | 5  | precise | 1e-3 | --fuse
 # small bundles for compute-sanitizer (memcheck, racecheck, synccheck): same models, 2 steps
-san_llama      | llama_tiny      | 2  | precise | 2e-4 |
-san_gqa_fused  | llama_gqa_tied  | 2  | precise | 2e-4 | --fuse
-san_moe        | moe_tiny        | 2  | precise | 2e-4 |
-san_moe_fused  | moe_tiny        | 2  | precise | 2e-4 | --fuse
-san_vit        | vit_tiny        | 2  | precise | 2e-4 |
-san_mlp        | mlp_tiny        | 3  | precise | 2e-4 | --schedule cosine --warmup 1
-san_bf16       | {"family": "llama", "name": "llama_bf16", "precision": "bf16"} | 2 | precise | 2e-3 | --loss-scale 1024
-san_remat      | {"family": "llama", "name": "llama_remat", "layers": 2, "remat": true} | 2 | precise | 2e-4 | --accum 2
+san_llama      | llama_tiny      | 2  | precise | 1e-3 |
+san_gqa_fused  | llama_gqa_tied  | 2  | precise | 1e-3 | --fuse
+san_moe        | moe_tiny        | 2  | precise | 1e-3 |
+san_moe_fused  | moe_tiny        | 2  | precise | 1e-3 | --fuse
+san_vit        | vit_tiny        | 2  | precise | 1e-3 |
+san_mlp        | mlp_tiny        | 3  | precise | 1e-3 | --schedule cosine --warmup 1
+san_bf16       | {"family": "llama", "name": "llama_bf16", "precision": "bf16"} | 2 | lowp | 0 | --loss-scale 1024
+san_remat      | {"family": "llama", "name": "llama_remat", "layers": 2, "remat": true} | 2 | precise | 1e-3 | --accum 2

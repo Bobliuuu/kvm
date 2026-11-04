@@ -3,19 +3,20 @@
 # crosses the network. One hold of the GPU lock for all runs; compute-sanitizer (memcheck, racecheck, synccheck) runs on cases named san_*
 # (small bundles: racecheck is ~1000x slower) or on all cases with --sanitize. Usage, from the repository root on the GPU machine:
 #   examples/models/prebuild.sh logs/prebuilt && examples/models/run_box.sh logs/prebuilt logs/models-run [--sanitize] [--cases FILE]
+# --check-only re-runs only check.py on the dumps of an earlier run (no GPU, no lock).
 set -euo pipefail
 PRE="${1:?usage: run_box.sh PREBUILT_DIR OUT_DIR [--sanitize] [--cases FILE]}"; OUT="${2:?}"; shift 2
-SANITIZE=0; ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; CASES_FILE="$ROOT/examples/models/cases.txt"
-while [ $# -gt 0 ]; do case "$1" in --sanitize) SANITIZE=1;; --cases) CASES_FILE="$2"; shift;; *) echo "unknown $1"; exit 2;; esac; shift; done
+SANITIZE=0; CHECK_ONLY=0; ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; CASES_FILE="$ROOT/examples/models/cases.txt"
+while [ $# -gt 0 ]; do case "$1" in --sanitize) SANITIZE=1;; --check-only) CHECK_ONLY=1;; --cases) CASES_FILE="$2"; shift;; *) echo "unknown $1"; exit 2;; esac; shift; done
 ARCH="${KVM_ARCH:-sm_80}"; mkdir -p "$OUT/bundles"; cd "$ROOT"
 NVCC="$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc | tail -1)"
-"$NVCC" -O3 -arch="$ARCH" -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 kvm_exec.cu -o "$OUT/kvm_exec"
+[ "$CHECK_ONLY" = 1 ] || "$NVCC" -O3 -arch="$ARCH" -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 kvm_exec.cu -o "$OUT/kvm_exec"
 trim() { sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
 declare -a NAMES MODES TOLS
 while IFS='|' read -r name model steps mode tol flags; do
   name="$(echo "$name" | trim)"; case "$name" in ''|'#'*) continue;; esac
   [ -f "$PRE/$name/bundle/golden.json" ] || { echo "missing prebuilt $name"; exit 2; }
-  rm -rf "$OUT/bundles/$name"; cp -R "$PRE/$name" "$OUT/bundles/$name"
+  [ "$CHECK_ONLY" = 1 ] || { rm -rf "$OUT/bundles/$name"; cp -R "$PRE/$name" "$OUT/bundles/$name"; }
   NAMES+=("$name"); MODES+=("$(echo "$mode" | trim)"); TOLS+=("$(echo "$tol" | trim)")
 done < "$CASES_FILE"
 run_all() {
@@ -32,7 +33,7 @@ export -f run_all; export NAMES_STR="${NAMES[*]}"
 # shellcheck disable=SC2155
 declare -f run_all > "$OUT/run_all.sh"
 { declare -p NAMES SANITIZE OUT; cat "$OUT/run_all.sh"; echo run_all; } > "$OUT/run_all_full.sh"
-flock -w 14400 ~/.gpu.lock timeout 3400 bash "$OUT/run_all_full.sh" | tee "$OUT/runs.txt"
+[ "$CHECK_ONLY" = 1 ] || flock -w 14400 ~/.gpu.lock timeout 3400 bash "$OUT/run_all_full.sh" | tee "$OUT/runs.txt"
 fail=0; grep -E "exit [1-9]" "$OUT/runs.txt" && fail=1
 for i in "${!NAMES[@]}"; do
   c="${NAMES[$i]}"; d="$OUT/bundles/$c"

@@ -22,7 +22,7 @@ ORACLE_FRAMES=$(( DUR * FPS + 40 )); [ -d oracle ] || python3 doom/cpu_run.py --
 one() {   # name rep extra-args...   -> $OUT/$name/rep$rep
   local name="$1" rep="$2"; shift 2; local d="$OUT/$name/rep$rep"; rm -rf "$d"; mkdir -p "$d"
   echo "=== $(date -u +%T) $name rep$rep: adaptive_run scn --out $d $*"
-  ./adaptive_run scn --out "$d" --wad "$WAD" --tag "$name-rep$rep" --duration-s "$DUR" --seed "$rep" "$@" > "$d/run.log" 2>&1; local rc=$?
+  ${BIN:-./adaptive_run} scn --out "$d" --wad "$WAD" --tag "$name-rep$rep" --duration-s "$DUR" --seed "$rep" "$@" > "$d/run.log" 2>&1; local rc=$?
   grep -E "doom:|FAIL|ERROR|error" "$d/run.log" | tail -3
   local ok=1
   for k in "$d"/doom[0-9]*; do [ -d "$k" ] || continue
@@ -34,7 +34,7 @@ echo "# batch $GROUP @ $(date -u +%FT%TZ)  commit ${BATCH_COMMIT:-?}  reps $REPS
 case "$GROUP" in
   smoke) mkdir -p "$OUT"; "$0" suites; REPS=1 "$0" main; REPS=1 "$0" bw;;
   main)  for rep in $(seq 1 "$REPS"); do for c in global static fixed_fair fixed_prio fixed_resv_peak v1_demand adaptive adaptive_gated; do one $c $rep ${CFG[$c]} $PHASES; done; done;;
-  multi) # N Doom instances beside training + serve (steady load), paced at 35 Hz, then unpaced (max fps) to find the breaking point
+  multi) export BIN=./adaptive_run_n8   # N Doom instances beside training + serve (steady load), paced at 35 Hz, then unpaced (max fps) to find the breaking point
     for rep in $(seq 1 "${REPS_MULTI:-3}"); do for n in 1 2 4 8; do for c in global fixed_prio adaptive; do
       one "multi_n${n}_$c" $rep ${CFG[$c]} --doom-instances $n --serve-rate 40 --doom-min-hi $((n + 4))
     done; done; done

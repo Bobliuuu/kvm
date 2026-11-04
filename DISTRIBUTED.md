@@ -168,6 +168,15 @@ print `SKIP: needs 2 GPUs` below that and run automatically otherwise; the multi
 | `multigpu-p2p-bandwidth`, `multigpu-p2p-pingpong`, `multigpu-plans-one-rank-per-gpu` | **2+ GPUs** | real peer-to-peer stores, NVLink/PCIe bandwidth, ranks on distinct GPUs |
 | `multinode-tcp-plans` | **`KVM_NODES`** | ranks on several hosts over TCP (sources rsynced to `~/kvm-dist-run`, built on every node) |
 
+### Measured so far (one A100 shared with other jobs; `results/2026-11-03-dist-singlebox/`)
+
+* Cross-executor version hop on one GPU with peer pointers (publisher task end to waiter task start): median 58-71 us, p90 208-332 us.
+  The executor's local dependent hop is 5.6 us, so a remote hop costs roughly ten times a local one here; it includes the tile
+  copy, a system-scope fence, the admitter's poll and the wakeup. Not yet profiled or tuned.
+* Through the host proxy a round trip of two hops and two 16 KiB tiles takes about 0.5 ms (loopback transport) and 0.75 ms (TCP on
+  loopback); with 10% drop, 10% duplicates and 20% delay it is about 19 ms (retransmit timeouts).
+* Nothing measured over a real network or between physical GPUs.
+
 ## 7. Scaling math (arithmetic, not measurement)
 
 `python3 dist/scaling.py` regenerates this; every assumption is a flag. Assumptions: 1.0e12 parameters, 128 layers, hidden 25600,

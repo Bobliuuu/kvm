@@ -1,8 +1,13 @@
-"""Single-sourced ABI: parses include/kvm_task_abi.h and include/kvm_ops.def.
+"""Single-sourced ABI: parses include/kvm_task_abi.h and every operator registry in include/.
+
+Registries, in executor order (include/kvm_ops_list.inc): kvm_ops.def, kvm_ops_gpt.def, kvm_ops_game.def,
+kvm_ops_comm.def; each is optional except the first. Ids are sparse and globally unique. Signature grammar:
+`name:type`, type in buf | buf? | i32 | f32; `buf?` is an optional buffer (word -1 = absent), `buf` is required.
 
 Nothing about descriptor layout or the operator table is duplicated in Python, so the host
 compiler, the CPU reference and the CUDA executor cannot drift apart.
 """
+import logging
 import re
 import struct
 from dataclasses import dataclass
@@ -10,8 +15,11 @@ from functools import lru_cache
 from pathlib import Path
 from typing import NamedTuple
 
+log = logging.getLogger('kvm.abi')
 INCLUDE_DIR = Path(__file__).resolve().parents[1] / 'include'
 ARG_TYPES = ('buf', 'i32', 'f32')
+ABSENT_BUF = -1                  # word of an absent optional buffer argument
+REGISTRIES = ('kvm_ops.def', 'kvm_ops_gpt.def', 'kvm_ops_game.def', 'kvm_ops_comm.def')
 
 
 class AbiError(RuntimeError):
@@ -21,6 +29,7 @@ class AbiError(RuntimeError):
 class OpArg(NamedTuple):
     name: str
     type: str
+    optional: bool = False
 
 
 @dataclass(frozen=True)
@@ -42,11 +51,9 @@ class TaskAbi:
         return self.layout.size
 
 
-@lru_cache(maxsize=None)
-def load_ops(path: Path = INCLUDE_DIR / 'kvm_ops.def') -> dict[str, OpSpec]:
-    ops: dict[str, OpSpec] = {}
+def _parse_registry(path: Path, ops: dict, ids: dict) -> None:
     line_re = re.compile(r'^X\(\s*(\w+)\s*,\s*(\d+)\s*,\s*"([^"]*)"\s*\)')
-    for lineno, line in enumerate(Path(path).read_text().splitlines(), 1):
+    for lineno, line in enumerate(path.read_text().splitlines(), 1):
         if not line.startswith('X('):
             continue
         m = line_re.match(line)
@@ -56,16 +63,35 @@ def load_ops(path: Path = INCLUDE_DIR / 'kvm_ops.def') -> dict[str, OpSpec]:
         args = []
         for item in filter(None, (s.strip() for s in sig.split(','))):
             arg_name, _, arg_type = item.partition(':')
+            optional = arg_type == 'buf?'
+            arg_type = 'buf' if optional else arg_type
             if arg_type not in ARG_TYPES or not arg_name.isidentifier():
-                raise AbiError(f'{path}:{lineno}: bad argument {item!r} (types: {ARG_TYPES})')
-            args.append(OpArg(arg_name, arg_type))
+                raise AbiError(f'{path}:{lineno}: bad argument {item!r} (types: buf, buf?, i32, f32)')
+            args.append(OpArg(arg_name, arg_type, optional))
         if len({a.name for a in args}) != len(args):
             raise AbiError(f'{path}:{lineno}: duplicate argument name in {name}')
-        if name in ops or any(o.id == op_id for o in ops.values()):
-            raise AbiError(f'{path}:{lineno}: duplicate operator name or id: {name}={op_id}')
+        if name in ops or op_id in ids:
+            raise AbiError(f'{path}:{lineno}: duplicate operator name or id: {name}={op_id} '
+                           f'(already {ids.get(op_id) or name})')
         ops[name] = OpSpec(name, op_id, tuple(args))
+        ids[op_id] = name
+
+
+@lru_cache(maxsize=None)
+def load_ops(include_dir: Path = INCLUDE_DIR) -> dict[str, OpSpec]:
+    """All operators of every registry file present in `include_dir`, in registry order."""
+    include_dir = Path(include_dir)
+    ops: dict[str, OpSpec] = {}
+    ids: dict[int, str] = {}
+    for name in REGISTRIES:
+        path = include_dir / name
+        if path.exists():
+            _parse_registry(path, ops, ids)
+            log.debug('loaded %s (%d operators so far)', path.name, len(ops))
+        elif name == REGISTRIES[0]:
+            raise AbiError(f'{path}: core operator registry not found')
     if not ops:
-        raise AbiError(f'{path}: no operators found')
+        raise AbiError(f'{include_dir}: no operators found')
     return ops
 
 

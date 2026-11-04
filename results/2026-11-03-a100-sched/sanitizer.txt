@@ -1,0 +1,33 @@
+# sched-sanitize @ 20261104T010302Z  commit ef82e75+dirty
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 580.105.08, 1410 MHz
+BUILD: nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DKVM_EXEC_NO_MAIN tests/gpu/test_sched.cu -o test_sched
+    double span = 0, w0 = 1e30, w1 = 0; for (auto& t : v) if (t.cls == 1) { w0 = std::min(w0, t.start); w1 = std::max(w1, t.end); }
+== compute-sanitizer --tool memcheck smoke
+========= COMPUTE-SANITIZER
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+== smoke
+== smoke: PASS (0.2s, 0 new failures)
+21 checks, 0 failed, 0 suites failed
+PASS
+========= ERROR SUMMARY: 0 errors
+sanitizer exit: 0
+== compute-sanitizer --tool racecheck smoke
+========= COMPUTE-SANITIZER
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+== smoke
+== smoke: PASS (2.3s, 0 new failures)
+21 checks, 0 failed, 0 suites failed
+PASS
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit: 0
+== compute-sanitizer --tool synccheck smoke
+========= COMPUTE-SANITIZER
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+== smoke
+== smoke: PASS (0.2s, 0 new failures)
+21 checks, 0 failed, 0 suites failed
+PASS
+========= ERROR SUMMARY: 0 errors
+sanitizer exit: 0

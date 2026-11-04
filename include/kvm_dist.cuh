@@ -111,24 +111,11 @@ __device__ __forceinline__ bool kvm_flag_ok(const KvmCtx& c, const KvmView& f, i
 #define KVM_DIST_PHASE2
 // ===================== phase 2: the inbox pump (needs kvm_enqueue / kvm_park) =====================
 
-// Mirror of the tail of kvm_publish: after version[var] advanced, wake every parked task whose wait is now satisfied.
-// If kvm_publish's wake loop changes, change this too (the litmus tests in tests/dist exercise both).
+// After version[var] advanced: wake every parked task whose wait is now satisfied. This IS the executor's own scan (it keeps the
+// parked count, the sched accounting and the re-park logic), so a remote publish and a local one cannot drift apart.
 __device__ __forceinline__ void kvm_dist_wake(const KvmDevState& S, int var) {
-  __threadfence();                                              // version store -> fence -> list exchange (Dekker, see header)
-  int n = atom_exch(S.park_head + var, -1);
-  while (n >= 0) {
-    int next = S.park_next[n];
-    int need = S.tasks[n].wait_ver;
-    if (ld_acq(S.version + var) >= need) {
-      if (atom_cas(S.state + n, 1, 2) == 1) {
-#if __has_include("kvm_sched.cuh")
-        kvm_sched_unpark(S, n);                       // feat/sched keeps a count of parked waiters: release it like kvm_publish does
-#endif
-        kvm_enqueue(S, n);
-      }
-    } else kvm_park(S, n, var, need);
-    n = next;
-  }
+  __threadfence();                                              // version store -> fence -> list detach (Dekker, see header)
+  kvm_scan_parked(S, var);
 }
 
 // Poll the inbox variables i = tid, tid+nthreads, ... Effects are version stores and wakeups. Single writer per variable (this
@@ -163,7 +150,7 @@ __device__ __forceinline__ void kvm_dist_poll_strided(const KvmDevState& S, int 
 __device__ __forceinline__ void kvm_dist_poll(const KvmDevState& S) { kvm_dist_poll_strided(S, threadIdx.x, blockDim.x); }
 
 // Called by the admitter block after the last bundle: keep pumping until the device is done (or failed / timed out).
-__device__ void kvm_dist_pump(const KvmDevState& S, unsigned long long t0) {
+__device__ void kvm_dist_pump(const KvmDevState& S, KvmWatch& t0) {
   if (S.dist == nullptr) return;
   __shared__ int stop;
   for (;;) {
@@ -171,7 +158,7 @@ __device__ void kvm_dist_pump(const KvmDevState& S, unsigned long long t0) {
       stop = 0;
       if (*(volatile int*)&S.cnt->err_code) stop = 1;
       else if (ld_acq(&S.cnt->done) >= ld_acq(&S.cnt->admitted)) stop = 1;
-      else if (kvm_now() - t0 > S.timeout_ns) { kvm_fail(S, KVM_ERR_TIMEOUT, -1, ld_acq(&S.cnt->admitted), ld_acq(&S.cnt->done)); stop = 1; }
+      else if (kvm_stalled(S, t0)) { kvm_fail(S, KVM_ERR_TIMEOUT, -1, ld_acq(&S.cnt->admitted), ld_acq(&S.cnt->done)); stop = 1; }   // no progress for timeout_ns
     }
     __syncthreads();
     const int s = stop;

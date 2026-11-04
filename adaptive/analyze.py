@@ -90,15 +90,50 @@ def summ(vals):
     return {'med': statistics.median(vals), 'min': min(vals), 'max': max(vals)}
 
 
+def flat_table(root, a):
+    rows = ['| config | reps | Doom fps/instance | Doom frame p50 ms | p99 ms | max ms | frames late (of) | serve p50 ms | serve p99 ms | serve dropped | train steps/s | sweep GB/s |',
+            '|---|---|---|---|---|---|---|---|---|---|---|---|']
+
+    def g(js, *path):
+        for k in path:
+            js = js[k]
+        return js
+    def f(vals, d=2):
+        vals = [v for v in vals if v == v]
+        return 'n/a' if not vals else f"{statistics.median(vals):.{d}f} [{min(vals):.{d}f}, {max(vals):.{d}f}]"
+    for cfg in sorted(p for p in root.iterdir() if p.is_dir()):
+        sums = []
+        for r in sorted(cfg.glob('rep*/summary.json')):
+            sums.append(json.load(open(r)))
+        if not sums:
+            continue
+        ok = sum(1 for r in cfg.glob('rep*/status') if r.read_text().split()[:2] == ['0', '1'])
+        rows.append(f"| {cfg.name} | {len(sums)} ({ok} oracle-exact) | {f([g(x, 'doom', 'fps') for x in sums], 1)} | {f([g(x, 'doom', 'frame_time_us', 'p50') / 1e3 for x in sums])} | "
+                    f"{f([g(x, 'doom', 'frame_time_us', 'p99') / 1e3 for x in sums])} | {f([g(x, 'doom', 'frame_time_us', 'max') / 1e3 for x in sums])} | "
+                    f"{f([g(x, 'doom', 'deadline_misses') for x in sums], 0)} of {sums[0]['doom']['frames']} | {f([g(x, 'serve', 'latency_us', 'p50') / 1e3 for x in sums])} | "
+                    f"{f([g(x, 'serve', 'latency_us', 'p99') / 1e3 for x in sums])} | {f([g(x, 'serve', 'dropped') for x in sums], 0)} | {f([g(x, 'train', 'steps_per_s') for x in sums], 1)} | "
+                    f"{f([g(x, 'sweep', 'gb_per_s') for x in sums], 0)} |")
+    text = '\n'.join(rows) + '\n'
+    print(text)
+    if a.md:
+        Path(a.md).write_text(text)
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('runs')
     ap.add_argument('--workers', type=int, required=True)
-    ap.add_argument('--phases', required=True)
+    ap.add_argument('--phases')
+    ap.add_argument('--flat', action='store_true', help='one table from summary.json (median [min,max] over repetitions), no phases')
     ap.add_argument('--fps', type=float, default=35)
     ap.add_argument('--md')
     ap.add_argument('--json')
     a = ap.parse_args()
+    if a.flat:
+        return flat_table(Path(a.runs), a)
+    if not a.phases:
+        ap.error('--phases is required without --flat')
     phases = parse_phases(a.phases)
     period = 1e6 / a.fps
     root = Path(a.runs)

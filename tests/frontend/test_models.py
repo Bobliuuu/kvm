@@ -217,6 +217,22 @@ class Training(unittest.TestCase):
             self.assertLess(ls[-1], ls[0] - drop, f'{cfg.name}: {ls[0]:.3f} -> {ls[-1]:.3f}')
 
 
+class CheckedInGolden(unittest.TestCase):
+    """The float64 VM's 5-step loss curves of every preset are checked in (make_golden_models.py): an unintended numerical change fails here."""
+
+    def test_loss_curves(self):
+        import json
+        from pathlib import Path
+        want = json.loads((Path(__file__).with_name('golden_models.json')).read_text())
+        self.assertEqual(set(want), set(models.PRESETS))
+        for name, curves in want.items():
+            c = compiled(models.PRESETS[name], 5, reuse='shape')
+            got = losses(c, c.run(), 5)
+            for k, ref in curves.items():
+                for s, (a, b) in enumerate(zip(got[k], ref)):
+                    self.assertAlmostEqual(a, b, delta=1e-9 * max(1.0, abs(b)), msg=f'{name} {k} step {s}')
+
+
 class Registry(unittest.TestCase):
     def test_new_ops_defined_and_have_references(self):
         from kvmfe import opset

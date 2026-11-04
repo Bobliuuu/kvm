@@ -210,4 +210,11 @@ sequence 4096, global batch 4096 sequences (16.8M tokens), 4096 GPUs = TP 8 x PP
 * Cross-device `exact` snapshot reads are refused (use `at_least` plus the hazard ordering the planner derives).
 * bf16 wire format: all-gather of `ROWS` weights and place-mode transfers; collective reductions are fp32.
 * `KvmExec` takes at least `num_vars` slots in the inbox; plans with thousands of one-shot variables need `num_vars` raised.
+* Several executors in ONE process on ONE GPU (the single-box tests) must call `KvmExec::prepare()` on all of them before the first
+  `start()`: `cudaMalloc`/`cudaHostAlloc` can wait for every kernel running on the device, so allocating while a peer's persistent kernel waits
+  for this executor deadlocks until the peer's timeout. One process per GPU (the normal multi-GPU layout) never meets this. The same
+  work found that the executor's constructor memsets and table upload were not ordered before the kernel (legacy vs non-blocking
+  stream); `prepare()` also fixes that. Both are small hooks in `kvm_exec.cu`.
+* On a GPU shared with unlocked jobs the two-executor tests need both kernels resident at once and can end in a device TIMEOUT (a
+  per-task diagnosis is printed); the script takes the GPU lock once for the whole run for that reason.
 * x86-64 and aarch64 little-endian hosts only (wire structs are not byte-swapped).

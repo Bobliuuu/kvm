@@ -88,7 +88,7 @@ struct Batch {   // independent tasks, one block each
 };
 static int g_smem_attr = 0;
 // Runs the batch (one block of 256 threads per task) and returns the device error word (0 = ok).
-static int run(Dev& d, const Batch& b, int smem = 48 * 1024) {
+static int run(Dev& d, const Batch& b, int smem = kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)) {   // what the executor would launch with
     if (!g_smem_attr) { CK(cudaFuncSetAttribute(k_run, cudaFuncAttributeMaxDynamicSharedMemorySize, 112 * 1024)); g_smem_attr = 1; }
     d.sync_table();
     int32_t* w; int *op, *off;
@@ -102,7 +102,7 @@ static int run(Dev& d, const Batch& b, int smem = 48 * 1024) {
     cudaFree(w); cudaFree(op); cudaFree(off);
     return d.geterr();
 }
-static int run1(Dev& d, int id, const A& a, int smem = 48 * 1024) { Batch b; b.add(id, a); return run(d, b, smem); }
+static int run1(Dev& d, int id, const A& a, int smem = kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)) { Batch b; b.add(id, a); return run(d, b, smem); }
 
 // ---- accounting / comparison ------------------------------------------------------------------------------------------
 static int g_pass = 0, g_fail = 0;

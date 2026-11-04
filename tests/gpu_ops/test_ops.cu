@@ -61,8 +61,8 @@ static void t_embedding() {
 
 static void t_matmul() {
     Rng r(21);
-    struct S { int M, N, K; } shapes[] = {{1, 1, 1}, {5, 7, 3}, {64, 64, 32}, {65, 63, 33}, {130, 70, 100}, {1, 300, 17}, {70, 1, 90}, {129, 131, 47}, {256, 128, 64}};
-    for (int big = 0; big < 2; big++) for (int prec = 0; prec < 2; prec++) for (int ta = 0; ta < 2; ta++) for (int tb = 0; tb < 2; tb++) for (auto s : shapes) for (int full = 0; full < 2; full++) {
+    struct S { int M, N, K; } shapes[] = {{1, 1, 1}, {5, 7, 3}, {64, 64, 32}, {65, 63, 33}, {130, 70, 100}, {1, 300, 17}, {70, 1, 90}, {129, 131, 47}, {256, 128, 64}, {300, 140, 50}};
+    for (int big = 0; big < 3; big++) for (int prec = 0; prec < 2; prec++) for (int ta = 0; ta < 2; ta++) for (int tb = 0; tb < 2; tb++) for (auto s : shapes) for (int full = 0; full < 2; full++) {
         int M = s.M, N = s.N, K = s.K;
         Dev dv;
         int ar = ta ? K : M, ac = ta ? M : K, br = tb ? N : K, bc = tb ? K : N;
@@ -71,9 +71,9 @@ static void t_matmul() {
         auto ha = rnd(r, ar * ac), hb = rnd(r, br * bc), ho = rnd(r, M * N), hbias = rnd(r, N), hres = rnd(r, M * N);
         dv.up(ia, ha); dv.up(ib, hb); dv.up(io, ho); dv.up(ibias, hbias); dv.up(ires, hres);
         float alpha = full ? 0.7f : 1.f;
-        int fl = ta | (tb << 1) | (prec << 4) | (big << 5) | (full ? (4 | 8) : 0), step = big ? 128 : 64;
+        int fl = ta | (tb << 1) | (prec << 4) | (big == 1 ? 32 : big == 2 ? 64 : 0) | (full ? (4 | 8) : 0), step = big ? 128 : 64, stepm = big == 2 ? 256 : step;
         Batch b;
-        for (int m0 = 0; m0 < M; m0 += step) for (int n0 = 0; n0 < N; n0 += step)
+        for (int m0 = 0; m0 < M; m0 += stepm) for (int n0 = 0; n0 < N; n0 += step)
             b.add(OP_matmul_tile, A().b(ia).b(ib).b(io).b(full ? ibias : -1).b(full ? ires : -1).b(full ? ipre : -1).i(m0).i(n0).i(M).i(N).i(K).i(fl).f(alpha));
         int e = run(dv, b);
         D C = mm_d(dbl(ha), dbl(hb), M, N, K, ta, tb), ref(M * N), pre(M * N);
@@ -82,7 +82,7 @@ static void t_matmul() {
             if (full) { v += hbias[i % N]; pre[i] = v; v = gelu_d(v) + hres[i]; v += ho[i]; }
             ref[i] = v;
         }
-        char nm[128]; snprintf(nm, sizeof nm, "matmul_tile %s%s ta=%d tb=%d %dx%dx%d %s", big ? "128x128 " : "", prec ? "3xTF32" : "TF32", ta, tb, M, N, K, full ? "bias+gelu+res+acc" : "plain");
+        char nm[128]; snprintf(nm, sizeof nm, "matmul_tile %s%s ta=%d tb=%d %dx%dx%d %s", big == 1 ? "128x128 " : big == 2 ? "256x128 " : "", prec ? "3xTF32" : "TF32", ta, tb, M, N, K, full ? "bias+gelu+res+acc" : "plain");
         double tol = prec ? 2e-5 : 6e-3;
         check(nm, dv.down(io), ref, tol);
         if (full) check(std::string(nm) + " pre", dv.down(ipre), pre, tol);
@@ -90,16 +90,16 @@ static void t_matmul() {
     }
     {   // tile origins that are not multiples of 4 (cp.async sources would be misaligned) and NaN propagation
         Rng r2(77);
-        for (int big = 0; big < 2; big++) for (int tr = 0; tr < 4; tr++) {
+        for (int big = 0; big < 3; big++) for (int tr = 0; tr < 4; tr++) {
             int ta = tr & 1, tb = tr >> 1, M = 150, N = 150, K = 70, m0 = 2, n0 = 6; Dev dv;
             int ar = ta ? K : M, ac = ta ? M : K, br = tb ? N : K, bc = tb ? K : N;
             int ia = dv.addf(ar, ac), ib = dv.addf(br, bc), io = dv.addf(M, N);
             auto ha = rnd(r2, ar * ac), hb = rnd(r2, br * bc); dv.up(ia, ha); dv.up(ib, hb);
-            run1(dv, OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(m0).i(n0).i(M).i(N).i(K).i(ta | (tb << 1) | (16) | (big << 5)).f(1.f));
+            run1(dv, OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(m0).i(n0).i(M).i(N).i(K).i(ta | (tb << 1) | (16) | (big == 1 ? 32 : big == 2 ? 64 : 0)).f(1.f));
             D C = mm_d(dbl(ha), dbl(hb), M, N, K, ta, tb); auto go = dv.down(io);
-            int ext = big ? 128 : 64; D gsub, rsub;
-            for (int i = m0; i < std::min(M, m0 + ext); i++) for (int j = n0; j < std::min(N, n0 + ext); j++) { gsub.push_back(go[i * N + j]); rsub.push_back(C[i * N + j]); }
-            check(std::string("matmul_tile odd origin (2,6) ") + (big ? "128x128" : "64x64") + " ta=" + std::to_string(ta) + " tb=" + std::to_string(tb), std::vector<float>(gsub.begin(), gsub.end()), rsub, 2e-5);
+            int extn = big ? 128 : 64, extm = big == 2 ? 256 : extn; D gsub, rsub;
+            for (int i = m0; i < std::min(M, m0 + extm); i++) for (int j = n0; j < std::min(N, n0 + extn); j++) { gsub.push_back(go[i * N + j]); rsub.push_back(C[i * N + j]); }
+            check(std::string("matmul_tile odd origin (2,6) ") + (big == 1 ? "128x128" : big == 2 ? "256x128" : "64x64") + " ta=" + std::to_string(ta) + " tb=" + std::to_string(tb), std::vector<float>(gsub.begin(), gsub.end()), rsub, 2e-5);
         }
         for (int prec = 0; prec < 2; prec++) {
             int M = 8, N = 8, K = 8; Dev dv; int ia = dv.addf(M, K), ib = dv.addf(K, N), io = dv.addf(M, N);

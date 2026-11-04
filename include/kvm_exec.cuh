@@ -551,18 +551,15 @@ __device__ __forceinline__ bool kvm_should_exit(const KvmDevState& S, KvmWatch& 
 }
 
 __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
-  KVM_PG(7);
-  if (threadIdx.x < KVM_TASK_WORDS) ((int*)&sh.d)[threadIdx.x] = ((const int*)(S.tasks + slot))[threadIdx.x];
-  __syncthreads();
-  KVM_PG(8);
+  KVM_PG(7); KVM_PG(8);   // sh.d was filled from the pop's prefetched words and published by the barrier that follows the pop
   const KvmTaskDesc& d = sh.d;
   KvmTrace* tr = S.trace + slot;
   if (threadIdx.x == 0) {
     bool bad = false;
     tr->start_ns = kvm_now(); tr->smid = kvm_smid(); tr->block = blockIdx.x; tr->ver0 = tr->ver1 = -1;
     tr->flags |= sh.how & ~KVM_HOW_BW;
-    kvm_sched_start(S, slot, sh.how, tr->start_ns);
-    if (atomicAdd(&tr->exec_count, 1) != 0) { kvm_fail(S, KVM_ERR_DOUBLE_EXEC, slot); bad = true; }
+    kvm_sched_start(S, slot, d.workload_id, sh.how, tr->start_ns);
+    red_add(&tr->exec_count, 1);   // witness: a posted add; kvm_post_task checks it is exactly 1 (a second run of the slot is reported there)
     if (d.wait_var >= 0) {
       int v = ld_acq(S.version + d.wait_var);  // acquire: pairs with the publisher's release (header comment)
       tr->ver0 = v;
@@ -624,8 +621,9 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
 // returns the successor storage; `done` is counted last. The worker cannot exit before this ran (the barrier after the pop).
 __device__ void kvm_post_task(const KvmDevState& S, KvmShared& sh) {
   const int slot = sh.post;
-  const KvmTaskDesc& d = sh.d;
+  const KvmTaskDesc& d = S.tasks[slot];   // sh.d may already hold the next task (the pop fills it concurrently)
   const KvmTrace* tr = S.trace + slot;
+  if (kvm_vol(&tr->exec_count) != 1) kvm_fail(S, KVM_ERR_DOUBLE_EXEC, slot, kvm_vol(&tr->exec_count));
   kvm_sched_account(S, slot, tr->start_ns, tr->end_ns, tr->flags & KVM_TRACE_MISSED);   // SCHED: statistics and estimates (before the slot is recycled)
   // Nothing of this task is read again (sh.d is a copy; successors were decremented): return its window credit, which also
   // lets the admitter reclaim the window's successor storage, then recycle the slot, then count the task done.
@@ -646,9 +644,10 @@ __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
 #endif
   for (;;) {
     if (threadIdx.x < 32) {
-      int how, r = kvm_pop(S, kvm_now(), part, how);
+      int how, dw, r = kvm_pop(S, kvm_now(), part, how, dw);
       if (r < 0 && threadIdx.x == 0 && kvm_should_exit(S, t0)) r = KVM_POP_EXIT;
       if (threadIdx.x == 0) { sh.cmd = r; sh.how = how; }
+      if (r >= 0 && threadIdx.x < KVM_TASK_WORDS) ((int*)&sh.d)[threadIdx.x] = dw;
     } else if (threadIdx.x == 32 && sh.post >= 0) kvm_post_task(S, sh);   // overlapped with the pop above
     __syncthreads();
     int cmd = sh.cmd;

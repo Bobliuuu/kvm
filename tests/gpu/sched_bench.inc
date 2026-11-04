@@ -57,6 +57,26 @@ static bool suite_gapprof() {
 }
 #endif
 
+// Admission throughput: host submit time per bundle against the device's admit-to-first-start spacing of the same bundles.
+static bool suite_admit() {
+  int before = g_fail; const int W = 32, NB = 12, NT = 3000;
+  for (int us : {20, 5}) {
+    KvmConfig c = sched_cfg(W + 1, 1, KVM_SCHED_DYNAMIC); c.sched.on = false; c.max_tasks = 1 << 17; c.live_cap = 1 << 14; c.ring_words = 1 << 17;
+    KvmExec ex(c); ex.start();
+    std::vector<double> sub_us;
+    for (int b = 0; b < NB; ++b) {
+      KvmBundle bd = spin_bundle(NT, us, 0); auto t0 = std::chrono::steady_clock::now();
+      CHECK(ex.submit(bd, 30000) == KvmSubmit::OK, "submit"); sub_us.push_back(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count());
+    }
+    const KvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
+    std::vector<double> adm; for (auto& t : r.trace) if (t.admit_ns) adm.push_back(t.admit_ns / 1e3);
+    std::sort(adm.begin(), adm.end()); std::vector<double> distinct; for (double a : adm) if (distinct.empty() || a - distinct.back() > 1.0) distinct.push_back(a);
+    double sub = 0; for (double x : sub_us) sub += x;
+    printf("  %d us tasks: host submit %.0f us per %d-task bundle (%.2f us/task); %zu admission instants spanning %.0f us (%.2f us/task)\n", us, sub / NB, NT, sub / NB / NT, distinct.size(), distinct.back() - distinct.front(), (distinct.back() - distinct.front()) / ((NB - 1) * NT));
+  }
+  return g_fail == before;
+}
+
 // Per-op running time of the generator's task types on an otherwise idle GPU (one wave of 30 CTAs), to size the loads.
 static bool suite_calib() {
   KvmConfig c = sched_cfg(32, 1); c.sched.on = false; c.max_tasks = 1 << 14; c.live_cap = 1 << 12; c.ring_words = 1 << 17;
@@ -296,6 +316,20 @@ static bool suite_headroom() {
   return g_fail == before;
 }
 
+// Bandwidth lever: cap on the stream's concurrent BW-bound CTAs at the build's full grid, chain p99 against the stream throughput kept.
+static bool suite_bwcap() {
+  int before = g_fail; const int N = 5;
+  LoadSpec L; L.serve_kind = SK_COLD; L.hops = 16; L.fan = 1; L.slo_us = 250; L.phases = {{300, 4000}};
+  L.train_bw_only = true; L.train_outstanding = 1200; L.train_bundle = 128;
+  KvmConfig c0 = mode_cfg(KVM_SCHED_DYNAMIC, 0); int w; { KvmExec probe(c0); w = probe.workers(); }
+  printf("  full grid: %d workers; chain = 16 dependent cold 32 KB copies at 4000 req/s; stream = 6.3 MB adds; stream bw_cta = cap\n", w);
+  for (int cap : {w, w * 3 / 4, w / 2, w * 3 / 8, w / 4, w / 8}) {
+    KvmConfig c = mode_cfg(KVM_SCHED_DYNAMIC, 0); c.sched.p.cls[0].weight = 4; c.sched.p.cls[0].urgent_us = KVM_URGENT_ALL; c.sched.p.cls[1].bw_cta = cap;
+    char nm[80]; snprintf(nm, sizeof nm, "stream BW cap %d of %d", cap, w); Rep r = repeat(c, L, N); CHECK(reps_ok(r), "%s", nm); print_rep(nm, r);
+  }
+  return g_fail == before;
+}
+
 // ================= rebalancing: controller on a time-varying load =================
 static std::vector<Phase> trace_phases() { return {{200, 0}, {200, 200}, {300, 2500}, {200, 200}, {200, 0}, {300, 2500}, {200, 0}}; }
 static LoadSpec rebalance_load() {
@@ -428,6 +462,8 @@ static bool sched_bench_suite(const std::string& s, bool& ok) {
 #endif
   if (s == "calib") { ok = suite_calib(); return true; }
   if (s == "dispatch") { ok = suite_dispatch(); return true; }
+  if (s == "admit") { ok = suite_admit(); return true; }
+  if (s == "bwcap") { ok = suite_bwcap(); return true; }
   if (s == "headroom") { ok = suite_headroom(); return true; }
   if (s == "p99") { ok = suite_p99(); return true; }
   if (s == "overload") { ok = suite_overload(); return true; }

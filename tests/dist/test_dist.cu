@@ -381,7 +381,7 @@ struct World {
           out[r].start_ms = (double)ms_since(t0);
           KvmSubmit s = ex[r]->submit(pr[r].bundle);
           out[r].submit_ms = (double)ms_since(t0);
-          if (s != KvmSubmit::OK) throw std::runtime_error(std::string("submit: ") + kvm_submit_name(s));
+          if (s != KvmSubmit::OK && s != KvmSubmit::DEVICE_ERROR) throw std::runtime_error(std::string("submit: ") + kvm_submit_name(s));   // DEVICE_ERROR: the device already failed (e.g. dead peer); finish() reports which
           where[r] = 3;
           out[r].res = ex[r]->finish();
           where[r] = 4;

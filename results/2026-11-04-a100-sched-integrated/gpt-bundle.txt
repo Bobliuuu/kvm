@@ -1,0 +1,16 @@
+# exec-gpt @ 20261104T030640Z  commit 303df8a+dirty
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 580.105.08, 1410 MHz
+BUILD: tests/gpu/build.sh
+INFO demo: {'train': (544, 3992), 'serve_s0': (73, 231), 'serve_s2': (73, 231), 'game': (64, 232)}
+scheduler off, 16 blocks: OK: 544/544 tasks, 3.390 ms  buffers md5 1735f893ac10
+scheduler off, auto grid: OK: 544/544 tasks, 3.303 ms  buffers md5 1735f893ac10
+global, 2 classes: OK: 544/544 tasks, 3.739 ms  buffers md5 1735f893ac10
+static, 1 class: OK: 544/544 tasks, 3.802 ms  buffers md5 1735f893ac10
+dynamic, 2 classes: OK: 544/544 tasks, 3.928 ms  buffers md5 1735f893ac10
+dynamic, arbiter, affinity: OK: 544/544 tasks, 6.437 ms  buffers md5 1735f893ac10
+sanitizer memcheck: ========= COMPUTE-SANITIZER OK: 544/544 tasks, 188.462 ms ========= ERROR SUMMARY: 0 errors 
+sanitizer racecheck: ========= COMPUTE-SANITIZER OK: 544/544 tasks, 3881.540 ms ========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings) 
+sanitizer synccheck: ========= COMPUTE-SANITIZER OK: 544/544 tasks, 51.538 ms ========= ERROR SUMMARY: 0 errors 
+GPT PASS

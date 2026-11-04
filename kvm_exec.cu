@@ -272,6 +272,11 @@ class KvmExec {
     CK(cudaMalloc(&d, n * sizeof(KvmBuf)));
     if (!bufs_.empty()) CK(cudaMemcpy(d, bufs_.data(), bufs_.size() * sizeof(KvmBuf), cudaMemcpyHostToDevice));
     S_.bufs = d; S_.nbufs = (int)bufs_.size();
+    // KVM_DIST_HOOK: the constructor's cudaMemsets and the table upload above run in the LEGACY default stream (a pageable
+    // cudaMemcpy may even return before its DMA lands), while stream_ is non-blocking, so nothing orders them before the kernel.
+    // With several executors starting at once the kernel could see an unzeroed counter or a half-copied buffer table (seen as
+    // random TIMEOUT / BAD_BUF). cudaStreamSynchronize(0) waits for the legacy stream only, never for another executor's kernel.
+    CK(cudaStreamSynchronize(0));
     kvm_init_kernel<<<64, KVM_THREADS, 0, stream_>>>(S_);
     CK(cudaGetLastError());
     CK(cudaEventRecord(e0_, stream_));

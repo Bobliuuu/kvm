@@ -130,7 +130,24 @@ buffers and the inbox variables.
   workloads match the unpartitioned CPU VM **bitwise**, for every strategy listed above; the floating-point training loop within 1e-5.
   The simulator is shown to fail when `put_signal` publishes first or a signal is missing.
 
-## 5. Tests
+## 5. Using it
+
+```bash
+# partition: workload + cluster + strategy -> shard0.json ... and (with --plan) per-rank bundles for the GPU harness
+python3 runtime/partition.py workload.json cluster.json strategy.json out/ --plan
+# run every rank as a thread of one process (ranks spread over the GPUs that exist), or one OS process per rank / per host
+build/test_dist plan out/plan [--net tcp --fault drop=0.05,dup=0.05,delay=0.1]
+python3 dist/launch.py --nodes "$KVM_NODES" -- build/test_dist plan out/plan --rank {rank} --peers {peers}
+```
+
+`cluster.json`: `{"devices": [{"node": 0}, ...], "links": {"intra": {"kind": "p2p", "bandwidth_gbs": 300, "latency_us": 2},
+"inter": {"kind": "proxy", "bandwidth_gbs": 12.5, "latency_us": 30}}, "tflops": 19.5}`. `strategy.json`: `{"mode": "shard",
+"layouts": {"W1": "cols", "W2": "rows", "x": "rows"}, "collective": "ring", "chunks": 2, "wire": "f32"}` or `{"mode": "place",
+"auto": "pipeline", "stages": 4, "microbatches": 8, "split": ["x", "h0"], "accumulate": {"grad": "mean"}}`. Python API:
+`partition.partition(spec, Cluster.uniform(8, nodes=2), strategy)` returns a `Plan` with `.shards`, `reconstruct()` and
+`estimate(plan)` (the modeled makespan).
+
+## 6. Tests
 
 `dist/run_multigpu_tests.sh` is the single command. It prints one line per stage (PASS / FAIL / SKIP), bounds every stage with a
 timeout, exits 1 on any FAIL, and `--dry-run` lists everything without running it. Stages that need more than one physical GPU
@@ -151,7 +168,7 @@ print `SKIP: needs 2 GPUs` below that and run automatically otherwise; the multi
 | `multigpu-p2p-bandwidth`, `multigpu-p2p-pingpong`, `multigpu-plans-one-rank-per-gpu` | **2+ GPUs** | real peer-to-peer stores, NVLink/PCIe bandwidth, ranks on distinct GPUs |
 | `multinode-tcp-plans` | **`KVM_NODES`** | ranks on several hosts over TCP (sources rsynced to `~/kvm-dist-run`, built on every node) |
 
-## 6. Scaling math (arithmetic, not measurement)
+## 7. Scaling math (arithmetic, not measurement)
 
 `python3 dist/scaling.py` regenerates this; every assumption is a flag. Assumptions: 1.0e12 parameters, 128 layers, hidden 25600,
 sequence 4096, global batch 4096 sequences (16.8M tokens), 4096 GPUs = TP 8 x PP 16 x DP 32, 64 microbatches, H100-class peak
@@ -176,7 +193,7 @@ sequence 4096, global batch 4096 sequences (16.8M tokens), 4096 GPUs = TP 8 x PP
   these tile counts, and the fact that a 1.4 us/task executor has so far only been shown to win on small, dependent work
   (see `AGENTS.md`). Whether a persistent-kernel runtime beats NCCL-based stacks at this scale is unanswered.
 
-## 7. Known limits
+## 8. Known limits
 
 * Landing buffers are single-assignment; long unrolled runs grow memory (credits not built).
 * The proxy path stages through pinned host memory (no GPUDirect RDMA); one proxy thread per device.

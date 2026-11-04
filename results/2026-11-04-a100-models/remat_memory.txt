@@ -1,0 +1,8 @@
+rematerialization: activation pool (reuse=shape, gap 0), 1 step, a100 tiling; tasks include the recomputed forward
+config                                        remat   tasks  pool MiB  slots
+llama L4 d128 seq128 batch2                   False    1371     13.81    111
+llama L4 d128 seq128 batch2                    True    1859      8.04     69
+llama L8 d128 seq128 batch2                   False    2659     24.85    203
+llama L8 d128 seq128 batch2                    True    3635     11.56    109
+llama L12 d256 seq256 batch2                  False   14645    139.89    294
+llama L12 d256 seq256 batch2                   True   20261     56.67    148

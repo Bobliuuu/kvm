@@ -89,7 +89,7 @@ stage gpu-executor-regression gpu "$B/test_exec smoke"
 stage gpu-ops gpu "$TD ops"
 stage gpu-pingpong-versions gpu "$TD pingpong"
 stage gpu-errors-no-hang gpu "$TD errors && $TD backpressure"
-stage gpu-negative-break-order gpu "$TDN --expect-fail pingpong && $TDB --expect-fail backpressure"
+stage gpu-negative-break-order gpu "$TDN --expect-fail=stale pingpong && $TDB --expect-fail=timeout backpressure"
 # (no two-executor suite under the sanitizer: it serialises kernel launches, and two persistent kernels waiting on each other would deadlock by construction)
 stage gpu-sanitizer gpu "export KVM_DIST_QUICK=1; compute-sanitizer --error-exitcode 9 --tool memcheck $TD ops && compute-sanitizer --error-exitcode 9 --tool racecheck $TD ops && compute-sanitizer --error-exitcode 9 --tool synccheck $TD ops"
 stage gpu-plans-in-process gpu "cd $ROOT && $PY tests/dist/make_plans.py $PLANS --devices $((NGPU>1?NGPU:2)) && for p in tp_direct tp_ring tp_tree zero_mixed zero_net zero_bf16_net dp_fp_net pipe_net pipe_p2p; do \

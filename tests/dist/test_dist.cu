@@ -4,7 +4,8 @@
 //   ./test_dist plan DIR [--net loopback|tcp] [--fault drop=0.1,dup=0.1,delay=0.2] [--blocks N]
 //        runs every rank of a partitioner plan (runtime/partition.py --plan) as threads of this process
 //   ./test_dist plan DIR --rank R --peers host:port,host:port,...      one rank of a MULTI-PROCESS / multi-node run
-//   ./test_dist --expect-fail pingpong       negative test: exits 0 only if the suite DETECTS a violation (-DKVM_DIST_BREAK_ORDER)
+//   ./test_dist --expect-fail=stale pingpong     negative test (-DKVM_DIST_BREAK_ORDER): exits 0 only if the suite DETECTS stale data;
+//   ./test_dist --expect-fail=timeout backpressure   (-DKVM_DIST_NO_BP_POLL) exits 0 only if the receiver hits the device timeout
 // Everything that needs more than one physical GPU prints "SKIP: needs 2 GPUs" when fewer are present; with >= 2 GPUs the same
 // suites place rank r on device r % ngpus and use real peer-to-peer.
 #include "../../kvm_exec.cu"
@@ -16,7 +17,7 @@
 
 using namespace kvmd;
 
-static int g_fail = 0, g_checks = 0, g_skip = 0;
+static int g_fail = 0, g_checks = 0, g_skip = 0, g_stale = 0, g_timeouts = 0;   // g_stale / g_timeouts: WHICH way a negative test failed
 static bool g_mute = false;
 #define CHECK(c, ...) do { ++g_checks; if (!(c)) { ++g_fail; if (!g_mute) { fprintf(stderr, "  FAIL %s:%d: %s -- ", __FILE__, __LINE__, #c); fprintf(stderr, __VA_ARGS__); fputc('\n', stderr); } } } while (0)
 static int g_ngpu = 1;
@@ -353,8 +354,10 @@ struct World {
 };
 
 static void report(const char* label, std::vector<RankOut>& out, World& w) {
-  for (size_t r = 0; r < out.size(); ++r) if (w.active((int)r))
+  for (size_t r = 0; r < out.size(); ++r) if (w.active((int)r)) {
     CHECK(out[r].ok, "%s rank %zu: %s", label, r, out[r].msg.c_str());
+    g_timeouts += out[r].res.err_code == KVM_ERR_TIMEOUT;
+  }
 }
 
 // ==================================================================================================== ping-pong across executors
@@ -400,6 +403,7 @@ static void check_pingpong(World& w, int R, int N, const char* label) {
     float want = (float)r * (float)(i % 13 + 1), got = back[(size_t)(r - 1) * N + i];
     if (!same_bits(got, want)) { ++stale; zeros += got == 0.f; }
   }
+  g_stale += stale > 0;
   CHECK(stale == 0, "%s: %ld of %d values stale/wrong (%ld are zeros: the signal overtook the data)", label, stale, R * N, zeros);
 }
 
@@ -507,6 +511,7 @@ static void suite_backpressure() {
   e0.start(); e0.submit(s.build()); const KvmResult& r0 = e0.finish();
   t1.join();
   CHECK(r0.ok(), "signaller: %s", kvm_err_name(r0.err_code));
+  g_timeouts += r1.err_code == KVM_ERR_TIMEOUT;
   CHECK(r1.ok() && r1.done == 9, "receiver: %s, %d/9 tasks done", kvm_err_name(r1.err_code), r1.done);
 }
 
@@ -584,8 +589,13 @@ static int suite_plan(int argc, char** argv) {
 // ==================================================================================================== main
 int main(int argc, char** argv) {
   g_ngpu = device_count();
-  bool expect_fail = false; std::vector<std::string> suites;
-  for (int i = 1; i < argc; ++i) { std::string a = argv[i]; if (a == "--expect-fail") expect_fail = true; else suites.push_back(a); }
+  bool expect_fail = false; std::string kind; std::vector<std::string> suites;
+  for (int i = 1; i < argc; ++i) {
+    std::string a = argv[i];
+    if (a == "--expect-fail") expect_fail = true;
+    else if (a.rfind("--expect-fail=", 0) == 0) { expect_fail = true; kind = a.substr(14); }   // stale | timeout: the way it must fail
+    else suites.push_back(a);
+  }
   if (g_ngpu < 1) { fprintf(stderr, "no CUDA device\n"); return 3; }
   cudaDeviceProp p; cudaGetDeviceProperties(&p, 0);
   fprintf(stderr, "test_dist: %d GPU(s); device 0 = %s, %d SMs, sm_%d%d\n", g_ngpu, p.name, p.multiProcessorCount, p.major, p.minor);
@@ -610,7 +620,12 @@ int main(int argc, char** argv) {
       if (want("bw") && !expect_fail) suite_bw();
     }
   } catch (const std::exception& e) { fprintf(stderr, "EXCEPTION: %s\n", e.what()); ++g_fail; }
-  if (expect_fail) { printf("%s: negative test %s (%d checks failed)\n", g_fail ? "PASS" : "FAIL", g_fail ? "detected the violation" : "did NOT detect the violation", g_fail); return g_fail ? 0 : 1; }
+  if (expect_fail) {
+    bool right = g_fail > 0 && (kind.empty() || (kind == "stale" && g_stale > 0) || (kind == "timeout" && g_timeouts > 0));
+    printf("%s: negative test %s (%d checks failed; stale-data detections %d, device timeouts %d%s%s)\n", right ? "PASS" : "FAIL",
+           right ? "detected the violation" : g_fail ? "failed, but not in the expected way" : "did NOT detect the violation", g_fail, g_stale, g_timeouts, kind.empty() ? "" : "; expected ", kind.c_str());
+    return right ? 0 : 1;
+  }
   printf("%s: %d checks, %d failed, %d skipped stage(s)\n", g_fail ? "FAIL" : "PASS", g_checks, g_fail, g_skip);
   return g_fail ? 1 : 0;
 }

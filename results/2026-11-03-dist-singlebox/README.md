@@ -5,7 +5,8 @@ Everything that can be exercised without a second GPU, plus CPU stages. The stag
 
 - GPU: NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver 580.105.08, nvcc 12.8.93 (the box was shared: other users' jobs ran on the
   GPU and CPU during the run, so latencies are indicative). Host: x86-64 Linux, `cudaDevAttrHostNativeAtomicSupported = 0`.
-- Commit: 6167fad (branch feat/multigpu, clean tree, the sources were rsynced from it).
+- Commit: 6167fad (branch feat/multigpu, clean tree, the sources were rsynced from it). Later commits changed only the test harness
+  (stricter negative tests, a diagnosis line, the lock taken once per run) and docs.
 - Command (from a laptop; `KVM_HOST` is an environment variable, never committed): `KVM_HOST=<user@gpu-box> dist/run_multigpu_tests.sh --remote`.
   On the box itself it is `dist/run_multigpu_tests.sh`. Stage timeout 600 s, GPU stages hold `~/.gpu.lock`.
 - Build flags (GPU stages): `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DKVM_EXEC_NO_MAIN`
@@ -24,7 +25,7 @@ Everything that can be exercised without a second GPU, plus CPU stages. The stag
 | gpu-ops | PASS (148 checks) | 240 random strided tiles (scalar and 16-byte paths) bitwise; reduce2 / reduce_put_signal bitwise; 1001 bf16 values bitwise; 10 misuse cases -> decoded device errors |
 | gpu-pingpong-versions | PASS (20 checks) | 200 rounds between two executors with peer pointers; 100 rounds each over the host proxy (loopback, TCP) and 60 over TCP with 10% drop / 10% dup / 20% delay; every one of 819,200 values checked |
 | gpu-errors-no-hang | PASS (7 + 2 checks) | unsatisfiable remote wait -> TIMEOUT after 0.8 s; full send queue without a proxy -> DIST_SENDQ_TIMEOUT after 0.3 s; silent proxy -> DIST_PROXY_DEAD after 0.3 s; killed peer -> DIST_PEER_DOWN within milliseconds; full live window waiting for remote signals completes (pump during backpressure) |
-| gpu-negative-break-order | PASS | with the signal published before the data the harness reports ~60% of the values stale/wrong; with the backpressure pump removed the receiver times out (0/9 tasks) |
+| gpu-negative-break-order | PASS, with a caveat | the stage then counted ANY failure as detection. In this run the break-order build (signal published before the data) ended with a device TIMEOUT on both ranks, i.e. the two kernels did not make progress together on the shared GPU, not with stale data; the backpressure build (pump removed) timed out as intended. Stale-data detection itself: 8 of 8 repeats of the same binary, run by hand right after, reported 483,328 to 516,096 of 819,200 values wrong, and the previous full run (commit 958f253) reported 504,320. The stage was tightened afterwards (`--expect-fail=stale` / `=timeout`: it must fail in the expected way); that version has not been re-run to completion because the GPU lock stayed busy |
 | gpu-sanitizer | PASS | compute-sanitizer memcheck 0 errors, racecheck 0 hazards, synccheck 0 errors on the ops suite (not on the two-executor suites: the sanitizer serialises launches) |
 | gpu-plans-in-process | PASS | 9 partitioner plans (TP direct/ring/tree, ZeRO mixed p2p+proxy, ZeRO bf16 wire, DP floating point within 1e-5, pipeline x4 microbatches) run with all ranks as threads on the one GPU: every expected value bitwise equal |
 | gpu-plans-tcp-faults | PASS | 4 plans over TCP between rank threads with 5% drop, 5% dup, 10% delay: bitwise equal |

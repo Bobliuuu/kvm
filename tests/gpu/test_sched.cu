@@ -310,10 +310,10 @@ static bool suite_rand(bool quick) {
 static bool suite_smoke_sched() {
   int before = g_fail; long long t = 0; int d;
   for (int mode : {KVM_SCHED_GLOBAL, KVM_SCHED_STATIC, KVM_SCHED_DYNAMIC}) {
-    KvmConfig c = sched_cfg(4, 3, mode); c.max_tasks = 4096; c.live_cap = 256; c.ring_words = 4096;
-    c.sched.p.cls[1].min_cta = 1; c.sched.p.cls[2].max_cta = 1;
-    if (mode == KVM_SCHED_STATIC) kvm_static_split(c.sched.p, {1, 1, 1}, g_sms);
-    dag_run(3 + mode, 3, 60, 6, c, 31, &t, &d);
+    const int nc = mode == KVM_SCHED_STATIC ? 1 : 3;   // a static split needs workers on every class's SMs; 4 blocks sit on 2 SMs
+    KvmConfig c = sched_cfg(4, nc, mode); c.max_tasks = 4096; c.live_cap = 256; c.ring_words = 4096;
+    if (nc == 3) { c.sched.p.cls[1].min_cta = 1; c.sched.p.cls[2].max_cta = 1; }
+    dag_run(3 + mode, nc, 60, 6, c, 31, &t, &d);
   }
   { int a, b; inherit_scenario(true, 0, &a, &b); }
   return g_fail == before;

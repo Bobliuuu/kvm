@@ -108,8 +108,8 @@ def _flat_rows_ext(names, r1, d):
 def _gather_rows_scaled(b, a):
     src, idx, sc, dst, d = b['src'], b['idx'], b['scale'], b['dst'], a['d']
     for r in range(a['r0'], a['r1']):
-        j = idx[r]
-        s = sc[r] if sc is not None else 1.0
+        j = idx[a['idx0'] + r]
+        s = sc[a['idx0'] + r] if sc is not None else 1.0
         for c in range(d):
             v = f32(s * src.at(j, c)) if 0 <= j < src.rows else 0.0
             o = r * dst.cols + c
@@ -121,8 +121,8 @@ def _scatter_add_rows(b, a):
     for v in range(a['v0'], a['v1']):
         acc = [0.0] * d
         for r in range(a['N']):
-            if idx[r] == v:
-                s = sc[r] if sc is not None else 1.0
+            if idx[a['idx0'] + r] == v:
+                s = sc[a['idx0'] + r] if sc is not None else 1.0
                 for c in range(d):
                     acc[c] = f32(acc[c] + f32(s * src.at(r, c)))
         for c in range(d):
@@ -133,9 +133,10 @@ def _scatter_add_rows(b, a):
 def _row_dot(b, a):
     A, B, idx, out, d = b['a'], b['b'], b['idx'], b['out'], a['d']
     for r in range(a['r0'], a['r1']):
-        j = idx[r] if idx is not None else r
+        j = idx[a['idx0'] + r] if idx is not None else r
         v = f32(sum(A.at(j, c) * B.at(r, c) for c in range(d))) if 0 <= j < A.rows else 0.0
-        out[r] = f32(out[r] + v) if a['acc'] else v
+        o = a['idx0'] + r
+        out[o] = f32(out[o] + v) if a['acc'] else v
 
 
 # ---- MoE routing -----------------------------------------------------------------------------------------------------
@@ -406,13 +407,13 @@ EXTRA_OPS = {
     'softmax_rows_fwd': _R(_softmax_rows_fwd, lambda a: (_need(a['d'] > 0, 'softmax_rows: d > 0'), _rows_ext(a, ('x', 'out')))[1]),
     'softmax_rows_bwd': _R(_softmax_rows_bwd, lambda a: (_need(a['d'] > 0, 'softmax_rows: d > 0'), _rows_ext(a, ('p', 'dp', 'dx')))[1]),
     'gather_rows_scaled': _R(_gather_rows_scaled, lambda a: (_rng(a['r0'], a['r1']), _need(a['d'] > 0, 'gather_rows_scaled: d > 0'),
-                                                              {'src': (0, a['d']), 'idx': a['r1'], 'scale': a['r1'], 'dst': (a['r1'], a['d'])})[2],
+                                                              {'src': (0, a['d']), 'idx': a['idx0'] + a['r1'], 'scale': a['idx0'] + a['r1'], 'dst': (a['r1'], a['d'])})[2],
                              ints=('idx',)),
     'scatter_add_rows': _R(_scatter_add_rows, lambda a: (_need(a['N'] >= 0 and 0 <= a['v0'] <= a['v1'] and a['d'] > 0, 'scatter_add_rows: bad N/v0/v1/d'),
-                                                          {'src': (a['N'], a['d']), 'idx': a['N'], 'scale': a['N'], 'dst': (a['v1'], a['d'])})[1],
+                                                          {'src': (a['N'], a['d']), 'idx': a['idx0'] + a['N'], 'scale': a['idx0'] + a['N'], 'dst': (a['v1'], a['d'])})[1],
                            ints=('idx',)),
     'row_dot': _R(_row_dot, lambda a: (_rng(a['r0'], a['r1']), _need(a['d'] > 0, 'row_dot: d > 0'),
-                                       {'a': (0, a['d']), 'b': (a['r1'], a['d']), 'idx': a['r1'], 'out': a['r1']})[2], ints=('idx',)),
+                                       {'a': (0, a['d']), 'b': (a['r1'], a['d']), 'idx': a['idx0'] + a['r1'], 'out': a['idx0'] + a['r1']})[2], ints=('idx',)),
     'moe_route': _R(_moe_route, lambda a: (_moe_geom(a, a['C']), {'probs': (a['N'], a['E']), 'sel': a['N'] * a['k'], 'slot': a['N'] * a['k'],
                                                                    'eidx': a['E'] * a['C']})[1], ints=('sel', 'slot', 'eidx')),
     'moe_gates_fwd': _R(_moe_gates_fwd, lambda a: (_moe_geom(a), {'probs': (a['N'], a['E']), 'sel': a['N'] * a['k'], 'slot': a['N'] * a['k'],

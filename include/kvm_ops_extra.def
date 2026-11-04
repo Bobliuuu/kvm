@@ -24,14 +24,16 @@ X(softmax_rows_fwd,    100, "x:buf,out:buf,r0:i32,r1:i32,d:i32,scale:f32")
 X(softmax_rows_bwd,    101, "p:buf,dp:buf,dx:buf,r0:i32,r1:i32,d:i32,scale:f32,acc:i32")
 
 // ---- gather / scatter-add (row dispatch and combine) ---------------------------------------------------------------------
-// dst[r,:] (+)= s * src[idx[r],:] for r in [r0,r1), s = scale[r] (scale optional, else 1). idx outside [0,src.rows) -> a ZERO
-// contribution (no error: -1 marks padding). scale is an [R,1] f32 buffer.
-X(gather_rows_scaled,  102, "src:buf,idx:buf,scale:buf?,dst:buf,r0:i32,r1:i32,d:i32,acc:i32")
-// For dst rows v in [v0,v1): dst[v,:] (+)= sum over r = 0..N-1 ascending with idx[r]==v of s_r * src[r,:], s_r = scale[r] or 1.
-// idx outside [0,dst.rows) are skipped. One task owns a dst row range: deterministic, no atomics. VJP partner of gather_rows_scaled.
-X(scatter_add_rows,    103, "src:buf,idx:buf,scale:buf?,dst:buf,N:i32,v0:i32,v1:i32,d:i32,acc:i32")
-// out[r,0] (+)= dot(a[j,:d], b[r,:d]) with j = idx ? idx[r] : r; j outside [0,a.rows) -> 0. (gradient of the scale operand above)
-X(row_dot,             104, "a:buf,b:buf,idx:buf?,out:buf,r0:i32,r1:i32,d:i32,acc:i32")
+// dst[r,:] (+)= s * src[idx[idx0+r],:] for r in [r0,r1), s = scale[idx0+r] (scale optional, else 1). idx/scale are index/[R,1]
+// buffers addressed with the row offset idx0 (one routing table serves E experts: expert e uses idx0 = e*C). idx values outside
+// [0,src.rows) -> a ZERO contribution (no error: -1 marks padding).
+X(gather_rows_scaled,  102, "src:buf,idx:buf,scale:buf?,dst:buf,r0:i32,r1:i32,d:i32,acc:i32,idx0:i32")
+// For dst rows v in [v0,v1): dst[v,:] (+)= sum over r = 0..N-1 ascending with idx[idx0+r]==v of s_r * src[r,:], s_r = scale[idx0+r]
+// or 1. idx values outside [0,dst.rows) are skipped. One task owns a dst row range: deterministic, no atomics. VJP partner of
+// gather_rows_scaled.
+X(scatter_add_rows,    103, "src:buf,idx:buf,scale:buf?,dst:buf,N:i32,v0:i32,v1:i32,d:i32,acc:i32,idx0:i32")
+// out[idx0+r,0] (+)= dot(a[j,:d], b[r,:d]) with j = idx ? idx[idx0+r] : r; j outside [0,a.rows) -> 0 (gradient of the scale operand).
+X(row_dot,             104, "a:buf,b:buf,idx:buf?,out:buf,r0:i32,r1:i32,d:i32,acc:i32,idx0:i32")
 
 // ---- mixture-of-experts routing (SINGLE-TASK ops over all N tokens; N is small: a router is O(N*E*k)) ---------------------
 // probs:[N,E] f32 row-softmax. sel:[N,k] i32, slot:[N,k] i32, eidx:[E*C,1] i32.

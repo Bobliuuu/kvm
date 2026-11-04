@@ -52,22 +52,25 @@ template <int ID> static void bench_mm(int M, int N, int K, int ta, int tb, int 
     Rng r(3); Dev dv;
     int ia = dv.addf(ta ? K : M, ta ? M : K), ib = dv.addf(tb ? N : K, tb ? K : N), io = dv.addf(M, N);
     auto ha = rnd(r, (size_t)M * K), hb = rnd(r, (size_t)K * N); dv.up(ia, ha); dv.up(ib, hb);
-    const int step = big ? 128 : 64;
-    Batch b; for (int m0 = 0; m0 < M; m0 += step) for (int n0 = 0; n0 < N; n0 += step)
-        b.add(OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(m0).i(n0).i(M).i(N).i(K).i(ta | (tb << 1) | (prec << 4) | (big << 5)).f(1.f));
-    auto s = stage(dv, b); launch_full(s, 48 * 1024); CK(cudaDeviceSynchronize());
+    const int step = big ? 128 : 64, stepm = big == 2 ? 256 : step;
+    // BENCH_GROUP=g: launch order walks groups of g row-tiles down each column (L2-friendlier than row-major); 0 = row-major
+    static const int grp = getenv("BENCH_GROUP") ? atoi(getenv("BENCH_GROUP")) : 0;
+    Batch b; auto addt = [&](int m0, int n0) { b.add(OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(m0).i(n0).i(M).i(N).i(K).i(ta | (tb << 1) | (prec << 4) | (big == 1 ? 32 : big == 2 ? 64 : 0)).f(1.f)); };
+    if (!grp) { for (int m0 = 0; m0 < M; m0 += stepm) for (int n0 = 0; n0 < N; n0 += step) addt(m0, n0); }
+    else for (int g0 = 0; g0 < M; g0 += grp * step) for (int n0 = 0; n0 < N; n0 += step) for (int m0 = g0; m0 < std::min(M, g0 + grp * step); m0 += step) addt(m0, n0);
+    auto s = stage(dv, b); launch_full(s, kvm_gpt_smem_bytes(64)); CK(cudaDeviceSynchronize());
     auto o = dv.down(io); Rng rs(9); double me = 0, mx = 0;   // sampled elements vs double dot products
     for (int t = 0; t < 400; t++) {
         int m = rs.u32() % M, n = rs.u32() % N; double acc = 0;
         for (int k = 0; k < K; k++) acc += (double)(ta ? ha[(size_t)k * M + m] : ha[(size_t)m * K + k]) * (tb ? hb[(size_t)n * K + k] : hb[(size_t)k * N + n]);
         me = std::max(me, fabs(o[(size_t)m * N + n] - acc)); mx = std::max(mx, fabs(acc));
     }
-    char nm[96]; snprintf(nm, sizeof nm, "matmul %s%s %c%c %dx%dx%d", big ? "128tile " : "", prec ? "3xTF32" : "TF32", ta ? 'T' : 'N', tb ? 'T' : 'N', M, N, K);
+    char nm[96]; snprintf(nm, sizeof nm, "matmul %s%s %c%c %dx%dx%d", big == 1 ? "128tile " : big == 2 ? "256x128tile " : "", prec ? "3xTF32" : "TF32", ta ? 'T' : 'N', tb ? 'T' : 'N', M, N, K);
     double tol = prec ? 2e-6 * sqrt((double)K) : 6e-3; char d[64]; snprintf(d, sizeof d, "400 sampled elements relerr %.2e", me / mx);
     verdict(std::string("bench check: ") + nm, me / mx < tol, d);
     double flops = 2.0 * M * N * K;   // nominal 2MNK (3xTF32 performs 3x the tensor work)
-    double ms = time_ms([&] { launch_full(s, 48 * 1024); }, 10); report(nm, "full dispatch", ms, flops, "GFLOP/s", prec ? 156000 / 3.0 : 156000);
-    ms = time_ms([&] { launch_one<ID>(s, 48 * 1024); }, 10); report(nm, "single-op", ms, flops, "GFLOP/s", prec ? 156000 / 3.0 : 156000);
+    double ms = time_ms([&] { launch_full(s, kvm_gpt_smem_bytes(64)); }, 10); report(nm, "full dispatch", ms, flops, "GFLOP/s", prec ? 156000 / 3.0 : 156000);
+    ms = time_ms([&] { launch_one<ID>(s, kvm_gpt_smem_bytes(64)); }, 10); report(nm, "single-op", ms, flops, "GFLOP/s", prec ? 156000 / 3.0 : 156000);
 }
 
 template <int HD> static void bench_attn(int B, int T, int H, int Hkv) {
@@ -197,7 +200,7 @@ int main() {
     if (want("mm")) {
     bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 0, 0); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 1, 0, 0); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 1, 0);
     bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 0, 1); bench_mm<OP_matmul_tile>(2048, 2048, 2048, 0, 0, 0); bench_mm<OP_matmul_tile>(8192, 768, 768, 0, 0, 0);
-    for (int bg = 1; bg <= 1; bg++) { bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 0, 0, bg); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 1, 0, 0, bg); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 1, 0, bg); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 0, 1, bg);
+    for (int bg = 1; bg <= 2; bg++) { bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 0, 0, bg); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 1, 0, 0, bg); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 1, 0, bg); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 0, 1, bg);
         bench_mm<OP_matmul_tile>(2048, 2048, 2048, 0, 0, 0, bg); bench_mm<OP_matmul_tile>(8192, 768, 768, 0, 0, 0, bg); bench_mm<OP_matmul_tile>(1024, 1024, 1024, 0, 0, 0, bg); bench_mm<OP_matmul_tile>(4096, 3072, 768, 0, 0, 0, bg); bench_mm<OP_matmul_tile>(512, 512, 512, 0, 0, 0, bg); }
     bench_mm<OP_matmul_tile>(1024, 1024, 1024, 0, 0, 0); bench_mm<OP_matmul_tile>(4096, 3072, 768, 0, 0, 0); bench_mm<OP_matmul_tile>(512, 512, 512, 0, 0, 0);
     }

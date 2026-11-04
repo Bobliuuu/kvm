@@ -34,11 +34,20 @@
 #define KVM_GPT_THREADS 256
 #define KVM_GPT_DEVI __device__ __forceinline__
 
+
+#ifndef KVM_GPT_BIG_BK
+#define KVM_GPT_BIG_BK 16    // k per pipeline stage of the 128x128 tile (16 or 32)
+#endif
+#ifndef KVM_GPT_BIG_NST
+#define KVM_GPT_BIG_NST 3    // pipeline stages of the 128x128 tile
+#endif
 // Dynamic shared memory an op needs for a launch of the op set: 104 KiB covers hd=128 attention backward/forward (6 tiles of
 // 32 x 132 floats = 101 KiB); 56 KiB covers every other op (matmul 48 KiB, attention up to hd=64 at 52 KiB), so two blocks per SM still
 // fit in the 164 KiB of an A100. The executor must opt in with cudaFuncSetAttribute(MaxDynamicSharedMemorySize) (it does, from
 // KVM_GPT_SMEM_BYTES).
-__host__ __device__ constexpr int kvm_gpt_smem_bytes(int max_hd) { return max_hd > 64 ? 104 * 1024 : 56 * 1024; }
+__host__ __device__ constexpr int kvm_gpt_smem_bytes(int max_hd) {
+    return max_hd > 64 ? 104 * 1024 : (1536 * KVM_GPT_BIG_BK * KVM_GPT_BIG_NST > 56 * 1024 ? 1536 * KVM_GPT_BIG_BK * KVM_GPT_BIG_NST : 56 * 1024);
+}
 #ifndef KVM_GPT_MAX_HD
 #define KVM_GPT_MAX_HD 64   // largest attention head size the launch must support (16/32/64 -> 56 KiB, 128 -> 104 KiB)
 #endif
@@ -260,6 +269,16 @@ KVM_GPT_DEVI void mma_tf32(float (&c)[4], const unsigned (&a)[4], unsigned b0, u
                  : "+f"(c[0]), "+f"(c[1]), "+f"(c[2]), "+f"(c[3]) : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b0), "r"(b1));
 }
 
+KVM_GPT_DEVI unsigned pack_bf16(float lo, float hi) {   // two fp32 -> bf16x2 (round to nearest even), `lo` in the low half
+    unsigned r;
+    asm("cvt.rn.bf16x2.f32 %0, %1, %2;\n" : "=r"(r) : "f"(hi), "f"(lo));
+    return r;
+}
+KVM_GPT_DEVI void mma_bf16(float (&c)[4], const unsigned (&a)[4], unsigned b0, unsigned b1) {   // m16n8k16
+    asm volatile("mma.sync.aligned.m16n8k16.row.col.f32.bf16.bf16.f32 {%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3};\n"
+                 : "+f"(c[0]), "+f"(c[1]), "+f"(c[2]), "+f"(c[3]) : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b0), "r"(b1));
+}
+
 // Shared-memory tiles of the matmul are 2048 floats, unpadded, with an XOR swizzle that keeps 16-byte chunks contiguous (so
 // cp.async and ldmatrix work) and makes every fragment access bank-conflict free:
 //  KC: rows x BK floats (BK = 32 or 16), k contiguous (A as [m][k], B as [n][k]);  the 16-byte chunk index is XORed with a row function.
@@ -296,7 +315,7 @@ KVM_GPT_DEVI void tile_async(float* dst, const float* src, int ld, int gr0, int 
 // slab; the two k-halves are summed in the epilogue. Shared tiles keep the global orientation (coalesced loads for all four
 // transpose combinations). K-contiguous operands (A as [m][k], B as [n][k]) are fed by ldmatrix, the others by 32-bit loads.
 // PREC: 3xTF32 split (a_lo*b_hi + a_hi*b_lo + a_hi*b_hi) restores ~fp32 accuracy.
-template <bool TA, bool TB, bool PREC>
+template <bool TA, bool TB, bool PREC, bool BF = false>   // BF: operands rounded to bf16, m16n8k16 bf16 mma (one k16 step per slab per warp half)
 KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, float* out, int ldo, const float* bias, const float* res,
                           int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, bool gelu, bool accum) {
     constexpr int BK = 32, TM = 64, TN = 64, TILE = 2048, STAGE = 2 * TILE, NST = 3, CLD = TN + 8;
@@ -327,6 +346,41 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
         if (it + 2 < nk) issue(it + 2);
         cp_commit();
         const float* As = sm + (it % NST) * STAGE; const float* Bs = As + TILE;
+        if constexpr (BF) {
+            const int kk = kh * 16;
+            unsigned af_[2][4], bf_[4][2];
+#pragma unroll
+            for (int i = 0; i < 2; i++) {
+                const int mb = wmi * 32 + i * 16;
+                if (!TA) {   // A [m][k]: (row, k..k+1) is an adjacent float2
+#pragma unroll
+                    for (int q = 0; q < 4; q++) {
+                        const float2 v = *reinterpret_cast<const float2*>(As + sw_kc<32>(mb + g + 8 * (q & 1), kk + 2 * t + 8 * (q >> 1)));
+                        af_[i][q] = pack_bf16(v.x, v.y);
+                    }
+                } else {
+#pragma unroll
+                    for (int q = 0; q < 4; q++) {
+                        const int kr = kk + 2 * t + 8 * (q >> 1), mc = mb + g + 8 * (q & 1);
+                        af_[i][q] = pack_bf16(As[sw_mc<64>(kr, mc)], As[sw_mc<64>(kr + 1, mc)]);
+                    }
+                }
+            }
+#pragma unroll
+            for (int j = 0; j < 4; j++) {
+                const int nc = wni * 32 + j * 8 + g;
+#pragma unroll
+                for (int q = 0; q < 2; q++) {
+                    const int kr = kk + 2 * t + 8 * q;
+                    if (TB) { const float2 v = *reinterpret_cast<const float2*>(Bs + sw_kc<32>(nc, kr)); bf_[j][q] = pack_bf16(v.x, v.y); }
+                    else bf_[j][q] = pack_bf16(Bs[sw_mc<64>(kr, nc)], Bs[sw_mc<64>(kr + 1, nc)]);
+                }
+            }
+#pragma unroll
+            for (int i = 0; i < 2; i++)
+#pragma unroll
+                for (int j = 0; j < 4; j++) mma_bf16(acc[i][j], af_[i], bf_[j][0], bf_[j][1]);
+        } else {
 #pragma unroll
         for (int kq = 0; kq < 2; kq++) {
             const int kk = (kh * 2 + kq) * 8;
@@ -374,6 +428,7 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
                     mma_tf32(acc[i][j], ah[i], bh[j][0], bh[j][1]);
                 }
         }
+        }
     }
     cp_wait<0>();
     __syncthreads();   // all warps done reading the last stage; reuse shared memory for the two k-half partial tiles
@@ -419,47 +474,47 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
 // 128x128 output tile (flag 32): the same math as mm_tile with a quarter of the shared-to-L2 traffic per FLOP, which is what bounds
 // the 64x64 tile. BK=16, 3-stage cp.async pipeline (3 x 16 KiB = 48 KiB), 8 warps as 2 (m) x 4 (n), each owning a 64x32 sub-tile
 // = 4 m16 x 4 n8 fragments over the whole K (no split-K); the epilogue runs straight from the accumulator registers.
-template <bool TA, bool TB, bool PREC>
+template <bool TA, bool TB, bool PREC, int WM, int WN, int WTN>   // WM x WN warps, each owning a 64 x WTN sub-tile; tile = 64*WM x WTN*WN
 KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, float* out, int ldo, const float* bias, const float* res,
                               int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, bool gelu, bool accum) {
-    constexpr int BK = 16, TILE = 2048, STAGE = 2 * TILE, NST = 3;
+    constexpr int BK = KVM_GPT_BIG_BK, NST = KVM_GPT_BIG_NST, BM = 64 * WM, BN = WTN * WN, NJ = WTN / 8, ATILE = BM * BK, TILE = ATILE, STAGE = (BM + BN) * BK;
+    static_assert(WM * WN == 8, "8 warps");
     float* sm = reinterpret_cast<float*>(kvm_gpt_smem);   // [stage][A | B]
-    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, wmi = warp >> 2, wni = warp & 3, g = lane >> 2, t = lane & 3;
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, wmi = warp / WN, wni = warp % WN, g = lane >> 2, t = lane & 3;
     const bool va = aligned16(A, lda) && (!TA || (m0 & 3) == 0), vb = aligned16(B, ldb) && (TB || (n0 & 3) == 0);   // tile origin column too
-    float acc[4][4][4];
+    float acc[4][NJ][4];
 #pragma unroll
     for (int i = 0; i < 4; i++)
 #pragma unroll
-        for (int j = 0; j < 4; j++)
+        for (int j = 0; j < NJ; j++)
 #pragma unroll
             for (int e = 0; e < 4; e++) acc[i][j][e] = 0.f;
     const int nk = (K + BK - 1) / BK;
     auto issue = [&](int it) {
-        float* As = sm + (it % NST) * STAGE; float* Bs = As + TILE;
+        float* As = sm + (it % NST) * STAGE; float* Bs = As + ATILE;
         const int kk = it * BK;
-        if (TA) tile_async<false, 16, 128>(As, A, lda, kk, m0, K, M, va); else tile_async<true, 128, 16>(As, A, lda, m0, kk, M, K, va);
-        if (TB) tile_async<true, 128, 16>(Bs, B, ldb, n0, kk, N, K, vb); else tile_async<false, 16, 128>(Bs, B, ldb, kk, n0, K, N, vb);
+        if (TA) tile_async<false, BK, BM>(As, A, lda, kk, m0, K, M, va); else tile_async<true, BM, BK>(As, A, lda, m0, kk, M, K, va);
+        if (TB) tile_async<true, BN, BK>(Bs, B, ldb, n0, kk, N, K, vb); else tile_async<false, BK, BN>(Bs, B, ldb, kk, n0, K, N, vb);
     };
-    issue(0); cp_commit();
-    if (nk > 1) issue(1);
-    cp_commit();
-    for (int it = 0; it < nk; it++) {
-        cp_wait<1>();
-        __syncthreads();
-        if (it + 2 < nk) issue(it + 2);
-        cp_commit();
-        const float* As = sm + (it % NST) * STAGE; const float* Bs = As + TILE;
 #pragma unroll
-        for (int kq = 0; kq < 2; kq++) {
+    for (int p = 0; p < NST - 1; p++) { if (p < nk) issue(p); cp_commit(); }
+    for (int it = 0; it < nk; it++) {
+        cp_wait<NST - 2>();
+        __syncthreads();
+        if (it + NST - 1 < nk) issue(it + NST - 1);
+        cp_commit();
+        const float* As = sm + (it % NST) * STAGE; const float* Bs = As + ATILE;
+#pragma unroll
+        for (int kq = 0; kq < BK / 8; kq++) {
             const int kk = kq * 8;
-            unsigned ah[4][4], al[4][4], bh[4][2], bl[4][2];
+            unsigned ah[4][4], al[4][4], bh[NJ][2], bl[NJ][2];
 #pragma unroll
             for (int i = 0; i < 4; i++) {
                 const int mb = wmi * 64 + i * 16;
-                if (!TA) ldmatrix_x4(ah[i], As + sw_kc<16>(mb + (lane & 7) + 8 * ((lane >> 3) & 1), kk + 4 * (lane >> 4)));
+                if (!TA) ldmatrix_x4(ah[i], As + sw_kc<BK>(mb + (lane & 7) + 8 * ((lane >> 3) & 1), kk + 4 * (lane >> 4)));
                 else {
-                    ah[i][0] = __float_as_uint(As[sw_mc<128>(kk + t, mb + g)]);     ah[i][1] = __float_as_uint(As[sw_mc<128>(kk + t, mb + g + 8)]);
-                    ah[i][2] = __float_as_uint(As[sw_mc<128>(kk + t + 4, mb + g)]); ah[i][3] = __float_as_uint(As[sw_mc<128>(kk + t + 4, mb + g + 8)]);
+                    ah[i][0] = __float_as_uint(As[sw_mc<BM>(kk + t, mb + g)]);     ah[i][1] = __float_as_uint(As[sw_mc<BM>(kk + t, mb + g + 8)]);
+                    ah[i][2] = __float_as_uint(As[sw_mc<BM>(kk + t + 4, mb + g)]); ah[i][3] = __float_as_uint(As[sw_mc<BM>(kk + t + 4, mb + g + 8)]);
                 }
 #pragma unroll
                 for (int e = 0; e < 4; e++) {
@@ -469,15 +524,15 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
                 }
             }
 #pragma unroll
-            for (int jp = 0; jp < 2; jp++) {
-                const int nb = wni * 32 + jp * 16;
+            for (int jp = 0; jp < NJ / 2; jp++) {
+                const int nb = wni * WTN + jp * 16;
                 if (TB) {
                     unsigned r[4];
-                    ldmatrix_x4(r, Bs + sw_kc<16>(nb + (lane & 7) + 8 * (lane >> 4), kk + 4 * ((lane >> 3) & 1)));
+                    ldmatrix_x4(r, Bs + sw_kc<BK>(nb + (lane & 7) + 8 * (lane >> 4), kk + 4 * ((lane >> 3) & 1)));
                     bh[2 * jp][0] = r[0]; bh[2 * jp][1] = r[1]; bh[2 * jp + 1][0] = r[2]; bh[2 * jp + 1][1] = r[3];
                 } else {
-                    bh[2 * jp][0] = __float_as_uint(Bs[sw_mc<128>(kk + t, nb + g)]);          bh[2 * jp][1] = __float_as_uint(Bs[sw_mc<128>(kk + t + 4, nb + g)]);
-                    bh[2 * jp + 1][0] = __float_as_uint(Bs[sw_mc<128>(kk + t, nb + 8 + g)]);  bh[2 * jp + 1][1] = __float_as_uint(Bs[sw_mc<128>(kk + t + 4, nb + 8 + g)]);
+                    bh[2 * jp][0] = __float_as_uint(Bs[sw_mc<BN>(kk + t, nb + g)]);          bh[2 * jp][1] = __float_as_uint(Bs[sw_mc<BN>(kk + t + 4, nb + g)]);
+                    bh[2 * jp + 1][0] = __float_as_uint(Bs[sw_mc<BN>(kk + t, nb + 8 + g)]);  bh[2 * jp + 1][1] = __float_as_uint(Bs[sw_mc<BN>(kk + t + 4, nb + 8 + g)]);
                 }
 #pragma unroll
                 for (int jj = 0; jj < 2; jj++)
@@ -491,7 +546,7 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
 #pragma unroll
             for (int i = 0; i < 4; i++)
 #pragma unroll
-                for (int j = 0; j < 4; j++) {
+                for (int j = 0; j < NJ; j++) {
                     if (PREC) { mma_tf32(acc[i][j], al[i], bh[j][0], bh[j][1]); mma_tf32(acc[i][j], ah[i], bl[j][0], bl[j][1]); }
                     mma_tf32(acc[i][j], ah[i], bh[j][0], bh[j][1]);
                 }
@@ -505,10 +560,10 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
 #pragma unroll
     for (int i = 0; i < 4; i++)
 #pragma unroll
-        for (int j = 0; j < 4; j++)
+        for (int j = 0; j < NJ; j++)
 #pragma unroll
             for (int hf = 0; hf < 2; hf++) {
-        const int gm = m0 + wmi * 64 + i * 16 + g + hf * 8, gn = n0 + wni * 32 + j * 8 + 2 * t;
+        const int gm = m0 + wmi * 64 + i * 16 + g + hf * 8, gn = n0 + wni * WTN + j * 8 + 2 * t;
         if (gm >= M || gn >= N) continue;
         float v[2] = {acc[i][j][2 * hf] * alpha, acc[i][j][2 * hf + 1] * alpha};
         if (pair && gn + 1 < N) {
@@ -536,9 +591,10 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
 KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
     int m0 = a[6], n0 = a[7], M = a[8], N = a[9], K = a[10], fl = a[11];
-    bool ta = fl & 1, tb = fl & 2, accum = fl & 4, gelu = fl & 8, prec = fl & 16, big = fl & 32;
+    bool ta = fl & 1, tb = fl & 2, accum = fl & 4, gelu = fl & 8, prec = fl & 16, big = fl & 32, huge = fl & 64;
+    k.need(!(big && huge), KVM_GPT_E_SHAPE);
     k.need(M > 0 && N > 0 && K > 0 && m0 >= 0 && m0 < M && n0 >= 0 && n0 < N);
-    k.need((fl & ~63) == 0, KVM_GPT_E_SHAPE);
+    k.need((fl & ~127) == 0, KVM_GPT_E_SHAPE);
     if (k.bad) return;
     int lda, ldb, ldo, ldr = 0, ldp = 0;
     const float* A = k.mat(a[0], ta ? K : M, ta ? M : K, &lda);
@@ -549,14 +605,21 @@ KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
     float* pre = k.mat(a[5], M, N, &ldp, true);
     if (k.bad) return;
     float alpha = af(a, 12);
-#define KVM_GPT_MM(F, TA, TB, P) F<TA, TB, P>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, gelu, accum)
+#define KVM_GPT_MM(F, TA, TB, P) F<TA, TB, P KVM_GPT_MM_SHAPE>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, gelu, accum)
 #define KVM_GPT_MM_T(F, P)                                                                                                   \
     if (!ta && !tb) KVM_GPT_MM(F, false, false, P); else if (ta && !tb) KVM_GPT_MM(F, true, false, P);                       \
     else if (!ta && tb) KVM_GPT_MM(F, false, true, P); else KVM_GPT_MM(F, true, true, P)
+#define KVM_GPT_MM_SHAPE , 2, 4, 32
     if (big) { if (prec) { KVM_GPT_MM_T(mm_tile_big, true); } else { KVM_GPT_MM_T(mm_tile_big, false); } }
+#undef KVM_GPT_MM_SHAPE
+#define KVM_GPT_MM_SHAPE , 4, 2, 64
+    else if (huge) { if (prec) { KVM_GPT_MM_T(mm_tile_big, true); } else { KVM_GPT_MM_T(mm_tile_big, false); } }
+#undef KVM_GPT_MM_SHAPE
+#define KVM_GPT_MM_SHAPE
     else if (prec) { KVM_GPT_MM_T(mm_tile, true); } else { KVM_GPT_MM_T(mm_tile, false); }
 #undef KVM_GPT_MM_T
 #undef KVM_GPT_MM
+#undef KVM_GPT_MM_SHAPE
 }
 
 // ---- normalization: one warp per row ----------------------------------------------------------------------------------
@@ -947,8 +1010,17 @@ KVM_GPT_DEVI void split_tf32(float x, unsigned& hi, unsigned& lo) {
     hi = __float_as_uint(x) & 0xffffe000u;                  // truncated hi: one LOP; lo = x - hi is then exact
     lo = __float_as_uint(x - __uint_as_float(hi));          // raw fp32: the tensor core reads its top 10 mantissa bits
 }
+#ifndef KVM_GPT_ATTN_MMA
+#define KVM_GPT_ATTN_MMA 3   // attention products: 3 = 3xTF32 (fp32-class, the 2e-5 contract), 2 = 2xTF32 (5e-4..1.5e-3), 1 = 1xTF32 (7e-4..3e-3); both break the 2e-5 contract, experimental
+#endif
 KVM_GPT_DEVI void mma3(float (&c)[4], const unsigned (&ah)[4], const unsigned (&al)[4], unsigned bh0, unsigned bh1, unsigned bl0, unsigned bl1) {
-    mma_tf32(c, al, bh0, bh1); mma_tf32(c, ah, bl0, bl1); mma_tf32(c, ah, bh0, bh1);   // small terms first
+#if KVM_GPT_ATTN_MMA >= 3
+    mma_tf32(c, ah, bl0, bl1);   // hi*lo
+#endif
+#if KVM_GPT_ATTN_MMA >= 2
+    mma_tf32(c, al, bh0, bh1);   // lo*hi
+#endif
+    mma_tf32(c, ah, bh0, bh1);   // small terms first
 }
 // cp.async copy of a 32 x HD tile (rows row0.. of a row-major matrix, leading dimension ldg) to shared rows of stride HD+4;
 // rows >= rmax are zero-filled. The padding makes every mma fragment load bank-conflict free.

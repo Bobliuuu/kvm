@@ -79,8 +79,8 @@ def main():
                 ops=dict(sorted(ops.items(), key=lambda kv: -kv[1])), plan=c.low.plan.stats)
     (out / 'meta.json').write_text(json.dumps(meta, indent=1, default=str))
     if not a.no_golden:
-        subprocess.run([sys.executable, str(ROOT / 'runtime/compile_workload.py'), '--emit-golden', str(out / 'workload.json'),
-                        str(out / 'bundle')], check=True, stderr=subprocess.DEVNULL)
+        subprocess.run([sys.executable, str(ROOT / 'runtime/compile_workload.py'), '--emit-golden', '--golden-timeout', '7200',
+                        str(out / 'workload.json'), str(out / 'bundle')], check=True, stderr=subprocess.DEVNULL)
     print(f'{out}: {meta["model"]} {a.steps} steps, {meta["tasks"]} tasks, {meta["edges"]} edges, '
           f'{"3xTF32" if a.precise else "1xTF32"}{", fused" if a.fuse else ""}')
 

@@ -30,7 +30,7 @@ while IFS='|' read -r name model steps mode tol flags; do
   rsync -az -e "$SSH" "$d/bundle/" "$HOST:$REMOTE/mbundles/$name/"
   NAMES+=("$name"); MODES+=("$mode"); TOLS+=("$tol")
 done < "$CASES_FILE"
-RUN="cd $REMOTE && for c in ${NAMES[*]}; do ./kvm_exec --quiet --dump-buffers mbundles/\$c > mbundles/\$c.dump 2> mbundles/\$c.err; echo \"\$c exit \$?\"; done"
+RUN="cd $REMOTE && for c in ${NAMES[*]}; do ./kvm_exec --quiet --dump-buffers mbundles/\$c > mbundles/\$c.dump 2> mbundles/\$c.err; echo \"\$c exit \$?\"; for i in 1 2 3; do ./kvm_exec --quiet mbundles/\$c | tail -n1; done > mbundles/\$c.times; done"
 if [ "$SANITIZE" = 1 ]; then
   RUN="$RUN; for c in ${NAMES[*]}; do for tool in memcheck racecheck synccheck; do echo \"== compute-sanitizer \$tool \$c\"; compute-sanitizer --tool \$tool --error-exitcode 9 ./kvm_exec --blocks 4 --quiet mbundles/\$c 2>&1 | tail -3; echo \"sanitizer exit \${PIPESTATUS[0]}\"; done; done"
 fi
@@ -39,7 +39,8 @@ fail=0; grep -E "exit [1-9]" "$LOG/runs.txt" && fail=1
 for i in "${!NAMES[@]}"; do
   c="${NAMES[$i]}"; d="$WORK/$c"
   scp -q -o BatchMode=yes ${KVM_KEY:+-i $KVM_KEY} "$HOST:$REMOTE/mbundles/$c.dump" "$d/dump.txt"
-  tail -n1 "$d/dump.txt" | sed "s/^/$c kvm_exec: /"
+  scp -q -o BatchMode=yes ${KVM_KEY:+-i $KVM_KEY} "$HOST:$REMOTE/mbundles/$c.times" "$d/times.txt"
+  tail -n1 "$d/dump.txt" | sed "s/^/$c kvm_exec: /"; sed "s/^/$c repeat: /" "$d/times.txt"
   python3 "$ROOT/examples/models/check.py" "$d/workload.json" "$d/bundle" "$d/dump.txt" --mode "${MODES[$i]}" --tol "${TOLS[$i]}" --json "$d/check.json" | tee "$d/check.txt" || fail=1
 done
 echo "logs: $LOG"; exit $fail

@@ -15,3 +15,12 @@ llama_remat    | {"name": "llama_remat", "layers": 3, "remat": true} | 5 | preci
 llama_bf16     | {"name": "llama_bf16", "precision": "bf16"} | 10 | precise | 2e-3 | --loss-scale 1024 --schedule cosine --warmup 2
 mlp_bf16       | {"name": "mlp_bf16", "precision": "bf16"} | 30 | precise | 2e-3 | --loss-scale 128
 gpt_fused      | gpt_tiny        | 5  | precise | 2e-4 | --fuse
+# small bundles for compute-sanitizer (memcheck, racecheck, synccheck): same models, 2 steps
+san_llama      | llama_tiny      | 2  | precise | 2e-4 |
+san_gqa_fused  | llama_gqa_tied  | 2  | precise | 2e-4 | --fuse
+san_moe        | moe_tiny        | 2  | precise | 2e-4 |
+san_moe_fused  | moe_tiny        | 2  | precise | 2e-4 | --fuse
+san_vit        | vit_tiny        | 2  | precise | 2e-4 |
+san_mlp        | mlp_tiny        | 3  | precise | 2e-4 | --schedule cosine --warmup 1
+san_bf16       | {"name": "llama_bf16", "precision": "bf16"} | 2 | precise | 2e-3 | --loss-scale 1024
+san_remat      | {"name": "llama_remat", "layers": 2, "remat": true} | 2 | precise | 2e-4 | --accum 2

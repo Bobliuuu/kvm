@@ -2,6 +2,9 @@
 // Build: nvcc -O2 -arch=sm_80 -std=c++17 -I../../include -I. test_ops.cu -o test_ops    Run: ./test_ops
 #include <algorithm>
 #include <map>
+#ifndef KVM_GPT_MAX_HD
+#define KVM_GPT_MAX_HD 128   // these tests and benchmarks cover hd=128 attention (-DKVM_GPT_MAX_HD=64 builds the hd<=64 union)
+#endif
 #include "harness.cuh"
 #include "refs.hpp"
 
@@ -70,7 +73,7 @@ static void t_matmul() {
         float alpha = full ? 0.7f : 1.f;
         int fl = ta | (tb << 1) | (prec << 4) | (big << 5) | (full ? (4 | 8) : 0), step = big ? 128 : 64;
         Batch b;
-        for (int m0 = 0; m0 < M; m0 += 64) for (int n0 = 0; n0 < N; n0 += 64)
+        for (int m0 = 0; m0 < M; m0 += step) for (int n0 = 0; n0 < N; n0 += step)
             b.add(OP_matmul_tile, A().b(ia).b(ib).b(io).b(full ? ibias : -1).b(full ? ires : -1).b(full ? ipre : -1).i(m0).i(n0).i(M).i(N).i(K).i(fl).f(alpha));
         int e = run(dv, b);
         D C = mm_d(dbl(ha), dbl(hb), M, N, K, ta, tb), ref(M * N), pre(M * N);
@@ -85,9 +88,6 @@ static void t_matmul() {
         if (full) check(std::string(nm) + " pre", dv.down(ipre), pre, tol);
         if (e) check_true(std::string(nm) + " err", false);
     }
-    {   // in-place residual: res aliases out, accumulate off
-        int M = 33, N = 40, K = 20; Dev dv;
-        int ia = dv.addf(M, K), ib = dv.addf(K, N), io = dv.addf(M, N);
     {   // tile origins that are not multiples of 4 (cp.async sources would be misaligned) and NaN propagation
         Rng r2(77);
         for (int big = 0; big < 2; big++) for (int tr = 0; tr < 4; tr++) {
@@ -110,6 +110,9 @@ static void t_matmul() {
             check_true(std::string("matmul_tile NaN input propagates ") + (prec ? "3xTF32" : "TF32"), ok);
         }
     }
+    {   // in-place residual: res aliases out, accumulate off
+        int M = 33, N = 40, K = 20; Dev dv;
+        int ia = dv.addf(M, K), ib = dv.addf(K, N), io = dv.addf(M, N);
         auto ha = rnd(r, M * K), hb = rnd(r, K * N), ho = rnd(r, M * N);
         dv.up(ia, ha); dv.up(ib, hb); dv.up(io, ho);
         run1(dv, OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(io).b(-1).i(0).i(0).i(M).i(N).i(K).i(16).f(1.f));
@@ -233,9 +236,9 @@ static void attn_case(AttnCfg c) {
     int smem = kvm_gpt_smem_bytes(hd);
     char nm[96]; snprintf(nm, sizeof nm, "attn B=%d T=%d H=%d Hkv=%d hd=%d", B, T, H, Hkv, hd);
     Dev dv;
-    int q = dv.addf(R, H * hd, H * hd + 4), k = dv.addf(R, Hkv * hd, Hkv * hd + 4), v = dv.addf(R, Hkv * hd), o = dv.addf(R, H * hd);
-    int lse = dv.addf(1, B * H * T), dO = dv.addf(R, H * hd), delta = dv.addf(1, B * H * T), dq = dv.addf(R, H * hd, H * hd + 4);
-    int dk = dv.addf(R, Hkv * hd, Hkv * hd + 4), dvv = dv.addf(R, Hkv * hd);
+    int q = dv.addf(R, H * hd, H * hd + 4), k = dv.addf(R, Hkv * hd, Hkv * hd + 4), v = dv.addf(R, Hkv * hd, Hkv * hd + 8), o = dv.addf(R, H * hd);
+    int lse = dv.addf(1, B * H * T), dO = dv.addf(R, H * hd), delta = dv.addf(1, B * H * T), dq = dv.addf(R, H * hd, H * hd + 12);   // outputs get different leading dimensions than q/k/v
+    int dk = dv.addf(R, Hkv * hd, Hkv * hd + 16), dvv = dv.addf(R, Hkv * hd);
     auto hq = rnd(r, R * H * hd), hk = rnd(r, R * Hkv * hd), hv = rnd(r, R * Hkv * hd), hdo = rnd(r, R * H * hd);
     for (auto& x : hq) x *= 1.5f;
     dv.up(q, hq); dv.up(k, hk); dv.up(v, hv); dv.up(dO, hdo);
@@ -258,7 +261,7 @@ static void attn_case(AttnCfg c) {
             b3.add(OP_attn_bwd_dkv, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dk).b(dvv).i(bb).i(h).i(k0).i(T).i(H).i(hd).f((float)scale));
     }
     e |= run(dv, b3, smem);
-    double fl = T == 1 ? 1e-2 : 1e-30;
+    double fl = T == 1 ? 1.0 : 1e-30;   // T=1: dq, dk are exactly 0 mathematically (dP - delta cancels); only rounding noise remains, so the bound is absolute
     check(std::string(nm) + " bwd dq", dv.down(dq), rdq, 3e-5, fl);
     check(std::string(nm) + " bwd dk", dv.down(dk), rdk, 3e-5, fl);
     check(std::string(nm) + " bwd dv", dv.down(dvv), rdv, 3e-5);
@@ -332,13 +335,15 @@ static void t_decode() {
 }
 
 // ---- loss -------------------------------------------------------------------------------------------------------------
-static void ce_case(int N, int V, double lscale, int mode /*0 none ignored,1 some,2 all*/, int ign, float gs) {
+static void ce_case(int N, int V, double lscale, int mode /*0 none ignored,1 some,2 all*/, int ign, float gs, bool dense = false, bool ninf = false) {
     Rng r(81 + N + V);
     Dev dv;
-    int lg = dv.addf(N, V, V + 1), tg = dv.addi(N), rl = dv.addf(1, N), ls = dv.addf(1, N), loss = dv.addf(1, 2), dl = dv.addf(N, V, V + 2);
+    int lg = dv.addf(N, V, V + !dense), tg = dv.addi(N), rl = dv.addf(1, N), ls = dv.addf(1, N), loss = dv.addf(1, 2), dl = dv.addf(N, V, V + 2 * !dense);
     auto hl = rnd(r, N * V, lscale); std::vector<int32_t> ht(N);
     for (int i = 0; i < N; i++) ht[i] = mode == 2 ? ign : ((mode == 1 && i % 2) ? ign : (int)(r.u32() % V));
     if (lscale >= 80 && N * V > 4) { hl[0] = 80.f; hl[1 % (N * V)] = -80.f; }
+    if (ninf) for (int rr = 0; rr < N; rr++) for (int c = 0; c < 4 && c < V - 1; c++) hl[(size_t)rr * V + c] = -INFINITY;   // banned tokens
+    if (ninf) for (int rr = 0; rr < N; rr++) if (ht[rr] != ign && ht[rr] < 4) ht[rr] = 4 % V;
     dv.up(lg, hl); dv.upi(tg, ht);
     Batch b; for (int r0 = 0; r0 < N; r0 += 4) b.add(OP_softmax_ce_fwd, A().b(lg).b(tg).b(rl).b(ls).i(r0).i(std::min(N, r0 + 4)).i(V).i(ign));
     int e = run(dv, b);
@@ -354,6 +359,7 @@ static void ce_case(int N, int V, double lscale, int mode /*0 none ignored,1 som
     check_true(std::string(nm) + " err==0", e == 0);
 }
 static void t_ce() {
+    ce_case(8, 1024, 2.0, 1, -100, 1.f, true); ce_case(8, 50304, 3.0, 0, -100, 1.f, true); ce_case(6, 4096, 2.0, 0, -100, 1.f, true, true); ce_case(5, 70, 2.0, 0, 0, 1.f, true, true);
     ce_case(13, 1000, 1.0, 0, -100, 1.f); ce_case(1, 1, 1.0, 0, -100, 1.f); ce_case(9, 7, 80.0, 0, -100, 1.f);
     ce_case(12, 50, 1.0, 1, -100, 0.5f); ce_case(6, 33, 1.0, 2, -1, 1.f); ce_case(5, 40000, 20.0, 0, -100, 1.f);
     // reference self-check: dlogits vs central finite differences of the mean loss

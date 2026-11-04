@@ -18,6 +18,8 @@ GATE="${GATE:---gate-serve 20000 --gate-train 25000}"   # tasks in flight per cl
 CFG[adaptive_gated]="${CFG[adaptive]} $GATE"
 CFG[fixed_prio_gated]="${CFG[fixed_prio]} $GATE"
 CFG[global_gated]="${CFG[global]} $GATE"
+CFG[adaptive_tuned]="${CFG[adaptive]} $GATE --gate-tune"
+CFG[alone]="--sched dynamic --weights 2,1,1 --no-train --no-serve"
 # the phased load: serve burst, training pause, Doom scene change (extra work in every frame)
 PHASES="--serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000"
 ORACLE_FRAMES=$(( DUR * FPS + 40 )); [ -d oracle ] || python3 doom/cpu_run.py --frames "$ORACLE_FRAMES" --out oracle --log warn

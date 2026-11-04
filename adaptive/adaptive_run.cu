@@ -37,7 +37,7 @@ struct Opt {
   int sample_us = 2000, seed = 1, log_level = 2;
   double sweep_gb = 0; int sweep_chunk_k = 256, sweep_inflight = 2;   // co-runner: AdamW over 4 tensors of sweep_gb/4 GB each, chunks of sweep_chunk_k*1024 elements
   long long gate_serve = -1, gate_train = -1;   // admission budgets (tasks in flight per class); -1 = none
-  bool arbiter_assist = false, no_doom = false, no_serve = false, no_train = false, dump_frames = true;
+  bool gate_tune = false, arbiter_assist = false, no_doom = false, no_serve = false, no_train = false, dump_frames = true;
   KvmConfig cfg;
 };
 
@@ -118,7 +118,7 @@ class Run {
   Clock::time_point t0_;
   std::atomic<bool> stop_{false}, failed_{false};
   std::mutex mu_;
-  std::unique_ptr<KvmAdmissionGate> gate_; long long gate_budget_serve_ = -1;
+  std::unique_ptr<KvmAdmissionGate> gate_; std::unique_ptr<KvmGateTuner> tuner_, tuner2_;
   std::vector<DoomEv> doom_ev_; std::vector<ServeEv> serve_ev_; std::vector<TrainEv> train_ev_;
   int serve_dropped_ = 0, serve_arrivals_ = 0;
   std::vector<KvmBundle> serve_b_, train_b_; std::vector<int> train_loss_buf_;
@@ -182,6 +182,7 @@ void Run::doom_loop(const DoomInst& d, int frames) {
     const double ret = now_us();
     if (!wait_window(wid)) return;
     const double done = now_us();
+    if (tuner_) { tuner_->report_slack((rel + period - done) / period); tuner2_->report_slack((rel + period - done) / period); }
     std::lock_guard<std::mutex> lk(mu_); doom_ev_.push_back({d.inst, f, rel, sub, ret, done});
   }
 }
@@ -207,7 +208,7 @@ void Run::serve_loop(const std::vector<double>& arrivals) {
     reap();
     if (next < arrivals.size() && !stop_.load() && now_us() >= arrivals[next]) {
       ++serve_arrivals_;
-      if (freel.empty() || (gate_ && gate_->in_flight(CLS_SERVE) + (long long)serve_b_[0].tasks.size() > gate_budget_serve_ && gate_budget_serve_ >= 0)) { ++serve_dropped_; ++next; continue; }
+      if (freel.empty() || (gate_ && gate_->budget(CLS_SERVE) >= 0 && gate_->in_flight(CLS_SERVE) + (long long)serve_b_[0].tasks.size() > gate_->budget(CLS_SERVE))) { ++serve_dropped_; ++next; continue; }
       const int slot = freel.back(); freel.pop_back();
       if (gate_) gate_->acquire(CLS_SERVE, (long long)serve_b_[slot].tasks.size(), 1000);
       unsigned wid; const double sub = now_us();
@@ -307,7 +308,11 @@ int Run::go() {
   KLOG(2, "%d buffers; %d train runs (%d tasks/window), %d serve slots (%d tasks/request), %d doom instances x %d frames; grid %d, workers %d", ex_->nbufs(), runs,
        runs ? (int)train_b_[0].tasks.size() : 0, pool_n, pool_n ? (int)serve_b_[0].tasks.size() : 0, frames ? o_.doom_instances : 0, frames, ex_->grid(), ex_->workers());
 
-  if (o_.gate_serve >= 0 || o_.gate_train >= 0) { gate_.reset(new KvmAdmissionGate({-1, o_.gate_serve, o_.gate_train, -1})); gate_budget_serve_ = o_.gate_serve; }
+  if (o_.gate_serve >= 0 || o_.gate_train >= 0) { gate_.reset(new KvmAdmissionGate({-1, o_.gate_serve, o_.gate_train, -1})); 
+    if (o_.gate_tune) {   // closed loop: the budgets given are the maxima; Doom's end-to-end slack shrinks them under pressure
+      const long long hs = o_.gate_serve > 0 ? o_.gate_serve : 1 << 30, ht = o_.gate_train > 0 ? o_.gate_train : 1 << 30;
+      tuner_.reset(new KvmGateTuner(*gate_, {CLS_SERVE}, std::max(1LL, hs / 10), hs)); tuner2_.reset(new KvmGateTuner(*gate_, {CLS_TRAIN}, std::max(1LL, ht / 10), ht));
+    } }
   std::unique_ptr<KvmController> v1; std::unique_ptr<KvmAdaptive> ad;
   ex_->start();
   // ---- boot Doom (frame 0 loads the level, 170-330 ms) before the clock starts, so the measured window starts on a running game
@@ -441,6 +446,7 @@ int main(int argc, char** argv) {
     else if (a == "--gate-serve") o.gate_serve = atoll(sv().c_str()); else if (a == "--gate-train") o.gate_train = atoll(sv().c_str());
     else if (a == "--log") o.log_level = iv();
     else if (a == "--live-cap") o.cfg.live_cap = iv(); else if (a == "--ring-words") o.cfg.ring_words = iv();
+    else if (a == "--gate-tune") o.gate_tune = true;
     else if (a == "--arbiter-assist") o.arbiter_assist = true;
     else if (a == "--no-doom") o.no_doom = true; else if (a == "--no-serve") o.no_serve = true; else if (a == "--no-train") o.no_train = true; else if (a == "--no-dump-frames") o.dump_frames = false;
     else if (a == "--sched") {

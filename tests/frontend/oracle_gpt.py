@@ -8,7 +8,7 @@ import math
 import _path  # noqa: F401
 from kvmfe.emit import init_values
 from kvmfe.nn import GPT
-from kvmfe.train import batch_tokens
+from kvmfe.train import batch_tokens, param_init
 
 
 def mm(a, b):                       # [m,k] @ [k,n]
@@ -23,7 +23,7 @@ def tr(a):
 def init_params(cfg):
     p = {}
     for n, s in GPT(cfg).specs.items():
-        vals = init_values(('param', s.init, f'{cfg.seed}/{n}'), s.rows, s.cols)
+        vals = init_values(param_init(s, cfg.seed), s.rows, s.cols)
         p[n] = [vals[r * s.cols:(r + 1) * s.cols] for r in range(s.rows)]
     return p
 
@@ -194,7 +194,7 @@ def loss_and_grads(cfg, p, ids, tgt):
     return loss, G
 
 
-def train_reference(cfg, steps, opt):
+def train_reference(cfg, steps, opt, clip=1.0):
     p, specs = init_params(cfg), GPT(cfg).specs
     m = {n: [[0.0] * len(r) for r in v] for n, v in p.items()}
     v2 = {n: [[0.0] * len(r) for r in v] for n, v in p.items()}
@@ -203,11 +203,13 @@ def train_reference(cfg, steps, opt):
         ids, tgt = batch_tokens(cfg, s)
         loss, G = loss_and_grads(cfg, p, ids, tgt)
         losses.append(loss)
+        norm = math.sqrt(sum(g * g for rows in G.values() for r in rows for g in r))
+        coef = min(1.0, clip / (norm + 1e-6)) if clip > 0 else 1.0
         for n in p:
             wd = opt.weight_decay if specs[n].decay else 0.0
             for i, row in enumerate(p[n]):
                 for j, w in enumerate(row):
-                    g = G[n][i][j]
+                    g = G[n][i][j] * coef
                     m[n][i][j] = opt.b1 * m[n][i][j] + (1 - opt.b1) * g
                     v2[n][i][j] = opt.b2 * v2[n][i][j] + (1 - opt.b2) * g * g
                     mh, vh = m[n][i][j] / (1 - opt.b1 ** (s + 1)), v2[n][i][j] / (1 - opt.b2 ** (s + 1))

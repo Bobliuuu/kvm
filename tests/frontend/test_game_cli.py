@@ -77,16 +77,20 @@ class Cli(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr[-800:])
         return r
 
-    def test_demo_emits_all_workloads(self):
+    def test_demo_all_emits_bundles_and_manifest(self):
         with tempfile.TemporaryDirectory() as d:
-            frames = ['--game-frames', '2'] if HAS_DOOM else []
-            self.run_cli('kvmfe.demo', '--train-steps', '2', '--serve-every', '1', *frames, '--out', d, '--no-bundles')
-            names = {p.name for p in Path(d).iterdir()}
-            self.assertTrue({'train.json', 'serve_s0.json', 'serve_s2.json', 'demo_combined.json', 'frontend.json'} <= names)
-            comb = json.loads((Path(d) / 'demo_combined.json').read_text())
-            self.assertEqual({g['name'] for g in comb['graphs']} >= {'train', 'serve_s0', 'serve_s1', 'serve_s2'}, True)
-            side = json.loads((Path(d) / 'frontend.json').read_text())
-            self.assertEqual(side['loss_buffers'], ['loss.0', 'loss.1'])
+            self.run_cli('kvmfe.demo', '--all', '--train-steps', '4', '--out', d)
+            root = Path(d)
+            m = json.loads((root / 'MANIFEST.json').read_text())
+            names = [a['name'] for a in m['admissions']]
+            self.assertEqual(sorted(names), sorted(['train_w0', 'train_w1', 'serve_s0', 'serve_s2', 'serve_s4'] + (['game'] if HAS_DOOM else [])))
+            for a in m['admissions']:
+                self.assertTrue((root / a['bundle_dir'] / 'metadata.json').is_file(), a['name'])
+                self.assertTrue((root / a['compile']['workload']).is_file())
+            self.assertIn('w.gpt.wte', m['shared_buffers'])
+            self.assertEqual(m['buffers']['w.gpt.wte']['owner'], 'train')
+            self.assertEqual(m['workloads']['serve_s2']['priority'], 10)
+            self.assertEqual(m['workloads']['train']['variables'], ['weights'])
 
     def test_inspect_reports_counts(self):
         r = self.run_cli('kvmfe.inspect', '--model', 'gpt_tiny', '--steps', '2')

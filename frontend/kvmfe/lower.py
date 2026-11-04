@@ -282,7 +282,7 @@ def _(op, tc):
                 yield _task('attn_bwd_dkv', [q.region(*Q, *hc), k.region(*K, *hc), v.region(*K, *hc), do.region(*Q, *hc),
                                              lse.region(*bh, k0, T), delta.region(*bh, k0, T)],
                             [dk.region(*K, *hc), dv.region(*K, *hc)],
-                            q=q, k=k, v=v, do=do, lse=lse, delta=delta, dk=dk, dv=dv, b=b, kvh=h, k0=k0, T=T, H=H, Hkv=H, hd=hd,
+                            q=q, k=k, v=v, do=do, lse=lse, delta=delta, dk=dk, dv=dv, b=b, kvh=h, k0=k0, T=T, H=H, hd=hd,
                             scale=hd ** -0.5)
 
 
@@ -334,11 +334,38 @@ def _(op, tc):
 @lowers('adamw')
 def _(op, tc):
     w, g, m, v, step = (op.ins[n] for n in ('w', 'g', 'm', 'v', 'step'))
-    a = op.attrs
-    for r0, r1 in blocks(w.rows, max(1, tc.opt_elems // w.cols)):
+    a, gs, tok = op.attrs, op.ins.get('gscale'), op.ins.get('tok')
+    for r0, r1 in _opt_chunks(w, tc):
         rw = [_rows(w, r0, r1), _rows(m, r0, r1), _rows(v, r0, r1)]
-        yield _task('adamw', rw + [_rows(g, r0, r1), _full(step), _full(op.ins['tok']) if 'tok' in op.ins else None], rw, p=w, g=g, m=m, v=v, gscale=None, step=step,
-                    e0=r0 * w.cols, e1=r1 * w.cols, lr=a['lr'], b1=a['b1'], b2=a['b2'], eps=a['eps'], wd=a['wd'])
+        yield _task('adamw', rw + [_rows(g, r0, r1), _full(step), _full(tok) if tok else None, _full(gs) if gs else None], rw,
+                    p=w, g=g, m=m, v=v, gscale=gs, step=step, e0=r0 * w.cols, e1=r1 * w.cols,
+                    lr=a['lr'], b1=a['b1'], b2=a['b2'], eps=a['eps'], wd=a['wd'])
+
+
+def _opt_chunks(w, tc):
+    return blocks(w.rows, max(1, tc.opt_elems // w.cols))
+
+
+@lowers('grad_clip')
+def _(op, tc):
+    coef, partial = op.outs['coef'], op.outs['partial']
+    slot = 0
+    for k in sorted(op.ins):
+        g = op.ins[k]
+        for r0, r1 in _opt_chunks(g, tc):
+            yield _task('gradnorm_partial', [_rows(g, r0, r1)], [partial.region(slot, slot + 1, 0, 1)],
+                        g=g, partial=partial, slot=slot, e0=r0 * g.cols, e1=r1 * g.cols)
+            slot += 1
+    yield _task('gradnorm_finish', [_full(partial)], [_full(coef)], partial=partial, nslots=slot, out=coef,
+                max_norm=op.attrs['max_norm'])
+
+
+@lowers('select_window')
+def _(op, tc):
+    src, step, dst = op.ins['src'], op.ins['step'], op.outs['dst']
+    for r0, r1 in blocks(dst.rows, tc.rows):
+        yield _task('select_window', [_full(src), _full(step)], [_rows(dst, r0, r1)], src=src, step=step, dst=dst,
+                    i0=r0, i1=r1, stride=op.attrs['stride'], off=op.attrs['off'])
 
 
 @lowers('sgd')

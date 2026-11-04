@@ -343,7 +343,8 @@ def _attn_bwd_dq(b, a):
 
 @impl('attn_bwd_dkv', lambda a: 2.5 * _attn_fl(a))
 def _attn_bwd_dkv(b, a):
-    T, H, Hkv, hd, bb, kvh = a['T'], a['H'], a['Hkv'], a['hd'], a['b'], a['kvh']
+    T, H, hd, bb, kvh = a['T'], a['H'], a['hd'], a['b'], a['kvh']
+    Hkv = b['k'].cols // hd                       # the op has no Hkv argument (15-word task limit): derived from k
     G = H // Hkv
     k1 = min(a['k0'] + ATTN_Q, T)
     dk = {j: [0.0] * hd for j in range(a['k0'], k1)}
@@ -427,6 +428,24 @@ def _adamw(b, a):
         p = b['p'].a[i]
         b['m'].a[i], b['v'].a[i] = m, v
         b['p'].a[i] = p - a['lr'] * a['wd'] * p - a['lr'] * (m / c1) / (math.sqrt(v / c2) + a['eps'])
+
+
+@impl('gradnorm_partial', lambda a: 2.0 * (a['e1'] - a['e0']))
+def _gradnorm_partial(b, a):
+    b['partial'].a[a['slot']] = sum(x * x for x in b['g'].a[a['e0']:a['e1']])
+
+
+@impl('gradnorm_finish', lambda a: float(a['nslots']))
+def _gradnorm_finish(b, a):
+    norm = math.sqrt(sum(b['partial'].a[:a['nslots']]))
+    b['out'].a[0] = min(1.0, a['max_norm'] / (norm + 1e-6)) if a['max_norm'] > 0 else 1.0     # clip coefficient = adamw gscale
+    b['out'].a[1] = norm
+
+
+@impl('select_window', lambda a: float(a['i1'] - a['i0']))
+def _select_window(b, a):
+    base = int(b['step'].a[0]) * a['stride'] + a['off']
+    b['dst'].a[a['i0']:a['i1']] = b['src'].a[base + a['i0']:base + a['i1']]
 
 
 @impl('sgd', lambda a: 2.0 * a['n'])

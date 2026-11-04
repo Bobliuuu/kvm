@@ -2,7 +2,7 @@
 import unittest
 
 import _path  # noqa: F401
-import ref_gpt
+import oracle_gpt as ref_gpt
 from kvmfe.lower import Tiling
 from kvmfe.nn import ModelConfig, PRESETS
 from kvmfe.optim import OptimConfig

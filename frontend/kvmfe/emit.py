@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import ctypes
 import json
-import random
-from dataclasses import dataclass
+import struct
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import log
@@ -12,9 +12,6 @@ from .dataflow import build_edges
 from .ir import FrontendError, LogicalOp, Tensor
 from .lower import TileTask, Tiling, lower_op
 from .plan import Plan, plan_memory
-
-MATERIALIZE_LIMIT = 1 << 20          # elements per buffer whose initial values are written into the JSON
-
 
 def f32(x):
     return ctypes.c_float(x).value
@@ -26,20 +23,12 @@ def init_values(init, rows, cols):
     kind = init[0] if init else 'fill'
     if kind == 'fill':
         return [f32(init[1] if init else 0.0)] * n
-    if kind == 'param':
-        _, spec, seed = init
-        if spec[0] == 'fill':
-            return [f32(spec[1])] * n
-        rng = random.Random(seed)
-        return [f32(rng.gauss(0.0, spec[1])) for _ in range(n)]
+    if kind == 'seeded':             # ('seeded', seed, std): the compiler's counter-based generator (runtime/initgen.py)
+        from . import _runtime
+        draws, bias, coef = _runtime.initgen.params('normal', f32(init[2]))
+        return _runtime.initgen.seeded_values(init[1], n, draws, bias, coef)
     if kind == 'values':
         return [f32(v) for v in init[1]]
-    if kind == 'corpus':        # next token = 5*t+3 mod V: a learnable bigram chain (full period when V is a power of two)
-        v, out, t = init[1], [], 1
-        for _ in range(n):
-            out.append(float(t))
-            t = (5 * t + 3) % v
-        return out
     raise FrontendError(f'unknown init {init!r}')
 
 
@@ -57,6 +46,7 @@ class Lowered:
     preds: list
     ids: list
     tiling: Tiling
+    data_files: dict = field(default_factory=dict)      # relative path -> bytes, referenced by `file` inits
 
     @property
     def edges(self):
@@ -87,35 +77,37 @@ def lower_program(ops: list[LogicalOp], tiling: Tiling, reuse='shape', gap=0, pr
     return Lowered(ordered, plan, preds, [t.name for t in ordered], tiling)
 
 
-def _init_entry(b, limit):
-    """JSON init of a buffer; (entry, 1 if too large to materialize else 0)."""
+FILE_MIN = 4096            # value buffers larger than this travel as little-endian files, not JSON lists
+
+
+def _init_entry(b, data_files):
+    """JSON init of a buffer. Big explicit values are returned as a `file` init and recorded in data_files (path -> bytes)."""
     init = b.init or ('fill', 0.0)
-    fill = init[1] if init[0] == 'fill' else init[1][1] if init[0] == 'param' and init[1][0] == 'fill' else None
-    if fill is not None:
-        return {'kind': 'fill', 'value': f32(fill)}, 0
-    if b.rows * b.cols > limit:
-        return {'kind': 'fill', 'value': 0.0}, 1
-    return {'kind': 'values', 'values': init_values(init, b.rows, b.cols)}, 0
+    if init[0] == 'fill':
+        return {'kind': 'fill', 'value': f32(init[1]) if b.dtype == 'f32' else int(init[1])}
+    if init[0] == 'seeded':
+        return {'kind': 'seeded', 'seed': init[1], 'scale': f32(init[2]), 'dist': 'normal'}
+    vals = init_values(init, b.rows, b.cols)
+    if len(vals) <= FILE_MIN:
+        return {'kind': 'values', 'values': [int(v) for v in vals] if b.dtype == 'i32' else vals}
+    path = 'data/' + ''.join(c if c.isalnum() or c in '._-' else '_' for c in b.name) + ('.i32' if b.dtype == 'i32' else '.f32')
+    data_files[path] = struct.pack(f'<{len(vals)}{"i" if b.dtype == "i32" else "f"}', *([int(v) for v in vals] if b.dtype == 'i32' else vals))
+    return {'kind': 'file', 'path': path}
 
 
-def to_workload(low: Lowered, policies: dict[str, GraphPolicy], materialize_limit=MATERIALIZE_LIMIT):
+def to_workload(low: Lowered, policies: dict[str, GraphPolicy]):
     """Build the workload dict. `policies` maps graph name -> GraphPolicy; every graph used by a task must be present."""
     plan, bufs = low.plan, []
     used = {plan.buf(r.t) for t in low.tasks for r in (*t.reads, *t.writes)}
     used |= {plan.buf(v) for t in low.tasks for v in t.args.values() if isinstance(v, Tensor)}
-    skipped = 0
     for name, b in plan.buffers.items():
         if name not in used:
             continue
-        init, big = _init_entry(b, materialize_limit)
-        skipped += big
+        init = _init_entry(b, low.data_files)
         entry = {'name': name, 'rows': b.rows, 'cols': b.cols, 'init': init}
         if b.dtype != 'f32':
             entry['dtype'] = b.dtype
         bufs.append(entry)
-    if skipped:
-        log.warning('%d large buffer(s) emitted with zero init (> %d elements): fill them from the host (no init-RNG op yet)', skipped,
-                    materialize_limit)
     weight_bufs = {n for n in plan.buffers if n.startswith('w.')}
 
     graphs: dict[str, list] = {}

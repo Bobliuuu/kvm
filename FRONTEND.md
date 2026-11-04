@@ -26,10 +26,11 @@ edges and weight versions. It has no notion of train, serve or game, and nothing
 Tools (run from `frontend/`, or put it on `PYTHONPATH`):
 
 ```
-python3 -m kvmfe.demo --train-steps N --serve-every K --game-frames F --out DIR   # train / serve_* / game / demo_combined .json
-python3 -m kvmfe.inspect --model gpt_162m --steps 1 --tiling a100                  # tasks, edges, critical path, memory plan
-python3 -m kvmfe.check_defs                                                        # .def registry vs frontend references
-python3 -I -m unittest discover -s tests/frontend                                  # from the repo root
+python3 -m kvmfe.demo --all --out DIR                  # train windows + serving requests + Doom -> compiled bundles + MANIFEST.json
+python3 -m kvmfe.run_manifest DIR --allow-opaque       # reference host runner: executes DIR on the CPU VM from MANIFEST.json alone
+python3 -m kvmfe.inspect --model gpt_162m --steps 1 --tiling a100   # tasks, edges, critical path, memory plan (no JSON)
+python3 -m kvmfe.check_defs                            # .def registry vs frontend references
+python3 -I -m unittest discover -s tests/frontend      # from the repo root
 ```
 
 `--model` is a preset name, a JSON file or a JSON string (`ModelConfig` fields). The 162M-parameter GPT is a config
@@ -72,7 +73,8 @@ an under-declared region shows up as a result change between program order and r
 * Memory: weights, AdamW state, step counter, request buffers are pinned. Other tensors live from first to last logical op and share
   a buffer slot with any same-shape tensor whose lifetime ended more than `--gap` ops earlier (`--reuse none` disables it). Reuse
   never decides order: dataflow adds the WAR/WAW edges, so it is always safe, and `gap` buys overlap between steps with memory.
-* Multi-step: the N steps are unrolled in one graph (window = the whole run). Step s+1 depends on step s only through regions.
+* Multi-step: S steps are unrolled in one program (S = N for a single bundle, see windows below). Step s+1 depends on step s only
+  through regions. Gradients are globally clipped (`gradnorm_partial/finish` -> `adamw` gscale) unless `TrainConfig.clip <= 0`.
 * Weight versions (`weights`): the update is in place, so each step publishes twice, `pre` (about to overwrite) and `post`.
   Stable weights after k updates are version 2k. A serving request reading `exact` 2k is ordered before `pre` of step k, so
   the compiler's rule "an exact reader precedes the next publish" protects the buffers; `at_least` just waits. A one-cell token
@@ -90,18 +92,51 @@ a dependency hop through global memory, per AGENTS.md); opaque engine ops use th
 measurement). Critical path = longest path with these times. "List schedule" = greedy simulation on 108 workers. It ranks
 designs; it does not predict a GPU run, and it ignores tensor-core speed-ups and L2 locality.
 
+## Windows, loops and the manifest
+
+Everything that differs between training steps lives in device buffers: `select_window` picks step s's tokens from a stream
+buffer using the AdamW step counter (`counter_inc`), AdamW reads the same counter, the global-norm clip coefficient is a buffer.
+So the text of a window of S steps is identical for every window: `--window S` emits ONE program and admits it N/S times
+(S=1 is a loop template; a remainder window gets its own program). Only the version numbers a window publishes move, which the
+manifest records as `base_versions` per admission. Compare with a fully unrolled graph: task count is S/N of it, the frontend runs once.
+
+What the executor supports (feat/executor, 50405a4): bundles are admitted at runtime into a bounded task-slot pool with slot
+recycling, and one huge bundle can be streamed through it in windows; bundles share state only through version variables and
+named buffers. There is no loop opcode: the host re-admits the template bundle (compile with the new `base_versions`, or have the
+executor add the version offset). Overlap between consecutive windows is therefore limited to what the executor streams within one
+bundle; across bundles the manifest's `after_bundles` is a full barrier.
+
+`MANIFEST.json` (version 1) is all a host runner needs; `kvmfe.run_manifest` is the reference implementation:
+
+```
+workloads{name: file, tasks, edges, priority, deadline_us[min,max], variables, graphs}
+buffers{name: rows, cols, dtype, owner}        allocate once; initialize from the owner workload; others share it
+shared_buffers[...]                            names declared by more than one workload (weights, optimizer state, counters)
+admissions[{name, workload, steps, at_us, after_bundles[], when[{var, min, max?}], base_versions{}, publishes{},
+            compile{workload, data_dir, base_versions}, bundle_dir|null}]
+```
+
+An admission starts when its time/after/when conditions hold (`when` = live version window of a variable); training windows chain
+by `after_bundles`; a serving request at step k is `when weights >= 2k` (policy `at_least`, concurrent with the next window) or,
+with `--serve-policy exact`, `when weights == 2k` plus the next window waiting for it (a host-level barrier: the compiler only
+isolates `exact` readers from publishers in the same bundle). A request at step k must fall on a window boundary.
+
+## Compiler integration
+
+`emit.py` output is compiled by `runtime/compile_workload.py` unchanged (i32 index buffers, `null` optional args, all `.def`
+packs, `seeded` parameter init, `file` token streams). Weights use `seeded` init (`runtime/initgen.py`, seed = crc32 of the
+parameter name), so even 162M parameters need no JSON values; the stream of tokens is a `file` when it exceeds 4096 elements.
+`tests/frontend/test_manifest.py` compiles gpt_tiny, runs the manifest on the compiler's float32 CPU reference and checks the loss
+curve against the independent float64 oracle (rel. 2e-5) and served tokens against its greedy decode at each snapshot.
+
 ## Honest limits
 
 * Not run on a GPU yet. The golden path is the CPU VM; the GPU must match it (fp32/TF32 tolerance), not bit-for-bit.
-* Needs from the compiler/ABI (emitted as shown, rejected by `compile_workload.py` until added): `dtype: "i32"` on index
-  buffers; `null` for an absent optional buffer arg; loading `kvm_ops_gpt.def` and `kvm_ops_game.def` (it reads `kvm_ops.def`
-  only); initial values too large for JSON (the 162M weights are emitted zero-filled with a warning: needs a host fill or an
-  init-RNG buffer kind / op).
-* No data-gather op: each step's token / target buffers are host-provided init values.
-* No loop opcode: steps are unrolled (task count grows linearly with steps).
-* Absolute learned positions are not supported (the registry's embedding ops pair with RoPE); no GQA, no dropout, no gradient
-  clipping (`gradnorm_finish` emits the clip coefficient in `out[1]` while `adamw` reads `gscale[0]`), no mixed precision.
-* Serving assumes `attn_fwd` clips a final partial 32-row block when P-1 is not a multiple of 32.
-* Greedy decoding only; the `sample` op has no CPU reference here.
-* The CPU VM is pure Python: golden runs are for tiny configs (20 steps of `gpt_tiny` take seconds). The 162M config is compiled to
-  a DAG and inspected, not executed.
+* `gather_rows` is unused: `embedding_fwd` already gathers; batches come from `select_window` over a host-provided token stream
+  (sized total_steps x tokens; no on-device data loading beyond that).
+* The learning rate is a constant baked into each task (a schedule would break template reuse; it needs an lr buffer in `adamw`).
+* Per-step losses of a window are pinned buffers `loss.<i>` reused by the next window: a host reads them between windows.
+* Absolute learned positions are not supported (RoPE only); no GQA, no dropout, no mixed precision, SGD does not clip.
+* Serving assumes `attn_fwd` clips a final partial 32-row block when P-1 is not a multiple of 32; greedy decoding only.
+* Doom ops have no CPU reference (opaque; `--allow-opaque` runs them as no-ops); the real engine is the port.
+* The CPU VM is pure Python: golden runs are for tiny configs. The 162M config is compiled and inspected, not executed.

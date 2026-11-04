@@ -1,0 +1,22 @@
+// Communication operators (ids 64..95, append-only: never renumber). Same X(name, id, "arg:type,...") format as kvm_ops.def.
+// Implemented in kvm_ops_comm.cuh, reference semantics in dist/commops.py. Design and ordering argument: DISTRIBUTED.md and
+// include/kvm_dist.cuh.
+//
+// A "remote" buffer is an ordinary KvmBuf table entry whose pointer is valid on this device (a peer pointer from CUDA P2P /
+// IPC, or on one GPU simply another allocation). Tiles are row-major (rows x cols, leading dimension ld, element offset off).
+// A "flag" buffer is the target executor's inbox (one u32 per version variable); `signal` publishes (var, ver) there with
+// system-scope release semantics AFTER every store of the task, so a waiter that sees ver sees the data. Each inbox variable
+// has exactly one writer chain, versions strictly increasing (the partitioner guarantees it; see DISTRIBUTED.md).
+X(put,               64, "src:buf,dst:buf,src_off:i32,dst_off:i32,rows:i32,cols:i32,src_ld:i32,dst_ld:i32")
+X(put_signal,        65, "src:buf,dst:buf,src_off:i32,dst_off:i32,rows:i32,cols:i32,src_ld:i32,dst_ld:i32,flag:buf,var:i32,ver:i32")
+X(signal,            66, "flag:buf,var:i32,ver:i32")
+// out[o_off+i] = a[a_off+i] + b[b_off+i], i < n (fixed operand order: the reduction order is part of the graph).
+X(reduce2,           67, "a:buf,b:buf,out:buf,a_off:i32,b_off:i32,o_off:i32,n:i32")
+// Fused reduce-and-forward (ring reduce-scatter step): dst (usually remote) = a + b, then signal.
+X(reduce_put_signal, 68, "a:buf,b:buf,dst:buf,a_off:i32,b_off:i32,d_off:i32,n:i32,flag:buf,var:i32,ver:i32")
+// Inter-node: copy a tile into the host send queue `q` (device-written, proxy-drained); the receiving proxy writes it to
+// buffer dst_buf of rank dst_rank and then publishes (var, ver) in that rank's inbox. var = -1: no signal.
+X(send_proxy,        69, "src:buf,q:buf,src_off:i32,rows:i32,cols:i32,src_ld:i32,dst_rank:i32,dst_buf:i32,dst_off:i32,dst_ld:i32,var:i32,ver:i32")
+// Wire compression: n fp32 -> n bf16 (round to nearest even) packed two per float word; unpack adds into dst when acc=1.
+X(pack_bf16,         70, "src:buf,dst:buf,src_off:i32,dst_off:i32,n:i32")
+X(unpack_bf16,       71, "src:buf,dst:buf,src_off:i32,dst_off:i32,n:i32,acc:i32")

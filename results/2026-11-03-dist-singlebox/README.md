@@ -47,7 +47,7 @@ tests alone:
    launch; the harness prepares every executor before launching any. Without both fixes 2 of the first 2 plans failed; with them
    0 of 60 in a loop.
 
-**Open item.** About 3% of runs of the in-process, single-GPU, several-executors stages still fail: 6 of ~175 runs, with
+**Open item.** About 4% of runs of the in-process, single-GPU, several-executors stages still fail (about 10 of 230 runs across the loops and full runs after the two fixes), with
 `CUDA_DEVICE_MAX_CONNECTIONS` and `CUDA_MODULE_LOADING` having no effect. Signature (from the watchdog and host timeline the
 harness now prints): every rank thread waits in `finish()`, one executor's kernel started only when its peers' timeouts fired (its
 event-measured kernel time is 0.14 ms), and the peers' pumps polled ~8 million times for signals that had not been sent. Not seen

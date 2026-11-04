@@ -78,7 +78,7 @@ stage() {
   NAMES+=("$name")
 }
 
-# KNOWN FLAKE (unresolved, see DISTRIBUTED.md "Known limits"): with several persistent kernels in ONE process on ONE GPU, about 3% of runs never
+# KNOWN FLAKE (unresolved, see DISTRIBUTED.md "Known limits"): with several persistent kernels in ONE process on ONE GPU, about 4% of runs never
 # schedule one executor's kernel until the others time out (watchdog shows all rank threads waiting in finish()). It has not been seen with one
 # process per rank, nor can it occur with one device per rank. Those single-GPU in-process runs are therefore tried up to 3 times, and every failed
 # attempt is printed; the multi-process and multi-GPU stages are never retried.

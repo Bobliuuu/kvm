@@ -69,16 +69,22 @@ class Report:
 
 
 def first_opt_cut(tasks):
-    """Buffers written by tasks that precede (in program order) every adamw of step 0 and are not optimizer inputs."""
-    pre = set()
+    """Buffers produced by step 0 before its first adamw (activations, gradients) and not rewritten by a later step.
+
+    State buffers rewritten every step (clip_coef, loss scratch) hold the LAST step's value at the end of the run, which depends on
+    the already-diverged weights, so they are not step-1 data."""
+    outs = ('out', 'dst', 'o', 'dlogits', 'dx', 'dgamma', 'dbeta', 'dq', 'dk', 'dv', 'dtab', 'rowloss', 'lse', 'loss', 'mean',
+            'rstd', 'pre', 'delta', 'partial')
+    written = lambda t: {v for k, v in t.get('args', {}).items() if isinstance(v, str) and k in outs}
+    pre, later = set(), set()
+    seen_adamw = False
     for t in tasks:
-        if t['op'] == 'adamw':
-            break
-        for k, v in t.get('args', {}).items():
-            if isinstance(v, str) and not v.startswith(('w.', 'm.', 'v.')) and k in ('out', 'dst', 'o', 'dlogits', 'dx', 'dgamma', 'dbeta', 'dq', 'dk', 'dv', 'dtab',
-                                            'rowloss', 'lse', 'loss', 'mean', 'rstd', 'pre', 'delta'):
-                pre.add(v)
-    return pre
+        seen_adamw = seen_adamw or t['op'] == 'adamw'
+        if t['id'].startswith('s0/') and not seen_adamw:
+            pre |= written(t)
+        elif not t['id'].startswith('s0/'):
+            later |= written(t)
+    return {n for n in pre - later if not n.startswith(('w.', 'm.', 'v.'))}
 
 
 def main():

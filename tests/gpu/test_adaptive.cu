@@ -2,7 +2,7 @@
 // scheduler sees workload_id, priority, deadline_us and the op cost table, so what is measured here is the policy, not a model.
 //   nvcc ... -DKVM_EXEC_NO_MAIN -DKVM_SCHED_NO_BENCH tests/gpu/test_adaptive.cu -o test_adaptive      (tests/gpu/build_adaptive.sh)
 //   ./test_adaptive [suite...]        functional: telemetry loop floor
-//                                     measurements (explicit): granularity hol
+//                                     measurements (explicit): granularity hol admit_gran
 //   ./test_adaptive --expect-fail floor_neg   # negative control: exit 0 only if the harness DETECTS the injected failure
 #define KVM_SCHED_NO_BENCH
 #define KVM_SCHED_NO_MAIN
@@ -230,6 +230,35 @@ static bool suite_hol() {
   return g_fail == before;
 }
 
+// Admission granularity. The admitter ingests one bundle record at a time, task by task, so a latency bundle submitted right behind a K-task
+// record waits for the whole record: HOL ~ K x (admission cost per task). Measured with `noop` tasks (nothing to execute, so the
+// admitter is the only cost) and chunked into K/chunk records for the advice on record size.
+static bool suite_admit_gran() {
+  int before = g_fail;
+  printf("  latency bundle (1 noop, class 0) submitted right behind a K-task record (K noops, class 1); end-to-end latency of the small bundle\n");
+  for (int K : {500, 2000, 8000, 32000, 64000}) {
+    KvmConfig c = sched_cfg(34, 2); c.max_tasks = 1 << 18; c.live_cap = 1 << 17; c.ring_words = 1 << 22;
+    KvmExec ex(c); ex.start();
+    std::vector<double> lat, per_task;
+    for (int rep = 0; rep < 12; ++rep) {
+      KvmBundleBuilder big; KvmTaskOpts o; o.workload = 1; for (int i = 0; i < K; ++i) big.add("noop", {}, o);
+      KvmBundle bb = big.build(); unsigned w1, w2;
+      const auto t0 = std::chrono::steady_clock::now();
+      CHECK(ex.submit(bb, 30000, false, &w1) == KvmSubmit::OK, "submit");
+      const double sub = now_us_since(t0);
+      KvmBundleBuilder sm; KvmTaskOpts o0; o0.workload = 0; sm.add("noop", {}, o0);
+      CHECK(ex.submit(sm.build(), 30000, false, &w2) == KvmSubmit::OK, "submit");
+      while (!ex.window_done(w2)) std::this_thread::yield();
+      lat.push_back(now_us_since(t0) - sub);
+      while (!ex.window_done(w1)) std::this_thread::yield();
+      per_task.push_back((now_us_since(t0)) / K);
+    }
+    printf("  K=%6d: small bundle p50 %8.0f us  max %8.0f us   (record fully done: %.2f us per task)\n", K, pct(lat, 50), pct(lat, 100), pct(per_task, 50));
+    ex.finish();
+  }
+  return g_fail == before;
+}
+
 int main(int argc, char** argv) {
   bool expect_fail = false; std::vector<std::string> want;
   for (int i = 1; i < argc; ++i) { std::string a = argv[i]; if (a == "--expect-fail") expect_fail = true; else if (a == "--quiet") g_kvm_log = 0; else want.push_back(a); }
@@ -243,7 +272,7 @@ int main(int argc, char** argv) {
     printf("== %s\n", s.c_str()); fflush(stdout);
     try {
       if (s == "telemetry") ok = suite_telemetry(); else if (s == "loop") ok = suite_loop(); else if (s == "floor") ok = suite_floor();
-      else if (s == "floor_neg") ok = suite_floor_neg(); else if (s == "granularity") ok = suite_granularity(); else if (s == "hol") ok = suite_hol();
+      else if (s == "floor_neg") ok = suite_floor_neg(); else if (s == "granularity") ok = suite_granularity(); else if (s == "hol") ok = suite_hol(); else if (s == "admit_gran") ok = suite_admit_gran();
       else { fprintf(stderr, "unknown suite %s\n", s.c_str()); return 2; }
     } catch (const std::exception& e) { fprintf(stderr, "  EXCEPTION: %s\n", e.what()); ++g_fail; ok = false; }
     ok = ok && g_fail == f0;

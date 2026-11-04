@@ -63,6 +63,6 @@ case "$GROUP" in
   all_b) mkdir -p "$OUT"; "$0" tuned; DUR=16 "$0" multi; DUR=16 REPS=4 "$0" bw;;
   suites) mkdir -p "$OUT"
     ./test_adaptive 2>&1 | tee "$OUT/suites_functional.txt"; ./test_adaptive --expect-fail floor_neg 2>&1 | tee "$OUT/suites_negative.txt"
-    ./test_adaptive granularity 2>&1 | tee "$OUT/suites_granularity.txt"; ./test_adaptive hol 2>&1 | tee "$OUT/suites_hol.txt";;
+    ./test_adaptive granularity 2>&1 | tee "$OUT/suites_granularity.txt"; ./test_adaptive hol 2>&1 | tee "$OUT/suites_hol.txt"; ./test_adaptive admit_gran 2>&1 | tee "$OUT/suites_admit.txt";;
 esac
 echo "# batch $GROUP done $(date -u +%FT%TZ)"

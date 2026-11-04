@@ -361,14 +361,20 @@ struct World {
       if (all_done) return;
       for (int r = 0; r < W; ++r) if (active(r)) fprintf(stderr, "  watchdog (15 s): rank %d thread is %s\n", r, (const char*[]){"before start()", "in start()", "in submit()", "in finish()", "done"}[where[r].load()]);
     });
+    // Experiment knobs for the single-GPU scheduling flake (see DISTRIBUTED.md): KVM_DIST_LAUNCH=main starts every kernel from this
+    // thread before any rank thread runs; KVM_DIST_STAGGER_MS=n sleeps n ms between launches.
+    const bool main_launch = getenv("KVM_DIST_LAUNCH") && std::string(getenv("KVM_DIST_LAUNCH")) == "main";
+    const int stagger = getenv("KVM_DIST_STAGGER_MS") ? atoi(getenv("KVM_DIST_STAGGER_MS")) : 0;
+    if (main_launch) for (int r = 0; r < W; ++r) if (active(r)) { CK(cudaSetDevice(dev[r])); ex[r]->start(); if (stagger) std::this_thread::sleep_for(std::chrono::milliseconds(stagger)); }
     for (int r = 0; r < W; ++r) {
       if (!active(r)) continue;
+      if (stagger && !main_launch) std::this_thread::sleep_for(std::chrono::milliseconds(stagger));
       th.emplace_back([&, r] {
         try {
           CK(cudaSetDevice(dev[r]));
           auto t0 = Clock::now();
           where[r] = 1;
-          ex[r]->start();
+          if (!main_launch) ex[r]->start();
           where[r] = 2;
           out[r].start_ms = (double)ms_since(t0);
           KvmSubmit s = ex[r]->submit(pr[r].bundle);

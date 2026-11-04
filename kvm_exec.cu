@@ -154,13 +154,20 @@ struct KvmConfig {
   int aging_us = 0;             // 0: strict priority; else one priority level per aging_us of waiting
   unsigned long long timeout_us = 60ull * 1000000;
   size_t stack_bytes = 0;       // per-thread stack (cudaLimitStackSize); ops with deep device calls (game ops) need a large one
+  KvmSchedCfg sched;            // SCHED: scheduling policy (off by default: the original single-queue executor)
 };
 enum class KvmSubmit { OK, BACKPRESSURE_TIMEOUT, TOO_BIG, DEVICE_ERROR, CLOSED, INVALID };
 static const char* kvm_submit_name(KvmSubmit s) {
   static const char* n[] = {"OK", "BACKPRESSURE_TIMEOUT", "TOO_BIG", "DEVICE_ERROR", "CLOSED", "INVALID"};
   return n[(int)s];
 }
+struct KvmSchedStats {  // end-of-run copy of the device accounting (SCHED)
+  bool valid = false;
+  KvmSchedDev dev;
+};
 struct KvmResult {
+  KvmSchedStats sched;
+  std::vector<KvmSlotInfo> info;
   int err_code = 0, err_slot = -1, err_a = 0, err_b = 0, slots_used = 0, admitted = 0, done = 0, grid = 0;
   float kernel_ms = 0;
   std::vector<KvmTaskDesc> tasks;
@@ -183,22 +190,27 @@ class KvmExec {
     if (cfg_.stack_bytes) CK(cudaDeviceSetLimit(cudaLimitStackSize, cfg_.stack_bytes));
     int occ = 0; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, kvm_exec_kernel, KVM_THREADS, 0));
     grid_ = cfg_.blocks ? cfg_.blocks : sms_ * occ;
-    if (grid_ < 2) throw std::invalid_argument("need >= 2 blocks (block 0 is the admitter)");
-    KLOG(2, "device %s, %d SMs, %d resident blocks/SM -> grid %d (1 admitter + %d workers)", name_.c_str(), sms_, occ, grid_, grid_ - 1);
+    const KvmSchedCfg& sc = cfg_.sched;
+    const int nsys = 1 + (sc.on ? 1 : 0);  // admitter (+ policy block)
+    if (sc.on && (sc.num_classes < 1 || sc.num_classes > KVM_MAX_CLS)) throw std::invalid_argument("sched.num_classes must be 1..8");
+    if (grid_ < nsys + 1) throw std::invalid_argument("need an admitter" + std::string(sc.on ? ", a policy block" : "") + " and at least one worker block");
+    nc_ = sc.on ? sc.num_classes : 1;
+    KLOG(2, "device %s, %d SMs, %d resident blocks/SM -> grid %d (1 admitter%s + %d workers)", name_.c_str(), sms_, occ, grid_, sc.on ? " + 1 policy" : "", grid_ - nsys);
     const size_t T = cfg_.max_tasks;
     CK(cudaMalloc(&S_.tasks, T * sizeof(KvmTaskDesc)));
     CK(cudaMalloc(&S_.indeg, T * 4)); CK(cudaMalloc(&S_.state, T * 4)); CK(cudaMalloc(&S_.park_next, T * 4));
     CK(cudaMalloc(&S_.trace, T * sizeof(KvmTrace)));
     CK(cudaMalloc(&S_.succ, (size_t)cfg_.succ_cap * 4)); CK(cudaMalloc(&S_.args, (size_t)cfg_.args_cap * 4));
     CK(cudaMalloc(&S_.version, cfg_.num_vars * 4)); CK(cudaMalloc(&S_.park_head, cfg_.num_vars * 4));
-    CK(cudaMalloc(&S_.cells, (size_t)KVM_NBUCKETS * cfg_.live_cap * sizeof(KvmCell)));
-    CK(cudaMalloc(&S_.qctl, KVM_NBUCKETS * sizeof(KvmQCtl)));
+    CK(cudaMalloc(&S_.cells, (size_t)nc_ * KVM_NBUCKETS * cfg_.live_cap * sizeof(KvmCell)));
+    CK(cudaMalloc(&S_.qctl, nc_ * KVM_NBUCKETS * sizeof(KvmQCtl)));
     CK(cudaMalloc(&S_.cnt, sizeof(KvmCounters)));
     CK(cudaMemset(S_.tasks, 0, T * sizeof(KvmTaskDesc))); CK(cudaMemset(S_.trace, 0, T * sizeof(KvmTrace)));
-    CK(cudaMemset(S_.version, 0, cfg_.num_vars * 4)); CK(cudaMemset(S_.qctl, 0, KVM_NBUCKETS * sizeof(KvmQCtl)));
+    CK(cudaMemset(S_.version, 0, cfg_.num_vars * 4)); CK(cudaMemset(S_.qctl, 0, nc_ * KVM_NBUCKETS * sizeof(KvmQCtl)));
     CK(cudaMemset(S_.cnt, 0, sizeof(KvmCounters)));
     // host-shared control block: ring + doorbell/ring_head/closed on separate lines + error mirror
     CK(cudaHostAlloc((void**)&ctl_, 4096, cudaHostAllocMapped)); memset(ctl_, 0, 4096);
+    init_sched();
     CK(cudaHostAlloc((void**)&ring_, (size_t)cfg_.ring_words * 4, cudaHostAllocMapped)); memset(ring_, 0, (size_t)cfg_.ring_words * 4);
     doorbell_ = (unsigned long long*)(ctl_ + 0); ring_head_ = (unsigned long long*)(ctl_ + 128);
     closed_ = (unsigned*)(ctl_ + 256); herr_ = (KvmHostErr*)(ctl_ + 384);
@@ -220,7 +232,7 @@ class KvmExec {
     for (size_t i = 0; i < bufs_.size(); ++i) if (!std::count(views_.begin(), views_.end(), i)) cudaFree(bufs_[i].p);
     for (float* p : arenas_) cudaFree(p);
     for (void* p : {(void*)S_.tasks, (void*)S_.indeg, (void*)S_.state, (void*)S_.park_next, (void*)S_.trace, (void*)S_.succ, (void*)S_.args,
-                    (void*)S_.version, (void*)S_.park_head, (void*)S_.cells, (void*)S_.qctl, (void*)S_.cnt, (void*)S_.bufs}) cudaFree(p);
+                    (void*)S_.version, (void*)S_.park_head, (void*)S_.cells, (void*)S_.qctl, (void*)S_.cnt, (void*)S_.bufs, (void*)S_.sp.dev, (void*)S_.sp.info, (void*)S_.sp.pv, (void*)S_.sp.pubcls}) cudaFree(p);
     cudaFreeHost(ctl_); cudaFreeHost(ring_);
     cudaStreamDestroy(stream_); cudaEventDestroy(e0_); cudaEventDestroy(e1_);
   }
@@ -254,12 +266,30 @@ class KvmExec {
   const KvmConfig& config() const { return cfg_; }
   const KvmStats& stats() const { return stats_; }
 
+  // ---- SCHED: runtime policy control through the mapped control block (no relaunch) ----
+  KvmSchedParams* sched_params() { return hp_; }                // controllers write with KvmController::write_params
+  void set_sched_params(const KvmSchedParams& p) { if (!cfg_.sched.on) throw std::logic_error("scheduler is off"); validate_sched(p); KvmController::write_params(hp_, p); }
+  const KvmSchedTele* telemetry() const { return ht_; }
+  int num_classes() const { return nc_; }
+  int workers() const { return grid_ - 1 - (cfg_.sched.on ? 1 : 0); }
+  void static_split(KvmSchedParams& p, const std::vector<double>& shares) const { kvm_static_split(p, shares, sms_); }
+
   void start() {
     if (started_) throw std::logic_error("already started");
     KvmBuf* d; size_t n = std::max<size_t>(bufs_.size(), 1);
     CK(cudaMalloc(&d, n * sizeof(KvmBuf)));
     if (!bufs_.empty()) CK(cudaMemcpy(d, bufs_.data(), bufs_.size() * sizeof(KvmBuf), cudaMemcpyHostToDevice));
     S_.bufs = d; S_.nbufs = (int)bufs_.size();
+    if (cfg_.sched.on) {  // the policy mirror starts as the launch parameters, so workers never see a zero weight
+      KvmSchedDev init{}; const KvmSchedParams& p = cfg_.sched.p;
+      init.flags = p.flags; init.affinity_ns = p.affinity_us * 1000; init.bw_limit = std::max(p.bw_limit_min, std::min(p.bw_limit_max, p.bw_limit_init));
+      for (int c = 0; c < nc_; ++c) {
+        KvmClsDev& k = init.cls[c]; const KvmClassParams& q = p.cls[c];
+        k.weight = q.weight; k.min_cta = q.min_cta; k.max_cta = q.max_cta; k.bw_cta = q.bw_cta; k.urgent_us = q.urgent_us;
+        k.protect = q.protect; k.target_wait_us = q.target_wait_us; k.sm_hi = q.sm_hi; k.vt_mul = (1 << 20) / std::max(q.weight, 1);
+      }
+      CK(cudaMemcpy(S_.sp.dev, &init, sizeof init, cudaMemcpyHostToDevice));
+    }
     kvm_init_kernel<<<64, KVM_THREADS, 0, stream_>>>(S_);
     CK(cudaGetLastError());
     CK(cudaEventRecord(e0_, stream_));
@@ -267,7 +297,8 @@ class KvmExec {
     CK(cudaGetLastError());
     CK(cudaEventRecord(e1_, stream_));
     started_ = true;
-    KLOG(2, "kernel launched: grid %d x %d threads, live_cap %d, max_tasks %d, ring %d words, aging %d us", grid_, KVM_THREADS, cfg_.live_cap, cfg_.max_tasks, cfg_.ring_words, cfg_.aging_us);
+    KLOG(2, "kernel launched: grid %d x %d threads, live_cap %d, max_tasks %d, ring %d words, aging %d us, sched %s", grid_, KVM_THREADS, cfg_.live_cap, cfg_.max_tasks, cfg_.ring_words, cfg_.aging_us,
+         !cfg_.sched.on ? "off" : cfg_.sched.mode == KVM_SCHED_GLOBAL ? "global" : cfg_.sched.mode == KVM_SCHED_STATIC ? "static" : "dynamic");
   }
 
   // Thread-safe producer. Blocks (up to timeout_ms) while the ring is full: that is the backpressure; it never drops.
@@ -343,6 +374,11 @@ class KvmExec {
       CK(cudaMemcpy(res_.trace.data(), S_.trace, c.slots_used * sizeof(KvmTrace), cudaMemcpyDeviceToHost));
     }
     CK(cudaMemcpy(res_.version.data(), S_.version, cfg_.num_vars * 4, cudaMemcpyDeviceToHost));
+    if (cfg_.sched.on) {
+      CK(cudaMemcpy(&res_.sched.dev, S_.sp.dev, sizeof(KvmSchedDev), cudaMemcpyDeviceToHost)); res_.sched.valid = true;
+      res_.info.resize(c.slots_used);
+      if (c.slots_used) CK(cudaMemcpy(res_.info.data(), S_.sp.info, c.slots_used * sizeof(KvmSlotInfo), cudaMemcpyDeviceToHost));
+    }
     finished_ = true;
     if (res_.ok()) KLOG(2, "kernel done: %d/%d tasks in %.3f ms, %d bundles, %d ring wraps, %d backpressure waits", res_.done, res_.admitted, res_.kernel_ms, stats_.bundles, stats_.pads, stats_.backpressure_waits);
     else KLOG(0, "DEVICE ERROR %s (%s): slot %d, a=%d, b=%d; done %d/%d", kvm_err_name(res_.err_code), kvm_err_text(res_.err_code), res_.err_slot, res_.err_a, res_.err_b, res_.done, res_.admitted);
@@ -359,6 +395,29 @@ class KvmExec {
   const std::string& device_name() const { return name_; }
 
  private:
+  void validate_sched(const KvmSchedParams& p) const {
+    for (int c = 0; c < nc_; ++c) {
+      const KvmClassParams& q = p.cls[c];
+      if (q.weight < 1 || q.min_cta < 0 || q.max_cta < 0 || q.bw_cta < 0 || q.urgent_us < 0) throw std::invalid_argument("class " + std::to_string(c) + ": weight >= 1, min/max/bw caps and urgent_us >= 0");
+      if (q.max_cta < q.min_cta) throw std::invalid_argument("class " + std::to_string(c) + ": max_cta < min_cta");
+    }
+    if (p.bw_limit_min < 0 || p.bw_limit_max < p.bw_limit_min) throw std::invalid_argument("bw_limit_min <= bw_limit_max");
+  }
+  void init_sched() {
+    const KvmSchedCfg& sc = cfg_.sched;
+    hp_ = (KvmSchedParams*)(ctl_ + 512); ht_ = (KvmSchedTele*)(ctl_ + 1024);
+    S_.sp = KvmSchedPtrs{}; S_.sp.nc = nc_; S_.sp.on = sc.on ? 1 : 0; S_.sp.mode = sc.on ? sc.mode : KVM_SCHED_GLOBAL;
+    if (!sc.on) return;
+    validate_sched(sc.p);
+    void* d;
+    CK(cudaHostGetDevicePointer(&d, hp_, 0)); S_.sp.hp = (KvmSchedParams*)d;
+    CK(cudaHostGetDevicePointer(&d, ht_, 0)); S_.sp.ht = (KvmSchedTele*)d;
+    CK(cudaMalloc(&S_.sp.dev, sizeof(KvmSchedDev))); CK(cudaMemset(S_.sp.dev, 0, sizeof(KvmSchedDev)));
+    CK(cudaMalloc(&S_.sp.info, (size_t)cfg_.max_tasks * sizeof(KvmSlotInfo))); CK(cudaMemset(S_.sp.info, 0, (size_t)cfg_.max_tasks * sizeof(KvmSlotInfo)));
+    CK(cudaMalloc(&S_.sp.pv, (size_t)cfg_.num_vars * KVM_MAX_CLS * 4)); CK(cudaMemset(S_.sp.pv, 0, (size_t)cfg_.num_vars * KVM_MAX_CLS * 4));
+    CK(cudaMalloc(&S_.sp.pubcls, (size_t)cfg_.num_vars * 4)); CK(cudaMemset(S_.sp.pubcls, 0, (size_t)cfg_.num_vars * 4));
+    KvmController::write_params(hp_, sc.p);   // generation 1: the policy block's first tick re-reads the launch parameters
+  }
   void write_header(size_t total, int nt, int ne, int na, int kind) {
     int* h = ring_ + wpos_ % cfg_.ring_words;
     h[0] = KVM_REC_MAGIC; h[1] = (int)total; h[2] = nt; h[3] = ne; h[4] = na; h[5] = stats_.bundles; h[6] = kind; h[7] = 0;
@@ -372,7 +431,8 @@ class KvmExec {
   unsigned long long *doorbell_ = nullptr, *ring_head_ = nullptr; unsigned* closed_ = nullptr; KvmHostErr* herr_ = nullptr;
   unsigned long long wpos_ = 0;
   cudaStream_t stream_{}; cudaEvent_t e0_{}, e1_{};
-  int sms_ = 0, grid_ = 0;
+  int sms_ = 0, grid_ = 0, nc_ = 1;
+  KvmSchedParams* hp_ = nullptr; KvmSchedTele* ht_ = nullptr;
   std::string name_, last_error_;
   std::mutex mu_;
   bool started_ = false, finished_ = false, closed_flag_ = false;
@@ -386,16 +446,37 @@ static void kvm_write_trace_csv(const KvmResult& r, const char* path) {
   if (!f) throw std::runtime_error(std::string("cannot open ") + path);
   unsigned long long t0 = ~0ull;
   for (auto& t : r.trace) if (t.admit_ns) t0 = std::min(t0, t.admit_ns);
-  fprintf(f, "slot,op,workload,priority,deadline_us,admit_us,ready_us,start_us,end_us,queue_wait_us,run_us,smid,block,ver_start,ver_end,missed,exec_count\n");
+  fprintf(f, "slot,op,workload,priority,deadline_us,admit_us,ready_us,start_us,end_us,queue_wait_us,run_us,smid,block,ver_start,ver_end,missed,exec_count,bytes,res,resv,boost,urgent\n");
   for (size_t i = 0; i < r.trace.size(); ++i) {
     const KvmTrace& t = r.trace[i]; const KvmTaskDesc& d = r.tasks[i];
     auto us = [&](unsigned long long x) { return x ? (double)(x - t0) / 1e3 : -1.0; };
-    fprintf(f, "%zu,%s,%d,%d,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%d,%d,%d,%d,%d\n", i, kvm_op(d.op_id)->name, d.workload_id, d.priority, d.deadline_us,
+    const KvmSlotInfo si = i < r.info.size() ? r.info[i] : KvmSlotInfo{0, 0, 0};
+    fprintf(f, "%zu,%s,%d,%d,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%d,%d,%d,%d,%d,%llu,%d,%d,%d,%d\n", i, kvm_op(d.op_id)->name, d.workload_id, d.priority, d.deadline_us,
             us(t.admit_ns), us(t.ready_ns), us(t.start_ns), us(t.end_ns), t.start_ns ? (double)(t.start_ns - t.ready_ns) / 1e3 : -1.0,
-            t.end_ns ? (double)(t.end_ns - t.start_ns) / 1e3 : -1.0, t.smid, t.block, t.ver0, t.ver1, (t.flags & KVM_TRACE_MISSED) ? 1 : 0, t.exec_count);
+            t.end_ns ? (double)(t.end_ns - t.start_ns) / 1e3 : -1.0, t.smid, t.block, t.ver0, t.ver1, (t.flags & KVM_TRACE_MISSED) ? 1 : 0, t.exec_count,
+            si.bytes, si.res, (t.flags & KVM_TRACE_RESV) ? 1 : 0, (t.flags & KVM_TRACE_BOOST) ? 1 : 0, (t.flags & KVM_TRACE_URGENT) ? 1 : 0);
   }
   fclose(f);
   KLOG(2, "trace: %zu tasks -> %s", r.trace.size(), path);
+}
+
+// Per-workload telemetry from the trace: tasks, CTA-seconds, queue-wait percentiles, deadline misses, bytes moved and bandwidth.
+static void kvm_print_class_report(const KvmResult& r) {
+  int maxc = 0; for (auto& d : r.tasks) maxc = std::max(maxc, d.workload_id);
+  unsigned long long t0 = ~0ull, t1 = 0; for (auto& t : r.trace) if (t.admit_ns) { t0 = std::min(t0, t.admit_ns); t1 = std::max(t1, t.end_ns); }
+  const double span_us = t1 > t0 ? (t1 - t0) / 1e3 : 1.0;
+  for (int c = 0; c <= maxc; ++c) {
+    std::vector<double> w; double cta_us = 0, bytes = 0; int n = 0, miss = 0;
+    for (size_t i = 0; i < r.trace.size(); ++i) if (r.tasks[i].workload_id == c) {
+      const KvmTrace& t = r.trace[i]; ++n; w.push_back((t.start_ns - t.ready_ns) / 1e3); cta_us += (t.end_ns - t.start_ns) / 1e3;
+      miss += (t.flags & KVM_TRACE_MISSED) != 0; if (i < r.info.size()) bytes += (double)r.info[i].bytes;
+    }
+    if (!n) continue;
+    std::sort(w.begin(), w.end());
+    auto q = [&](double p) { return w[std::min(w.size() - 1, (size_t)(p * w.size()))]; };
+    KLOG(2, "workload %d: %d tasks, %.3f CTA-s, queue wait p50 %.1f p99 %.1f max %.1f us, %d deadline misses, %.2f GB moved (%.1f GB/s over the run)",
+         c, n, cta_us / 1e6, q(0.5), q(0.99), w.back(), miss, bytes / 1e9, bytes / (span_us * 1e3));
+  }
 }
 
 // ======================= CLI =======================
@@ -450,6 +531,9 @@ static void usage() {
   fprintf(stderr, "usage: kvm_exec [options] bundle_dir...\n"
     "  bundle_dir: tasks.bin successors.bin args.bin metadata.json (ABI v2)\n"
     "  --blocks N --live-cap N --max-tasks N --ring-words N --aging-us N --timeout-s N\n"
+    "  --sched MODE        global|static|dynamic: per-workload scheduling (workload_id = class, up to 8)  --classes N\n"
+    "  --weights a,b,..    --min a,b,.. (reserved CTAs)  --max a,b,.. (CTA caps)  --bw-cta a,b,..  --urgent-us a,b,..\n"
+    "  --shares a,b (static SM shares)  --arbiter  --bw-limit N   adaptive concurrent bandwidth-bound CTA limit   --affinity-us N   --no-guarantee  --no-inherit\n"
     "  --golden            compare with <bundle_dir>/golden.json (single bundle): final buffers, versions, observed versions\n"
     "  --trace-csv FILE   per-task timeline  --dump-buffers   print buffers   --quiet   errors only   --check-ops   print registry\n");
 }
@@ -465,6 +549,24 @@ int main(int argc, char** argv) {
     else if (a == "--ring-words") cfg.ring_words = (int)val();
     else if (a == "--aging-us") cfg.aging_us = (int)val();
     else if (a == "--timeout-s") cfg.timeout_us = (unsigned long long)val() * 1000000ull;
+    else if (a == "--sched") { std::string m = i + 1 < argc ? argv[++i] : ""; cfg.sched.on = true; cfg.sched.mode = m == "global" ? KVM_SCHED_GLOBAL : m == "static" ? KVM_SCHED_STATIC : KVM_SCHED_DYNAMIC; }
+    else if (a == "--classes") cfg.sched.num_classes = (int)val();
+    else if (a == "--weights" || a == "--min" || a == "--max" || a == "--bw-cta" || a == "--urgent-us") {
+      if (i + 1 >= argc) { usage(); return 2; }
+      std::stringstream ss(argv[++i]); std::string tok; int c = 0;
+      while (std::getline(ss, tok, ',') && c < KVM_MAX_CLS) { KvmClassParams& q = cfg.sched.p.cls[c++]; int v = atoi(tok.c_str());
+        if (a == "--weights") q.weight = v; else if (a == "--min") q.min_cta = v; else if (a == "--max") q.max_cta = v; else if (a == "--bw-cta") q.bw_cta = v; else q.urgent_us = v; }
+    }
+    else if (a == "--shares") {   // STATIC mode: SM share per class, e.g. 1,3
+      if (i + 1 >= argc) { usage(); return 2; }
+      std::stringstream ss(argv[++i]); std::string tok; std::vector<double> sh; while (std::getline(ss, tok, ',')) sh.push_back(atof(tok.c_str()));
+      cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0)); kvm_static_split(cfg.sched.p, sh, pr.multiProcessorCount);
+    }
+    else if (a == "--arbiter") cfg.sched.p.flags |= KVM_SF_ARBITER;
+    else if (a == "--bw-limit") cfg.sched.p.bw_limit_init = (int)val();
+    else if (a == "--affinity-us") cfg.sched.p.affinity_us = (int)val();
+    else if (a == "--no-guarantee") cfg.sched.p.flags &= ~KVM_SF_GUARANTEE;
+    else if (a == "--no-inherit") cfg.sched.p.flags &= ~KVM_SF_INHERIT;
     else if (a == "--trace-csv") { if (i + 1 >= argc) { usage(); return 2; } csv = argv[++i]; }
     else if (a == "--dump-buffers") dump = true;
     else if (a == "--golden") golden = true;
@@ -518,6 +620,7 @@ int main(int argc, char** argv) {
       if (st != KvmSubmit::OK) { KLOG(0, "bundle %zu: %s (%s)", i, kvm_submit_name(st), ex.last_error().c_str()); ex.close(); ex.finish(); return 1; }
     }
     const KvmResult& r = ex.finish();
+    if (r.ok()) kvm_print_class_report(r);
     if (csv) kvm_write_trace_csv(r, csv);
     int golden_bad = 0;
     if (golden) {

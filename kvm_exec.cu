@@ -123,7 +123,8 @@ class KvmBundleBuilder {
     {
       const int want = (int)((info->types >> (3 * j)) & 7u);
       const bool buf_ok = args[j].type == KVM_A_BUF && (want == KVM_A_BUF || want == KVM_A_BUF_OPT) && (args[j].w >= 0 || want == KVM_A_BUF_OPT);
-      if (!buf_ok && args[j].type != want) throw std::invalid_argument(std::string(op) + ": argument " + std::to_string(j) + " has the wrong type (or an absent buffer for a required buf)");
+      const bool type_ok = args[j].type == KVM_A_BUF ? buf_ok : args[j].type == want;
+      if (!type_ok) throw std::invalid_argument(std::string(op) + ": argument " + std::to_string(j) + " has the wrong type (or an absent buffer for a required buf)");
     }
     KvmTaskDesc t{};
     t.op_id = id; t.priority = o.priority; t.deadline_us = o.deadline_us; t.wait_var = o.wait_var; t.wait_ver = o.wait_ver;
@@ -202,7 +203,7 @@ class KvmExec {
     sms_ = p.multiProcessorCount; name_ = p.name;
     if (cfg_.stack_bytes) CK(cudaDeviceSetLimit(cudaLimitStackSize, cfg_.stack_bytes));
     dyn_smem_ = KVM_DYN_SMEM_BYTES;
-    if (dyn_smem_ > 48 * 1024) CK(cudaFuncSetAttribute(kvm_exec_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)dyn_smem_));
+    if (dyn_smem_ > 0) CK(cudaFuncSetAttribute(kvm_exec_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)dyn_smem_));
     int occ = 0; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, kvm_exec_kernel, KVM_THREADS, dyn_smem_));
     if (occ < 1) throw std::runtime_error("kernel does not fit on an SM with " + std::to_string(dyn_smem_) + " bytes of dynamic shared memory");
     grid_ = cfg_.blocks ? cfg_.blocks : sms_ * occ;

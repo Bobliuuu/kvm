@@ -237,7 +237,7 @@ class KvmExec {
   KvmExec(const KvmExec&) = delete; KvmExec& operator=(const KvmExec&) = delete;
 
   int add_buffer(int rows, int cols, const std::vector<float>& init = {}) {
-    if (started_) throw std::logic_error("buffers are fixed at start()");
+    if (started_ || prepared_) throw std::logic_error("buffers are fixed at start()");
     if (!init.empty() && (long long)init.size() != (long long)rows * cols) throw std::invalid_argument("buffer init size");
     KvmBuf b{}; CK(cudaMalloc(&b.p, (size_t)rows * cols * 4));
     b.rows = rows; b.cols = cols; b.ld = cols; b.dtype = 0;
@@ -257,7 +257,7 @@ class KvmExec {
     float* p; CK(cudaMalloc(&p, floats * 4)); CK(cudaMemset(p, 0, floats * 4)); arenas_.push_back(p); return p;
   }
   int add_view(float* p, int rows, int cols) {
-    if (started_) throw std::logic_error("buffers are fixed at start()");
+    if (started_ || prepared_) throw std::logic_error("buffers are fixed at start()");
     KvmBuf b{}; b.p = p; b.rows = rows; b.cols = cols; b.ld = cols; b.dtype = 0; views_.push_back(bufs_.size());
     bufs_.push_back(b); return (int)bufs_.size() - 1;
   }
@@ -266,17 +266,26 @@ class KvmExec {
   const KvmConfig& config() const { return cfg_; }
   const KvmStats& stats() const { return stats_; }
 
-  void start() {
-    if (started_) throw std::logic_error("already started");
+  // KVM_DIST_HOOK: the allocation half of start(). cudaMalloc and cudaHostAlloc may synchronise with EVERY kernel running on the
+  // device, so when several executors share one GPU (tests, small clusters) all of them must prepare() before the first
+  // start(): a start() that allocates while a peer's persistent kernel waits for this very executor deadlocks until the peer's
+  // timeout. A lone executor never needs to call it.
+  void prepare() {
+    if (prepared_) return;
+    prepared_ = true;
     KvmBuf* d; size_t n = std::max<size_t>(bufs_.size(), 1);
     CK(cudaMalloc(&d, n * sizeof(KvmBuf)));
     if (!bufs_.empty()) CK(cudaMemcpy(d, bufs_.data(), bufs_.size() * sizeof(KvmBuf), cudaMemcpyHostToDevice));
     S_.bufs = d; S_.nbufs = (int)bufs_.size();
-    // KVM_DIST_HOOK: the constructor's cudaMemsets and the table upload above run in the LEGACY default stream (a pageable
-    // cudaMemcpy may even return before its DMA lands), while stream_ is non-blocking, so nothing orders them before the kernel.
-    // With several executors starting at once the kernel could see an unzeroed counter or a half-copied buffer table (seen as
-    // random TIMEOUT / BAD_BUF). cudaStreamSynchronize(0) waits for the legacy stream only, never for another executor's kernel.
+    // The constructor's cudaMemsets and the upload above run in the LEGACY default stream (a pageable cudaMemcpy may even return
+    // before its DMA lands), while stream_ is non-blocking, so nothing orders them before the kernel: with several executors
+    // starting at once the kernel could see an unzeroed counter or a half-copied buffer table (random TIMEOUT / BAD_BUF).
+    // cudaStreamSynchronize(0) waits for the legacy stream only, never for another executor's kernel.
     CK(cudaStreamSynchronize(0));
+  }
+  void start() {
+    if (started_) throw std::logic_error("already started");
+    prepare();
     kvm_init_kernel<<<64, KVM_THREADS, 0, stream_>>>(S_);
     CK(cudaGetLastError());
     CK(cudaEventRecord(e0_, stream_));
@@ -392,7 +401,7 @@ class KvmExec {
   int sms_ = 0, grid_ = 0;
   std::string name_, last_error_;
   std::mutex mu_;
-  bool started_ = false, finished_ = false, closed_flag_ = false;
+  bool started_ = false, finished_ = false, closed_flag_ = false, prepared_ = false;
   KvmResult res_;
   KvmStats stats_;
 };

@@ -1,7 +1,7 @@
 """Single-sourced ABI: parses include/kvm_task_abi.h and every operator registry in include/.
 
-Registries, in executor order (include/kvm_ops_list.inc): kvm_ops.def, kvm_ops_gpt.def, kvm_ops_game.def,
-kvm_ops_comm.def; each is optional except the first. Ids are sparse and globally unique. Signature grammar:
+Registries, in executor order (include/kvm_ops_list.inc): kvm_ops.def, kvm_ops_gpt.def, kvm_ops_extra.def,
+kvm_ops_game.def, kvm_ops_comm.def; each is optional except the first. Ids are sparse and globally unique. Signature grammar:
 `name:type`, type in buf | buf? | i32 | f32; `buf?` is an optional buffer (word -1 = absent), `buf` is required.
 
 Nothing about descriptor layout or the operator table is duplicated in Python, so the host
@@ -19,7 +19,7 @@ log = logging.getLogger('kvm.abi')
 INCLUDE_DIR = Path(__file__).resolve().parents[1] / 'include'
 ARG_TYPES = ('buf', 'i32', 'f32')
 ABSENT_BUF = -1                  # word of an absent optional buffer argument
-REGISTRIES = ('kvm_ops.def', 'kvm_ops_gpt.def', 'kvm_ops_game.def', 'kvm_ops_comm.def')
+REGISTRIES = ('kvm_ops.def', 'kvm_ops_gpt.def', 'kvm_ops_extra.def', 'kvm_ops_game.def', 'kvm_ops_comm.def')
 
 
 class AbiError(RuntimeError):

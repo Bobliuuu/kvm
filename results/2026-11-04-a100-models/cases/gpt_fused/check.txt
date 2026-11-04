@@ -1,0 +1,6 @@
+precise: 357 f32 buffers (3 signal-free skipped: ['v.gpt.h0.attn.k.b', 'v.gpt.h0.attn.q.b', 'version_token']), 5 loss buffers
+  worst: w.gpt.h0.attn.k.b 3.70e-05, act114 9.72e-06, act117 9.63e-06, act176 6.91e-06
+  ok   every per-step loss rel err <= 1e-05: worst 6.41e-08
+  ok   all buffers rel L2 <= 0.001: worst w.gpt.h0.attn.k.b 3.70e-05
+  ok   no NaN/Inf in any GPU buffer: []
+PASS

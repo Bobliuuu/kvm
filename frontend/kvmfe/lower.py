@@ -554,7 +554,7 @@ def _(op, tc):
 @lowers('lr_schedule')
 def _(op, tc):
     step, lr, a = op.ins['step'], op.outs['lr'], op.attrs
-    yield _task('lr_schedule', [_full(step)], [_full(lr)], step=step, lr=lr, kind=a['kind'], base=a['base'], warmup=a['warmup'],
+    yield _task('lr_schedule', [_full(step)], [_full(lr)], step=step, lr=lr, kind=a['sched'], base=a['base'], warmup=a['warmup'],
                 total=a['total'], min_ratio=a['min_ratio'])
 
 

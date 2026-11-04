@@ -163,8 +163,8 @@ def _recompute(b: Builder, group: list[LogicalOp], ctx: Ctx) -> list[LogicalOp]:
         for op in group:
             ins = {r: clone.get(t.uid, t) for r, t in op.ins.items()}
             outs = {}
-            for r, t in op.outs.items():
-                c = b.tensor(t.name.rsplit('.', 1)[-1] + '.re', t.rows, t.cols, dtype=t.dtype, rg=t.rg)
+            for r, t in op.outs.items():          # an in-place output (scatter_add into=..) keeps the identity of its clone
+                c = clone.get(t.uid) or b.tensor(t.name.rsplit('.', 1)[-1] + '.re', t.rows, t.cols, dtype=t.dtype, rg=t.rg)
                 clone[t.uid], outs[r] = c, c
             out.append(b.emit(op.kind, ins, outs, **op.attrs))
     for uid, c in clone.items():

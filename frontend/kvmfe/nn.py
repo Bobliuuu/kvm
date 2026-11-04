@@ -119,11 +119,15 @@ class CausalSelfAttention(Module):
         self.proj = Linear(f'{name}.proj', cfg.d_model, cfg.d_model, cfg.bias, std / (2 * cfg.layers) ** 0.5)
         self.absorb(self.q, self.k, self.v, self.proj)
 
+    def qkv(self, b, h, w, seq, pos=None):
+        c = self.cfg
+        return (b.rope(self.q(b, h, w), c.heads, seq, c.rope_theta, pos), b.rope(self.k(b, h, w), c.heads, seq, c.rope_theta, pos),
+                self.v(b, h, w))
+
     def __call__(self, b, h, w, res):
         c = self.cfg
-        q = b.rope(self.q(b, h, w), c.heads, c.seq, c.rope_theta)
-        k = b.rope(self.k(b, h, w), c.heads, c.seq, c.rope_theta)
-        return self.proj(b, b.attention(q, k, self.v(b, h, w), c.heads, c.seq), w, res=res)
+        q, k, v = self.qkv(b, h, w, c.seq)
+        return self.proj(b, b.attention(q, k, v, c.heads, c.seq), w, res=res)
 
 
 class MLP(Module):
@@ -144,10 +148,20 @@ class TransformerBlock(Module):
         self.n2, self.mlp = Norm(f'{name}.n2', cfg.d_model, cfg.norm), MLP(f'{name}.mlp', cfg)
         self.absorb(self.n1, self.attn, self.n2, self.mlp)
 
+    # decoder-block interface shared with models.LlamaBlock (used by serve.py): attention inputs, attention output, feed-forward
+    def attn_inputs(self, b, x, w, seq, pos=None):
+        return self.attn.qkv(b, self.n1(b, x, w), w, seq, pos)
+
+    def attn_out(self, b, a, w, res):
+        return self.attn.proj(b, a, w, res=res)
+
+    def ffn_block(self, b, x, w):
+        return self.mlp(b, self.n2(b, x, w), w, res=x)
+
     def __call__(self, b, x, w):
         with b.scope(self.name):
             x = self.attn(b, self.n1(b, x, w), w, res=x)
-            return self.mlp(b, self.n2(b, x, w), w, res=x)
+            return self.ffn_block(b, x, w)
 
 
 class GPT(Module):
@@ -161,11 +175,19 @@ class GPT(Module):
         self.head = Linear('gpt.head', cfg.d_model, cfg.vocab, False, cfg.init_std)
         self.absorb(*self.blocks, self.nf, self.head)
 
+    kv_heads = property(lambda self: self.cfg.heads)
+
+    def embed(self, b, ids, w, seq):
+        return b.embedding(ids, w[self.wte], seq)
+
+    def logits(self, b, x, w):
+        return self.head(b, self.nf(b, x, w), w)
+
     def __call__(self, b, ids, w):
-        x = b.embedding(ids, w[self.wte], self.cfg.seq)
+        x = self.embed(b, ids, w, self.cfg.seq)
         for blk in self.blocks:
             x = blk(b, x, w)
-        return self.head(b, self.nf(b, x, w), w)
+        return self.logits(b, x, w)
 
 
     # ---- the training-program protocol (train.build_training): data streams and loss roots

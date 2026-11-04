@@ -7,14 +7,27 @@ import logging
 import sys
 
 from .analyze import CostModel, analyze
+from .ir import FrontendError
 from .lower import Tiling
 from .nn import ModelConfig
-from .pipeline import compile_training
+from .pipeline import build_model, compile_training
 from .train import TrainConfig
 
 
+def load_any(spec):
+    """A GPT ModelConfig or any zoo config (models.py) from a preset name, JSON file or JSON string."""
+    from . import models
+    from .nn import PRESETS
+    if spec in PRESETS:
+        return PRESETS[spec]
+    try:
+        return models.build(spec).cfg
+    except FrontendError:
+        return ModelConfig.load(spec)
+
+
 def add_common(p):
-    p.add_argument('--model', default='gpt_tiny', help='preset name, JSON file or JSON string (ModelConfig fields)')
+    p.add_argument('--model', default='gpt_tiny', help='preset name (gpt_*, llama_*, moe_tiny, mlp_tiny, vit_tiny), JSON file or JSON string')
     p.add_argument('--tiling', default='cpu', help='preset: ' + ', '.join(sorted(Tiling.PRESETS)))
     p.add_argument('--reuse', default='shape', choices=['none', 'shape'], help='activation memory reuse policy')
     p.add_argument('--gap', type=int, default=0, help='do not reuse a buffer within this many logical ops of its last use')
@@ -46,11 +59,14 @@ def main(argv=None):
     p = argparse.ArgumentParser(prog='kvmfe.inspect', description=__doc__)
     add_common(p)
     p.add_argument('--steps', type=int, default=1)
+    p.add_argument('--fuse', action='store_true', help='apply the epilogue-fusion pass before lowering')
+    p.add_argument('--accum', type=int, default=1)
     p.add_argument('--workers', type=int, default=108, help='SMs for the list-schedule estimate')
     p.add_argument('--json', action='store_true')
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO, format='%(levelname)s %(message)s')
-    c = compile_training(ModelConfig.load(a.model), TrainConfig(steps=a.steps), Tiling.preset(a.tiling), a.reuse, a.gap, with_spec=False)
+    c = compile_training(load_any(a.model), TrainConfig(steps=a.steps, accum=a.accum), Tiling.preset(a.tiling), a.reuse, a.gap,
+                         with_spec=False, fuse=a.fuse)
     r = analyze(c.low, CostModel(), a.workers)
     if a.json:
         r.pop('widths')

@@ -4,6 +4,7 @@
 //   ./test_exec --expect-fail versions    # negative test: exits 0 only if the suite DETECTS a violation (use with -DKVM_BREAK_FENCE)
 #include "../../kvm_exec.cu"
 #include <array>
+#include <set>
 #include <functional>
 #include <random>
 
@@ -180,7 +181,7 @@ static bool suite_errors() {
   err_case("bad successor", KVM_ERR_BAD_TASK, c, [&](KvmExec&) { KvmBundle b = one("noop", {}); b.tasks[0].succ_cnt = 1; b.succ = {5}; return b; });
   { KvmConfig s = c; s.max_tasks = 8; err_case("slot pool exhausted", KVM_ERR_SLOTS, s, [&](KvmExec&) { KvmBundleBuilder bb; for (int i = 0; i < 9; ++i) bb.add("noop", {}); return bb.build(); }); }
   { KvmConfig s = c; s.live_cap = 8; err_case("batch > live_cap", KVM_ERR_BATCH_TOO_LARGE, s, [&](KvmExec&) { KvmBundleBuilder bb; for (int i = 0; i < 9; ++i) bb.add("noop", {}); return bb.build(); }); }
-  { KvmConfig s = c; s.args_cap = 2; s.succ_cap = 4; err_case("args pool exhausted", KVM_ERR_POOL, s, [&](KvmExec&) { return one("fill", {Bf(0), F(1), I(4)}); }); }
+  { KvmConfig s = c; s.succ_cap = 2; err_case("successor ring too small", KVM_ERR_POOL, s, [&](KvmExec&) { KvmBundleBuilder bb; int a = bb.add("noop", {}), b = bb.add("noop", {}), d = bb.add("noop", {}), e = bb.add("noop", {}); bb.edge(a, b); bb.edge(b, d); bb.edge(d, e); return bb.build(); }); }
   { KvmConfig s = c; s.timeout_us = 300000; err_case("unsatisfied wait -> timeout", KVM_ERR_TIMEOUT, s, [&](KvmExec&) { return one("noop", {}, [] { KvmTaskOpts o; o.wait_var = 2; o.wait_ver = 1; return o; }()); }); }
   // host-side validation rejects what the device would (and the executor stays usable)
   { KvmExec ex(c); float* a = ex.arena(8); ex.add_view(a, 1, 8); ex.start();
@@ -673,7 +674,7 @@ static bool suite_checker() {
 static bool suite_bench() {
   printf("  %-34s %8s %10s %12s %10s\n", "case", "blocks", "tasks", "us/task", "tasks/s");
   auto indep = [&](int blocks, int total, int bundle_sz) {
-    KvmConfig c = small_cfg(blocks); c.live_cap = 1 << 14; c.max_tasks = total + 64; c.ring_words = 1 << 18; KvmExec ex(c); ex.start();
+    KvmConfig c = small_cfg(blocks); c.live_cap = 1 << 14; c.max_tasks = 1 << 17; c.ring_words = 1 << 18; KvmExec ex(c); ex.start();
     for (int done = 0; done < total; done += bundle_sz) { KvmBundleBuilder bb; for (int i = 0; i < bundle_sz; ++i) bb.add("noop", {}); ex.submit(bb.build()); }
     ex.close(); const KvmResult& r = ex.finish();
     unsigned long long t0 = ~0ull, t1 = 0; for (auto& t : r.trace) { t0 = std::min(t0, t.start_ns); t1 = std::max(t1, t.end_ns); }
@@ -692,13 +693,258 @@ static bool suite_bench() {
 }
 
 // Small cases for compute-sanitizer (memcheck/racecheck): every code path, tiny sizes.
+static KvmBundle layered(int W, int L, int buf0);
+static bool litmus_run(int blocks, int iters, int W, unsigned seed, const char* tag);
 static bool suite_smoke() {
   int before = g_fail;
-  { KvmConfig c = small_cfg(3); c.max_tasks = 4096; c.live_cap = 256; c.ring_words = 1024; long long t = 0; int d; dag_run(3, 3, 60, 6, c, 31, &t, &d); }
+  { KvmConfig c = small_cfg(3); c.max_tasks = 4096; c.live_cap = 256; c.ring_words = 4096; long long t = 0; int d; dag_run(3, 3, 60, 6, c, 31, &t, &d); }
   { int a = 0, b = 0, v = 0; versions_vector(21, 5, 1024, 3, true, &a, &b, &v); versions_scalar(22, 5, 3, true, &a, &b, &v); }
-  { KvmConfig c = small_cfg(2); c.ring_words = 256; c.live_cap = 32; KvmExec ex(c); float* a = ex.arena(300); int x = ex.add_view(a, 1, 300), y = ex.add_view(a, 1, 300);
-    ex.start(); KvmBundleBuilder bb; bb.add("fill", {Bf(x), F(2), I(300)}); bb.add("mse_grad", {Bf(x), Bf(y), Bf(x), Bf(x), Bf(y), I(300)}); bb.add("matmul", {Bf(x), Bf(y), Bf(x), I(3), I(3), I(3)});
+  {  // slot recycling + streaming + parked tasks, tiny pool
+    KvmConfig c = small_cfg(3); c.max_tasks = 128; c.live_cap = 64; c.succ_cap = 1 << 10; c.win_cap = 64; c.ring_words = 4096;
+    KvmExec ex(c); float* ar = ex.arena(32); for (int i = 0; i < 32; ++i) ex.add_view(ar + i, 1, 1); ex.start();
+    KvmBundle big = layered(16, 40, 0);
+    CHECK(ex.submit_stream(big, 64) == KvmSubmit::OK, "stream"); ex.close(); const KvmResult& r = ex.finish();
+    CHECK(r.ok() && r.done == 640, "recycle smoke: done %d", r.done);
+  }
+  litmus_run(3, 150, 6, 9, "smoke");
+  { KvmConfig c = small_cfg(2); c.ring_words = 256; c.live_cap = 32; KvmExec ex(c); float* a = ex.arena(300);
+    int x = ex.add_view(a, 1, 300), y = ex.add_view(a, 1, 300);
+    int m1 = ex.add_view(a + 100, 3, 3), m2 = ex.add_view(a + 110, 3, 3), m3 = ex.add_view(a + 120, 3, 3);
+    ex.start(); KvmBundleBuilder bb;
+    bb.add("fill", {Bf(x), F(2), I(300)}); bb.add("mse_grad", {Bf(x), Bf(y), Bf(x), Bf(x), Bf(y), I(300)}); bb.add("matmul", {Bf(m1), Bf(m2), Bf(m3), I(3), I(3), I(3)});
     for (int i = 0; i < 20; ++i) ex.submit(bb.build()); ex.close(); CHECK(ex.finish().ok(), "smoke ops"); }
+  return g_fail == before;
+}
+
+
+// ================= registry types: buf?, i32 buffers, dtype errors =================
+static_assert(kvm_sig::types("a:buf?,b:i32,c:f32,d:buf") == (uint64_t(KVM_A_BUF_OPT) | uint64_t(KVM_A_I32) << 3 | uint64_t(KVM_A_F32) << 6 | uint64_t(KVM_A_BUF) << 9), "types()");
+static_assert(kvm_sig::types("a:buf??") == kvm_sig::KVM_BAD_SIG && kvm_sig::types("a:int") == kvm_sig::KVM_BAD_SIG && kvm_sig::types(":buf") == kvm_sig::KVM_BAD_SIG && kvm_sig::types("a") == kvm_sig::KVM_BAD_SIG, "malformed signatures are rejected");
+static_assert(kvm_sig::arity("") == 0 && kvm_sig::arity("a:buf,b:i32") == 2, "arity()");
+static float ibits(int v) { float f; memcpy(&f, &v, 4); return f; }
+static int asi(float f) { int v; memcpy(&v, &f, 4); return v; }
+
+static bool suite_types() {
+  int before = g_fail; Rng rg(3);
+  { // registry sanity for the sparse ids: every X line resolves, ids unique
+    std::set<int> ids; for (auto& o : kKvmOps) ids.insert(o.id);
+    CHECK((int)ids.size() == KVM_NUM_OPS, "duplicate op ids");
+    CHECK(kvm_op(200) && kvm_op(203) && !kvm_op(199) && !kvm_op(-1), "sparse lookup");
+  }
+  KvmExec ex(small_cfg(3));
+  const int n = 100;
+  auto fv = rand_ints(rg, n), gv = rand_ints(rg, n);
+  int a = ex.add_buffer(1, n, fv), b = ex.add_buffer(1, n, gv), o1 = ex.add_buffer(1, n), o2 = ex.add_buffer(1, n);
+  std::vector<float> idx(n); for (int i = 0; i < n; ++i) idx[i] = ibits((i * 7) % n);
+  KvmInit ii; ii.kind = KvmInit::VALUES; ii.values = idx;
+  int ib = ex.add_buffer(1, n, ii, 1), io = ex.add_buffer(1, n, KvmInit{}, 1), og = ex.add_buffer(1, n), oi = ex.add_buffer(1, n), oi2 = ex.add_buffer(1, n);
+  KvmBundleBuilder bb;
+  bb.add("opt_add", {Bf(a), Bf(b), Bf(o1), I(n)}); bb.add("opt_add", {Bf(a), KvmArg::none(), Bf(o2), I(n)});
+  bb.add("gather", {Bf(ib), Bf(a), Bf(og), I(n)}); bb.add("iota_i", {Bf(io), I(n)});
+  bb.add("opt_i", {Bf(ib), Bf(oi), I(n)}); bb.add("opt_i", {KvmArg::none(), Bf(oi2), I(n)});
+  bool threw = false; try { KvmBundleBuilder e; e.add("fill", {KvmArg::none(), F(1), I(1)}); } catch (const std::invalid_argument&) { threw = true; }
+  CHECK(threw, "an absent buffer for a required buf must be rejected by the builder");
+  CHECK(run_ok(ex, {bb.build()}), "run");
+  auto r1 = ex.read_buffer(o1), r2 = ex.read_buffer(o2), rg_ = ex.read_buffer(og), ri = ex.read_buffer(io), roi = ex.read_buffer(oi), roi2 = ex.read_buffer(oi2);
+  int bad = 0;
+  for (int i = 0; i < n; ++i) {
+    bad += !same_bits(r1[i], fv[i] + gv[i]); bad += !same_bits(r2[i], fv[i]);
+    bad += !same_bits(rg_[i], fv[(i * 7) % n]); bad += asi(ri[i]) != i; bad += !same_bits(roi[i], (float)((i * 7) % n)); bad += !same_bits(roi2[i], -1.f);
+  }
+  CHECK(bad == 0, "%d wrong elements", bad);
+  // device-side errors (host validation bypassed where the host would also reject)
+  auto errcase = [&](const char* name, int want, std::function<KvmBundle(int fbuf, int ibuf)> mk) {
+    KvmExec e(small_cfg(3)); int f = e.add_buffer(1, 8, std::vector<float>(8, 1.f)); KvmInit big; big.kind = KvmInit::FILL; big.value = 99; int ibf = e.add_buffer(1, 8, big, 1); e.start();
+    e.submit(mk(f, ibf), 5000, false); e.close(); const KvmResult& r = e.finish();
+    CHECK(r.err_code == want, "%s: got %s want %s", name, kvm_err_name(r.err_code), kvm_err_name(want));
+    printf("  error %-28s -> %s\n", name, kvm_err_name(r.err_code));
+  };
+  errcase("i32 buffer into f32 op", KVM_ERR_BAD_BUF, [&](int, int ibf) { KvmBundleBuilder x; x.add("fill", {Bf(ibf), F(1), I(8)}); return x.build(); });
+  errcase("f32 buffer as i32 index", KVM_ERR_BAD_BUF, [&](int f, int) { KvmBundleBuilder x; x.add("gather", {Bf(f), Bf(f), Bf(f), I(8)}); return x.build(); });
+  errcase("required buf given as -1", KVM_ERR_BAD_BUF, [&](int, int) { KvmBundleBuilder x; x.add("fill", {Bf(0), F(1), I(8)}); KvmBundle b = x.build(); b.args[0] = -1; return b; });
+  errcase("optional buf index < -1", KVM_ERR_BAD_BUF_INDEX, [&](int f, int) { KvmBundleBuilder x; x.add("opt_add", {Bf(f), Bf(f), Bf(f), I(8)}); KvmBundle b = x.build(); b.args[1] = -2; return b; });
+  errcase("gather index out of range", KVM_ERR_BOUNDS, [&](int f, int ibf) { KvmBundleBuilder x; x.add("gather", {Bf(ibf), Bf(f), Bf(f), I(8)}); return x.build(); });
+  printf("  types: buf? (present/absent), i32 buffers (gather, iota, optional i32), dtype and absent-buffer errors\n");
+  return g_fail == before;
+}
+
+// ================= initial values: seeded (vs runtime/initgen.py), file, fill, i32 =================
+static bool suite_init() {
+  int before = g_fail;
+  const char* env = getenv("KVM_INITGEN_VECTORS");
+  std::ifstream f(env ? env : "tests/gpu/initgen_vectors.txt");
+  CHECK(f.good(), "cannot open initgen_vectors.txt (generated by make_initgen_vectors.py from runtime/initgen.py)");
+  unsigned long long seed; int draws, n; unsigned bb_, cb_; int cases = 0; size_t values = 0;
+  KvmExec ex(small_cfg(2));
+  while (f >> seed >> draws >> std::hex >> bb_ >> cb_ >> std::dec >> n) {
+    float bias, coef; memcpy(&bias, &bb_, 4); memcpy(&coef, &cb_, 4);
+    std::vector<unsigned> want(n); for (auto& w : want) { f >> std::hex >> w >> std::dec; }
+    KvmInit in; in.kind = KvmInit::SEEDED; in.seed = seed; in.draws = draws; in.bias = bias; in.coef = coef;
+    int bi = ex.add_buffer(1, n, in);
+    auto dev = ex.read_buffer(bi); std::vector<float> host(n); kvm_seeded_reference(host.data(), n, seed, draws, bias, coef);
+    int bad_d = 0, bad_h = 0;
+    for (int i = 0; i < n; ++i) { unsigned d, h; memcpy(&d, &dev[i], 4); memcpy(&h, &host[i], 4); bad_d += d != want[i]; bad_h += h != want[i]; }
+    CHECK(bad_d == 0 && bad_h == 0, "seed %llu draws %d n %d: device %d host %d of %d differ from initgen.py", seed, draws, n, bad_d, bad_h, n);
+    ++cases; values += n;
+  }
+  CHECK(cases >= 30, "only %d vector cases read", cases);
+  printf("  seeded: %d cases / %zu values: device kernel and host reference bit-identical to runtime/initgen.py\n", cases, values);
+  { // device == host on a large buffer too
+    const size_t N = 3000001; KvmInit in; in.kind = KvmInit::SEEDED; in.seed = 777; in.draws = 4; in.bias = 2.f; in.coef = 0.0346410178f;
+    int bi = ex.add_buffer(1, (int)N, in); auto dev = ex.read_buffer(bi); std::vector<float> host(N); kvm_seeded_reference(host.data(), N, in.seed, 4, in.bias, in.coef);
+    size_t bad = 0; for (size_t i = 0; i < N; ++i) bad += memcmp(&dev[i], &host[i], 4) != 0;
+    CHECK(bad == 0, "%zu of %zu differ", bad, N); printf("  seeded: 3,000,001 normal values device == host reference\n");
+  }
+  { // file: streamed in 8 MiB chunks (20 MB here), plus a size mismatch error
+    const size_t N = 5000000; std::string path = "init_test.f32";
+    { std::vector<float> v(N); for (size_t i = 0; i < N; ++i) v[i] = (float)(i % 1021) * 0.5f; FILE* fp = fopen(path.c_str(), "wb"); fwrite(v.data(), 4, N, fp); fclose(fp); }
+    KvmInit in; in.kind = KvmInit::FILE; in.path = path;
+    int bi = ex.add_buffer(1, (int)N, in); auto dev = ex.read_buffer(bi); size_t bad = 0; for (size_t i = 0; i < N; ++i) bad += dev[i] != (float)(i % 1021) * 0.5f;
+    CHECK(bad == 0, "%zu file values differ", bad);
+    bool threw = false; try { ex.add_buffer(1, (int)N - 1, in); } catch (const std::runtime_error&) { threw = true; }
+    CHECK(threw, "size mismatch must throw"); remove(path.c_str());
+    printf("  file: 20 MB streamed in chunks, size mismatch rejected\n");
+  }
+  { // i32 buffers: fill and values keep integer bits
+    KvmInit in; in.kind = KvmInit::FILL; in.value = 7; int bi = ex.add_buffer(1, 5, in, 1); auto v = ex.read_buffer(bi);
+    bool ok = true; for (float x : v) ok = ok && asi(x) == 7; CHECK(ok, "i32 fill");
+    KvmInit sd; sd.kind = KvmInit::SEEDED; bool threw = false; try { ex.add_buffer(1, 5, sd, 1); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw, "seeded into i32 must throw");
+  }
+  return g_fail == before;
+}
+
+// ================= slot recycling and streaming =================
+// Layered DAG: width W, depth L. Layer 0 fills; even layers add two neighbours, odd layers halve. Node (l,i) depends on
+// (l-1, i-1..i+1), which also makes the two alternating buffer sets safe (every reader of a cell precedes its next writer).
+static KvmBundle layered(int W, int L, int buf0) {
+  KvmBundle b; const size_t N = (size_t)W * L;
+  b.tasks.resize(N); b.args.reserve(N * 4); b.succ.reserve(N * 3);
+  for (int l = 0; l < L; ++l)
+    for (int i = 0; i < W; ++i) {
+      KvmTaskDesc& t = b.tasks[(size_t)l * W + i]; t = KvmTaskDesc{};
+      int cur = buf0 + (l % 2) * W + i, prev = buf0 + ((l + 1) % 2) * W;
+      t.args_off = (int)b.args.size();
+      auto w = [&](KvmArg a) { b.args.push_back(a.w); };
+      if (l == 0) { t.op_id = KVM_OP_fill; w(Bf(cur)); w(F((float)(i % 7 + 1))); w(I(1)); }
+      else if (l % 2 == 0) { t.op_id = KVM_OP_add; w(Bf(prev + i)); w(Bf(prev + (i + 1) % W)); w(Bf(cur)); w(I(1)); }
+      else { t.op_id = KVM_OP_scale; w(Bf(prev + i)); w(Bf(cur)); w(F(0.5f)); w(I(1)); }
+      t.args_words = (int)b.args.size() - t.args_off; t.wait_var = t.pub_var = -1; t.deadline_us = -1;
+      t.indegree = l ? 3 : 0;
+      t.succ_off = (int)b.succ.size();
+      if (l + 1 < L) for (int d = -1; d <= 1; ++d) b.succ.push_back((l + 1) * W + (i + d + W) % W);
+      t.succ_cnt = (int)b.succ.size() - t.succ_off;
+    }
+  return b;
+}
+
+static bool suite_recycle(bool quick) {
+  int before = g_fail;
+  {  // (a) a 2M-task DAG streamed through 64k slots
+    const int W = 512, L = quick ? 256 : 4096; const long long N = (long long)W * L;
+    KvmConfig c; c.blocks = 64; c.max_tasks = 1 << 16; c.live_cap = 1 << 14; c.succ_cap = 1 << 17; c.ring_words = 1 << 20; c.timeout_us = 120ull * 1000000;
+    KvmExec ex(c); float* ar = ex.arena(2 * W); for (int i = 0; i < 2 * W; ++i) ex.add_view(ar + i, 1, 1);
+    KvmBundle big = layered(W, L, 0);
+    std::vector<float> prev(W), cur(W);   // CPU reference
+    for (int i = 0; i < W; ++i) prev[i] = (float)(i % 7 + 1);
+    for (int l = 1; l < L; ++l) { for (int i = 0; i < W; ++i) cur[i] = l % 2 == 0 ? prev[i] + prev[(i + 1) % W] : 0.5f * prev[i]; prev = cur; }
+    ex.start();
+    auto t0 = std::chrono::steady_clock::now();
+    KvmSubmit st = ex.submit_stream(big, 0, 120000);
+    CHECK(st == KvmSubmit::OK, "stream: %s %s", kvm_submit_name(st), ex.last_error().c_str());
+    ex.close(); const KvmResult& r = ex.finish();
+    double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    CHECK(r.ok() && r.done == N && r.admitted == N, "done %d admitted %d of %lld", r.done, r.admitted, N);
+    auto got = download(ar + ((L - 1) % 2) * W, W); size_t bad = 0; for (int i = 0; i < W; ++i) bad += !same_bits(got[i], prev[i]);
+    CHECK(bad == 0, "%zu final-layer values differ from the CPU reference", bad);
+    CHECK(N > c.max_tasks, "test must exceed the pool");
+    printf("  stream: %lld tasks (%lld edges) through %d slots in %d windows (%d waited on predecessor windows): %.2f s wall, %.2f us/task; final layer bitwise vs CPU\n",
+           N, (long long)big.succ.size(), c.max_tasks, ex.stats().windows, ex.stats().window_waits, sec, sec * 1e6 / N);
+  }
+  {  // (b) a 200k-task chain through 1024 slots (one window per 256 tasks, each waits for the previous)
+    const int N = quick ? 20000 : 200000;
+    KvmConfig c = small_cfg(8); c.max_tasks = 1024; c.live_cap = 512; c.succ_cap = 1 << 12; c.ring_words = 1 << 14;
+    KvmExec ex(c); int x = ex.add_buffer(1, 1, std::vector<float>{0.f}), one = ex.add_buffer(1, 1, std::vector<float>{1.f}); ex.start();
+    KvmBundleBuilder bb; int prev = -1; for (int i = 0; i < N; ++i) { int t = bb.add("add", {Bf(x), Bf(one), Bf(x), I(1)}); if (prev >= 0) bb.edge(prev, t); prev = t; }
+    KvmBundle big = bb.build();
+    CHECK(ex.submit_stream(big, 256, 60000) == KvmSubmit::OK, "stream chain");
+    ex.close(); const KvmResult& r = ex.finish();
+    float v = ex.read_buffer(x)[0];
+    CHECK(r.ok() && r.done == N && v == (float)N, "chain: done %d x=%g want %d", r.done, v, N);
+    printf("  chain: %d dependent tasks through 1024 slots, %d windows: counter == %d (every task ran once, in order)\n", N, ex.stats().windows, N);
+  }
+  // (c)/(d): many small bundles from producer threads; per producer 32 buffer sets reused after the previous user finished
+  auto many = [&](const char* what, int producers, int bundles_per, bool straggler) {
+    const int T = 30, SETS = 32;
+    KvmConfig c; c.blocks = 32; c.max_tasks = 4096; c.live_cap = 1024; c.succ_cap = 1 << 13; c.ring_words = 4096; c.win_cap = straggler ? (1 << 15) : 1024; c.timeout_us = 120ull * 1000000;
+    if (straggler) c.max_tasks = 1024;
+    KvmExec ex(c); std::vector<int> xs; int one = ex.add_buffer(1, 1, std::vector<float>{1.f});
+    for (int i = 0; i < producers * SETS; ++i) xs.push_back(ex.add_buffer(1, 1, std::vector<float>{0.f}));
+    ex.start();
+    unsigned parked_wid = 0;
+    if (straggler) { KvmBundleBuilder pb; KvmTaskOpts o; o.wait_var = 1; o.wait_ver = 1; pb.add("noop", {}, o); CHECK(ex.submit(pb.build(), 5000, true, &parked_wid) == KvmSubmit::OK, "parked bundle"); }
+    std::atomic<int> okc{0};
+    std::vector<std::thread> th;
+    auto t0 = std::chrono::steady_clock::now();
+    for (int p = 0; p < producers; ++p) th.emplace_back([&, p] {
+      std::vector<unsigned> wid(SETS, 0); std::vector<bool> used(SETS, false);
+      for (int b = 0; b < bundles_per; ++b) {
+        int set = b % SETS;
+        for (auto t1 = std::chrono::steady_clock::now(); used[set] && !ex.window_done(wid[set]); ) {
+          if (std::chrono::steady_clock::now() - t1 > std::chrono::seconds(60)) return;
+          std::this_thread::sleep_for(std::chrono::microseconds(20));
+        }
+        KvmBundleBuilder bb; int prev = -1; int x = xs[p * SETS + set];
+        for (int i = 0; i < T; ++i) { int t = bb.add("add", {Bf(x), Bf(one), Bf(x), I(1)}); if (prev >= 0) bb.edge(prev, t); prev = t; }
+        if (ex.submit(bb.build(), 60000, true, &wid[set]) != KvmSubmit::OK) return;
+        used[set] = true; ++okc;
+      }
+    });
+    for (auto& t : th) t.join();
+    if (straggler) { KvmBundleBuilder pb; KvmTaskOpts o; o.pub_var = 1; o.pub_ver = 1; pb.add("noop", {}, o); CHECK(ex.submit(pb.build()) == KvmSubmit::OK, "publisher bundle"); }
+    ex.close(); const KvmResult& r = ex.finish();
+    double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    const long long total = (long long)producers * bundles_per * T + (straggler ? 2 : 0);
+    CHECK(okc == producers * bundles_per && r.ok() && r.done == total && r.admitted == total, "%s: submitted %d, done %d admitted %d expected %lld, err %s", what, okc.load(), r.done, r.admitted, total, kvm_err_name(r.err_code));
+    int bad = 0; for (int p = 0; p < producers; ++p) for (int set = 0; set < SETS; ++set) {
+      int uses = bundles_per / SETS + (set < bundles_per % SETS); float want = (float)uses * T;
+      bad += ex.read_buffer(xs[p * SETS + set])[0] != want; }
+    CHECK(bad == 0, "%s: %d counters wrong", what, bad);
+    if (straggler) { CHECK(r.trace[0].exec_count == 1 && r.trace[0].ver0 == 1, "parked task: runs %d, saw version %d", r.trace[0].exec_count, r.trace[0].ver0); }
+    printf("  %s: %lld tasks in %d bundles (%d slots, %d-entry window table, %d-word successor ring, %d ring wraps), %.2f s, all counters exact\n",
+           what, total, ex.stats().bundles, c.max_tasks, c.win_cap, c.succ_cap, ex.stats().pads, sec);
+  };
+  many("long-running admission", 2, quick ? 3000 : 50000, false);
+  many("recycling beside a parked task", 1, quick ? 2000 : 20000, true);
+  return g_fail == before;
+}
+
+// ================= park / publish litmus =================
+// Every iteration k: Rp_k publishes version k; Rw_k and Rp_k are released by the SAME publish of k-1, so they run on different
+// blocks at the same moment; Rw_k's successors wait for version k, i.e. they park exactly while Rp_k publishes. A lost
+// wakeup shows up as a device TIMEOUT (a waiter never runs); running early as WAIT_VIOLATION; twice as DOUBLE_EXEC.
+static bool litmus_run(int blocks, int iters, int W, unsigned seed, const char* tag) {
+  Rng r(seed);
+  KvmConfig c; c.blocks = blocks; c.max_tasks = 8192; c.live_cap = 4096; c.succ_cap = 1 << 14; c.win_cap = 1 << 14; c.ring_words = 1 << 15; c.timeout_us = 15ull * 1000000;
+  KvmExec ex(c); ex.start();
+  for (int k = 1; k <= iters; ++k) {
+    KvmBundleBuilder bb;
+    KvmTaskOpts po; po.pub_var = 0; po.pub_ver = k; if (k > 1) { po.wait_var = 0; po.wait_ver = k - 1; }
+    KvmTaskOpts wo; if (k > 1) { wo.wait_var = 0; wo.wait_ver = k - 1; }
+    bb.add("noop", {}, po); int rw = bb.add("noop", {}, wo);
+    for (int j = 0; j < W; ++j) { KvmTaskOpts o; o.wait_var = 0; o.wait_ver = k; o.priority = r.in(0, 31); int t = bb.add("noop", {}, o); bb.edge(rw, t); }
+    if (ex.submit(bb.build(), 20000) != KvmSubmit::OK) { CHECK(false, "%s: submit %d", tag, k); break; }
+  }
+  ex.close(); const KvmResult& res = ex.finish();
+  const long long total = (long long)iters * (W + 2);
+  bool ok = res.ok() && res.done == total && res.version[0] == iters;
+  CHECK(ok, "%s: blocks %d: %s, done %d/%lld, version %d/%d", tag, blocks, kvm_err_name(res.err_code), res.done, total, res.version[0], iters);
+  return ok;
+}
+static bool suite_litmus(bool quick) {
+  int before = g_fail; long long tasks = 0; int runs = 0;
+  for (int blocks : {3, 5, 9, 33}) for (unsigned seed = 1; seed <= (quick ? 1u : 3u); ++seed) { litmus_run(blocks, quick ? 1500 : 6000, 24, seed, "park/publish"); tasks += (quick ? 1500 : 6000) * 26ll; ++runs; }
+  printf("  litmus: %d runs, %lld tasks; each iteration races a waiter's park against the publish of its version; no lost wakeup, early run or double run\n", runs, tasks);
   return g_fail == before;
 }
 
@@ -706,7 +952,7 @@ int main(int argc, char** argv) {
   bool expect_fail = false; std::vector<std::string> want;
   for (int i = 1; i < argc; ++i) { std::string a = argv[i]; if (a == "--expect-fail") expect_fail = true; else if (a == "--quiet") g_kvm_log = 0; else if (a == "--log") g_kvm_log = atoi(argv[++i]); else want.push_back(a); }
   bool quick = getenv("KVM_TEST_QUICK") != nullptr;
-  if (want.empty()) want = {"checker", "ops", "errors", "dag", "sched", "admission", "versions"};
+  if (want.empty()) want = {"checker", "ops", "types", "init", "errors", "dag", "sched", "admission", "versions", "recycle", "litmus"};
   int dev; cudaDeviceProp p; CK(cudaGetDevice(&dev)); CK(cudaGetDeviceProperties(&p, dev));
   int drv, rt; cudaDriverGetVersion(&drv); cudaRuntimeGetVersion(&rt);
   printf("GPU %s, %d SMs, sm_%d%d, driver CUDA %d.%d, runtime %d.%d%s\n", p.name, p.multiProcessorCount, p.major, p.minor, drv / 1000, drv % 1000 / 10, rt / 1000, rt % 1000 / 10, quick ? " [quick]" : "");
@@ -720,7 +966,8 @@ int main(int argc, char** argv) {
     try {
       if (s == "checker") ok = suite_checker(); else if (s == "ops") ok = suite_ops(); else if (s == "errors") ok = suite_errors();
       else if (s == "dag") ok = suite_dag(quick); else if (s == "sched") ok = suite_sched(); else if (s == "admission") ok = suite_admission();
-      else if (s == "versions") ok = suite_versions(quick); else if (s == "bench") ok = suite_bench(); else if (s == "smoke") ok = suite_smoke();
+      else if (s == "versions") ok = suite_versions(quick); else if (s == "types") ok = suite_types(); else if (s == "init") ok = suite_init();
+      else if (s == "recycle") ok = suite_recycle(quick); else if (s == "litmus") ok = suite_litmus(quick); else if (s == "bench") ok = suite_bench(); else if (s == "smoke") ok = suite_smoke();
       else { fprintf(stderr, "unknown suite %s\n", s.c_str()); return 2; }
     } catch (const std::exception& e) { fprintf(stderr, "  EXCEPTION: %s\n", e.what()); ++g_fail; ok = false; }
     ok = ok && g_fail == f0;

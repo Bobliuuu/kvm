@@ -1,0 +1,130 @@
+# exec-bench @ 20261103T232552Z  commit d84d618
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 580.105.08, 1410 MHz
+BUILD: nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DKVM_EXEC_NO_MAIN tests/gpu/test_exec.cu -o test_exec
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+== bench
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 16384, max_tasks 65600, ring 262144 words, aging 0 us
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][I] kernel done: 65536/65536 tasks in 310.973 ms, 16 bundles, 5 ring wraps, 13 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 8 (1 admitter + 7 workers)
+[kvm_exec][I] kernel launched: grid 8 x 256 threads, live_cap 16384, max_tasks 65600, ring 262144 words, aging 0 us
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][I] kernel done: 65536/65536 tasks in 109.472 ms, 16 bundles, 5 ring wraps, 12 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 32 (1 admitter + 31 workers)
+[kvm_exec][I] kernel launched: grid 32 x 256 threads, live_cap 16384, max_tasks 65600, ring 262144 words, aging 0 us
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][I] kernel done: 65536/65536 tasks in 93.439 ms, 16 bundles, 5 ring wraps, 11 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] kernel launched: grid 108 x 256 threads, live_cap 16384, max_tasks 65600, ring 262144 words, aging 0 us
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][I] kernel done: 65536/65536 tasks in 88.927 ms, 16 bundles, 5 ring wraps, 12 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 16384, max_tasks 65600, ring 262144 words, aging 0 us
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][I] kernel done: 65536/65536 tasks in 101.764 ms, 16 bundles, 5 ring wraps, 13 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 4000/4000 tasks in 25.291 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 32 (1 admitter + 31 workers)
+[kvm_exec][I] kernel launched: grid 32 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 4000/4000 tasks in 23.568 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 5 resident blocks/SM -> grid 540 (1 admitter + 539 workers)
+[kvm_exec][I] kernel launched: grid 540 x 256 threads, live_cap 8192, max_tasks 32768, ring 131072 words, aging 0 us
+[kvm_exec][I] kernel done: 4000/4000 tasks in 43.055 ms, 1 bundles, 0 ring wraps, 0 backpressure waits
+  case                                 blocks      tasks      us/task    tasks/s
+  independent noop                          2      65536       4.7183   2.12e+05
+  independent noop                          8      65536       1.6544   6.04e+05
+  independent noop                         32      65536       1.3995   7.15e+05
+  independent noop                        108      65536       1.3358   7.49e+05
+  independent noop                        540      65536       1.5300   6.54e+05
+  dependent chain (hop latency)             2       4000       5.8719    1.7e+05
+  dependent chain (hop latency)            32       4000       5.5898   1.79e+05
+  dependent chain (hop latency)           540       4000      10.4243   9.59e+04
+== bench: PASS (1.0s, 0 new failures)
+0 checks, 0 failed, 0 suites failed
+PASS
+exit: 0

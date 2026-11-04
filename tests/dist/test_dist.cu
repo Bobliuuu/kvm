@@ -246,7 +246,7 @@ struct Net {   // the inter-node fabric of an in-process run: one transport per 
   }
 };
 
-struct RankOut { KvmResult res; bool ok = false; std::string msg; double ms = 0; };
+struct RankOut { KvmResult res; bool ok = false; std::string msg; double ms = 0, start_ms = 0, submit_ms = 0, finish_ms = 0; };
 
 // Runs a set of ranks (all of them in-process, or just `only`). `devs[r]` = CUDA device of rank r.
 struct World {
@@ -344,7 +344,10 @@ struct World {
               w && (int)inbox[t.wait_var] >= t.wait_ver && res.version[t.wait_var] < t.wait_ver ? "   <- signal arrived, pump did not publish it" :
               w && res.version[t.wait_var] >= t.wait_ver ? "   <- version reached, task never woken (lost wakeup)" : "");
     }
-    fprintf(stderr, "  diagnosis rank %d: %d tasks never ran\n", r, stuck);
+    const KvmDistCtl* c = dd[r]->ctl();
+    fprintf(stderr, "  diagnosis rank %d: %d tasks never ran; pump polled %llu times, last publish var %d ver %d; in_vars:", r, stuck, (unsigned long long)c->polls, c->last_pub_var, c->last_pub_ver);
+    for (int v : pr[r].in_vars) fprintf(stderr, " %d(inbox %u, version %d)", v, inbox[v], res.version[v]);
+    fprintf(stderr, "\n");
   }
 
   std::vector<RankOut> run() {
@@ -357,10 +360,13 @@ struct World {
           CK(cudaSetDevice(dev[r]));
           auto t0 = Clock::now();
           ex[r]->start();
+          out[r].start_ms = (double)ms_since(t0);
           KvmSubmit s = ex[r]->submit(pr[r].bundle);
+          out[r].submit_ms = (double)ms_since(t0);
           if (s != KvmSubmit::OK) throw std::runtime_error(std::string("submit: ") + kvm_submit_name(s));
           out[r].res = ex[r]->finish();
           out[r].ms = (double)ms_since(t0);
+          out[r].finish_ms = out[r].ms;
           if (px[r]) px[r]->kernel_done();
           out[r].ok = out[r].res.ok();
           if (!out[r].ok) out[r].msg = std::string(kvm_err_name(out[r].res.err_code)) + " (" + kvm_err_text(out[r].res.err_code) + ") slot " + std::to_string(out[r].res.err_slot) + " a=" + std::to_string(out[r].res.err_a);
@@ -370,6 +376,11 @@ struct World {
     for (auto& t : th) t.join();
     for (int r = 0; r < W; ++r) if (px[r]) { if (!px[r]->wait_finished(out[r].ok ? 60000 : 3000)) { out[r].msg += " [proxy shutdown incomplete]"; } }
     for (int r = 0; r < W; ++r) if (px[r]) px[r]->stop();
+    bool any_timeout = false;
+    for (int r = 0; r < W; ++r) any_timeout |= active(r) && !out[r].ok && out[r].res.err_code == KVM_ERR_TIMEOUT;
+    if (any_timeout) for (int r = 0; r < W; ++r) if (active(r))
+      fprintf(stderr, "  host timeline rank %d: start() returned at %.0f ms, submit() at %.0f ms, finish() at %.0f ms; kernel %.3f ms; err %s\n", r, out[r].start_ms, out[r].submit_ms,
+              out[r].finish_ms, out[r].res.kernel_ms, kvm_err_name(out[r].res.err_code));
     for (int r = 0; r < W; ++r) if (active(r) && !out[r].ok && out[r].res.err_code == KVM_ERR_TIMEOUT) diagnose(r, out[r].res);
     return out;
   }

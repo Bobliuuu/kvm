@@ -50,6 +50,8 @@ struct KvmDistCtl {          // mapped pinned host memory, written by the proxy,
   unsigned last_hb;              // pump bookkeeping (device-written, host never reads)
   unsigned long long last_ns;
   unsigned long long dead_ns;    // 0 = do not watch the heartbeat
+  volatile unsigned long long polls;   // pump statistics for post-mortems (device-written plain stores, host reads after the kernel)
+  volatile int last_pub_var, last_pub_ver;
 };
 struct KvmDistDev {          // device-resident (or mapped), pointed to by KvmDevState::dist
   int rank, world, n_in, pad;
@@ -142,10 +144,12 @@ __device__ __forceinline__ void kvm_dist_poll_strided(const KvmDevState& S, int 
     if (got > ld_acq(S.version + v)) {
       __threadfence();                                          // sys acquire -> fence.sc.gpu -> release.gpu (transitivity)
       st_rel(S.version + v, got);
+      if (D->ctl != nullptr) { D->ctl->last_pub_var = v; D->ctl->last_pub_ver = got; }
       kvm_dist_wake(S, v);
     }
   }
   if (tid == 0 && D->ctl != nullptr) {
+    D->ctl->polls = D->ctl->polls + 1;
     int code = *(volatile int*)&D->ctl->fail_code;
     if (code) kvm_fail(S, code, -1, *(volatile int*)&D->ctl->fail_arg, D->rank);
     else if (D->ctl->dead_ns && *(volatile unsigned*)&D->ctl->heartbeat) {         // a stalled proxy would hang every remote wait

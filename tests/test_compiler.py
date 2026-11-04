@@ -23,18 +23,8 @@ FIXTURES = ROOT / 'tests' / 'fixtures'
 
 
 def all_ops():
-    """Every registry (core from include/, gpt/game/comm from tests/fixtures), loaded like the executor does."""
-    import shutil
-    import tempfile
-    global _ALL_OPS
-    if _ALL_OPS is None:
-        d = Path(tempfile.mkdtemp(prefix='kvm-ops-'))
-        shutil.copy(abi.INCLUDE_DIR / 'kvm_ops.def', d)
-        for f in FIXTURES.glob('kvm_ops_*.def'):
-            shutil.copy(f, d)
-        _ALL_OPS = abi.load_ops(d)
-        shutil.rmtree(d)
-    return _ALL_OPS
+    """Every registry present in include/, loaded like the executor does."""
+    return abi.load_ops()
 
 
 _ALL_OPS = None

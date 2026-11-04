@@ -4,6 +4,10 @@
 #if __has_include("kvm_ops_gpt.def")
 #include "kvm_ops_gpt.def"
 #endif
+// Extra generic pack (ids 96-127): activations, SwiGLU, softmax, gather/scatter, MoE routing, bf16, schedules, matmul epilogues.
+#if __has_include("kvm_ops_extra.def")
+#include "kvm_ops_extra.def"
+#endif
 // The game pack links the Doom engine (nvcc -rdc=true + doom/build/doom_dev.o): opt in with -DKVM_WITH_GAME.
 #if defined(KVM_WITH_GAME) && __has_include("kvm_ops_game.def")
 #include "kvm_ops_game.def"

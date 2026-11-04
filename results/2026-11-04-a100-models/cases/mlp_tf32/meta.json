@@ -1,0 +1,49 @@
+{
+ "model": "mlp_tiny",
+ "config": {
+  "name": "mlp_tiny",
+  "in_dim": 16,
+  "hidden": [
+   32,
+   32
+  ],
+  "classes": 4,
+  "batch": 32,
+  "act": "relu",
+  "noise": 0.6,
+  "seed": 0,
+  "precision": "f32"
+ },
+ "steps": 5,
+ "accum": 1,
+ "tiling": "cpu",
+ "precise": false,
+ "fuse": false,
+ "tasks": 340,
+ "edges": 1324,
+ "ops": {
+  "gradnorm_partial": 50,
+  "adamw": 50,
+  "select_window": 40,
+  "matmul_tile": 40,
+  "act_fwd": 40,
+  "act_bwd": 40,
+  "softmax_ce_fwd": 20,
+  "softmax_ce_bwd": 20,
+  "colsum": 15,
+  "noop": 10,
+  "softmax_ce_reduce": 5,
+  "gradnorm_finish": 5,
+  "counter_inc": 5
+ },
+ "plan": {
+  "reuse": "none",
+  "gap": 0,
+  "persistent_bytes": 31720,
+  "pool_bytes": 217420,
+  "no_reuse_bytes": 217420,
+  "slots": 105,
+  "transient_tensors": 105,
+  "reuse_factor": 1.0
+ }
+}

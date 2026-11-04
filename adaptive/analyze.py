@@ -101,10 +101,18 @@ def flat_table(root, a):
     def f(vals, d=2):
         vals = [v for v in vals if v == v]
         return 'n/a' if not vals else f"{statistics.median(vals):.{d}f} [{min(vals):.{d}f}, {max(vals):.{d}f}]"
+    def fps_of(rep):   # frames per second per instance from the event log (older drivers wrote a wrong summary fps)
+        ev = read(rep / 'doom_frames.csv')
+        if not ev:
+            return float('nan')
+        inst = len({e['inst'] for e in ev})
+        return len(ev) / inst / ((max(float(e['done_us']) for e in ev) - min(float(e['submit_us']) for e in ev)) / 1e6)
     for cfg in sorted(p for p in root.iterdir() if p.is_dir()):
         sums = []
         for r in sorted(cfg.glob('rep*/summary.json')):
-            sums.append(json.load(open(r)))
+            js = json.load(open(r))
+            js['doom']['fps'] = fps_of(r.parent)
+            sums.append(js)
         if not sums:
             continue
         ok = sum(1 for r in cfg.glob('rep*/status') if r.read_text().split()[:2] == ['0', '1'])

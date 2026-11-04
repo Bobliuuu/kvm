@@ -411,7 +411,7 @@ int Run::go() {
   const double span_s = t_end / 1e6;
   FILE* mj = fopen((o_.out + "/summary.json").c_str(), "w");
   fprintf(mj, "{\"tag\": \"%s\", \"device\": \"%s\", \"sms\": %d, \"grid\": %d, \"workers\": %d, \"sched\": \"%s\", \"ctl\": \"%s\", \"duration_s\": %.3f, \"kernel_ms\": %.3f,\n", o_.tag.c_str(), ex_->device_name().c_str(), ex_->sms(), r.grid, W, o_.sched.c_str(), o_.ctl.c_str(), span_s, r.kernel_ms);
-  fprintf(mj, " \"doom\": {\"instances\": %d, \"frames\": %zu, \"deadline_misses\": %d, \"frame_time_us\": {\"p50\": %.0f, \"p99\": %.0f, \"p999\": %.0f, \"max\": %.0f}, \"lateness_us\": {\"p99\": %.0f, \"p999\": %.0f, \"max\": %.0f}, \"fps\": %.2f},\n",
+  fprintf(mj, " \"doom\": {\"instances\": %d, \"frames\": %zu, \"deadline_misses\": %d, \"frame_time_us\": {\"p50\": %.0f, \"p99\": %.0f, \"p999\": %.0f, \"max\": %.0f}, \"lateness_us\": {\"p99\": %.0f, \"p999\": %.0f, \"max\": %.0f}, \"submit_call_us\": {\"p50\": %.0f, \"p99\": %.0f, \"max\": %.0f}, \"fps\": %.2f},\n",
           o_.doom_instances, doom_ev_.size(), miss, pctl(flat, .5), pctl(flat, .99), pctl(flat, .999), pctl(flat, 1), pctl(late, .99), pctl(late, .999), pctl(late, 1), pctl(scall, .5), pctl(scall, .99), pctl(scall, 1), doom_ev_.empty() ? 0.0 : doom_ev_.size() / span_s / o_.doom_instances);
   fprintf(mj, " \"serve\": {\"arrivals\": %d, \"completed\": %zu, \"dropped\": %d, \"latency_us\": {\"p50\": %.0f, \"p99\": %.0f, \"p999\": %.0f, \"max\": %.0f}, \"tokens_consistent\": %d},\n",
           serve_arrivals_, serve_ev_.size(), serve_dropped_, pctl(slat, .5), pctl(slat, .99), pctl(slat, .999), pctl(slat, 1), serve_ok);

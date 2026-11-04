@@ -47,12 +47,12 @@ tests alone:
    launch; the harness prepares every executor before launching any. Without both fixes 2 of the first 2 plans failed; with them
    0 of 60 in a loop.
 
-**Open item.** About 4% of runs of the in-process, single-GPU, several-executors stages still fail (about 10 of 230 runs across the loops and full runs after the two fixes), with
-`CUDA_DEVICE_MAX_CONNECTIONS` and `CUDA_MODULE_LOADING` having no effect. Signature (from the watchdog and host timeline the
-harness now prints): every rank thread waits in `finish()`, one executor's kernel started only when its peers' timeouts fired (its
-event-measured kernel time is 0.14 ms), and the peers' pumps polled ~8 million times for signals that had not been sent. Not seen
-with one process per rank; cannot occur with one device per rank. The script retries those stages (up to 3 attempts, every
-failed attempt printed); this run needed none. The root cause was not established.
+**Open item (since resolved).** About 4% of in-process single-GPU runs left one executor's kernel unscheduled until its peers timed
+out. After merging feat/integration (merge 63b5a4f) it was traced to launching several executors' persistent kernels
+concurrently from one host thread each: 6/80 failures with concurrent launch, 0/80 with sequential or 3 ms-staggered launch, then 0/600
+plan runs and 0/60 suite runs with sequential launch (`World::run` now launches from one thread). `CUDA_DEVICE_MAX_CONNECTIONS` and
+`CUDA_MODULE_LOADING` did not matter, and the grid-size/occupancy idea does not apply (these tests use 4-block grids). The CUDA-internal reason was
+not established. The run recorded above predates the merge; the merged tree passed the same script (14/0/4) at the commit below.
 
 ## Numbers worth keeping (A100, shared box, indicative)
 

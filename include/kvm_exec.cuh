@@ -508,9 +508,6 @@ __device__ __forceinline__ void kvm_publish(const KvmDevState& S, int slot, int 
   kvm_scan_parked(S, var);
 }
 
-#define KVM_DIST_PUMP_PHASE 1  // KVM_DIST_HOOK: remote-publish pump (kvm_dist_poll / kvm_dist_pump)
-#include "kvm_dist.cuh"
-
 // ---------------- worker ----------------
 struct KvmShared {
   KvmTaskDesc d;
@@ -540,6 +537,9 @@ __device__ __forceinline__ bool kvm_should_exit(const KvmDevState& S, KvmWatch& 
   if (ld_acq(&S.cnt->admit_final)) return ld_acq(&S.cnt->done) >= ld_acq(&S.cnt->admitted);
   return false;
 }
+
+#define KVM_DIST_PUMP_PHASE 1  // KVM_DIST_HOOK: remote-publish pump, after kvm_stalled and kvm_scan_parked (kvm_dist_poll / kvm_dist_pump)
+#include "kvm_dist.cuh"
 
 __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   if (threadIdx.x < KVM_TASK_WORDS) ((int*)&sh.d)[threadIdx.x] = ((const int*)(S.tasks + slot))[threadIdx.x];

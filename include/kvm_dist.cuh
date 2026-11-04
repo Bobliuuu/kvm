@@ -37,7 +37,7 @@
 //
 // (No #pragma once: it is included twice by kvm_exec.cuh, each phase guarded by its own macro.)
 // Included twice by kvm_exec.cuh: phase 1 (types, errors, primitives) before the operator packs, phase 2 (inbox pump) after
-// kvm_publish, because the pump needs the ready-queue functions.
+// kvm_publish, because the pump needs the ready-queue, park-scan and stall-detector functions.
 #ifndef KVM_DIST_PUMP_PHASE
 #ifndef KVM_DIST_PHASE1
 #define KVM_DIST_PHASE1

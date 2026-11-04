@@ -120,3 +120,8 @@ backward (a fused dq/dkv needs atomics or a second pass; deterministic order was
 
 ## Scratch directories I overwrote (rsync --delete), disclosed in the integration log
 ~/kvm-gptdiff-scratch (gptdiff run) and ~/kvm-exec-scratch (exec run), both ~08:28 UTC; all later runs used private dirs.
+
+## Round-2 verification (final tree)
+test_ops 1396 and test_extra 2089 passed; compute-sanitizer memcheck/racecheck/synccheck/initcheck on test_ops and memcheck/racecheck on
+test_extra: 0 errors (`r2_sanitizers.txt`); tests/gptdiff/run.sh --sanitize: all 8 bundles PASS, sanitizers clean (`r2_gptdiff.txt`);
+run_exec_tests.sh: 8582 checks, 0 failed (`r2_exec_tail.txt`).

@@ -56,21 +56,29 @@ int main(int argc, char** argv) {
     kvm_print_class_report(r);
     kvm_write_trace_csv(r, (out + "/trace.csv").c_str());
 
-    // ---- Doom outputs: per-frame hashes + state from d_state, raw frames from fb_<f>
-    std::vector<float> state = ex.read_buffer(buf_idx.at("d_state"));
-    int frames = 0; while (buf_idx.count("fb_" + std::to_string(frames))) ++frames;
+    // ---- Doom outputs: per-frame hashes + state from d_state, raw frames from fb_<f>. With --instances-style bundles (d_state_<k>, fb_<k>_<f>)
+    // instance k writes to OUT/inst<k>/ (frames.bin + summary.json, each diffable against the CPU oracle with compare.py); one instance writes OUT/.
+    int NI = 0; while (buf_idx.count("d_state_" + std::to_string(NI))) ++NI;
+    const bool multi = NI > 0; if (!multi) NI = 1;
+    auto bname = [&](const char* base, int k) { return multi ? std::string(base) + "_" + std::to_string(k) : std::string(base); };
+    auto fbname = [&](int k, int f) { return multi ? "fb_" + std::to_string(k) + "_" + std::to_string(f) : "fb_" + std::to_string(f); };
+    int frames = 0; while (buf_idx.count(fbname(0, frames))) ++frames;
     static const char* names[14] = {"booted", "tics", "gamestate", "health", "armor", "kills", "monsters", "items", "secrets", "deaths", "level_finished_tic", "x", "y", "waypoint"};
-    FILE* fr = fopen((out + "/frames.bin").c_str(), "wb");
-    for (int f = 0; f < frames; ++f) { std::vector<float> fb = ex.read_buffer(buf_idx.at("fb_" + std::to_string(f))); fwrite(fb.data(), 1, KVM_DOOM_FB_BYTES, fr); }
-    fclose(fr);
-    FILE* js = fopen((out + "/summary.json").c_str(), "w");
-    fprintf(js, "{\"frames\": %d, \"hashes\": [", frames);
-    for (int f = 0; f < frames; ++f) { uint32_t x, y; memcpy(&x, &state[KVM_DOOM_ST_HASH + KVM_DOOM_ST_REC * f], 4); memcpy(&y, &state[KVM_DOOM_ST_HASH + KVM_DOOM_ST_REC * f + 1], 4); fprintf(js, "%s[%u, %u]", f ? ", " : "", x, y); }
-    fprintf(js, "], \"states\": [");
-    for (int f = 0; f < frames; ++f) { fprintf(js, "%s[", f ? ", " : ""); for (int i = 0; i < 14; ++i) { int v; memcpy(&v, &state[KVM_DOOM_ST_HASH + KVM_DOOM_ST_REC * f + 2 + i], 4); fprintf(js, "%s%d", i ? ", " : "", v); } fprintf(js, "]"); }
-    fprintf(js, "], \"state_names\": [");
-    for (int i = 0; i < 14; ++i) fprintf(js, "%s\"%s\"", i ? ", " : "", names[i]);
-    fprintf(js, "]}\n"); fclose(js);
+    for (int k = 0; k < NI; ++k) {
+      const std::string od = multi ? out + "/inst" + std::to_string(k) : out; mkdir(od.c_str(), 0755);
+      std::vector<float> state = ex.read_buffer(buf_idx.at(bname("d_state", k)));
+      FILE* fr = fopen((od + "/frames.bin").c_str(), "wb");
+      for (int f = 0; f < frames; ++f) { std::vector<float> fb = ex.read_buffer(buf_idx.at(fbname(k, f))); fwrite(fb.data(), 1, KVM_DOOM_FB_BYTES, fr); }
+      fclose(fr);
+      FILE* js = fopen((od + "/summary.json").c_str(), "w");
+      fprintf(js, "{\"frames\": %d, \"hashes\": [", frames);
+      for (int f = 0; f < frames; ++f) { uint32_t x, y; memcpy(&x, &state[KVM_DOOM_ST_HASH + KVM_DOOM_ST_REC * f], 4); memcpy(&y, &state[KVM_DOOM_ST_HASH + KVM_DOOM_ST_REC * f + 1], 4); fprintf(js, "%s[%u, %u]", f ? ", " : "", x, y); }
+      fprintf(js, "], \"states\": [");
+      for (int f = 0; f < frames; ++f) { fprintf(js, "%s[", f ? ", " : ""); for (int i = 0; i < 14; ++i) { int v; memcpy(&v, &state[KVM_DOOM_ST_HASH + KVM_DOOM_ST_REC * f + 2 + i], 4); fprintf(js, "%s%d", i ? ", " : "", v); } fprintf(js, "]"); }
+      fprintf(js, "], \"state_names\": [");
+      for (int i = 0; i < 14; ++i) fprintf(js, "%s\"%s\"", i ? ", " : "", names[i]);
+      fprintf(js, "]}\n"); fclose(js);
+    }
 
     // ---- competing compute load: every chain output must equal A@B
     int mm_ok = 0, mm_bad = 0; double mm_worst = 0;
@@ -90,21 +98,31 @@ int main(int argc, char** argv) {
     std::vector<double> tick_s(frames, -1), tick_e(frames, -1), frame_done(frames, -1), tick_wait;
     unsigned long long t0 = ~0ull; for (auto& t : r.trace) if (t.admit_ns) t0 = std::min(t0, t.admit_ns);
     auto us = [&](unsigned long long x) { return (double)(x - t0) / 1e3; };
-    const int op_tick = kvm_op_by_name("doom_tick");
+    const int op_tick = kvm_op_by_name("doom_tick"), op_tick_n = kvm_op_by_name("doom_tick_n");
+    auto is_tick = [&](int op) { return op == op_tick || op == op_tick_n; };
+    auto is_game = [&](int op) { return is_tick(op) || op == kvm_op_by_name("doom_present") || op == kvm_op_by_name("doom_status") || op == kvm_op_by_name("doom_present_n") || op == kvm_op_by_name("doom_status_n"); };
+    if (multi) {   // per-instance cadence: the bundle lists instance 0's tasks first, then instance 1's, ...; ticks are in chain order
+      std::vector<double> ts; for (size_t i = 0; i < r.trace.size(); ++i) if (is_tick(r.tasks[i].op_id) && r.trace[i].end_ns) ts.push_back(r.trace[i].start_ns / 1e3);
+      for (int k = 0; k < NI && (size_t)(k + 1) * frames <= ts.size(); ++k) {
+        std::vector<double> g; for (int f = 2; f < frames; ++f) g.push_back(ts[k * frames + f] - ts[k * frames + f - 1]);
+        const double sp = (ts[k * frames + frames - 1] - ts[k * frames + 1]) / 1e6;
+        KLOG(2, "instance %d: %.1f fps, tick gap p50/p99/max %.2f/%.2f/%.2f ms, %d gaps over 28.57 ms", k, sp > 0 ? (frames - 2) / sp : 0.0, pct(g, .5) / 1e3, pct(g, .99) / 1e3, pct(g, 1) / 1e3, (int)std::count_if(g.begin(), g.end(), [](double x) { return x > 1e6 / 35; }));
+      }
+    }
     std::map<int, double> busy_doom, busy_other; std::set<int> doom_sms, all_sms; double t_end = 0, other_run = 0, doom_run = 0;
     for (size_t i = 0; i < r.trace.size(); ++i) {
       const KvmTrace& t = r.trace[i]; const int op = r.tasks[i].op_id;
       if (!t.end_ns) continue;
       const double run = (double)(t.end_ns - t.start_ns) / 1e3; t_end = std::max(t_end, us(t.end_ns)); all_sms.insert(t.smid);
-      const bool is_doom = op == op_tick || op == kvm_op_by_name("doom_present") || op == kvm_op_by_name("doom_status");
+      const bool is_doom = is_game(op);
       (is_doom ? busy_doom : busy_other)[t.smid] += run; (is_doom ? doom_run : other_run) += run; if (is_doom) doom_sms.insert(t.smid);
     }
     // frame index of a task = its 'frame'/ordinal: ticks appear in frame order in the bundle
-    { int f = 0; for (size_t i = 0; i < r.trace.size(); ++i) if (r.tasks[i].op_id == op_tick && f < frames) { const KvmTrace& t = r.trace[i]; tick_s[f] = us(t.start_ns); tick_e[f] = us(t.end_ns); tick_wait.push_back((double)(t.start_ns - t.ready_ns) / 1e3); ++f; } }
-    { int f = -1; for (size_t i = 0; i < r.trace.size(); ++i) { const int op = r.tasks[i].op_id; if (op == op_tick) ++f; if (f >= 0 && f < frames && (op == op_tick || op == kvm_op_by_name("doom_present") || op == kvm_op_by_name("doom_status"))) frame_done[f] = std::max(frame_done[f], us(r.trace[i].end_ns)); } }
+    { int f = 0; for (size_t i = 0; i < r.trace.size(); ++i) if (is_tick(r.tasks[i].op_id) && f < frames) { const KvmTrace& t = r.trace[i]; tick_s[f] = us(t.start_ns); tick_e[f] = us(t.end_ns); tick_wait.push_back((double)(t.start_ns - t.ready_ns) / 1e3); ++f; } }
+    { int f = -1; for (size_t i = 0; i < r.trace.size(); ++i) { const int op = r.tasks[i].op_id; if (is_tick(op)) ++f; if (f >= 0 && f < frames && is_game(op)) frame_done[f] = std::max(frame_done[f], us(r.trace[i].end_ns)); } }
     std::vector<double> gap, lat; for (int f = 2; f < frames; ++f) gap.push_back(tick_s[f] - tick_s[f - 1]); for (int f = 1; f < frames; ++f) lat.push_back(frame_done[f] - tick_s[f]);
     int gap_miss = 0, tick_missed = 0; for (double g : gap) gap_miss += g > 1e6 / 35;   // a tick later than one 35 Hz period after the previous one
-    for (size_t i = 0; i < r.trace.size(); ++i) tick_missed += r.tasks[i].op_id == op_tick && (r.trace[i].flags & KVM_TRACE_MISSED);   // absolute deadlines (frames 0-6 are late because of the 170-330 ms boot tick)
+    for (size_t i = 0; i < r.trace.size(); ++i) tick_missed += is_tick(r.tasks[i].op_id) && (r.trace[i].flags & KVM_TRACE_MISSED);   // absolute deadlines (frames 0-6 are late because of the 170-330 ms boot tick)
     const double span_s = frames > 2 ? (tick_s[frames - 1] - tick_s[1]) / 1e6 : 0;
     const int workers = r.grid - 1; const double busy_total = doom_run + other_run;
     FILE* mj = fopen((out + "/metrics.json").c_str(), "w");

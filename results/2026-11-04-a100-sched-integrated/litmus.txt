@@ -4,7 +4,7 @@ Build cuda_12.8.r12.8/compiler.35583870_0
 NVIDIA A100-SXM4-40GB, 580.105.08, 1410 MHz
 BUILD: tests/gpu/build.sh
 BUILD: tests/litmus/build.sh (prod + 6 mutants), e2e, e2e -DKVM_BREAK_FENCE, kvm_exec
-built in /home/ubuntu/kvm-sched-final/out
+built in $HOME/kvm-sched-final/out
 == properties on the production headers (must be 0 violations)
 property sb(controls included): TOTAL rounds=2500000 violations=0 (exit 0)
 property dekker1: TOTAL rounds=500000 violations=0 (exit 0)

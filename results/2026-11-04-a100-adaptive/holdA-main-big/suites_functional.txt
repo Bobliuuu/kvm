@@ -1,0 +1,45 @@
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80
+== telemetry
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 6 (1 admitter + 1 policy + 4 workers)
+[kvm_exec][I] kernel launched: grid 6 x 256 threads, live_cap 4096, slots 16384, succ ring 2097152 words, ring 16384 words, aging 0 us, sched dynamic
+[kvm_exec][I] kernel done: 700/700 tasks in 43.301 ms, 3 records, 0 ring wraps, 0 backpressure waits
+  trace: 300 deadline tasks, 296 near miss, 296 missed, 396 waited over target; device: dl_n 300 near 296 missed 296 wait_over(cls1) 396; mapped telemetry at exit: near 296
+== telemetry: PASS (0.2s, 0 new failures)
+== loop
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 64 (1 admitter + 1 policy + 62 workers)
+[kvm_exec][I] kernel launched: grid 64 x 256 threads, live_cap 16384, slots 262144, succ ring 2097152 words, ring 131072 words, aging 0 us, sched dynamic
+[kvm_exec][D] ring wrap: 1720 pad words
+[kvm_exec][D] ring wrap: 1720 pad words
+[kvm_exec][D] ring wrap: 1720 pad words
+[kvm_exec][D] ring wrap: 1720 pad words
+[kvm_exec][D] ring wrap: 600 pad words
+[kvm_exec][D] ring wrap: 24 pad words
+[kvm_exec][D] ring wrap: 3896 pad words
+[kvm_exec][D] ring wrap: 1720 pad words
+[kvm_exec][D] ring wrap: 1720 pad words
+[kvm_exec][D] ring wrap: 1720 pad words
+[kvm_exec][D] ring wrap: 1720 pad words
+[kvm_exec][D] ring wrap: 1720 pad words
+[kvm_exec][D] ring wrap: 1720 pad words
+[kvm_exec][D] ring wrap: 1720 pad words
+[kvm_exec][D] ring wrap: 1720 pad words
+[kvm_exec][D] ring wrap: 1720 pad words
+[kvm_exec][I] kernel done: 127520/127520 tasks in 637.246 ms, 569 records, 16 ring wraps, 0 backpressure waits
+  burst of serve demand beside saturating batch (62 workers): reservation reached 50 CTAs (10 CTAs reached after 0.6 ms), released to 0 after 7 ms; batch got 34% of the SM time during the burst; 51 parameter writes
+== loop: PASS (0.7s, 0 new failures)
+== floor
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 32 (1 admitter + 1 policy + 30 workers)
+[kvm_exec][I] kernel launched: grid 32 x 256 threads, live_cap 8192, slots 131072, succ ring 2097152 words, ring 131072 words, aging 0 us, sched dynamic
+[kvm_exec][D] ring wrap: 1440 pad words
+[kvm_exec][D] ring wrap: 1440 pad words
+[kvm_exec][D] ring wrap: 1440 pad words
+[kvm_exec][D] ring wrap: 1440 pad words
+[kvm_exec][D] ring wrap: 4840 pad words
+[kvm_exec][D] ring wrap: 1440 pad words
+[kvm_exec][D] ring wrap: 3152 pad words
+[kvm_exec][D] ring wrap: 1440 pad words
+[kvm_exec][I] kernel done: 61800/61800 tasks in 449.409 ms, 294 records, 8 ring wraps, 0 backpressure waits
+  sustained overload by a weight-100 class against a weight-1 batch class: batch SM-time share 0.213 with the controller's 20% floor
+== floor: PASS (0.5s, 0 new failures)
+15 checks, 0 failed, 0 suites failed
+PASS

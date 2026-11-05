@@ -1,0 +1,4 @@
+compared 180 frames: raw-identical 180/180, fingerprint-identical 180/180, state-identical 180/180
+final ref  {'booted': 1, 'tics': 180, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 0, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 536, 'y': -3212, 'waypoint': 3} 
+final cand {'booted': 1, 'tics': 180, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 0, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 536, 'y': -3212, 'waypoint': 3}
+PASS

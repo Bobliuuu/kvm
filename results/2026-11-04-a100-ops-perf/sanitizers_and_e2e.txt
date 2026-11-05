@@ -1,0 +1,16 @@
+test_e2e exit 0
+
+7 passed, 0 failed
+sanitizer memcheck exit 0
+1104 passed, 0 failed
+========= ERROR SUMMARY: 0 errors
+sanitizer racecheck exit 0
+1104 passed, 0 failed
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer synccheck exit 0
+1104 passed, 0 failed
+========= ERROR SUMMARY: 0 errors
+sanitizer initcheck exit 0
+1104 passed, 0 failed
+========= ERROR SUMMARY: 0 errors
+JOB_DONE

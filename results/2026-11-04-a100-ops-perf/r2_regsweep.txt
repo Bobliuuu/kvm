@@ -1,0 +1,33 @@
+VARIANT base
+OK: 206/206 tasks, 2.441 ms
+OK: 206/206 tasks, 3.058 ms
+OK: 206/206 tasks, 3.060 ms
+OK: 206/206 tasks, 3.053 ms
+OK: 206/206 tasks, 3.043 ms
+OK: 206/206 tasks, 3.074 ms
+OK: 206/206 tasks, 3.064 ms
+VARIANT -maxrregcount=128
+OK: 206/206 tasks, 3.067 ms
+OK: 206/206 tasks, 3.056 ms
+OK: 206/206 tasks, 3.054 ms
+OK: 206/206 tasks, 3.102 ms
+OK: 206/206 tasks, 3.138 ms
+OK: 206/206 tasks, 3.159 ms
+OK: 206/206 tasks, 3.060 ms
+VARIANT -maxrregcount=168
+OK: 206/206 tasks, 3.056 ms
+OK: 206/206 tasks, 3.050 ms
+OK: 206/206 tasks, 3.049 ms
+OK: 206/206 tasks, 3.043 ms
+OK: 206/206 tasks, 3.047 ms
+OK: 206/206 tasks, 3.145 ms
+OK: 206/206 tasks, 3.076 ms
+VARIANT -maxrregcount=200
+OK: 206/206 tasks, 3.045 ms
+OK: 206/206 tasks, 3.041 ms
+OK: 206/206 tasks, 3.058 ms
+OK: 206/206 tasks, 3.049 ms
+OK: 206/206 tasks, 3.058 ms
+OK: 206/206 tasks, 3.064 ms
+OK: 206/206 tasks, 3.084 ms
+JOB_DONE

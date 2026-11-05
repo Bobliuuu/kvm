@@ -1,0 +1,6 @@
+{"tag": "global-rep4", "device": "NVIDIA A100-SXM4-40GB", "sms": 108, "grid": 108, "workers": 106, "sched": "global", "ctl": "none", "duration_s": 24.036, "kernel_ms": 24207.340,
+ "doom": {"instances": 1, "frames": 840, "deadline_misses": 65, "frame_time_us": {"p50": 15991, "p99": 40516, "p999": 68788, "max": 68788}, "lateness_us": {"p99": 183111, "p999": 223537, "max": 223537}, "fps": 0.77},
+ "serve": {"arrivals": 2131, "completed": 1715, "dropped": 416, "latency_us": {"p50": 149113, "p99": 168954, "p999": 172972, "max": 178125}, "tokens_consistent": 1},
+ "train": {"runs": 3, "steps": 1097, "steps_per_s": 45.640},
+ "sweep": {"gb": 0.00, "gbytes_moved": 0.00, "gb_per_s": 0.0},
+ "tasks": {"admitted": 12744538, "done": 12744538}, "doom_frames_done": 841}

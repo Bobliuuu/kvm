@@ -1,8 +1,8 @@
 # 2026-11-04T03:40:58Z  Build cuda_12.8.r12.8/compiler.35583870_0  NVIDIA A100-SXM4-40GB, 580.105.08
 BUILD: nvcc -O3 -arch=sm_80 -std=c++17 -rdc=true -DKVM_WITH_GAME -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off doom/exec_main.cu doom/build/doom_dev.o -o doom/build/doom_exec_sched
 [cpu_run 03:41:26] INFO 700 frames; final {"booted": 1, "tics": 700, "gamestate": 0, "health": 100, "armor": 100, "kills": 3, "monsters": 6, "items": 2, "secrets": 0, "deaths": 0, "level_finished_tic": -1, "x": 2458, "y": -2679, "waypoint": 17}
-2026-11-04 03:41:27,755 INFO kvm.compiler: wrote bundle to /home/ubuntu/kvm-sched-final/logs/doomsched/alone.bundle
-2026-11-04 03:41:29,024 INFO kvm.compiler: wrote bundle to /home/ubuntu/kvm-sched-final/logs/doomsched/load.bundle
+2026-11-04 03:41:27,755 INFO kvm.compiler: wrote bundle to $HOME/kvm-sched-final/logs/doomsched/alone.bundle
+2026-11-04 03:41:29,024 INFO kvm.compiler: wrote bundle to $HOME/kvm-sched-final/logs/doomsched/load.bundle
 === scenario alone_orig   doom_exec alone 
 [kvm_exec][I] workload 0: 4200 tasks, 4.041 CTA-s, queue wait p50 8.2 p99 13.3 max 16.4 us, 54 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
 [kvm_exec][I] 35 Hz: 0 of 698 tick gaps over 28.57 ms, 9 ticks flagged missed (absolute deadline)

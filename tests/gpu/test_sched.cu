@@ -60,6 +60,9 @@ static bool suite_cost() {
   c = kvm_cost(KVM_OP_copy, small);
   CHECK(c.res == KVM_RES_LAT, "a 2 KiB copy must be latency-bound, got res %d", c.res);
   c = kvm_cost(KVM_OP_spin, a); CHECK(c.res == KVM_RES_LAT && c.bytes == 0, "spin is latency-bound");
+  int32_t ad[16] = {0, 1, 2, 3, -1, 5, 100, 1124, 0, 0, 0, 0, 0, 0, 0, 0};   // adamw p,g,m,v,gscale?,step,e0,e1,...: 1024 elements, 7 words each
+  c = kvm_cost(KVM_OP_adamw, ad); CHECK(c.res == KVM_RES_BW && c.bytes == 28ull * 1024, "adamw 1024 elements: res %d bytes %llu", c.res, (unsigned long long)c.bytes);
+  ad[7] = 100 + 256; c = kvm_cost(KVM_OP_adamw, ad); CHECK(c.res == KVM_RES_LAT, "a 7 KiB adamw chunk is latency-bound (demoted), got res %d", c.res);
   c = kvm_cost(9999, a); CHECK(c.res == KVM_RES_MIXED && c.bytes == 0, "unknown op must get the default (MIXED, 0 bytes)");
   int listed = 0; for (const KvmOpInfo& o : kKvmOps) { bool in = false; for (const char* n : kKvmCostNames) in = in || !strcmp(n, o.name); listed += in; }
   printf("  cost table: %zu entries, all registered; %d of %d registered ops listed, the rest use the default (MIXED, 0 bytes); copy/matmul/default estimates checked\n",
@@ -323,6 +326,7 @@ static bool suite_smoke_sched() {
 #include "sched_bench.inc"
 #endif
 
+#ifndef KVM_SCHED_NO_MAIN   // test_adaptive.cu reuses the helpers above with its own main
 int main(int argc, char** argv) {
   bool expect_fail = false; std::vector<std::string> want;
   for (int i = 1; i < argc; ++i) { std::string a = argv[i]; if (a == "--expect-fail") expect_fail = true; else if (a == "--quiet") g_kvm_log = 0; else if (a == "--log") g_kvm_log = atoi(argv[++i]); else want.push_back(a); }
@@ -354,3 +358,4 @@ int main(int argc, char** argv) {
   printf(failed_suites ? "FAIL\n" : "PASS\n");
   return failed_suites ? 1 : 0;
 }
+#endif  // KVM_SCHED_NO_MAIN

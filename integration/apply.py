@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Apply an opt-in ready-only scheduling A/B experiment to upstream kvm.cu.
 
-Usage: python3 integration/apply.py /path/to/Bobliuuu/kvm/kvm.cu
+Usage: python3 integration/apply.py /path/to/kvm/kvm.cu
 Writes kvm_ready.cu beside original; never overwrites original.
 """
 import pathlib, sys

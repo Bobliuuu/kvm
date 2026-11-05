@@ -1,0 +1,106 @@
+      4     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+      1 ptxas info    : Used 94 registers, used 1 barriers, 392 bytes cmem[0]
+      1 ptxas info    : Used 80 registers, used 1 barriers, 8 bytes cumulative stack size, 392 bytes cmem[0]
+      1 ptxas info    : Used 32 registers, used 0 barriers, 392 bytes cmem[0]
+      1 ptxas info    : Used 171 registers, used 1 barriers, 32 bytes cumulative stack size, 400 bytes cmem[0], 368 bytes cmem[2]
+      1 ptxas info    : Used 128 registers, used 1 barriers, 40 bytes cumulative stack size, 392 bytes cmem[0]
+      1 ptxas info    : Used 127 registers, used 1 barriers, 392 bytes cmem[0]
+      1     8 bytes stack frame, 8 bytes spill stores, 8 bytes spill loads
+device: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz
+PASS  bench check: matmul TF32 NN 4096x4096x4096  400 sampled elements relerr 2.67e-04
+BENCH  matmul TF32 NN 4096x4096x4096                  full dispatch    4.682 ms [4.682..4.696]    29352.0 GFLOP/s  (18.8% of 156000)
+BENCH  matmul TF32 NN 4096x4096x4096                  single-op        3.935 ms [3.878..3.940]    34923.4 GFLOP/s  (22.4% of 156000)
+PASS  bench check: matmul TF32 TN 4096x4096x4096  400 sampled elements relerr 3.04e-04
+BENCH  matmul TF32 TN 4096x4096x4096                  full dispatch    4.856 ms [4.854..4.857]    28305.8 GFLOP/s  (18.1% of 156000)
+BENCH  matmul TF32 TN 4096x4096x4096                  single-op        4.028 ms [3.990..4.068]    34117.4 GFLOP/s  (21.9% of 156000)
+PASS  bench check: matmul TF32 NT 4096x4096x4096  400 sampled elements relerr 2.64e-04
+BENCH  matmul TF32 NT 4096x4096x4096                  full dispatch    4.995 ms [4.987..5.000]    27516.6 GFLOP/s  (17.6% of 156000)
+BENCH  matmul TF32 NT 4096x4096x4096                  single-op        3.903 ms [3.815..3.903]    35216.7 GFLOP/s  (22.6% of 156000)
+PASS  bench check: matmul 3xTF32 NN 4096x4096x4096  400 sampled elements relerr 1.77e-05
+BENCH  matmul 3xTF32 NN 4096x4096x4096                full dispatch    8.020 ms [8.020..8.038]    17136.7 GFLOP/s  (33.0% of 52000)
+BENCH  matmul 3xTF32 NN 4096x4096x4096                single-op        6.947 ms [6.932..7.005]    19783.9 GFLOP/s  (38.0% of 52000)
+PASS  bench check: matmul TF32 NN 2048x2048x2048  400 sampled elements relerr 2.51e-04
+BENCH  matmul TF32 NN 2048x2048x2048                  full dispatch    0.635 ms [0.635..0.636]    27046.9 GFLOP/s  (17.3% of 156000)
+BENCH  matmul TF32 NN 2048x2048x2048                  single-op        0.529 ms [0.529..0.529]    32482.5 GFLOP/s  (20.8% of 156000)
+PASS  bench check: matmul TF32 NN 8192x768x768  400 sampled elements relerr 2.44e-04
+BENCH  matmul TF32 NN 8192x768x768                    full dispatch    0.412 ms [0.412..0.413]    23440.6 GFLOP/s  (15.0% of 156000)
+BENCH  matmul TF32 NN 8192x768x768                    single-op        0.326 ms [0.326..0.327]    29602.2 GFLOP/s  (19.0% of 156000)
+PASS  bench check: matmul TF32 NN 1024x1024x1024  400 sampled elements relerr 3.17e-04
+BENCH  matmul TF32 NN 1024x1024x1024                  full dispatch    0.105 ms [0.105..0.105]    20460.0 GFLOP/s  (13.1% of 156000)
+BENCH  matmul TF32 NN 1024x1024x1024                  single-op        0.094 ms [0.093..0.094]    22944.8 GFLOP/s  (14.7% of 156000)
+PASS  bench check: matmul TF32 NN 4096x3072x768  400 sampled elements relerr 2.24e-04
+BENCH  matmul TF32 NN 4096x3072x768                   full dispatch    0.791 ms [0.790..0.793]    24448.7 GFLOP/s  (15.7% of 156000)
+BENCH  matmul TF32 NN 4096x3072x768                   single-op        0.621 ms [0.621..0.622]    31104.8 GFLOP/s  (19.9% of 156000)
+PASS  bench check: matmul TF32 NN 512x512x512  400 sampled elements relerr 3.65e-04
+BENCH  matmul TF32 NN 512x512x512                     full dispatch    0.023 ms [0.023..0.023]    11755.3 GFLOP/s  (7.5% of 156000)
+BENCH  matmul TF32 NN 512x512x512                     single-op        0.024 ms [0.024..0.024]    11107.8 GFLOP/s  (7.1% of 156000)
+PASS  bench check: attn fwd B=4 T=1024 H=16 Hkv=16 hd=64 (b0,h0 all rows)  relerr 1.56e-07
+PASS  bench check: attn bwd dq B=4 T=1024 H=16 hd=64 (b0,h0)  relerr 4.03e-07
+PASS  bench check: attn bwd dk B=4 T=1024 H=16 hd=64 (b0,h0)  relerr 1.46e-06
+BENCH  attn fwd B=4 T=1024 H=16 Hkv=16 hd=64          full dispatch    2.069 ms [2.067..2.069]     4152.4 GFLOP/s  (21.3% of 19500)
+BENCH  attn fwd B=4 T=1024 H=16 Hkv=16 hd=64          single-op        1.680 ms [1.680..1.681]     5111.9 GFLOP/s  (26.2% of 19500)
+BENCH  attn bwd B=4 T=1024 H=16 Hkv=16 hd=64          full dispatch    6.628 ms [6.627..6.629]     3239.8 GFLOP/s  (16.6% of 19500)
+BENCH  attn bwd B=4 T=1024 H=16 Hkv=16 hd=64          single-op        5.754 ms [5.753..5.755]     3732.3 GFLOP/s  (19.1% of 19500)
+PASS  bench check: attn fwd B=4 T=2048 H=16 Hkv=4 hd=64 (b0,h0 all rows)  relerr 1.86e-07
+BENCH  attn fwd B=4 T=2048 H=16 Hkv=4 hd=64           full dispatch    7.510 ms [7.510..7.511]     4575.1 GFLOP/s  (23.5% of 19500)
+BENCH  attn fwd B=4 T=2048 H=16 Hkv=4 hd=64           single-op        6.452 ms [6.451..6.452]     5325.6 GFLOP/s  (27.3% of 19500)
+BENCH  attn bwd B=4 T=2048 H=16 Hkv=4 hd=64           full dispatch   23.569 ms [23.568..23.570]     3644.6 GFLOP/s  (18.7% of 19500)
+BENCH  attn bwd B=4 T=2048 H=16 Hkv=4 hd=64           single-op       21.054 ms [21.050..21.098]     4080.0 GFLOP/s  (20.9% of 19500)
+PASS  bench check: attn fwd B=2 T=2048 H=8 Hkv=8 hd=128 (b0,h0 all rows)  relerr 1.88e-07
+PASS  bench check: attn bwd dq B=2 T=2048 H=8 hd=128 (b0,h0)  relerr 5.36e-07
+PASS  bench check: attn bwd dk B=2 T=2048 H=8 hd=128 (b0,h0)  relerr 1.96e-06
+BENCH  attn fwd B=2 T=2048 H=8 Hkv=8 hd=128           full dispatch    5.339 ms [5.338..5.350]     3218.0 GFLOP/s  (16.5% of 19500)
+BENCH  attn fwd B=2 T=2048 H=8 Hkv=8 hd=128           single-op        4.924 ms [4.923..4.926]     3489.1 GFLOP/s  (17.9% of 19500)
+BENCH  attn bwd B=2 T=2048 H=8 Hkv=8 hd=128           full dispatch   16.612 ms [16.612..16.615]     2585.4 GFLOP/s  (13.3% of 19500)
+BENCH  attn bwd B=2 T=2048 H=8 Hkv=8 hd=128           single-op       16.050 ms [16.037..16.061]     2676.0 GFLOP/s  (13.7% of 19500)
+PASS  bench check: layernorm fwd 16384x1024 (first 64 rows)  relerr 1.438e-07 (tol 1e-05)
+BENCH  layernorm fwd 16384x1024                       full dispatch    0.152 ms [0.152..0.152]      881.2 GB/s  (56.7% of 1555)
+PASS  bench check: adamw 16M (first step; later steps mutate state)  max abs diff 1.91e-07 (sampled)
+BENCH  adamw 16M params                               full dispatch    0.455 ms [0.455..0.456]     1032.1 GB/s  (66.4% of 1555)
+PASS  bench check: gelu fwd 64M  max abs diff 2.82e-07 (sampled)
+BENCH  gelu fwd 64M                                   full dispatch    1.754 ms [1.753..1.754]      306.1 GB/s  (19.7% of 1555)
+PASS  bench check: softmax_ce fwd 8192x50304  mean of first 64 row losses 15.139536 vs 15.139537
+BENCH  softmax_ce fwd 8192x50304                      full dispatch    1.803 ms [1.803..1.803]      914.3 GB/s (1 read counted)  (58.8% of 1555)
+BENCH  softmax_ce bwd 8192x50304                      full dispatch    3.290 ms [3.289..3.729]     1002.1 GB/s (read+write)  (64.4% of 1555)
+
+20 passed, 0 failed
+device: NVIDIA A100-SXM4-40GB 108 SMs, torch 2.7.0
+REF    matmul tf32 NN 4096x4096x4096                           1.302 ms [1.301..1.302]   105591.8 GFLOP/s
+REF    matmul tf32 TN 4096x4096x4096                           1.328 ms [1.328..1.329]   103459.3 GFLOP/s
+REF    matmul tf32 NT 4096x4096x4096                           1.300 ms [1.299..1.301]   105716.5 GFLOP/s
+REF    matmul tf32 NN 2048x2048x2048                           0.219 ms [0.219..0.220]    78434.9 GFLOP/s
+REF    matmul tf32 NN 8192x768x768                             0.121 ms [0.121..0.123]    79773.3 GFLOP/s
+REF    matmul tf32 NN 1024x1024x1024                           0.043 ms [0.043..0.044]    50051.4 GFLOP/s
+REF    matmul tf32 NN 4096x3072x768                            0.193 ms [0.187..0.228]   100129.3 GFLOP/s
+REF    matmul tf32 NN 512x512x512                              0.016 ms [0.015..0.023]    17022.3 GFLOP/s
+REF    matmul fp32 NN 4096x4096x4096                           7.228 ms [7.221..7.318]    19014.5 GFLOP/s
+REF    matmul fp32 NN 2048x2048x2048                           0.976 ms [0.975..0.977]    17602.8 GFLOP/s
+REF    matmul fp32 NN 8192x768x768                             0.558 ms [0.557..0.559]    17309.6 GFLOP/s
+REF    matmul fp32 NN 1024x1024x1024                           0.132 ms [0.131..0.133]    16257.0 GFLOP/s
+REF    matmul fp32 NN 4096x3072x768                            1.064 ms [1.062..1.064]    18172.9 GFLOP/s
+REF    matmul fp32 NN 512x512x512                              0.029 ms [0.029..0.029]     9230.4 GFLOP/s
+REF    matmul bf16 NN 4096x4096x4096                           0.514 ms [0.513..0.521]   267259.5 GFLOP/s
+REF    matmul bf16 TN 4096x4096x4096                           0.508 ms [0.507..0.508]   270764.0 GFLOP/s
+REF    matmul bf16 NT 4096x4096x4096                           0.515 ms [0.514..0.543]   267100.0 GFLOP/s
+REF    matmul bf16 NN 2048x2048x2048                           0.116 ms [0.116..0.117]   147556.9 GFLOP/s
+REF    matmul bf16 NN 8192x768x768                             0.054 ms [0.053..0.056]   178396.7 GFLOP/s
+REF    matmul bf16 NN 1024x1024x1024                           0.022 ms [0.021..0.022]    99864.4 GFLOP/s
+REF    matmul bf16 NN 4096x3072x768                            0.095 ms [0.095..0.095]   203387.6 GFLOP/s
+REF    matmul bf16 NN 512x512x512                              0.014 ms [0.014..0.016]    19418.1 GFLOP/s
+REF    attn fwd fp32 B=4 T=1024 H=16 Hkv=16 hd=64              0.531 ms [0.525..0.543]    16184.9 GFLOP/s
+REF    attn bwd fp32 B=4 T=1024 H=16 Hkv=16 hd=64              1.356 ms [1.350..1.364]    15834.7 GFLOP/s
+REF    attn fwd fp32 B=4 T=2048 H=16 Hkv=4 hd=64               1.741 ms [1.734..1.757]    19730.9 GFLOP/s
+REF    attn bwd fp32 B=4 T=2048 H=16 Hkv=4 hd=64               4.648 ms [4.642..4.658]    18481.2 GFLOP/s
+REF    attn fwd fp32 B=2 T=2048 H=8 Hkv=8 hd=128               0.828 ms [0.827..0.829]    20745.9 GFLOP/s
+REF    attn bwd fp32 B=2 T=2048 H=8 Hkv=8 hd=128               2.523 ms [2.515..2.532]    17022.3 GFLOP/s
+REF    attn fwd bf16 B=4 T=1024 H=16 Hkv=16 hd=64              0.092 ms [0.091..0.093]    93622.9 GFLOP/s
+REF    attn bwd bf16 B=4 T=1024 H=16 Hkv=16 hd=64              0.309 ms [0.308..0.312]    69442.1 GFLOP/s
+REF    attn fwd bf16 B=4 T=2048 H=16 Hkv=4 hd=64               0.258 ms [0.257..0.260]   132994.2 GFLOP/s
+REF    attn bwd bf16 B=4 T=2048 H=16 Hkv=4 hd=64               0.896 ms [0.892..0.904]    95913.7 GFLOP/s
+REF    attn fwd bf16 B=2 T=2048 H=8 Hkv=8 hd=128               0.159 ms [0.157..0.160]   108379.9 GFLOP/s
+REF    attn bwd bf16 B=2 T=2048 H=8 Hkv=8 hd=128               0.477 ms [0.476..0.480]    89967.9 GFLOP/s
+REF    layernorm fwd 16384x1024                                0.108 ms [0.108..0.109]     1237.1 GB/s
+REF    adamw 16M params (torch._fused_adamw_)                  0.382 ms [0.380..0.385]     1230.1 GB/s
+REF    softmax_ce fwd 8192x50304 (F.cross_entropy)             5.086 ms [5.085..5.087]      324.1 GB/s (1 read counted)
+REF    softmax_ce bwd 8192x50304 (autograd)                    6.099 ms [6.096..6.103]      540.5 GB/s (read+write)
+REF    gelu fwd 64M (F.gelu tanh)                              0.393 ms [0.393..0.394]     1364.6 GB/s

@@ -448,6 +448,13 @@ static bool suite_admission() {
 struct Golden { std::vector<float> w; };
 static float step_g(int s) { return (float)(s % 7 + 1) * 0.25f; }
 
+// An at_least reader (no WAR gate against the next writer) may legitimately observe the NEXT version's data while the version
+// variable it reads still shows the old one: the writer stores the weights, then fences, then publishes the version, and the
+// reader's trace ver1 is sampled after its op. The data is therefore in [ver0, ver1 + 1]; ver1 + 2 would need a second publish
+// that the train chain (sgd_{s+1} waits for sgd_s's successor wake, after sgd_s's publish) cannot reach before ver1 is read.
+// Exact readers are gated against the next writer and stay strict (ver0 == ver1 == snapshot, data of exactly that version).
+static int at_least_hi(int ver1, int nversions) { return std::min(ver1 + 1, nversions - 1); }
+
 // Checker used both on real traces and on hand-made bad ones (see suite_checker).
 struct ReaderObs { int exact_ver;  // >=0: exact reader of that snapshot; -1: at_least
                    int need; int ver0, ver1; std::vector<float> seen; };
@@ -460,7 +467,7 @@ static int check_reader(const ReaderObs& o, const Golden& g) {
   } else {
     for (float v : o.seen) {
       bool allowed = false;
-      for (int k = o.ver0; k <= std::min<int>(o.ver1 + 1, (int)g.w.size() - 1); ++k) allowed |= same_bits(v, g.w[k]);
+      for (int k = o.ver0; k <= at_least_hi(o.ver1, (int)g.w.size()); ++k) allowed |= same_bits(v, g.w[k]);
       if (!allowed) { ++bad; break; }
     }
   }
@@ -633,9 +640,12 @@ static bool versions_scalar(unsigned seed, int steps, int blocks, bool spins, in
       if (tr.ver0 != rds[k].snap || tr.ver1 != rds[k].snap) ++vb;
       for (int i = 0; i < N; ++i) if (!same_bits(out[i], wk[rds[k].snap] * xs[k][i])) { ++vb; break; }   // predict = w * x_req, bitwise
     } else {  // at_least: output equals w_v * x for some v in [ver0, ver1]
-      for (int i = 0; i < N; ++i) { bool okv = false; for (int v = tr.ver0; v <= tr.ver1 && v <= steps; ++v) okv |= same_bits(out[i], wk[v] * xs[k][i]); if (!okv) { ++vb; break; } }
+      for (int i = 0; i < N; ++i) { bool okv = false; for (int v = tr.ver0; v <= at_least_hi(tr.ver1, steps + 1); ++v) okv |= same_bits(out[i], wk[v] * xs[k][i]); if (!okv) { ++vb; break; } }
     }
-    if (vb) fprintf(stderr, "  seed %u scalar reader %zu (%s snap %d need %d): ver0 %d ver1 %d\n", seed, k, rds[k].exact ? "exact" : "at_least", rds[k].snap, rds[k].need, tr.ver0, tr.ver1);
+    if (vb) {
+      int match = -1; for (int v = 0; v <= steps && match < 0; ++v) if (same_bits(out[0], wk[v] * xs[k][0])) match = v;
+      fprintf(stderr, "  seed %u scalar reader %zu (%s snap %d need %d): ver0 %d ver1 %d, first output equals w_%d * x\n", seed, k, rds[k].exact ? "exact" : "at_least", rds[k].snap, rds[k].need, tr.ver0, tr.ver1, match);
+    }
     bad += vb; (rds[k].exact ? nex_ : nal_)++;
   }
   auto wf = download(ar + 3 * N, 1);
@@ -662,7 +672,8 @@ static bool suite_versions(bool quick) {
 static bool suite_checker() {
   int before = g_fail;
   Golden g; g.w = {1.f, 2.f, 3.f, 4.f};
-  ReaderObs good{2, 2, 2, 2, {3.f, 3.f}}, wrongver{2, 2, 3, 3, {4.f, 4.f}}, torn{2, 2, 2, 2, {3.f, 4.f}}, early{-1, 3, 2, 2, {3.f}}, stale{2, 2, 2, 2, {2.f}}, al_ok{-1, 1, 1, 3, {2.f, 3.f, 4.f}}, al_bad{-1, 1, 1, 2, {1.f}};
+  ReaderObs good{2, 2, 2, 2, {3.f, 3.f}}, wrongver{2, 2, 3, 3, {4.f, 4.f}}, torn{2, 2, 2, 2, {3.f, 4.f}}, early{-1, 3, 2, 2, {3.f}}, stale{2, 2, 2, 2, {2.f}}, al_ok{-1, 1, 1, 3, {2.f, 3.f, 4.f}}, al_bad{-1, 1, 1, 2, {1.f}},
+      al_ahead{-1, 1, 1, 2, {4.f}}, al_far{-1, 1, 1, 1, {4.f}};
   CHECK(check_reader(good, g) == 0, "good exact reader flagged");
   CHECK(check_reader(wrongver, g) > 0, "exact reader that observed another version not flagged");
   CHECK(check_reader(torn, g) > 0, "torn exact read not flagged");
@@ -670,6 +681,8 @@ static bool suite_checker() {
   CHECK(check_reader(stale, g) > 0, "stale value under a fresh version not flagged");
   CHECK(check_reader(al_ok, g) == 0, "good at_least reader flagged");
   CHECK(check_reader(al_bad, g) > 0, "at_least value older than its observed versions not flagged");
+  CHECK(check_reader(al_ahead, g) == 0, "at_least value of version ver1+1 (stored, not yet published) flagged");
+  CHECK(check_reader(al_far, g) > 0, "at_least value of version ver1+2 not flagged");
   // trace checker: fabricate a run with a dependency inversion and a double execution
   KvmResult r; r.done = r.admitted = 2; r.tasks.resize(2); r.trace.resize(2);
   r.tasks[0].workload_id = r.tasks[1].workload_id = 0;
@@ -678,7 +691,7 @@ static bool suite_checker() {
   int f0 = g_fail, c0 = g_checks; g_mute = true; check_trace(r, {bd}); g_mute = false;
   int flagged = g_fail - f0; g_fail = f0; g_checks = c0;  // the expected failures must not count
   CHECK(flagged >= 2, "check_trace flagged %d of 2 injected faults (order inversion + exec_count 2)", flagged);
-  printf("  checker: 7 hand-made reader observations classified correctly; trace checker flagged %d/2 injected faults\n", flagged);
+  printf("  checker: 9 hand-made reader observations classified correctly; trace checker flagged %d/2 injected faults\n", flagged);
   return g_fail == before;
 }
 

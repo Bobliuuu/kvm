@@ -2,17 +2,19 @@
 # GPT golden check on a GPU box: gpt_tiny AdamW bundles (1, 2, 5 steps; 1xTF32 and 3xTF32 GEMMs) through kvm_exec vs the CPU golden.
 # Usage: KVM_HOST=user@host [KVM_KEY=key] [KVM_ARCH=sm_80] tests/gptdiff/run.sh [--sanitize]
 # Bundles are generated here (no GPU needed), run remotely under flock, and checked here by golden_check.py.
+# Remote scratch: private ~/kvm-scratch-gptdiff-$USER-$$ ($KVM_SCRATCH overrides; removed on success unless KVM_KEEP_SCRATCH=1).
+# KVM_NO_LOCK=1 skips the GPU lock (an outer hold exists). See RUNNING_TESTS.md.
 set -euo pipefail
 SANITIZE=0; [ "${1:-}" = "--sanitize" ] && SANITIZE=1
 HOST="${KVM_HOST:?set KVM_HOST=user@host (an environment variable, never a committed file)}"
 ARCH="${KVM_ARCH:-sm_80}"
 SSH="ssh -o StrictHostKeyChecking=no -o BatchMode=yes ${KVM_KEY:+-i $KVM_KEY}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-REMOTE='~/kvm-gptdiff-scratch'
+. "$ROOT/tests/remote_lib.sh"; kvm_scratch gptdiff; kvm_lock 14400
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 LOG="$ROOT/logs/$STAMP-gptdiff"; mkdir -p "$LOG"
 WORK="$LOG/bundles"; mkdir -p "$WORK"
-rsync -az -e "$SSH" --delete --exclude .git --exclude results --exclude logs --exclude docs "$ROOT/" "$HOST:$REMOTE/"
+rsync -az -e "$SSH" --exclude .git --exclude results --exclude logs --exclude docs "$ROOT/" "$HOST:$REMOTE/"
 $SSH "$HOST" "cd $REMOTE && NVCC=\$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc | tail -1) && \$NVCC -O3 -arch=$ARCH -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 kvm_exec.cu -o kvm_exec"
 fail=0
 CASES=""
@@ -32,7 +34,7 @@ REMOTE_RUN="cd $REMOTE && for c in $CASES; do ./kvm_exec --blocks 4 --quiet --du
 if [ "$SANITIZE" = 1 ]; then
   REMOTE_RUN="$REMOTE_RUN; for c in cpu_s2_tf32 cpu_s5_tf32 cpu_s2_precise cpu_s5_precise; do for tool in memcheck racecheck synccheck; do echo \"== compute-sanitizer \$tool \$c\"; compute-sanitizer --tool \$tool --error-exitcode 9 ./kvm_exec --blocks 4 --quiet gptdiff_bundles/\$c 2>&1 | tail -3; echo \"sanitizer exit \${PIPESTATUS[0]}\"; done; done"
 fi
-$SSH "$HOST" "flock -w 14400 ~/.gpu.lock timeout 1200 bash -c '$REMOTE_RUN'" | tee "$LOG/runs.txt"
+$SSH "$HOST" "$FLK timeout 1200 bash -c '$REMOTE_RUN'" | tee "$LOG/runs.txt"
 grep -E "exit [1-9]" "$LOG/runs.txt" && fail=1
 for c in $CASES; do
   d="$WORK/$c"; mode="${c##*_}"
@@ -40,4 +42,5 @@ for c in $CASES; do
   tail -n1 "$d/dump.txt" | sed "s/^/$c kvm_exec: /"
   python3 "$ROOT/tests/gptdiff/golden_check.py" "$d/workload.json" "$d/bundle" "$d/dump.txt" --mode "$mode" | tee "$d/check.txt" || fail=1
 done
+kvm_scratch_done
 echo "logs: $LOG"; exit $fail

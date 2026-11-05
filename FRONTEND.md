@@ -41,6 +41,20 @@ python3 -I -m unittest discover -s tests/frontend      # from the repo root
 `--model` is a preset name, a JSON file or a JSON string (`ModelConfig` fields). The 162M-parameter GPT is a config
 (`gpt_162m`: 12 layers, d768, 12 heads, seq 1024, vocab 50304, batch 4, RoPE, untied head), not code.
 
+## Status
+
+| Piece | State | Evidence |
+|---|---|---|
+| Builder, autodiff, tiling, dataflow, memory plan, emit (GPT, Llama/GQA, MoE, MLP, ViT) | implemented + tested: 59 tests (about 30 s) against independent numpy float64 oracles, finite-difference gradients, any-topological-order bitwise state | `tests/frontend/`, `results/2026-11-04-a100-models` |
+| Fusion, remat, gradient accumulation, device LR schedule, loss scaling, bf16 | implemented + measured on the A100 (fusion -3% Llama / -11% MoE time, remat pool -41 to -59% for +36% tasks); bf16 is emulated in fp32 buffers | `results/2026-11-04-a100-models` |
+| GPT bundles on the executor | implemented + measured; 1xTF32 GEMMs are compared on losses and step-1 buffers, 3xTF32 (flag 16, `gen_bundle.py --precise`) to fp32 level | `results/2026-11-04-a100-gpt-golden` |
+| Windows / MANIFEST runner | CPU reference runner only; the GPU CLI runs single bundles | `kvmfe.run_manifest`, `results/2026-11-04-a100-exec-recycling` |
+| `gpt_162m` | code-only: compiled (318k-task template) and inspected, never run on a GPU | this file |
+| Not built | dynamic shapes, data-dependent control flow, MoE serving, dropout, fp16, a frontend switch for 3xTF32, 128x128 / 256x128 matmul tile stepping in the lowering (the device tiles exist) | below, `results/2026-11-04-a100-ops-perf` |
+| Open test item | `norm_bwd_params` wants >= 64 tasks (16 columns each) to use the GPU; the partition here does not yet give that | `results/2026-11-04-a100-ops-perf` |
+
+Run the frontend tests: `python3 -I -m unittest discover -s tests/frontend` (repo root). Everything else: [RUNNING_TESTS.md](RUNNING_TESTS.md).
+
 ## How the pieces answer "no framework, just a hardwired kernel"
 
 | Need | Where it lives |

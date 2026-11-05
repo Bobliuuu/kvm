@@ -10,7 +10,10 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+#include <condition_variable>
 #include <cstring>
+#include <deque>
+#include <functional>
 #include <fstream>
 #include <map>
 #include <mutex>
@@ -255,7 +258,7 @@ class KvmExec {
     CK(cudaMalloc(&S_.tasks, T * sizeof(KvmTaskDesc)));
     CK(cudaMalloc(&S_.indeg, T * 4)); CK(cudaMalloc(&S_.state, T * 4)); CK(cudaMalloc(&S_.park_next, T * 4));
     CK(cudaMalloc(&S_.trace, T * sizeof(KvmTrace)));
-    CK(cudaMalloc(&S_.args, T * KVM_ARG_STRIDE * 4)); CK(cudaMalloc(&S_.adm_slots, (size_t)cfg_.live_cap * 4));
+    CK(cudaMalloc(&S_.args, T * KVM_ARG_STRIDE * 4)); CK(cudaMalloc(&S_.adm_slots, (size_t)cfg_.live_cap * 4)); CK(cudaMalloc(&S_.stage, (size_t)cfg_.ring_words * 4));
     CK(cudaMalloc(&S_.succ, (size_t)cfg_.succ_cap * 4));
     CK(cudaMalloc(&S_.version, cfg_.num_vars * 4)); CK(cudaMalloc(&S_.park_head, cfg_.num_vars * 4));
     CK(cudaMalloc(&S_.cells, (size_t)nc_ * KVM_NBUCKETS * 4 * (size_t)cfg_.live_cap * sizeof(KvmCell)));
@@ -292,7 +295,7 @@ class KvmExec {
     if (started_ && !finished_) { try { close(); finish(); } catch (...) {} }
     for (size_t i = 0; i < bufs_.size(); ++i) if (!std::count(views_.begin(), views_.end(), i)) cudaFree(bufs_[i].p);
     for (float* p : arenas_) cudaFree(p);
-    for (void* p : {(void*)S_.tasks, (void*)S_.indeg, (void*)S_.state, (void*)S_.park_next, (void*)S_.trace, (void*)S_.succ, (void*)S_.args, (void*)S_.adm_slots,
+    for (void* p : {(void*)S_.tasks, (void*)S_.indeg, (void*)S_.state, (void*)S_.park_next, (void*)S_.trace, (void*)S_.succ, (void*)S_.args, (void*)S_.adm_slots, (void*)S_.stage,
                     (void*)S_.version, (void*)S_.park_head, (void*)S_.cells, (void*)S_.fcells, (void*)S_.qctl, (void*)S_.wins, (void*)S_.cnt, (void*)S_.bufs, (void*)S_.sp.dev, (void*)S_.sp.info, (void*)S_.sp.pv, (void*)S_.sp.pubcls}) cudaFree(p);
     cudaFreeHost(ctl_); cudaFreeHost(ring_); cudaFreeHost((void*)win_done_);
     cudaStreamDestroy(stream_); cudaEventDestroy(e0_); cudaEventDestroy(e1_);
@@ -431,9 +434,21 @@ class KvmExec {
     return KvmSubmit::OK;
   }
   const std::string& last_error() const { return last_error_; }
+  int device_error() const { return herr_->code; }   // first device error code (0 = none)
+  // Words of the admission ring the device has not finished copying yet (what a record submitted now would wait behind).
+  size_t ring_backlog_words() {
+    std::lock_guard<std::mutex> lk(mu_);
+    return (size_t)(wpos_ - __atomic_load_n(ring_head_, __ATOMIC_ACQUIRE));
+  }
 
   // True once every task of window wid (a submitted bundle record) has completed.
-  bool window_done(unsigned wid) const { return __atomic_load_n(&win_done_[wid & (cfg_.win_cap - 1)], __ATOMIC_ACQUIRE) == wid + 1; }
+  // A window's table entry holds the mark (id + 1) of the latest window that completed in it. Entries are reused every win_cap windows and a
+  // window can only be reclaimed when all its tasks are done, so a mark at or past wid + 1 (serial-number order, wrap-safe) means wid is done;
+  // comparing for equality would report a window finished long ago as pending once its entry was reused (a producer that was descheduled
+  // while the others submitted win_cap windows then waited for ever: the recycle suite's flake).
+  bool window_done(unsigned wid) const { return (int)(window_mark(wid) - (wid + 1)) >= 0; }
+  // Raw completion mark of wid's table entry: wid + 1 once done, an older (smaller) value before, a larger one if the entry was reused by a later window.
+  unsigned window_mark(unsigned wid) const { return __atomic_load_n(&win_done_[wid & (cfg_.win_cap - 1)], __ATOMIC_ACQUIRE); }
 
   // One huge bundle through bounded slots: the bundle is cut into windows of consecutive tasks (task order must be
   // topological: every edge points to a higher index). Edges inside a window go to the device as usual; an edge that crosses
@@ -614,6 +629,138 @@ class KvmExec {
   bool started_ = false, finished_ = false, closed_flag_ = false, prepared_ = false;
   KvmResult res_;
   KvmStats stats_;
+};
+
+// ---------------- admission front end: chunked, class-aware submission ----------------
+// The device admits records strictly in ring order, so a latency-sensitive record submitted behind a big one waits for all of it. The front
+// end keeps the ring SHALLOW and decides what enters it next: a submitted bundle is cut at its connected components into chunks of about
+// `chunk_tasks` tasks (a component is never split, so every edge stays inside one record; version waits already work across records),
+// chunks wait in one FIFO per class, and a pump thread moves the next chunk into the ring whenever less than `ring_budget_tasks` worth of
+// records is still in the ring. The next chunk is the earliest-deadline one (task deadline_us counted from submission); with no deadline
+// pending, the class that has been served the fewest tasks per unit of weight. A late urgent bundle therefore waits for at most the
+// ring budget (about ring_budget_tasks of admission work), not for the backlog. No SM partition is involved: the classes only share the ring.
+struct KvmFrontCfg { int chunk_tasks = 2048, ring_budget_tasks = 4096, classes = 8; std::vector<int> weights; };
+class KvmFront {
+ public:
+  using Cfg = KvmFrontCfg;
+  using Ticket = unsigned long long;
+  explicit KvmFront(KvmExec& ex, Cfg cfg = Cfg()) : ex_(ex), cfg_(cfg) {
+    if (cfg_.chunk_tasks < 1 || cfg_.ring_budget_tasks < cfg_.chunk_tasks || cfg_.classes < 1) throw std::invalid_argument("KvmFront: chunk_tasks >= 1, ring_budget_tasks >= chunk_tasks, classes >= 1");
+    cfg_.weights.resize(cfg_.classes, 1);
+    q_.resize(cfg_.classes); served_.assign(cfg_.classes, 0.0);
+    pump_ = std::thread([this] { loop(); });
+  }
+  ~KvmFront() { stop(); }
+  void stop() {
+    { std::lock_guard<std::mutex> lk(mu_); if (stop_) return; stop_ = true; }
+    cv_.notify_all(); if (pump_.joinable()) pump_.join();
+  }
+  // Queue a bundle of class `cls`; returns at once. The ticket completes when every chunk's window is done.
+  Ticket submit(const KvmBundle& b, int cls) {
+    if (cls < 0 || cls >= cfg_.classes) throw std::invalid_argument("KvmFront: class out of range");
+    std::vector<KvmBundle> parts = split(b, cfg_.chunk_tasks);
+    const auto now = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> lk(mu_);
+    const Ticket t = next_++;
+    tickets_[t].pending = (int)parts.size();
+    for (KvmBundle& p : parts) {
+      int dl = -1; for (const KvmTaskDesc& d : p.tasks) if (d.deadline_us >= 0) dl = dl < 0 ? d.deadline_us : std::min(dl, d.deadline_us);
+      Chunk c; c.ticket = t; c.tasks = (int)p.tasks.size(); c.deadline = dl >= 0 ? now + std::chrono::microseconds(dl) : std::chrono::steady_clock::time_point::max(); c.b = std::move(p);
+      q_[cls].push_back(std::move(c));
+    }
+    cv_.notify_all();
+    return t;
+  }
+  // True once every task of the ticket's bundle has completed.
+  bool done(Ticket t) {
+    std::vector<unsigned> w;
+    { std::lock_guard<std::mutex> lk(mu_); auto it = tickets_.find(t); if (it == tickets_.end()) return true; if (it->second.pending > 0) return false; w = it->second.wids; }
+    for (unsigned x : w) if (!ex_.window_done(x)) return false;
+    return true;
+  }
+  bool wait(Ticket t, int timeout_ms) {
+    auto t0 = std::chrono::steady_clock::now();
+    while (!done(t)) { if (std::chrono::steady_clock::now() - t0 > std::chrono::milliseconds(timeout_ms)) return false; std::this_thread::sleep_for(std::chrono::microseconds(20)); }
+    return true;
+  }
+  // Wait until every queued chunk has entered the ring (then ex.close() is safe).
+  bool flush(int timeout_ms) {
+    auto t0 = std::chrono::steady_clock::now();
+    for (;;) {
+      { std::lock_guard<std::mutex> lk(mu_); bool empty = true; for (auto& q : q_) empty = empty && q.empty(); if (empty && !inflight_) return true; }
+      if (std::chrono::steady_clock::now() - t0 > std::chrono::milliseconds(timeout_ms)) return false;
+      std::this_thread::sleep_for(std::chrono::microseconds(50));
+    }
+  }
+  int chunks_submitted() const { return submitted_.load(); }
+
+  // Cut a bundle at its connected components into chunks of about `limit` tasks (components stay whole; an oversized one is its own chunk).
+  static std::vector<KvmBundle> split(const KvmBundle& b, int limit) {
+    const int nt = (int)b.tasks.size();
+    if (nt <= limit) return {b};
+    std::vector<int> uf(nt); for (int i = 0; i < nt; ++i) uf[i] = i;
+    std::function<int(int)> find = [&](int x) { while (uf[x] != x) { uf[x] = uf[uf[x]]; x = uf[x]; } return x; };
+    for (int i = 0; i < nt; ++i) for (int k = 0; k < b.tasks[i].succ_cnt; ++k) { int v = b.succ[b.tasks[i].succ_off + k]; if (v >= 0 && v < nt) uf[find(i)] = find(v); }
+    std::vector<int> comp_of(nt), comp_size, comp_first;   // components numbered by their first task
+    std::map<int, int> id;
+    for (int i = 0; i < nt; ++i) { int r = find(i); auto it = id.find(r); if (it == id.end()) { it = id.emplace(r, (int)comp_size.size()).first; comp_size.push_back(0); comp_first.push_back(i); } comp_of[i] = it->second; ++comp_size[it->second]; }
+    std::vector<int> chunk_of_comp(comp_size.size()); int chunk = 0, fill = 0;
+    for (size_t c = 0; c < comp_size.size(); ++c) { if (fill > 0 && fill + comp_size[c] > limit) { ++chunk; fill = 0; } chunk_of_comp[c] = chunk; fill += comp_size[c]; }
+    std::vector<KvmBundle> out(chunk + 1); std::vector<int> newidx(nt);
+    for (int i = 0; i < nt; ++i) { KvmBundle& o = out[chunk_of_comp[comp_of[i]]]; newidx[i] = (int)o.tasks.size(); o.tasks.push_back(b.tasks[i]); }
+    for (int i = 0; i < nt; ++i) {
+      KvmBundle& o = out[chunk_of_comp[comp_of[i]]]; KvmTaskDesc& d = o.tasks[newidx[i]];
+      const KvmTaskDesc& s = b.tasks[i];
+      d.succ_off = (int)o.succ.size(); for (int k = 0; k < s.succ_cnt; ++k) o.succ.push_back(newidx[b.succ[s.succ_off + k]]);
+      d.args_off = (int)o.args.size(); for (int k = 0; k < s.args_words; ++k) o.args.push_back(b.args[s.args_off + k]);
+    }
+    return out;
+  }
+
+ private:
+  struct Chunk { Ticket ticket = 0; int tasks = 0; std::chrono::steady_clock::time_point deadline; KvmBundle b; };
+  struct TicketState { int pending = 0; std::vector<unsigned> wids; };
+  // Next chunk: the earliest absolute deadline among the queue heads, else the class with the least weighted service. Caller holds mu_.
+  int pick() const {
+    int best = -1;
+    for (int c = 0; c < cfg_.classes; ++c) if (!q_[c].empty() && q_[c].front().deadline != std::chrono::steady_clock::time_point::max() &&
+                                              (best < 0 || q_[c].front().deadline < q_[best].front().deadline)) best = c;
+    if (best >= 0) return best;
+    for (int c = 0; c < cfg_.classes; ++c) if (!q_[c].empty() && (best < 0 || served_[c] / cfg_.weights[c] < served_[best] / cfg_.weights[best])) best = c;
+    return best;
+  }
+  void loop() {
+    const size_t budget_words = (size_t)cfg_.ring_budget_tasks * KVM_TASK_WORDS;
+    for (;;) {
+      Chunk c; int cls;
+      {
+        std::unique_lock<std::mutex> lk(mu_);
+        cv_.wait(lk, [&] { if (stop_) return true; for (auto& q : q_) if (!q.empty()) return true; return false; });
+        if (stop_) return;
+        cls = pick(); c = std::move(q_[cls].front()); q_[cls].pop_front(); inflight_ = true;
+      }
+      // keep the ring shallow: wait until what is in it fits the budget (a record bigger than the budget goes in when the ring is empty)
+      while (ex_.ring_backlog_words() > 0 && ex_.ring_backlog_words() + c.b.words() > budget_words) {
+        { std::lock_guard<std::mutex> lk(mu_); if (stop_) return; }
+        std::this_thread::sleep_for(std::chrono::microseconds(20));
+        // a more urgent chunk may have arrived while this one waited: swap it in (the queue head is re-picked, this chunk goes back to its class's front)
+        std::lock_guard<std::mutex> lk(mu_);
+        int better = pick();
+        if (better >= 0 && q_[better].front().deadline < c.deadline) { q_[cls].push_front(std::move(c)); cls = better; c = std::move(q_[cls].front()); q_[cls].pop_front(); }
+      }
+      unsigned wid = 0; KvmSubmit st = ex_.submit(c.b, 60000, true, &wid);
+      std::lock_guard<std::mutex> lk(mu_);
+      if (st == KvmSubmit::OK) { auto& t = tickets_[c.ticket]; t.wids.push_back(wid); --t.pending; served_[cls] += c.tasks; ++submitted_; }
+      else { KLOG(0, "KvmFront: chunk submit failed (%s): dropping the ticket's remaining chunks", kvm_submit_name(st)); tickets_[c.ticket].pending = 1 << 30; }
+      inflight_ = false;
+    }
+  }
+  KvmExec& ex_; Cfg cfg_;
+  std::mutex mu_; std::condition_variable cv_;
+  std::vector<std::deque<Chunk>> q_; std::vector<double> served_;
+  std::map<Ticket, TicketState> tickets_; Ticket next_ = 1;
+  bool stop_ = false, inflight_ = false; std::atomic<int> submitted_{0};
+  std::thread pump_;
 };
 
 // Timeline-ready CSV: times in microseconds since the first admission.

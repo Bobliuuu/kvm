@@ -205,6 +205,7 @@ struct KvmDevState {
   KvmHostErr* herr;
   KvmSchedPtrs sp;   // SCHED: scheduler state; sp.on == 0 reproduces the original single-queue executor
   const KvmDistDev* dist;  // KVM_DIST_HOOK: nullptr = single-device executor (all dist code is skipped)
+  int* stage;              // [ring_words] device copy of the record being admitted (the admitter bulk-copies it from the mapped ring first)
 };
 
 #ifdef __CUDACC__
@@ -595,7 +596,14 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
     KvmCtx c{S.bufs, S.nbufs, slot, S.cnt, S.herr, sh.smem};
     kvm_dispatch(d.op_id, c, S.args + d.args_off);
   }
-  __syncthreads();  // all op stores of the block precede thread 0's fence below
+  // Every warp makes ITS OWN op stores visible GPU-wide before the barrier: bar.sync orders them only within the block, and the single
+  // fence of the publishing / releasing thread orders just that thread's stores, so without this a successor or a version reader on
+  // another SM could still see stale data from the other warps (the `versions` suite's rare "reader violated its snapshot" failure,
+  // present in the original executor at ~1 in 40 runs and made likelier by a shorter dispatch path). A task nobody waits on skips it.
+#ifndef KVM_BREAK_FENCE
+  if (!sh.skip && (d.succ_cnt > 0 || d.pub_var >= 0)) __threadfence();
+#endif
+  __syncthreads();  // all op stores of the block are visible before thread 0 publishes / the successors are released
   KVM_PG(0);
   if (threadIdx.x == 0) {
     unsigned long long end = kvm_now();
@@ -611,8 +619,7 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   }
   __syncthreads();
   KVM_PG(1);
-  if (!sh.skip && (int)threadIdx.x < d.succ_cnt) {   // only the threads that release a successor pay for the fence (the others have nothing to order)
-    __threadfence();
+  if (!sh.skip && (int)threadIdx.x < d.succ_cnt) {
     for (int e = threadIdx.x; e < d.succ_cnt; e += blockDim.x) {
       int s = S.succ[(unsigned)(d.succ_off + e) & (S.succ_cap - 1)];
       if (atom_add(S.indeg + s, -1) == 1) { kvm_sched_pref(S, s); kvm_release_task(S, s); }  // SCHED: affinity = this block
@@ -704,10 +711,14 @@ __device__ void kvm_reclaim_windows(const KvmDevState& S, KvmAdmitShared& A) {  
   }
 }
 
+// Admission of one bundle record. The record is first bulk-copied from the host-mapped ring into device memory (`S.stage`, wide
+// coalesced loads: PCIe reads are latency-bound, so one thread chasing one word at a time cost ~1.5 us per word); every later pass
+// reads the staged copy from L2. Each per-task loop handles four tasks per thread at once so their loads overlap, and the roots are
+// enqueued a warp at a time (kvm_enqueue_warp).
 __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared& A, unsigned long long pos) {
-  const int* rec = S.ring + (size_t)(pos % (unsigned long long)S.ring_words);
+  const size_t roff = (size_t)(pos % (unsigned long long)S.ring_words);
   const int nt = A.hdr[2], ne = A.hdr[3], na = A.hdr[4];
-  const int* rt = rec + KVM_REC_HDR;
+  const int* rt = S.stage + roff + KVM_REC_HDR;
   const int* re = rt + (size_t)nt * KVM_TASK_WORDS;
   const int* ra = re + ne;
   if (threadIdx.x == 0) {
@@ -741,56 +752,94 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
   if (A.action == KVM_ADM_EXIT) return;
   const unsigned long long fbase = A.fhead;
   const unsigned sbase = A.succ_used;
-  // pop nt slots from the free ring (each producer finishes its cell write within a few instructions)
-  for (int i = threadIdx.x; i < nt; i += blockDim.x) {
-    unsigned long long fp = fbase + i;
-    KvmCell* cell = S.fcells + (fp & (unsigned long long)(S.nslots - 1));
-    while (ld_acq64(&cell->seq) != fp + 1) { if (*(volatile int*)&S.cnt->err_code) break; __nanosleep(32); }   // a worker that failed in kvm_free_slot never publishes
-    S.adm_slots[i] = cell->slot;
-    st_rel64(&cell->seq, fp + (unsigned long long)S.nslots);
+  // stage the record: 16-byte uncached loads (the host owns these words until ring_head passes them), several in flight per thread
+  {
+    const int4* src = reinterpret_cast<const int4*>(S.ring + roff);
+    int4* dst = reinterpret_cast<int4*>(S.stage + roff);
+    const int nv = A.hdr[1] / 4;
+    for (int q = threadIdx.x; q < nv; q += 8 * blockDim.x) {
+      int4 v[8];
+#pragma unroll
+      for (int u = 0; u < 8; ++u) { const int k = q + u * blockDim.x; if (k < nv) v[u] = __ldcv(src + k); }
+#pragma unroll
+      for (int u = 0; u < 8; ++u) { const int k = q + u * blockDim.x; if (k < nv) dst[k] = v[u]; }
+    }
+  }
+  // pop nt slots from the free ring (each producer finishes its cell write within a few instructions); four cells per thread in flight
+  for (int base = threadIdx.x; base < nt; base += 4 * blockDim.x) {
+    unsigned long long sq[4];
+#pragma unroll
+    for (int u = 0; u < 4; ++u) { const int i = base + u * blockDim.x; if (i < nt) sq[u] = kvm_voll(&S.fcells[(fbase + i) & (unsigned long long)(S.nslots - 1)].seq); }
+#pragma unroll
+    for (int u = 0; u < 4; ++u) {
+      const int i = base + u * blockDim.x; if (i >= nt) break;
+      const unsigned long long fp = fbase + i;
+      KvmCell* cell = S.fcells + (fp & (unsigned long long)(S.nslots - 1));
+      while (sq[u] != fp + 1) { if (*(volatile int*)&S.cnt->err_code) break; __nanosleep(32); sq[u] = kvm_voll(&cell->seq); }   // a worker that failed in kvm_free_slot never publishes
+      asm volatile("fence.acq_rel.gpu;" ::: "memory");   // acquire: the producer's slot write (before its release of seq) is visible
+      S.adm_slots[i] = cell->slot;
+      st_rel64(&cell->seq, fp + (unsigned long long)S.nslots);
+    }
   }
   __syncthreads();
   const unsigned long long now = kvm_now();
   const unsigned wid = A.win_next;
-  for (int i = threadIdx.x; i < nt; i += blockDim.x) {
-    int w[KVM_TASK_WORDS];
+  for (int base = threadIdx.x; base < nt; base += 4 * blockDim.x) {
+    int w[4][KVM_TASK_WORDS];
 #pragma unroll
-    for (int j = 0; j < KVM_TASK_WORDS; ++j) w[j] = ld_sys(rt + (size_t)i * KVM_TASK_WORDS + j);
-    // KvmTaskDesc word order: op, succ_off, succ_cnt, indegree, priority, deadline, args_off, args_words, wait_var,
-    // wait_ver, pub_var, pub_ver, workload, flags, r0, r1
-    const int slot = S.adm_slots[i];
-    int op = w[0], so = w[1], sc = w[2], ind = w[3], pr = w[4], ao = w[6], aw = w[7], wv = w[8], pv = w[10];
-    int code = 0;
-    if (kvm_dev_arity(op) < 0) code = KVM_ERR_BAD_OP;
-    else if (aw != kvm_dev_arity(op)) code = KVM_ERR_BAD_ARITY;
-    else if (!kvm_sched_class_ok(S, w[12])) code = KVM_ERR_BAD_TASK;
-    else if (so < 0 || sc < 0 || (long long)so + sc > ne || ao < 0 || aw < 0 || (long long)ao + aw > na || ind < 0 || ind > nt || pr < 0 || pr >= KVM_NBUCKETS || w[5] < -1) code = KVM_ERR_BAD_TASK;
-    else if (wv < -1 || wv >= S.num_vars || pv < -1 || pv >= S.num_vars) code = KVM_ERR_BAD_VAR;
-    else {
-      uint64_t ty = kvm_dev_types(op);
-      for (int j = 0; j < aw && !code; ++j) {
-        int t = (int)((ty >> (3 * j)) & 7u);
-        if (t == KVM_A_BUF || t == KVM_A_BUF_OPT) {
-          int bi = ld_sys(ra + ao + j);
-          if (bi == -1 && t == KVM_A_BUF) code = KVM_ERR_BAD_BUF;
-          else if (bi < -1 || bi >= S.nbufs) code = KVM_ERR_BAD_BUF_INDEX;
-        }
+    for (int u = 0; u < 4; ++u) {
+      const int i = base + u * blockDim.x;
+      if (i < nt) {
+        const int4* p = reinterpret_cast<const int4*>(rt + (size_t)i * KVM_TASK_WORDS);
+#pragma unroll
+        for (int k = 0; k < KVM_TASK_WORDS / 4; ++k) { const int4 v = __ldcg(p + k); w[u][4 * k] = v.x; w[u][4 * k + 1] = v.y; w[u][4 * k + 2] = v.z; w[u][4 * k + 3] = v.w; }
       }
     }
-    if (code) { kvm_fail(S, code, slot, op, i); continue; }
-    for (int j = 0; j < aw; ++j) S.args[(size_t)slot * KVM_ARG_STRIDE + j] = ld_sys(ra + ao + j);
-    w[1] = (int)(sbase + (unsigned)so);       // CSR offset into the successor ring (word sequence number)
-    w[6] = slot * KVM_ARG_STRIDE;             // arguments live inline in the slot
-    w[14] = (int)wid;                         // reserved0 = window id (task completion returns the window credit)
-    int* dst = (int*)(S.tasks + slot);
 #pragma unroll
-    for (int j = 0; j < KVM_TASK_WORDS; ++j) dst[j] = w[j];
-    S.indeg[slot] = ind; S.state[slot] = 0; S.park_next[slot] = -1;
-    KvmTrace& t = S.trace[slot];
-    t.admit_ns = now; t.ready_ns = t.start_ns = t.end_ns = 0; t.flags = 0; t.exec_count = 0; t.ver0 = t.ver1 = -1;
+    for (int u = 0; u < 4; ++u) {
+      const int i = base + u * blockDim.x; if (i >= nt) break;
+      // KvmTaskDesc word order: op, succ_off, succ_cnt, indegree, priority, deadline, args_off, args_words, wait_var,
+      // wait_ver, pub_var, pub_ver, workload, flags, r0, r1
+      int* wu = w[u];
+      const int slot = S.adm_slots[i];
+      const int op = wu[0], so = wu[1], sc = wu[2], ind = wu[3], pr = wu[4], ao = wu[6], aw = wu[7], wv = wu[8], pv = wu[10];
+      int a[KVM_MAX_ARGS];   // the argument words, fetched in one go when the range is sane (checked again below)
+      const bool arg_range = ao >= 0 && aw >= 0 && aw <= KVM_MAX_ARGS && (long long)ao + aw <= na;
+#pragma unroll
+      for (int j = 0; j < KVM_MAX_ARGS; ++j) a[j] = (arg_range && j < aw) ? __ldcg(ra + ao + j) : 0;
+      int code = 0;
+      if (kvm_dev_arity(op) < 0) code = KVM_ERR_BAD_OP;
+      else if (aw != kvm_dev_arity(op)) code = KVM_ERR_BAD_ARITY;
+      else if (!kvm_sched_class_ok(S, wu[12])) code = KVM_ERR_BAD_TASK;
+      else if (so < 0 || sc < 0 || (long long)so + sc > ne || !arg_range || ind < 0 || ind > nt || pr < 0 || pr >= KVM_NBUCKETS || wu[5] < -1) code = KVM_ERR_BAD_TASK;
+      else if (wv < -1 || wv >= S.num_vars || pv < -1 || pv >= S.num_vars) code = KVM_ERR_BAD_VAR;
+      else {
+        const uint64_t ty = kvm_dev_types(op);
+        for (int j = 0; j < aw && !code; ++j) {
+          const int t = (int)((ty >> (3 * j)) & 7u);
+          if (t == KVM_A_BUF || t == KVM_A_BUF_OPT) {
+            const int bi = a[j];
+            if (bi == -1 && t == KVM_A_BUF) code = KVM_ERR_BAD_BUF;
+            else if (bi < -1 || bi >= S.nbufs) code = KVM_ERR_BAD_BUF_INDEX;
+          }
+        }
+      }
+      if (code) { kvm_fail(S, code, slot, op, i); continue; }
+      for (int j = 0; j < aw; ++j) S.args[(size_t)slot * KVM_ARG_STRIDE + j] = a[j];
+      wu[1] = (int)(sbase + (unsigned)so);       // CSR offset into the successor ring (word sequence number)
+      wu[6] = slot * KVM_ARG_STRIDE;             // arguments live inline in the slot
+      wu[14] = (int)wid;                         // reserved0 = window id (task completion returns the window credit)
+      int4* dst = reinterpret_cast<int4*>(S.tasks + slot);
+#pragma unroll
+      for (int k = 0; k < KVM_TASK_WORDS / 4; ++k) dst[k] = make_int4(wu[4 * k], wu[4 * k + 1], wu[4 * k + 2], wu[4 * k + 3]);
+      S.indeg[slot] = ind; S.state[slot] = 0; S.park_next[slot] = -1;
+      KvmTrace& t = S.trace[slot];
+      t.admit_ns = now; t.ready_ns = t.start_ns = t.end_ns = 0; t.flags = 0; t.exec_count = 0; t.ver0 = t.ver1 = -1;
+    }
   }
+#pragma unroll 4
   for (int e = threadIdx.x; e < ne; e += blockDim.x) {
-    int v = ld_sys(re + e);
+    int v = __ldcg(re + e);
     if (v < 0 || v >= nt) { kvm_fail(S, KVM_ERR_BAD_TASK, S.adm_slots[0], v, e); v = 0; }
     S.succ[(sbase + (unsigned)e) & (S.succ_cap - 1)] = S.adm_slots[v];
   }
@@ -808,9 +857,18 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
   }
   __syncthreads();
   if (*(volatile int*)&S.cnt->err_code) return;
-  for (int i = threadIdx.x; i < nt; i += blockDim.x) {
-    int slot = S.adm_slots[i];
-    if (S.tasks[slot].indegree == 0) kvm_release_task(S, slot);  // the descriptor is immutable; S.indeg is live and may already be 0 for a non-root
+  // release the roots (the descriptor is immutable; S.indeg is live and may already be 0 for a non-root). A root whose version wait is not
+  // yet satisfied parks (kvm_release_task); every other root is enqueued by its warp together.
+  for (int base = 0; base < nt; base += blockDim.x) {
+    const int i = base + threadIdx.x;
+    int slot = i < nt ? S.adm_slots[i] : -1;
+    if (slot >= 0) {
+      const KvmTaskDesc* d = S.tasks + slot;
+      if (d->indegree != 0) slot = -1;
+      else if (d->wait_var >= 0 && ld_acq(S.version + d->wait_var) < d->wait_ver) { kvm_release_task(S, slot); slot = -1; }
+    }
+    __syncwarp();
+    kvm_enqueue_warp(S, slot);
   }
 }
 

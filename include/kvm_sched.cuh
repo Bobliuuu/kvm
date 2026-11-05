@@ -92,9 +92,10 @@ __device__ __forceinline__ bool kvm_should_exit(const KvmDevState& S, KvmWatch& 
 
 // ---------------- enqueue / ready accounting ----------------
 // Called by kvm_enqueue before the cell is published (ready is a hint that is never below the number of published cells).
-__device__ __forceinline__ void kvm_sched_ready(const KvmDevState& S, int c) {
+// `n` cells of class c are about to be published (n > 1: the warp-aggregated admission path).
+__device__ __forceinline__ void kvm_sched_ready(const KvmDevState& S, int c, int n = 1) {
   KvmSchedDev* D = S.sp.dev; KvmClsDev& k = D->cls[c];
-  int old = atom_add(&k.ready, 1);
+  int old = atom_add(&k.ready, n);
   if (S.sp.mode == KVM_SCHED_DYNAMIC && old <= 0 && kvm_vol(&k.running) == 0) {
     unsigned long long vmin = ~0ull;
     for (int j = 0; j < S.sp.nc; ++j)
@@ -103,17 +104,21 @@ __device__ __forceinline__ void kvm_sched_ready(const KvmDevState& S, int c) {
   }
 }
 
-__device__ __forceinline__ void kvm_enqueue(const KvmDevState& S, int slot) {
-  const KvmTaskDesc* d = S.tasks + slot;
-  const int b = d->priority;
+// The ring index (class, bucket) a task is enqueued on.
+__device__ __forceinline__ size_t kvm_queue_of(const KvmDevState& S, const KvmTaskDesc* d) {
   const int c = (S.sp.on && S.sp.mode != KVM_SCHED_GLOBAL) ? d->workload_id : 0;
-  const size_t qi = (size_t)c * KVM_NBUCKETS + b;
-  KvmQCtl* q = S.qctl + qi;
-  unsigned long long pos = atom_add64(&q->tail, 1ull);
+  return (size_t)c * KVM_NBUCKETS + d->priority;
+}
+
+// Fill and publish the cell of ticket `pos` on queue qi (the caller took the ticket and, with the scheduler on, already added the
+// task to its class's ready count and, if it has a deadline, to dl_ready).
+__device__ __forceinline__ void kvm_publish_cell(const KvmDevState& S, int slot, size_t qi, unsigned long long pos) {
+  const KvmTaskDesc* d = S.tasks + slot;
+  const int c = (int)(qi / KVM_NBUCKETS);
   KvmCell* cell = S.cells + qi * S.rcap + (pos & (unsigned long long)(S.rcap - 1));
   // The cell frees when its previous occupant was popped; the occupant's popper recycles it right after its head CAS.
   for (int spin = 0; ld_acq64(&cell->seq) != pos; ++spin) {
-    if (spin > (1 << 22)) { kvm_fail(S, KVM_ERR_QUEUE_OVERFLOW, slot, b, (int)pos); return; }
+    if (spin > (1 << 22)) { kvm_fail(S, KVM_ERR_QUEUE_OVERFLOW, slot, d->priority, (int)pos); return; }
     __nanosleep(32);
   }
   unsigned long long now = kvm_now();
@@ -126,8 +131,40 @@ __device__ __forceinline__ void kvm_enqueue(const KvmDevState& S, int slot) {
     if ((kvm_vol(&S.sp.dev->cls[c].protect) & KVM_CF_OPAFF) && d->op_id < KVM_OP_SLOTS) { int ob = kvm_vol(&S.sp.dev->op_blk[d->op_id]); if (ob >= 0) pref = ob; }   // ... or the one that last ran this op
     cell->res = S.sp.info[slot].res | ((pref + 1) << 8);
   } else cell->res = KVM_RES_MIXED;
-  if (S.sp.on) { kvm_sched_ready(S, c); if (cell->deadline_ns) atom_add(&S.sp.dev->cls[c].dl_ready, 1); }
   st_rel64(&cell->seq, pos + 1);
+}
+
+__device__ __forceinline__ void kvm_enqueue(const KvmDevState& S, int slot) {
+  const KvmTaskDesc* d = S.tasks + slot;
+  const size_t qi = kvm_queue_of(S, d);
+  const int c = (int)(qi / KVM_NBUCKETS);
+  if (S.sp.on) { kvm_sched_ready(S, c); if (d->deadline_us >= 0) atom_add(&S.sp.dev->cls[c].dl_ready, 1); }
+  kvm_publish_cell(S, slot, qi, atom_add64(&S.qctl[qi].tail, 1ull));
+}
+
+// Warp-aggregated enqueue for admission (all 32 lanes call; `slot` < 0 = this lane enqueues nothing). Lanes bound for the same queue
+// take one block of tickets with a single atomic and add themselves to the class's ready count together, instead of one atomic each:
+// a 64k-task record of independent tasks otherwise pays 64k contended atomics on one tail and one counter. Cell order inside a
+// queue is the lane order, the cells are published one by one exactly as in kvm_enqueue.
+__device__ __forceinline__ void kvm_enqueue_warp(const KvmDevState& S, int slot) {
+  const int lane = threadIdx.x & 31;
+  const unsigned act = __ballot_sync(0xffffffffu, slot >= 0);
+  if (!act) return;
+  const KvmTaskDesc* d = slot >= 0 ? S.tasks + slot : nullptr;
+  const size_t qi = slot >= 0 ? kvm_queue_of(S, d) : 0;
+  const bool dl = slot >= 0 && d->deadline_us >= 0;
+  unsigned peers = slot >= 0 ? __match_any_sync(act, (unsigned)qi) : 0u;
+  if (slot < 0) return;
+  const int leader = __ffs(peers) - 1, n = __popc(peers), rank = __popc(peers & ((1u << lane) - 1));
+  const unsigned dlm = __ballot_sync(peers, dl);
+  unsigned long long base = 0;
+  if (lane == leader) {
+    const int c = (int)(qi / KVM_NBUCKETS);
+    if (S.sp.on) { kvm_sched_ready(S, c, n); if (dlm) atom_add(&S.sp.dev->cls[c].dl_ready, __popc(dlm)); }
+    base = atom_add64(&S.qctl[qi].tail, (unsigned long long)n);
+  }
+  base = __shfl_sync(peers, base, leader);
+  kvm_publish_cell(S, slot, qi, base + (unsigned long long)rank);
 }
 
 // ---------------- pop ----------------

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run this once on a GPU machine with a checkout of Bobliuuu/kvm.
+# Run this once on a GPU machine with a checkout of this repository.
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UPSTREAM="${1:?Usage: ./run_gpu_matrix.sh /path/to/kvm [sm_80|sm_90]}"

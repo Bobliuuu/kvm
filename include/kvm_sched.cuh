@@ -493,8 +493,17 @@ __device__ void kvm_policy(const KvmDevState& S, KvmWatch& t0, KvmPolShared& P) 
         if (flags & KVM_SF_ARBITER) {
           int lim = kvm_vol(&D->bw_limit), lo = P.lim_lo, hi = P.lim_hi;
           if (cool > 0) --cool;
-          if (pressure) { lim = max(lo, lim - max(1, lim / 4)); calm = 0; cool = 2; }          // multiplicative decrease
-          else if (++calm >= 4 && cool == 0 && kvm_vol(&D->bw_total) * 10 >= lim * 9) { lim = min(hi, lim + 1 + lim / 16); calm = 0; }  // slow increase when binding
+#ifndef KVM_ARB_DEC
+#define KVM_ARB_DEC 4     // multiplicative decrease: lim -= lim / KVM_ARB_DEC
+#endif
+#ifndef KVM_ARB_CALM
+#define KVM_ARB_CALM 4    // calm windows before an increase
+#endif
+#ifndef KVM_ARB_INC
+#define KVM_ARB_INC 16    // increase: lim += 1 + lim / KVM_ARB_INC
+#endif
+          if (pressure) { lim = max(lo, lim - max(1, lim / KVM_ARB_DEC)); calm = 0; cool = 2; }          // multiplicative decrease
+          else if (++calm >= KVM_ARB_CALM && cool == 0 && kvm_vol(&D->bw_total) * 10 >= lim * 9) { lim = min(hi, lim + 1 + lim / KVM_ARB_INC); calm = 0; }  // slow increase when binding
           D->bw_limit = lim;
         }
         P.bw_mbps = (int)min(rate, 0x7fffffffull); P.bw_peak_mbps = (int)min(peak, 0x7fffffffull);

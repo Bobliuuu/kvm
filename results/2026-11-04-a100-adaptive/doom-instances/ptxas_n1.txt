@@ -1,0 +1,41 @@
+ptxas info    : 1048 bytes gmem
+ptxas info    : Function properties for __internal_accurate_pow
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Compile time = 7.070 ms
+ptxas info    : Compiling entry function '_Z22kvm_seeded_fill_kernelPfyyiff' for 'sm_80'
+ptxas info    : Function properties for _Z22kvm_seeded_fill_kernelPfyyiff
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 26 registers, used 0 barriers, 388 bytes cmem[0]
+ptxas info    : Compile time = 6.009 ms
+ptxas info    : Function properties for _Z8kvm_failP11KvmCountersP10KvmHostErriiii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Compile time = 1.538 ms
+ptxas info    : Function properties for _Z12kvm_run_taskRK11KvmDevStateiR9KvmShared
+    296 bytes stack frame, 216 bytes spill stores, 216 bytes spill loads
+ptxas info    : Compile time = 7837.625 ms
+ptxas info    : Compiling entry function '_Z15kvm_exec_kernel11KvmDevState' for 'sm_80'
+ptxas info    : Function properties for _Z15kvm_exec_kernel11KvmDevState
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 94 registers, used 1 barriers, 4744 bytes smem, 656 bytes cmem[0], 716 bytes cmem[2]
+ptxas info    : Compile time = 655.271 ms
+ptxas info    : Compiling entry function '_Z15kvm_init_kernel11KvmDevState' for 'sm_80'
+ptxas info    : Function properties for _Z15kvm_init_kernel11KvmDevState
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 28 registers, used 0 barriers, 656 bytes cmem[0]
+ptxas info    : Compile time = 5.072 ms
+ptxas info    : Function properties for _Z12kvm_admitterRK11KvmDevStateR8KvmWatchR14KvmAdmitShared
+    8 bytes stack frame, 8 bytes spill stores, 8 bytes spill loads
+ptxas info    : Compile time = 160.437 ms
+ptxas info    : Function properties for _Z16kvm_admit_recordRK11KvmDevStateR8KvmWatchR14KvmAdmitSharedy
+    8 bytes stack frame, 8 bytes spill stores, 8 bytes spill loads
+ptxas info    : Compile time = 142.044 ms
+ptxas info    : Function properties for _Z19kvm_reclaim_windowsRK11KvmDevStateR14KvmAdmitShared
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Compile time = 3.795 ms
+ptxas info    : Function properties for _Z10kvm_workerRK11KvmDevStateR8KvmWatchR9KvmShared
+    128 bytes stack frame, 128 bytes spill stores, 128 bytes spill loads
+ptxas info    : Compile time = 348.747 ms
+ptxas info    : Function properties for _Z10kvm_policyRK11KvmDevStateR8KvmWatchR12KvmPolShared
+    8 bytes stack frame, 8 bytes spill stores, 8 bytes spill loads
+ptxas info    : Compile time = 82.333 ms
+nvlink warning : Stack size for entry function '_Z15kvm_exec_kernel11KvmDevState' cannot be statically determined

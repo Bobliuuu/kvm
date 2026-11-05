@@ -83,6 +83,10 @@ TT="$B/test_transport"; TD="$B/test_dist"; TDN="$B/test_dist_neg"; TDB="$B/test_
 # ---- CPU stages (laptop-safe) -------------------------------------------------------------------------------------------------
 stage cpu-partitioner-sim cpu "cd $ROOT && $PY -m unittest discover -s tests/dist -p 'test_partition.py' 2>&1 | tail -15; exit \${PIPESTATUS[0]}"
 stage cpu-transport-proxy cpu "g++ -O2 -std=c++17 -pthread -I$ROOT/dist $ROOT/tests/dist/test_transport.cpp -o $TT && KVM_DIST_LOG=1 $TT"
+stage cpu-rdma-shim cpu "g++ -O2 -std=c++17 -pthread -I$ROOT/dist $ROOT/tests/dist/test_rdma.cpp -o $B/test_rdma && KVM_DIST_LOG=1 $B/test_rdma"
+stage cpu-xdc-wan cpu "g++ -O2 -std=c++17 -pthread -I$ROOT/dist $ROOT/tests/dist/test_xdc.cpp -o $B/test_xdc && KVM_DIST_LOG=1 $B/test_xdc"
+stage cpu-scaleout-sim cpu "cd $ROOT && $PY -m unittest discover -s tests/dist -p 'test_scaleout*.py' 2>&1 | tail -15; exit \${PIPESTATUS[0]}"
+stage cpu-fault-recovery cpu "cd $ROOT && $PY -m unittest discover -s tests/dist -p 'test_fault*.py' 2>&1 | tail -15; exit \${PIPESTATUS[0]}"
 stage cpu-launcher-dry-run cpu "cd $ROOT && $PY dist/launch.py --dry-run --nodes a@h1:2,h2 -- ./prog --rank {rank} --peers {peers} | grep -c '^DRY rank' | grep -qx 3"
 stage cpu-multiprocess-tcp cpu "cd $ROOT && PORTS=\$($PY -c \"import socket;s=[socket.socket() for _ in range(3)];[x.bind(('127.0.0.1',0)) for x in s];print(','.join(str(x.getsockname()[1]) for x in s))\") && \
   $PY dist/launch.py --local 3 --timeout 120 -- $TT proc {rank} {world} \"\$PORTS,drop=0.1,dup=0.1,delay=0.2\""

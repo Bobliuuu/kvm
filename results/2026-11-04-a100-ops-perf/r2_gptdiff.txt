@@ -1,0 +1,126 @@
+cpu_s1_tf32 exit 0
+cpu_s1_precise exit 0
+cpu_s2_tf32 exit 0
+cpu_s2_precise exit 0
+cpu_s5_tf32 exit 0
+cpu_s5_precise exit 0
+a100_s2_tf32 exit 0
+a100_s2_precise exit 0
+== compute-sanitizer memcheck cpu_s2_tf32
+========= COMPUTE-SANITIZER
+OK: 544/544 tasks, 97.206 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck cpu_s2_tf32
+========= COMPUTE-SANITIZER
+OK: 544/544 tasks, 2325.360 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck cpu_s2_tf32
+========= COMPUTE-SANITIZER
+OK: 544/544 tasks, 39.722 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer memcheck cpu_s5_tf32
+========= COMPUTE-SANITIZER
+OK: 1360/1360 tasks, 222.112 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck cpu_s5_tf32
+========= COMPUTE-SANITIZER
+OK: 1360/1360 tasks, 6223.582 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck cpu_s5_tf32
+========= COMPUTE-SANITIZER
+OK: 1360/1360 tasks, 97.244 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer memcheck cpu_s2_precise
+========= COMPUTE-SANITIZER
+OK: 544/544 tasks, 76.493 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck cpu_s2_precise
+========= COMPUTE-SANITIZER
+OK: 544/544 tasks, 2264.505 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck cpu_s2_precise
+========= COMPUTE-SANITIZER
+OK: 544/544 tasks, 39.690 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer memcheck cpu_s5_precise
+========= COMPUTE-SANITIZER
+OK: 1360/1360 tasks, 232.272 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck cpu_s5_precise
+========= COMPUTE-SANITIZER
+OK: 1360/1360 tasks, 6188.880 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck cpu_s5_precise
+========= COMPUTE-SANITIZER
+OK: 1360/1360 tasks, 97.464 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+cpu_s1_tf32 kvm_exec: OK: 272/272 tasks, 3.490 ms
+tf32: 1 step(s), 122 f32 buffers
+  ok   loss.0 rel L2 <= 0.001: 2.53e-06
+  ok   60 step-1 activation/gradient buffers rel L2 <= 0.006: worst act57 6.93e-04
+  ok   clip_coef (step 1): 
+  ok   adamw op reproduces GPU w from GPU g (float64): worst rel L2 6.9e-08
+  ok   adamw op reproduces GPU m, v from GPU g (float64): worst rel L2 3.3e-07
+  ok   GPU weights inside the Adam image of the +-0.006*max|g| band: 0 elements outside
+  info: 2 gradient sign flips explain 99.5% of the squared weight error
+PASS
+cpu_s1_precise kvm_exec: OK: 272/272 tasks, 3.480 ms
+precise: 1 step(s), 122 f32 buffers
+  worst: w.gpt.h0.attn.k.b 5.62e-05, v.gpt.h0.attn.q.b 3.43e-06, v.gpt.h0.attn.k.w 2.29e-06, w.gpt.h0.attn.v.w 2.17e-06
+  ok   all buffers rel L2 <= 0.0002: worst w.gpt.h0.attn.k.b 5.62e-05
+PASS
+cpu_s2_tf32 kvm_exec: OK: 544/544 tasks, 5.742 ms
+tf32: 2 step(s), 182 f32 buffers
+  ok   loss.0 rel L2 <= 0.001: 2.53e-06
+  ok   loss.1 rel L2 <= 0.001: 1.37e-05
+  ok   59 step-1 activation/gradient buffers rel L2 <= 0.006: worst act57 6.93e-04
+  ok   clip_coef (step 1): 
+  info: post-Adam weights/moments after 2 steps differ by up to 7.46e-02 (m.gpt.h0.attn.proj.b): different, equally valid trajectories under 1xTF32 gradient noise; see the 1-step model check
+PASS
+cpu_s2_precise kvm_exec: OK: 544/544 tasks, 5.769 ms
+precise: 2 step(s), 182 f32 buffers
+  worst: w.gpt.h0.attn.k.b 7.21e-05, act119 3.98e-06, act116 3.94e-06, v.gpt.h0.attn.q.b 3.90e-06
+  ok   all buffers rel L2 <= 0.0002: worst w.gpt.h0.attn.k.b 7.21e-05
+PASS
+cpu_s5_tf32 kvm_exec: OK: 1360/1360 tasks, 12.514 ms
+tf32: 5 step(s), 362 f32 buffers
+  ok   loss.0 rel L2 <= 0.001: 2.53e-06
+  ok   loss.1 rel L2 <= 0.001: 1.37e-05
+  ok   loss.2 rel L2 <= 0.001: 5.38e-06
+  ok   loss.3 rel L2 <= 0.001: 4.76e-05
+  ok   loss.4 rel L2 <= 0.001: 2.32e-04
+  ok   59 step-1 activation/gradient buffers rel L2 <= 0.006: worst act57 6.93e-04
+  ok   clip_coef (step 1): 
+  info: post-Adam weights/moments after 5 steps differ by up to 6.19e-02 (w.gpt.h0.mlp.fc1.b): different, equally valid trajectories under 1xTF32 gradient noise; see the 1-step model check
+PASS
+cpu_s5_precise kvm_exec: OK: 1360/1360 tasks, 12.666 ms
+precise: 5 step(s), 362 f32 buffers
+  worst: w.gpt.h0.attn.k.b 1.18e-04, act252 5.80e-06, act253 5.80e-06, act192 4.61e-06
+  ok   all buffers rel L2 <= 0.0002: worst w.gpt.h0.attn.k.b 1.18e-04
+PASS
+a100_s2_tf32 kvm_exec: OK: 206/206 tasks, 3.742 ms
+tf32: 2 step(s), 182 f32 buffers
+  ok   loss.0 rel L2 <= 0.001: 2.53e-06
+  ok   loss.1 rel L2 <= 0.001: 1.37e-05
+  ok   59 step-1 activation/gradient buffers rel L2 <= 0.006: worst act57 6.93e-04
+  ok   clip_coef (step 1): 
+  info: post-Adam weights/moments after 2 steps differ by up to 7.46e-02 (m.gpt.h0.attn.proj.b): different, equally valid trajectories under 1xTF32 gradient noise; see the 1-step model check
+PASS
+a100_s2_precise kvm_exec: OK: 206/206 tasks, 3.812 ms
+precise: 2 step(s), 182 f32 buffers
+  worst: w.gpt.h0.attn.k.b 7.35e-05, act119 3.98e-06, act116 3.92e-06, v.gpt.h0.attn.q.b 3.90e-06
+  ok   all buffers rel L2 <= 0.0002: worst w.gpt.h0.attn.k.b 7.35e-05
+PASS
+logs: <repo>/logs/20261104T144348Z-gptdiff

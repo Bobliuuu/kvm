@@ -3,6 +3,9 @@
 // "single-op" = the same device code in a kernel that contains only that op (register/occupancy upper bound).
 // A100 peaks: TF32 tensor 156 TFLOP/s, FP32 19.5 TFLOP/s, HBM 1555 GB/s (40 GB SXM4).
 #include <algorithm>
+#ifndef KVM_GPT_MAX_HD
+#define KVM_GPT_MAX_HD 128   // these tests and benchmarks cover hd=128 attention (-DKVM_GPT_MAX_HD=64 builds the hd<=64 union)
+#endif
 #include "harness.cuh"
 #include "refs.hpp"
 
@@ -11,7 +14,7 @@ __global__ void __launch_bounds__(256) k_one(KvmCtx c, const int32_t* w, const i
 
 struct Staged { int32_t* w; int* op; int* off; int n; KvmCtx c; };
 static Staged stage(Dev& d, const Batch& b) {
-    static int attr = 0; if (!attr) { CK(cudaFuncSetAttribute(k_run, cudaFuncAttributeMaxDynamicSharedMemorySize, 96 * 1024)); attr = 1; }
+    static int attr = 0; if (!attr) { CK(cudaFuncSetAttribute(k_run, cudaFuncAttributeMaxDynamicSharedMemorySize, 112 * 1024)); attr = 1; }
     d.sync_table(); Staged s{}; s.n = (int)b.op.size();
     CK(cudaMalloc(&s.w, b.w.size() * 4 + 4)); CK(cudaMalloc(&s.op, s.n * 4)); CK(cudaMalloc(&s.off, s.n * 4));
     CK(cudaMemcpy(s.w, b.w.data(), b.w.size() * 4, cudaMemcpyHostToDevice)); CK(cudaMemcpy(s.op, b.op.data(), s.n * 4, cudaMemcpyHostToDevice));
@@ -20,41 +23,54 @@ static Staged stage(Dev& d, const Batch& b) {
 }
 template <int ID> static void launch_one(const Staged& s, int smem) {
     static bool attr = false;
-    if (!attr) { CK(cudaFuncSetAttribute(k_one<ID>, cudaFuncAttributeMaxDynamicSharedMemorySize, 96 * 1024)); attr = true; }
+    if (!attr) { CK(cudaFuncSetAttribute(k_one<ID>, cudaFuncAttributeMaxDynamicSharedMemorySize, 112 * 1024)); attr = true; }
     k_one<ID><<<s.n, 256, smem>>>(s.c, s.w, s.off);
 }
 static void launch_full(const Staged& s, int smem) { k_run<<<s.n, 256, smem>>>(s.c, s.w, s.op, s.off); }
+static double g_tmin = 0, g_tmax = 0;   // spread of the last time_ms: min / max over the repetitions
+// Median over BENCH_REPS (default 7) repetitions of `iters` back-to-back launches each; min/max land in g_tmin/g_tmax.
 template <typename F> static double time_ms(F f, int iters) {
+    static const int reps = getenv("BENCH_REPS") ? atoi(getenv("BENCH_REPS")) : 7;
     cudaEvent_t a, b; cudaEventCreate(&a); cudaEventCreate(&b);
     for (int i = 0; i < 3; i++) f();
-    CK(cudaDeviceSynchronize()); cudaEventRecord(a);
-    for (int i = 0; i < iters; i++) f();
-    cudaEventRecord(b); CK(cudaEventSynchronize(b)); float ms; cudaEventElapsedTime(&ms, a, b); CK(cudaGetLastError());
-    return ms / iters;
+    CK(cudaDeviceSynchronize());
+    std::vector<double> t;
+    for (int r = 0; r < reps; r++) {
+        cudaEventRecord(a);
+        for (int i = 0; i < iters; i++) f();
+        cudaEventRecord(b); CK(cudaEventSynchronize(b)); float ms; cudaEventElapsedTime(&ms, a, b); CK(cudaGetLastError());
+        t.push_back(ms / iters);
+    }
+    std::sort(t.begin(), t.end()); g_tmin = t.front(); g_tmax = t.back();
+    return t[t.size() / 2];
 }
 static void report(const char* name, const char* mode, double ms, double work, const char* unit, double peak) {
-    printf("BENCH  %-46s %-13s %8.3f ms  %9.1f %s  (%.1f%% of %.0f)\n", name, mode, ms, work / ms * 1e-6, unit, work / ms * 1e-6 / peak * 100, peak);
+    printf("BENCH  %-46s %-13s %8.3f ms [%.3f..%.3f]  %9.1f %s  (%.1f%% of %.0f)\n", name, mode, ms, g_tmin, g_tmax, work / ms * 1e-6, unit, work / ms * 1e-6 / peak * 100, peak);
 }
 
-template <int ID> static void bench_mm(int M, int N, int K, int ta, int tb, int prec) {
+template <int ID> static void bench_mm(int M, int N, int K, int ta, int tb, int prec, int big = 0) {
     Rng r(3); Dev dv;
     int ia = dv.addf(ta ? K : M, ta ? M : K), ib = dv.addf(tb ? N : K, tb ? K : N), io = dv.addf(M, N);
     auto ha = rnd(r, (size_t)M * K), hb = rnd(r, (size_t)K * N); dv.up(ia, ha); dv.up(ib, hb);
-    Batch b; for (int m0 = 0; m0 < M; m0 += 64) for (int n0 = 0; n0 < N; n0 += 64)
-        b.add(OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(m0).i(n0).i(M).i(N).i(K).i(ta | (tb << 1) | (prec << 4)).f(1.f));
-    auto s = stage(dv, b); launch_full(s, 48 * 1024); CK(cudaDeviceSynchronize());
+    const int step = big ? 128 : 64, stepm = big == 2 ? 256 : step;
+    // BENCH_GROUP=g: launch order walks groups of g row-tiles down each column (L2-friendlier than row-major); 0 = row-major
+    static const int grp = getenv("BENCH_GROUP") ? atoi(getenv("BENCH_GROUP")) : 0;
+    Batch b; auto addt = [&](int m0, int n0) { b.add(OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(m0).i(n0).i(M).i(N).i(K).i(ta | (tb << 1) | (prec << 4) | (big == 1 ? 32 : big == 2 ? 64 : 0)).f(1.f)); };
+    if (!grp) { for (int m0 = 0; m0 < M; m0 += stepm) for (int n0 = 0; n0 < N; n0 += step) addt(m0, n0); }
+    else for (int g0 = 0; g0 < M; g0 += grp * step) for (int n0 = 0; n0 < N; n0 += step) for (int m0 = g0; m0 < std::min(M, g0 + grp * step); m0 += step) addt(m0, n0);
+    auto s = stage(dv, b); launch_full(s, kvm_gpt_smem_bytes(64)); CK(cudaDeviceSynchronize());
     auto o = dv.down(io); Rng rs(9); double me = 0, mx = 0;   // sampled elements vs double dot products
     for (int t = 0; t < 400; t++) {
         int m = rs.u32() % M, n = rs.u32() % N; double acc = 0;
         for (int k = 0; k < K; k++) acc += (double)(ta ? ha[(size_t)k * M + m] : ha[(size_t)m * K + k]) * (tb ? hb[(size_t)n * K + k] : hb[(size_t)k * N + n]);
         me = std::max(me, fabs(o[(size_t)m * N + n] - acc)); mx = std::max(mx, fabs(acc));
     }
-    char nm[96]; snprintf(nm, sizeof nm, "matmul %s %c%c %dx%dx%d", prec ? "3xTF32" : "TF32", ta ? 'T' : 'N', tb ? 'T' : 'N', M, N, K);
+    char nm[96]; snprintf(nm, sizeof nm, "matmul %s%s %c%c %dx%dx%d", big == 1 ? "128tile " : big == 2 ? "256x128tile " : "", prec ? "3xTF32" : "TF32", ta ? 'T' : 'N', tb ? 'T' : 'N', M, N, K);
     double tol = prec ? 2e-6 * sqrt((double)K) : 6e-3; char d[64]; snprintf(d, sizeof d, "400 sampled elements relerr %.2e", me / mx);
     verdict(std::string("bench check: ") + nm, me / mx < tol, d);
     double flops = 2.0 * M * N * K;   // nominal 2MNK (3xTF32 performs 3x the tensor work)
-    double ms = time_ms([&] { launch_full(s, 48 * 1024); }, 10); report(nm, "full dispatch", ms, flops, "GFLOP/s", prec ? 156000 / 3.0 : 156000);
-    ms = time_ms([&] { launch_one<ID>(s, 48 * 1024); }, 10); report(nm, "single-op", ms, flops, "GFLOP/s", prec ? 156000 / 3.0 : 156000);
+    double ms = time_ms([&] { launch_full(s, kvm_gpt_smem_bytes(64)); }, 10); report(nm, "full dispatch", ms, flops, "GFLOP/s", prec ? 156000 / 3.0 : 156000);
+    ms = time_ms([&] { launch_one<ID>(s, kvm_gpt_smem_bytes(64)); }, 10); report(nm, "single-op", ms, flops, "GFLOP/s", prec ? 156000 / 3.0 : 156000);
 }
 
 template <int HD> static void bench_attn(int B, int T, int H, int Hkv) {
@@ -119,6 +135,28 @@ static void bench_mem() {
         std::vector<float> g64(go.begin(), go.begin() + 64 * d); check("bench check: layernorm fwd 16384x1024 (first 64 rows)", g64, ref, 1e-5);
         double ms = time_ms([&] { launch_full(s, 48 * 1024); }, 20); report("layernorm fwd 16384x1024", "full dispatch", ms, 2.0 * R * d * 4, "GB/s", 1555);
     }
+    {   // layernorm bwd dx and param grads [16384 x 1024]
+        int R = 16384, d = 1024; Dev dv; int x = dv.addf(R, d), g = dv.addf(1, d), dy = dv.addf(R, d), mean = dv.addf(1, R), rstd = dv.addf(1, R), dx = dv.addf(R, d), dg = dv.addf(1, d), db = dv.addf(1, d);
+        auto hx = rnd(r, (size_t)R * d), hg = rnd(r, d), hdy = rnd(r, (size_t)R * d), hm = rnd(r, R, 0.1), hr = rnd(r, R, 0.1); for (auto& v : hr) v = 1.f + fabsf(v);
+        dv.up(x, hx); dv.up(g, hg); dv.up(dy, hdy); dv.up(mean, hm); dv.up(rstd, hr);
+        Batch b, bp; for (int r0 = 0; r0 < R; r0 += 64) b.add(OP_layernorm_bwd_dx, A().b(x).b(dy).b(g).b(mean).b(rstd).b(dx).i(r0).i(r0 + 64).i(d).i(0));
+        for (int c0 = 0; c0 < d; c0 += 64) bp.add(OP_norm_bwd_params, A().b(x).b(dy).b(mean).b(rstd).b(dg).b(db).i(R).i(d).i(c0).i(c0 + 64).i(0));
+        Batch bp16; for (int c0 = 0; c0 < d; c0 += 16) bp16.add(OP_norm_bwd_params, A().b(x).b(dy).b(mean).b(rstd).b(dg).b(db).i(R).i(d).i(c0).i(c0 + 16).i(0));
+        auto sp16 = stage(dv, bp16);
+        auto s = stage(dv, b), sp = stage(dv, bp); launch_full(s, 48 * 1024); launch_full(sp, 48 * 1024); CK(cudaDeviceSynchronize());
+        auto gdx = dv.down(dx), gdg = dv.down(dg);
+        double me = 0, ms_ = 0; for (int rr = 0; rr < 8; rr++) {   // row-local reference for 8 rows
+            double s1 = 0, s2 = 0; for (int c = 0; c < d; c++) { double gc = (double)hdy[(size_t)rr * d + c] * hg[c], xh = (hx[(size_t)rr * d + c] - (double)hm[rr]) * hr[rr]; s1 += gc; s2 += gc * xh; }
+            s1 /= d; s2 /= d;
+            for (int c = 0; c < d; c++) { double gc = (double)hdy[(size_t)rr * d + c] * hg[c], xh = (hx[(size_t)rr * d + c] - (double)hm[rr]) * hr[rr], v = hr[rr] * (gc - s1 - xh * s2); me = std::max(me, fabs(gdx[(size_t)rr * d + c] - v)); ms_ = std::max(ms_, fabs(v)); }
+        }
+        char dd[64]; snprintf(dd, sizeof dd, "relerr %.2e", me / ms_); verdict("bench check: layernorm bwd dx 16384x1024 (8 rows)", me / ms_ < 1e-5, dd);
+        double eg = 0, mg = 0; for (int c = 0; c < d; c += 37) { double acc = 0; for (int rr = 0; rr < R; rr++) acc += (double)hdy[(size_t)rr * d + c] * (hx[(size_t)rr * d + c] - (double)hm[rr]) * hr[rr]; eg = std::max(eg, fabs(gdg[c] - acc)); mg = std::max(mg, fabs(acc)); }
+        snprintf(dd, sizeof dd, "relerr %.2e", eg / mg); verdict("bench check: norm_bwd_params dgamma 16384x1024 (sampled cols)", eg / mg < 1e-4, dd);
+        double ms = time_ms([&] { launch_full(s, 48 * 1024); }, 20); report("layernorm bwd dx 16384x1024", "full dispatch", ms, 3.0 * R * d * 4, "GB/s", 1555);
+        ms = time_ms([&] { launch_full(sp, 48 * 1024); }, 20); report("norm_bwd_params 16384x1024 (16 tasks of 64 cols)", "full dispatch", ms, 2.0 * R * d * 4, "GB/s", 1555);
+        ms = time_ms([&] { launch_full(sp16, 48 * 1024); }, 20); report("norm_bwd_params 16384x1024 (64 tasks of 16 cols)", "full dispatch", ms, 2.0 * R * d * 4, "GB/s", 1555);
+    }
     {   // adamw 16M
         int n = 1 << 24; Dev dv; int p = dv.addf(1, n), g = dv.addf(1, n), m = dv.addf(1, n), v = dv.addf(1, n), st = dv.addi(1);
         auto hp = rnd(r, n), hg = rnd(r, n); dv.up(p, hp); dv.up(g, hg); dv.upi(st, {1});
@@ -128,6 +166,15 @@ static void bench_mem() {
         double me = 0; for (int i = 0; i < n; i += 1009) me = std::max(me, fabs(gp[i] - P[i]));
         char d[64]; snprintf(d, sizeof d, "max abs diff %.2e (sampled)", me); verdict("bench check: adamw 16M (first step; later steps mutate state)", me < 1e-6, d);
         double ms = time_ms([&] { launch_full(s, 48 * 1024); }, 20); report("adamw 16M params", "full dispatch", ms, 7.0 * n * 4, "GB/s", 1555);
+    }
+    {   // gelu fwd 64M
+        int n = 1 << 26; Dev dv; int x = dv.addf(1, n), o = dv.addf(1, n);
+        auto hx = rnd(r, n); dv.up(x, hx);
+        Batch b; for (int e0 = 0; e0 < n; e0 += 16384) b.add(OP_gelu_fwd, A().b(x).b(o).i(e0).i(e0 + 16384));
+        auto s = stage(dv, b); launch_full(s, 48 * 1024); CK(cudaDeviceSynchronize()); auto go = dv.down(o);
+        double me = 0; for (int i = 0; i < n; i += 997) { double v = hx[i], t = 0.5 * v * (1 + tanh(0.7978845608028654 * (v + 0.044715 * v * v * v))); me = std::max(me, fabs(go[i] - t)); }
+        char d[64]; snprintf(d, sizeof d, "max abs diff %.2e (sampled)", me); verdict("bench check: gelu fwd 64M", me < 1e-5, d);
+        double ms = time_ms([&] { launch_full(s, 48 * 1024); }, 10); report("gelu fwd 64M", "full dispatch", ms, 2.0 * n * 4, "GB/s", 1555);
     }
     {   // softmax CE fwd+bwd [8192 x 50304]
         int N = 8192, Vv = 50304; Dev dv; int lg = dv.addf(N, Vv), tg = dv.addi(N), rl = dv.addf(1, N), ls = dv.addf(1, N), loss = dv.addf(1, 2), dl = dv.addf(N, Vv);
@@ -145,12 +192,20 @@ static void bench_mem() {
     }
 }
 
+// BENCH_ONLY=mm|attn|mem runs one group; BENCH_REPS=n sets the repetition count.
+static bool want(const char* g) { const char* e = getenv("BENCH_ONLY"); return !e || !*e || !strcmp(e, g); }
+
 int main() {
     cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0)); printf("device: %s, %d SMs, %d MHz\n", pr.name, pr.multiProcessorCount, pr.clockRate / 1000);
+    if (want("mm")) {
     bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 0, 0); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 1, 0, 0); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 1, 0);
     bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 0, 1); bench_mm<OP_matmul_tile>(2048, 2048, 2048, 0, 0, 0); bench_mm<OP_matmul_tile>(8192, 768, 768, 0, 0, 0);
-    bench_attn<64>(4, 1024, 16, 16); bench_attn<64>(4, 2048, 16, 4); bench_attn<128>(2, 2048, 8, 8);
-    bench_mem();
+    for (int bg = 1; bg <= 2; bg++) { bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 0, 0, bg); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 1, 0, 0, bg); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 1, 0, bg); bench_mm<OP_matmul_tile>(4096, 4096, 4096, 0, 0, 1, bg);
+        bench_mm<OP_matmul_tile>(2048, 2048, 2048, 0, 0, 0, bg); bench_mm<OP_matmul_tile>(8192, 768, 768, 0, 0, 0, bg); bench_mm<OP_matmul_tile>(1024, 1024, 1024, 0, 0, 0, bg); bench_mm<OP_matmul_tile>(4096, 3072, 768, 0, 0, 0, bg); bench_mm<OP_matmul_tile>(512, 512, 512, 0, 0, 0, bg); }
+    bench_mm<OP_matmul_tile>(1024, 1024, 1024, 0, 0, 0); bench_mm<OP_matmul_tile>(4096, 3072, 768, 0, 0, 0); bench_mm<OP_matmul_tile>(512, 512, 512, 0, 0, 0);
+    }
+    if (want("attn")) { bench_attn<64>(4, 1024, 16, 16); bench_attn<64>(4, 2048, 16, 4); bench_attn<128>(2, 2048, 8, 8); }
+    if (want("mem")) bench_mem();
     printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

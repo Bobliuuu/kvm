@@ -25,6 +25,13 @@ class SimError(RuntimeError):
     pass
 
 
+class RankKilled(SimError):
+    """A rank died mid-step (fault injection). Carries the rank and how many scheduler actions had run."""
+    def __init__(self, rank, at):
+        super().__init__(f'rank {rank} killed after {at} scheduler actions')
+        self.rank, self.at = rank, at
+
+
 class Device:
     def __init__(self, shard):
         self.rank = shard.rank
@@ -51,41 +58,104 @@ def runnable(dev, i):
     return w is None or dev.version[w[0]] >= w[1]
 
 
-def run(plan, seed, max_steps=10_000_000, pump_bias=0.3, check_fresh=True):
+class _Inbox(list):
+    """The device inbox; remote writes mark the slot dirty so the pump only looks at slots that changed."""
+    def __init__(self, vals, dirty):
+        super().__init__(vals)
+        self.dirty = dirty
+
+    def __setitem__(self, k, v):
+        super().__setitem__(k, v)
+        self.dirty.add(k)
+
+
+def _admit(d, i):
+    w = d.c.program[i].wait
+    if w is None or d.version[w[0]] >= w[1]:
+        d.pos[i] = len(d.runnable)
+        d.runnable.append(i)
+    else:
+        d.blocked.setdefault(w[0], []).append(i)
+
+
+def _remove(d, i):
+    k = d.pos.pop(i)
+    last = d.runnable.pop()
+    if last != i:
+        d.runnable[k] = last
+        d.pos[last] = k
+
+
+def _wake(d, var):
+    for i in d.blocked.pop(var, []):
+        _admit(d, i)
+
+
+def run(plan, seed, max_steps=10_000_000, pump_bias=0.3, check_fresh=True, init=None, kill=None, replace=None):
+    """init: {rank: {buffer: values}} overrides initial buffer contents (state carried between steps / restored from a checkpoint).
+    kill: (rank, n): raise RankKilled when n scheduler actions have run. Also returns the action count via run.last_steps."""
     rng = random.Random(seed)
     devs = [Device(s) for s in plan.shards]
+    for r, bufs in (init or {}).items():
+        for k, v in bufs.items():
+            assert len(devs[r].buf[k]) == len(v), f'init for rank {r} buffer {k}: size mismatch'
+            devs[r].buf[k] = list(v)
     by_rank = {d.rank: d for d in devs}
     net = {}                                   # (src, dst) -> list of messages (in order)
+    nonempty = set()                           # net keys with queued messages
     total = sum(len(d.c.program) for d in devs)
+    # incremental scheduler state (the naive "rebuild every action each step" is quadratic and made 32+ devices unusable)
+    for d in devs:
+        d.runnable, d.pos, d.blocked, d.dirty = [], {}, {}, set()
+        d.inbox = _Inbox(d.inbox, d.dirty)
+        d.var_idx = {v: k for k, v in enumerate(d.vars)}
+        d.in_idx = [d.var_idx[v] for v in d.shard.in_vars]
+        for i in list(d.ready):
+            _admit(d, i)
+    done_total = 0
     steps = 0
-    while sum(d.done for d in devs) < total:
+    while done_total < total:
         steps += 1
+        run.last_steps = steps
+        if kill is not None and steps > kill[1]:
+            raise RankKilled(kill[0], steps - 1)
         if steps > max_steps:
             raise SimError('step limit')
-        actions = []
+        pumps = []
         for d in devs:
-            for i in d.ready:
-                if runnable(d, i):
-                    actions.append(('task', d, i))
-            pend = [v for v in d.shard.in_vars if d.inbox[d.vars.index(v)] > d.version[v]]
-            if pend:
-                actions.append(('pump', d, pend))
-        for (s, t), q in net.items():
-            if q:
-                actions.append(('net', s, t))
-        if not actions:
-            stuck = [(d.rank, d.c.program[i].name) for d in devs for i in d.ready][:5]
-            blocked = [(d.rank, d.c.program[i].name, d.c.program[i].wait) for d in devs for i in d.ready if not runnable(d, i)][:5]
-            raise SimError(f'deadlock: {total - sum(d.done for d in devs)} tasks left; blocked {blocked}')
-        pumps = [a for a in actions if a[0] != 'task']
-        act = rng.choice(pumps) if pumps and rng.random() < pump_bias else rng.choice(actions)
+            if d.dirty:
+                pend = [k for k in d.dirty if d.inbox[k] > d.version[d.vars[k]]]
+                d.dirty.intersection_update(pend)
+                if pend:
+                    pumps.append(('pump', d, pend))
+        others = pumps + [('net', k) for k in nonempty]
+        ntask = sum(len(d.runnable) for d in devs)
+        if not others and not ntask:
+            blocked = [(d.rank, d.c.program[i].name, d.c.program[i].wait) for d in devs for v in d.blocked.values() for i in v][:5]
+            raise SimError(f'deadlock: {total - done_total} tasks left; blocked {blocked}')
+        if others and (not ntask or rng.random() < pump_bias):
+            act = rng.choice(others)
+        else:
+            k = rng.randrange(ntask + len(others))
+            if k >= ntask:
+                act = others[k - ntask]
+            else:
+                for d in devs:
+                    if k < len(d.runnable):
+                        act = ('task', d, d.runnable[k]); break
+                    k -= len(d.runnable)
         if act[0] == 'pump':
             _, d, pend = act
-            for v in pend:                      # the admitter publishes the inbox value locally
-                d.version[v] = d.inbox[d.vars.index(v)]
+            for k in pend:                      # the admitter publishes the inbox value locally
+                v = d.vars[k]
+                d.version[v] = d.inbox[k]
+                _wake(d, v)
+            d.dirty.difference_update(pend)
         elif act[0] == 'net':
-            _, s, t = act
-            m = net[(s, t)].pop(0)
+            key = act[1]
+            m = net[key].pop(0)
+            if not net[key]:
+                nonempty.discard(key)
             dst = by_rank[m['dst_rank']]
             name = dst.index[m['dst_buf']]
             buf = dst.buf[name]
@@ -96,19 +166,24 @@ def run(plan, seed, max_steps=10_000_000, pump_bias=0.3, check_fresh=True):
                 dst.inbox[m['var']] = max(dst.inbox[m['var']], m['ver'])
         else:
             _, d, i = act
-            d.ready.remove(i)
+            _remove(d, i)
             execute(d, i, by_rank)
             for m in d.sendq:
-                net.setdefault((d.rank, m['dst_rank']), []).append(m)
+                key = (d.rank, m['dst_rank'])
+                net.setdefault(key, []).append(m)
+                nonempty.add(key)
             d.sendq.clear()
             t = d.c.program[i]
             if t.pub:
                 d.version[t.pub[0]] = t.pub[1]
+                _wake(d, t.pub[0])
             d.done += 1
+            done_total += 1
             for j in d.c.successors_of(i):
                 d.indeg[j] -= 1
                 if d.indeg[j] == 0:
-                    d.ready.append(j)
+                    _admit(d, j)
+    run.last_steps = steps
     return [dict(d.buf) for d in devs], devs
 
 

@@ -364,7 +364,8 @@ __device__ __forceinline__ void kvm_sched_start(const KvmDevState& S, int slot, 
   KvmSchedDev* D = S.sp.dev; KvmClsDev& k = D->cls[cls];
   if (S.sp.mode == KVM_SCHED_GLOBAL) red_add(&k.running, 1);  // other modes counted it at claim
   const unsigned long long w = start - S.trace[slot].ready_ns;
-  atomicAdd(&k.w_wait_sum, w); atomicAdd(&k.w_n, 1ull); atomicMax(&k.w_wait_max, w);
+  atomicAdd(&k.w_wait_sum, w); atomicAdd(&k.w_n, 1ull); atomicMax(&k.w_wait_max, w); atomicAdd(&k.wait_sum, w);
+  { const int tw = kvm_vol(&k.target_wait_us); if (tw > 0 && w > (unsigned long long)tw * 1000ull) atomicAdd(&k.wait_over, 1ull); }
   if (how & KVM_TRACE_RESV) { atomicAdd(&k.resv_starts, 1ull); atomicMax(&k.resv_wait_max_ns, w); }
 }
 // Before the next pop of this block (thread 0): the class stops counting this CTA as running. Posted adds only, no loads.
@@ -383,6 +384,10 @@ __device__ __forceinline__ void kvm_sched_account(const KvmDevState& S, int slot
   if (in.res == KVM_RES_BW) atomicAdd(&D->bw_bytes, in.bytes);
   atomicAdd(&k.sm_ns, run); atomicAdd(&k.tasks, 1ull); atomicAdd(&k.bytes, in.bytes);
   if (missed) { atomicAdd(&k.missed, 1ull); atomicAdd(&k.w_miss, 1ull); }
+  if (d.deadline_us >= 0) {   // deadline pressure: finishing in the last quarter of the budget is a near miss (the controller acts before a miss, not after)
+    const long long budget = (long long)d.deadline_us * 1000ll, left = budget - (long long)(end - S.trace[slot].admit_ns);
+    atomicAdd(&k.dl_n, 1ull); if (left < budget / 4) atomicAdd(&k.near_miss, 1ull);
+  }
   if (d.op_id < KVM_OP_SLOTS) D->op_blk[d.op_id] = (int)blockIdx.x;
   if (d.op_id < KVM_OP_SLOTS) {  // racy by design: an estimate
     unsigned old = D->ema_ns[d.op_id];
@@ -516,6 +521,7 @@ __device__ void kvm_policy(const KvmDevState& S, KvmWatch& t0, KvmPolShared& P) 
       if (tid < nc) {
         KvmClsDev& k = D->cls[tid]; KvmClassTele* t = &sp.ht->cls[tid];
         t->sm_ns = kvm_voll(&k.sm_ns); t->done = kvm_voll(&k.tasks); t->bytes = kvm_voll(&k.bytes); t->missed = kvm_voll(&k.missed);
+        t->dl_n = kvm_voll(&k.dl_n); t->near_miss = kvm_voll(&k.near_miss); t->wait_over = kvm_voll(&k.wait_over); t->wait_sum_ns = kvm_voll(&k.wait_sum);
         t->running = kvm_vol(&k.running); t->ready = kvm_vol(&k.ready);
         t->win_wait_avg_us = P.win_avg_us[tid]; t->win_wait_max_us = P.win_max_us[tid]; t->win_n = P.win_n[tid];
         t->resv_max_us = (int)min(kvm_voll(&k.resv_wait_max_ns) / 1000ull, 0x7fffffffull);

@@ -3,7 +3,8 @@
 # crosses the network. One hold of the GPU lock for all runs; compute-sanitizer (memcheck, racecheck, synccheck) runs on cases named san_*
 # (small bundles: racecheck is ~1000x slower) or on all cases with --sanitize. Usage, from the repository root on the GPU machine:
 #   examples/models/prebuild.sh logs/prebuilt && examples/models/run_box.sh logs/prebuilt logs/models-run [--sanitize] [--cases FILE]
-# --check-only re-runs only check.py on the dumps of an earlier run (no GPU, no lock).
+# --check-only re-runs only check.py on the dumps of an earlier run (no GPU, no lock). KVM_NO_LOCK=1 skips the GPU lock too (an outer
+# hold exists). This script runs on the box and copies nothing remote: its only scratch is OUT_DIR, which you choose. See RUNNING_TESTS.md.
 set -euo pipefail
 PRE="${1:?usage: run_box.sh PREBUILT_DIR OUT_DIR [--sanitize] [--cases FILE]}"; OUT="${2:?}"; shift 2
 SANITIZE=0; CHECK_ONLY=0; ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; CASES_FILE="$ROOT/examples/models/cases.txt"
@@ -33,7 +34,8 @@ export -f run_all; export NAMES_STR="${NAMES[*]}"
 # shellcheck disable=SC2155
 declare -f run_all > "$OUT/run_all.sh"
 { declare -p NAMES SANITIZE OUT; cat "$OUT/run_all.sh"; echo run_all; } > "$OUT/run_all_full.sh"
-[ "$CHECK_ONLY" = 1 ] || flock -w 14400 ~/.gpu.lock timeout 3400 bash "$OUT/run_all_full.sh" | tee "$OUT/runs.txt"
+FLK="flock -w 14400 $HOME/.gpu.lock"; [ -z "${KVM_NO_LOCK:-}" ] || FLK=""
+[ "$CHECK_ONLY" = 1 ] || $FLK timeout 3400 bash "$OUT/run_all_full.sh" | tee "$OUT/runs.txt"
 fail=0; grep -E "exit [1-9]" "$OUT/runs.txt" && fail=1
 for i in "${!NAMES[@]}"; do
   c="${NAMES[$i]}"; d="$OUT/bundles/$c"

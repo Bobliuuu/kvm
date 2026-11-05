@@ -18,13 +18,14 @@ def model(a):
     state_total = N * sum(bytes_per_param.values())
     shard = N / (TP * PP)                                  # parameters in one (tensor, pipeline) shard
     state_per_gpu = state_total / G                         # ZeRO-3 over DP on top of TP x PP: every state byte lives once
+    b = a.global_batch_seqs / (DP * M)                     # sequences per microbatch per DP rank (was implicitly 1: undercounted activations, TP and PP traffic by this factor)
     layers_per_stage = a.layers / PP
     params_per_layer = N / a.layers
     gathered_layer = params_per_layer / TP * 2             # bf16 weights of one layer for one TP rank, after all-gather
     # activations: keep only each layer's input (full recompute), sequence-parallel over TP; 1F1B keeps <= PP microbatches in flight
-    act_layer_input = a.seq * a.hidden * 2 / TP
+    act_layer_input = b * a.seq * a.hidden * 2 / TP
     act_stored = layers_per_stage * min(PP, M) * act_layer_input
-    act_recompute = 34 * a.seq * a.hidden / TP             # Korthikanti et al. per-layer activation bytes, one microbatch live at a time
+    act_recompute = 34 * b * a.seq * a.hidden / TP             # Korthikanti et al. per-layer activation bytes, one microbatch live at a time
     gathered_buffers = 2 * gathered_layer                  # current + prefetched layer
     mem = dict(model_state=state_per_gpu, gathered_weights=gathered_buffers, stored_activations=act_stored, recompute_workspace=act_recompute)
     # gathering once per step means the WHOLE stage's bf16 weights stay resident for the step; per-microbatch regather needs 2 layers
@@ -34,8 +35,8 @@ def model(a):
     zero = dict(allgather_fwd=ag, allgather_bwd=ag, reducescatter_grads=ag)                          # gathered once per step (weights kept across microbatches)
     zero_per_mb = dict(allgather_fwd=ag * M, allgather_bwd=ag * M, reducescatter_grads=ag)           # re-gathered for every microbatch
     tp_msgs_per_layer_per_mb = 10                          # 4 fwd + 4 bwd + 2 recompute AG/RS of s*b*h bf16 (sequence parallel)
-    tp = layers_per_stage * M * tp_msgs_per_layer_per_mb * (a.seq * a.hidden * 2) * (TP - 1) / TP
-    pp = 2 * M * (a.seq * a.hidden * 2 / TP)               # activation forward + gradient backward across a stage boundary
+    tp = layers_per_stage * M * tp_msgs_per_layer_per_mb * (b * a.seq * a.hidden * 2) * (TP - 1) / TP
+    pp = 2 * M * (b * a.seq * a.hidden * 2 / TP)               # activation forward + gradient backward across a stage boundary
     tokens = a.global_batch_seqs * a.seq
     flops_per_gpu = 8 * N * tokens / G                     # 6N fwd+bwd, +2N recompute
     t_compute = flops_per_gpu / (a.peak_tflops * 1e12 * a.mfu)

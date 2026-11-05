@@ -58,6 +58,9 @@ class OracleChecks(unittest.TestCase):
             picks = {np.unravel_index(np.abs(g).argmax(), g.shape), tuple(int(rng.integers(0, d)) for d in g.shape)}
             for idx in picks:
                 fd = om.fd_grad(model, p, data, name, idx)
+                if np.abs(g).max() < 1e-9:  # structurally zero (attention key bias: softmax ignores a per-query constant): absolute check
+                    self.assertLess(abs(fd), 1e-9, f'{preset} d loss / d {name}{idx}: expected ~0, finite difference {fd:.3g}')
+                    continue
                 err = abs(g[idx] - fd) / max(abs(fd), 0.05 * np.abs(g).max(), 1e-8)
                 worst = max(worst, err)
                 self.assertLess(err, tol_g, f'{preset} d loss / d {name}{idx}: autodiff {g[idx]:.8g} vs finite difference {fd:.8g}')

@@ -16,7 +16,7 @@ Nothing in this repository trains a trillion-parameter model, or any model on mo
 | Host proxy + reliable channel (ack/retransmit/ordering/windows/liveness) | built, tested on CPU and with the real device queue on A100 | `test_transport` (Mac and box), `gpu-plans-tcp-faults` |
 | TCP transport (framing, CRC-32, reconnect-free, WAN buffers) with drop/dup/delay/corrupt injection | built, tested on loopback and between processes on one host | `test_transport`, `cpu-multiprocess-tcp`, `gpu-multiprocess-tcp` |
 | RDMA / GPUDirect transport | **not built**; documented stub with a TODO list | `dist/transport_rdma.hpp` |
-| Partitioner (DP, ZeRO/FSDP, Megatron TP, all-to-all, pipeline + microbatches, HEFT) | built; verified on the CPU simulator against the unpartitioned VM; plans also run on the A100 | `tests/dist/test_partition.py` (29 tests), `gpu-plans-*` |
+| Partitioner (DP, ZeRO/FSDP, Megatron TP, all-to-all, pipeline + microbatches, HEFT) | built; verified on the CPU simulator against the unpartitioned VM; plans also run on the A100 | `tests/dist/test_partition.py` (32 tests), `gpu-plans-*` |
 | Multi-node, multi-datacenter runs | **not run**; launcher exists and dry-runs | `dist/launch.py`, `multinode-tcp-plans` (needs `KVM_NODES`) |
 | NVLink / PCIe P2P bandwidth numbers | **not measured** (one GPU only) | `multigpu-p2p-bandwidth` |
 | Overlap of communication with compute at tile granularity | partly: pipelined microbatches and chunked collectives are built; row-tile splitting of compute ops needs offset-capable tile ops | modeled only, see below |
@@ -168,13 +168,16 @@ print `SKIP: needs 2 GPUs` below that and run automatically otherwise; the multi
 | `multigpu-p2p-bandwidth`, `multigpu-p2p-pingpong`, `multigpu-plans-one-rank-per-gpu` | **2+ GPUs** | real peer-to-peer stores, NVLink/PCIe bandwidth, ranks on distinct GPUs |
 | `multinode-tcp-plans` | **`KVM_NODES`** | ranks on several hosts over TCP (sources rsynced to `~/kvm-dist-run`, built on every node) |
 
+Recorded outcome (`results/2026-11-03-dist-singlebox/`): 14 passed, 0 failed, 4 skipped (the 4 are the 2+-GPU and multi-node stages above), at
+commit 77b7775 and again on the merged tree. Everything beyond one GPU stays unrun. Test commands and lock behaviour: [RUNNING_TESTS.md](RUNNING_TESTS.md).
+
 ### Measured so far (one A100 shared with other jobs; `results/2026-11-03-dist-singlebox/`)
 
-* Cross-executor version hop on one GPU with peer pointers (publisher task end to waiter task start): median 58-71 us, p90 208-332 us.
+* Cross-executor version hop on one GPU with peer pointers (publisher task end to waiter task start): median 57 us (rank 0 to 1) and 78 us (rank 1 to 0), p90 203 and 298 us.
   The executor's local dependent hop is 5.6 us, so a remote hop costs roughly ten times a local one here; it includes the tile
   copy, a system-scope fence, the admitter's poll and the wakeup. Not yet profiled or tuned.
-* Through the host proxy a round trip of two hops and two 16 KiB tiles takes about 0.5 ms (loopback transport) and 0.75 ms (TCP on
-  loopback); with 10% drop, 10% duplicates and 20% delay it is about 19 ms (retransmit timeouts).
+* Through the host proxy a round trip of two hops and two 16 KiB tiles takes about 0.5 ms (peer pointers), about 1 ms (loopback
+  transport and TCP on loopback; 1 ms timer resolution); with 10% drop, 10% duplicates and 20% delay it is about 20 ms (retransmit timeouts).
 * Nothing measured over a real network or between physical GPUs.
 
 ## 7. Scaling math (arithmetic, not measurement)

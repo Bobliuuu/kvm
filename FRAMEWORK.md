@@ -134,11 +134,24 @@ the cyclic GC is paused during compilation.
 - `golden.json` buffers are schedule-independent only if the workload orders conflicting accesses and its `at_least`
   readers can observe a single version (the live example does).
 - `runtime/lower.py` (counter waits/signals -> DAG, used by the queue integration) is separate and unchanged.
-- `include/` must be tracked in git: the repo `.gitignore` pattern `kvm_*` currently matches `include/kvm_ops.def` and
-  `include/kvm_task_abi.h` (needs a `!include/kvm_*` exception).
+- `.gitignore` hides `kvm_*` build outputs; `!include/kvm_*` keeps the headers and `.def` files tracked. `tests/gpu/kvm_ops_test.def|.cuh`
+  were once lost to that pattern and are force-added.
+
+## Status of the layers this document describes
+
+| Layer | State | Evidence |
+|---|---|---|
+| ABI v2, compiler, CPU VM, golden, `seeded`/`file` init | implemented + tested: 145 Python tests (about 3 s); an ABI v2 bundle runs on the A100 and matches its golden 10/10 buffers bitwise | `tests/`, `results/2026-11-03-a100-exec` |
+| Executor (`kvm_exec.cu`) consuming bundles: admission, slot recycling, version waits, error codes | implemented + measured: 8582 checks, 0 failed (two recorded runs); recycling streams a 2.1M-task DAG through 65,536 slots | `results/2026-11-04-a100-exec-recycling`, `results/2026-11-04-a100-sched-integrated` |
+| Known executor failure | `recycle` long-running admission (3M tasks) failed 2 of 3 runs once on the adaptive tree, same flake on its base commit; not root-caused | `results/2026-11-04-a100-adaptive` |
+| Cross-bundle `exact` isolation | not built (documented limit above); the GPU does not check it | this file |
+| Several admissions / `base_versions` from MANIFEST.json in the CLI | not consumed by `kvm_exec`; the CPU runner `kvmfe.run_manifest` is the reference | `results/2026-11-04-a100-exec-recycling` |
+| Registry packs | core 0-31, GPT 32-63 (`ref_gpt.py`), comm 64-95 and Doom/game ops (opaque on the CPU), extra 96-121 (`ref_extra.py`) | `include/kvm_ops_list.inc` |
 
 ## Run the tests
 
 ```bash
-python3 -I -m unittest discover -s tests -v
+python3 -I -m unittest discover -s tests -v        # 145 tests; the frontend has its own: ... -s tests/frontend (59 tests)
 ```
+
+GPU entry points, runtimes and lock behaviour: [RUNNING_TESTS.md](RUNNING_TESTS.md).

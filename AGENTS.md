@@ -32,25 +32,38 @@ open-flapping-airplanes' own task code, launched as per-op kernels, trained 13-2
 Megatron + Transformer Engine with CUDA graphs beat the megakernel on a 162M GPT (43.1 s against 48.1 s, B200). Explain every
 result by these costs.
 
-## Where we are (commit 1079f6e; keep this current)
+## Where we are (tip of feat/integration + chore/docs-hygiene; keep this current)
 
-`kvm.cu`, one file for sm_80: 80-byte instructions (`GEMM` tiles with fused ReLU, ReLU-mask, MSE and SGD epilogues; `SGD`), a
-persistent grid whose blocks claim instructions with one `atomicAdd`, monotonic per-row-block counters for dependencies (step s+1
-starts before step s ends), a loop opcode (one step stored, every step instantiated on the device), and `--runs R` (R training
-runs, a learning-rate sweep, in one kernel). The model is a 2-layer MLP with MSE loss, SGD and TF32 `wmma`. Open gaps:
-- The README's numbers predate the loop opcode (measured at acb3bf4): rerun before quoting them.
-- On an RTX 5070 Laptop GPU (sm_120, 36 SMs) every run passes, but the VM never clearly beats the batched graph: 1.06x, 0.81-0.84x
-  and 0.73-0.78x at 1, 8 and 32 runs with the README's flags (1 block per SM), 0.88-1.12x with `-DKKC=32 -DKSTG=2` (4 blocks per
-  SM) ([results](results/2026-11-03-rtx5070-laptop-sm120/README.md)). Each instruction's claim, wait and signal run serially with
-  its own work, and only other resident blocks overlap them; a controller warp that fetches and waits ahead, as in Hazy's VM
-  below, is the next thing to test.
-- No timeline yet: `run_vm` passes `prof = nullptr`, nothing sets `g_prof_on`, and records carry no SM id (`%smid`).
-- The weights check allows 1e-3 (`e_mode < 1e-3`), but the final weights are bitwise identical in all four modes (all 30 runs
-  above): check for exact equality, so that any difference flags a race.
-- On the README's A100, at 32 runs batching alone gives 9.5x of the 10.7x over sequential launches (3.88 against 3.45 µs per
-  run-step): the VM's own margin is in the single-run and partly filled regimes.
-- Not built: attention, norms, embeddings, softmax cross-entropy, AdamW, bf16, data kept on-chip across instructions, TMA and
-  wgmma (Hopper), tcgen05 and TMEM (Blackwell).
+Two layers. `kvm.cu` is the original sm_80 prototype (80-byte instruction tape, 2-layer MLP, TF32 `wmma`, loop opcode, `--runs R`). Around the
+generic executor `kvm_exec.cu` + `include/kvm_exec.cuh` the integrated tree has: ABI v2 (`include/kvm_task_abi.h`), operator registry packs
+(core 0-31, GPT 32-63, comm 64-95, extra/model-zoo 96-121, game/Doom), the compiler and CPU golden (`runtime/`), the scheduler
+(`include/kvm_sched.*`) and adaptive controller (`include/kvm_adapt.h`), the frontend (`frontend/kvmfe`: GPT, Llama/GQA, MoE, MLP, ViT, bf16,
+fusion, remat), real Doom (`doom/`), multi-GPU code (`dist/`, `runtime/partition.py`). Map: README.md, FRAMEWORK.md, FRONTEND.md,
+DISTRIBUTED.md. Entry points and cost of every test: RUNNING_TESTS.md. A change is done when the CPU suites pass
+(`python3 -I -m unittest discover -s tests` and `-s tests/frontend`) and, for device code, the GPU suite its claim is about passes on the A100.
+
+| Status | What (result dir under `results/`) |
+|---|---|
+| Implemented + measured | `kvm.cu` 1.50x over best baseline at 1 run, 1.13x at 32 (README; predates loop opcode). Executor: 8582 checks 0 failed, 2.1M-task DAG via 65,536 slots, negatives and sanitizers (`2026-11-04-a100-exec-recycling`, `2026-11-04-a100-sched-integrated`). Scheduler shares, EDF, inheritance, overload isolation (`2026-11-03-a100-sched`). Real Doom frame-exact vs CPU oracle in every recorded run, 35 Hz held beside a saturating load (`2026-11-03-a100-doom`, `2026-11-04-a100-sched-integrated`, `2026-11-04-a100-adaptive`). GPT/extra op packs, test_ops 1396 / test_extra 2089 (`2026-11-04-a100-ops-perf`). 24 model-zoo bundles vs golden (`2026-11-04-a100-models`); GPT golden gap = 1xTF32 noise through AdamW (`2026-11-04-a100-gpt-golden`). Multi-GPU code on one GPU: 14 pass, 4 skip (`2026-11-03-dist-singlebox`). |
+| Code only | Multi-GPU / multi-node runs (no hardware), RDMA (stub), 162M GPT on the executor (compiled and inspected only), 1T-parameter section (arithmetic), affinity hint (no benefit measured, off), bf16 tile speed (unbenchmarked). |
+| Not built | Class-aware or sliced admission, device-side yield, dynamic shapes / control flow, real bf16/fp16 storage, TMA/wgmma/tcgen05, a rendered timeline figure, an executor-vs-PyTorch/CUDA-graph comparison (goal 3 holds only for the `kvm.cu` MLP). |
+
+Known failures and honest negatives (do not paper over them):
+- `recycle` long-running admission (3M tasks, 4096 slots) failed 2 of 3 runs on the adaptive tree, same flake on its base commit, not
+  root-caused; passes in about 6 s otherwise (`2026-11-04-a100-adaptive`, failure list 1).
+- `test_ops` T=1 attention-backward case: dq, dk are exactly 0 and only rounding noise remains, so its bound is absolute
+  (`tests/gpu_ops/test_ops.cu` line 264); a failure was reported on the integrated tree and no result README records it: open.
+- Matmul is about 0.5x cuBLAS (best 51.0 vs 105.6 TFLOP/s at 4096^3, 0.34-0.51x elsewhere; the 70% target was missed); attention 15-30% below
+  torch fp32 SDPA (`2026-11-04-a100-ops-perf`).
+- Nothing has run on more than one GPU, over NVLink, or over a network.
+- The bandwidth arbiter gave no latency win (7% p99 on a synthetic chain, none with real tenants); it is a throttle.
+- The single admission FIFO (1.9 us/task, 0.52M tasks/s) is the tail-latency limit: a big training record puts every other class behind
+  100-300 ms; gating admission buys deadlines by shedding 38% of serve requests (`2026-11-04-a100-adaptive`).
+- The adaptive controller did not beat a hand-set fixed priority configuration; the dynamic scheduler is 1.7-1.8x worse on serve p99 than a
+  global queue with serve priority (`2026-11-04-a100-sched-integrated`).
+- RTX 5070 Laptop (sm_120): `kvm.cu` passes but never clearly beats the batched graph, 0.73-1.12x (`2026-11-03-rtx5070-laptop-sm120`).
+- `kvm.cu` open gaps: no timeline (`prof = nullptr`, no `%smid`); the weights check allows 1e-3 although weights are bitwise identical in all
+  four modes (check exact equality); on the README's A100 batching alone gives 9.5x of the 10.7x at 32 runs.
 
 ## How the best do it (read before designing)
 

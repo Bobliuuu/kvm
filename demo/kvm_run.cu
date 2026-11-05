@@ -756,7 +756,7 @@ class Runner {
     const std::vector<int> rec = ex.record_tasks();
     std::vector<long long> base(rec.size() + 1, 0);
     for (size_t i = 0; i < rec.size(); ++i) base[i + 1] = base[i] + rec[i];
-    int viol = 0, checked = 0, exact = 0, advanced = 0, mapping_bad = 0;
+    int viol = 0, checked = 0, exact = 0, advanced = 0, mapping_bad = 0, v0_skipped = 0;
     const bool recycled = base.back() > (long long)ex.config().max_tasks;
     if (recycled) { KLOG(1, "version check: %lld tasks > %d slots, slots were recycled; trace covers only the last occupants: skipped", base.back(), ex.config().max_tasks); version_checked_ = -1; return 0; }
     for (size_t ai = 0; ai < m_.adms.size(); ++ai) {
@@ -768,6 +768,7 @@ class Runner {
       for (auto& rd : rt.reads) {
         if (rd.task < 0 || rd.task >= (int)rt.op_ids.size()) continue;
         const KvmTrace& tr = r.trace[b0 + rd.task];
+        if (rd.version == 0 && tr.ver0 < 0) { ++v0_skipped; continue; }   // version 0 is the initial state: the compiler emits no wait, so the trace has no tag
         if (r.tasks[b0 + rd.task].op_id != rt.op_ids[rd.task]) { ++mapping_bad; continue; }
         bool ok = tr.ver0 >= rd.version;
         if (rd.policy == "exact") { ok = tr.ver0 == rd.version && tr.ver1 == rd.version; ++exact; }
@@ -777,7 +778,7 @@ class Runner {
       }
     }
     if (mapping_bad) { KLOG(0, "version check: %d slot/op mismatches: the trace-to-record mapping is not trustworthy", mapping_bad); viol += mapping_bad; }
-    KLOG(2, "version check: %d version-carrying tasks (%d exact), %d violations, %d at_least readers saw the version advance while they ran", checked, exact, viol, advanced);
+    KLOG(2, "version check: %d version-carrying tasks (%d exact), %d violations, %d at_least readers saw the version advance while they ran; %d reads of version 0 carry no tag (ordered by the host barrier only)", checked, exact, viol, advanced, v0_skipped);
     version_checked_ = checked; version_exact_ = exact; version_advanced_ = advanced; version_viol_ = viol;
     return viol;
   }

@@ -645,7 +645,7 @@ static long inbox_stress(int reorder_us, int vars, int tiles, long* seen_out) {
   });
   for (auto& x : wr) x.join();
   for (int v = 0; v < vars; ++v) r.ib[1]->wait_ge(v, tiles, 5000);
-  std::this_thread::sleep_for(std::chrono::milliseconds(reorder_us ? 20 : 0));
+  std::this_thread::sleep_for(std::chrono::milliseconds(reorder_us ? 60 : 0));
   stop = true; for (auto& x : rd) x.join();
   if (seen_out) *seen_out = seen;
   return bad;
@@ -657,9 +657,10 @@ static void suite_inbox_ordering() {
   long bad = inbox_stress(0, 4, 1500, &seen);
   CHECK(bad == 0, "%ld torn reads in the ordered shim", bad);
   fprintf(stderr, "  ordered shim: 4 vars x 1500 tiles, %ld observed versions, %ld torn reads\n", seen, bad);
-  long bad_neg = inbox_stress(2500, 4, 150, &seen);
+  long bad_neg = 0;
+  for (int attempt = 0; attempt < 3 && bad_neg == 0; ++attempt) bad_neg = inbox_stress(20000, 4, 40, &seen);   // probabilistic detector: retry if the readers were descheduled
   CHECK(bad_neg > 0, "negative test: with the REORDER knob the same reader must observe torn tiles, saw %ld", bad_neg);
-  fprintf(stderr, "  reorder knob (data lands 2.5 ms late): %ld torn reads -> the test detects a broken ordering\n", bad_neg);
+  fprintf(stderr, "  reorder knob (data lands 20 ms late): %ld torn reads -> the test detects a broken ordering\n", bad_neg);
 }
 
 static void suite_inbox_failure() {

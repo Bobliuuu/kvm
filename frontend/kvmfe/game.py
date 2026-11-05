@@ -20,7 +20,8 @@ from .opset import op as device_op
 
 FRAME_VAR = 'frame'
 SCREEN_W, SCREEN_H, WORDS_PER_ROW = 320, 200, 80          # 8-bit palette indices, 4 per word
-PALETTE_WORD, FB_WORDS, ST_HEADER = 16000, 16256, 16     # doom_present fb layout; state header words, then 2 hash words/frame
+PALETTE_WORD, FB_WORDS, ST_HEADER, ST_REC = 16000, 16256, 16, 16   # doom_present fb layout; state header words, then ST_REC words per frame
+#                                                                (include/kvm_ops_game.cuh: [0..1] fingerprint, [2..15] the frame's game state)
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,7 @@ class GameConfig:
     priority: int = 100
     present_rows: int = 40       # screen rows per present task
     status: bool = True          # record the per-frame pixel hash (proof of identity against the CPU build)
+    fb_slots: int = 2            # frame buffers: frame f is presented into slot f % fb_slots (0 = one per frame, every frame stays readable)
 
 
 @lowers('game_tick')
@@ -59,15 +61,18 @@ def build_game(gc: GameConfig) -> Builder:
         raise FrontendError('frames and hz must be >= 1')
     for name in ('doom_tick', 'doom_present') + (('doom_status',) if gc.status else ()):
         device_op(name)                                               # fails clearly when the Doom defs are absent
+    if gc.fb_slots < 0:
+        raise FrontendError('fb_slots must be >= 0')
+    slots = gc.fb_slots or gc.frames
     b = Builder('game')
     b.phase = 'game'
-    state = Tensor('doom_state', 1, ST_HEADER + 2 * gc.frames, 'state', buf='doom_state', init=('fill', 0.0))
+    state = Tensor('doom_state', 1, ST_HEADER + ST_REC * gc.frames, 'state', buf='doom_state', init=('fill', 0.0))
     inp = Tensor('doom_input', 1, gc.frames + 1, 'input', buf='doom_input', init=('fill', 0.0))   # no magic word: scripted player
     ftok = Tensor('frame_token', 1, 1, 'state', buf='frame_token', init=('fill', 0.0))
     b.tensors += [state, inp, ftok]
     for f in range(gc.frames):
         b.step = f
-        fb = Tensor(f'doom_frame@{f}', FB_WORDS, 1, 'state', buf=f'doom_frame.{f % 2}', init=('fill', 0.0))
+        fb = Tensor(f'doom_frame@{f}', FB_WORDS, 1, 'state', buf=f'doom_frame.{f % slots}', init=('fill', 0.0))
         b.tensors.append(fb)
         b.emit('game_tick', {'state': state, 'input': inp}, {'state': state}, frame=f)
         if gc.status:

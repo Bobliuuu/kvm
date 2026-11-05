@@ -21,6 +21,7 @@ N = 256                   # matmul size
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--frames", type=int, default=700)
+    ap.add_argument("--instances", type=int, default=1, help="independent Doom engines (1..8), each its own chain, buffers and state; needs a build with DOOM_INSTANCES>=N")
     ap.add_argument("--chains", type=int, default=0, help="compute chains (0: no competing load)")
     ap.add_argument("--rounds", type=int, default=40, help="rounds per chain; each round is one matmul then one spin")
     ap.add_argument("--spin-us", type=int, default=200000, help="a spin task holds a block this long (sustains the load for the whole run)")
@@ -30,24 +31,33 @@ def main():
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
 
-    buffers = [{"name": "d_input", "rows": 1, "cols": 1},                     # zero: no input magic -> the scripted player plays
-               {"name": "d_state", "rows": 1, "cols": 16 + STATE_REC * a.frames}]
-    buffers += [{"name": f"fb_{f}", "rows": 1, "cols": FB_WORDS} for f in range(a.frames)]
-    tasks, prev = [], []
-    for f in range(a.frames):
-        dl = int((f + 1) * 1e6 / 35)
-        tick = {"id": f"tick_{f}", "op": "doom_tick", "priority": a.doom_priority, "deadline_us": dl, "after": prev,
-                "args": {"frame": f, "input": "d_input", "state": "d_state"}}
-        tasks.append(tick)
+    N = a.instances
+    if not 1 <= N <= 8:
+        ap.error("--instances must be 1..8")
+    # N == 1: the original ids/ops (byte-identical workload). N > 1: instance k uses the *_n ops (inst arg) and ids tick_{k}_{f} etc.
+    sfx = lambda k: f"_{k}" if N > 1 else ""
+    buffers, tasks = [], []
+    for k in range(N):
+        buffers += [{"name": f"d_input{sfx(k)}", "rows": 1, "cols": 1},       # zero: no input magic -> the scripted player plays
+                    {"name": f"d_state{sfx(k)}", "rows": 1, "cols": 16 + STATE_REC * a.frames}]
+        buffers += [{"name": f"fb{sfx(k)}_{f}", "rows": 1, "cols": FB_WORDS} for f in range(a.frames)]
+        op = (lambda n: n + "_n") if N > 1 else (lambda n: n)
+        ex = (lambda d: {**d, "inst": k}) if N > 1 else (lambda d: d)
         prev = []
-        for k in range(SLICES):
-            rows = 200 // SLICES
-            tasks.append({"id": f"present_{f}_{k}", "op": "doom_present", "priority": a.doom_priority, "deadline_us": dl, "after": [tick["id"]],
-                          "args": {"fb": f"fb_{f}", "row0": k * rows, "rows": rows}})
-            prev.append(f"present_{f}_{k}")
-        tasks.append({"id": f"status_{f}", "op": "doom_status", "priority": a.doom_priority, "deadline_us": dl, "after": [tick["id"]],
-                      "args": {"frame": f, "state": "d_state"}})
-        prev.append(f"status_{f}")
+        for f in range(a.frames):
+            dl = int((f + 1) * 1e6 / 35)
+            tick = {"id": f"tick{sfx(k)}_{f}", "op": op("doom_tick"), "priority": a.doom_priority, "deadline_us": dl, "after": prev,
+                    "args": ex({"frame": f, "input": f"d_input{sfx(k)}", "state": f"d_state{sfx(k)}"})}
+            tasks.append(tick)
+            prev = []
+            for s_ in range(SLICES):
+                rows = 200 // SLICES
+                tasks.append({"id": f"present{sfx(k)}_{f}_{s_}", "op": op("doom_present"), "priority": a.doom_priority, "deadline_us": dl, "after": [tick["id"]],
+                              "args": ex({"fb": f"fb{sfx(k)}_{f}", "row0": s_ * rows, "rows": rows})})
+                prev.append(f"present{sfx(k)}_{f}_{s_}")
+            tasks.append({"id": f"status{sfx(k)}_{f}", "op": op("doom_status"), "priority": a.doom_priority, "deadline_us": dl, "after": [tick["id"]],
+                          "args": ex({"frame": f, "state": f"d_state{sfx(k)}"})})
+            prev.append(f"status{sfx(k)}_{f}")
     graphs = [{"name": "doom", "tasks": tasks}]
 
     if a.chains:

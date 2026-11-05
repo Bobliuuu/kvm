@@ -38,10 +38,11 @@ def step_begin(b: Builder, cfg: OptimConfig, state: State):
         b.counter_inc(state.step)
 
 
-def update(b: Builder, cfg: OptimConfig, spec, w: Tensor, g: Tensor, state: State, token: Tensor, gscale: Tensor | None = None):
+def update(b: Builder, cfg: OptimConfig, spec, w: Tensor, g: Tensor, state: State, token: Tensor, gscale: Tensor | None = None,
+           lr: Tensor | None = None):
     with b.scope('opt'):
         if cfg.kind == 'sgd':
             b.sgd(w, g, cfg.lr, token)
         else:
-            b.adamw(w, g, state.m[spec.name], state.v[spec.name], state.step, token, gscale, lr=cfg.lr, b1=cfg.b1, b2=cfg.b2,
+            b.adamw(w, g, state.m[spec.name], state.v[spec.name], state.step, token, gscale, lr, lr=cfg.lr, b1=cfg.b1, b2=cfg.b2,
                     eps=cfg.eps, wd=cfg.weight_decay if spec.decay else 0.0)

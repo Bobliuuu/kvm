@@ -1,0 +1,29 @@
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80
+== admit_gran
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 34 (1 admitter + 1 policy + 32 workers)
+[kvm_exec][I] kernel launched: grid 34 x 256 threads, live_cap 131072, slots 262144, succ ring 2097152 words, ring 4194304 words, aging 0 us, sched dynamic
+[kvm_exec][I] kernel done: 6012/6012 tasks in 12.276 ms, 24 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 34 (1 admitter + 1 policy + 32 workers)
+[kvm_exec][I] kernel launched: grid 34 x 256 threads, live_cap 131072, slots 262144, succ ring 2097152 words, ring 4194304 words, aging 0 us, sched dynamic
+[kvm_exec][I] kernel done: 24012/24012 tasks in 47.547 ms, 24 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 34 (1 admitter + 1 policy + 32 workers)
+[kvm_exec][I] kernel launched: grid 34 x 256 threads, live_cap 131072, slots 262144, succ ring 2097152 words, ring 4194304 words, aging 0 us, sched dynamic
+[kvm_exec][I] kernel done: 96012/96012 tasks in 188.463 ms, 24 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 34 (1 admitter + 1 policy + 32 workers)
+[kvm_exec][I] kernel launched: grid 34 x 256 threads, live_cap 131072, slots 262144, succ ring 2097152 words, ring 4194304 words, aging 0 us, sched dynamic
+[kvm_exec][D] ring wrap: 98048 pad words
+[kvm_exec][I] kernel done: 384012/384012 tasks in 756.818 ms, 24 records, 1 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 34 (1 admitter + 1 policy + 32 workers)
+[kvm_exec][I] kernel launched: grid 34 x 256 threads, live_cap 131072, slots 262144, succ ring 2097152 words, ring 4194304 words, aging 0 us, sched dynamic
+[kvm_exec][D] ring wrap: 98176 pad words
+[kvm_exec][D] ring wrap: 98176 pad words
+[kvm_exec][I] kernel done: 768012/768012 tasks in 1499.941 ms, 24 records, 2 ring wraps, 0 backpressure waits
+  latency bundle (1 noop, class 0) submitted right behind a K-task record (K noops, class 1); end-to-end latency of the small bundle
+  K=   500: small bundle p50      182 us  max     1789 us   (record fully done: 2.00 us per task)
+  K=  2000: small bundle p50      531 us  max     2021 us   (record fully done: 1.93 us per task)
+  K=  8000: small bundle p50     1895 us  max     2840 us   (record fully done: 1.91 us per task)
+  K= 32000: small bundle p50     7075 us  max     7198 us   (record fully done: 1.90 us per task)
+  K= 64000: small bundle p50    13801 us  max    14463 us   (record fully done: 1.89 us per task)
+== admit_gran: PASS (2.9s, 0 new failures)
+120 checks, 0 failed, 0 suites failed
+PASS

@@ -1,0 +1,8 @@
+model                       tasks    crit path (tasks)   crit path (model us)   fused patterns
+gpt_tiny             103 ->    102 ( 1.0%)     41 ->    40        250 ->      242   {'matmul_tile_dgelu': 2}
+gpt_small            324 ->    322 ( 0.6%)     67 ->    65        713 ->      650   {'matmul_tile_dgelu': 16}
+llama_tiny           159 ->    155 ( 2.5%)     63 ->    61        435 ->      421   {'matmul_tile_silu_mul': 4, 'matmul_tile_silu_mul_bwd': 4}
+llama_gqa_tied       157 ->    153 ( 2.5%)     63 ->    61        435 ->      421   {'matmul_tile_silu_mul': 4, 'matmul_tile_silu_mul_bwd': 4}
+moe_tiny             184 ->    176 ( 4.3%)     75 ->    71        555 ->      531   {'matmul_tile_silu_mul': 4, 'matmul_tile_silu_mul_bwd': 4}
+mlp_tiny              36 ->     36 ( 0.0%)     20 ->    20        110 ->      110   {}
+vit_tiny             175 ->    174 ( 0.6%)     38 ->    37        270 ->      252   {'matmul_tile_dgelu': 4}

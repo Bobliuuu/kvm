@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -55,16 +56,20 @@ struct KvmSchedParams {        // seqlock: writer bumps gen_a, writes, then sets
 };
 static_assert(sizeof(KvmSchedParams) == 4 * (8 + 8 * 8 + 8), "KvmSchedParams layout");
 
-struct KvmClassTele {          // 64 B, written by the policy block (about every 20 us)
+struct KvmClassTele {          // 128 B, written by the policy block (about every 20 us). Cumulative counters are lossless for a host that
+                               // samples slower than the device window: the host differences them (KvmAdaptive does).
   volatile unsigned long long sm_ns, done, bytes, missed;
-  volatile int running, ready, win_wait_avg_us, win_wait_max_us, win_n, resv_max_us, pad[2];
+  volatile unsigned long long dl_n, near_miss, wait_over, wait_sum_ns;   // dl_n: finished tasks with a deadline; near_miss: of those, finished
+                                                                          // with less than 1/4 of their deadline budget left (misses included);
+                                                                          // wait_over: tasks that waited longer than the class's target_wait_us in the queue
+  volatile int running, ready, win_wait_avg_us, win_wait_max_us, win_n, resv_max_us, pad[10];
 };
 struct KvmSchedTele {
   volatile unsigned long long ticks;
   volatile int bw_mbps, bw_peak_mbps, bw_limit, boost_mask, params_gen, bw_running, pad[8];
   KvmClassTele cls[KVM_MAX_CLS];
 };
-static_assert(sizeof(KvmClassTele) == 64 && sizeof(KvmSchedTele) == 64 + 8 * 64, "telemetry layout");
+static_assert(sizeof(KvmClassTele) == 128 && sizeof(KvmSchedTele) == 64 + 8 * 128, "telemetry layout");
 
 // Device-memory state (allocated by the host, zero-initialized, then the policy mirror is written before launch).
 struct KvmSlotInfo { unsigned long long bytes; int res, est_ns, pref, pad; };   // per task slot; pref = block that ran the releasing predecessor (-1 none)
@@ -81,6 +86,7 @@ struct alignas(128) KvmClsDev {
   alignas(128) unsigned long long sm_ns;
   unsigned long long bytes, tasks, missed, resv_starts, resv_wait_max_ns;
   unsigned long long w_wait_sum, w_n, w_wait_max, w_miss;   // window accumulators, drained by the policy block
+  unsigned long long dl_n, near_miss, wait_over, wait_sum;  // cumulative, exported as is (KvmClassTele)
 };
 
 static_assert(offsetof(KvmClsDev, running) == 128 && offsetof(KvmClsDev, sm_ns) == 256, "KvmClsDev lines");

@@ -35,7 +35,19 @@ REMOTE='kvm-demo-scratch'
 {
 echo "# demo $TAG  host=<KVM_HOST>  commit=$(git -C "$ROOT" rev-parse --short HEAD)$(git -C "$ROOT" diff --quiet || echo +dirty)  preset=$PRESET model=$MODEL steps=$STEPS window=$WINDOW serve_every=$SERVE_EVERY frames=$FRAMES tiling=$TILING precise=$PRECISE sanitize=$SANITIZE"
 rsync -az -e "$SSH" --delete --exclude .git --exclude logs --exclude docs --exclude results --exclude 'doom/build' --exclude 'doom/third_party' --exclude runs --exclude 'demo/kvm_run' "$ROOT/" "$HOST:$REMOTE/"
-$SSH "$HOST" "cd $REMOTE && KVM_COMMIT='$(git -C "$ROOT" rev-parse --short HEAD)' DEMO_TAG='$TAG' MODEL='$MODEL' TILING='$TILING' STEPS='$STEPS' WINDOW='$WINDOW' SERVE_EVERY='$SERVE_EVERY' FRAMES='$FRAMES' PRECISE='$PRECISE' MAXB='$MAXB' SANITIZE='$SANITIZE' RUN_ARGS='$RUN_ARGS' LOCK_WAIT='$LOCK_WAIT' bash demo/remote_demo.sh"
+# Detached on the box (nohup): a long wait in the GPU-lock queue must not depend on this ssh session. We poll the remote log.
+$SSH "$HOST" "cd $REMOTE && mkdir -p runs && rm -f runs/$TAG.done && (KVM_COMMIT='$(git -C "$ROOT" rev-parse --short HEAD)' DEMO_TAG='$TAG' MODEL='$MODEL' TILING='$TILING' STEPS='$STEPS' WINDOW='$WINDOW' SERVE_EVERY='$SERVE_EVERY' FRAMES='$FRAMES' PRECISE='$PRECISE' MAXB='$MAXB' SANITIZE='$SANITIZE' RUN_ARGS='$RUN_ARGS' LOCK_WAIT='$LOCK_WAIT' nohup bash -c 'bash demo/remote_demo.sh > runs/$TAG.log 2>&1; echo \$? > runs/$TAG.done' > /dev/null 2>&1 &)"
+off=0
+while :; do
+  sleep 20
+  chunk="$($SSH "$HOST" "tail -c +$((off + 1)) $REMOTE/runs/$TAG.log 2>/dev/null | head -c 200000" || true)"
+  if [ -n "$chunk" ]; then printf '%s\n' "$chunk"; off=$((off + ${#chunk} + 1)); fi
+  rc="$($SSH "$HOST" "cat $REMOTE/runs/$TAG.done 2>/dev/null" || true)"
+  if [ -n "$rc" ]; then
+    rest="$($SSH "$HOST" "tail -c +$((off + 1)) $REMOTE/runs/$TAG.log" || true)"; [ -n "$rest" ] && printf '%s\n' "$rest"
+    exit "$rc"
+  fi
+done
 } 2>&1 | tee "$LOG/run.log"
 status=${PIPESTATUS[0]}
 rsync -az -e "$SSH" --exclude 'buffers' --exclude 'demo' --exclude 'demo_small' --exclude 'oracle' --exclude 'doom_candidate' "$HOST:$REMOTE/runs/$TAG/" "$LOG/remote/" || true

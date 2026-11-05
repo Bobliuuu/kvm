@@ -179,6 +179,10 @@ print `SKIP: needs 2 GPUs` below that and run automatically otherwise; the multi
 
 ## 7. Scaling math (arithmetic, not measurement)
 
+> Correction (2026-11-04): the first version of `dist/scaling.py` took a microbatch to be one sequence; with the stated global batch (4096
+> sequences, DP 32, 64 microbatches) it is 2, so activation, tensor-parallel and pipeline traffic were undercounted 2x. The numbers
+> below are the corrected ones. Section 10 replaces this arithmetic by a scheduled simulation.
+
 `python3 dist/scaling.py` regenerates this; every assumption is a flag. Assumptions: 1.0e12 parameters, 128 layers, hidden 25600,
 sequence 4096, global batch 4096 sequences (16.8M tokens), 4096 GPUs = TP 8 x PP 16 x DP 32, 64 microbatches, H100-class peak
 989 bf16 TFLOP/s at 40% MFU, 50 GB/s of NIC per GPU, 450 GB/s NVLink per GPU. None of these is a measurement of anything here.
@@ -186,16 +190,17 @@ sequence 4096, global batch 4096 sequences (16.8M tokens), 4096 GPUs = TP 8 x PP
 * **State.** bf16 weights 2 + fp32 master 4 + Adam m,v 8 + bf16 gradients 2 = **16 B/param = 16 TB**. ZeRO-3 over DP on top of
   TP x PP stores every byte once: **3.9 GB/GPU**.
 * **Per-GPU memory.** state 3.9 GB + gathered weights (two layers prefetched: 3.9 GB) + stored layer inputs under full recompute with
-  sequence parallelism (3.4 GB) + recompute workspace (0.45 GB) = **11.6 GB**; **23.3 GB** if the whole stage stays gathered for
+  sequence parallelism (6.7 GB) + recompute workspace (0.9 GB) = **15.4 GB**; **27.1 GB** if the whole stage stays gathered for
   the step instead. Fits an 80 GB part with room; it is not the constraint.
 * **Per-step communication per GPU.** ZeRO-3: gather forward 15.1 GB + gather backward 15.1 GB + gradient reduce-scatter 15.1 GB
-  if weights are gathered once per step; re-gathering for every microbatch would be about 1950 GB. Tensor parallel about 940 GB
-  (NVLink). Pipeline point-to-point 3.4 GB.
+  if weights are gathered once per step; re-gathering for every microbatch would be about 1950 GB. Tensor parallel about 1880 GB
+  (NVLink). Pipeline point-to-point 6.7 GB.
 * **Overlap budget.** Step compute is about 83 s at the assumed MFU. ZeRO-3 traffic needs **0.55 GB/s** per GPU to hide (the NIC
   provides 50), so it is 1.1% of compute if gathered once per step, 47% if re-gathered per microbatch: that is the real design
-  choice. Tensor-parallel traffic is 2.5% of compute on NVLink. The pipeline bubble is 19% at 64 microbatches (48% at 16).
+  choice. Tensor-parallel traffic is 5.0% of compute on NVLink. The pipeline bubble is 19% at 64 microbatches (48% at 16).
 * **Across datacenters.** Put the datacenter boundary on the *pipeline* axis, not the data-parallel axis: a stage boundary carries
-  859 GB per step = about 83 Gb/s aggregate, and a 15 ms hop is 1.2% of one microbatch's time. Putting it on the DP axis would need
+  1718 GB per step (both directions) = about 166 Gb/s aggregate, 83 Gb/s per direction, so a 100 Gb/s link per direction is already close to
+  the limit, and a 15 ms hop is 1.2% of one microbatch's time. Putting it on the DP axis would need
   every GPU's 45 GB per step across the WAN.
 * **What this does not cover:** the 4096-rank collective latency tail, failures at that scale (MTBF of thousands of GPUs is
   hours; there is no checkpoint/restart here), the numerics of a 1T-parameter run, the dispatch cost of the megakernel at
@@ -223,3 +228,55 @@ sequence 4096, global batch 4096 sequences (16.8M tokens), 4096 GPUs = TP 8 x PP
   from the main thread (`KVM_DIST_LAUNCH=threads` restores the concurrent launch). A host that drives several GPUs from several
   threads in one process (the in-process multi-GPU mode of `test_dist`) launches from one thread too; one process per GPU is unaffected.
 * x86-64 and aarch64 little-endian hosts only (wire structs are not byte-swapped).
+
+## 9. Fault tolerance (design; the recovery protocol is simulated, the detection path is the existing one)
+
+Failure model: a rank (GPU, node, or its proxy) disappears mid-step. Everything that lives on it is lost: its weights shard, its
+landing buffers, its inbox, the messages in flight to and from it.
+
+* **Detection (built, tested on CPU and the single A100):** `reliable.hpp` declares a peer DEAD (retransmit limit, silence past
+  `dead_ms`, connection lost, refused send) and the proxy turns it into `KVM_ERR_DIST_PEER_DOWN`; a wait nobody satisfies ends in `TIMEOUT`.
+  What is missing is a coordinator that turns "one rank died" into "everybody stops": design below.
+* **Recovery unit = a training step.** Every cross-device landing buffer is single-assignment and every version variable is one-shot
+  *within a step*, so a step has no state that survives it except the weights/optimizer shards. The step boundary is therefore a
+  consistent cut for free: the weight variable's published version k *is* checkpoint k (the executor already treats "version"
+  as the unit of publication; the checkpoint is "every rank's shards at version k").
+* **Protocol:** (1) at the end of step k each rank copies its persistent shards to a buddy rank `(r+1) % P` (an ordinary `put`
+  into a buddy landing buffer, overlapped with step k+1's first forward because step k+1 reads version k+1 only after the copy
+  was signalled; durable storage is written from the buddy copy, off the critical path); (2) on PEER_DOWN or TIMEOUT every survivor aborts
+  the executor (the existing error path) and reports to a coordinator (a process outside the kernel; not built); (3) the
+  coordinator picks a spare for the dead slot, gives everyone a new epoch number, and each rank reloads its shard (the spare pulls
+  the dead rank's shard from the buddy's copy); (4) the step is re-run with fresh inboxes and versions. Re-run is exact because
+  the step is a deterministic function of (version k, data): reduction orders are fixed by the plan, so the retry is bitwise
+  identical to a failure-free run.
+* **Limits (stated, tested where noted):** two adjacent ranks lost together lose both copies (`CheckpointLost`, tested); a
+  failure costs the work of the current step (average half a step plus detection and restart), not finer-grained replay;
+  survivors do not keep finished work; the buddy copy costs network (one shard per step; 3.9 GB per GPU for the 1T/4096 example, about 0.1 s on
+  a 50 GB/s NIC, modeled not measured); the coordinator, spare allocation, durable checkpoints and elastic resizing are not built.
+* **Tested (CPU simulator, `tests/dist/test_fault_recovery.py`, `tests/dist/ft.py`):** 4-step training loops on 4 devices
+  (ZeRO-sharded state with ring collectives, and replicated state with data parallelism); a random rank is killed at a random scheduler action (including between a data
+  write and its signal and with messages in flight) in a random step, the step is re-run from the last version, and the final
+  state is **bitwise equal** to the failure-free run and, for the integer workload, to the unpartitioned CPU VM stepped the same
+  number of times (40 + 12 random kills, repeated failures in one run, rollback goes back exactly one step, and the check can fail: restoring a stale version is detected).
+* **Expected cost at scale (first-order model, `dist/resilience.py`):** with the per-GPU failure rate implied by the Llama 3 report
+  (419 unexpected interruptions in 54 days on 16,384 GPUs; taken from secondary summaries of the paper), goodput is 96% at 4096 GPUs and
+  91% at 16,384 with 30 s checkpoints and 5 min restarts; 98% and 96% with 5 s and 2 min. It is a model.
+
+## 10. Scale-out simulation (cost model; nothing measured)
+
+`dist/scaleout.py` + `dist/scaleout_report.py`; numbers in `results/2026-11-04-scaleout-sim/`. A hierarchical topology (GPU, node, rack,
+datacenter, WAN) and a trillion-parameter transformer step are lowered to a task graph (compute and communication tasks on
+streams, dependency edges, a priority rule, an in-flight-microbatch window) and scheduled by a discrete-event simulator. 1F1B,
+ZeRO prefetch order and compute/communication overlap *emerge* from edges and priorities; nothing is a per-model schedule.
+What is generic and what is not is stated at the top of `scaleout.py`. The correctness of the real planner path is checked at
+16-64 devices on a hierarchical cluster (`tests/dist/test_scaleout_sim64.py`); the 4096-10240 device numbers use the cost model only
+with one representative rank per pipeline stage (checked against explicit instantiation on a small cluster).
+
+## 11. RDMA transport and cross-datacenter protocol (emulated; nothing here touched a NIC)
+
+* `dist/verbs_shim.hpp` emulates the libibverbs subset in process; `dist/transport_rdma.hpp` implements `RdmaTransport` and `RdmaVersionInbox` on a small `Verbs` interface
+  (shim backend always compiled, real libibverbs backend only under `HAVE_IBVERBS`, **never compiled or run here**). The version publish is an RDMA write of the tile followed on the same RC QP by a
+  write-with-immediate carrying (var, version); QP in-order delivery is what makes data-before-signal hold, and the receiver's CQ thread applies it to the inbox with release semantics. Tested: `tests/dist/test_rdma.cpp`.
+* GPUDirect RDMA (nvidia-peermem or dma-buf registration of device memory, device-initiated doorbells) is design only; see the comment block in `transport_rdma.hpp`. Whether NIC writes into GPU memory are visible to an `ld.acquire.sys` poller under write-with-immediate ordering alone is a platform question that must be verified on hardware.
+* `dist/xdc.hpp`: adaptive window sizing from measured RTT and delivery rate, version-publish batching; `reliable.hpp` gained an RTT estimator. Tested on an emulated high-latency link (`tests/dist/test_xdc.cpp`).
+* Straggler mitigation by work stealing is simulated only (`dist/resilience.py`): see section 9 of the results README.

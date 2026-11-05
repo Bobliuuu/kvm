@@ -427,10 +427,19 @@ class KvmExec {
     std::atomic_thread_fence(std::memory_order_seq_cst);
     __atomic_store_n(doorbell_, wpos_, __ATOMIC_RELEASE);
     if (wid_out) *wid_out = (unsigned)stats_.bundles;
+    rec_tasks_.push_back((int)b.tasks.size());
     ++stats_.bundles;
     return KvmSubmit::OK;
   }
   const std::string& last_error() const { return last_error_; }
+  // Tasks per submitted record, indexed by window id: the admitter hands out slots in record order, so while nothing was recycled
+  // (total <= max_tasks) record w's tasks occupy slots [sum of earlier records, +size).
+  std::vector<int> record_tasks() { std::lock_guard<std::mutex> lk(mu_); return rec_tasks_; }
+  int device_error() const { return (int)herr_->code; }   // 0 while healthy
+  // Live versions of all variables, read while the kernel runs (one small DMA from the non-blocking stream's device memory).
+  std::vector<int> live_versions() const {
+    std::vector<int> v(cfg_.num_vars); CK(cudaMemcpy(v.data(), S_.version, v.size() * 4, cudaMemcpyDeviceToHost)); return v;
+  }
 
   // True once every task of window wid (a submitted bundle record) has completed.
   bool window_done(unsigned wid) const { return __atomic_load_n(&win_done_[wid & (cfg_.win_cap - 1)], __ATOMIC_ACQUIRE) == wid + 1; }
@@ -440,7 +449,7 @@ class KvmExec {
   // windows is enforced HERE: the later window is submitted only after the windows holding its predecessors completed (the
   // host reads the per-window completion marks the device mirrors into pinned memory). Windows of other producers interleave
   // freely. Cost: a window with a cross-window dependency starts after its producers drain, so choose big windows.
-  KvmSubmit submit_stream(const KvmBundle& big, int max_window_tasks = 0, int timeout_ms = 60000) {
+  KvmSubmit submit_stream(const KvmBundle& big, int max_window_tasks = 0, int timeout_ms = 60000, std::vector<unsigned>* wids_out = nullptr) {
     std::string why = big.validate(nbufs(), cfg_.num_vars, 0);
     if (!why.empty()) { KLOG(0, "stream rejected: %s", why.c_str()); last_error_ = why; return KvmSubmit::INVALID; }
     const int nt = (int)big.tasks.size();
@@ -486,6 +495,7 @@ class KvmExec {
       for (int s : w.succ) ++w.tasks[s].indegree;
       KvmSubmit st = submit(w, timeout_ms, false, &wid[k]);
       if (st != KvmSubmit::OK) return st;
+      if (wids_out) wids_out->push_back(wid[k]);
       ++stats_.windows;
     }
     KLOG(3, "stream: %d tasks in %d windows", nt, nw);
@@ -614,6 +624,7 @@ class KvmExec {
   bool started_ = false, finished_ = false, closed_flag_ = false, prepared_ = false;
   KvmResult res_;
   KvmStats stats_;
+  std::vector<int> rec_tasks_;
 };
 
 // Timeline-ready CSV: times in microseconds since the first admission.
@@ -706,6 +717,23 @@ template <class T> static std::vector<T> read_bin(const std::string& p, size_t c
   std::string raw = read_file(p);
   if (raw.size() != count * sizeof(T)) throw std::runtime_error(p + ": expected " + std::to_string(count * sizeof(T)) + " bytes, got " + std::to_string(raw.size()));
   std::vector<T> v(count); if (count) memcpy(v.data(), raw.data(), raw.size()); return v;
+}
+
+// A buffer's `init` object from bundle metadata.json (kinds: fill, values, seeded, file; file paths are relative to `dir`).
+static KvmInit kvm_parse_init(const Json& jb, const std::string& dir, int dtype) {
+  KvmInit init;
+  const Json* in = jb.get("init");
+  if (!in) return init;
+  const Json* kind = in->get("kind"); const std::string k = kind ? kind->s : "";
+  if (k == "fill") { init.kind = KvmInit::FILL; init.value = (float)in->num("value", 0); }
+  else if (k == "values") { init.kind = KvmInit::VALUES; for (auto& v : in->need("values").a) init.values.push_back(dtype == 1 ? [&] { int iv = (int)v.n; float f; memcpy(&f, &iv, 4); return f; }() : (float)v.n); }
+  else if (k == "seeded") {
+    init.kind = KvmInit::SEEDED; init.seed = in->get("seed") ? strtoull(in->get("seed")->s.c_str(), nullptr, 10) : 0;
+    init.draws = (int)in->num("draws", 1); init.bias = (float)in->num("bias", 0); init.coef = (float)in->num("coef", 1);
+  }
+  else if (k == "file") { init.kind = KvmInit::FILE; init.path = dir + "/" + in->need("path").s; }
+  else throw std::runtime_error(dir + ": unknown buffer init kind '" + k + "'");
+  return init;
 }
 
 // Scheduler options shared by the CLIs (kvm_exec, doom_exec). Returns 1 if argv[i] was a scheduler option (i advanced past its value), 0 if not, -1 on a missing value.
@@ -801,18 +829,8 @@ int main(int argc, char** argv) {
           if (idx < 0 || rows < 1 || cols < 1) throw std::runtime_error(dir + ": bad buffer entry");
           if (idx < (int)shapes.size()) { if (shapes[idx] != std::make_pair(rows, cols)) throw std::runtime_error(dir + ": buffer " + std::to_string(idx) + " shape differs from an earlier bundle"); continue; }
           if (idx != (int)shapes.size()) throw std::runtime_error(dir + ": buffer indices must be dense and ascending");
-          KvmInit init; int dtype = (int)jb.num("dtype", 0);
-          if (auto* in = jb.get("init")) {
-            const Json* kind = in->get("kind"); const std::string k = kind ? kind->s : "";
-            if (k == "fill") { init.kind = KvmInit::FILL; init.value = (float)in->num("value", 0); }
-            else if (k == "values") { init.kind = KvmInit::VALUES; for (auto& v : in->need("values").a) init.values.push_back(dtype == 1 ? [&] { int iv = (int)v.n; float f; memcpy(&f, &iv, 4); return f; }() : (float)v.n); }
-            else if (k == "seeded") {
-              init.kind = KvmInit::SEEDED; init.seed = in->get("seed") ? strtoull(in->get("seed")->s.c_str(), nullptr, 10) : 0;
-              init.draws = (int)in->num("draws", 1); init.bias = (float)in->num("bias", 0); init.coef = (float)in->num("coef", 1);
-            }
-            else if (k == "file") { init.kind = KvmInit::FILE; init.path = dir + "/" + in->need("path").s; }
-            else throw std::runtime_error(dir + ": unknown buffer init kind '" + k + "'");
-          }
+          const int dtype = (int)jb.num("dtype", 0);
+          KvmInit init = kvm_parse_init(jb, dir, dtype);
           if (ex.add_buffer(rows, cols, init, dtype) != idx) throw std::logic_error("buffer index mismatch");
           shapes.push_back({rows, cols});
         }

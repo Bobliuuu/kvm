@@ -33,6 +33,13 @@ from .serve import ServeRequest, compile_serving
 from .train import TrainConfig, weights_version
 
 MANIFEST_VERSION = 1
+F_PRECISE = 16                 # matmul_tile flag: 3xTF32 (fp32 accuracy); the default is 1xTF32 (see tests/gptdiff)
+# Scheduler parameters per workload class (include/kvm_sched.h KvmClassParams; omitted fields keep the executor default). The frontend
+# knows what it built: the game class has per-frame deadlines and gets a one-CTA reservation plus the earliest-deadline-first window that
+# the A100 scheduler results validated (results/2026-11-04-a100-sched-integrated); the others share what is left by weight.
+CLASS_POLICY = {'train': dict(weight=1), 'serve': dict(weight=1), 'game': dict(weight=1, min_cta=1, urgent_us=20000)}
+GAME_STACK_BYTES = 16 * 1024   # include/kvm_ops_game.cuh: per-thread stack the Doom engine's BSP recursion needs
+GAME_WAD = 'doom1.wad'         # file name only: the host runner resolves it in its --assets directory (doom/setup.sh fetches it)
 
 
 def prompt_for(cfg, n=3):
@@ -46,6 +53,7 @@ def prompt_for(cfg, n=3):
 @dataclass
 class Workload:
     name: str                    # file stem under workloads/
+    kind: str                    # scheduler class: train | serve | game
     spec: dict
     data_files: dict
     tasks: int
@@ -58,6 +66,13 @@ def summarize(spec):
     return dict(priority=max((t.get('priority', 0) for t in tasks), default=0),
                 deadline_us=[min(dls), max(dls)] if dls else None, variables=spec['variables'],
                 graphs=[g['name'] for g in spec['graphs']])
+
+
+def requirements(w: Workload) -> dict:
+    """Host resources a workload needs beyond buffers (the runner dispatches on `kind`, never on the workload's name)."""
+    if w.kind != 'game':
+        return {}
+    return dict(requirements=dict(stack_bytes=GAME_STACK_BYTES, resources=[dict(kind='doom_wad', file=GAME_WAD)]))
 
 
 def write_workload(root: Path, w: Workload) -> Path:
@@ -103,6 +118,7 @@ def build_manifest(root: Path, workloads: dict[str, Workload], admissions: list[
         if not is_train or compiled < max_bundles:
             adm['bundle_dir'] = compile_admission(root, w, adm['name'], adm['base_versions'])
             compiled += is_train
+    kinds = sorted({w.kind for w in workloads.values()}, key=list(CLASS_POLICY).index)
     manifest = dict(
         manifest_version=MANIFEST_VERSION,
         semantics=[
@@ -117,12 +133,23 @@ def build_manifest(root: Path, workloads: dict[str, Workload], admissions: list[
             "`compile.workload` with the live versions (compile_workload.py --base-versions) or add the offset in the executor.",
             "A bundle's publishes advance the variable by `publishes[var]`; the live version after completion = base + that."],
         notes=notes,
-        workloads={n: dict(file=f'workloads/{n}.json', tasks=w.tasks, edges=w.edges, **summarize(w.spec)) for n, w in workloads.items()},
+        classes={k: CLASS_POLICY[k] for k in kinds},
+        workloads={n: dict(file=f'workloads/{n}.json', tasks=w.tasks, edges=w.edges, **{'class': w.kind}, **requirements(w),
+                           **summarize(w.spec)) for n, w in workloads.items()},
         buffers={n: {k: v for k, v in b.items() if k != 'init_kind'} for n, b in buffers.items()},
         shared_buffers=shared,
         admissions=admissions)
     (root / 'MANIFEST.json').write_text(json.dumps(manifest, indent=1) + '\n')
     return manifest
+
+
+def make_precise(spec):
+    """3xTF32 on every GEMM (the exactness mode of tests/gptdiff: fp32-accurate, so CPU and GPU trajectories stay comparable)."""
+    for g in spec['graphs']:
+        for t in g['tasks']:
+            if t['op'] == 'matmul_tile':
+                t['args']['flags'] |= F_PRECISE
+    return spec
 
 
 def plan_train(cfg, tiling, args):
@@ -135,7 +162,7 @@ def plan_train(cfg, tiling, args):
         key = 'train' if steps == s else 'train_tail'
         if key not in workloads:
             c = compile_training(cfg, TrainConfig(steps=steps, total_steps=n, first_step=start), tiling, args.reuse, args.gap)
-            workloads[key] = Workload(key, c.spec, c.low.data_files, len(c.low.tasks), c.low.edges)
+            workloads[key] = Workload(key, 'train', make_precise(c.spec) if args.precise else c.spec, c.low.data_files, len(c.low.tasks), c.low.edges)
         admissions.append(dict(name=f'train_w{i}', workload=key, steps=[start, start + steps],
                                after_bundles=[f'train_w{i - 1}'] if i else [], when=[], at_us=0 if i == 0 else None,
                                base_versions={'weights': weights_version(start)}, publishes={'weights': 2 * steps}))
@@ -152,6 +179,8 @@ def main(argv=None):
     p.add_argument('--serve-policy', choices=['exact', 'at_least'], default='at_least',
                    help='exact makes the next training window wait for the request (a host-level barrier)')
     p.add_argument('--game-frames', type=int, default=None)
+    p.add_argument('--game-fb-slots', type=int, default=2, help='frame buffers (0: one per frame, so every frame can be compared byte for byte)')
+    p.add_argument('--precise', action='store_true', help='3xTF32 GEMMs in training and serving (fp32-accurate; default 1xTF32)')
     p.add_argument('--defs-dir', default=None, help='directory with kvm_ops*.def (default: <repo>/include or $KVM_INCLUDE)')
     p.add_argument('--max-bundles', type=int, default=6, help='precompile at most this many training admissions (the rest carry compile info)')
     p.add_argument('--out', required=True)
@@ -178,7 +207,7 @@ def main(argv=None):
                 raise FrontendError(f'serving after {k} steps falls inside a training window; make --serve-every a multiple of --window')
             req = ServeRequest(f'serve_s{k}', prompt_for(cfg), max_new=3, version=weights_version(k), policy=a.serve_policy)
             low, spec = compile_serving(GPT(cfg), req, tiling, a.reuse)
-            workloads[req.name] = Workload(req.name, spec, low.data_files, len(low.tasks), low.edges)
+            workloads[req.name] = Workload(req.name, 'serve', make_precise(spec) if a.precise else spec, low.data_files, len(low.tasks), low.edges)
             admissions.append(dict(name=req.name, workload=req.name, steps=None, after_bundles=[],
                                    when=[dict(var='weights', min=req.version, **({'max': req.version} if a.serve_policy == 'exact' else {}))],
                                    at_us=None, base_versions={'weights': req.version}, publishes={}))
@@ -187,8 +216,8 @@ def main(argv=None):
                 if nxt:
                     nxt['after_bundles'].append(req.name)
     if a.game_frames:
-        low, spec = compile_game(GameConfig(frames=a.game_frames), tiling)
-        workloads['game'] = Workload('game', spec, low.data_files, len(low.tasks), low.edges)
+        low, spec = compile_game(GameConfig(frames=a.game_frames, fb_slots=a.game_fb_slots), tiling)
+        workloads['game'] = Workload('game', 'game', spec, low.data_files, len(low.tasks), low.edges)
         admissions.append(dict(name='game', workload='game', steps=None, after_bundles=[], when=[], at_us=0,
                                base_versions={'frame': 0}, publishes={'frame': a.game_frames}))
         notes.append('game ops are opaque to the CPU reference (run the CPU VM with --allow-opaque)')

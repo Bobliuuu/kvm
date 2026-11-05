@@ -1,0 +1,10 @@
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 49152 B dynamic smem -> grid 108 (1 admitter + 1 policy + 106 workers)
+[doom] WAD doom/third_party/doom1.wad (4196020 bytes) uploaded, stack limit 16384 bytes/thread
+[kvm_exec][I] 3365 buffers; 3 train runs (9851 tasks/window), 48 serve slots (1127 tasks/request), 1 doom instances x 563 frames; grid 108, workers 106
+[kvm_exec][I] kernel launched: grid 108 x 256 threads, live_cap 65536, slots 16777216, succ ring 2097152 words, ring 4194304 words, aging 0 us, sched dynamic
+[kvm_exec][I] kernel done: 4789455/4789455 tasks in 16214.867 ms, 5170 records, 44 ring wraps, 0 backpressure waits
+[kvm_exec][I] workload 0: 3366 tasks, 4.735 CTA-s, queue wait p50 18.4 p99 55.3 max 117.8 us, 0 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] workload 1: 723534 tasks, 15.939 CTA-s, queue wait p50 18.4 p99 97.3 max 336.9 us, 0 deadline misses, 0.01 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] workload 2: 2649919 tasks, 87.432 CTA-s, queue wait p50 1254.4 p99 4004.9 max 6835.2 us, 0 deadline misses, 57.10 GB moved (3.5 GB/s over the run)
+[kvm_exec][I] workload 3: 1412636 tasks, 1388.011 CTA-s, queue wait p50 21426.2 p99 27583.5 max 30901.2 us, 0 deadline misses, 10354.40 GB moved (638.6 GB/s over the run)
+[kvm_exec][I] doom: 560 frames, 0 past their deadline, frame time p50/p99/max 9.7/24.5/25.1 ms | serve: 642 done, p50/p99 13.9/28.1 ms, 0 dropped | train: 269 steps (16.77/s)

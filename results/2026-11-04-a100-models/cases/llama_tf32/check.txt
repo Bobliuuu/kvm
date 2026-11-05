@@ -1,0 +1,6 @@
+tf32: 505 f32 buffers (1 signal-free skipped: ['version_token']), 5 loss buffers
+  ok   losses rel L2 <= 0.002: worst 1.01e-04
+  ok   87 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act85 1.07e-03
+  info: post-optimizer weights/moments differ by up to 1.35e-02 (m.llama.h0.n1.g) after the run
+  ok   no NaN/Inf in any GPU buffer: []
+PASS

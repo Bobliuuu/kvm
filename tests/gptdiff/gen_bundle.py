@@ -46,7 +46,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     spec = build_spec(a.steps, a.precise, a.model, a.tiling)
     (out / 'workload.json').write_text(json.dumps(spec, separators=(',', ':')))
-    subprocess.run([sys.executable, str(ROOT / 'runtime/compile_workload.py'), '--emit-golden', str(out / 'workload.json'),
+    subprocess.run([sys.executable, str(ROOT / 'runtime/compile_workload.py'), '--emit-golden', '--golden-timeout', '900', str(out / 'workload.json'),
                     str(out / 'bundle')], check=True, stderr=subprocess.DEVNULL)
     print(f'{out}/bundle: {a.steps} steps, {a.tiling} tiling, {"3xTF32" if a.precise else "1xTF32"}')
 

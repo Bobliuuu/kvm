@@ -18,7 +18,7 @@ from .ir import FrontendError
 
 MM_TILE = 64        # matmul_tile computes a 64 x 64 output tile (flags: 1 transA, 2 transB, 4 accumulate, 8 gelu)
 ATTN_Q = 32         # attn_fwd / attn_bwd_dq: 32 query rows per task; attn_bwd_dkv: 32 keys per task
-F_TA, F_TB, F_ACC, F_GELU = 1, 2, 4, 8
+F_TA, F_TB, F_ACC, F_GELU, F_PRECISE = 1, 2, 4, 8, 16
 
 
 class Buf:
@@ -131,17 +131,34 @@ def _mm_flops(a):
     return 2.0 * max(0, min(MM_TILE, a['M'] - a['m0'])) * max(0, min(MM_TILE, a['N'] - a['n0'])) * a['K']
 
 
+def _mm_acc(A, B, fl, m0, m1, n0, n1, K):
+    """alpha-free product tile of op(A) @ op(B) for rows m0:m1, cols n0:n1 as a list of rows. numpy float64 (BLAS) when available:
+    the sum order differs from a sequential loop only at the 1e-16 level, and is deterministic for given shapes."""
+    try:
+        import numpy as np
+    except ImportError:
+        np = None
+    if np is None:
+        bcols = [[(B.a[n * B.cols + k] if fl & F_TB else B.a[k * B.cols + n]) for k in range(K)] for n in range(n0, n1)]
+        return [[sum(x * y for x, y in zip([(A.a[k * A.cols + m] if fl & F_TA else A.a[m * A.cols + k]) for k in range(K)], bc)) for bc in bcols]
+                for m in range(m0, m1)]
+    a = np.array(A.a, dtype=np.float64).reshape(A.rows, A.cols)
+    b = np.array(B.a, dtype=np.float64).reshape(B.rows, B.cols)
+    a = a[:K, m0:m1].T if fl & F_TA else a[m0:m1, :K]
+    b = b[n0:n1, :K].T if fl & F_TB else b[:K, n0:n1]
+    return (a @ b).tolist()
+
+
 @impl('matmul_tile', _mm_flops)
 def _matmul_tile(b, a):
     M, N, K, fl = a['M'], a['N'], a['K'], a['flags']
     A, B, out = b['a'], b['b'], b['out']
     m1, n1 = min(a['m0'] + MM_TILE, M), min(a['n0'] + MM_TILE, N)
-    bcols = [[(B.a[n * B.cols + k] if fl & F_TB else B.a[k * B.cols + n]) for k in range(K)] for n in range(a['n0'], n1)]
-    for m in range(a['m0'], m1):
-        arow = [(A.a[k * A.cols + m] if fl & F_TA else A.a[m * A.cols + k]) for k in range(K)]
+    prod = _mm_acc(A, B, fl, a['m0'], m1, a['n0'], n1, K)
+    for i, m in enumerate(range(a['m0'], m1)):
         vals = []
         for j, n in enumerate(range(a['n0'], n1)):
-            v = a['alpha'] * sum(x * y for x, y in zip(arow, bcols[j]))
+            v = a['alpha'] * prod[i][j]
             if b['bias'] is not None:
                 v += b['bias'].a[n]
             if b['pre'] is not None:
@@ -456,3 +473,316 @@ def _sgd(b, a):
 # opaque engine ops (no CPU reference here; v1 measured ~6.7 ms per Doom tic with 255 helper threads)
 for _n, _us in (('doom_tick', 6700.0), ('doom_present', 30.0), ('doom_status', 5.0)):
     REF[_n] = (None, lambda a: 0.0, _us)
+
+
+# ================================================================================================ extra pack (kvm_ops_extra.def)
+# Independent float64 implementations of the comments in include/kvm_ops_extra.def (runtime/ref_extra.py is the float32 twin).
+def _sigmoid(x):
+    return 1.0 / (1.0 + math.exp(-x)) if x >= 0 else math.exp(x) / (1.0 + math.exp(x))
+
+
+def _silu(x):
+    return x * _sigmoid(x)
+
+
+def _silu_d(x):
+    s = _sigmoid(x)
+    return s * (1.0 + x * (1.0 - s))
+
+
+ACT_FN = {0: (lambda x: x if x > 0 else 0.0, lambda x: 1.0 if x > 0 else 0.0), 1: (_silu, _silu_d),
+          2: (math.tanh, lambda x: 1.0 - math.tanh(x) ** 2), 3: (_sigmoid, lambda x: _sigmoid(x) * (1.0 - _sigmoid(x)))}
+
+
+@impl('act_fwd', lambda a: 8.0 * (a['e1'] - a['e0']))
+def _act_fwd(b, a):
+    f = ACT_FN[a['kind']][0]
+    b['out'].a[a['e0']:a['e1']] = [f(x) for x in b['x'].a[a['e0']:a['e1']]]
+
+
+@impl('act_bwd', lambda a: 10.0 * (a['e1'] - a['e0']))
+def _act_bwd(b, a):
+    d, e0, e1 = ACT_FN[a['kind']][1], a['e0'], a['e1']
+    b['dx'].a[e0:e1] = [d(x) * g + (o if a['acc'] else 0.0) for x, g, o in zip(b['x'].a[e0:e1], b['dy'].a[e0:e1], b['dx'].a[e0:e1])]
+
+
+@impl('silu_mul_fwd', lambda a: 10.0 * (a['e1'] - a['e0']))
+def _silu_mul_fwd(b, a):
+    e0, e1 = a['e0'], a['e1']
+    b['out'].a[e0:e1] = [_silu(g) * u for g, u in zip(b['gate'].a[e0:e1], b['up'].a[e0:e1])]
+
+
+@impl('silu_mul_bwd', lambda a: 20.0 * (a['e1'] - a['e0']))
+def _silu_mul_bwd(b, a):
+    e0, e1 = a['e0'], a['e1']
+    for i in range(e0, e1):
+        g, u, dy = b['gate'].a[i], b['up'].a[i], b['dy'].a[i]
+        vg, vu = dy * u * _silu_d(g), dy * _silu(g)
+        b['dgate'].a[i] = vg + (b['dgate'].a[i] if a['acc'] else 0.0)
+        b['dup'].a[i] = vu + (b['dup'].a[i] if a['acc'] else 0.0)
+
+
+@impl('softmax_rows_fwd', lambda a: 6.0 * (a['r1'] - a['r0']) * a['d'])
+def _softmax_rows_fwd(b, a):
+    for r in range(a['r0'], a['r1']):
+        s = [a['scale'] * x for x in b['x'].row(r)[:a['d']]]
+        m = max(s)
+        e = [math.exp(v - m) for v in s]
+        z = sum(e)
+        b['out'].put(r, 0, [v / z for v in e])
+
+
+@impl('softmax_rows_bwd', lambda a: 6.0 * (a['r1'] - a['r0']) * a['d'])
+def _softmax_rows_bwd(b, a):
+    for r in range(a['r0'], a['r1']):
+        p, dp = b['p'].row(r)[:a['d']], b['dp'].row(r)[:a['d']]
+        dot = sum(x * y for x, y in zip(p, dp))
+        v = [a['scale'] * x * (y - dot) for x, y in zip(p, dp)]
+        if a['acc']:
+            v = [x + y for x, y in zip(v, b['dx'].row(r)[:a['d']])]
+        b['dx'].put(r, 0, v)
+
+
+@impl('gather_rows_scaled', lambda a: (a['r1'] - a['r0']) * a['d'])
+def _gather_rows_scaled(b, a):
+    src, o = b['src'], a['idx0']
+    for r in range(a['r0'], a['r1']):
+        j = int(b['idx'].a[o + r])
+        s = b['scale'].a[o + r] if b['scale'] is not None else 1.0
+        v = [s * x for x in src.row(j)[:a['d']]] if 0 <= j < src.rows else [0.0] * a['d']
+        if a['acc']:
+            v = [x + y for x, y in zip(v, b['dst'].row(r)[:a['d']])]
+        b['dst'].put(r, 0, v)
+
+
+@impl('scatter_add_rows', lambda a: a['N'] * a['d'])
+def _scatter_add_rows(b, a):
+    o, d = a['idx0'], a['d']
+    for v in range(a['v0'], a['v1']):
+        acc = [0.0] * d
+        for r in range(a['N']):
+            if int(b['idx'].a[o + r]) == v:
+                s = b['scale'].a[o + r] if b['scale'] is not None else 1.0
+                acc = [x + s * y for x, y in zip(acc, b['src'].row(r)[:d])]
+        if a['acc']:
+            acc = [x + y for x, y in zip(acc, b['dst'].row(v)[:d])]
+        b['dst'].put(v, 0, acc)
+
+
+@impl('row_dot', lambda a: 2.0 * (a['r1'] - a['r0']) * a['d'])
+def _row_dot(b, a):
+    A, o = b['a'], a['idx0']
+    for r in range(a['r0'], a['r1']):
+        j = int(b['idx'].a[o + r]) if b['idx'] is not None else r
+        v = sum(x * y for x, y in zip(A.row(j)[:a['d']], b['b'].row(r)[:a['d']])) if 0 <= j < A.rows else 0.0
+        b['out'].a[o + r] = v + (b['out'].a[o + r] if a['acc'] else 0.0)
+
+
+@impl('moe_route', lambda a: 4.0 * a['N'] * a['E'] * a['k'])
+def _moe_route(b, a):
+    N, E, k, C = a['N'], a['E'], a['k'], a['C']
+    cnt, eidx = [0] * E, [-1.0] * (E * C)
+    for t in range(N):
+        row = b['probs'].row(t)[:E]
+        for j, e in enumerate(sorted(range(E), key=lambda e: (-row[e], e))[:k]):
+            b['sel'].a[t * k + j] = float(e)
+            if cnt[e] < C:
+                b['slot'].a[t * k + j] = float(e * C + cnt[e])
+                eidx[e * C + cnt[e]] = float(t)
+                cnt[e] += 1
+            else:
+                b['slot'].a[t * k + j] = -1.0
+    b['eidx'].a[:E * C] = eidx
+
+
+def _moe_choices(b, a, t):
+    k = a['k']
+    sel = [int(b['sel'].a[t * k + j]) for j in range(k)]
+    return sel, [int(b['slot'].a[t * k + j]) for j in range(k)], [b['probs'].row(t)[e] for e in sel]
+
+
+@impl('moe_gates_fwd', lambda a: 4.0 * a['N'] * a['k'])
+def _moe_gates_fwd(b, a):
+    gs = b['gs']
+    gs.a[:] = [0.0] * len(gs.a)
+    for t in range(a['N']):
+        sel, slot, p = _moe_choices(b, a, t)
+        z = sum(p) if a['renorm'] else 1.0
+        for s, pj in zip(slot, p):
+            if s >= 0:
+                gs.a[s] = pj / z
+
+
+@impl('moe_gates_bwd', lambda a: 8.0 * a['N'] * a['k'])
+def _moe_gates_bwd(b, a):
+    N, E, k = a['N'], a['E'], a['k']
+    dP = b['dprobs']
+    if not a['acc']:
+        dP.a[:N * E] = [0.0] * (N * E)
+    for t in range(N):
+        sel, slot, p = _moe_choices(b, a, t)
+        dg = [b['dgs'].a[s] if s >= 0 else 0.0 for s in slot]
+        if a['renorm']:
+            z = sum(p)
+            w = sum(x * y for x, y in zip(dg, p)) / (z * z)
+            dp = [x / z - w for x in dg]
+        else:
+            dp = dg
+        for e, v in zip(sel, dp):
+            dP.a[t * E + e] += v
+
+
+def _moe_f(b, a):
+    cnt = [0] * a['E']
+    for i in range(a['N'] * a['k']):
+        cnt[int(b['sel'].a[i])] += 1
+    return [c / (a['N'] * a['k']) for c in cnt]
+
+
+@impl('moe_balance_fwd', lambda a: 2.0 * a['N'] * a['E'])
+def _moe_balance_fwd(b, a):
+    N, E = a['N'], a['E']
+    f = _moe_f(b, a)
+    pm = [sum(b['probs'].row(t)[e] for t in range(N)) / N for e in range(E)]
+    b['loss'].a[0] = a['coef'] * E * sum(x * y for x, y in zip(f, pm))
+
+
+@impl('moe_balance_bwd', lambda a: 2.0 * a['N'] * a['E'])
+def _moe_balance_bwd(b, a):
+    N, E = a['N'], a['E']
+    f = _moe_f(b, a)
+    for t in range(N):
+        for e in range(E):
+            b['dprobs'].a[t * E + e] = a['coef'] * E * f[e] / N + (b['dprobs'].a[t * E + e] if a['acc'] else 0.0)
+
+
+def _full_head_flops(a):
+    return 4.0 * ATTN_Q * a['T'] * a['hd']
+
+
+@impl('attn_full_fwd', _full_head_flops)
+def _attn_full_fwd(b, a):
+    T, H, Hkv, hd, bb, h = a['T'], a['H'], a['Hkv'], a['hd'], a['b'], a['h']
+    kvh = h // (H // Hkv)
+    K = [_head(b['k'], bb * T + j, kvh, hd) for j in range(T)]
+    for t in range(a['q0'], min(a['q0'] + ATTN_Q, T)):
+        p, lse = _probs(_head(b['q'], bb * T + t, h, hd), K, a['scale'])
+        o = [0.0] * hd
+        for j, pj in enumerate(p):
+            o = [x + pj * y for x, y in zip(o, _head(b['v'], bb * T + j, kvh, hd))]
+        b['o'].put(bb * T + t, h * hd, o)
+        b['lse'].a[(bb * H + h) * T + t] = lse
+
+
+@impl('attn_full_bwd_dq', lambda a: 2.5 * _full_head_flops(a))
+def _attn_full_bwd_dq(b, a):
+    T, hd, bb, h = a['T'], a['hd'], a['b'], a['h']
+    kvh = h // (a['H'] // a['Hkv'])
+    for t in range(a['q0'], min(a['q0'] + ATTN_Q, T)):
+        _, _, terms = _ds(b, a, bb, h, kvh, t, range(T))
+        dq = [0.0] * hd
+        for j, p, ds in terms:
+            dq = [x + a['scale'] * ds * y for x, y in zip(dq, _head(b['k'], bb * T + j, kvh, hd))]
+        b['dq'].put(bb * T + t, h * hd, dq)
+
+
+@impl('attn_full_bwd_dkv', lambda a: 2.5 * _full_head_flops(a))
+def _attn_full_bwd_dkv(b, a):
+    T, H, hd, bb, kvh = a['T'], a['H'], a['hd'], a['b'], a['kvh']
+    G = H // (b['k'].cols // hd)
+    k1 = min(a['k0'] + ATTN_Q, T)
+    dk = {j: [0.0] * hd for j in range(a['k0'], k1)}
+    dv = {j: [0.0] * hd for j in range(a['k0'], k1)}
+    for h in range(kvh * G, (kvh + 1) * G):
+        for t in range(T):
+            q, do, terms = _ds(b, a, bb, h, kvh, t, range(a['k0'], k1))
+            for j, p, ds in terms:
+                dv[j] = [x + p * y for x, y in zip(dv[j], do)]
+                dk[j] = [x + a['scale'] * ds * y for x, y in zip(dk[j], q)]
+    for j in range(a['k0'], k1):
+        b['dk'].put(bb * T + j, kvh * hd, dk[j])
+        b['dv'].put(bb * T + j, kvh * hd, dv[j])
+
+
+def bf16_round(x):
+    """Round to the nearest bfloat16 (ties to even), as a float64 value; inf/nan unchanged."""
+    import struct
+    if x != x or x in (math.inf, -math.inf):
+        return x
+    bits = struct.unpack('<I', struct.pack('<f', x))[0]
+    bits = (bits + 0x7FFF + ((bits >> 16) & 1)) & 0xFFFF0000
+    return struct.unpack('<f', struct.pack('<I', bits))[0]
+
+
+@impl('round_bf16', lambda a: float(a['e1'] - a['e0']))
+def _round_bf16(b, a):
+    b['out'].a[a['e0']:a['e1']] = [bf16_round(x) for x in b['x'].a[a['e0']:a['e1']]]
+
+
+@impl('matmul_tile_bf16', _mm_flops)
+def _matmul_tile_bf16(b, a):
+    rb = dict(b)
+    for n in ('a', 'b'):
+        rb[n] = Buf([bf16_round(x) for x in b[n].a], b[n].rows, b[n].cols)
+    _matmul_tile(rb, a)
+
+
+@impl('adamw_lr', lambda a: 12.0 * (a['e1'] - a['e0']))
+def _adamw_lr(b, a):
+    _adamw(b, {**a, 'lr': b['lr'].a[0]})
+
+
+@impl('lr_schedule', lambda a: 1.0)
+def _lr_schedule(b, a):
+    t = int(b['step'].a[0])
+    warm = t / a['warmup'] if a['warmup'] > 0 and t <= a['warmup'] else 1.0
+    prog = min(max((t - a['warmup']) / max(a['total'] - a['warmup'], 1), 0.0), 1.0)
+    mr = a['min_ratio']
+    f = {0: 1.0, 1: mr + (1 - mr) * 0.5 * (1 + math.cos(math.pi * prog)), 2: 1.0 - (1 - mr) * prog}[a['kind']]
+    b['lr'].a[0] = a['base'] * warm * f
+
+
+@impl('scale_flat', lambda a: float(a['e1'] - a['e0']))
+def _scale_flat(b, a):
+    b['out'].a[a['e0']:a['e1']] = [a['alpha'] * x for x in b['x'].a[a['e0']:a['e1']]]
+
+
+@impl('add_rowtile', lambda a: float((a['r1'] - a['r0']) * a['d']))
+def _add_rowtile(b, a):
+    for r in range(a['r0'], a['r1']):
+        b['out'].put(r, 0, [x + y for x, y in zip(b['x'].row(r)[:a['d']], b['pos'].row(r % a['T'])[:a['d']])])
+
+
+def _tile_nofx(b, a, out):
+    """matmul_tile without epilogue into `out` (flags 1, 2 only)."""
+    _matmul_tile({'a': b['a'], 'b': b['b'], 'out': out, 'bias': None, 'res': None, 'pre': None}, {**a, 'flags': a['flags'] & 3})
+
+
+def _tile_cells(a):
+    return [(m, n) for m in range(a['m0'], min(a['m0'] + MM_TILE, a['M'])) for n in range(a['n0'], min(a['n0'] + MM_TILE, a['N']))]
+
+
+@impl('matmul_tile_dgelu', lambda a: _mm_flops(a) + 20.0 * MM_TILE * MM_TILE)
+def _matmul_tile_dgelu(b, a):
+    out, pre = b['out'], b['pre']
+    _tile_nofx(b, a, out)
+    for m, n in _tile_cells(a):
+        out.a[m * out.cols + n] *= _gelu_d(pre.a[m * pre.cols + n])
+
+
+@impl('matmul_tile_silu_mul', lambda a: _mm_flops(a) + 10.0 * MM_TILE * MM_TILE)
+def _matmul_tile_silu_mul(b, a):
+    out, up, gate = b['out'], b['up'], b['gate']
+    _tile_nofx(b, a, up)
+    for m, n in _tile_cells(a):
+        out.a[m * out.cols + n] = _silu(gate.a[m * gate.cols + n]) * up.a[m * up.cols + n]
+
+
+@impl('matmul_tile_silu_mul_bwd', lambda a: _mm_flops(a) + 20.0 * MM_TILE * MM_TILE)
+def _matmul_tile_silu_mul_bwd(b, a):
+    dg, du, gate, up = b['dgate'], b['dup'], b['gate'], b['up']
+    _tile_nofx(b, a, dg)
+    for m, n in _tile_cells(a):
+        dh, g, u = dg.a[m * dg.cols + n], gate.a[m * gate.cols + n], up.a[m * up.cols + n]
+        dg.a[m * dg.cols + n] = dh * u * _silu_d(g)
+        du.a[m * du.cols + n] = dh * _silu(g)

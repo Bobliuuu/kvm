@@ -63,6 +63,7 @@ class AdaptiveWindow {
     if (ri.samples == 0) return;
     auto now = Clock::now();
     if (!started_) { started_ = true; t0_ = now; acked0_ = ri.acked_bytes; retx0_ = r_.st.retx; sent_msgs0_ = r_.st.sent; sent_bytes0_ = r_.st.bytes_sent; return; }
+    if (r_.unacked_bytes(peer_) * 2 >= window_) limited_ = true;       // the window (not the producer) was the bottleneck at some point this round
     double round_s = std::max(ri.min_rtt_ms, 5.0) / 1000.0;
     double dt = std::chrono::duration<double>(now - t0_).count();
     if (dt < round_s) return;
@@ -71,16 +72,21 @@ class AdaptiveWindow {
     bw_ = *std::max_element(rates_.begin(), rates_.end());
     long retx = r_.st.retx - retx0_;
     if (startup_) {
-      if (bw_ > full_bw_ * 1.25) { full_bw_ = bw_; stall_ = 0; } else if (++stall_ >= 3) { startup_ = false; KD_LOG(3, "xdc", "adaptive window: startup over, bw %.2f MB/s", bw_ / 1e6); }
+      if (bw_ > full_bw_ * 1.25) { full_bw_ = bw_; stall_ = 0; } else if (limited_ && ++stall_ >= 3) { startup_ = false; KD_LOG(3, "xdc", "adaptive window: startup over, bw %.2f MB/s", bw_ / 1e6); }
     }
     loss_scale_ = retx > 0 ? std::max(c_.loss_floor, loss_scale_ * c_.loss_beta) : std::min(1.0, loss_scale_ + 0.05);
     double target = (startup_ ? c_.startup_gain : c_.gain) * bw_ * (ri.min_rtt_ms / 1000.0) * loss_scale_;
     double capped = std::min(target, 2.0 * (double)window_);
-    window_ = (size_t)std::max<double>((double)c_.min_bytes, std::min<double>((double)c_.max_bytes, capped));
+    // Without loss the window never shrinks: one noisy (starved, late) rate sample must not collapse it to a single message, from where
+    // gain 1.25 cannot climb back when the measured round is >1.25 RTT. Only a loss round may take it down to the BDP estimate.
+    double next = std::max<double>((double)c_.min_bytes, std::min<double>((double)c_.max_bytes, capped));
+    if (retx == 0) next = std::max<double>(next, (double)window_);
+    window_ = (size_t)next;
     long dm = r_.st.sent - sent_msgs0_; unsigned long long db = r_.st.bytes_sent - sent_bytes0_;
     if (dm > 0) avg_msg_ = std::max<double>(1.0, (double)db / (double)dm);
     ++rounds;
     apply();
+    limited_ = false;
     t0_ = now; acked0_ = ri.acked_bytes; retx0_ = r_.st.retx; sent_msgs0_ = r_.st.sent; sent_bytes0_ = r_.st.bytes_sent;
   }
   size_t window_bytes() const { return window_; }
@@ -97,7 +103,7 @@ class AdaptiveWindow {
   }
   Reliable& r_; int peer_; AdaptiveWindowConfig c_;
   size_t window_;
-  bool started_ = false, startup_ = true;
+  bool started_ = false, startup_ = true, limited_ = false;   // limited_: a plateau only counts when the sender was window-limited (a starved/idle producer is not a full pipe)
   Clock::time_point t0_;
   unsigned long long acked0_ = 0, sent_bytes0_ = 0; long retx0_ = 0, sent_msgs0_ = 0;
   std::deque<double> rates_; double bw_ = 0, full_bw_ = 0, loss_scale_ = 1.0, avg_msg_ = 4096; int stall_ = 0;

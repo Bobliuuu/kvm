@@ -123,10 +123,10 @@ def check_training(manifest, obs, golden, tol):
     k = max(1, len(series) // 4)
     head, tail = statistics.mean(series[:k]), statistics.mean(series[-k:])
     falls = tail < head
-    close = worst <= tol
+    close = worst <= tol if golden else True
     verdict('training', 'PASS' if falls and close else 'FAIL',
             f'{len(series)} step losses, first {series[0]:.4f} -> last {series[-1]:.4f} (mean of first/last {k}: {head:.4f} -> {tail:.4f}, '
-            f'{"falls" if falls else "DOES NOT FALL"}); max relative deviation from the CPU golden {worst:.2e} (tolerance {tol:.0e})')
+            f'{"falls" if falls else "DOES NOT FALL"}); ' + (f'max relative deviation from the CPU golden {worst:.2e} (tolerance {tol:.0e})' if golden else 'no CPU golden at this size'))
     return None
 
 
@@ -134,6 +134,8 @@ def check_serving(manifest, obs, golden):
     serve = [a for a in manifest['admissions'] if a['steps'] is None and a['when'] and not a['publishes']]   # version-gated readers
     if not serve:
         return verdict('serving', 'SKIP', 'no serving admissions')
+    if not golden:
+        return verdict('serving', 'SKIP', 'no golden decode (--no-golden); coherence is covered by the version check')
     same = total = 0
     detail = []
     for a in serve:
@@ -241,6 +243,7 @@ def main(argv=None):
     ap.add_argument('--doom-oracle', default=None, help='cpu_run.py output directory (frames.bin + summary.json)')
     ap.add_argument('--golden', default=None, help='cache file for the CPU golden observations (computed once with the CPU VM)')
     ap.add_argument('--observe', default=r'^(loss\.|.*\.cur[0-9]+$)', help='must equal the regex kvm_run observed with')
+    ap.add_argument('--no-golden', action='store_true', help='no CPU reference (model too large): loss must fall, tokens are not compared')
     ap.add_argument('--loss-tol', type=float, default=2e-3)
     ap.add_argument('--report', default=None)
     a = ap.parse_args(argv)
@@ -249,7 +252,7 @@ def main(argv=None):
     check_executor(run)
     check_versions(run)
     obs = observations(run_dir)
-    golden = golden_observations(demo, a.observe, Path(a.golden) if a.golden else None) if obs else {}
+    golden = golden_observations(demo, a.observe, Path(a.golden) if a.golden else None) if obs and not a.no_golden else {}
     check_training(manifest, obs, golden, a.loss_tol)
     check_serving(manifest, obs, golden)
     check_game(run_dir, a.doom_oracle)

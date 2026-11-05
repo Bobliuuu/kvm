@@ -51,6 +51,8 @@ if [ "$SANITIZE" = 1 ]; then
   gen "$RUN/demo_small" "$MODEL" 4 2 2 8
 fi
 
+GOLDEN_ARGS="--golden $RUN/golden.json"
+if [ "${GOLDEN:-1}" = 1 ]; then
 say "golden: the CPU reference VM runs the same MANIFEST"
 python3 - <<PY 2>&1 | tail -3
 import sys, json; sys.path.insert(0, 'demo'); sys.argv = ['x']
@@ -58,6 +60,7 @@ import check_demo
 g = check_demo.golden_observations(__import__('pathlib').Path("$RUN/demo"), r'$OBS', __import__('pathlib').Path("$RUN/golden.json"))
 print('golden admissions:', len(g))
 PY
+else GOLDEN_ARGS="--no-golden"; say "golden skipped (pure-Python CPU VM cannot run this model)"; fi
 
 say "GPU: one lock hold ($LOCK_WAIT s max wait)"
 cat > "$RUN/gpu.sh" <<GPU
@@ -78,4 +81,4 @@ flock -w "$LOCK_WAIT" ~/.gpu.lock bash "$RUN/gpu.sh" || { echo "could not take t
 tail -8 "$RUN/kvm_run.log"
 
 say "verify"
-python3 demo/check_demo.py "$RUN/demo" "$RUN/out" --doom-oracle "$RUN/oracle" --golden "$RUN/golden.json" --observe "$OBS" --report "$RUN/report.json" 2>&1 | tee "$RUN/check.log"
+python3 demo/check_demo.py "$RUN/demo" "$RUN/out" --doom-oracle "$RUN/oracle" $GOLDEN_ARGS --observe "$OBS" --report "$RUN/report.json" 2>&1 | tee "$RUN/check.log"

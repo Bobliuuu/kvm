@@ -5,6 +5,7 @@
 #   fuzz        : run_exec_tests.sh --fuzz (FC cases, FS seed) and --fuzz with FZ=--targeted
 #   final       : functional exec + litmus + sched suites, both fuzz runs, then bench and the Doom scenario (one lock hold)
 #   bench       : run_sched_tests.sh --bench, then doom/tests/run_sched.sh
+#   release     : correctness + both fuzz runs + the real Doom frame-exactness scenarios (what a performance change must keep green)
 # The lock is held by one background ssh for the duration; the stages run with KVM_NO_LOCK=1. Logs: logs/<UTC>-<what>/run.txt per stage.
 set -euo pipefail
 HOST="${KVM_HOST:?set KVM_HOST=user@host}"; DIR="$(cd "$(dirname "$0")" && pwd)"; GROUP="${1:?group: correctness|fuzz|bench}"
@@ -24,6 +25,9 @@ case "$GROUP" in
                FZ=--targeted "$DIR/run_exec_tests.sh" --fuzz || true; "$DIR/run_sched_tests.sh" --bench || true; "$DIR/doom/tests/run_sched.sh" || true;;
   fuzz2)       "$DIR/run_exec_tests.sh" --fuzz || true; FZ=--targeted "$DIR/run_exec_tests.sh" --fuzz || true; "$DIR/run_sched_tests.sh" || true;;
   bench)       "$DIR/run_sched_tests.sh" --bench || true; "$DIR/doom/tests/run_sched.sh" || true;;
+  release)     for m in "" --negative --negative-park --sanitize --litmus --gpt; do "$DIR/run_exec_tests.sh" $m || true; done
+               for m in "" --negative --sanitize; do "$DIR/run_sched_tests.sh" $m || true; done
+               "$DIR/run_exec_tests.sh" --fuzz || true; FZ=--targeted "$DIR/run_exec_tests.sh" --fuzz || true; "$DIR/doom/tests/run_sched.sh" || true;;
 esac
 exec 9>&-; wait $HOLD || true; rm -f "$DIR/.lockout.$$"
 echo "lock released"

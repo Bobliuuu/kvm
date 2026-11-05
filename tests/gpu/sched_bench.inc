@@ -57,22 +57,78 @@ static bool suite_gapprof() {
 }
 #endif
 
-// Admission throughput: host submit time per bundle against the device's admit-to-first-start spacing of the same bundles.
+// Admission: how long the admitter takes per record (the next record's admission starts when this one is done), and how long a
+// 1-task record of another class waits behind a big one (head-of-line blocking).
+static KvmBundle noop_bundle(int n, int cls, bool chain = false) {
+  KvmBundleBuilder b; KvmTaskOpts o; o.workload = cls; int prev = -1;
+  for (int i = 0; i < n; ++i) { int t = b.add("noop", {}, o); if (chain && prev >= 0) b.edge(prev, t); prev = t; }
+  return b.build();
+}
 static bool suite_admit() {
-  int before = g_fail; const int W = 32, NB = 12, NT = 3000;
-  for (int us : {20, 5}) {
-    KvmConfig c = sched_cfg(W + 1, 1, KVM_SCHED_DYNAMIC); c.sched.on = false; c.max_tasks = 1 << 17; c.live_cap = 1 << 14; c.ring_words = 1 << 17;
-    KvmExec ex(c); ex.start();
-    std::vector<double> sub_us;
-    for (int b = 0; b < NB; ++b) {
-      KvmBundle bd = spin_bundle(NT, us, 0); auto t0 = std::chrono::steady_clock::now();
-      CHECK(ex.submit(bd, 30000) == KvmSubmit::OK, "submit"); sub_us.push_back(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count());
+  int before = g_fail; const int W = 64;
+  auto cfg = [&](bool on) {
+    KvmConfig c = sched_cfg(W + 2, 2, KVM_SCHED_DYNAMIC); c.sched.on = on; c.max_tasks = 1 << 18; c.live_cap = 1 << 17; c.succ_cap = 1 << 18; c.ring_words = 1 << 21; c.win_cap = 1 << 10;
+    return c;
+  };
+  printf("  admission time per record = admit instant of the next record minus this one's (2 records back to back, 4 repeats, median [min,max])\n");
+  for (bool chain : {false, true}) for (int n : {1024, 16384, 65536}) {
+    std::vector<double> dur;
+    for (int rep = 0; rep < 4; ++rep) {
+      KvmExec ex(cfg(true)); ex.start();
+      CHECK(ex.submit(noop_bundle(n, 0, chain), 30000) == KvmSubmit::OK, "submit"); CHECK(ex.submit(noop_bundle(n, 0, chain), 30000) == KvmSubmit::OK, "submit");
+      const KvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
+      unsigned long long a0 = ~0ull, a1 = 0; for (auto& t : r.trace) if (t.admit_ns) { a0 = std::min(a0, t.admit_ns); a1 = std::max(a1, t.admit_ns); }
+      dur.push_back((a1 - a0) / 1e3);
     }
-    const KvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
-    std::vector<double> adm; for (auto& t : r.trace) if (t.admit_ns) adm.push_back(t.admit_ns / 1e3);
-    std::sort(adm.begin(), adm.end()); std::vector<double> distinct; for (double a : adm) if (distinct.empty() || a - distinct.back() > 1.0) distinct.push_back(a);
-    double sub = 0; for (double x : sub_us) sub += x;
-    printf("  %d us tasks: host submit %.0f us per %d-task bundle (%.2f us/task); %zu admission instants spanning %.0f us (%.2f us/task)\n", us, sub / NB, NT, sub / NB / NT, distinct.size(), distinct.back() - distinct.front(), (distinct.back() - distinct.front()) / ((NB - 1) * NT));
+    Spread sd = spread(dur);
+    printf("  %-11s record of %6d tasks: admitted in %8.0f us [%.0f,%.0f] = %.3f us/task (%.2f M tasks/s)\n", chain ? "chain" : "independent", n, sd.med, sd.lo, sd.hi, sd.med / n, n / sd.med);
+  }
+  printf("  head-of-line: a 1-task record of class 0 submitted right behind a record of N independent tasks of class 1; wait = small.ready - big.admit\n");
+  for (int n : {1024, 16384, 65536}) {
+    std::vector<double> wt;
+    for (int rep = 0; rep < 4; ++rep) {
+      KvmExec ex(cfg(true)); ex.start();
+      CHECK(ex.submit(noop_bundle(n, 1), 30000) == KvmSubmit::OK, "submit"); CHECK(ex.submit(noop_bundle(1, 0), 30000) == KvmSubmit::OK, "submit");
+      const KvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
+      unsigned long long big0 = ~0ull, small_ready = 0; for (size_t i = 0; i < r.trace.size(); ++i) { if (r.tasks[i].workload_id == 1) big0 = std::min(big0, r.trace[i].admit_ns); else small_ready = r.trace[i].ready_ns; }
+      wt.push_back((small_ready - big0) / 1e3);
+    }
+    Spread sd = spread(wt);
+    printf("  big record %6d tasks: 1-task record ready %8.0f us [%.0f,%.0f] after the big one's admission began\n", n, sd.med, sd.lo, sd.hi);
+  }
+  return g_fail == before;
+}
+
+// Latency probes (1 noop task of class 0 with a deadline, every ~1 ms) while a 65,536-task flood of 20 us tasks of class 1 is being admitted.
+// direct = ex.submit of the flood as one record (the ring is FIFO); front = the KvmFront (chunks of 2048 tasks, ring budget 4096 tasks).
+static bool suite_hol() {
+  int before = g_fail; const int W = 64, NF = 65536, NP = 40;
+  printf("  flood: %d x spin(20 us) of class 1 (%d workers); probes: 1 noop of class 0, 200 us deadline, end-to-end host latency submit -> window done\n", NF, W);
+  for (int mode = 0; mode < 2; ++mode) {
+    std::vector<double> lat, wall; 
+    for (int rep = 0; rep < 3; ++rep) {
+      KvmConfig c = sched_cfg(W + 2, 2, KVM_SCHED_DYNAMIC); c.max_tasks = 1 << 18; c.live_cap = 1 << 17; c.succ_cap = 1 << 18; c.ring_words = 1 << 21; c.sched.p.cls[0].urgent_us = KVM_URGENT_ALL;
+      KvmExec ex(c); ex.start();
+      std::unique_ptr<KvmFront> fr; if (mode == 1) { KvmFront::Cfg fc; fc.classes = 2; fr.reset(new KvmFront(ex, fc)); }
+      KvmBundle flood = spin_bundle(NF, 20, 1), probe; { KvmBundleBuilder b; KvmTaskOpts o; o.workload = 0; o.deadline_us = 200; b.add("noop", {}, o); probe = b.build(); }
+      auto t0 = std::chrono::steady_clock::now();
+      if (mode == 0) CHECK(ex.submit(flood, 30000) == KvmSubmit::OK, "flood submit"); else fr->submit(flood, 1);
+      std::this_thread::sleep_for(std::chrono::microseconds(300));
+      for (int k = 0; k < NP; ++k) {
+        auto ts = std::chrono::steady_clock::now(); bool ok;
+        if (mode == 0) { unsigned wid = 0; ok = ex.submit(probe, 30000, true, &wid) == KvmSubmit::OK; while (ok && !ex.window_done(wid) && std::chrono::steady_clock::now() - ts < std::chrono::seconds(10)) {} }
+        else { KvmFront::Ticket t = fr->submit(probe, 0); ok = fr->wait(t, 10000); }
+        double l = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - ts).count();
+        CHECK(ok, "probe %d did not complete", k); lat.push_back(l);
+        std::this_thread::sleep_for(std::chrono::microseconds(700));
+      }
+      if (fr) { CHECK(fr->flush(30000), "front flush"); }
+      ex.close(); const KvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
+      wall.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
+      int bad = 0; for (auto& t : r.trace) bad += t.exec_count != 1; CHECK(bad == 0 && r.done == NF + NP, "done %d (want %d), %d tasks with exec_count != 1", r.done, NF + NP, bad);
+    }
+    Spread sw = spread(wall);
+    printf("  %-6s probe latency p50 %8.0f p99 %8.0f max %8.0f us (%zu probes) | flood+probes wall %.0f ms [%.0f,%.0f]\n", mode == 0 ? "direct" : "front", pct(lat, 50), pct(lat, 99), *std::max_element(lat.begin(), lat.end()), lat.size(), sw.med, sw.lo, sw.hi);
   }
   return g_fail == before;
 }
@@ -462,6 +518,7 @@ static bool sched_bench_suite(const std::string& s, bool& ok) {
 #endif
   if (s == "calib") { ok = suite_calib(); return true; }
   if (s == "dispatch") { ok = suite_dispatch(); return true; }
+  if (s == "hol") { ok = suite_hol(); return true; }
   if (s == "admit") { ok = suite_admit(); return true; }
   if (s == "bwcap") { ok = suite_bwcap(); return true; }
   if (s == "headroom") { ok = suite_headroom(); return true; }

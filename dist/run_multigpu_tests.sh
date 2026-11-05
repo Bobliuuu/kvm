@@ -85,8 +85,6 @@ stage cpu-partitioner-sim cpu "cd $ROOT && $PY -m unittest discover -s tests/dis
 stage cpu-transport-proxy cpu "g++ -O2 -std=c++17 -pthread -I$ROOT/dist $ROOT/tests/dist/test_transport.cpp -o $TT && KVM_DIST_LOG=1 $TT"
 stage cpu-rdma-shim cpu "g++ -O2 -std=c++17 -pthread -I$ROOT/dist $ROOT/tests/dist/test_rdma.cpp -o $B/test_rdma && KVM_DIST_LOG=1 $B/test_rdma"
 stage cpu-xdc-wan cpu "g++ -O2 -std=c++17 -pthread -I$ROOT/dist $ROOT/tests/dist/test_xdc.cpp -o $B/test_xdc && KVM_DIST_LOG=1 $B/test_xdc"
-stage cpu-rdma-shim cpu "g++ -O2 -std=c++17 -pthread -I$ROOT/dist $ROOT/tests/dist/test_rdma.cpp -o $B/test_rdma && $B/test_rdma"
-stage cpu-xdc-protocol cpu "g++ -O2 -std=c++17 -pthread -I$ROOT/dist $ROOT/tests/dist/test_xdc.cpp -o $B/test_xdc && $B/test_xdc"
 stage cpu-scaleout-sim cpu "cd $ROOT && $PY -m unittest discover -s tests/dist -p 'test_scaleout*.py' 2>&1 | tail -15; exit \${PIPESTATUS[0]}"
 stage cpu-fault-recovery cpu "cd $ROOT && $PY -m unittest discover -s tests/dist -p 'test_fault*.py' 2>&1 | tail -15; exit \${PIPESTATUS[0]}"
 stage cpu-launcher-dry-run cpu "cd $ROOT && $PY dist/launch.py --dry-run --nodes a@h1:2,h2 -- ./prog --rank {rank} --peers {peers} | grep -c '^DRY rank' | grep -qx 3"

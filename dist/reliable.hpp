@@ -86,6 +86,7 @@ class Reliable {
   bool dead(int peer) const { return peers_.at(peer).dead; }
   int dead_peer() { int r = reported_; reported_ = -1; return r; }       // each dead peer is reported once
   size_t unacked(int peer) const { return peers_.at(peer).unacked.size(); }
+  size_t unacked_bytes(int peer) const { return peers_.at(peer).unacked_bytes; }
   size_t unacked_total() const { size_t n = 0; for (auto& p : peers_) n += p.unacked.size(); return n; }
   const ReliableConfig& config() const { return c_; }
   // Change the send window at run time (all peers; call from the protocol thread). msgs <= 0 keeps the message window.

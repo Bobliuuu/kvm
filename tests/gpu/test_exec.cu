@@ -886,6 +886,16 @@ static bool suite_recycle(bool quick) {
     printf("  stream: %lld tasks (%lld edges) through %d slots in %d windows (%d waited on predecessor windows): %.2f s wall, %.2f us/task; final layer bitwise vs CPU\n",
            N, (long long)big.succ.size(), c.max_tasks, ex.stats().windows, ex.stats().window_waits, sec, sec * 1e6 / N);
   }
+  {  // (a2) window_done stays true after the window table wrapped over the window (a late poller must not wait for a finished window)
+    KvmConfig c = small_cfg(8); c.win_cap = 64; c.max_tasks = 1024; c.live_cap = 512; c.succ_cap = 1 << 12; c.ring_words = 1 << 14;
+    KvmExec ex(c); int x = ex.add_buffer(1, 1, std::vector<float>{0.f}), one = ex.add_buffer(1, 1, std::vector<float>{1.f}); ex.start();
+    const int B = 5 * c.win_cap; std::vector<unsigned> wid(B, 0); bool all_ok = true;
+    for (int b = 0; b < B; ++b) { KvmBundleBuilder bb; bb.add("add", {Bf(x), Bf(one), Bf(x), I(1)}); all_ok &= ex.submit(bb.build(), 60000, true, &wid[b]) == KvmSubmit::OK; }
+    ex.close(); const KvmResult& r = ex.finish();
+    int stale = 0; for (int b = 0; b < B; ++b) stale += !ex.window_done(wid[b]);
+    CHECK(all_ok && r.ok() && r.done == B, "wrap: done %d of %d", r.done, B);
+    CHECK(stale == 0, "window_done false for %d of %d finished windows after the %d-entry table wrapped %d times", stale, B, c.win_cap, B / c.win_cap);
+  }
   {  // (b) a 200k-task chain through 1024 slots (one window per 256 tasks, each waits for the previous)
     const int N = quick ? 20000 : 200000;
     KvmConfig c = small_cfg(8); c.max_tasks = 1024; c.live_cap = 512; c.succ_cap = 1 << 12; c.ring_words = 1 << 14;

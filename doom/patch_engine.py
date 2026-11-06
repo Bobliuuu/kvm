@@ -128,6 +128,7 @@ if os.environ.get("DOOM_PROF"):
 # the spans go into the span log (atomic append, epoch 0) and the column tiles draw their pixels.
 # Planes never overlap each other or the walls, so any order gives the serial picture; the masked pass (sprites) runs after all of them.
 PLANE_CODE = r"""
+static void gpu_plane_exec_abs(int i);
 void gpu_plane_exec(int i);
 
 /* ---- GPU split mode (patch_engine.py): flat planes executed by the doom_planes tasks ---- */
@@ -137,9 +138,9 @@ static int gpu_nplanes;
 extern int gpu_split_logging(void);
 extern byte* ylookup[]; extern int columnofs[];
 void gpu_q_span_mt(byte*, const byte*, const byte*, unsigned, unsigned, int, int);
-static int gpu_ran_serial;   /* 1: the planes were already executed on the game thread (a fuzz column needed the finished screen) */
-void gpu_planes_reset(void) { gpu_nplanes = 0; gpu_ran_serial = 0; }
-int gpu_plane_count(void) { return gpu_ran_serial ? 0 : gpu_nplanes; }
+static int gpu_pbase;   /* planes [0, gpu_pbase) were already executed on the game thread (a fuzz column needed the finished screen) */
+void gpu_planes_reset(void) { gpu_nplanes = 0; gpu_pbase = 0; }
+int gpu_plane_count(void) { return gpu_nplanes - gpu_pbase; }
 int gpu_plane_log(visplane_t* pl, byte* src, lighttable_t** zl, fixed_t ph, int lump)
 {
     if (!gpu_split_logging()) return 0;
@@ -147,7 +148,7 @@ int gpu_plane_log(visplane_t* pl, byte* src, lighttable_t** zl, fixed_t ph, int 
     g->pl = pl; g->src = src; g->zl = zl; g->ph = ph; g->lump = lump;
     return 1;
 }
-void gpu_planes_release(void) { for (int i = 0; i < gpu_nplanes; i++) W_ReleaseLumpNum(gpu_planes[i].lump); gpu_nplanes = 0; gpu_ran_serial = 0; }
+void gpu_planes_release(void) { for (int i = 0; i < gpu_nplanes; i++) W_ReleaseLumpNum(gpu_planes[i].lump); gpu_nplanes = 0; gpu_pbase = 0; }
 static void gpu_map_plane(int y, int x1, int x2, const gpu_plane_t* g)
 {
     angle_t angle; fixed_t distance, length, xfrac, yfrac, xstep, ystep; unsigned index; lighttable_t* cm;
@@ -164,7 +165,8 @@ static void gpu_map_plane(int y, int x1, int x2, const gpu_plane_t* g)
     unsigned int step = ((xstep << 10) & 0xffff0000) | ((ystep >> 6) & 0x0000ffff);
     gpu_q_span_mt(ylookup[y] + columnofs[x1], g->src, cm, position, step, x2 - x1, x1);   /* pixels are drawn by the column tiles (clipped to their band) */
 }
-void gpu_plane_exec(int i)
+void gpu_plane_exec(int i) { gpu_plane_exec_abs(gpu_pbase + i); }
+static void gpu_plane_exec_abs(int i)
 {
     const gpu_plane_t* g = &gpu_planes[i]; visplane_t* pl = g->pl;
     int ss[SCREENHEIGHT];     /* span starts: thread-local copy of spanstart[] */
@@ -177,7 +179,7 @@ void gpu_plane_exec(int i)
         while (b2 > b1 && b2 >= t2) { ss[b2] = x; b2--; }
     }
 }
-void gpu_planes_exec_serial(void) { if (gpu_ran_serial) return; for (int i = 0; i < gpu_nplanes; i++) gpu_plane_exec(i); gpu_ran_serial = 1; }
+void gpu_planes_exec_serial(void) { for (int i = gpu_pbase; i < gpu_nplanes; i++) gpu_plane_exec_abs(i); gpu_pbase = gpu_nplanes; }
 """
 
 

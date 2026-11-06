@@ -260,7 +260,6 @@ KVM_GPT_DEVI unsigned f2tf32(float x) {
 }
 // Operand for a single (1x) TF32 mma: the tensor core ignores the low 13 bits, so the mask is free and adding the rounding bias is
 // round-to-nearest in ONE op. (Round-toward-zero would save that op for ~8% speed but triples the error: measured 7.6e-4 vs 2.7e-4.)
-KVM_GPT_DEVI unsigned x_u(float x) { return __float_as_uint(x); }   // operand already rounded in shared memory (tile_round)
 KVM_GPT_DEVI unsigned f2tf32_op(float x) { const unsigned u = __float_as_uint(x); return ((u & 0x7fffffffu) > 0x7f800000u) ? u : u + 0x1000u; }
 KVM_GPT_DEVI void ldmatrix_x4(unsigned (&r)[4], const float* p) {   // four 8x8 b16 matrices == four 8x4 tf32 matrices
     asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0,%1,%2,%3}, [%4];\n" : "=r"(r[0]), "=r"(r[1]), "=r"(r[2]), "=r"(r[3]) : "r"(smem_u32(p)));
@@ -311,33 +310,6 @@ KVM_GPT_DEVI void tile_async(float* dst, const float* src, int ld, int gr0, int 
     }
 }
 
-// Rounds, in place, the chunks of one landed ROWS x COLS tile that THIS thread copied (same chunk->thread map as tile_async, so no extra
-// barrier: the thread's own cp.async group has completed and its plain stores are visible to itself). The mma then reads ready TF32
-// operands, so the rounding is done once per element instead of once per fragment use (4x for A, 2x for B in a 128x128 tile): the
-// fragment loops were bound by integer issue slots, not by the tensor cores. Values are bitwise what f2tf32_op returned per use.
-#ifdef KVM_RND_VELT
-// Same rounding on the FP32 pipe (Veltkamp split: nearest, ties to even; the integer pipe is half rate on sm_80 and is what the
-// integer rounding saturates). |x| >= 1e30, inf and NaN pass through unchanged (the tensor core then truncates the low bits).
-KVM_GPT_DEVI float round_tf32_f(float x) {
-    const float c = __fmul_rn(x, 8193.f), h = __fsub_rn(c, __fsub_rn(c, x));
-    return fabsf(x) < 1e30f ? h : x;
-}
-#else
-KVM_GPT_DEVI float round_tf32_f(float x) { return __uint_as_float(f2tf32_op(x)); }
-#endif
-template <bool KC, int ROWS, int COLS>
-KVM_GPT_DEVI void tile_round(float* dst) {
-    constexpr int CPR = COLS / 4;
-#pragma unroll
-    for (int s = 0; s < ROWS * CPR / KVM_GPT_THREADS; s++) {
-        int q = threadIdx.x + s * KVM_GPT_THREADS, row = q / CPR, c4 = (q % CPR) * 4;
-        float4* d = reinterpret_cast<float4*>(dst + (KC ? sw_kc<COLS>(row, c4) : sw_mc<COLS>(row, c4)));
-        float4 v = *d;
-        v.x = round_tf32_f(v.x); v.y = round_tf32_f(v.y); v.z = round_tf32_f(v.z); v.w = round_tf32_f(v.w);
-        *d = v;
-    }
-}
-
 // 64x64 output tile, BK=32, 3-stage cp.async pipeline (3 x 16 KiB = 48 KiB, the epilogue reuses it), 8 warps, mma.sync m16n8k8
 // TF32. Warp (wm, wn, kh): 32x32 sub-tile at (wm*32, wn*32) = 2 m16 x 4 n8 fragments, reducing k8-steps {2kh, 2kh+1} of each BK=32
 // slab; the two k-halves are summed in the epilogue. Shared tiles keep the global orientation (coalesced loads for all four
@@ -368,25 +340,11 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
     issue(0); cp_commit();
     if (nk > 1) issue(1);
     cp_commit();   // always commit, empty groups included, so wait_group counts stay uniform
-    if constexpr (!PREC && !BF) {   // slab 0: wait, round (later slabs are rounded one iteration ahead, inside the loop)
-        cp_wait<1>();
-        float* Ar = sm; float* Br = Ar + TILE;
-        if (TA) tile_round<false, 32, 64>(Ar); else tile_round<true, 64, 32>(Ar);
-        if (TB) tile_round<true, 64, 32>(Br); else tile_round<false, 32, 64>(Br);
-    }
     for (int it = 0; it < nk; it++) {
-        if constexpr (!(!PREC && !BF)) cp_wait<1>();   // (rounded variant: the owner waited for and rounded slab `it` one iteration ago)
+        cp_wait<1>();
         __syncthreads();   // tile `it` landed everywhere; everyone finished the slab that used the stage refilled next
         if (it + 2 < nk) issue(it + 2);
         cp_commit();
-        if constexpr (!PREC && !BF) {   // slab it+1 has had a whole iteration to land: wait for it and round this thread's chunks to TF32 once
-            cp_wait<1>();
-            if (it + 1 < nk) {
-                float* Ar = sm + ((it + 1) % NST) * STAGE; float* Br = Ar + TILE;
-                if (TA) tile_round<false, 32, 64>(Ar); else tile_round<true, 64, 32>(Ar);
-                if (TB) tile_round<true, 64, 32>(Br); else tile_round<false, 32, 64>(Br);
-            }
-        }
         const float* As = sm + (it % NST) * STAGE; const float* Bs = As + TILE;
         if constexpr (BF) {
             const int kk = kh * 16;
@@ -439,7 +397,7 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
                 for (int e = 0; e < 4; e++) {
                     float x = __uint_as_float(ah[i][e]);
                     if (PREC) { unsigned h = f2tf32(x); al[i][e] = __float_as_uint(x - __uint_as_float(h)); ah[i][e] = h; }
-                    else ah[i][e] = x_u(x);
+                    else ah[i][e] = f2tf32_op(x);
                 }
             }
 #pragma unroll
@@ -459,7 +417,7 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
                     for (int e = 0; e < 2; e++) {
                     float x = __uint_as_float(bh[2 * jp + jj][e]);
                     if (PREC) { unsigned h = f2tf32(x); bl[2 * jp + jj][e] = __float_as_uint(x - __uint_as_float(h)); bh[2 * jp + jj][e] = h; }
-                    else bh[2 * jp + jj][e] = x_u(x);
+                    else bh[2 * jp + jj][e] = f2tf32_op(x);
                 }
             }
 #pragma unroll
@@ -540,25 +498,11 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
     };
 #pragma unroll
     for (int p = 0; p < NST - 1; p++) { if (p < nk) issue(p); cp_commit(); }
-    if constexpr (!PREC) {   // slab 0: wait, round (later slabs are rounded one iteration ahead, inside the loop)
-        cp_wait<NST - 2>();
-        float* Ar = sm; float* Br = Ar + ATILE;
-        if (TA) tile_round<false, BK, BM>(Ar); else tile_round<true, BM, BK>(Ar);
-        if (TB) tile_round<true, BN, BK>(Br); else tile_round<false, BK, BN>(Br);
-    }
     for (int it = 0; it < nk; it++) {
-        if constexpr (PREC) cp_wait<NST - 2>();   // (rounded variant: the owner waited for and rounded slab `it` one iteration ago)
+        cp_wait<NST - 2>();
         __syncthreads();
         if (it + NST - 1 < nk) issue(it + NST - 1);
         cp_commit();
-        if constexpr (!PREC) {   // slab it+1 has had a whole iteration to land: wait for it and round this thread's chunks to TF32 once
-            cp_wait<NST - 2>();
-            if (it + 1 < nk) {
-                float* Ar = sm + ((it + 1) % NST) * STAGE; float* Br = Ar + ATILE;
-                if (TA) tile_round<false, BK, BM>(Ar); else tile_round<true, BM, BK>(Ar);
-                if (TB) tile_round<true, BN, BK>(Br); else tile_round<false, BK, BN>(Br);
-            }
-        }
         const float* As = sm + (it % NST) * STAGE; const float* Bs = As + ATILE;
 #pragma unroll
         for (int kq = 0; kq < BK / 8; kq++) {
@@ -576,7 +520,7 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
                 for (int e = 0; e < 4; e++) {
                     float x = __uint_as_float(ah[i][e]);
                     if (PREC) { unsigned h = f2tf32(x); al[i][e] = __float_as_uint(x - __uint_as_float(h)); ah[i][e] = h; }
-                    else ah[i][e] = x_u(x);
+                    else ah[i][e] = f2tf32_op(x);
                 }
             }
 #pragma unroll
@@ -596,7 +540,7 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
                     for (int e = 0; e < 2; e++) {
                     float x = __uint_as_float(bh[2 * jp + jj][e]);
                     if (PREC) { unsigned h = f2tf32(x); bl[2 * jp + jj][e] = __float_as_uint(x - __uint_as_float(h)); bh[2 * jp + jj][e] = h; }
-                    else bh[2 * jp + jj][e] = x_u(x);
+                    else bh[2 * jp + jj][e] = f2tf32_op(x);
                 }
             }
 #pragma unroll
@@ -1078,6 +1022,27 @@ KVM_GPT_DEVI void mma3(float (&c)[4], const unsigned (&ah)[4], const unsigned (&
 #endif
     mma_tf32(c, ah, bh0, bh1);   // small terms first
 }
+// Same products as mma3 with the three terms in SEPARATE accumulators (hi*hi, hi*lo, lo*hi): a long QK^T / dO V^T reduction is then three
+// independent mma chains instead of one chain 3x as long (each mma waits for the previous one on the same accumulator, ~30 cycles, and
+// only two warps per scheduler are there to cover that). The sum c + (x + y) restores the small-terms-first order.
+struct Acc3 { float c[4], x[4], y[4]; };
+KVM_GPT_DEVI void acc3_zero(Acc3& a) {
+#pragma unroll
+    for (int e = 0; e < 4; e++) { a.c[e] = 0.f; a.x[e] = 0.f; a.y[e] = 0.f; }
+}
+KVM_GPT_DEVI void mma3s(Acc3& a, const unsigned (&ah)[4], const unsigned (&al)[4], unsigned bh0, unsigned bh1, unsigned bl0, unsigned bl1) {
+#if KVM_GPT_ATTN_MMA >= 3
+    mma_tf32(a.x, ah, bl0, bl1);   // hi*lo
+#endif
+#if KVM_GPT_ATTN_MMA >= 2
+    mma_tf32(a.y, al, bh0, bh1);   // lo*hi
+#endif
+    mma_tf32(a.c, ah, bh0, bh1);
+}
+KVM_GPT_DEVI void acc3_sum(const Acc3& a, float (&r)[4]) {
+#pragma unroll
+    for (int e = 0; e < 4; e++) r[e] = a.c[e] + (a.x[e] + a.y[e]);
+}
 // cp.async copy of a 32 x HD tile (rows row0.. of a row-major matrix, leading dimension ldg) to shared rows of stride HD+4;
 // rows >= rmax are zero-filled. The padding makes every mma fragment load bank-conflict free.
 template <int HD>
@@ -1138,7 +1103,7 @@ KVM_GPT_DEVI void attn_fwd_t(const AttnArgs& A) {
         }
         const int kbase = it * 32 + wk * 8;
         if (kbase > A.i0 + rb + 15) continue;   // all of this warp's keys lie above all of its rows (warp-uniform)
-        float s[4] = {0.f, 0.f, 0.f, 0.f};
+        Acc3 s3; acc3_zero(s3);
 #pragma unroll
         for (int ks = 0; ks < NT; ks++) {
             unsigned qh[4], ql[4], kh[2], kl[2];
@@ -1150,8 +1115,9 @@ KVM_GPT_DEVI void attn_fwd_t(const AttnArgs& A) {
                 split_tf32(Qs[(rb + g) * LD + ks * 8 + t + 4], qh[2], ql[2]);     split_tf32(Qs[(rb + g + 8) * LD + ks * 8 + t + 4], qh[3], ql[3]);
             }
             split_tf32(Ks[(wk * 8 + g) * LD + ks * 8 + t], kh[0], kl[0]);     split_tf32(Ks[(wk * 8 + g) * LD + ks * 8 + t + 4], kh[1], kl[1]);
-            mma3(s, qh, ql, kh[0], kh[1], kl[0], kl[1]);
+            mma3s(s3, qh, ql, kh[0], kh[1], kl[0], kl[1]);
         }
+        float s[4]; acc3_sum(s3, s);
         const int key0 = kbase + 2 * t;
         float v[4] = {key0 <= row0 ? s[0] * A.scale : -INFINITY, key0 + 1 <= row0 ? s[1] * A.scale : -INFINITY,
                       key0 <= row1 ? s[2] * A.scale : -INFINITY, key0 + 1 <= row1 ? s[3] * A.scale : -INFINITY};
@@ -1252,7 +1218,7 @@ KVM_GPT_DEVI void attn_dq_t(const AttnArgs& A) {
         const float* Ks = KV + (it & 1) * 2 * TILE; const float* Vs = Ks + TILE;
         const int kbase = it * 32 + wk * 8;
         if (kbase > A.i0 + rb + 15) continue;
-        float s[4] = {0.f, 0.f, 0.f, 0.f}, dp[4] = {0.f, 0.f, 0.f, 0.f};
+        Acc3 s3, dp3; acc3_zero(s3); acc3_zero(dp3);
 #pragma unroll
         for (int ks = 0; ks < NT; ks++) {
             unsigned qh[4], ql[4], oh[4], ol[4], kh[2], kl[2], vh[2], vl[2];
@@ -1263,9 +1229,10 @@ KVM_GPT_DEVI void attn_dq_t(const AttnArgs& A) {
             split_tf32(Os[(rb + g) * LD + c + 4], oh[2], ol[2]); split_tf32(Os[(rb + g + 8) * LD + c + 4], oh[3], ol[3]);
             split_tf32(Ks[(wk * 8 + g) * LD + c], kh[0], kl[0]); split_tf32(Ks[(wk * 8 + g) * LD + c + 4], kh[1], kl[1]);
             split_tf32(Vs[(wk * 8 + g) * LD + c], vh[0], vl[0]); split_tf32(Vs[(wk * 8 + g) * LD + c + 4], vh[1], vl[1]);
-            mma3(s, qh, ql, kh[0], kh[1], kl[0], kl[1]);
-            mma3(dp, oh, ol, vh[0], vh[1], vl[0], vl[1]);
+            mma3s(s3, qh, ql, kh[0], kh[1], kl[0], kl[1]);
+            mma3s(dp3, oh, ol, vh[0], vh[1], vl[0], vl[1]);
         }
+        float s[4], dp[4]; acc3_sum(s3, s); acc3_sum(dp3, dp);
         const int key0 = kbase + 2 * t;
         float ds[4];
         ds[0] = key0 <= row0 ? expf(s[0] * A.scale - lr0) * (dp[0] - dr0) : 0.f;
@@ -1345,7 +1312,7 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
         const int qa = qbase + 2 * t, qb = qa + 1;   // queries of this thread's accumulator columns
         const float lra = qa < Tn ? A.lse[hrow + qa] : 0.f, lrb = qb < Tn ? A.lse[hrow + qb] : 0.f;
         const float dra = qa < Tn ? A.delta[hrow + qa] : 0.f, drb = qb < Tn ? A.delta[hrow + qb] : 0.f;
-        float s[4] = {0.f, 0.f, 0.f, 0.f}, dp[4] = {0.f, 0.f, 0.f, 0.f};
+        Acc3 s3, dp3; acc3_zero(s3); acc3_zero(dp3);
 #pragma unroll
         for (int ks = 0; ks < NT; ks++) {
             unsigned kh[4], kl[4], vh[4], vl[4], qh[2], ql[2], oh[2], ol[2];
@@ -1356,9 +1323,10 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
             split_tf32(Vs[(rb + g) * LD + c + 4], vh[2], vl[2]); split_tf32(Vs[(rb + g + 8) * LD + c + 4], vh[3], vl[3]);
             split_tf32(Qs[(wq * 8 + g) * LD + c], qh[0], ql[0]); split_tf32(Qs[(wq * 8 + g) * LD + c + 4], qh[1], ql[1]);
             split_tf32(Os[(wq * 8 + g) * LD + c], oh[0], ol[0]); split_tf32(Os[(wq * 8 + g) * LD + c + 4], oh[1], ol[1]);
-            mma3(s, kh, kl, qh[0], qh[1], ql[0], ql[1]);
-            mma3(dp, vh, vl, oh[0], oh[1], ol[0], ol[1]);
+            mma3s(s3, kh, kl, qh[0], qh[1], ql[0], ql[1]);
+            mma3s(dp3, vh, vl, oh[0], oh[1], ol[0], ol[1]);
         }
+        float s[4], dp[4]; acc3_sum(s3, s); acc3_sum(dp3, dp);
         float p[4], ds[4];
         p[0] = (qa < Tn && key0 <= qa) ? expf(s[0] * A.scale - lra) : 0.f;  p[1] = (qb < Tn && key0 <= qb) ? expf(s[1] * A.scale - lrb) : 0.f;
         p[2] = (qa < Tn && key1 <= qa) ? expf(s[2] * A.scale - lra) : 0.f;  p[3] = (qb < Tn && key1 <= qb) ? expf(s[3] * A.scale - lrb) : 0.f;

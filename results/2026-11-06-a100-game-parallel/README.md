@@ -54,7 +54,7 @@ Measured with 120 frames per instance, every instance of every run raw-byte/fing
 | 8 | 162-165 / 1305 | 193-196 / 1553 |
 | 16 | 156-158 / 2510 | 182-186 / 2932 |
 | 16 beside the GEMM+AdamW tenant (dyn) | 143-146 / 2315 | 164-169 / 2664 |
-16 independent games at 35 Hz need 560 fps aggregate; the machine delivers 2500-2900 (aggregate fps, unpaced capacity, not paced behaviour). **64 instances: not verified.** See "Not done".
+16 independent games at 35 Hz need 560 fps aggregate; the machine delivers 2500-2900 (aggregate fps, unpaced capacity, not paced behaviour). **32 and 64 instances: not verified (the 64-instance binary faults, see "Not done").**
 
 ## Result 4: real tenants instead of spin tasks (item 3, `study/`, `study/tables.md`)
 The load is `make_workload.py --tenant train`: per round two forward GEMMs (64x64 `matmul_tile` tasks with a 16384-deep reduction, TF32) and an AdamW sweep over 8M parameters per chain (7 streams, 2M-element tasks),
@@ -86,8 +86,10 @@ re-create the old base. What the split does change here: Doom frame time p50 8.6
 ## Not done / caveats
 - Modal: authorised, but the launch was denied by the permission system, so everything ran on the shared box under the lock. No Modal app was created.
 - BSP walk + wall setup (65% of the remaining tick) and the simulation are still serial; a single game does not use the whole GPU. Pipelining `doom_sim(f+1)` with the draw of frame f was not done (the draw stages are only ~0.4 ms of 4.4; it would need a zone-purge guard).
-- 64 instances: the header/generator/build support 64, a 64-instance binary was built, but **it faulted at run time** (illegal instruction in `P_SetupLevel`, even for 2 instances), see `instances/`; the cause was not found in the time available
-  (suspects: 1.7 GB of static device memory from 64 x 27 MB engine images, or something in the 64-way dispatch). The verified limit is 16 instances (binary built with 16); 32 and 64 are untested.
+- 64 instances: the header/generator/build support 64 (`gen_inst.py`, parallel instance build, a 64-instance binary links), but **that binary does not run**: even a 1-instance non-split bundle fails at slot 0 with
+  `BAD_ORDER` in `doom_sim`'s check (a=134, `instances/instances64.jsonl`, rc 1 for 2/16/24/32/64 instances), and compute-sanitizer reports an illegal instruction in `P_SetupLevel`. The 16-instance binary built from the same
+  sources passes everything, and the same engine object linked into the 1-instance executor passes, so the fault is specific to the 64-way build (suspects: 1.7 GB of static device images, 64-way dispatch code size, or a stale executor object);
+  not resolved. The verified limit is therefore 16 instances (was 8); 32 and 64 are unverified.
 - The study uses unpaced frames (the executor does not pace; `deadline_us` is metadata), so "late" there means a tick gap above 28.57 ms or a missed absolute deadline; the paced late-frame count comes from the `adaptive_run` section.
 - The tenant does not saturate the GPU (see Result 4); the "dynamic with reservation" and "without" rows are equal, as in the earlier study.
 - Single process per hold; 3 repetitions for speed/study/adaptive, 1 for the heavy tenant and instances. Numbers are from a shared box.

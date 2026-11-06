@@ -521,7 +521,7 @@ __device__ __forceinline__ void kvm_publish(const KvmDevState& S, int slot, int 
 // ---------------- worker ----------------
 struct KvmShared {
   KvmTaskDesc d;
-  int cmd, skip, how, part, chain;   // chain (KVM_CHAIN): slot of the one successor this block runs next without a queue round trip, else -1. how: KVM_TRACE_* start reason from kvm_pop (| KVM_HOW_BW); part: STATIC-mode class of this worker's SM
+  int cmd, skip, pskip, how, part, chain;   // chain (KVM_CHAIN): slot of the one successor this block runs next without a queue round trip, else -1. how: KVM_TRACE_* start reason from kvm_pop (| KVM_HOW_BW); part: STATIC-mode class of this worker's SM
 #ifdef KVM_PROF_GAP
   long long pg[16]; int pg_valid;
 #endif
@@ -581,6 +581,14 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
     if (d.pub_var >= 0) kvm_publish(S, slot, d.pub_var, d.pub_ver);
 #endif
     sh.skip = bad || *(volatile int*)&S.cnt->err_code;
+    sh.pskip = 0;
+    if (d.flags & (KVM_TF_SKIP_IF_SET | KVM_TF_SKIP_IF_ZERO)) {   // predicated task: data-dependent skip of the operator body
+      if ((unsigned)d.reserved1 >= (unsigned)S.nbufs) { kvm_fail(S, KVM_ERR_BAD_BUF_INDEX, slot, d.reserved1, -1); sh.skip = 1; }
+      else {
+        const int w = ld_acq(reinterpret_cast<const int*>(S.bufs[d.reserved1].p));
+        sh.pskip = ((d.flags & KVM_TF_SKIP_IF_SET) && w != 0) || ((d.flags & KVM_TF_SKIP_IF_ZERO) && w == 0);
+      }
+    }
   }
   __syncthreads();
   KVM_PG(9);
@@ -591,7 +599,7 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
     sh.pg_valid = 1;
   }
 #endif
-  if (!sh.skip) {
+  if (!sh.skip && !sh.pskip) {
     KvmCtx c{S.bufs, S.nbufs, slot, S.cnt, S.herr, sh.smem};
     kvm_dispatch(d.op_id, c, S.args + d.args_off);
   }

@@ -8,6 +8,11 @@
 
 // One task. Successor indices and wait/publish variable ids are batch-local for successors, global for variables.
 // A batch is one compiled workload (or one admission epoch); the executor adds the batch's base slot to successors.
+// Predicated tasks (data-dependent control flow without the host): a task with KVM_TF_SKIP_IF_SET / _IF_ZERO reads word 0 of buffer
+// `reserved1` when it starts (acquire; the producer is an ordinary predecessor) and, if the condition holds, skips its operator body.
+// A skipped task still completes normally: it publishes its version and releases its successors, so the graph shape never changes.
+#define KVM_TF_SKIP_IF_SET  1   // skip when the predicate word is nonzero (raw 32 bits: an i32 flag, or any f32 other than +0.0)
+#define KVM_TF_SKIP_IF_ZERO 2   // skip when the predicate word is zero
 struct alignas(4) KvmTaskDesc {
     int32_t op_id;           // index into the operator registry (include/kvm_ops.def)
     int32_t succ_off;        // CSR range into the batch's successor array
@@ -22,9 +27,9 @@ struct alignas(4) KvmTaskDesc {
     int32_t pub_var;         // KVM_NO_VAR or a version variable: on completion version[pub_var] = pub_ver
     int32_t pub_ver;         //   (release store after a device-wide fence; pub_ver must be version[pub_var]+1 in program order)
     int32_t workload_id;     // which submitted graph this task came from (metrics only; scheduler never branches on it)
-    int32_t flags;           // reserved, 0
-    int32_t reserved0;
-    int32_t reserved1;
+    int32_t flags;           // KVM_TF_* predicate bits (0 = none; other bits reserved, 0)
+    int32_t reserved0;       // executor-internal (window id), overwritten at admission
+    int32_t reserved1;       // with a KVM_TF_SKIP_* flag: index of the predicate buffer (word 0 is tested); else 0
 };
 static_assert(sizeof(KvmTaskDesc) == 64, "KVM ABI size mismatch");
 static_assert(alignof(KvmTaskDesc) == 4, "KVM ABI alignment mismatch");

@@ -35,16 +35,49 @@ timeout 3000 ./test_exec 2>&1 | tail -80; echo "exit ${PIPESTATUS[0]}"
 
 @app.function(gpu="H100", cpu=8, memory=32768, timeout=5400, volumes={"/logs": vol})
 def run(stage: str, tag: str):
-    import subprocess
+    import subprocess, threading, time
     out = f"/logs/{tag}"; os.makedirs(out, exist_ok=True)
     stages = ["core", "ops", "full"] if stage == "all" else [stage]
     for s in stages:
-        p = subprocess.run(["bash", "-c", "cd /src && export PATH=$PATH:/usr/local/cuda/bin && " + SCRIPT[s]],
-                           capture_output=True, text=True)
-        open(f"{out}/{s}.log", "w").write(p.stdout + "\n--stderr--\n" + p.stderr)
-        vol.commit()
-        print(f"=== {s}\n{p.stdout[-3000:]}\n{p.stderr[-1000:]}", flush=True)
+        f = open(f"{out}/{s}.log", "w")
+        p = subprocess.Popen(["bash", "-c", "cd /src && export PATH=$PATH:/usr/local/cuda/bin && set -x && " + SCRIPT[s]],
+                             stdout=f, stderr=subprocess.STDOUT, text=True)
+        while p.poll() is None:   # live log: commit the volume every 30 s
+            time.sleep(30); f.flush(); vol.commit()
+        f.close(); vol.commit()
+
+BUILD = r'''
+mkdir -p /logs/BIN
+for t in test_ops test_extra; do
+ (cd tests/gpu_ops && /usr/bin/time -f "$t build %es" nvcc -O2 -arch=sm_90a -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -lineinfo -I../../include -I. $t.cu -o /logs/BIN/$t 2>&1 | grep -v -i 'remark\|^\s*\^\|^$' | tail -30) &
+done
+(KVM_ARCH=sm_90a /usr/bin/time -f "test_exec full build %es" bash tests/gpu/build.sh 2>&1 | tail -30; cp test_exec /logs/BIN/) &
+wait
+ls -la /logs/BIN
+'''
+
+@app.function(cpu=16, memory=32768, timeout=7200, volumes={"/logs": vol})
+def build(tag: str):
+    import subprocess, time
+    os.makedirs(f"/logs/{tag}", exist_ok=True)
+    f = open(f"/logs/{tag}/build.log", "w")
+    p = subprocess.Popen(["bash", "-c", "cd /src && export PATH=$PATH:/usr/local/cuda/bin && " + BUILD], stdout=f, stderr=subprocess.STDOUT, text=True)
+    while p.poll() is None:
+        time.sleep(30); f.flush(); vol.commit()
+    f.close(); vol.commit()
+
+@app.function(gpu="H100", cpu=4, timeout=3600, volumes={"/logs": vol})
+def runbin(tag: str):
+    import subprocess
+    f = open(f"/logs/{tag}/runbin.log", "w")
+    cmd = ("cd /src/tests/gpu_ops && nvidia-smi --query-gpu=name,driver_version --format=csv,noheader; "
+           "for t in test_ops test_extra; do echo == $t; timeout 900 /logs/BIN/$t 2>&1 | tail -30; echo exit ${PIPESTATUS[0]}; done; "
+           "cd /src && echo == test_exec_full; timeout 2400 /logs/BIN/test_exec 2>&1 | grep -v '^\\[kvm_exec\\]' | tail -60; echo exit ${PIPESTATUS[0]}")
+    subprocess.run(["bash", "-c", cmd], stdout=f, stderr=subprocess.STDOUT, text=True)
+    f.close(); vol.commit()
 
 @app.local_entrypoint()
 def main(stage: str = "core", tag: str = "run"):
-    run.remote(stage, tag)
+    if stage == "build": build.remote(tag)
+    elif stage == "runbin": runbin.remote(tag)
+    else: run.remote(stage, tag)

@@ -1,0 +1,36 @@
+=== VARIANT []
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+Cuda compilation tools, release 12.8, V12.8.61
+Build cuda_12.8.r12.8/compiler.35404655_0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+      1     64 bytes stack frame, 96 bytes spill stores, 96 bytes spill loads
+      1 ptxas info    : Used 14 registers, used 0 barriers, 372 bytes cmem[0]
+      1 ptxas info    : Used 255 registers, used 1 barriers, 64 bytes cumulative stack size, 388 bytes cmem[0]
+MM TF32    NN  4096x 4096x 4096 tile 64x64   kvm    23.5 cuBLAS   128.1 TFLOP/s  ratio 0.183  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    TN  4096x 4096x 4096 tile 64x64   kvm    30.7 cuBLAS   127.3 TFLOP/s  ratio 0.241  err_vs_fp32 9.5e-05 ok dev_err 0
+MM TF32    NT  4096x 4096x 4096 tile 64x64   kvm    35.9 cuBLAS   130.0 TFLOP/s  ratio 0.276  err_vs_fp32 1.2e-04 ok dev_err 0
+MM TF32    NN  4096x 4096x 4096 tile 128x128 kvm    42.8 cuBLAS   129.3 TFLOP/s  ratio 0.331  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    TN  4096x 4096x 4096 tile 128x128 kvm    43.0 cuBLAS   127.5 TFLOP/s  ratio 0.337  err_vs_fp32 9.4e-05 ok dev_err 0
+MM TF32    NT  4096x 4096x 4096 tile 128x128 kvm    44.4 cuBLAS   130.1 TFLOP/s  ratio 0.341  err_vs_fp32 1.2e-04 ok dev_err 0
+MM TF32    NN  4096x 4096x 4096 tile 256x128 kvm    50.0 cuBLAS   129.5 TFLOP/s  ratio 0.386  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    TN  4096x 4096x 4096 tile 256x128 kvm    48.4 cuBLAS   126.7 TFLOP/s  ratio 0.382  err_vs_fp32 9.4e-05 ok dev_err 0
+MM TF32    NT  4096x 4096x 4096 tile 256x128 kvm    49.7 cuBLAS   130.6 TFLOP/s  ratio 0.381  err_vs_fp32 1.2e-04 ok dev_err 0
+MM TF32    NN  2048x 2048x 2048 tile 64x64   kvm    27.0 cuBLAS   100.2 TFLOP/s  ratio 0.269  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    NN  2048x 2048x 2048 tile 128x128 kvm    32.6 cuBLAS   100.4 TFLOP/s  ratio 0.325  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    NN  2048x 2048x 2048 tile 256x128 kvm    27.5 cuBLAS   100.5 TFLOP/s  ratio 0.274  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    NN  8192x  768x  768 tile 64x64   kvm    24.6 cuBLAS   102.0 TFLOP/s  ratio 0.241  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    NN  8192x  768x  768 tile 128x128 kvm    31.6 cuBLAS   101.9 TFLOP/s  ratio 0.310  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    NN  8192x  768x  768 tile 256x128 kvm    28.5 cuBLAS   102.0 TFLOP/s  ratio 0.280  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    NN  4096x 3072x  768 tile 64x64   kvm    25.5 cuBLAS   105.6 TFLOP/s  ratio 0.241  err_vs_fp32 2.8e-04 ok dev_err 0
+MM TF32    NN  4096x 3072x  768 tile 128x128 kvm    33.0 cuBLAS   105.6 TFLOP/s  ratio 0.313  err_vs_fp32 2.8e-04 ok dev_err 0
+MM TF32    NN  4096x 3072x  768 tile 256x128 kvm    28.7 cuBLAS   105.4 TFLOP/s  ratio 0.272  err_vs_fp32 2.8e-04 ok dev_err 0
+MM TF32    NN  1024x 1024x 1024 tile 64x64   kvm    21.0 cuBLAS    65.9 TFLOP/s  ratio 0.319  err_vs_fp32 2.3e-04 ok dev_err 0
+MM TF32    NN  1024x 1024x 1024 tile 128x128 kvm    21.9 cuBLAS    66.2 TFLOP/s  ratio 0.331  err_vs_fp32 2.3e-04 ok dev_err 0
+MM TF32    NN  1024x 1024x 1024 tile 256x128 kvm    13.6 cuBLAS    66.2 TFLOP/s  ratio 0.206  err_vs_fp32 2.3e-04 ok dev_err 0
+MM TF32    NN   512x  512x  512 tile 64x64   kvm    12.2 cuBLAS    23.4 TFLOP/s  ratio 0.521  err_vs_fp32 2.7e-04 ok dev_err 0
+MM TF32    NN   512x  512x  512 tile 128x128 kvm     4.5 cuBLAS    23.2 TFLOP/s  ratio 0.193  err_vs_fp32 2.7e-04 ok dev_err 0
+MM TF32    NN   512x  512x  512 tile 256x128 kvm     2.7 cuBLAS    23.4 TFLOP/s  ratio 0.117  err_vs_fp32 2.7e-04 ok dev_err 0
+MM 3xTF32  NN  4096x 4096x 4096 tile 64x64   kvm    20.0 cuBLAS    19.0 TFLOP/s  ratio 1.050  err_vs_fp32 2.1e-05 ok dev_err 0
+MM 3xTF32  NN  4096x 4096x 4096 tile 128x128 kvm    24.8 cuBLAS    19.0 TFLOP/s  ratio 1.306  err_vs_fp32 4.2e-05 ok dev_err 0
+MM 3xTF32  NN  4096x 4096x 4096 tile 256x128 kvm    28.0 cuBLAS    19.0 TFLOP/s  ratio 1.475  err_vs_fp32 4.2e-05 ok dev_err 0
+

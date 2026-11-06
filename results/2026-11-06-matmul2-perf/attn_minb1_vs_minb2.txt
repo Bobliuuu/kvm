@@ -1,0 +1,54 @@
+=== VARIANT [-DBENCH_MINB=1]
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+Cuda compilation tools, release 12.8, V12.8.61
+Build cuda_12.8.r12.8/compiler.35404655_0
+device: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz
+PASS  bench check: attn fwd B=4 T=1024 H=16 Hkv=16 hd=64 (b0,h0 all rows)  relerr 9.34e-07
+PASS  bench check: attn bwd dq B=4 T=1024 H=16 hd=64 (b0,h0)  relerr 3.20e-06
+PASS  bench check: attn bwd dk B=4 T=1024 H=16 hd=64 (b0,h0)  relerr 6.90e-06
+BENCH  attn fwd B=4 T=1024 H=16 Hkv=16 hd=64          full dispatch    0.919 ms [0.919..0.920]     9345.6 GFLOP/s  (47.9% of 19500)
+BENCH  attn fwd B=4 T=1024 H=16 Hkv=16 hd=64          single-op        0.916 ms [0.916..0.917]     9374.8 GFLOP/s  (48.1% of 19500)
+BENCH  attn bwd B=4 T=1024 H=16 Hkv=16 hd=64          full dispatch    2.913 ms [2.911..2.915]     7371.4 GFLOP/s  (37.8% of 19500)
+BENCH  attn bwd B=4 T=1024 H=16 Hkv=16 hd=64          single-op        2.861 ms [2.311..2.925]     7507.0 GFLOP/s  (38.5% of 19500)
+PASS  bench check: attn fwd B=4 T=2048 H=16 Hkv=4 hd=64 (b0,h0 all rows)  relerr 8.40e-07
+BENCH  attn fwd B=4 T=2048 H=16 Hkv=4 hd=64           full dispatch    2.533 ms [2.532..2.533]    13567.2 GFLOP/s  (69.6% of 19500)
+BENCH  attn fwd B=4 T=2048 H=16 Hkv=4 hd=64           single-op        2.532 ms [2.532..2.533]    13568.3 GFLOP/s  (69.6% of 19500)
+BENCH  attn bwd B=4 T=2048 H=16 Hkv=4 hd=64           full dispatch    6.811 ms [6.811..6.813]    12611.4 GFLOP/s  (64.7% of 19500)
+BENCH  attn bwd B=4 T=2048 H=16 Hkv=4 hd=64           single-op        6.853 ms [6.852..6.855]    12534.2 GFLOP/s  (64.3% of 19500)
+PASS  bench check: attn fwd B=2 T=2048 H=8 Hkv=8 hd=128 (b0,h0 all rows)  relerr 1.59e-06
+PASS  bench check: attn bwd dq B=2 T=2048 H=8 hd=128 (b0,h0)  relerr 6.93e-06
+PASS  bench check: attn bwd dk B=2 T=2048 H=8 hd=128 (b0,h0)  relerr 1.56e-05
+BENCH  attn fwd B=2 T=2048 H=8 Hkv=8 hd=128           full dispatch    1.433 ms [1.431..1.434]    11988.9 GFLOP/s  (61.5% of 19500)
+BENCH  attn fwd B=2 T=2048 H=8 Hkv=8 hd=128           single-op        1.440 ms [1.440..1.440]    11930.9 GFLOP/s  (61.2% of 19500)
+BENCH  attn bwd B=2 T=2048 H=8 Hkv=8 hd=128           full dispatch    3.801 ms [3.801..3.804]    11298.1 GFLOP/s  (57.9% of 19500)
+BENCH  attn bwd B=2 T=2048 H=8 Hkv=8 hd=128           single-op        3.287 ms [3.104..3.966]    13068.0 GFLOP/s  (67.0% of 19500)
+
+7 passed, 0 failed
+
+=== VARIANT [-DBENCH_MINB=2]
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+Cuda compilation tools, release 12.8, V12.8.61
+Build cuda_12.8.r12.8/compiler.35404655_0
+device: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz
+PASS  bench check: attn fwd B=4 T=1024 H=16 Hkv=16 hd=64 (b0,h0 all rows)  relerr 9.34e-07
+PASS  bench check: attn bwd dq B=4 T=1024 H=16 hd=64 (b0,h0)  relerr 3.20e-06
+PASS  bench check: attn bwd dk B=4 T=1024 H=16 hd=64 (b0,h0)  relerr 6.90e-06
+BENCH  attn fwd B=4 T=1024 H=16 Hkv=16 hd=64          full dispatch    0.970 ms [0.970..0.971]     8852.5 GFLOP/s  (45.4% of 19500)
+BENCH  attn fwd B=4 T=1024 H=16 Hkv=16 hd=64          single-op        0.918 ms [0.918..0.919]     9353.9 GFLOP/s  (48.0% of 19500)
+BENCH  attn bwd B=4 T=1024 H=16 Hkv=16 hd=64          full dispatch    2.344 ms [2.343..2.344]     9162.7 GFLOP/s  (47.0% of 19500)
+BENCH  attn bwd B=4 T=1024 H=16 Hkv=16 hd=64          single-op        2.934 ms [2.933..2.937]     7319.9 GFLOP/s  (37.5% of 19500)
+PASS  bench check: attn fwd B=4 T=2048 H=16 Hkv=4 hd=64 (b0,h0 all rows)  relerr 8.40e-07
+BENCH  attn fwd B=4 T=2048 H=16 Hkv=4 hd=64           full dispatch    2.524 ms [2.523..2.525]    13614.6 GFLOP/s  (69.8% of 19500)
+BENCH  attn fwd B=4 T=2048 H=16 Hkv=4 hd=64           single-op        2.526 ms [2.526..2.526]    13601.3 GFLOP/s  (69.8% of 19500)
+BENCH  attn bwd B=4 T=2048 H=16 Hkv=4 hd=64           full dispatch    5.459 ms [5.399..5.459]    15736.1 GFLOP/s  (80.7% of 19500)
+BENCH  attn bwd B=4 T=2048 H=16 Hkv=4 hd=64           single-op        6.844 ms [6.843..6.847]    12551.0 GFLOP/s  (64.4% of 19500)
+PASS  bench check: attn fwd B=2 T=2048 H=8 Hkv=8 hd=128 (b0,h0 all rows)  relerr 1.59e-06
+PASS  bench check: attn bwd dq B=2 T=2048 H=8 hd=128 (b0,h0)  relerr 6.93e-06
+PASS  bench check: attn bwd dk B=2 T=2048 H=8 hd=128 (b0,h0)  relerr 1.56e-05
+BENCH  attn fwd B=2 T=2048 H=8 Hkv=8 hd=128           full dispatch    1.678 ms [1.677..1.679]    10237.5 GFLOP/s  (52.5% of 19500)
+BENCH  attn fwd B=2 T=2048 H=8 Hkv=8 hd=128           single-op        1.443 ms [1.442..1.443]    11903.8 GFLOP/s  (61.0% of 19500)
+BENCH  attn bwd B=2 T=2048 H=8 Hkv=8 hd=128           full dispatch    4.846 ms [4.845..4.847]     8862.6 GFLOP/s  (45.4% of 19500)
+BENCH  attn bwd B=2 T=2048 H=8 Hkv=8 hd=128           single-op        3.111 ms [3.109..3.112]    13804.3 GFLOP/s  (70.8% of 19500)
+
+7 passed, 0 failed
+

@@ -17,7 +17,7 @@ def sh(cmd):
     p = subprocess.run(cmd, shell=True, cwd="/w/tests/gpu_ops", capture_output=True, text=True)
     return p.stdout + p.stderr
 
-@app.function(gpu="A100-40GB", timeout=3600, cpu=8)
+@app.function(gpu="A100-40GB", timeout=7200, cpu=16)
 def run(what: str, nvflags: str, wrap: str, env: str):
     base = "nvcc -O2 -arch=sm_80 -std=c++17 -lineinfo -I../../include -I."
     out = sh("nvidia-smi --query-gpu=name,driver_version,clocks.max.sm --format=csv,noheader; nvcc --version | tail -2")
@@ -30,7 +30,9 @@ def run(what: str, nvflags: str, wrap: str, env: str):
     elif what == "test_extra":
         out += sh(f"nvcc -O2 -arch=sm_80 -std=c++17 -lineinfo --fmad=false -Xcompiler -ffp-contract=off -I../../include -I. {nvflags} test_extra.cu -o t 2>&1 | grep error; {wrap} ./t | tail -8")
     elif what == "exec":   # executor suite (tests/gpu/test_exec.cu) with the kernel's launch bounds from nvflags (e.g. -DKVM_MIN_BLOCKS=2)
-        out += sh(f"cd /w && bash tests/gpu/build.sh {nvflags} 2>&1 | grep -E 'error|warning: .*spill' | head; {env} timeout 3000 ./test_exec 2>&1 | tail -25")
+        out += sh(f"cd /w && bash tests/gpu/build.sh {nvflags} 2>&1 | grep -E 'error|warning: .*spill' | head; {env} timeout 3000 ./test_exec {wrap} 2>&1 | tail -25")
+    elif what == "build":  # compile time, registers and spills of the executor kernel only
+        out += sh(f"cd /w && bash -c 'time nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -Xptxas -v {nvflags} kvm_exec.cu -o kvm_exec_bin' 2>&1 | grep -E 'registers|spill|real|error' | sort | uniq -c | head -30")
     elif what == "gpt":    # frontend gpt_tiny bundle through the CLI: 544 tasks, every scheduler mode, buffers must be byte-identical
         out += sh(f"cd /w && pip install -q numpy >/dev/null 2>&1; KVM_NO_LOCK=1 bash tests/gpu/run_gpt.sh 2>&1 | tail -25")
     return out

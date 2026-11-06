@@ -1,0 +1,94 @@
+=== VARIANT [-DKVM_GPT_BIG_BK=16 -DKVM_GPT_BIG_NST=4]
+NVIDIA A100-SXM4-80GB, 610.57.04, 1410 MHz
+Cuda compilation tools, release 12.8, V12.8.61
+Build cuda_12.8.r12.8/compiler.35404655_0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+      1     72 bytes stack frame, 104 bytes spill stores, 104 bytes spill loads
+      1 ptxas info    : Used 14 registers, used 0 barriers, 372 bytes cmem[0]
+      1 ptxas info    : Used 255 registers, used 1 barriers, 72 bytes cumulative stack size, 388 bytes cmem[0]
+MM TF32    NN  4096x 4096x 4096 tile 64x64   kvm    27.6 cuBLAS   132.2 TFLOP/s  ratio 0.209  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    TN  4096x 4096x 4096 tile 64x64   kvm    27.6 cuBLAS   132.7 TFLOP/s  ratio 0.208  err_vs_fp32 9.5e-05 ok dev_err 0
+MM TF32    NT  4096x 4096x 4096 tile 64x64   kvm    30.1 cuBLAS   135.6 TFLOP/s  ratio 0.222  err_vs_fp32 1.2e-04 ok dev_err 0
+MM TF32    NN  4096x 4096x 4096 tile 128x128 kvm    42.9 cuBLAS   135.5 TFLOP/s  ratio 0.316  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    TN  4096x 4096x 4096 tile 128x128 kvm    42.6 cuBLAS   131.4 TFLOP/s  ratio 0.324  err_vs_fp32 9.4e-05 ok dev_err 0
+MM TF32    NT  4096x 4096x 4096 tile 128x128 kvm    46.5 cuBLAS   133.6 TFLOP/s  ratio 0.348  err_vs_fp32 1.2e-04 ok dev_err 0
+MM TF32    NN  4096x 4096x 4096 tile 256x128 kvm    46.8 cuBLAS   134.8 TFLOP/s  ratio 0.347  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    TN  4096x 4096x 4096 tile 256x128 kvm    47.9 cuBLAS   133.4 TFLOP/s  ratio 0.359  err_vs_fp32 9.4e-05 ok dev_err 0
+MM TF32    NT  4096x 4096x 4096 tile 256x128 kvm    47.7 cuBLAS   134.6 TFLOP/s  ratio 0.354  err_vs_fp32 1.2e-04 ok dev_err 0
+MM TF32    NN  4096x 3072x  768 tile 64x64   kvm    23.4 cuBLAS   108.4 TFLOP/s  ratio 0.216  err_vs_fp32 2.8e-04 ok dev_err 0
+MM TF32    NN  4096x 3072x  768 tile 128x128 kvm    32.1 cuBLAS   109.0 TFLOP/s  ratio 0.294  err_vs_fp32 2.8e-04 ok dev_err 0
+MM TF32    NN  4096x 3072x  768 tile 256x128 kvm    28.3 cuBLAS   109.3 TFLOP/s  ratio 0.259  err_vs_fp32 2.8e-04 ok dev_err 0
+
+=== VARIANT [-DKVM_GPT_BIG_BK=16 -DKVM_GPT_BIG_NST=6]
+NVIDIA A100-SXM4-80GB, 610.57.04, 1410 MHz
+Cuda compilation tools, release 12.8, V12.8.61
+Build cuda_12.8.r12.8/compiler.35404655_0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+      1     72 bytes stack frame, 104 bytes spill stores, 104 bytes spill loads
+      1 ptxas info    : Used 14 registers, used 0 barriers, 372 bytes cmem[0]
+      1 ptxas info    : Used 255 registers, used 1 barriers, 72 bytes cumulative stack size, 388 bytes cmem[0]
+MM TF32    NN  4096x 4096x 4096 tile 64x64   kvm    25.9 cuBLAS   135.2 TFLOP/s  ratio 0.192  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    TN  4096x 4096x 4096 tile 64x64   kvm    27.4 cuBLAS   133.3 TFLOP/s  ratio 0.206  err_vs_fp32 9.5e-05 ok dev_err 0
+MM TF32    NT  4096x 4096x 4096 tile 64x64   kvm    30.2 cuBLAS   134.5 TFLOP/s  ratio 0.224  err_vs_fp32 1.2e-04 ok dev_err 0
+MM TF32    NN  4096x 4096x 4096 tile 128x128 kvm    41.3 cuBLAS   136.1 TFLOP/s  ratio 0.304  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    TN  4096x 4096x 4096 tile 128x128 kvm    42.8 cuBLAS   132.2 TFLOP/s  ratio 0.324  err_vs_fp32 9.4e-05 ok dev_err 0
+MM TF32    NT  4096x 4096x 4096 tile 128x128 kvm    44.4 cuBLAS   136.4 TFLOP/s  ratio 0.325  err_vs_fp32 1.2e-04 ok dev_err 0
+MM TF32    NN  4096x 4096x 4096 tile 256x128 kvm    46.0 cuBLAS   134.9 TFLOP/s  ratio 0.341  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    TN  4096x 4096x 4096 tile 256x128 kvm    47.1 cuBLAS   132.7 TFLOP/s  ratio 0.355  err_vs_fp32 9.4e-05 ok dev_err 0
+MM TF32    NT  4096x 4096x 4096 tile 256x128 kvm    47.1 cuBLAS   136.3 TFLOP/s  ratio 0.346  err_vs_fp32 1.2e-04 ok dev_err 0
+MM TF32    NN  4096x 3072x  768 tile 64x64   kvm    23.4 cuBLAS   109.3 TFLOP/s  ratio 0.214  err_vs_fp32 2.8e-04 ok dev_err 0
+MM TF32    NN  4096x 3072x  768 tile 128x128 kvm    30.1 cuBLAS   109.4 TFLOP/s  ratio 0.275  err_vs_fp32 2.8e-04 ok dev_err 0
+MM TF32    NN  4096x 3072x  768 tile 256x128 kvm    27.7 cuBLAS   109.4 TFLOP/s  ratio 0.253  err_vs_fp32 2.8e-04 ok dev_err 0
+
+=== VARIANT [-DKVM_GPT_BIG_BK=32 -DKVM_GPT_BIG_NST=3]
+NVIDIA A100-SXM4-80GB, 610.57.04, 1410 MHz
+Cuda compilation tools, release 12.8, V12.8.61
+Build cuda_12.8.r12.8/compiler.35404655_0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+      1     384 bytes stack frame, 1256 bytes spill stores, 1356 bytes spill loads
+      1 ptxas info    : Used 14 registers, used 0 barriers, 372 bytes cmem[0]
+      1 ptxas info    : Used 255 registers, used 1 barriers, 384 bytes cumulative stack size, 388 bytes cmem[0]
+MM TF32    NN  4096x 4096x 4096 tile 64x64   kvm    28.3 cuBLAS   135.8 TFLOP/s  ratio 0.208  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    TN  4096x 4096x 4096 tile 64x64   kvm    27.6 cuBLAS   130.4 TFLOP/s  ratio 0.212  err_vs_fp32 9.5e-05 ok dev_err 0
+MM TF32    NT  4096x 4096x 4096 tile 64x64   kvm    30.7 cuBLAS   131.6 TFLOP/s  ratio 0.233  err_vs_fp32 1.2e-04 ok dev_err 0
+MM TF32    NN  4096x 4096x 4096 tile 128x128 kvm    41.8 cuBLAS   135.9 TFLOP/s  ratio 0.308  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    TN  4096x 4096x 4096 tile 128x128 kvm    42.4 cuBLAS   130.0 TFLOP/s  ratio 0.326  err_vs_fp32 9.4e-05 ok dev_err 0
+MM TF32    NT  4096x 4096x 4096 tile 128x128 kvm    42.5 cuBLAS   135.4 TFLOP/s  ratio 0.314  err_vs_fp32 1.2e-04 ok dev_err 0
+MM TF32    NN  4096x 4096x 4096 tile 256x128 kvm    47.2 cuBLAS   134.5 TFLOP/s  ratio 0.351  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    TN  4096x 4096x 4096 tile 256x128 kvm    46.1 cuBLAS   130.3 TFLOP/s  ratio 0.353  err_vs_fp32 9.4e-05 ok dev_err 0
+MM TF32    NT  4096x 4096x 4096 tile 256x128 kvm    48.0 cuBLAS   136.6 TFLOP/s  ratio 0.351  err_vs_fp32 1.2e-04 ok dev_err 0
+MM TF32    NN  4096x 3072x  768 tile 64x64   kvm    24.0 cuBLAS   108.2 TFLOP/s  ratio 0.222  err_vs_fp32 2.8e-04 ok dev_err 0
+MM TF32    NN  4096x 3072x  768 tile 128x128 kvm    30.8 cuBLAS   109.2 TFLOP/s  ratio 0.283  err_vs_fp32 2.8e-04 ok dev_err 0
+MM TF32    NN  4096x 3072x  768 tile 256x128 kvm    27.2 cuBLAS   108.8 TFLOP/s  ratio 0.249  err_vs_fp32 2.8e-04 ok dev_err 0
+
+=== VARIANT [-DKVM_GPT_BIG_BK=32 -DKVM_GPT_BIG_NST=4]
+NVIDIA A100-SXM4-80GB, 610.57.04, 1410 MHz
+Cuda compilation tools, release 12.8, V12.8.61
+Build cuda_12.8.r12.8/compiler.35404655_0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+      1     376 bytes stack frame, 1148 bytes spill stores, 1240 bytes spill loads
+      1 ptxas info    : Used 14 registers, used 0 barriers, 372 bytes cmem[0]
+      1 ptxas info    : Used 255 registers, used 1 barriers, 376 bytes cumulative stack size, 388 bytes cmem[0]
+CUDA error invalid argument at bench_mm.cu:55
+
+=== VARIANT [-DMM_MINB=2]
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+Cuda compilation tools, release 12.8, V12.8.61
+Build cuda_12.8.r12.8/compiler.35404655_0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+      1     936 bytes stack frame, 8312 bytes spill stores, 8824 bytes spill loads
+      1 ptxas info    : Used 128 registers, used 1 barriers, 936 bytes cumulative stack size, 388 bytes cmem[0]
+      1 ptxas info    : Used 14 registers, used 0 barriers, 372 bytes cmem[0]
+MM TF32    NN  4096x 4096x 4096 tile 64x64   kvm    34.6 cuBLAS   131.2 TFLOP/s  ratio 0.264  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    TN  4096x 4096x 4096 tile 64x64   kvm    39.4 cuBLAS   129.0 TFLOP/s  ratio 0.306  err_vs_fp32 9.5e-05 ok dev_err 0
+MM TF32    NT  4096x 4096x 4096 tile 64x64   kvm    41.2 cuBLAS   136.2 TFLOP/s  ratio 0.303  err_vs_fp32 1.2e-04 ok dev_err 0
+MM TF32    NN  4096x 4096x 4096 tile 128x128 kvm    60.5 cuBLAS   131.0 TFLOP/s  ratio 0.462  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    TN  4096x 4096x 4096 tile 128x128 kvm    56.6 cuBLAS   130.2 TFLOP/s  ratio 0.434  err_vs_fp32 9.4e-05 ok dev_err 0
+MM TF32    NT  4096x 4096x 4096 tile 128x128 kvm    63.8 cuBLAS   131.3 TFLOP/s  ratio 0.486  err_vs_fp32 1.2e-04 ok dev_err 0
+MM TF32    NN  4096x 4096x 4096 tile 256x128 kvm    10.9 cuBLAS   131.5 TFLOP/s  ratio 0.083  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    TN  4096x 4096x 4096 tile 256x128 kvm    11.9 cuBLAS   131.0 TFLOP/s  ratio 0.091  err_vs_fp32 9.4e-05 ok dev_err 0
+MM TF32    NT  4096x 4096x 4096 tile 256x128 kvm    12.1 cuBLAS   133.3 TFLOP/s  ratio 0.091  err_vs_fp32 1.2e-04 ok dev_err 0
+MM TF32    NN  4096x 3072x  768 tile 64x64   kvm    33.9 cuBLAS   108.0 TFLOP/s  ratio 0.314  err_vs_fp32 2.8e-04 ok dev_err 0
+MM TF32    NN  4096x 3072x  768 tile 128x128 kvm    47.6 cuBLAS   108.6 TFLOP/s  ratio 0.438  err_vs_fp32 2.8e-04 ok dev_err 0
+MM TF32    NN  4096x 3072x  768 tile 256x128 kvm    11.7 cuBLAS   109.1 TFLOP/s  ratio 0.107  err_vs_fp32 2.8e-04 ok dev_err 0
+

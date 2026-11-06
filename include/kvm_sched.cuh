@@ -10,6 +10,10 @@
 //    tier 1  class is below its reservation (running < min_cta): ranked by running/min_cta, so the emptiest reservation first
 //    tier 2  the class's best head is within urgent_us of its deadline: earliest deadline first (EDF among the bucket heads;
 //            FIFO inside one bucket, so give deadline tasks of different urgency different priorities if exact EDF matters)
+//    tier 2' a PROTECTED class (KVM_CF_PROTECT) with ready work, when KVM_SF_LATFIRST is set (default): after the EDF-urgent heads, before fair
+//            share. A reservation reacts at the controller's period (>= 500 us) and fair share only after the class has repaid its virtual-time
+//            debt; a latency class needs the next free CTA, not the next period. Caps (max_cta, bw_cta) still apply. Without a protected class
+//            nothing changes. (The audit's scripted bench: dynamic serve p99 was 1.8x worse than a global queue with serve priority without this tier.)
 //    tier 3  everything else, by virtual time: min over classes of  sum(run_ns) / weight  (start-time fair queueing, charged
 //            at claim with the op's running-time estimate and corrected when the task ends, so N idle workers do not all pick
 //            the same class). A class that becomes active has its vtime raised to the minimum active vtime: it neither
@@ -52,6 +56,28 @@ template <uint32_t H> struct KvmCostOf {  // KVM_COST_DEFAULT: unknown operator
   __host__ __device__ static KvmCost get(const int32_t*) { return {KVM_RES_MIXED, 0ull, 0ull}; }
 };
 #define U(k) ((unsigned long long)(unsigned)a[k])
+#define SI(k) ((int)a[k])   // argument word k as signed (an absent optional buffer is negative)
+// Shape helpers for the cost table. A GEMM tile of the matmul_tile family: flags 32 = 128x128 tile, 64 = 256x128, else 64x64 (kvm_ops_gpt.cuh).
+// Bytes are what the tile reads and writes through the memory system (A panel, B panel, C tile, optional bias/res/pre, a read-modify-write of C
+// when accumulating); DRAM traffic is lower because neighbouring tiles share panels in L2, so for GEMM this is an upper bound that the table
+// only reports (RES = COMPUTE: never counted as bandwidth-bound).
+__host__ __device__ inline unsigned long long kvm_mm_tm(int fl, int M, int m0) { int bm = (fl & 64) ? 256 : (fl & 32) ? 128 : 64; return (unsigned long long)max(0, min(bm, M - m0)); }
+__host__ __device__ inline unsigned long long kvm_mm_tn(int fl, int N, int n0) { int bn = (fl & 96) ? 128 : 64; return (unsigned long long)max(0, min(bn, N - n0)); }
+// a[o..o+5] = m0,n0,M,N,K,flags; extra = number of additional full C-tile sized streams (bias counted as one row)
+__host__ __device__ inline unsigned long long kvm_mm_bytes(const int32_t* a, int o, int extra_tiles, bool bias, bool res, bool pre) {
+  const int m0 = a[o], n0 = a[o + 1], M = a[o + 2], N = a[o + 3], K = a[o + 4], fl = a[o + 5];
+  const unsigned long long tm = kvm_mm_tm(fl, M, m0), tn = kvm_mm_tn(fl, N, n0), k = (unsigned long long)max(K, 0);
+  return 4ull * (tm * k + k * tn + tm * tn * (1ull + ((fl & 4) ? 1ull : 0ull) + (res ? 1ull : 0ull) + (pre ? 1ull : 0ull) + (unsigned long long)extra_tiles) + (bias ? tn : 0ull));
+}
+__host__ __device__ inline unsigned long long kvm_mm_flops(const int32_t* a, int o) {
+  return 2ull * kvm_mm_tm(a[o + 5], a[o + 2], a[o]) * kvm_mm_tn(a[o + 5], a[o + 3], a[o + 1]) * (unsigned long long)max(a[o + 4], 0);
+}
+// One flash-attention tile: 32 query rows against kv key/value rows of head dim hd (q, o, k, v streams; `qs` extra per-query streams).
+__host__ __device__ inline unsigned long long kvm_attn_bytes(unsigned long long tq, unsigned long long kv, unsigned long long hd, unsigned long long qstreams, unsigned long long kvstreams) {
+  return 4ull * hd * (qstreams * tq + kvstreams * kv) + 8ull * tq;
+}
+__host__ __device__ inline unsigned long long kvm_attn_tq(int q0, int T) { return (unsigned long long)max(0, min(32, T - q0)); }
+__host__ __device__ inline unsigned long long kvm_attn_kv(int q0, int T, bool causal) { return (unsigned long long)max(0, causal ? min(T, q0 + 32) : T); }
 #define KC(name, res, bytes, flops) \
   template <> struct KvmCostOf<kvm_fnv(#name)> { __host__ __device__ static KvmCost get(const int32_t* a) { (void)a; return {KVM_RES_##res, (unsigned long long)(bytes), (unsigned long long)(flops)}; } };
 #include "kvm_ops_cost.inc"
@@ -62,6 +88,7 @@ static const char* const kKvmCostNames[] = {
 #undef KC
 };
 #undef U
+#undef SI
 // Cost of one task of op `op` with argument words `a`; a BW task too small to stream is latency-bound.
 __host__ __device__ inline KvmCost kvm_cost(int op, const int32_t* a) {
   KvmCost c{KVM_RES_MIXED, 0ull, 0ull};
@@ -76,7 +103,19 @@ __host__ __device__ inline KvmCost kvm_cost(int op, const int32_t* a) {
 }
 // Host check: every name in the cost table is a registered operator (a typo would silently fall back to the default).
 static inline bool kvm_cost_names_registered() {
-  for (const char* n : kKvmCostNames) { bool f = false; for (const KvmOpInfo& o : kKvmOps) f = f || !strcmp(o.name, n); if (!f) return false; }
+  static const char* const game[] = {   // game-pack operators exist in the table even when the pack is not linked (-DKVM_WITH_GAME)
+#if __has_include("kvm_ops_game.def")
+#define X(n, id, sig) #n,
+#include "kvm_ops_game.def"
+#undef X
+#endif
+    "doom_tick"};
+  for (const char* n : kKvmCostNames) {
+    bool f = false;
+    for (const KvmOpInfo& o : kKvmOps) f = f || !strcmp(o.name, n);
+    for (const char* g : game) f = f || !strcmp(g, n);
+    if (!f) return false;
+  }
   return true;
 }
 
@@ -239,7 +278,7 @@ __device__ __forceinline__ int kvm_pop(const KvmDevState& S, unsigned long long 
     int pw[KVM_MAX_CLS], hw[KVM_MAX_CLS];   // lane i holds word i of the class's policy line / hot line
 #pragma unroll
     for (int c = 0; c < KVM_MAX_CLS; ++c) if (c < nc) { pw[c] = __ldcg((const int*)&D->cls[c] + lane); hw[c] = __ldcg((const int*)&D->cls[c].running + lane); }
-    unsigned long long bkey = ~0ull; int bc = -1, btier = 3, bmx = 0, bbwc = 0; bool bhave = false, bbw = false; KvmCand bcd{};
+    unsigned long long bkey = ~0ull; int bc = -1, btier = 3, bmx = 0, bbwc = 0; bool bprot = false; bool bhave = false, bbw = false; KvmCand bcd{};
 #pragma unroll
     for (int c = 0; c < KVM_MAX_CLS; ++c) {
       if (c >= nc || ((excl >> c) & 1)) continue;
@@ -249,23 +288,25 @@ __device__ __forceinline__ int kvm_pop(const KvmDevState& S, unsigned long long 
       const unsigned long long vt = (unsigned long long)(unsigned)__shfl_sync(0xffffffffu, hw[c], 4) | ((unsigned long long)__shfl_sync(0xffffffffu, hw[c], 5) << 32);
       const int mn = (flags & KVM_SF_GUARANTEE) ? __shfl_sync(0xffffffffu, pw[c], 1) : 0, mx = __shfl_sync(0xffffffffu, pw[c], 2);
       const int bwc = __shfl_sync(0xffffffffu, pw[c], 3), urg_us = __shfl_sync(0xffffffffu, pw[c], 4);
+      const bool prot = (__shfl_sync(0xffffffffu, pw[c], 5) & KVM_CF_PROTECT) != 0;   // a protected class is what the arbiter defends: it is never throttled by the global BW limit
       int tier = ((boost >> c) & 1) ? 0 : run < mn ? 1 : 3;
       bool bwb = (bwblk >> c) & 1; bool have = false; KvmCand cd{};
       if (tier >= 2) {  // throttles apply only to unprivileged service
         if (run >= mx) continue;
-        bwb = bwb || bwr >= bwc || (arb && bw_total >= bw_limit);
+        bwb = bwb || bwr >= bwc || (arb && !prot && bw_total >= bw_limit);
         if (urg_us > 0 && dlr > 0) {
           cd = kvm_scan(S, c, now, bwb, (long long)urg_us * 1000, aff); have = true;
           if (cd.score < 0) continue;
           if (cd.score >= KVM_URG) tier = 2;
         }
+        if (tier == 3 && prot && (flags & KVM_SF_LATFIRST)) tier = 2;   // latency class: ahead of fair share (EDF-urgent tasks of the tier first)
       }
       unsigned long long sub;
       if (tier == 1) sub = ((unsigned long long)run << 20) / (unsigned)max(mn, 1);
-      else if (tier == 2) sub = (unsigned long long)(max(-KVM_SLACKMAX, min(KVM_SLACKMAX, (long long)(cd.dl - now))) + KVM_SLACKMAX);
+      else if (tier == 2) sub = have && cd.score >= KVM_URG ? (unsigned long long)(max(-KVM_SLACKMAX, min(KVM_SLACKMAX, (long long)(cd.dl - now))) + KVM_SLACKMAX) : 2ull * (unsigned long long)KVM_SLACKMAX + 1 + (vt >> 8);
       else sub = vt;
       unsigned long long key = ((unsigned long long)tier << 60) | min(sub, (1ull << 60) - 1);
-      if (key < bkey) { bkey = key; bc = c; btier = tier; bcd = cd; bhave = have; bbw = bwb; bmx = mx; bbwc = bwc; }
+      if (key < bkey) { bkey = key; bc = c; btier = tier; bcd = cd; bhave = have; bbw = bwb; bmx = mx; bbwc = bwc; bprot = prot; }
     }
     if (bc < 0) return -1;
     if (!bhave) { bcd = kvm_scan(S, bc, now, bbw, 0, aff); if (bcd.score < 0) { excl |= 1u << bc; continue; } }
@@ -273,14 +314,14 @@ __device__ __forceinline__ int kvm_pop(const KvmDevState& S, unsigned long long 
     // is counted after the CAS with posted adds, which keeps the hot line off the critical path of a 300-CTA herd.
     int ok = 1, why = 0;
     const bool isbw = bcd.res == KVM_RES_BW;
-    const bool pre_run = btier >= 2 && bmx != KVM_UNLIMITED, pre_bw = isbw && btier >= 2 && (bbwc != KVM_UNLIMITED || arb), pre = pre_run || pre_bw;
+    const bool pre_run = btier >= 2 && bmx != KVM_UNLIMITED, pre_bw = isbw && btier >= 2 && (bbwc != KVM_UNLIMITED || (arb && !bprot)), pre = pre_run || pre_bw;
     KvmClsDev& bk = D->cls[bc];
     if (pre && lane == 0) {
       int old = atom_add(&bk.running, 1);
       if (btier >= 2 && old >= bmx) { red_add(&bk.running, -1); ok = 0; why = 1; }
       else if (isbw) {
         int ob = atom_add(&bk.bw_running, 1), og = atom_add(&D->bw_total, 1);
-        if (btier >= 2 && (ob >= bbwc || (arb && og >= kvm_vol(&D->bw_limit)))) {
+        if (btier >= 2 && (ob >= bbwc || (arb && !bprot && og >= kvm_vol(&D->bw_limit)))) {
           red_add(&bk.bw_running, -1); red_add(&D->bw_total, -1); red_add(&bk.running, -1); ok = 0; why = 2;
         }
       }
@@ -326,6 +367,7 @@ __device__ __forceinline__ void kvm_sched_done(const KvmDevState& S, int slot, u
   if (in.res == KVM_RES_BW) {
     red_add(&k.bw_running, -1); red_add(&D->bw_total, -1);
     atomicAdd(&D->bw_bytes, in.bytes);
+    atomicAdd(&k.bw_ns, run); atomicAdd(&k.bw_bytes, in.bytes);
   }
   atomicAdd(&k.sm_ns, run); atomicAdd(&k.tasks, 1ull); atomicAdd(&k.bytes, in.bytes);
   if (missed) { atomicAdd(&k.missed, 1ull); atomicAdd(&k.w_miss, 1ull); }
@@ -456,6 +498,7 @@ __device__ void kvm_policy(const KvmDevState& S, KvmWatch& t0, KvmPolShared& P) 
       if (tid < nc) {
         KvmClsDev& k = D->cls[tid]; KvmClassTele* t = &sp.ht->cls[tid];
         t->sm_ns = kvm_voll(&k.sm_ns); t->done = kvm_voll(&k.tasks); t->bytes = kvm_voll(&k.bytes); t->missed = kvm_voll(&k.missed);
+        t->bw_ns = kvm_voll(&k.bw_ns); t->bw_bytes = kvm_voll(&k.bw_bytes);
         t->dl_n = kvm_voll(&k.dl_n); t->near_miss = kvm_voll(&k.near_miss); t->wait_over = kvm_voll(&k.wait_over); t->wait_sum_ns = kvm_voll(&k.wait_sum);
         t->running = kvm_vol(&k.running); t->ready = kvm_vol(&k.ready);
         t->win_wait_avg_us = P.win_avg_us[tid]; t->win_wait_max_us = P.win_max_us[tid]; t->win_n = P.win_n[tid];

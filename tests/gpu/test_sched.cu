@@ -64,7 +64,29 @@ static bool suite_cost() {
   c = kvm_cost(KVM_OP_adamw, ad); CHECK(c.res == KVM_RES_BW && c.bytes == 28ull * 1024, "adamw 1024 elements: res %d bytes %llu", c.res, (unsigned long long)c.bytes);
   ad[7] = 100 + 256; c = kvm_cost(KVM_OP_adamw, ad); CHECK(c.res == KVM_RES_LAT, "a 7 KiB adamw chunk is latency-bound (demoted), got res %d", c.res);
   c = kvm_cost(9999, a); CHECK(c.res == KVM_RES_MIXED && c.bytes == 0, "unknown op must get the default (MIXED, 0 bytes)");
+  {  // the audit's shapes: GEMM tile, flash-attention tile, norm sweep, decode attention (hand-computed)
+    int32_t m[16] = {0, 1, 2, -1, -1, -1, 0, 0, 128, 128, 1024, 32, 0, 0, 0, 0};   // a,b,out,bias?,res?,pre?,m0,n0,M,N,K,flags(128x128 tile)
+    c = kvm_cost(KVM_OP_matmul_tile, m);
+    CHECK(c.res == KVM_RES_COMPUTE && c.bytes == 4ull * (128 * 1024 * 2 + 128 * 128) && c.flops == 2ull * 128 * 128 * 1024, "matmul_tile 128x128xK1024: res %d bytes %llu flops %llu", c.res, (unsigned long long)c.bytes, (unsigned long long)c.flops);
+    m[3] = 4; m[4] = 5; m[5] = 6; m[6] = 64; m[8] = 100; m[11] = 4;   // bias+res+pre present, accumulate, edge tile: rows 64..99 of M = 100 -> tm 36 (64-wide tile)
+    c = kvm_cost(KVM_OP_matmul_tile, m);
+    CHECK(c.bytes == 4ull * (36 * 1024 + 1024 * 64 + 36 * 64 * 4 + 64) && c.flops == 2ull * 36 * 64 * 1024, "edge tile with epilogue streams: bytes %llu flops %llu", (unsigned long long)c.bytes, (unsigned long long)c.flops);
+    int32_t ln[12] = {0, 1, 2, 3, 4, 5, 0, 256, 1024, 0, 0, 0};   // layernorm_fwd x,g,b,out,mean,rstd,r0,r1,d,eps
+    c = kvm_cost(KVM_OP_layernorm_fwd, ln); CHECK(c.res == KVM_RES_BW && c.bytes == 8ull * 256 * 1024 + 8ull * 256, "layernorm 256x1024: res %d bytes %llu", c.res, (unsigned long long)c.bytes);
+    int32_t at[16] = {0, 1, 2, 3, 4, 0, 0, 992, 1024, 8, 8, 64, 0, 0, 0, 0};   // attn_fwd ...,b,h,q0,T,H,Hkv,hd
+    c = kvm_cost(KVM_OP_attn_fwd, at); CHECK(c.res == KVM_RES_COMPUTE && c.bytes == 4ull * 64 * (2 * 32 + 2 * 1024) + 8 * 32 && c.flops == 4ull * 32 * 1024 * 64, "attn_fwd tile: bytes %llu flops %llu", (unsigned long long)c.bytes, (unsigned long long)c.flops);
+    int32_t ad2[16] = {0, 1, 2, 3, 4, 0, 0, 8, 8, 64, 1024, 0, 0, 0, 0, 0};   // attn_decode ...,b,h,H,Hkv,hd,Tmax
+    c = kvm_cost(KVM_OP_attn_decode, ad2); CHECK(c.res == KVM_RES_BW && c.bytes == 8ull * 1024 * 64 / 2 + 8 * 64, "attn_decode: bytes %llu", (unsigned long long)c.bytes);
+    int32_t sc[8] = {0, 1, 2, 0, 0, 0, 0, 0}; c = kvm_cost(KVM_OP_lr_schedule, sc); CHECK(c.res == KVM_RES_LAT, "lr_schedule is latency-bound");
+  }
   int listed = 0; for (const KvmOpInfo& o : kKvmOps) { bool in = false; for (const char* n : kKvmCostNames) in = in || !strcmp(n, o.name); listed += in; }
+  { // after the audit every production operator has an entry; only the test-only ops (tests/gpu/kvm_ops_test.def) fall back to the default
+    for (const KvmOpInfo& o : kKvmOps) { bool in = false; for (const char* n : kKvmCostNames) in = in || !strcmp(n, o.name);
+      bool test_only = !strcmp(o.name, "gather") || !strcmp(o.name, "iota_i") || !strcmp(o.name, "opt_add") || !strcmp(o.name, "opt_i");
+#ifndef KVM_COST_LEGACY
+      CHECK(in || test_only, "registered operator '%s' has no cost-table entry", o.name);
+#endif
+      (void)test_only; (void)in; } }
   printf("  cost table: %zu entries, all registered; %d of %d registered ops listed, the rest use the default (MIXED, 0 bytes); copy/matmul/default estimates checked\n",
          sizeof(kKvmCostNames) / sizeof(kKvmCostNames[0]), listed, KVM_NUM_OPS);
   return g_fail == before;
@@ -194,6 +216,31 @@ static bool suite_starve_neg() {
   printf("  guarantee DISABLED: max wait %.0f us, %d violations\n", r.max_wait_us, r.violations);
   CHECK(r.violations == 0, "STARVATION DETECTED: %d tasks waited beyond %.0f us below the reservation", r.violations, r.grace_us);
   CHECK(r.max_wait_us <= r.grace_us, "STARVATION DETECTED: worst wait %.0f us exceeds the reclaim bound %.0f us", r.max_wait_us, r.grace_us);
+  return g_fail == before;
+}
+
+// ================= latency-first: a protected class is served ahead of fair share, with no reservation =================
+static double latfirst_scenario(bool latfirst, double* long_other) {
+  const int W = 32;
+  KvmConfig c = sched_cfg(W + 2, 2); c.max_tasks = 1 << 16; c.live_cap = 1 << 13;
+  c.sched.p.cls[0].weight = 1; c.sched.p.cls[0].protect = 1; c.sched.p.cls[1].weight = 1000;
+  if (!latfirst) c.sched.p.flags &= ~KVM_SF_LATFIRST;
+  KvmExec ex(c); ex.start();
+  std::vector<KvmBundle> bs; for (int rep = 0; rep < 16; ++rep) bs.push_back(spin_bundle(250, 300, 1));
+  std::thread prod([&] { submit_all(ex, bs); });
+  for (int k = 0; k < 40; ++k) { std::this_thread::sleep_for(std::chrono::microseconds(700)); CHECK(ex.submit(spin_bundle(6, 200, 0)) == KvmSubmit::OK, "submit"); }
+  prod.join();
+  const KvmResult& r = ex.finish(); if (!r.ok()) { CHECK(false, "device error %s", kvm_err_name(r.err_code)); return 1e9; }
+  auto v = tview(r); std::vector<double> w; double lo = 0;
+  for (auto& t : v) { if (t.cls == 0) w.push_back(t.start - t.ready); else lo = std::max(lo, t.end - t.start); }
+  *long_other = lo; return pct(w, 100);
+}
+static bool suite_latfirst() {
+  int before = g_fail; double lo_on = 0, lo_off = 0;
+  double on = latfirst_scenario(true, &lo_on), off = latfirst_scenario(false, &lo_off);
+  printf("  protected weight-1 class (no reservation) vs a saturating weight-1000 class, 40 pulses of 6 tasks: worst start wait LATFIRST on %.0f us, off %.0f us (longest competing task %.0f us)\n", on, off, lo_on);
+  CHECK(on <= lo_on + 150, "LATFIRST: worst wait %.0f us exceeds the longest competing task %.0f us + 150 us slack", on, lo_on);
+  CHECK(off > 2 * on, "the scenario does not discriminate: off %.0f us vs on %.0f us", off, on);
   return g_fail == before;
 }
 
@@ -331,7 +378,7 @@ int main(int argc, char** argv) {
   bool expect_fail = false; std::vector<std::string> want;
   for (int i = 1; i < argc; ++i) { std::string a = argv[i]; if (a == "--expect-fail") expect_fail = true; else if (a == "--quiet") g_kvm_log = 0; else if (a == "--log") g_kvm_log = atoi(argv[++i]); else want.push_back(a); }
   bool quick = getenv("KVM_TEST_QUICK") != nullptr;
-  if (want.empty()) want = {"cost", "share", "reserve", "edf", "inherit", "rand"};
+  if (want.empty()) want = {"cost", "share", "reserve", "latfirst", "edf", "inherit", "rand"};
   int dev; cudaDeviceProp p; CK(cudaGetDevice(&dev)); CK(cudaGetDeviceProperties(&p, dev));
   g_sms = p.multiProcessorCount;
   int drv, rt; cudaDriverGetVersion(&drv); cudaRuntimeGetVersion(&rt);
@@ -341,7 +388,7 @@ int main(int argc, char** argv) {
     int f0 = g_fail; auto t0 = std::chrono::steady_clock::now(); bool ok = true;
     printf("== %s\n", s.c_str()); fflush(stdout);
     try {
-      if (s == "cost") ok = suite_cost(); else if (s == "share") ok = suite_share(); else if (s == "reserve") ok = suite_reserve();
+      if (s == "cost") ok = suite_cost(); else if (s == "share") ok = suite_share(); else if (s == "reserve") ok = suite_reserve(); else if (s == "latfirst") ok = suite_latfirst();
       else if (s == "edf") ok = suite_edf(); else if (s == "inherit") ok = suite_inherit(); else if (s == "rand") ok = suite_rand(quick);
       else if (s == "starve_neg") ok = suite_starve_neg(); else if (s == "inherit_neg") ok = suite_inherit_neg(); else if (s == "smoke") ok = suite_smoke_sched();
 #ifndef KVM_SCHED_NO_BENCH

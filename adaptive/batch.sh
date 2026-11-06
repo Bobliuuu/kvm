@@ -59,10 +59,13 @@ case "$GROUP" in
       one bw_sweep_cap $rep $W4 --bw-cta 1000000,1000000,1000000,24
     done;;
   all_a) mkdir -p "$OUT"; "$0" suites; "$0" main; "$0" main_big;;
-  lat)   # class-aware admission, before vs after, the same load (ungated training flood: whole-window records, no host shedding)
+  lat|lat_big)   # class-aware admission, before vs after, the same load. _off = one FIFO ring; _on = --lat-lane (Doom + serve bundles on the latency ring,
+                 # training records admitted in slices). Ungated = the training flood arrives as whole-window records; gated = host budgets too.
+    # lat_big: scenario made with the big model (47k-task training window); run it with that scenario dir as the argument
+    [ "$GROUP" = lat_big ] && { export LIVE_CAP=131072 RING_WORDS=8388608; GATE="--gate-serve 50000 --gate-train 60000"; }
     for rep in $(seq 1 "$REPS"); do for c in fixed_prio adaptive; do
-      one "lat_off_$c" $rep ${CFG[$c]} $PHASES; one "lat_on_$c" $rep ${CFG[$c]} $PHASES --lat-lane --admit-slice ${SLICE:-512}
-      one "lat_off_gated_$c" $rep ${CFG[$c]} $GATE $PHASES; one "lat_on_gated_$c" $rep ${CFG[$c]} $GATE $PHASES --lat-lane --admit-slice ${SLICE:-512}
+      one "${GROUP}_off_$c" $rep ${CFG[$c]} $PHASES; one "${GROUP}_on_$c" $rep ${CFG[$c]} $PHASES --lat-lane --admit-slice ${SLICE:-512}
+      one "${GROUP}_off_gated_$c" $rep ${CFG[$c]} $GATE $PHASES; one "${GROUP}_on_gated_$c" $rep ${CFG[$c]} $GATE $PHASES --lat-lane --admit-slice ${SLICE:-512}
     done; done;;
   tuned) for rep in $(seq 1 "$REPS"); do for c in alone adaptive_gated adaptive_tuned fixed_prio_gated; do one $c $rep ${CFG[$c]} $PHASES; done; done;;
   all_b) mkdir -p "$OUT"; "$0" tuned; DUR=16 "$0" multi; DUR=16 REPS=4 "$0" bw;;

@@ -72,7 +72,7 @@ patch("g_game.c", chain(
 
 # ---- parallel drawing hooks (glue/gpu_par.c): columns and spans are queued instead of drawn; 255 workers draw them at flush points
 DECL = ("extern volatile int gpu_par_active; void gpu_flush(void); void gpu_q_col(byte*, const byte*, const byte*, int, int, int, int); "
-        "void gpu_q_span(byte*, const byte*, const byte*, unsigned, unsigned, int);\n")
+        "void gpu_q_span(byte*, const byte*, const byte*, unsigned, unsigned, int, int);\n")
 
 
 def r_draw(s):
@@ -83,7 +83,7 @@ def r_draw(s):
              "    if (gpu_par_active) { gpu_q_col(dest, dc_source, dc_colormap, frac, fracstep, count, dc_x); return; }\n")(s)
     s = first("    count = ds_x2 - ds_x1;\n",
              "    count = ds_x2 - ds_x1;\n"
-             "    if (gpu_par_active) { gpu_q_span(dest, ds_source, ds_colormap, position, step, count); return; }\n")(s)
+             "    if (gpu_par_active) { gpu_q_span(dest, ds_source, ds_colormap, position, step, count, ds_x1); return; }\n")(s)
     s, n1 = re.subn(r"(void R_DrawFuzzColumn \(void\)\s*\{)", r"\1 gpu_flush();", s, count=1)       # these read the screen they draw on
     s, n2 = re.subn(r"(void R_DrawTranslatedColumn \(void\)\s*\{)", r"\1 gpu_flush();", s, count=1)
     assert n1 == 1 and n2 == 1
@@ -92,8 +92,24 @@ def r_draw(s):
 
 patch("r_draw.c", r_draw)
 patch("r_main.c", chain(
-    sub1("    R_DrawPlanes ();\n", "    R_DrawPlanes ();\n    { extern void gpu_flush(void); gpu_flush(); }\n"),
-    sub1("    R_DrawMasked ();\n", "    R_DrawMasked ();\n    { extern void gpu_flush(void); gpu_flush(); }\n")))
+    sub1("    R_DrawPlanes ();\n", "    R_DrawPlanes ();\n    { extern void gpu_epoch(void); gpu_epoch(); }\n"),
+    sub1("    R_DrawMasked ();\n", "    R_DrawMasked ();\n    { extern void gpu_epoch(void); gpu_epoch(); }\n")))
+
+# ---- split mode (glue/gpu_par.c, gpu_glue.c gpu_doom_sim/gpu_doom_post): the view is only LOGGED by the tick task and drawn by tile tasks;
+# the display work after the view (HU_Drawer, border, menu, I_FinishUpdate) runs later in a post task, by re-entering D_Display at that point.
+def d_display(s):
+    s = s.replace("void D_Display (void)\n{", "extern int gpu_split_resume(void); extern void gpu_view_begin(int); extern int gpu_view_end(int);\nvoid D_Display (void)\n{", 1)
+    s, n = re.subn(r"(\n\s*boolean\s+redrawsbar;\n)", r"\1    if (gpu_split_resume()) { wipe = false; goto gpu_resume_point; }\n", s, count=1)
+    assert n == 1
+    s, n = re.subn(r"(if \(gamestate == GS_LEVEL && !automapactive && gametic\)\s*\n\s*)R_RenderPlayerView \(&players\[displayplayer\]\);",
+                   r"\1{ gpu_view_begin(wipe); R_RenderPlayerView (&players[displayplayer]); if (gpu_view_end((int)gametic)) return; }", s, count=1)
+    assert n == 1
+    s, n = re.subn(r"(\n)(\s*if \(gamestate == GS_LEVEL && gametic\)\s*\n\s*HU_Drawer \(\);)", r"\1gpu_resume_point: ;\2", s, count=1)
+    assert n == 1
+    return s
+
+
+patch("d_main.c", d_display)
 
 # ---- optional phase profiler (DOOM_PROF=1): cycle counters per tick phase in doom_prof[] (glue/gpu_par.c), read by tests/doomtest.cu -DDOOM_PROF_READ
 if os.environ.get("DOOM_PROF"):
@@ -103,5 +119,5 @@ if os.environ.get("DOOM_PROF"):
         sub1("    // draw buffered stuff to screen\n    I_UpdateNoBlit ();\n", "    // draw buffered stuff to screen\n    I_UpdateNoBlit ();\n" + PR % 2)))
     patch("r_main.c", chain(
         sub1("    R_RenderBSPNode (numnodes-1);\n", "    R_RenderBSPNode (numnodes-1);\n" + PR % 3),
-        sub1("    R_DrawPlanes ();\n    { extern void gpu_flush(void); gpu_flush(); }\n", "    R_DrawPlanes ();\n    { extern void gpu_flush(void); gpu_flush(); }\n" + PR % 4),
-        sub1("    R_DrawMasked ();\n    { extern void gpu_flush(void); gpu_flush(); }\n", "    R_DrawMasked ();\n    { extern void gpu_flush(void); gpu_flush(); }\n" + PR % 5)))
+        sub1("    R_DrawPlanes ();\n    { extern void gpu_epoch(void); gpu_epoch(); }\n", "    R_DrawPlanes ();\n    { extern void gpu_epoch(void); gpu_epoch(); }\n" + PR % 4),
+        sub1("    R_DrawMasked ();\n    { extern void gpu_epoch(void); gpu_epoch(); }\n", "    R_DrawMasked ();\n    { extern void gpu_epoch(void); gpu_epoch(); }\n" + PR % 5)))

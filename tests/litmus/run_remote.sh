@@ -9,18 +9,19 @@ HERE="$(cd "$(dirname "$0")/../.." && pwd)"; R='~/kvm-review-scratch'; STAGE="${
 SSH="ssh -o BatchMode=yes -o StrictHostKeyChecking=no"
 rsync -az --delete --exclude .git --exclude results --exclude out --exclude logs --exclude fuzz_out -e "$SSH" "$HERE/" "$HOST:kvm-review-scratch/"
 NV='$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc | tail -1)'
-LOCK='flock -w 900 ~/.gpu.lock timeout'
+LOCK='flock -w 900 ~/.gpu.lock timeout'; [ -z "${KVM_NO_LOCK:-}" ] || LOCK='timeout'   # KVM_NO_LOCK=1: an outer hold exists
+ARCH="${KVM_ARCH:-sm_80}"; JOBS="${KVM_JOBS:-2}"
 mkdir -p "$HERE/logs"
 case "$STAGE" in
   build)
-    $SSH "$HOST" "cd $R && mkdir -p out logs && tests/litmus/build.sh \$PWD/out && B='-O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -lineinfo' &&
+    $SSH "$HOST" "cd $R && mkdir -p out logs && KVM_ARCH=$ARCH KVM_JOBS=$JOBS tests/litmus/build.sh \$PWD/out && B='-O3 -arch=$ARCH -std=c++17 -Iinclude --fmad=false -lineinfo' &&
       $NV \$B kvm_exec.cu -o out/kvm_exec && $NV \$B -DKVM_EXEC_NO_MAIN tests/litmus/e2e.cu -o out/e2e && $NV \$B -DKVM_EXEC_NO_MAIN -DKVM_BREAK_FENCE tests/litmus/e2e.cu -o out/e2e_breakfence && echo BUILD OK" ;;
   buildnew)  # the slot-recycling executor, exported from a branch into ~/kvm-review-new (rsync it first: git archive <branch> include kvm_exec.cu)
-    $SSH "$HOST" "bash -s" <<'REMOTE'
+    $SSH "$HOST" "ARCH=$ARCH bash -s" <<'REMOTE'
 set -e
 cd ~/kvm-review-scratch; mkdir -p out
 NV=$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc | tail -1); N=$HOME/kvm-review-new
-B="-O3 -arch=sm_80 -std=c++17 -lineinfo -Wno-deprecated-gpu-targets"; X="-I$N/include"
+B="-O3 -arch=$ARCH -std=c++17 -lineinfo -Wno-deprecated-gpu-targets"; X="-I$N/include"
 $NV $B $X -DLIT_NEW tests/litmus/litmus.cu -o out/litmusN_prod &
 $NV $B $X -DLIT_NEW -DKVM_BREAK_PARK_RECHECK -DLIT_MUTANT='"break_park_recheck"' tests/litmus/litmus.cu -o out/litmusN_norecheck &
 $NV $B $X -DKVM_EXEC_NO_MAIN -DKVM_NEW -DKVM_EXEC_CU="\"$N/kvm_exec.cu\"" tests/litmus/e2e.cu -o out/e2eN &

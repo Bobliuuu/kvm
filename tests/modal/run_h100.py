@@ -49,9 +49,9 @@ def run(stage: str, tag: str):
 BUILD = r'''
 mkdir -p /logs/BIN
 for t in test_ops test_extra; do
- (cd tests/gpu_ops && /usr/bin/time -f "$t build %es" nvcc -O2 -arch=sm_90a -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -lineinfo -I../../include -I. $t.cu -o /logs/BIN/$t 2>&1 | grep -v -i 'remark\|^\s*\^\|^$' | tail -30) &
+ (cd tests/gpu_ops && nvcc -O2 -arch=sm_90a -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -lineinfo -I../../include -I. $t.cu -o /logs/BIN/$t 2>&1 | grep -v -i 'remark\|^\s*\^\|^$' | tail -30) &
 done
-(KVM_ARCH=sm_90a /usr/bin/time -f "test_exec full build %es" bash tests/gpu/build.sh 2>&1 | tail -30; cp test_exec /logs/BIN/) &
+(KVM_ARCH=sm_90a bash tests/gpu/build.sh 2>&1 | tail -30; cp test_exec /logs/BIN/) &
 wait
 ls -la /logs/BIN
 '''
@@ -67,17 +67,18 @@ def build(tag: str):
     f.close(); vol.commit()
 
 @app.function(gpu="H100", cpu=4, timeout=3600, volumes={"/logs": vol})
-def runbin(tag: str):
+def runbin(tag: str, which: str = "test_ops,test_extra,test_exec"):
     import subprocess
+    os.makedirs(f"/logs/{tag}", exist_ok=True)
     f = open(f"/logs/{tag}/runbin.log", "w")
     cmd = ("cd /src/tests/gpu_ops && nvidia-smi --query-gpu=name,driver_version --format=csv,noheader; "
-           "for t in test_ops test_extra; do echo == $t; timeout 900 /logs/BIN/$t 2>&1 | tail -30; echo exit ${PIPESTATUS[0]}; done; "
-           "cd /src && echo == test_exec_full; timeout 2400 /logs/BIN/test_exec 2>&1 | grep -v '^\\[kvm_exec\\]' | tail -60; echo exit ${PIPESTATUS[0]}")
+           "for t in $(echo " + which.replace("test_exec","") + " | tr ',' ' '); do echo == $t; timeout 900 /logs/BIN/$t 2>&1 | tail -30; echo exit ${PIPESTATUS[0]}; done; "
+           + ("" if "test_exec" not in which else "cd /src && echo == test_exec_full; timeout 2400 /logs/BIN/test_exec 2>&1 | grep -v '^\\[kvm_exec\\]' | tail -60; echo exit ${PIPESTATUS[0]}"))
     subprocess.run(["bash", "-c", cmd], stdout=f, stderr=subprocess.STDOUT, text=True)
     f.close(); vol.commit()
 
 @app.local_entrypoint()
 def main(stage: str = "core", tag: str = "run"):
     if stage == "build": build.remote(tag)
-    elif stage == "runbin": runbin.remote(tag)
+    elif stage.startswith("runbin"): runbin.remote(tag, stage.split(":")[1] if ":" in stage else "test_ops,test_extra,test_exec")
     else: run.remote(stage, tag)

@@ -330,7 +330,7 @@ class LayoutCounter:
             la0, lb0 = self.ensure(A), self.ensure(B_)
             want = self.layout.get(O) or self.init.get(O)
             best = None
-            for (la, lb), lo in pt.ShardPlanner.MM_RULES:
+            for (la, lb), lo in (pt.ShardPlanner.MM_RULES if P > 1 else [((R, R), R)]):
                 if (lo == ROWS and m % P) or (lo == COLS and n % P) or (lo == PART and k % P):
                     continue
                 c = self.cost(A, la0, la) + self.cost(B_, lb0, lb) + (self.cost(O, lo, want) if want and want != lo else 0)

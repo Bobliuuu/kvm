@@ -32,7 +32,7 @@ conventional execution") is therefore **not met** for transformer training; only
   **Ratios between PyTorch variants are from one process; ratios to the executor compare two processes minutes apart** (AGENTS.md asks for one
   process; `kvm_exec` has no PyTorch-side hook). Best of 7 is the headline, median and worst are in the tables. Round 1 (`round1/`) is a full
   repeat before a fix: its `compile_ro` loss list was invalid (CUDA-graph output aliasing, fixed in round 2), its timings are valid.
-- Reproduce: `bench/vs_pytorch/gen.py` (workloads), `campaign.sh` (box side, one lock hold), `report.py` (tables), `kvm_bench.py`, `trace_summary.py`.
+- Reproduce: `bench/vs_pytorch/gen.py` (workloads), `campaign.sh` (box side, one lock hold), `report.py` (tables), `exec_bench.py` (was `kvm_bench.py`, never committed: `.gitignore` ignores `kvm_*`), `trace_summary.py`.
 
 ## Correctness first
 

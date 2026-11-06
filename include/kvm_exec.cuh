@@ -210,6 +210,7 @@ __device__ __forceinline__ unsigned long long ld_acq64(const unsigned long long*
 __device__ __forceinline__ void st_rel(int* p, int v) { asm volatile("st.release.gpu.global.b32 [%0],%1;" ::"l"(p), "r"(v) : "memory"); }
 __device__ __forceinline__ void st_rel64(unsigned long long* p, unsigned long long v) { asm volatile("st.release.gpu.global.b64 [%0],%1;" ::"l"(p), "l"(v) : "memory"); }
 __device__ __forceinline__ int atom_add(int* p, int v) { int r; asm volatile("atom.acq_rel.gpu.global.add.u32 %0,[%1],%2;" : "=r"(r) : "l"(p), "r"(v) : "memory"); return r; }
+__device__ __forceinline__ void red_rel(int* p, int v) { asm volatile("red.release.gpu.global.add.u32 [%0],%1;" ::"l"(p), "r"(v) : "memory"); }   // posted: the issuing thread does not wait for the L2 round trip
 __device__ __forceinline__ unsigned long long atom_add64(unsigned long long* p, unsigned long long v) { unsigned long long r; asm volatile("atom.acq_rel.gpu.global.add.u64 %0,[%1],%2;" : "=l"(r) : "l"(p), "l"(v) : "memory"); return r; }
 __device__ __forceinline__ int atom_cas(int* p, int c, int v) { int r; asm volatile("atom.acq_rel.gpu.global.cas.b32 %0,[%1],%2,%3;" : "=r"(r) : "l"(p), "r"(c), "r"(v) : "memory"); return r; }
 __device__ __forceinline__ unsigned long long atom_cas64(unsigned long long* p, unsigned long long c, unsigned long long v) { unsigned long long r; asm volatile("atom.acq_rel.gpu.global.cas.b64 %0,[%1],%2,%3;" : "=l"(r) : "l"(p), "l"(c), "l"(v) : "memory"); return r; }
@@ -515,7 +516,7 @@ __device__ __forceinline__ void kvm_publish(const KvmDevState& S, int slot, int 
 // ---------------- worker ----------------
 struct KvmShared {
   KvmTaskDesc d;
-  int cmd, skip, how, part;   // how: KVM_TRACE_* start reason from kvm_pop; part: STATIC-mode class of this worker's SM
+  int cmd, skip, how, part, dup;   // how: KVM_TRACE_* start reason from kvm_pop; part: STATIC-mode class of this worker's SM
   float smem[KVM_SMEM_FLOATS];
 };
 #define KVM_POP_EXIT (-2)
@@ -555,7 +556,7 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
     tr->start_ns = kvm_now(); tr->smid = kvm_smid(); tr->block = blockIdx.x; tr->ver0 = tr->ver1 = -1;
     tr->flags |= sh.how;
     kvm_sched_start(S, slot, sh.how, tr->start_ns);
-    if (atomicAdd(&tr->exec_count, 1) != 0) { kvm_fail(S, KVM_ERR_DOUBLE_EXEC, slot); bad = true; }
+    sh.dup = atomicAdd(&tr->exec_count, 1);   // the result is consumed after the op: the round trip hides behind it
     if (d.wait_var >= 0) {
       int v = ld_acq(S.version + d.wait_var);  // acquire: pairs with the publisher's release (header comment)
       tr->ver0 = v;
@@ -567,6 +568,10 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
     sh.skip = bad || *(volatile int*)&S.cnt->err_code;
   }
   __syncthreads();
+  // Prefetch this thread's first successor id: the list is immutable once admitted, and the load's round trip hides behind the op instead
+  // of sitting on the dependent-hop critical path (op end -> release -> successor ready). It is only consumed after the op.
+  int sid0 = -1;
+  if (threadIdx.x < d.succ_cnt) sid0 = S.succ[(unsigned)(d.succ_off + threadIdx.x) & (S.succ_cap - 1)];
   if (!sh.skip) {
     KvmCtx c{S.bufs, S.nbufs, slot, S.cnt, S.herr, sh.smem};
     kvm_dispatch(d.op_id, c, S.args + d.args_off);
@@ -575,6 +580,7 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   if (threadIdx.x == 0) {
     unsigned long long end = kvm_now();
     tr->end_ns = end;
+    if (sh.dup != 0) { kvm_fail(S, KVM_ERR_DOUBLE_EXEC, slot); sh.skip = true; }
     if (d.wait_var >= 0) tr->ver1 = ld_acq(S.version + d.wait_var);
     const bool missed = d.deadline_us >= 0 && end - tr->admit_ns > (unsigned long long)d.deadline_us * 1000ull;
     if (missed) tr->flags |= KVM_TRACE_MISSED;
@@ -585,22 +591,24 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   }
   __syncthreads();
   if (!sh.skip) {
-    __threadfence();
+    if (threadIdx.x < d.succ_cnt) __threadfence();   // only the warps that release anything fence (the barrier made the op's stores of all threads precede it)
     for (int e = threadIdx.x; e < d.succ_cnt; e += blockDim.x) {
-      int s = S.succ[(unsigned)(d.succ_off + e) & (S.succ_cap - 1)];
+      int s = e < blockDim.x ? sid0 : S.succ[(unsigned)(d.succ_off + e) & (S.succ_cap - 1)];
       if (atom_add(S.indeg + s, -1) == 1) { kvm_sched_pref(S, s); kvm_release_task(S, s); }  // SCHED: affinity = this block
     }
   }
   __syncthreads();
+  if (threadIdx.x == 0) kvm_sched_done(S, slot, tr->start_ns, tr->end_ns, tr->flags & KVM_TRACE_MISSED);  // SCHED: frees the class's running/BW slot once the CTA is really free (reads the slot's metadata: before it is recycled)
+  __syncthreads();
+  // Nothing of this task is read again (sh.d is a copy; successors were decremented). Three independent bookkeeping steps, each an L2
+  // round trip: the window credit (thread 0; it lets the admitter reclaim the window's successor storage) and the slot recycle (a lane of
+  // ANOTHER warp, so the two latencies overlap instead of adding), then the done count, whose release orders both before it.
   if (threadIdx.x == 0) {
-    kvm_sched_done(S, slot, tr->start_ns, tr->end_ns, tr->flags & KVM_TRACE_MISSED);  // SCHED: frees the class's running/BW slot once the CTA is really free (before the slot is recycled)
-    // Nothing of this task is read again (sh.d is a copy; successors were decremented): return its window credit, which also
-    // lets the admitter reclaim the window's successor storage, then recycle the slot, then count the task done.
     const unsigned wid = (unsigned)d.reserved0;
     if (atom_add(&S.wins[wid & (S.win_cap - 1)].remaining, -1) == 1) st_rel_sys((volatile int*)&S.win_done[wid & (S.win_cap - 1)], (int)(wid + 1));
-    kvm_free_slot(S, slot);
-    atom_add(&S.cnt->done, 1);
-  }
+  } else if (threadIdx.x == 32) kvm_free_slot(S, slot);
+  __syncthreads();
+  if (threadIdx.x == 0) red_rel(&S.cnt->done, 1);   // posted: nobody needs the old value
 }
 
 __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {

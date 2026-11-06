@@ -156,25 +156,37 @@ nvcc -O3 -arch=sm_80 -std=c++17 -DKTILE=32 -DKKC=64 -DKSTG=4 kvm.cu -o kvm
 ./kvm --runs 8 --steps 300             # 8 fused LR-sweep runs vs baselines
 ```
 
+Options: `--reps N` (timed passes), `--modes seq,seqgraph,batched,claim,queue`, `--watchdog-ms` (every VM spin is bounded; a
+stuck run ends in `FAIL (watchdog)` with the blocked instruction or queue state), `--quiet`, `--inject-fault` (watchdog test).
+`./run_gpu_queue_matrix.sh` runs the whole validation matrix on a GPU box.
+
 Knobs: `-DKTILE` (32|64), `-DKKC` (K chunk, 32|64), `-DKSTG` (cp.async stages). Dims must be multiples
 of max(KTILE, KKC). `run_remote.sh` rsyncs to a GPU box (`KVM_HOST`), builds and runs under `flock`.
 
 ## Results (A100-SXM4-40GB, MLP B=128 D=128 H=256 O=64, KTILE=32 KKC=64 KSTG=4)
 
-Every mode is checked: loss matches a CPU fp32 reference (~3e-5 rel), final weights are identical
-across all four modes.
+Measured at 88c26a4 on a shared A100 (108 SMs, driver 580.105.08, nvcc 12.8); the full set, with raw output, is in
+[results/2026-11-03-a100-queue](results/2026-11-03-a100-queue/README.md). Five modes run the same tape; `--modes` picks a subset.
+Every run ends in `PASS`: final weights bitwise identical across the modes on every pass, loss within 4e-5 of CPU fp32.
+Ratios are the median of 5-7 interleaved passes in one process, [min, max] over passes.
 
-| runs | sequential launches | sequential graphs | batched graph (vmap-like) | **KVM** | KVM vs best baseline |
-|---|---|---|---|---|---|
-| 1  | 45.1 us/step | 38.0 | 37.9 | **25.3** | 1.50x |
-| 8  | 37.0 us/step/run | 31.1 | 6.83 | **4.18** | 1.63x (8.9x vs sequential) |
-| 32 | 36.9 us/step/run | 31.1 | 3.88 | **3.45** | 1.13x (10.7x vs sequential) |
+| runs | claim VM vs batched graph | ready queue vs batched graph | ready queue vs claim VM |
+|---|---|---|---|
+| 1  | 1.11x [1.10, 1.11] | 0.86x [0.86, 0.87] | 0.78x [0.77, 0.79] |
+| 2  | 1.15x [1.14, 1.16] | 0.88x [0.88, 0.90] | 0.77x [0.76, 0.78] |
+| 8  | 1.51x [1.51, 1.51] | 1.42x [1.41, 1.43] | 0.94x [0.94, 0.95] |
+| 32 (100 steps) | 1.03x [1.03, 1.03] | 0.97x [0.97, 0.98] | 0.94x [0.94, 0.94] |
+
+The ready queue (`queue`: dependencies of the whole tape lowered to a DAG on the host, successors released on the device) is
+slower than claim-and-wait at every size: its dependency hop is about 6.6 us against 5.2 us. The earlier README numbers
+(1.50x, 1.63x, 1.13x, measured at acb3bf4 before the loop opcode) are superseded.
 
 ## Findings / caveats
 
 - A single small dense run is latency-bound: each dependent hop costs ~5 us (fence + counter + poll +
-  first `cp.async` round trip + wmma chain), so the VM is only ~1.2-1.5x over graphs there.
-- Fusing many runs is where the VM pays off; at 32 runs it becomes compute-bound (~3.5 us/run-step).
+  first `cp.async` round trip + wmma chain), so the VM is only 1.11x over the best graph there (25.8 against 28.7 us per step).
+- Fusing many runs is where the VM pays off most (1.51x at 8 runs); at 32 runs it is compute-bound (3.5 us/run-step) and the
+  batched graph is within 3%.
 - The GPU box is shared, so absolute numbers move run to run (baselines varied by up to ~1.5x between
   builds); ratios within one run are the meaningful figure.
 - Tile GEMM is far from peak (TF32 wmma, 4 warps, ~10 TFLOPs at the largest size tried). Tape is

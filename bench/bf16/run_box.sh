@@ -12,6 +12,7 @@
 # independent, a failing stage does not stop the next, and every stage logs to OUT_DIR/<stage>.log. DATA_DIR holds the gen.py bundles:
 #   f32_1 b16_1 (1 step, buffer reuse 'shape': timing), f32_n1 bf16s_n1 (1 step, reuse none: gradients survive), bf16s_3 (3 steps: losses, PyTorch).
 set -uo pipefail
+ROOT="$(pwd)"; DUMP_EXEC="${KVM_EXEC_DUMP:-./kvm_exec}"   # the executor build that has --dump-bin
 MODE="${1:?correctness|perf}"; OUT="$(realpath -m "${2:?OUT_DIR}")"; DATA="$(realpath -m "${3:?DATA_DIR}")"
 mkdir -p "$OUT"
 # ONE lock hold for the whole mode (re-exec under flock); every command below runs while it is held
@@ -42,8 +43,9 @@ correctness)
   stage test_bf16_memcheck 2400 bash -c "cd tests/gpu_ops && TEST_BF16_SMALL=1 compute-sanitizer --tool memcheck --error-exitcode 9 ./test_bf16 | tail -6"
   stage test_bf16_racecheck 2400 bash -c "cd tests/gpu_ops && TEST_BF16_SMALL=1 compute-sanitizer --tool racecheck --error-exitcode 9 ./test_bf16 | tail -6"
   stage test_bf16_synccheck 2400 bash -c "cd tests/gpu_ops && TEST_BF16_SMALL=1 compute-sanitizer --tool synccheck --error-exitcode 9 ./test_bf16 | tail -6"
-  stage grads_f32 1500 python3 bench/bf16/exec_grads.py "$DATA/f32_n1" ./kvm_exec --out "$OUT/grads_f32"
-  stage grads_bf16s 1500 python3 bench/bf16/exec_grads.py "$DATA/bf16s_n1" ./kvm_exec --out "$OUT/grads_bf16s"
+  stage model_zoo_bf16s 3400 env KVM_NO_LOCK=1 KVM_EXEC_BIN="$ROOT/kvm_exec" bash examples/models/run_box.sh "$DATA/zoo" "$OUT/zoo" --cases examples/models/cases_bf16s.txt
+  stage grads_f32 1500 python3 bench/bf16/exec_grads.py "$DATA/f32_n1" "$DUMP_EXEC" --out "$OUT/grads_f32"
+  stage grads_bf16s 1500 python3 bench/bf16/exec_grads.py "$DATA/bf16s_n1" "$DUMP_EXEC" --out "$OUT/grads_bf16s"
   ;;
 perf)
   stage bench_mma_bf16 1500 bash -c "cd tests/gpu_ops && BENCH_REPS=7 ./bench_mma_bf16"

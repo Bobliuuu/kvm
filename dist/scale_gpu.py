@@ -151,6 +151,9 @@ def cmd_pair(a):
         for d in ('dump_P1', f'dump_P{a.ranks}'):
             for f in Path(out, d).glob('*.bin'):
                 f.unlink()
+    if a.sharded_only:
+        B = load_dump(out / f'dump_P{a.ranks}')
+        res['loss_sharded'] = [float(B[f'loss{t}']) for t in range(1, a.steps + 1)]
     (out / 'result.json').write_text(json.dumps(res, indent=1))
     print(json.dumps({k: v for k, v in res.items() if k not in ('runs',)}, indent=1))
     return 0

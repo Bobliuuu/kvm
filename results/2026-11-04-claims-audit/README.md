@@ -112,3 +112,12 @@ python3 -I results/2026-11-04-claims-audit/newmodel/gen.py OUT xfmr_odd      # o
 KVM_HOST=user@host PYBIN=<python with torch on the box> results/2026-11-04-claims-audit/run_audit_job.sh WORK PREBUILT_MODELS NEWMODEL_BUNDLES   # detached, one lock hold
 ```
 Files: `newmodel/` (generator, comparer, torch bench, libref), `logs/` (raw), `run_audit_job.sh`.
+
+## Update 2026-11-06 (branch feat/scale-evidence): F10a / F10b, measured vs modelled
+
+* F10a stays **C** (single GPU) but is now far better supported: the partitioner gained a ZeRO sharded-AdamW rule; sharded stacks (ZeRO, tensor parallel, 2-4 ranks as
+  in-kernel partitions of one A100) are bitwise equal to the CPU golden in 8 plans and agree with an unsharded run to <= 2e-6 loss / 7e-4 parameters up to 134 M logical
+  parameters (4 ranks) and ran at 268 M (2 ranks, 31 GB). The planner's bytes/FLOPs/comm volume equal the emitted tasks exactly. Still **no** second GPU, NVLink or network measurement.
+* F10b stays **M** for "trillion-parameter training": the 1T plan (9.7 GB/GPU at 4096 GPUs, 30% MFU lower bound) is a closed-form MODEL; the largest thing executed is 268 M
+  logical (536 M stored) parameters of a deep linear network without attention. Found: the planner never frees gathered buffers, so per-rank memory barely shrinks.
+* Details and the hardware that would turn this into evidence: results/2026-11-06-scale-evidence/README.md and HARDWARE_PLAN.md.

@@ -35,6 +35,9 @@
 #define KVM_GPT_DEVI __device__ __forceinline__
 
 
+#ifndef KVM_GPT_SMEM_CVT
+#define KVM_GPT_SMEM_CVT 1   // 1: matmul operands are rounded to tf32 once per CTA in shared memory (tile_cvt); 0: per fragment, per warp
+#endif
 #ifndef KVM_GPT_BIG_BK
 #define KVM_GPT_BIG_BK 16    // k per pipeline stage of the 128x128 tile (16 or 32)
 #endif
@@ -361,7 +364,7 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
     cp_commit();   // always commit, empty groups included, so wait_group counts stay uniform
     for (int it = 0; it < nk; it++) {
         cp_wait<1>();
-        if constexpr (!PREC && !BF) {   // round the operands once per CTA, in shared memory (see tile_cvt)
+        if constexpr (!PREC && !BF && KVM_GPT_SMEM_CVT) {   // round the operands once per CTA, in shared memory (see tile_cvt)
             float* Aw = sm + (it % NST) * STAGE; float* Bw = Aw + TILE;
             if (TA) tile_cvt<false, 32, 64>(Aw); else tile_cvt<true, 64, 32>(Aw);
             if (TB) tile_cvt<true, 64, 32>(Bw); else tile_cvt<false, 32, 64>(Bw);
@@ -418,9 +421,10 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
                     ah[i][2] = __float_as_uint(As[sw_mc<64>(kk + t + 4, mb + g)]); ah[i][3] = __float_as_uint(As[sw_mc<64>(kk + t + 4, mb + g + 8)]);
                 }
 #pragma unroll
-                if constexpr (PREC) for (int e = 0; e < 4; e++) {
+                if constexpr (PREC || !KVM_GPT_SMEM_CVT) for (int e = 0; e < 4; e++) {
                     float x = __uint_as_float(ah[i][e]);
-                    unsigned h = f2tf32(x); al[i][e] = __float_as_uint(x - __uint_as_float(h)); ah[i][e] = h;
+                    if (PREC) { unsigned h = f2tf32(x); al[i][e] = __float_as_uint(x - __uint_as_float(h)); ah[i][e] = h; }
+                    else ah[i][e] = f2tf32_op(x);
                 }
             }
 #pragma unroll
@@ -435,11 +439,12 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
                     bh[2 * jp + 1][0] = __float_as_uint(Bs[sw_mc<64>(kk + t, nb + 8 + g)]);  bh[2 * jp + 1][1] = __float_as_uint(Bs[sw_mc<64>(kk + t + 4, nb + 8 + g)]);
                 }
 #pragma unroll
-                if constexpr (PREC) for (int jj = 0; jj < 2; jj++)
+                if constexpr (PREC || !KVM_GPT_SMEM_CVT) for (int jj = 0; jj < 2; jj++)
 #pragma unroll
                     for (int e = 0; e < 2; e++) {
                     float x = __uint_as_float(bh[2 * jp + jj][e]);
-                    unsigned h = f2tf32(x); bl[2 * jp + jj][e] = __float_as_uint(x - __uint_as_float(h)); bh[2 * jp + jj][e] = h;
+                    if (PREC) { unsigned h = f2tf32(x); bl[2 * jp + jj][e] = __float_as_uint(x - __uint_as_float(h)); bh[2 * jp + jj][e] = h; }
+                    else bh[2 * jp + jj][e] = f2tf32_op(x);
                 }
             }
 #pragma unroll
@@ -523,7 +528,7 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
     for (int it = 0; it < nk; it++) {
         cp_wait<NST - 2>();
         const float* As = sm + (it % NST) * STAGE; const float* Bs = As + ATILE;
-        if constexpr (!PREC) {   // round the operands once per CTA, in shared memory (see tile_cvt)
+        if constexpr (!PREC && KVM_GPT_SMEM_CVT) {   // round the operands once per CTA, in shared memory (see tile_cvt)
             float* Aw = sm + (it % NST) * STAGE; float* Bw = Aw + ATILE;
             if (TA) tile_cvt<false, BK, BM>(Aw); else tile_cvt<true, BM, BK>(Aw);
             if (TB) tile_cvt<true, BN, BK>(Bw); else tile_cvt<false, BK, BN>(Bw);
@@ -544,9 +549,10 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
                     ah[i][2] = __float_as_uint(As[sw_mc<BM>(kk + t + 4, mb + g)]); ah[i][3] = __float_as_uint(As[sw_mc<BM>(kk + t + 4, mb + g + 8)]);
                 }
 #pragma unroll
-                if constexpr (PREC) for (int e = 0; e < 4; e++) {
+                if constexpr (PREC || !KVM_GPT_SMEM_CVT) for (int e = 0; e < 4; e++) {
                     float x = __uint_as_float(ah[i][e]);
-                    unsigned h = f2tf32(x); al[i][e] = __float_as_uint(x - __uint_as_float(h)); ah[i][e] = h;
+                    if (PREC) { unsigned h = f2tf32(x); al[i][e] = __float_as_uint(x - __uint_as_float(h)); ah[i][e] = h; }
+                    else ah[i][e] = f2tf32_op(x);
                 }
             }
 #pragma unroll
@@ -561,11 +567,12 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
                     bh[2 * jp + 1][0] = __float_as_uint(Bs[sw_mc<BN>(kk + t, nb + 8 + g)]);  bh[2 * jp + 1][1] = __float_as_uint(Bs[sw_mc<BN>(kk + t + 4, nb + 8 + g)]);
                 }
 #pragma unroll
-                if constexpr (PREC) for (int jj = 0; jj < 2; jj++)
+                if constexpr (PREC || !KVM_GPT_SMEM_CVT) for (int jj = 0; jj < 2; jj++)
 #pragma unroll
                     for (int e = 0; e < 2; e++) {
                     float x = __uint_as_float(bh[2 * jp + jj][e]);
-                    unsigned h = f2tf32(x); bl[2 * jp + jj][e] = __float_as_uint(x - __uint_as_float(h)); bh[2 * jp + jj][e] = h;
+                    if (PREC) { unsigned h = f2tf32(x); bl[2 * jp + jj][e] = __float_as_uint(x - __uint_as_float(h)); bh[2 * jp + jj][e] = h; }
+                    else bh[2 * jp + jj][e] = f2tf32_op(x);
                 }
             }
 #pragma unroll
@@ -630,18 +637,31 @@ KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
     float* pre = k.mat(a[5], M, N, &ldp, true);
     if (k.bad) return;
     float alpha = af(a, 12);
-#define KVM_GPT_MM(F, TA, TB, P) F<TA, TB, P KVM_GPT_MM_SHAPE>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, gelu, accum)
+#define KVM_GPT_MM(F, TA, TB, P) F<TA, TB, P KVM_GPT_MM_SHAPE>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, KVM_GPT_MM_M0, n0, M, N, K, alpha, gelu, accum)
 #define KVM_GPT_MM_T(F, P)                                                                                                   \
     if (!ta && !tb) KVM_GPT_MM(F, false, false, P); else if (ta && !tb) KVM_GPT_MM(F, true, false, P);                       \
     else if (!ta && tb) KVM_GPT_MM(F, false, true, P); else KVM_GPT_MM(F, true, true, P)
+#define KVM_GPT_MM_M0 m0
 #define KVM_GPT_MM_SHAPE , 2, 4, 32
     if (big) { if (prec) { KVM_GPT_MM_T(mm_tile_big, true); } else { KVM_GPT_MM_T(mm_tile_big, false); } }
+    // 256x128 task (flag 64) = two 128x128 passes, rows m0 and m0+128. A 4x2-warp 64x64-per-warp tile needs 128 accumulator registers,
+    // which cannot coexist with the 128-register budget of two blocks per SM (__launch_bounds__(256, 2)); two passes keep the task shape
+    // for the compiler/frontend at the same per-warp work (the second pass re-reads B from L2).
+    else if (huge) {
+        if (prec) { KVM_GPT_MM_T(mm_tile_big, true); } else { KVM_GPT_MM_T(mm_tile_big, false); }
+        if (m0 + 128 < M) {
+            __syncthreads();   // the second pass reuses the shared-memory ring
+#undef KVM_GPT_MM_M0
+#define KVM_GPT_MM_M0 (m0 + 128)
+            if (prec) { KVM_GPT_MM_T(mm_tile_big, true); } else { KVM_GPT_MM_T(mm_tile_big, false); }
+        }
+    }
+#undef KVM_GPT_MM_M0
 #undef KVM_GPT_MM_SHAPE
-#define KVM_GPT_MM_SHAPE , 4, 2, 64
-    else if (huge) { if (prec) { KVM_GPT_MM_T(mm_tile_big, true); } else { KVM_GPT_MM_T(mm_tile_big, false); } }
-#undef KVM_GPT_MM_SHAPE
+#define KVM_GPT_MM_M0 m0
 #define KVM_GPT_MM_SHAPE
     else if (prec) { KVM_GPT_MM_T(mm_tile, true); } else { KVM_GPT_MM_T(mm_tile, false); }
+#undef KVM_GPT_MM_M0
 #undef KVM_GPT_MM_T
 #undef KVM_GPT_MM
 #undef KVM_GPT_MM_SHAPE

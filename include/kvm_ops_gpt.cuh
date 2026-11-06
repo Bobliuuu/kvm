@@ -310,6 +310,25 @@ KVM_GPT_DEVI void tile_async(float* dst, const float* src, int ld, int gr0, int 
     }
 }
 
+// Rounds, in place, the chunks of a tile that THIS thread copied with tile_async (same chunk-to-thread mapping) to tf32 operands. Each
+// element is converted once per CTA instead of once per fragment use (a warp tile re-reads A across WN warps and B across WM warps, and
+// the conversion ALU ops, not the tensor pipe, bound the 128x128 tile). The thread reads only its own cp.async/plain writes, which
+// cp_wait makes visible to it; other warps see the result after the next __syncthreads. Same rounding as f2tf32_op, so results are
+// bitwise those of converting at fragment-load time.
+KVM_GPT_DEVI unsigned tf32_rnd(unsigned u) { return ((u << 1) > 0xff000000u) ? u : u + 0x1000u; }
+template <bool KC, int ROWS, int COLS>
+KVM_GPT_DEVI void tile_cvt(float* dst) {
+    constexpr int CPR = COLS / 4;
+#pragma unroll
+    for (int s = 0; s < ROWS * CPR / KVM_GPT_THREADS; s++) {
+        const int q = threadIdx.x + s * KVM_GPT_THREADS, row = q / CPR, c4 = (q % CPR) * 4;
+        uint4* d = reinterpret_cast<uint4*>(dst + (KC ? sw_kc<COLS>(row, c4) : sw_mc<COLS>(row, c4)));
+        uint4 v = *d;
+        v.x = tf32_rnd(v.x); v.y = tf32_rnd(v.y); v.z = tf32_rnd(v.z); v.w = tf32_rnd(v.w);
+        *d = v;
+    }
+}
+
 // 64x64 output tile, BK=32, 3-stage cp.async pipeline (3 x 16 KiB = 48 KiB, the epilogue reuses it), 8 warps, mma.sync m16n8k8
 // TF32. Warp (wm, wn, kh): 32x32 sub-tile at (wm*32, wn*32) = 2 m16 x 4 n8 fragments, reducing k8-steps {2kh, 2kh+1} of each BK=32
 // slab; the two k-halves are summed in the epilogue. Shared tiles keep the global orientation (coalesced loads for all four
@@ -342,6 +361,11 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
     cp_commit();   // always commit, empty groups included, so wait_group counts stay uniform
     for (int it = 0; it < nk; it++) {
         cp_wait<1>();
+        if constexpr (!PREC && !BF) {   // round the operands once per CTA, in shared memory (see tile_cvt)
+            float* Aw = sm + (it % NST) * STAGE; float* Bw = Aw + TILE;
+            if (TA) tile_cvt<false, 32, 64>(Aw); else tile_cvt<true, 64, 32>(Aw);
+            if (TB) tile_cvt<true, 64, 32>(Bw); else tile_cvt<false, 32, 64>(Bw);
+        }
         __syncthreads();   // tile `it` landed everywhere; everyone finished the slab that used the stage refilled next
         if (it + 2 < nk) issue(it + 2);
         cp_commit();
@@ -394,10 +418,9 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
                     ah[i][2] = __float_as_uint(As[sw_mc<64>(kk + t + 4, mb + g)]); ah[i][3] = __float_as_uint(As[sw_mc<64>(kk + t + 4, mb + g + 8)]);
                 }
 #pragma unroll
-                for (int e = 0; e < 4; e++) {
+                if constexpr (PREC) for (int e = 0; e < 4; e++) {
                     float x = __uint_as_float(ah[i][e]);
-                    if (PREC) { unsigned h = f2tf32(x); al[i][e] = __float_as_uint(x - __uint_as_float(h)); ah[i][e] = h; }
-                    else ah[i][e] = f2tf32_op(x);
+                    unsigned h = f2tf32(x); al[i][e] = __float_as_uint(x - __uint_as_float(h)); ah[i][e] = h;
                 }
             }
 #pragma unroll
@@ -412,12 +435,11 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
                     bh[2 * jp + 1][0] = __float_as_uint(Bs[sw_mc<64>(kk + t, nb + 8 + g)]);  bh[2 * jp + 1][1] = __float_as_uint(Bs[sw_mc<64>(kk + t + 4, nb + 8 + g)]);
                 }
 #pragma unroll
-                for (int jj = 0; jj < 2; jj++)
+                if constexpr (PREC) for (int jj = 0; jj < 2; jj++)
 #pragma unroll
                     for (int e = 0; e < 2; e++) {
                     float x = __uint_as_float(bh[2 * jp + jj][e]);
-                    if (PREC) { unsigned h = f2tf32(x); bl[2 * jp + jj][e] = __float_as_uint(x - __uint_as_float(h)); bh[2 * jp + jj][e] = h; }
-                    else bh[2 * jp + jj][e] = f2tf32_op(x);
+                    unsigned h = f2tf32(x); bl[2 * jp + jj][e] = __float_as_uint(x - __uint_as_float(h)); bh[2 * jp + jj][e] = h;
                 }
             }
 #pragma unroll
@@ -500,10 +522,15 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
     for (int p = 0; p < NST - 1; p++) { if (p < nk) issue(p); cp_commit(); }
     for (int it = 0; it < nk; it++) {
         cp_wait<NST - 2>();
+        const float* As = sm + (it % NST) * STAGE; const float* Bs = As + ATILE;
+        if constexpr (!PREC) {   // round the operands once per CTA, in shared memory (see tile_cvt)
+            float* Aw = sm + (it % NST) * STAGE; float* Bw = Aw + ATILE;
+            if (TA) tile_cvt<false, BK, BM>(Aw); else tile_cvt<true, BM, BK>(Aw);
+            if (TB) tile_cvt<true, BN, BK>(Bw); else tile_cvt<false, BK, BN>(Bw);
+        }
         __syncthreads();
         if (it + NST - 1 < nk) issue(it + NST - 1);
         cp_commit();
-        const float* As = sm + (it % NST) * STAGE; const float* Bs = As + ATILE;
 #pragma unroll
         for (int kq = 0; kq < BK / 8; kq++) {
             const int kk = kq * 8;
@@ -517,10 +544,9 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
                     ah[i][2] = __float_as_uint(As[sw_mc<BM>(kk + t + 4, mb + g)]); ah[i][3] = __float_as_uint(As[sw_mc<BM>(kk + t + 4, mb + g + 8)]);
                 }
 #pragma unroll
-                for (int e = 0; e < 4; e++) {
+                if constexpr (PREC) for (int e = 0; e < 4; e++) {
                     float x = __uint_as_float(ah[i][e]);
-                    if (PREC) { unsigned h = f2tf32(x); al[i][e] = __float_as_uint(x - __uint_as_float(h)); ah[i][e] = h; }
-                    else ah[i][e] = f2tf32_op(x);
+                    unsigned h = f2tf32(x); al[i][e] = __float_as_uint(x - __uint_as_float(h)); ah[i][e] = h;
                 }
             }
 #pragma unroll
@@ -535,12 +561,11 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
                     bh[2 * jp + 1][0] = __float_as_uint(Bs[sw_mc<BN>(kk + t, nb + 8 + g)]);  bh[2 * jp + 1][1] = __float_as_uint(Bs[sw_mc<BN>(kk + t + 4, nb + 8 + g)]);
                 }
 #pragma unroll
-                for (int jj = 0; jj < 2; jj++)
+                if constexpr (PREC) for (int jj = 0; jj < 2; jj++)
 #pragma unroll
                     for (int e = 0; e < 2; e++) {
                     float x = __uint_as_float(bh[2 * jp + jj][e]);
-                    if (PREC) { unsigned h = f2tf32(x); bl[2 * jp + jj][e] = __float_as_uint(x - __uint_as_float(h)); bh[2 * jp + jj][e] = h; }
-                    else bh[2 * jp + jj][e] = f2tf32_op(x);
+                    unsigned h = f2tf32(x); bl[2 * jp + jj][e] = __float_as_uint(x - __uint_as_float(h)); bh[2 * jp + jj][e] = h;
                 }
             }
 #pragma unroll

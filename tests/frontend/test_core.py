@@ -99,8 +99,8 @@ class Lowering(unittest.TestCase):
         self.assertEqual(tasks(300, 100, mm_tile=128)[0].args['flags'] & 96, 0)
         self.assertEqual(tasks(140, 140, mm_tile=128)[0].args['flags'] & 96, 0)     # 140x140 in 2x2 128 tiles wastes 70%
         self.assertEqual(tasks(500, 500, mm_tile=256, mm_min_eff=0.99)[0].args['flags'] & 96, 0)
-        self.assertEqual(tasks(300, 260, mm_tile=256, mm_min_eff=0.5)[0].args['flags'] & 96, 64)
-        self.assertEqual(tasks(300, 512, mm_tile=256, mm_min_eff=0.9)[0].args['flags'] & 96, 32)   # 300 rows in 512: steps down 256 -> 128 (0.94)
+        self.assertEqual(tasks(300, 260, mm_tile=256, mm_min_eff=0.3)[0].args['flags'] & 96, 64)
+        self.assertEqual(tasks(300, 512, mm_tile=256, mm_min_eff=0.7)[0].args['flags'] & 96, 32)   # 300 rows in 512: steps down 256 -> 128 (0.78)
         b = Builder()
         b.linear(b.tensor('x', 500, 40), b.tensor('w', 40, 500))
         self.assertEqual(len(lower_op(b.ops[0], Tiling(mm_min_tiles=100, mm_tile=128))), 8 * 8)  # too few tiles -> 64x64

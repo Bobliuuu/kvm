@@ -102,7 +102,10 @@ static int g_log_tic;        // tic number of the logged view
 void gpu_split_begin(void) { g_split = 1; }
 void gpu_split_end(void) { g_split = 0; }
 // D_Display, just before R_RenderPlayerView: start logging (a screen wipe in the same tick keeps the classic direct path)
-void gpu_view_begin(int wipe) { if (g_split && !wipe) { log_reset(); gpu_par_active = 1; } }
+void gpu_planes_reset(void); int gpu_plane_count(void); void gpu_plane_exec(int i); void gpu_planes_release(void);
+static int g_planes_tic, g_tiles_tic;   // last tic whose plane / column-tile stage ran (tile 0 stamps them; post checks)
+void gpu_view_begin(int wipe) { if (g_split && !wipe) { log_reset(); gpu_planes_reset(); gpu_par_active = 1; } }
+int gpu_split_logging(void) { return g_split && gpu_par_active; }
 // just after it: returns 1 when the tick's remaining display work is to be deferred to the post task (after the tiles)
 int gpu_view_end(int tic) {
   if (!(g_split && gpu_par_active)) return 0;
@@ -120,6 +123,7 @@ int gpu_log_stats(int* ncol, int* nspan) { *ncol = g_ncol; *nspan = g_nspan; ret
 
 // Block-cooperative: draw the log's columns [x0, x1) epoch by epoch. Reads only the log; writes only screen pixels of that band.
 void gpu_draw_tile(int tile, int ntiles, int tid, int nthreads) {
+  if (tile == 0 && tid == 0) g_tiles_tic = g_log_tic;
   const int x0 = tile * SCREENWIDTH / ntiles, x1 = (tile + 1) * SCREENWIDTH / ntiles;
   const int ne = g_ne, nspan = g_nspan;
   for (int e = 0; e < ne; e++) {
@@ -130,3 +134,12 @@ void gpu_draw_tile(int tile, int ntiles, int tid, int nthreads) {
     if (e + 1 < ne) gpu_bar_all();
   }
 }
+
+// Block-cooperative: the flat planes of the logged view, plane i on thread (tile * nthreads + tid) + k * ntiles * nthreads.
+void gpu_draw_planes(int tile, int ntiles, int tid, int nthreads) {
+  if (tile == 0 && tid == 0) g_planes_tic = g_log_tic;
+  const int n = gpu_plane_count();
+  for (int i = tile * nthreads + tid; i < n; i += ntiles * nthreads) gpu_plane_exec(i);
+}
+// post: every stage the logged view needs has run (a workload without the doom_planes / doom_draw tasks would silently lose pixels)
+int gpu_stages_ok(void) { return (gpu_plane_count() == 0 || g_planes_tic == g_log_tic) && ((g_ncol == 0 && g_nspan == 0) || g_tiles_tic == g_log_tic); }

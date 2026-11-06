@@ -34,6 +34,13 @@ void gpu_doom_sim(uint32_t input) {
 int gpu_doom_pending(void) { return gpu_split_pending(); }
 int gpu_doom_log_tic(void) { return gpu_split_log_tic(); }
 void gpu_doom_draw(int tile, int ntiles, int tid, int nthreads) { gpu_draw_tile(tile, ntiles, tid, nthreads); }
-void gpu_doom_post(void) { if (!gpu_split_pending()) return; gpu_post_arm(); D_Display(); gpu_split_done(); }
+void gpu_draw_planes(int tile, int ntiles, int tid, int nthreads); int gpu_stages_ok(void); void gpu_planes_release(void);
+void gpu_doom_planes(int tile, int ntiles, int tid, int nthreads) { gpu_draw_planes(tile, ntiles, tid, nthreads); }
+int gpu_doom_post(void) {                  // returns 1 when a stage of the logged view never ran
+  if (!gpu_split_pending()) return 0;
+  const int ok = gpu_stages_ok();
+  gpu_planes_release(); gpu_post_arm(); D_Display(); gpu_split_done();
+  return !ok;
+}
 // Thread 0: leave the tic protocol without running a tic (invalid call), so the workers still return.
 void gpu_doom_abort_tic(void) { gpu_par_begin(); gpu_par_end(); }

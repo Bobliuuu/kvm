@@ -108,6 +108,7 @@ def _opaque(extents=lambda a: {}):
 OPAQUE_OPS = {
     'doom_tick': _opaque(), 'doom_status': _opaque(),
     'doom_present': _opaque(lambda a: {'fb': 16256}),
+    'doom_sim': _opaque(), 'doom_draw': _opaque(), 'doom_post': _opaque(),
     'doom_tick_n': _opaque(), 'doom_status_n': _opaque(), 'doom_present_n': _opaque(lambda a: {'fb': 16256}),
     **{n: _opaque() for n in ('put', 'put_signal', 'signal', 'reduce2', 'reduce_put_signal', 'send_proxy', 'pack_bf16', 'unpack_bf16')},
 }

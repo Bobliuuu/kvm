@@ -53,11 +53,19 @@ llc -march=nvptx64 -mcpu=sm_80 -mattr=+ptx75 -O2 "$BUILD/doom_nv.ll" -o "$BUILD/
 # the PTX is always sm_80; ptxas compiles it forward for newer GPUs. Registers are capped so the engine's CTA leaves room for other work.
 "$NVCC" -gencode "arch=compute_80,code=$ARCH" -dc -maxrregcount=112 "$BUILD/doom.ptx" -o "$BUILD/doom_dev.o" 2>&1 | grep -v 'Potential out of bound' || true
 [ -s "$BUILD/doom_dev.o" ] || die "nvcc produced no doom_dev.o"
-for k in $(seq 1 $((DOOM_INSTANCES - 1))); do
+inst() {   # k: the same engine with every symbol prefixed i<k>_
+  local k=$1
   python3 "$DOOM_DIR/glue/prefix_symbols.py" "$BUILD/doom_nv.ll" "$BUILD/doom_i$k.ll" "i${k}_"
   llc -march=nvptx64 -mcpu=sm_80 -mattr=+ptx75 -O2 "$BUILD/doom_i$k.ll" -o "$BUILD/doom_i$k.ptx"
   "$NVCC" -gencode "arch=compute_80,code=$ARCH" -dc -maxrregcount=112 "$BUILD/doom_i$k.ptx" -o "$BUILD/doom_dev_i$k.o" 2>&1 | grep -v 'Potential out of bound' || true
   [ -s "$BUILD/doom_dev_i$k.o" ] || die "nvcc produced no doom_dev_i$k.o"
+}
+JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"; running=0
+for k in $(seq 1 $((DOOM_INSTANCES - 1))); do
+  inst "$k" & running=$((running + 1))
+  if [ "$running" -ge "$JOBS" ]; then wait -n || die "instance build failed"; running=$((running - 1)); fi
 done
+wait || die "instance build failed"
+for k in $(seq 1 $((DOOM_INSTANCES - 1))); do [ -s "$BUILD/doom_dev_i$k.o" ] || die "missing doom_dev_i$k.o"; done
 echo "$STAMP" > "$BUILD/stamp"
 info "built $BUILD/doom_dev.o ($(wc -c < "$BUILD/doom_dev.o") bytes, $ARCH)"

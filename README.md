@@ -1,14 +1,78 @@
-# KVM — a "kittens" GPU virtual machine (version 2 of [open-flapping-airplanes](https://github.com/Bobliuuu/open-flapping-airplanes))
+# KVM: a "kittens" GPU virtual machine
 
-Attempt to reproduce the idea from Flapping Airplanes' "kittens" VM: one persistent kernel takes over
-the whole GPU and interprets work itself, so an *entire training run* (every step: forward,
-loss, backward, optimizer) needs no kernel boundaries between ops or steps.
+One persistent CUDA kernel takes over every SM of the GPU and interprets a task DAG itself, so GPT training, GPT serving on the weights training just
+published, and real Doom run **in one kernel launch** with no kernel boundaries between ops, steps or workloads. A model description goes in
+(`frontend/kvmfe`), a bundle of tasks comes out (`runtime/`), a generic executor runs it (`kvm_exec.cu`), and each task logs which SM ran it and when.
+Version 2 of [open-flapping-airplanes](https://github.com/Bobliuuu/open-flapping-airplanes); an attempt to reproduce the capability Flapping Airplanes
+describes for their "kittens" VM (they publish no code or numbers; not affiliated).
 
-This tree has two layers:
+**Honest in one paragraph.** It runs and it is checked: the Doom frames equal the CPU engine's bytes, the loss tracks a CPU golden to 4e-6, served tokens equal a
+golden decode of the weights version they read. It is not fast: a whole-step CUDA graph beats it 3.9-5.4x on small models, its hand-written ops reach 0.26-0.51x of
+cuBLAS, and nothing has run on more than one GPU. The one place it beats the conventional stack is the `kvm.cu` prototype's small MLP (1.50x over its best baseline,
+1 run). Details: [claims audit](results/2026-11-04-claims-audit/README.md) and the tables below.
 
-1. `kvm.cu`: the original single-file prototype (80-byte instruction tape, MLP training, sm_80). Sections "How it works" to "Findings" below.
-2. The integrated framework around a generic executor, `kvm_exec.cu` + `include/kvm_exec.cuh`: a model description goes in, a task DAG runs on
-   the GPU, nothing in it is specific to one model. Map and status in the next two sections.
+![SM occupancy animation: dynamic vs static scheduler, real A100 trace](demo/assets/sm_occupancy.gif)
+
+*Real A100 trace (`%smid`, `%globaltimer`), a few ms slowed down: train, serve and Doom tasks landing on SMs under the dynamic scheduler (left) and a fixed 70/10/20 split
+(right). Double-click [`demo/index.html`](demo/index.html) for the interactive version with all charts (no network needed).*
+
+## Architecture
+
+![architecture](demo/assets/architecture.svg)
+
+## What runs (A100-SXM4-40GB; each row names the result that measured it)
+
+| Piece | Status | Evidence |
+|---|---|---|
+| One launch: training + serving + Doom (`demo/run_demo.sh`) | **Runs, all checks pass** (tiny GPT, 200 AdamW steps, 700 frames) | `results/2026-11-05-showcase` |
+| Doom frames vs CPU engine | **700/700 byte-identical**; every recorded run frame-exact | `results/2026-11-03-a100-doom`, `results/2026-11-05-showcase` |
+| Training vs CPU golden | loss within 2e-3 tolerance (measured 3.8e-6 on this model); GPT golden gap is 1xTF32 noise through AdamW | `results/2026-11-04-a100-gpt-golden` |
+| Executor (admission, slot recycling, version waits) | **8582 checks, 0 failed**; 2.1M-task DAG via 65,536 slots; sanitizers clean; dispatch 1.38 us/task, dependent hop 7.0 us | `results/2026-11-04-a100-exec-recycling` |
+| Scheduler (shares, reservations, EDF, inheritance) | Works. Beats static splits and flat queues under overload; **1.7-1.8x worse serve p99 than a plain priority queue**; the adaptive controller did not beat a hand-set priority | `results/2026-11-04-a100-sched-integrated`, `-adaptive` |
+| Operator packs (GPT, extra, 24-model zoo vs golden) | Correct. **Matmul 0.26-0.51x cuBLAS**, attention 15-30% below torch fp32 SDPA | `results/2026-11-04-a100-ops-perf`, `-models` |
+| VM vs conventional execution | `kvm.cu` MLP **wins 1.50x** (1 run) / 1.13x (32 runs). Executor vs whole-step CUDA graph: **loses 3.9-5.4x** (claims audit, small MLP / 3-layer transformer) | README results table, `results/2026-11-04-claims-audit` |
+| Scale-out (partitioner, no NCCL, 1T plan) | **Simulation and code only.** 14 stages pass on one GPU, 4 skip; nothing ran on 2+ GPUs, NVLink or a network | `results/2026-11-03-dist-singlebox`, `results/2026-11-04-scaleout-sim` |
+| Not built | device-side preemption, dynamic shapes, real bf16 storage, TMA/wgmma/tcgen05 | AGENTS.md |
+
+## Quickstart
+
+From a clean clone, no GPU, about a minute:
+
+```bash
+git clone https://github.com/Bobliuuu/kvm && cd kvm
+python3 -I -m unittest discover -s tests              # 145 CPU tests, ~10 s: compiler, ABI v2, CPU VM, GPT reference
+python3 -I -m unittest discover -s tests/frontend     # 59 tests, ~2 min: autodiff vs finite differences, golden models
+pip install matplotlib numpy pillow                   # plus ffmpeg on PATH
+demo/viz/make_all.sh                                  # regenerate every chart, the GIF and demo/index.html from the committed traces
+open demo/index.html                                  # or double-click it (xdg-open on Linux)
+```
+
+With a GPU box (CUDA 12, sm_80+, `rsync`, `flock`; hosts and keys come from the environment only, see [RUNNING_TESTS.md](RUNNING_TESTS.md)):
+
+```bash
+KVM_HOST=user@host demo/run_demo.sh tiny              # build, run, check: loss vs golden, versions, Doom vs CPU oracle, cadence
+KVM_HOST=user@host demo/viz/collect.sh                # the same demo under dynamic, static and global schedulers (+ frames)
+demo/viz/make_all.sh --package                        # copy those runs into results/2026-11-05-showcase and rebuild all assets + the video
+```
+
+Or on the GPU box itself, `kvm.cu` alone: `nvcc -O3 -arch=sm_80 -std=c++17 -DKTILE=32 -DKKC=64 -DKSTG=4 kvm.cu -o kvm && ./kvm --selftest && ./kvm --runs 8 --steps 300`.
+
+## Gallery (all generated by `demo/viz/` from real run data; the scale-out chart is a simulation and says so)
+
+| | |
+|---|---|
+| ![SM timeline](demo/assets/sm_timeline.svg) | Which SM ran which task (train / serve / Doom), dynamic vs static split: `sm_timeline.svg`, `sm_occupancy.svg` |
+| ![Doom gaps](demo/assets/doom_frame_gaps.svg) | Gap between Doom ticks per scheduler (`doom_frame_gaps.svg`) |
+| ![versions](demo/assets/weight_versions.svg) | Training publishes weight versions, serve requests read them (`weight_versions.svg`, `loss_tokens.svg`) |
+| ![scale-out](demo/assets/scaleout.svg) | Scale-out cost model, **simulated** (`scaleout.svg`); honest scoreboard in `scoreboard.svg` |
+
+Video (2.4 MB, [`demo/assets/doom_demo.mp4`](demo/assets/doom_demo.mp4)): the 700 real Doom frames the GPU produced next to the training loss and served tokens
+from the same run; every frame is compared (sha256) with the CPU oracle inside the video. Regenerate with `demo/viz/make_all.sh`.
+
+**Not shown / limits.** The committed run data is a single scheduler (dynamic) from an earlier tree (see `results/2026-11-05-showcase/README.md`) unless that README says
+otherwise; charts comparing schedulers only appear for modes that have data. Training finishes in the first 0.35 s of the 4.2 s run, so the loss curve and Doom run
+side by side only at the start. The GPU is mostly idle in this demo. Doom is not frame-paced here (it free-runs), so the gap histogram shows spacing under co-tenancy, not a 35 Hz proof.
+
 
 ## The integrated framework
 

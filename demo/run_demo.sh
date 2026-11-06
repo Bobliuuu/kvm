@@ -8,16 +8,19 @@
 #     --tf32           1xTF32 GEMMs instead of the exact 3xTF32 (the preset 'large' uses it)
 #     --sanitize       also run compute-sanitizer memcheck/racecheck/synccheck on a small demo, inside the same lock hold
 #     --tag NAME       run name (default: preset-UTC)     --lock-wait S (default 900)
+#     --reuse-build    keep the box's demo/kvm_run from the previous run (same commit) instead of recompiling (minutes on a busy box)
+#     --fetch-frames   also copy the Doom frames (GPU candidate and CPU oracle, ~45 MB each) back, for demo/viz/make_video.py
+#   KVM_REMOTE=dir    scratch directory on the box (default kvm-demo-scratch; rsync --delete: use your own name on a shared box)
 # Output: logs/<UTC>-demo-<tag>/ (git-ignored): run.json, trace.csv, observations.jsonl, check.log, report.json, kvm_run.log.
 set -euo pipefail
 HOST="${KVM_HOST:?set KVM_HOST=user@host (an environment variable, never a committed file)}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PRESET=tiny; MODEL=""; STEPS=""; WINDOW=""; SERVE_EVERY=""; FRAMES=""; TILING=""; PRECISE=""; GOLDEN=1; SANITIZE=0; TAG=""; LOCK_WAIT=900; RUN_ARGS=""
+PRESET=tiny; MODEL=""; STEPS=""; WINDOW=""; SERVE_EVERY=""; FRAMES=""; TILING=""; PRECISE=""; GOLDEN=1; SANITIZE=0; FETCH_FRAMES=0; SKIP_BUILD=0; TAG=""; LOCK_WAIT=900; RUN_ARGS=""
 if [ $# -gt 0 ] && [[ "$1" != -* ]]; then PRESET="$1"; shift; fi
 while [ $# -gt 0 ]; do
   case "$1" in
     --model) MODEL="$2"; shift 2;; --steps) STEPS="$2"; shift 2;; --window) WINDOW="$2"; shift 2;; --serve-every) SERVE_EVERY="$2"; shift 2;;
-    --frames) FRAMES="$2"; shift 2;; --tiling) TILING="$2"; shift 2;; --tf32) PRECISE=0; shift;; --sanitize) SANITIZE=1; shift;;
+    --frames) FRAMES="$2"; shift 2;; --tiling) TILING="$2"; shift 2;; --tf32) PRECISE=0; shift;; --sanitize) SANITIZE=1; shift;; --fetch-frames) FETCH_FRAMES=1; shift;; --reuse-build) SKIP_BUILD=1; shift;;
     --tag) TAG="$2"; shift 2;; --lock-wait) LOCK_WAIT="$2"; shift 2;; --) shift; RUN_ARGS="$*"; break;;
     *) echo "unknown option $1" >&2; exit 2;;
   esac
@@ -31,12 +34,12 @@ esac
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"; TAG="${TAG:-$PRESET-$STAMP}"
 LOG="$ROOT/logs/$STAMP-demo-$TAG"; mkdir -p "$LOG"
 SSH="ssh -o StrictHostKeyChecking=no -o BatchMode=yes ${KVM_KEY:+-i $KVM_KEY}"
-REMOTE='kvm-demo-scratch'
+REMOTE="${KVM_REMOTE:-kvm-demo-scratch}"
 {
 echo "# demo $TAG  host=<KVM_HOST>  commit=$(git -C "$ROOT" rev-parse --short HEAD)$(git -C "$ROOT" diff --quiet || echo +dirty)  preset=$PRESET model=$MODEL steps=$STEPS window=$WINDOW serve_every=$SERVE_EVERY frames=$FRAMES tiling=$TILING precise=$PRECISE sanitize=$SANITIZE"
 rsync -az -e "$SSH" --delete --exclude .git --exclude logs --exclude docs --exclude results --exclude 'doom/build' --exclude 'doom/third_party' --exclude runs --exclude 'demo/kvm_run' "$ROOT/" "$HOST:$REMOTE/"
 # Detached on the box (nohup): a long wait in the GPU-lock queue must not depend on this ssh session. We poll the remote log.
-$SSH "$HOST" "cd $REMOTE && mkdir -p runs && rm -f runs/$TAG.done && (KVM_COMMIT='$(git -C "$ROOT" rev-parse --short HEAD)' DEMO_TAG='$TAG' MODEL='$MODEL' TILING='$TILING' STEPS='$STEPS' WINDOW='$WINDOW' SERVE_EVERY='$SERVE_EVERY' FRAMES='$FRAMES' PRECISE='$PRECISE' MAXB='$MAXB' SANITIZE='$SANITIZE' GOLDEN='$GOLDEN' RUN_ARGS='$RUN_ARGS' LOCK_WAIT='$LOCK_WAIT' nohup bash -c 'bash demo/remote_demo.sh > runs/$TAG.log 2>&1; echo \$? > runs/$TAG.done' > /dev/null 2>&1 &)"
+$SSH "$HOST" "cd $REMOTE && mkdir -p runs && rm -f runs/$TAG.done && (SKIP_BUILD='$SKIP_BUILD' KVM_COMMIT='$(git -C "$ROOT" rev-parse --short HEAD)' DEMO_TAG='$TAG' MODEL='$MODEL' TILING='$TILING' STEPS='$STEPS' WINDOW='$WINDOW' SERVE_EVERY='$SERVE_EVERY' FRAMES='$FRAMES' PRECISE='$PRECISE' MAXB='$MAXB' SANITIZE='$SANITIZE' GOLDEN='$GOLDEN' RUN_ARGS='$RUN_ARGS' LOCK_WAIT='$LOCK_WAIT' nohup bash -c 'bash demo/remote_demo.sh > runs/$TAG.log 2>&1; echo \$? > runs/$TAG.done' > /dev/null 2>&1 &)"
 off=0
 while :; do
   sleep 20
@@ -50,6 +53,7 @@ while :; do
 done
 } 2>&1 | tee "$LOG/run.log"
 status=${PIPESTATUS[0]}
-rsync -az -e "$SSH" --exclude 'buffers' --exclude 'demo' --exclude 'demo_small' --exclude 'oracle' --exclude 'doom_candidate' "$HOST:$REMOTE/runs/$TAG/" "$LOG/remote/" || true
+FRAME_EXCL=(--exclude oracle --exclude doom_candidate); [ "$FETCH_FRAMES" = 1 ] && FRAME_EXCL=()
+rsync -az -e "$SSH" --exclude 'buffers' --exclude 'demo' --exclude 'demo_small' "${FRAME_EXCL[@]}" "$HOST:$REMOTE/runs/$TAG/" "$LOG/remote/" || true
 echo "logs: $LOG (exit $status)"
 exit "$status"

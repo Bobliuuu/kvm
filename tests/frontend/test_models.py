@@ -132,6 +132,21 @@ class Features(unittest.TestCase):
         plain = compile_training(SMALL, TrainConfig(steps=1), CPU).spec
         self.assertFalse(any(t.get('args', {}).get('flags', 0) & 16 for t in plain['graphs'][0]['tasks']))
 
+    def test_tf32_trunc_flags_only_big_plain_1xtf32_tiles(self):
+        # flag 256 (operands truncated, not rounded) goes on matmul_tile tasks with a 128x128 / 256x128 tile, never on 64x64, 3xTF32 or other variants
+        wide = models.LlamaConfig(**{**SMALL.__dict__, 'vocab': 256, 'd_model': 256, 'heads': 4, 'kv_heads': 2, 'ffn': 256, 'batch': 8, 'seq': 32})
+        for tiling in (Tiling.preset('cpu', mm_tile=128, mm_min_tiles=1, mm_min_eff=0.0, tf32_trunc=True),
+                       Tiling.preset('cpu', mm_tile=256, mm_min_tiles=1, mm_min_eff=0.0, tf32_trunc=True)):
+            tasks = compile_training(wide, TrainConfig(steps=1), tiling).spec['graphs'][0]['tasks']
+            gemms = [t['args']['flags'] for t in tasks if t['op'] == 'matmul_tile']
+            self.assertTrue(any(f & 256 for f in gemms))
+            self.assertTrue(all((f & 256) == 0 or f & (32 | 64) for f in gemms))
+        small = compile_training(SMALL, TrainConfig(steps=1), Tiling.preset('cpu', tf32_trunc=True)).spec['graphs'][0]['tasks']
+        self.assertFalse(any(t.get('args', {}).get('flags', 0) & 256 for t in small))
+        prec = compile_training(wide, TrainConfig(steps=1), Tiling.preset('cpu', mm_tile=128, mm_min_tiles=1, mm_min_eff=0.0, tf32_trunc=True,
+                                                                           precise=True)).spec['graphs'][0]['tasks']
+        self.assertFalse(any(t.get('args', {}).get('flags', 0) & 256 for t in prec))
+
     def test_remat_same_result_less_memory(self):
         base = models.LlamaConfig(**{**SMALL.__dict__, 'layers': 3})
         rm = models.LlamaConfig(**{**base.__dict__, 'remat': True})

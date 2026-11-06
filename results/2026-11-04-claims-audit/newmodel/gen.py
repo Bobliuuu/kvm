@@ -37,6 +37,13 @@ class MLPNet(Module):
             x = h
         return self.head(b, x, w)
 
+    def batch_streams(self, micros):   # training-program protocol (train.build_training), added for the generic frontend
+        from kvmfe.models import token_streams
+        return token_streams(self.cfg, micros)
+
+    def losses(self, b, batch, w, grad_scale=1.0):
+        return [('loss', b.ce_loss(self(b, batch['ids'], w), batch['tgt'], grad_scale))]
+
 
 def build(case, steps):
     tl = Tiling.preset('cpu')

@@ -1,0 +1,5 @@
+    Max Clocks
+        Graphics                                       : 1410 MHz
+        SM                                             : 1410 MHz
+        Memory                                         : 1593 MHz
+        Video                                          : 1290 MHz

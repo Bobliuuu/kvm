@@ -1,0 +1,20 @@
+mlp blocks 4 rep 1
+[kvm_exec][I] kernel done: 27600/27600 tasks in 175.056 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp blocks 4 rep 2
+[kvm_exec][I] kernel done: 27600/27600 tasks in 173.903 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp blocks 8 rep 1
+[kvm_exec][I] kernel done: 27600/27600 tasks in 118.498 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp blocks 8 rep 2
+[kvm_exec][I] kernel done: 27600/27600 tasks in 120.168 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp blocks 16 rep 1
+[kvm_exec][I] kernel done: 27600/27600 tasks in 116.023 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp blocks 16 rep 2
+[kvm_exec][I] kernel done: 27600/27600 tasks in 115.016 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp blocks 32 rep 1
+[kvm_exec][I] kernel done: 27600/27600 tasks in 92.613 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp blocks 32 rep 2
+[kvm_exec][I] kernel done: 27600/27600 tasks in 91.791 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp blocks 64 rep 1
+[kvm_exec][I] kernel done: 27600/27600 tasks in 91.754 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp blocks 64 rep 2
+[kvm_exec][I] kernel done: 27600/27600 tasks in 94.457 ms, 26 records, 12 ring wraps, 0 backpressure waits

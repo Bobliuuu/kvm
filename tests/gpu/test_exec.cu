@@ -698,14 +698,21 @@ static bool suite_checker() {
 // ================= dispatch cost =================
 static bool suite_bench() {
   printf("  %-34s %8s %10s %12s %10s\n", "case", "blocks", "tasks", "us/task", "tasks/s");
+  double one_worker_us = 0;   // blocks = 2 -> one worker: its whole fetch -> run -> complete cycle, no contention
   auto indep = [&](int blocks, int total, int bundle_sz) {
     KvmConfig c = small_cfg(blocks); c.live_cap = 1 << 14; c.max_tasks = 1 << 17; c.ring_words = 1 << 18; KvmExec ex(c); ex.start();
     for (int done = 0; done < total; done += bundle_sz) { KvmBundleBuilder bb; for (int i = 0; i < bundle_sz; ++i) bb.add("noop", {}); ex.submit(bb.build()); }
     ex.close(); const KvmResult& r = ex.finish();
     unsigned long long t0 = ~0ull, t1 = 0; for (auto& t : r.trace) { t0 = std::min(t0, t.start_ns); t1 = std::max(t1, t.end_ns); }
     double us = (t1 - t0) / 1e3; printf("  %-34s %8d %10d %12.4f %10.3g\n", "independent noop", r.grid, r.done, us / r.done, r.done / (us / 1e6));
+    if (blocks == 2) one_worker_us = us / r.done;
   };
   for (int b : {2, 8, 32, 108, 0}) indep(b, 64 * 1024, 4096);
+  {  // Perf budget (A100 only; the lock-held cycle is stable to +-1%): the completion path costs 3 dependent L2 round trips less than the
+     // original (one fence warp, deferred exec_count check, window credit and slot recycle overlapped, posted done count): 7.0 -> 5.8 us.
+    cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0));
+    if (strstr(pr.name, "A100")) CHECK(one_worker_us < 6.2, "one-worker task cycle %.2f us exceeds the 6.2 us budget (original completion path: 6.3-7.0)", one_worker_us);
+  }
   auto chain = [&](int blocks, int len, const char* op) {
     KvmConfig c = small_cfg(blocks); c.live_cap = 1 << 13; c.ring_words = 1 << 17; KvmExec ex(c); ex.start();
     KvmBundleBuilder bb; int prev = -1; for (int i = 0; i < len; ++i) { int t = bb.add(op, op[0] == 's' ? std::vector<KvmArg>{I(0)} : std::vector<KvmArg>{}); if (prev >= 0) bb.edge(prev, t); prev = t; }

@@ -39,14 +39,14 @@ __global__ void fill(float* p, size_t n, unsigned seed) {
 }
 static cublasHandle_t g_h;
 // big: 0 = 64x64 tile, 1 = 128x128 (flag 32), 2 = 256x128 (flag 64); prec = 3xTF32
-static void run(int M, int N, int K, int ta, int tb, int prec, int big) {
+static void run(int M, int N, int K, int ta, int tb, int prec, int big, int bf = 0) {
     float *A, *B, *C, *R; CK(cudaMalloc(&A, (size_t)M * K * 4)); CK(cudaMalloc(&B, (size_t)K * N * 4)); CK(cudaMalloc(&C, (size_t)M * N * 4 + 16)); CK(cudaMalloc(&R, (size_t)M * N * 4));
     fill<<<1024, 256>>>(A, (size_t)M * K, 1); fill<<<1024, 256>>>(B, (size_t)K * N, 2);
     KvmBuf tab[3]{}; tab[0].p = A; tab[0].rows = ta ? K : M; tab[0].cols = ta ? M : K; tab[1].p = B; tab[1].rows = tb ? N : K; tab[1].cols = tb ? K : N; tab[2].p = C; tab[2].rows = M; tab[2].cols = N;
     for (auto& b : tab) b.ld = b.cols;
     KvmBuf* tab_d; CK(cudaMalloc(&tab_d, sizeof tab)); CK(cudaMemcpy(tab_d, tab, sizeof tab, cudaMemcpyHostToDevice));
     int32_t* err; CK(cudaMalloc(&err, 4)); CK(cudaMemset(err, 0, 4));
-    const int bm = big == 2 ? 256 : big == 1 ? 128 : 64, bn = big ? 128 : 64, fl = ta | (tb << 1) | (prec << 4) | (big == 1 ? 32 : big == 2 ? 64 : 0);
+    const int bm = big == 2 ? 256 : big == 1 ? 128 : 64, bn = big ? 128 : 64, fl = ta | (tb << 1) | (prec << 4) | (bf << 7) | (big == 1 ? 32 : big == 2 ? 64 : 0);
     const float alpha = 1.f; int32_t af; memcpy(&af, &alpha, 4);
     std::vector<int32_t> w; int nt = 0;
     for (int m0 = 0; m0 < M; m0 += bm) for (int n0 = 0; n0 < N; n0 += bn) { int32_t a[13] = {0, 1, 2, -1, -1, -1, m0, n0, M, N, K, fl, af}; w.insert(w.end(), a, a + 13); nt++; }
@@ -64,10 +64,10 @@ static void run(int M, int N, int K, int ta, int tb, int prec, int big) {
     std::vector<float> hc((size_t)M * N), hr((size_t)M * N);
     CK(cudaMemcpy(hc.data(), C, hc.size() * 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(hr.data(), R, hr.size() * 4, cudaMemcpyDeviceToHost));
     double me = 0, mx = 0; for (size_t i = 0; i < hc.size(); i++) { me = std::max(me, (double)fabsf(hc[i] - hr[i])); mx = std::max(mx, (double)fabsf(hr[i])); }
-    const double tol = prec ? 2e-6 * sqrt((double)K) : 6e-3;
+    const double tol = prec ? 2e-6 * sqrt((double)K) : bf ? 3e-2 : 6e-3;
     cublasSetMathMode(g_h, prec ? CUBLAS_DEFAULT_MATH : CUBLAS_TF32_TENSOR_OP_MATH);
     double flops = 2.0 * M * N * K, tk = time_ms(kvm, 10), tc = time_ms(cb, 10);
-    printf("MM %-7s %c%c %5dx%5dx%5d tile %-7s kvm %7.1f cuBLAS %7.1f TFLOP/s  ratio %.3f  err_vs_fp32 %.1e %s dev_err %d\n", prec ? "3xTF32" : "TF32", ta ? 'T' : 'N', tb ? 'T' : 'N', M, N, K,
+    printf("MM %-7s %c%c %5dx%5dx%5d tile %-7s kvm %7.1f cuBLAS %7.1f TFLOP/s  ratio %.3f  err_vs_fp32 %.1e %s dev_err %d\n", prec ? "3xTF32" : bf ? "bf16" : "TF32", ta ? 'T' : 'N', tb ? 'T' : 'N', M, N, K,
            big == 2 ? "256x128" : big == 1 ? "128x128" : "64x64", flops / tk * 1e-9, flops / tc * 1e-9, tc / tk, me / mx, me / mx < tol ? "ok" : "FAIL", e);
     fflush(stdout);
     cudaFree(A); cudaFree(B); cudaFree(C); cudaFree(R); cudaFree(tab_d); cudaFree(err); cudaFree(wd);
@@ -85,6 +85,7 @@ int main(int argc, char** argv) {
             if (s.M == 4096 && s.N == 4096) { run(s.M, s.N, s.K, 1, 0, 0, t); run(s.M, s.N, s.K, 0, 1, 0, t); }
         }
     }
+    if (!getenv("MM_NOBF")) for (int t = 0; t < 3; t++) { run(4096, 4096, 4096, 0, 0, 0, t, 1); if (!getenv("MM_ONLY_NN")) { run(4096, 4096, 4096, 1, 0, 0, t, 1); run(4096, 4096, 4096, 0, 1, 0, t, 1); } }
     if (!getenv("MM_NOPREC")) for (int t = 0; t < 3; t++) run(4096, 4096, 4096, 0, 0, 1, t);
     return 0;
 }

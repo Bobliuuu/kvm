@@ -717,7 +717,7 @@ def _attn_full_bwd_dkv(b, a):
             for j, p, ds in terms:
                 dv[j] = [x + p * y for x, y in zip(dv[j], do)]
                 dk[j] = [x + a['scale'] * ds * y for x, y in zip(dk[j], q)]
-    for j in range(k0, k1):
+    for j in range(a['k0'], k1):
         b['dk'].put(bb * T + j, kvh * hd, dk[j])
         b['dv'].put(bb * T + j, kvh * hd, dv[j])
 

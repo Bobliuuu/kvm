@@ -49,7 +49,7 @@
 // fit in the 164 KiB of an A100. The executor must opt in with cudaFuncSetAttribute(MaxDynamicSharedMemorySize) (it does, from
 // KVM_GPT_SMEM_BYTES).
 __host__ __device__ constexpr int kvm_gpt_smem_bytes(int max_hd) {
-    return max_hd > 64 ? 104 * 1024 : (1536 * KVM_GPT_BIG_BK * KVM_GPT_BIG_NST > 56 * 1024 ? 1536 * KVM_GPT_BIG_BK * KVM_GPT_BIG_NST : 56 * 1024);
+    return max_hd > 64 ? 104 * 1024 : (1024 * KVM_GPT_BIG_BK * KVM_GPT_BIG_NST > 56 * 1024 ? 1024 * KVM_GPT_BIG_BK * KVM_GPT_BIG_NST : 56 * 1024);
 }
 #ifndef KVM_GPT_MAX_HD
 #define KVM_GPT_MAX_HD 64   // largest attention head size the launch must support (16/32/64 -> 56 KiB, 128 -> 104 KiB)
@@ -332,6 +332,38 @@ KVM_GPT_DEVI void tile_cvt(float* dst) {
     }
 }
 
+// Fast per-thread stream of one operand tile (ROWS x COLS, KC or MC layout as in tile_async) for the common case where every chunk is
+// in range and 16-byte aligned (checked once per task by the caller): the global pointer, row stride and shared offset of the thread's
+// first chunk are computed once and each stage is `NC` cp.async with a pointer bump, instead of re-deriving row, column, bounds and swizzle per
+// chunk per k step. Chunk s of a thread is RSTEP rows below chunk 0; RSTEP is a multiple of 8, so it leaves the swizzle (row&7, (row>>1)&3,
+// row&3) unchanged and the shared offset is chunk 0's plus s*RSTEP*COLS.
+template <bool KC, int ROWS, int COLS>
+struct TileStream {
+    static constexpr int CPR = COLS / 4, NC = ROWS * CPR / KVM_GPT_THREADS, RSTEP = KVM_GPT_THREADS / CPR;
+    static_assert(ROWS * CPR % KVM_GPT_THREADS == 0 && RSTEP % 8 == 0, "tile must give whole, swizzle-neutral chunk strides");
+    const float* p; size_t rstride, adv; int s0;
+    KVM_GPT_DEVI void init(const float* src, int ld, int gr0, int gc0, int kstep) {   // kstep: k elements per stage
+        const int row = threadIdx.x / CPR, c4 = (threadIdx.x % CPR) * 4;
+        p = src + (size_t)(gr0 + row) * ld + gc0 + c4;
+        rstride = (size_t)RSTEP * ld; adv = KC ? (size_t)kstep : (size_t)kstep * ld;
+        s0 = KC ? sw_kc<COLS>(row, c4) : sw_mc<COLS>(row, c4);
+    }
+    KVM_GPT_DEVI void issue(float* dst) {
+#pragma unroll
+        for (int s = 0; s < NC; s++) cp_async16(dst + s0 + s * RSTEP * COLS, p + s * rstride);
+        p += adv;
+    }
+    KVM_GPT_DEVI void cvt(float* dst) const {   // rounds this thread's chunks to tf32 in place (see tile_cvt)
+#pragma unroll
+        for (int s = 0; s < NC; s++) {
+            uint4* d = reinterpret_cast<uint4*>(dst + s0 + s * RSTEP * COLS);
+            uint4 v = *d;
+            v.x = tf32_rnd(v.x); v.y = tf32_rnd(v.y); v.z = tf32_rnd(v.z); v.w = tf32_rnd(v.w);
+            *d = v;
+        }
+    }
+};
+
 // 64x64 output tile, BK=32, 3-stage cp.async pipeline (3 x 16 KiB = 48 KiB, the epilogue reuses it), 8 warps, mma.sync m16n8k8
 // TF32. Warp (wm, wn, kh): 32x32 sub-tile at (wm*32, wn*32) = 2 m16 x 4 n8 fragments, reducing k8-steps {2kh, 2kh+1} of each BK=32
 // slab; the two k-halves are summed in the epilogue. Shared tiles keep the global orientation (coalesced loads for all four
@@ -517,11 +549,18 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
 #pragma unroll
             for (int e = 0; e < 4; e++) acc[i][j][e] = 0.f;
     const int nk = (K + BK - 1) / BK;
+    using SA = TileStream<!TA, TA ? BK : BM, TA ? BM : BK>; using SB = TileStream<TB, TB ? BN : BK, TB ? BK : BN>;
+    SA sa; SB sb;
+    const bool fa = va && (K % BK) == 0 && m0 + BM <= M, fb = vb && (K % BK) == 0 && n0 + BN <= N;   // whole tiles in range: TileStream path
+    if (fa) { if (TA) sa.init(A, lda, 0, m0, BK); else sa.init(A, lda, m0, 0, BK); }
+    if (fb) { if (TB) sb.init(B, ldb, n0, 0, BK); else sb.init(B, ldb, 0, n0, BK); }
     auto issue = [&](int it) {
         float* As = sm + (it % NST) * STAGE; float* Bs = As + ATILE;
         const int kk = it * BK;
-        if (TA) tile_async<false, BK, BM>(As, A, lda, kk, m0, K, M, va); else tile_async<true, BM, BK>(As, A, lda, m0, kk, M, K, va);
-        if (TB) tile_async<true, BN, BK>(Bs, B, ldb, n0, kk, N, K, vb); else tile_async<false, BK, BN>(Bs, B, ldb, kk, n0, K, N, vb);
+        if (fa) sa.issue(As);
+        else if (TA) tile_async<false, BK, BM>(As, A, lda, kk, m0, K, M, va); else tile_async<true, BM, BK>(As, A, lda, m0, kk, M, K, va);
+        if (fb) sb.issue(Bs);
+        else if (TB) tile_async<true, BN, BK>(Bs, B, ldb, n0, kk, N, K, vb); else tile_async<false, BK, BN>(Bs, B, ldb, kk, n0, K, N, vb);
     };
 #pragma unroll
     for (int p = 0; p < NST - 1; p++) { if (p < nk) issue(p); cp_commit(); }
@@ -530,8 +569,8 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
         const float* As = sm + (it % NST) * STAGE; const float* Bs = As + ATILE;
         if constexpr (!PREC && KVM_GPT_SMEM_CVT) {   // round the operands once per CTA, in shared memory (see tile_cvt)
             float* Aw = sm + (it % NST) * STAGE; float* Bw = Aw + ATILE;
-            if (TA) tile_cvt<false, BK, BM>(Aw); else tile_cvt<true, BM, BK>(Aw);
-            if (TB) tile_cvt<true, BN, BK>(Bw); else tile_cvt<false, BK, BN>(Bw);
+            if (fa) sa.cvt(Aw); else if (TA) tile_cvt<false, BK, BM>(Aw); else tile_cvt<true, BM, BK>(Aw);
+            if (fb) sb.cvt(Bw); else if (TB) tile_cvt<true, BN, BK>(Bw); else tile_cvt<false, BK, BN>(Bw);
         }
         __syncthreads();
         if (it + NST - 1 < nk) issue(it + NST - 1);

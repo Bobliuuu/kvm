@@ -52,7 +52,11 @@ static void work(int tid) {
   for (int x = tid; x < SCREENWIDTH; x += 256) { int i = g_head[x]; while (i >= 0) { do_col(&g_col[i]); i = g_col[i].next; } g_head[x] = -1; }
   for (int i = tid; i < g_nspan; i += 256) do_span(&g_span[i]);
 }
-static void log_reset(void) { for (int x = 0; x < SCREENWIDTH; x++) g_head[x] = -1; g_ncol = g_nspan = 0; g_epoch = 0; g_ne = 0; }
+static int g_span_overflow_dummy;
+static void log_reset(void);
+static void log_reset_impl(void) { for (int x = 0; x < SCREENWIDTH; x++) g_head[x] = -1; g_ncol = g_nspan = 0; g_epoch = 0; g_ne = 0; }
+static int g_span_overflow;
+static void log_reset(void) { log_reset_impl(); g_span_overflow = 0; }
 // thread 0: execute the whole log serially, in recording order, and empty it
 static void log_drain(void) {
   for (int e = 0; e < g_ne; e++) {
@@ -61,9 +65,10 @@ static void log_drain(void) {
   }
   log_reset();
 }
+void gpu_planes_exec_serial(void);
 void gpu_flush(void) {                                   // thread 0 only
   if (!gpu_par_active) return;
-  if (g_split) { log_drain(); return; }                  // fuzz / translated columns read the screen: everything logged so far must be on it first
+  if (g_split) { gpu_planes_exec_serial(); if (g_ne == 0 && g_nspan > 0) g_ne = 1; log_drain(); return; }                  // fuzz / translated columns read the screen: everything logged so far must be on it first
   if (g_ncol == 0 && g_nspan == 0) return;
 #ifdef DOOM_PROF
   unsigned long long t0 = clk(); doom_prof[8] += g_ncol; doom_prof[9] += g_nspan; doom_prof[10]++;
@@ -90,6 +95,13 @@ void gpu_q_span(byte* dest, const byte* src, const byte* cm, unsigned position, 
   if (g_nspan == MAXSPAN) gpu_flush();
   spancmd_t* s = &g_span[g_nspan++];
   s->dest = dest; s->src = src; s->cm = cm; s->position = position; s->step = step; s->count = count; s->x = x; s->epoch = g_epoch; g_ne = g_epoch + 1;
+}
+// planes stage (many threads): append a span computed from a plane; order within the epoch does not matter (spans never overlap)
+void gpu_q_span_mt(byte* dest, const byte* src, const byte* cm, unsigned position, unsigned step, int count, int x) {
+  const int i = __atomic_fetch_add(&g_nspan, 1, __ATOMIC_RELAXED);
+  if (i >= MAXSPAN) { g_span_overflow = 1; return; }
+  spancmd_t* s = &g_span[i];
+  s->dest = dest; s->src = src; s->cm = cm; s->position = position; s->step = step; s->count = count; s->x = x; s->epoch = 0;
 }
 void gpu_par_init(void) { log_reset(); g_exit = 0; gpu_par_active = 0; g_split = 0; }
 void gpu_par_begin(void) { gpu_par_active = 1; }
@@ -125,7 +137,8 @@ int gpu_log_stats(int* ncol, int* nspan) { *ncol = g_ncol; *nspan = g_nspan; ret
 void gpu_draw_tile(int tile, int ntiles, int tid, int nthreads) {
   if (tile == 0 && tid == 0) g_tiles_tic = g_log_tic;
   const int x0 = tile * SCREENWIDTH / ntiles, x1 = (tile + 1) * SCREENWIDTH / ntiles;
-  const int ne = g_ne, nspan = g_nspan;
+  const int nspan = g_nspan < MAXSPAN ? g_nspan : MAXSPAN;
+  const int ne = g_ne > 0 ? g_ne : (nspan > 0 ? 1 : 0);
   for (int e = 0; e < ne; e++) {
     for (int x = x0 + tid; x < x1; x += nthreads) {
       for (int i = g_head[x]; i >= 0 && g_col[i].epoch <= e; i = g_col[i].next) if (g_col[i].epoch == e) do_col(&g_col[i]);
@@ -142,4 +155,4 @@ void gpu_draw_planes(int tile, int ntiles, int tid, int nthreads) {
   for (int i = tile * nthreads + tid; i < n; i += ntiles * nthreads) gpu_plane_exec(i);
 }
 // post: every stage the logged view needs has run (a workload without the doom_planes / doom_draw tasks would silently lose pixels)
-int gpu_stages_ok(void) { return (gpu_plane_count() == 0 || g_planes_tic == g_log_tic) && ((g_ncol == 0 && g_nspan == 0) || g_tiles_tic == g_log_tic); }
+int gpu_stages_ok(void) { return !g_span_overflow && (gpu_plane_count() == 0 || g_planes_tic == g_log_tic) && ((g_ncol == 0 && g_nspan == 0) || g_tiles_tic == g_log_tic); }

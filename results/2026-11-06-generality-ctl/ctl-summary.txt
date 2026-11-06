@@ -1,0 +1,11 @@
+PASS branch_neg: exit 0, executor skipped 1 tasks, expected 1 {'skipped_bodies': 1, 'predicated_tasks': 2}
+PASS branch_pos: exit 0, executor skipped 1 tasks, expected 1 {'skipped_bodies': 1, 'predicated_tasks': 2}
+PASS gemmloop_0.5: exit 0, executor skipped 4 tasks, expected 4 {'trips': 12, 'cap': 14, 'skipped_bodies': 2, 'predicated_tasks': 28}
+PASS gemmloop_1: exit 0, executor skipped 14 tasks, expected 14 {'trips': 7, 'cap': 14, 'skipped_bodies': 7, 'predicated_tasks': 28}
+PASS gemmloop_200: exit 0, executor skipped 26 tasks, expected 26 {'trips': 1, 'cap': 14, 'skipped_bodies': 13, 'predicated_tasks': 28}
+PASS loop_0.5: exit 0, executor skipped 12 tasks, expected 12 {'trips': 0, 'cap': 12, 'skipped_bodies': 12, 'predicated_tasks': 12}
+PASS loop_10: exit 0, executor skipped 8 tasks, expected 8 {'trips': 4, 'cap': 12, 'skipped_bodies': 8, 'predicated_tasks': 12}
+PASS loop_1000: exit 0, executor skipped 2 tasks, expected 2 {'trips': 10, 'cap': 12, 'skipped_bodies': 2, 'predicated_tasks': 12}
+PASS loop_1e+09: exit 0, executor skipped 0 tasks, expected 0 {'trips': 12, 'cap': 12, 'skipped_bodies': 0, 'predicated_tasks': 12}
+PASS loop_3: exit 0, executor skipped 10 tasks, expected 10 {'trips': 2, 'cap': 12, 'skipped_bodies': 10, 'predicated_tasks': 12}
+ALL CTL CASES PASS

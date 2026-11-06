@@ -55,7 +55,9 @@ class Encoder(Module):
         self.d, self.heads, self.seq = d, heads, seq
         self.embed = Linear('enc.embed', fin, d, True, 0.3)
         self.n1, self.n2, self.nf = Norm('enc.n1', d, 'layernorm'), Norm('enc.n2', d, 'layernorm'), Norm('enc.nf', d, 'layernorm')
-        self.q, self.k, self.v, self.o = (Linear(f'enc.{n}', d, d, True, 0.2) for n in 'qkvo')
+        # no key bias: its gradient is exactly zero (softmax ignores a per-query constant), and AdamW turns the float noise of a
+        # zero gradient into +-lr steps, which would make any CPU/GPU comparison of v.enc.k.b meaningless
+        self.q, self.k, self.v, self.o = (Linear(f'enc.{n}', d, d, n != 'k', 0.2) for n in 'qkvo')
         self.fc1, self.fc2 = Linear('enc.fc1', d, 2 * d, True, 0.2), Linear('enc.fc2', 2 * d, d, True, 0.2)
         self.pool, self.head = SequencePool('enc.pool', seq), Linear('enc.head', d, out, True, 0.3)
         self.absorb(self.embed, self.n1, self.n2, self.nf, self.q, self.k, self.v, self.o, self.fc1, self.fc2, self.head)

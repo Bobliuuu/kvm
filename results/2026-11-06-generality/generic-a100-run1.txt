@@ -1,0 +1,127 @@
+OUT/reg_mlp_cpu/bundle: reg_mlp, 3 steps, 93 tasks, cpu tiling, 3xTF32
+OUT/reg_mlp_a100/bundle: reg_mlp, 3 steps, 93 tasks, a100 tiling, 3xTF32
+OUT/res_rms_mlp_cpu/bundle: res_rms_mlp, 3 steps, 210 tasks, cpu tiling, 3xTF32
+OUT/res_rms_mlp_a100/bundle: res_rms_mlp, 3 steps, 180 tasks, a100 tiling, 3xTF32
+OUT/cnn1d_cpu/bundle: cnn1d, 3 steps, 426 tasks, cpu tiling, 3xTF32
+OUT/cnn1d_a100/bundle: cnn1d, 3 steps, 186 tasks, a100 tiling, 3xTF32
+OUT/encoder_reg_cpu/bundle: encoder_reg, 2 steps, 470 tasks, cpu tiling, 3xTF32
+OUT/encoder_reg_a100/bundle: encoder_reg, 2 steps, 226 tasks, a100 tiling, 3xTF32
+OUT/mlp_ce_cpu/bundle: mlp_ce, 3 steps, 414 tasks, cpu tiling, 3xTF32
+OUT/mlp_ce_a100/bundle: mlp_ce, 3 steps, 153 tasks, a100 tiling, 3xTF32
+OUT/resmlp_rms_cpu/bundle: resmlp_rms, 3 steps, 753 tasks, cpu tiling, 3xTF32
+OUT/resmlp_rms_a100/bundle: resmlp_rms, 3 steps, 237 tasks, a100 tiling, 3xTF32
+OUT/bad_dims_cpu/bundle: bad_dims, 3 steps, 300 tasks, cpu tiling, 3xTF32
+OUT/bad_dims_a100/bundle: bad_dims, 3 steps, 84 tasks, a100 tiling, 3xTF32
+OUT/pg_policy_cpu/bundle: pg_policy, 3 steps, 75 tasks, cpu tiling, 3xTF32
+OUT/pg_policy_a100/bundle: pg_policy, 3 steps, 75 tasks, a100 tiling, 3xTF32
+OUT/dqn_q_cpu/bundle: dqn_q, 3 steps, 96 tasks, cpu tiling, 3xTF32
+OUT/dqn_q_a100/bundle: dqn_q, 3 steps, 96 tasks, a100 tiling, 3xTF32
+reg_mlp_cpu exit 0
+reg_mlp_a100 exit 0
+res_rms_mlp_cpu exit 0
+res_rms_mlp_a100 exit 0
+cnn1d_cpu exit 0
+cnn1d_a100 exit 0
+encoder_reg_cpu exit 0
+encoder_reg_a100 exit 0
+mlp_ce_cpu exit 0
+mlp_ce_a100 exit 0
+resmlp_rms_cpu exit 0
+resmlp_rms_a100 exit 0
+bad_dims_cpu exit 0
+bad_dims_a100 exit 0
+pg_policy_cpu exit 0
+pg_policy_a100 exit 0
+dqn_q_cpu exit 0
+dqn_q_a100 exit 0
+== reg_mlp_cpu
+precise: 0 step(s), 75 f32 buffers
+  worst: act53 1.21e-06, act32 7.91e-07, act57 7.55e-07, act62 5.74e-07
+  ok   all buffers rel L2 <= 0.0002: worst act53 1.21e-06
+PASS
+== reg_mlp_a100
+precise: 0 step(s), 75 f32 buffers
+  worst: act53 1.21e-06, act32 7.91e-07, act57 7.55e-07, act62 5.74e-07
+  ok   all buffers rel L2 <= 0.0002: worst act53 1.21e-06
+PASS
+== res_rms_mlp_cpu
+precise: 3 step(s), 153 f32 buffers
+  worst: v.rm.n0.g 7.80e-07, v.rm.fc1.w 6.93e-07, act112 6.61e-07, act31 6.21e-07
+  ok   all buffers rel L2 <= 0.0002: worst v.rm.n0.g 7.80e-07
+PASS
+== res_rms_mlp_a100
+precise: 3 step(s), 153 f32 buffers
+  worst: v.rm.n0.g 7.80e-07, v.rm.fc1.w 6.93e-07, act112 6.61e-07, act31 6.21e-07
+  ok   all buffers rel L2 <= 0.0002: worst v.rm.n0.g 7.80e-07
+PASS
+== cnn1d_cpu
+precise: 0 step(s), 147 f32 buffers
+  worst: act40 6.76e-07, act43 6.53e-07, act131 5.01e-07, act29 4.84e-07
+  ok   all buffers rel L2 <= 0.0002: worst act40 6.76e-07
+PASS
+== cnn1d_a100
+precise: 0 step(s), 147 f32 buffers
+  worst: act40 6.76e-07, act43 6.53e-07, act131 5.01e-07, act29 4.84e-07
+  ok   all buffers rel L2 <= 0.0002: worst act40 6.76e-07
+PASS
+== encoder_reg_cpu
+precise: 2 step(s), 197 f32 buffers
+  worst: v.enc.k.b 1.05e+01, act53 4.18e+00, w.enc.k.b 3.43e+00, m.enc.k.b 2.65e+00
+  FAIL all buffers rel L2 <= 0.0002: worst v.enc.k.b 1.05e+01
+FAIL: all buffers rel L2 <= 0.0002
+== encoder_reg_a100
+precise: 2 step(s), 197 f32 buffers
+  worst: v.enc.k.b 1.05e+01, act53 4.18e+00, w.enc.k.b 3.43e+00, m.enc.k.b 2.65e+00
+  FAIL all buffers rel L2 <= 0.0002: worst v.enc.k.b 1.05e+01
+FAIL: all buffers rel L2 <= 0.0002
+== mlp_ce_cpu
+precise: 0 step(s), 70 f32 buffers
+  worst: act19 1.24e-06, act41 1.21e-06, act63 1.20e-06, act37 1.15e-06
+  ok   all buffers rel L2 <= 0.0002: worst act19 1.24e-06
+PASS
+== mlp_ce_a100
+precise: 0 step(s), 70 f32 buffers
+  worst: act19 1.24e-06, act41 1.21e-06, act63 1.20e-06, act37 1.15e-06
+  ok   all buffers rel L2 <= 0.0002: worst act19 1.24e-06
+PASS
+== resmlp_rms_cpu
+precise: 0 step(s), 129 f32 buffers
+  worst: act77 1.25e-06, act74 1.23e-06, act117 1.23e-06, act116 1.23e-06
+  ok   all buffers rel L2 <= 0.0002: worst act77 1.25e-06
+PASS
+== resmlp_rms_a100
+precise: 0 step(s), 129 f32 buffers
+  worst: act77 1.25e-06, act117 1.21e-06, act37 1.19e-06, act79 1.18e-06
+  ok   all buffers rel L2 <= 0.0002: worst act77 1.25e-06
+PASS
+== bad_dims_cpu
+precise: 0 step(s), 50 f32 buffers
+  worst: act13 1.03e-06, act29 1.01e-06, act45 9.27e-07, act9 7.48e-07
+  ok   all buffers rel L2 <= 0.0002: worst act13 1.03e-06
+PASS
+== bad_dims_a100
+precise: 0 step(s), 50 f32 buffers
+  worst: act13 1.03e-06, act29 1.01e-06, act45 9.27e-07, act9 7.48e-07
+  ok   all buffers rel L2 <= 0.0002: worst act13 1.03e-06
+PASS
+== pg_policy_cpu
+precise: 0 step(s), 61 f32 buffers
+  worst: act52 4.13e-07, act34 3.28e-07, loss.2 2.68e-07, act5 2.44e-07
+  ok   all buffers rel L2 <= 0.0002: worst act52 4.13e-07
+PASS
+== pg_policy_a100
+precise: 0 step(s), 61 f32 buffers
+  worst: act52 4.13e-07, act34 3.28e-07, loss.2 2.68e-07, act5 2.44e-07
+  ok   all buffers rel L2 <= 0.0002: worst act52 4.13e-07
+PASS
+== dqn_q_cpu
+precise: 3 step(s), 77 f32 buffers
+  worst: act37 5.30e-07, loss.0 4.53e-07, act18 4.49e-07, act9 4.44e-07
+  ok   all buffers rel L2 <= 0.0002: worst act37 5.30e-07
+PASS
+== dqn_q_a100
+precise: 3 step(s), 77 f32 buffers
+  worst: act37 5.30e-07, loss.0 4.53e-07, act18 4.49e-07, act9 4.44e-07
+  ok   all buffers rel L2 <= 0.0002: worst act37 5.30e-07
+PASS
+done (exit 1)

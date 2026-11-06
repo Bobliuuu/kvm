@@ -1,0 +1,14 @@
+torch fp64: loss 10.979000 global grad norm 4.074979
+torch tf32: loss 10.979012 global grad norm 4.074827
+torch fp32: loss 10.978999 global grad norm 4.074980
+executor: loss 10.979002 global grad norm 4.074694 clip_coef 0.245417  (fp64 truth coef 0.245400)
+loss vs fp64: executor +1.93e-06  torch-tf32 +1.15e-05  torch-fp32 -9.32e-07
+  group wte        (  1 tensors) |g| truth 3.8530e-01 exec 3.8527e-01  rel L2 vs fp64: exec 9.47e-04  torch-tf32 9.42e-04  torch-fp32 2.12e-06
+  group norm       ( 48 tensors) |g| truth 4.3011e-02 exec 4.3006e-02  rel L2 vs fp64: exec 8.79e-04  torch-tf32 9.16e-04  torch-fp32 2.07e-06
+  group attn       ( 96 tensors) |g| truth 2.0846e+00 exec 2.0845e+00  rel L2 vs fp64: exec 8.79e-04  torch-tf32 8.89e-04  torch-fp32 1.97e-06
+  group mlp        ( 48 tensors) |g| truth 3.4536e+00 exec 3.4534e+00  rel L2 vs fp64: exec 9.24e-04  torch-tf32 9.27e-04  torch-fp32 2.10e-06
+  group final_norm (  2 tensors) |g| truth 1.9237e-02 exec 1.9236e-02  rel L2 vs fp64: exec 4.94e-04  torch-tf32 4.97e-04  torch-fp32 1.04e-06
+  group head       (  1 tensors) |g| truth 4.2624e-01 exec 4.2625e-01  rel L2 vs fp64: exec 7.67e-04  torch-tf32 7.66e-04  torch-fp32 1.74e-06
+  worst tensor: gpt.h11.attn.k.w exec 1.44e-03 (torch-tf32 on it 1.43e-03); all 196 tensors: max exec 1.44e-03, max torch-tf32 1.46e-03
+  m after step 1 vs fp64 reference (rel L2): {"max": 0.0014412694364177565, "median": 0.0008855681238391219}
+  w1 - w0 vs fp64 reference: {"rel_l2_max": 0.06752539713026226, "rel_l2_median": 0.0067291643699001705, "sign_flip_frac_max": 0.0026041666666666665, "sign_flip_frac_median": 0.0}

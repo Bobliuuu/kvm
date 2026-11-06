@@ -521,7 +521,7 @@ __device__ __forceinline__ void kvm_publish(const KvmDevState& S, int slot, int 
 // ---------------- worker ----------------
 struct KvmShared {
   KvmTaskDesc d;
-  int cmd, skip, how, part;   // how: KVM_TRACE_* start reason from kvm_pop (| KVM_HOW_BW); part: STATIC-mode class of this worker's SM
+  int cmd, skip, how, part, chain;   // chain (KVM_CHAIN): slot of the one successor this block runs next without a queue round trip, else -1. how: KVM_TRACE_* start reason from kvm_pop (| KVM_HOW_BW); part: STATIC-mode class of this worker's SM
 #ifdef KVM_PROF_GAP
   long long pg[16]; int pg_valid;
 #endif
@@ -620,7 +620,14 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   if (!sh.skip && (int)threadIdx.x < d.succ_cnt) {
     for (int e = threadIdx.x; e < d.succ_cnt; e += blockDim.x) {
       int s = S.succ[(unsigned)(d.succ_off + e) & (S.succ_cap - 1)];
-      if (atom_add(S.indeg + s, -1) == 1) { kvm_sched_pref(S, s); kvm_release_task(S, s); }  // SCHED: affinity = this block
+      if (atom_add(S.indeg + s, -1) == 1) {
+#ifdef KVM_CHAIN
+        // Inline hand-off: the first successor that became ready (no version wait) is run by this block next, skipping the enqueue,
+        // the pop scan and the claim CAS (the dominant part of a dependent hop). Scheduler off only: no class/priority bookkeeping to keep.
+        if (!S.sp.on && S.tasks[s].wait_var < 0 && atomicCAS(&sh.chain, -1, s) == -1) continue;
+#endif
+        kvm_sched_pref(S, s); kvm_release_task(S, s);   // SCHED: affinity = this block
+      }
     }
   }
   __syncthreads();
@@ -658,16 +665,25 @@ __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
 #ifdef KVM_PROF_GAP
   if (threadIdx.x == 0) sh.pg_valid = 0;
 #endif
+  if (threadIdx.x == 0) sh.chain = -1;
+  __syncthreads();
   for (;;) {
+    const int chained = sh.chain;   // KVM_CHAIN: successor handed over by the task this block just ran (barrier at the end of kvm_run_task)
     if (threadIdx.x < 32) {
-      int how, dw, r = kvm_pop(S, kvm_now(), part, how, dw);
-      if (r < 0 && threadIdx.x == 0 && kvm_should_exit(S, t0)) r = KVM_POP_EXIT;
-      if (threadIdx.x == 0) { sh.cmd = r; sh.how = how; }
-      if (r >= 0 && threadIdx.x < KVM_TASK_WORDS) ((int*)&sh.d)[threadIdx.x] = dw;
+      if (chained >= 0) {
+        if (threadIdx.x == 0) { sh.cmd = chained; sh.how = 0; }
+        if (threadIdx.x < KVM_TASK_WORDS) ((int*)&sh.d)[threadIdx.x] = __ldcg(reinterpret_cast<const int*>(S.tasks + chained) + threadIdx.x);
+      } else {
+        int how, dw, r = kvm_pop(S, kvm_now(), part, how, dw);
+        if (r < 0 && threadIdx.x == 0 && kvm_should_exit(S, t0)) r = KVM_POP_EXIT;
+        if (threadIdx.x == 0) { sh.cmd = r; sh.how = how; }
+        if (r >= 0 && threadIdx.x < KVM_TASK_WORDS) ((int*)&sh.d)[threadIdx.x] = dw;
+      }
     } else if (threadIdx.x == 32 && owed >= 0) kvm_post_task(S, owed);   // overlapped with the pop above
     owed = -1;
     __syncthreads();
     int cmd = sh.cmd;
+    if (threadIdx.x == 0) sh.chain = -1;
     __syncthreads();  // sh.cmd is rewritten next iteration
     if (cmd == KVM_POP_EXIT) return;
     if (cmd < 0) {

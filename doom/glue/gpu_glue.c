@@ -26,7 +26,11 @@ void gpu_doom_worker(int tid) { gpu_par_worker(tid); }
 void gpu_split_begin(void); void gpu_split_end(void); int gpu_split_pending(void); int gpu_split_log_tic(void); void gpu_split_done(void); void gpu_post_arm(void);
 void gpu_draw_tile(int tile, int ntiles, int tid, int nthreads);
 void D_Display(void);
-void gpu_doom_sim(uint32_t input) { gpu_split_begin(); doom_tic(input); gpu_split_end(); }
+void gpu_split_set_tic(int t); void doom_state(int32_t* o);
+void gpu_doom_sim(uint32_t input) {
+  gpu_split_begin(); doom_tic(input); gpu_split_end();
+  if (gpu_split_pending()) { int32_t st[16]; doom_state(st); gpu_split_set_tic(st[1]); }   // tic count of the logged frame (the glue's, as in the state buffer)
+}
 int gpu_doom_pending(void) { return gpu_split_pending(); }
 int gpu_doom_log_tic(void) { return gpu_split_log_tic(); }
 void gpu_doom_draw(int tile, int ntiles, int tid, int nthreads) { gpu_draw_tile(tile, ntiles, tid, nthreads); }

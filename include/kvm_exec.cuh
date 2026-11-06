@@ -39,6 +39,10 @@
 #include "kvm_sched.h"      // SCHED: scheduling policy data (host+device); policy code is include/kvm_sched.cuh
 
 #define KVM_THREADS    256        // blockDim contract: all 256 threads enter every op (game ops: thread 0 = game thread)
+#ifndef KVM_MIN_BLOCKS
+#define KVM_MIN_BLOCKS 2          // __launch_bounds__ minimum resident blocks per SM: 2 caps the persistent kernel at 128 registers (65536 / 512),
+                                  // so a task-dispatch-bound or latency-bound workload overlaps one block's stalls with the other (1 = 255 registers)
+#endif
 #define KVM_NBUCKETS   32          // priority levels 0..31; larger runs first (validated, never silently clamped)
 static_assert(KVM_NBUCKETS == 32, "kvm_pop maps one bucket to each lane of a warp");
 #define KVM_SMEM_FLOATS 1024
@@ -815,7 +819,7 @@ __global__ void __launch_bounds__(KVM_THREADS) kvm_init_kernel(KvmDevState S) {
   if (tid == 0) S.cnt->ftail = (unsigned long long)S.nslots;
 }
 
-__global__ void __launch_bounds__(KVM_THREADS) kvm_exec_kernel(const __grid_constant__ KvmDevState S) {
+__global__ void __launch_bounds__(KVM_THREADS, KVM_MIN_BLOCKS) kvm_exec_kernel(const __grid_constant__ KvmDevState S) {
   __shared__ KvmShared sh;
   __shared__ KvmAdmitShared adm;
   KvmWatch t0{kvm_now(), 0, -1, -1};

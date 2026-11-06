@@ -983,11 +983,106 @@ static bool suite_litmus(bool quick) {
   return g_fail == before;
 }
 
+// ================= class-aware admission: lat lane + sliced bulk records =================
+// Bulk records (workload 1) of more than admit_slice tasks are admitted in slices; lat records (workload 0) enter a second ring and are
+// admitted between slices. Checks: every result bitwise right, every task ran exactly once, admission order kept within each lane, lat
+// records really were admitted in the middle of a bulk record (this fails with -DKVM_BREAK_LAT_SLICE), a lat task parked on a version
+// published by a half-admitted bulk record completes, errors surface from both lanes and from a late slice, ring wrap on the lat ring.
+static KvmBundle chain_bundle(int base, int chains, float v, int wl) {   // chain c: x=v ; y=3*x ; z=x+y   (buffers base+3c..)
+  KvmBundleBuilder bb; KvmTaskOpts o; o.workload = wl;
+  for (int c = 0; c < chains; ++c) {
+    const int x = base + 3 * c, y = x + 1, z = x + 2;
+    int f = bb.add("fill", {Bf(x), F(v), I(1)}, o), sc = bb.add("scale", {Bf(x), Bf(y), F(3.f), I(1)}, o), ad = bb.add("add", {Bf(x), Bf(y), Bf(z), I(1)}, o);
+    bb.edge(f, sc); bb.edge(sc, ad);
+  }
+  return bb.build();
+}
+static bool suite_latlane() {
+  int before = g_fail;
+  {  // correctness + exactly once + order + interleaving
+    const int NB = 6, BIG = 2400, NS = 300, SMALLC = 2, SLICE = 256;
+    const int total_chains = NB * BIG + NS * SMALLC;
+    KvmConfig c; c.blocks = 8; c.max_tasks = 1 << 17; c.live_cap = 1 << 15; c.ring_words = 1 << 19; c.succ_cap = 1 << 18; c.timeout_us = 30ull * 1000000;
+    c.lat_classes = 1; c.admit_slice = SLICE; c.lat_ring_words = 512; c.lat_win_cap = 64; c.lat_succ_cap = 1 << 10;
+    KvmExec ex(c); float* ar = ex.arena(3 * (size_t)total_chains);
+    for (int i = 0; i < 3 * total_chains; ++i) ex.add_view(ar + i, 1, 1);
+    ex.start();
+    std::vector<unsigned> bw(NB), sw(NS); std::vector<float> bv(NB), sv(NS);
+    std::atomic<bool> bad{false};
+    std::thread bulk([&] {
+      for (int k = 0; k < NB; ++k) {
+        bv[k] = (float)(k + 2);
+        if (ex.submit(chain_bundle(3 * k * BIG, BIG, bv[k], 1), 30000, true, &bw[k]) != KvmSubmit::OK) { bad = true; return; }
+      }
+    });
+    for (int k = 0; k < NS; ++k) {
+      sv[k] = (float)(100 + k);
+      if (ex.submit(chain_bundle(3 * (NB * BIG + k * SMALLC), SMALLC, sv[k], 0), 30000, true, &sw[k]) != KvmSubmit::OK) { bad = true; break; }
+      std::this_thread::sleep_for(std::chrono::microseconds(150));
+    }
+    bulk.join(); ex.close();
+    const KvmResult& r = ex.finish();
+    CHECK(!bad.load() && r.ok(), "latlane run: %s", kvm_err_name(r.err_code));
+    const long long total = 3ll * total_chains;
+    CHECK(r.done == total && r.admitted == total, "latlane: done %d admitted %d of %lld", r.done, r.admitted, total);
+    std::vector<float> z = download(ar, 3 * (size_t)total_chains);
+    size_t wrong = 0;
+    for (int k = 0; k < NB; ++k) for (int ch = 0; ch < BIG; ++ch) wrong += z[3 * (k * BIG + ch) + 2] != 4.f * bv[k];
+    for (int k = 0; k < NS; ++k) for (int ch = 0; ch < SMALLC; ++ch) wrong += z[3 * (NB * BIG + k * SMALLC + ch) + 2] != 4.f * sv[k];
+    CHECK(wrong == 0, "latlane: %zu chains with a wrong result", wrong);
+    size_t not_once = 0; for (long long i = 0; i < total; ++i) not_once += r.trace[i].exec_count != 1;
+    CHECK(not_once == 0, "latlane: %zu tasks did not run exactly once", not_once);
+    // per lane: admit time per window nondecreasing in window sequence; window ids carry the lane in bit 31
+    std::map<unsigned, std::pair<unsigned long long, int>> win;   // wid -> (admit_ns, tasks)
+    for (long long i = 0; i < total; ++i) { auto& w = win[(unsigned)r.tasks[i].reserved0]; w.first = r.trace[i].admit_ns; ++w.second; }
+    CHECK((int)win.size() == NB + NS, "latlane: %zu windows, want %d", win.size(), NB + NS);
+    unsigned long long prev[2] = {0, 0}; int order_bad = 0;
+    for (auto& kv : win) { int L = kv.first >> 31; if (kv.second.first < prev[L]) ++order_bad; prev[L] = kv.second.first; }
+    CHECK(order_bad == 0, "latlane: %d windows admitted out of order within a lane", order_bad);
+    for (int k = 0; k < NB; ++k) CHECK(!(bw[k] & 0x80000000u) && win[bw[k]].second == 3 * BIG, "latlane: bulk window %d", k);
+    for (int k = 0; k < NS; ++k) CHECK((sw[k] & 0x80000000u) && win[sw[k]].second == 3 * SMALLC, "latlane: lat window %d id %x", k, sw[k]);
+    // interleave: a lat record admitted after a bulk record's admission started and before its first root was released
+    std::map<unsigned, unsigned long long> first_ready;
+    for (long long i = 0; i < total; ++i) if (r.trace[i].ready_ns) { auto& f = first_ready[(unsigned)r.tasks[i].reserved0]; if (!f || r.trace[i].ready_ns < f) f = r.trace[i].ready_ns; }
+    int inside = 0;
+    for (int k = 0; k < NB; ++k) for (int j = 0; j < NS; ++j) if (win[sw[j]].first > win[bw[k]].first && win[sw[j]].first < first_ready[bw[k]]) ++inside;
+    CHECK(inside > 0, "latlane: no lat record was admitted inside a bulk record's admission (%d)", inside);
+    printf("  latlane: %d bulk x %d chains (slice %d) + %d lat x %d chains: all results bitwise right, each task once, lane order kept, %d lat records admitted inside a bulk record, lat ring wrapped (%d words)\n", NB, BIG, SLICE, NS, SMALLC, inside, c.lat_ring_words);
+  }
+  {  // a lat task parked on a version published by a bulk record that is still being admitted
+    KvmConfig c = small_cfg(4); c.max_tasks = 1 << 14; c.live_cap = 1 << 12; c.ring_words = 1 << 16; c.lat_classes = 1; c.admit_slice = 64;
+    KvmExec ex(c); ex.start();
+    KvmBundleBuilder bb; KvmTaskOpts po; po.workload = 1; po.pub_var = 0; po.pub_ver = 1;
+    bb.add("noop", {}, po); KvmTaskOpts o1; o1.workload = 1; for (int i = 0; i < 1500; ++i) bb.add("noop", {}, o1);
+    KvmBundleBuilder lb; KvmTaskOpts wo; wo.workload = 0; wo.wait_var = 0; wo.wait_ver = 1; lb.add("noop", {}, wo);
+    CHECK(ex.submit(bb.build()) == KvmSubmit::OK, "submit bulk"); CHECK(ex.submit(lb.build()) == KvmSubmit::OK, "submit lat");
+    ex.close(); const KvmResult& r = ex.finish();
+    CHECK(r.ok() && r.done == 1502, "latlane version: %s done %d", kvm_err_name(r.err_code), r.done);
+  }
+  {  // a mixed bundle (one lat task, one bulk task) is a bulk record; a bundle whose every task is lat class is a lat record
+    KvmConfig c = small_cfg(3); c.lat_classes = 1 | 4; KvmExec ex(c); ex.start();
+    KvmBundleBuilder m; KvmTaskOpts a, b; a.workload = 0; b.workload = 1; m.add("noop", {}, a); m.add("noop", {}, b);
+    KvmBundleBuilder l; KvmTaskOpts d; d.workload = 2; l.add("noop", {}, d); l.add("noop", {}, a);
+    unsigned wm = 0, wl = 0; CHECK(ex.submit(m.build(), 5000, true, &wm) == KvmSubmit::OK && ex.submit(l.build(), 5000, true, &wl) == KvmSubmit::OK, "submit");
+    ex.close(); const KvmResult& r = ex.finish();
+    CHECK(r.ok() && r.done == 4 && !(wm & 0x80000000u) && (wl & 0x80000000u), "latlane routing: ids %x %x done %d", wm, wl, r.done);
+  }
+  {  // errors: bad task in the LAST slice of a bulk record; bad records in the lat lane; bulk record larger than live_cap - reserve
+    KvmConfig c = small_cfg(3); c.lat_classes = 1; c.admit_slice = 32; c.ring_words = 1 << 15;
+    err_case("lat: bad op in last slice", KVM_ERR_BAD_OP, c, [&](KvmExec&) { KvmBundleBuilder bb; KvmTaskOpts o; o.workload = 1; for (int i = 0; i < 200; ++i) bb.add("noop", {}, o); KvmBundle b = bb.build(); b.tasks[199].op_id = 126; return b; });
+    err_case("lat: bad op in lat lane", KVM_ERR_BAD_OP, c, [&](KvmExec&) { KvmBundleBuilder bb; bb.add("noop", {}); KvmBundle b = bb.build(); b.tasks[0].op_id = 126; return b; });
+    err_case("lat: bad successor", KVM_ERR_BAD_TASK, c, [&](KvmExec&) { KvmBundleBuilder bb; bb.add("noop", {}); KvmBundle b = bb.build(); b.tasks[0].succ_cnt = 1; b.succ = {5}; return b; });
+    { KvmConfig s = c; s.live_cap = 64; s.lat_reserve = 16; err_case("lat: bulk > live_cap - reserve", KVM_ERR_BATCH_TOO_LARGE, s, [&](KvmExec&) { KvmBundleBuilder bb; KvmTaskOpts o; o.workload = 1; for (int i = 0; i < 60; ++i) bb.add("noop", {}, o); return bb.build(); }); }
+    { KvmConfig s = c; s.lat_succ_cap = 2; err_case("lat: successor ring too small", KVM_ERR_POOL, s, [&](KvmExec&) { KvmBundleBuilder bb; int a = bb.add("noop", {}), b2 = bb.add("noop", {}), d = bb.add("noop", {}), e = bb.add("noop", {}); bb.edge(a, b2); bb.edge(b2, d); bb.edge(d, e); return bb.build(); }); }
+  }
+  return g_fail == before;
+}
+
 int main(int argc, char** argv) {
   bool expect_fail = false; std::vector<std::string> want;
   for (int i = 1; i < argc; ++i) { std::string a = argv[i]; if (a == "--expect-fail") expect_fail = true; else if (a == "--quiet") g_kvm_log = 0; else if (a == "--log") g_kvm_log = atoi(argv[++i]); else want.push_back(a); }
   bool quick = getenv("KVM_TEST_QUICK") != nullptr;
-  if (want.empty()) want = {"checker", "ops", "types", "init", "errors", "dag", "sched", "admission", "versions", "recycle", "litmus"};
+  if (want.empty()) want = {"checker", "ops", "types", "init", "errors", "dag", "sched", "admission", "versions", "recycle", "litmus", "latlane"};
   int dev; cudaDeviceProp p; CK(cudaGetDevice(&dev)); CK(cudaGetDeviceProperties(&p, dev));
   int drv, rt; cudaDriverGetVersion(&drv); cudaRuntimeGetVersion(&rt);
   printf("GPU %s, %d SMs, sm_%d%d, driver CUDA %d.%d, runtime %d.%d%s\n", p.name, p.multiProcessorCount, p.major, p.minor, drv / 1000, drv % 1000 / 10, rt / 1000, rt % 1000 / 10, quick ? " [quick]" : "");
@@ -1002,7 +1097,7 @@ int main(int argc, char** argv) {
       if (s == "checker") ok = suite_checker(); else if (s == "ops") ok = suite_ops(); else if (s == "errors") ok = suite_errors();
       else if (s == "dag") ok = suite_dag(quick); else if (s == "sched") ok = suite_sched(); else if (s == "admission") ok = suite_admission();
       else if (s == "versions") ok = suite_versions(quick); else if (s == "types") ok = suite_types(); else if (s == "init") ok = suite_init();
-      else if (s == "recycle") ok = suite_recycle(quick); else if (s == "litmus") ok = suite_litmus(quick); else if (s == "bench") ok = suite_bench(); else if (s == "smoke") ok = suite_smoke();
+      else if (s == "recycle") ok = suite_recycle(quick); else if (s == "litmus") ok = suite_litmus(quick); else if (s == "bench") ok = suite_bench(); else if (s == "smoke") ok = suite_smoke(); else if (s == "latlane") ok = suite_latlane();
       else { fprintf(stderr, "unknown suite %s\n", s.c_str()); return 2; }
     } catch (const std::exception& e) { fprintf(stderr, "  EXCEPTION: %s\n", e.what()); ++g_fail; ok = false; }
     ok = ok && g_fail == f0;

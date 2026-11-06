@@ -446,6 +446,8 @@ int main(int argc, char** argv) {
     else if (a == "--gate-serve") o.gate_serve = atoll(sv().c_str()); else if (a == "--gate-train") o.gate_train = atoll(sv().c_str());
     else if (a == "--log") o.log_level = iv();
     else if (a == "--live-cap") o.cfg.live_cap = iv(); else if (a == "--ring-words") o.cfg.ring_words = iv();
+    else if (a == "--lat-lane") o.cfg.lat_classes = (1u << adp::CLS_DOOM) | (1u << adp::CLS_SERVE);   // class-aware admission: Doom + serve bundles use the latency ring
+    else if (a == "--admit-slice") o.cfg.admit_slice = iv(); else if (a == "--lat-reserve") o.cfg.lat_reserve = iv();
     else if (a == "--gate-tune") o.gate_tune = true;
     else if (a == "--arbiter-assist") o.arbiter_assist = true;
     else if (a == "--no-doom") o.no_doom = true; else if (a == "--no-serve") o.no_serve = true; else if (a == "--no-train") o.no_train = true; else if (a == "--no-dump-frames") o.dump_frames = false;

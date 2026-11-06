@@ -192,6 +192,15 @@ struct KvmConfig {
   unsigned long long timeout_us = 60ull * 1000000;   // STALL timeout: no task finished or admitted for this long while work is pending (not a lifetime cap); must exceed the longest task
   unsigned long long task_limit_us = 30ull * 1000000;  // a task that ran longer than this ends the run with TASK_LIMIT (0 = off); tasks are not interruptible, this reports
   size_t stack_bytes = 0;       // per-thread stack (cudaLimitStackSize); ops with deep device calls (game ops) need a large one
+  // Class-aware admission. lat_classes: bit mask of workload ids whose bundles use the second (latency) admission ring; 0 = off, the
+  // executor is then the single-FIFO one. A bundle is a latency bundle when EVERY task's workload is in the mask. Records of the lat lane
+  // are admitted in order among themselves, between records and between slices of a bulk record (admit_slice tasks per slice).
+  unsigned lat_classes = 0;
+  int admit_slice = 512;        // tasks per slice of a bulk record (> admit_slice) while the lat lane is on
+  int lat_reserve = 0;          // live-window tasks bulk records leave free for the lat lane; 0 = live_cap / 8
+  int lat_ring_words = 1 << 16; // lat admission ring, multiple of 8
+  int lat_win_cap = 1 << 12;    // lat records in flight, power of two
+  unsigned lat_succ_cap = 1u << 16;  // lat successor ring (words), power of two
   KvmSchedCfg sched;            // SCHED: scheduling policy (off by default: the original single-queue executor)
 };
 enum class KvmSubmit { OK, BACKPRESSURE_TIMEOUT, TOO_BIG, DEVICE_ERROR, CLOSED, INVALID };
@@ -235,6 +244,11 @@ class KvmExec {
     if (cfg_.aging_us < 0) throw std::invalid_argument("aging_us must be >= 0");
     if (cfg_.timeout_us == 0 || cfg_.timeout_us > 86400ull * 1000000) throw std::invalid_argument("timeout_us must be in [1, 86400 s]");
     if (cfg_.ring_words % 8 || cfg_.ring_words < 64) throw std::invalid_argument("ring_words must be a multiple of 8 and >= 64");
+    if (cfg_.lat_classes) {
+      if (cfg_.admit_slice < 1 || cfg_.lat_ring_words % 8 || cfg_.lat_ring_words < 64 || !pow2(cfg_.lat_win_cap) || !pow2(cfg_.lat_succ_cap)) throw std::invalid_argument("bad lat lane configuration");
+      if (cfg_.lat_reserve <= 0) cfg_.lat_reserve = cfg_.live_cap / 8;
+      if (cfg_.lat_reserve >= cfg_.live_cap) throw std::invalid_argument("lat_reserve must be below live_cap");
+    }
     if (!pow2(cfg_.live_cap) || !pow2(cfg_.max_tasks) || !pow2(cfg_.succ_cap) || !pow2(cfg_.win_cap)) throw std::invalid_argument("live_cap, max_tasks, succ_cap and win_cap must be powers of two");
     int dev; CK(cudaGetDevice(&dev));
     cudaDeviceProp p; CK(cudaGetDeviceProperties(&p, dev));
@@ -265,12 +279,21 @@ class KvmExec {
     CK(cudaMalloc(&S_.cnt, sizeof(KvmCounters)));
     CK(cudaMemset(S_.tasks, 0, T * sizeof(KvmTaskDesc))); CK(cudaMemset(S_.trace, 0, T * sizeof(KvmTrace)));
     CK(cudaMemset(S_.version, 0, cfg_.num_vars * 4)); CK(cudaMemset(S_.qctl, 0, nc_ * KVM_NBUCKETS * sizeof(KvmQCtl)));
+    if (cfg_.lat_classes) {
+      CK(cudaMalloc(&S_.lat.wins, (size_t)cfg_.lat_win_cap * sizeof(KvmWin))); CK(cudaMemset(S_.lat.wins, 0, (size_t)cfg_.lat_win_cap * sizeof(KvmWin)));
+      CK(cudaMalloc(&S_.lat.succ, (size_t)cfg_.lat_succ_cap * 4));
+    }
     CK(cudaMemset(S_.wins, 0, (size_t)cfg_.win_cap * sizeof(KvmWin))); CK(cudaMemset(S_.cnt, 0, sizeof(KvmCounters)));
     // host-shared control block: ring + doorbell/ring_head/closed on separate lines + error mirror + per-window done marks
     CK(cudaHostAlloc((void**)&ctl_, 4096, cudaHostAllocMapped)); memset(ctl_, 0, 4096);
     init_sched();
     CK(cudaHostAlloc((void**)&ring_, (size_t)cfg_.ring_words * 4, cudaHostAllocMapped)); memset(ring_, 0, (size_t)cfg_.ring_words * 4);
     CK(cudaHostAlloc((void**)&win_done_, (size_t)cfg_.win_cap * 4, cudaHostAllocMapped)); memset((void*)win_done_, 0, (size_t)cfg_.win_cap * 4);
+    if (cfg_.lat_classes) {
+      CK(cudaHostAlloc((void**)&lat_ring_, (size_t)cfg_.lat_ring_words * 4, cudaHostAllocMapped)); memset(lat_ring_, 0, (size_t)cfg_.lat_ring_words * 4);
+      CK(cudaHostAlloc((void**)&lat_win_done_, (size_t)cfg_.lat_win_cap * 4, cudaHostAllocMapped)); memset((void*)lat_win_done_, 0, (size_t)cfg_.lat_win_cap * 4);
+    }
+    lat_doorbell_ = (unsigned long long*)(ctl_ + 512); lat_ring_head_ = (unsigned long long*)(ctl_ + 640);
     doorbell_ = (unsigned long long*)(ctl_ + 0); ring_head_ = (unsigned long long*)(ctl_ + 128);
     closed_ = (unsigned*)(ctl_ + 256); herr_ = (KvmHostErr*)(ctl_ + 384);
     void* d;
@@ -280,6 +303,14 @@ class KvmExec {
     CK(cudaHostGetDevicePointer(&d, closed_, 0)); S_.closed = (unsigned*)d;
     CK(cudaHostGetDevicePointer(&d, herr_, 0)); S_.herr = (KvmHostErr*)d;
     CK(cudaHostGetDevicePointer(&d, (void*)win_done_, 0)); S_.win_done = (unsigned*)d;
+    if (cfg_.lat_classes) {
+      CK(cudaHostGetDevicePointer(&d, lat_ring_, 0)); S_.lat.ring = (int*)d;
+      CK(cudaHostGetDevicePointer(&d, lat_doorbell_, 0)); S_.lat.doorbell = (unsigned long long*)d;
+      CK(cudaHostGetDevicePointer(&d, lat_ring_head_, 0)); S_.lat.ring_head = (unsigned long long*)d;
+      CK(cudaHostGetDevicePointer(&d, (void*)lat_win_done_, 0)); S_.lat.win_done = (unsigned*)d;
+      S_.lat.ring_words = cfg_.lat_ring_words; S_.lat.succ_cap = cfg_.lat_succ_cap; S_.lat.win_cap = cfg_.lat_win_cap;
+      S_.lat_on = 1; S_.lat_reserve = cfg_.lat_reserve; S_.admit_slice = cfg_.admit_slice;
+    }
     S_.nslots = cfg_.max_tasks; S_.live_cap = cfg_.live_cap; S_.succ_cap = cfg_.succ_cap; S_.win_cap = cfg_.win_cap;
     S_.num_vars = cfg_.num_vars; S_.ring_words = cfg_.ring_words;
     S_.aging_ns = cfg_.aging_us ? (long long)cfg_.aging_us * 1000 : (1ll << 50);
@@ -293,8 +324,9 @@ class KvmExec {
     for (size_t i = 0; i < bufs_.size(); ++i) if (!std::count(views_.begin(), views_.end(), i)) cudaFree(bufs_[i].p);
     for (float* p : arenas_) cudaFree(p);
     for (void* p : {(void*)S_.tasks, (void*)S_.indeg, (void*)S_.state, (void*)S_.park_next, (void*)S_.trace, (void*)S_.succ, (void*)S_.args, (void*)S_.adm_slots,
-                    (void*)S_.version, (void*)S_.park_head, (void*)S_.cells, (void*)S_.fcells, (void*)S_.qctl, (void*)S_.wins, (void*)S_.cnt, (void*)S_.bufs, (void*)S_.sp.dev, (void*)S_.sp.info, (void*)S_.sp.pv, (void*)S_.sp.pubcls}) cudaFree(p);
+                    (void*)S_.version, (void*)S_.park_head, (void*)S_.cells, (void*)S_.fcells, (void*)S_.qctl, (void*)S_.wins, (void*)S_.lat.wins, (void*)S_.lat.succ, (void*)S_.cnt, (void*)S_.bufs, (void*)S_.sp.dev, (void*)S_.sp.info, (void*)S_.sp.pv, (void*)S_.sp.pubcls}) cudaFree(p);
     cudaFreeHost(ctl_); cudaFreeHost(ring_); cudaFreeHost((void*)win_done_);
+    if (lat_ring_) { cudaFreeHost(lat_ring_); cudaFreeHost((void*)lat_win_done_); }
     cudaStreamDestroy(stream_); cudaEventDestroy(e0_); cudaEventDestroy(e1_);
   }
   KvmExec(const KvmExec&) = delete; KvmExec& operator=(const KvmExec&) = delete;
@@ -384,57 +416,62 @@ class KvmExec {
   // Thread-safe producer. Blocks (up to timeout_ms) while the ring is full: that is the backpressure; it never drops.
   // *wid_out: the bundle record's window id (see wait_window).
   KvmSubmit submit(const KvmBundle& b, int timeout_ms = 10000, bool validate = true, unsigned* wid_out = nullptr) {
-    std::lock_guard<std::mutex> lk(mu_);
+    const int lane = is_lat(b) ? 1 : 0;
+    std::lock_guard<std::mutex> lk(lane ? mu_l_ : mu_);   // one lock per lane: a producer waiting for bulk ring space never blocks a latency producer
     if (!started_) throw std::logic_error("submit before start()");
     if (closed_flag_) { KLOG(1, "submit after close()"); return KvmSubmit::CLOSED; }
     if (herr_->code) { last_error_ = std::string("device error ") + kvm_err_name(herr_->code); return KvmSubmit::DEVICE_ERROR; }   // the device is dead: accepted bundles would never run
-    std::string why = validate ? b.validate(nbufs(), cfg_.num_vars, cfg_.live_cap) : std::string();
+    std::string why = validate ? b.validate(nbufs(), cfg_.num_vars, (cfg_.lat_classes && !lane) ? cfg_.live_cap - cfg_.lat_reserve : cfg_.live_cap) : std::string();
     if (!why.empty()) { KLOG(0, "bundle rejected: %s", why.c_str()); last_error_ = why; return why.find("live_cap") != std::string::npos ? KvmSubmit::TOO_BIG : KvmSubmit::INVALID; }
     const size_t words = b.words();
-    if (words > (size_t)cfg_.ring_words) { last_error_ = "bundle record larger than the admission ring"; KLOG(0, "%s (%zu > %d words)", last_error_.c_str(), words, cfg_.ring_words); return KvmSubmit::TOO_BIG; }
+    const int rwords = lane ? cfg_.lat_ring_words : cfg_.ring_words;
+    int* ring = lane ? lat_ring_ : ring_;
+    unsigned long long &wpos = lane ? wpos_l_ : wpos_;
+    unsigned long long *bell = lane ? lat_doorbell_ : doorbell_, *headp = lane ? lat_ring_head_ : ring_head_;
+    if (words > (size_t)rwords) { last_error_ = "bundle record larger than the admission ring"; KLOG(0, "%s (%zu > %d words)", last_error_.c_str(), words, rwords); return KvmSubmit::TOO_BIG; }
     auto t0 = std::chrono::steady_clock::now();
     bool waited = false;
     // A record is contiguous. If it does not fit before the ring end, a pad record fills the tail and is published ON ITS OWN
     // (waiting for pad + record at once could need more than the whole ring); then the record waits for space at lap start.
     for (;;) {
-      unsigned long long head = __atomic_load_n(ring_head_, __ATOMIC_ACQUIRE);
-      const size_t rem = cfg_.ring_words - wpos_ % cfg_.ring_words, need = words > rem ? rem : words;
-      if (cfg_.ring_words - (wpos_ - head) >= need) {
+      unsigned long long head = __atomic_load_n(headp, __ATOMIC_ACQUIRE);
+      const size_t rem = rwords - wpos % rwords, need = words > rem ? rem : words;
+      if (rwords - (wpos - head) >= need) {
         if (need == words) break;
-        write_header(rem, 0, 0, 0, KVM_REC_PAD); wpos_ += rem; ++stats_.pads;
+        write_header(lane, rem, 0, 0, 0, KVM_REC_PAD); wpos += rem; { std::lock_guard<std::mutex> sl(mu_s_); ++stats_.pads; }
         std::atomic_thread_fence(std::memory_order_seq_cst);
-        __atomic_store_n(doorbell_, wpos_, __ATOMIC_RELEASE);
+        __atomic_store_n(bell, wpos, __ATOMIC_RELEASE);
         KLOG(3, "ring wrap: %zu pad words", rem);
         continue;
       }
       if (herr_->code) { last_error_ = "device error"; return KvmSubmit::DEVICE_ERROR; }
-      if (!waited) { waited = true; ++stats_.backpressure_waits; KLOG(3, "ring full (%llu/%d words used): backpressure", (unsigned long long)(wpos_ - head), cfg_.ring_words); }
+      if (!waited) { waited = true; { std::lock_guard<std::mutex> sl(mu_s_); ++stats_.backpressure_waits; } KLOG(3, "ring full (%llu/%d words used): backpressure", (unsigned long long)(wpos - head), rwords); }
       if (std::chrono::steady_clock::now() - t0 > std::chrono::milliseconds(timeout_ms)) {
         last_error_ = "admission ring full for " + std::to_string(timeout_ms) + " ms";
         KLOG(1, "%s", last_error_.c_str()); return KvmSubmit::BACKPRESSURE_TIMEOUT;
       }
       std::this_thread::sleep_for(std::chrono::microseconds(50));
     }
-    int* r = ring_ + wpos_ % cfg_.ring_words;
-    write_header(words, (int)b.tasks.size(), (int)b.succ.size(), (int)b.args.size(), KVM_REC_BUNDLE);
+    int* r = ring + wpos % rwords;
+    write_header(lane, words, (int)b.tasks.size(), (int)b.succ.size(), (int)b.args.size(), KVM_REC_BUNDLE);
     r += KVM_REC_HDR;
     memcpy(r, b.tasks.data(), b.tasks.size() * sizeof(KvmTaskDesc)); r += b.tasks.size() * KVM_TASK_WORDS;
     if (!b.succ.empty()) memcpy(r, b.succ.data(), b.succ.size() * 4);
     r += b.succ.size();
     if (!b.args.empty()) memcpy(r, b.args.data(), b.args.size() * 4);
-    wpos_ += words;
+    wpos += words;
     // Publication: record bytes first (seq_cst fence also orders non-temporal stores), then the doorbell with release.
     std::atomic_thread_fence(std::memory_order_seq_cst);
-    __atomic_store_n(doorbell_, wpos_, __ATOMIC_RELEASE);
-    if (wid_out) *wid_out = (unsigned)stats_.bundles;
-    rec_tasks_.push_back((int)b.tasks.size());
-    ++stats_.bundles;
+    __atomic_store_n(bell, wpos, __ATOMIC_RELEASE);
+    if (wid_out) *wid_out = lane ? (lane_bundles_[1] | 0x80000000u) : lane_bundles_[0];
+    ++lane_bundles_[lane];
+    { std::lock_guard<std::mutex> sl(mu_s_); rec_tasks_.push_back((int)b.tasks.size()); ++stats_.bundles; }
     return KvmSubmit::OK;
   }
   const std::string& last_error() const { return last_error_; }
   // Tasks per submitted record, indexed by window id: the admitter hands out slots in record order, so while nothing was recycled
   // (total <= max_tasks) record w's tasks occupy slots [sum of earlier records, +size).
-  std::vector<int> record_tasks() { std::lock_guard<std::mutex> lk(mu_); return rec_tasks_; }
+  std::vector<int> record_tasks() { std::lock_guard<std::mutex> lk(mu_s_); return rec_tasks_; }
   int device_error() const { return (int)herr_->code; }   // 0 while healthy
   // Live versions of all variables, read while the kernel runs (one small DMA from the non-blocking stream's device memory).
   std::vector<int> live_versions() const {
@@ -444,7 +481,10 @@ class KvmExec {
   // True once every task of window wid (a submitted bundle record) has completed.
   // win_done_[slot] holds the id+1 of the newest finished window in that slot. A slot is reused only after its old window finished, so
   // a value at or past wid+1 (wrap-safe signed distance) means wid finished, even after the table wrapped over it.
-  bool window_done(unsigned wid) const { return (int)(__atomic_load_n(&win_done_[wid & (cfg_.win_cap - 1)], __ATOMIC_ACQUIRE) - (wid + 1)) >= 0; }
+  bool window_done(unsigned wid) const {
+    if (cfg_.lat_classes && (wid & 0x80000000u)) { const unsigned q = wid & 0x7fffffffu; return (int)(__atomic_load_n(&lat_win_done_[q & (cfg_.lat_win_cap - 1)], __ATOMIC_ACQUIRE) - (q + 1)) >= 0; }
+    return (int)(__atomic_load_n(&win_done_[wid & (cfg_.win_cap - 1)], __ATOMIC_ACQUIRE) - (wid + 1)) >= 0;
+  }
 
   // One huge bundle through bounded slots: the bundle is cut into windows of consecutive tasks (task order must be
   // topological: every edge points to a higher index). Edges inside a window go to the device as usual; an edge that crosses
@@ -506,7 +546,7 @@ class KvmExec {
 
   // No more bundles: the kernel exits once everything admitted has finished.
   void close() {
-    std::lock_guard<std::mutex> lk(mu_);
+    std::lock_guard<std::mutex> lk(mu_), lk2(mu_l_);   // both lanes: closed implies both doorbells are final
     if (closed_flag_) return;
     closed_flag_ = true;
     std::atomic_thread_fence(std::memory_order_seq_cst);
@@ -606,9 +646,14 @@ class KvmExec {
       }
     }
   }
-  void write_header(size_t total, int nt, int ne, int na, int kind) {
-    int* h = ring_ + wpos_ % cfg_.ring_words;
-    h[0] = KVM_REC_MAGIC; h[1] = (int)total; h[2] = nt; h[3] = ne; h[4] = na; h[5] = stats_.bundles; h[6] = kind; h[7] = 0;
+  bool is_lat(const KvmBundle& b) const {
+    if (!cfg_.lat_classes) return false;
+    for (const auto& t : b.tasks) if (t.workload_id < 0 || t.workload_id > 31 || !((cfg_.lat_classes >> t.workload_id) & 1u)) return false;
+    return !b.tasks.empty();
+  }
+  void write_header(int lane, size_t total, int nt, int ne, int na, int kind) {
+    int* h = (lane ? lat_ring_ + wpos_l_ % cfg_.lat_ring_words : ring_ + wpos_ % cfg_.ring_words);
+    h[0] = KVM_REC_MAGIC; h[1] = (int)total; h[2] = nt; h[3] = ne; h[4] = na; h[5] = (int)lane_bundles_[lane]; h[6] = kind; h[7] = 0;
   }
   KvmConfig cfg_;
   KvmDevState S_{};
@@ -617,7 +662,10 @@ class KvmExec {
   std::vector<float*> arenas_;
   char* ctl_ = nullptr; int* ring_ = nullptr; volatile unsigned* win_done_ = nullptr;
   unsigned long long *doorbell_ = nullptr, *ring_head_ = nullptr; unsigned* closed_ = nullptr; KvmHostErr* herr_ = nullptr;
-  unsigned long long wpos_ = 0;
+  unsigned long long wpos_ = 0, wpos_l_ = 0;
+  unsigned lane_bundles_[2] = {0, 0};
+  int* lat_ring_ = nullptr; volatile unsigned* lat_win_done_ = nullptr; unsigned long long *lat_doorbell_ = nullptr, *lat_ring_head_ = nullptr;
+  std::mutex mu_l_, mu_s_;
   cudaStream_t stream_{}; cudaEvent_t e0_{}, e1_{};
   int sms_ = 0, grid_ = 0, nc_ = 1; size_t dyn_smem_ = 0;
   KvmSchedParams* hp_ = nullptr; KvmSchedTele* ht_ = nullptr;

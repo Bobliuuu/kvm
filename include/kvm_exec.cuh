@@ -741,7 +741,8 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
   // consume the window the publishing bundle needs. More than live_cap parked is reported as PARK_STALL after the stall timeout.
   // A bulk record that waits for room keeps servicing the lat lane (its slots are not popped yet, so adm is free).
   for (;;) {
-    if (threadIdx.x == 0 && A.action == KVM_ADM_IDLE) {
+    // (volatile read inside the thread-0 branch: the compiler must not speculate the load on the other threads - racecheck flagged that)
+    if (threadIdx.x == 0 && *(volatile int*)&A.action == KVM_ADM_IDLE) {
       kvm_reclaim_windows(S, A, L);
       KvmLaneAdm& a = A.l[L];
       bool room = a.win_next - a.win_oldest < ln.win_cap && (a.succ_used + (unsigned)ne - a.succ_free) <= ln.succ_cap &&

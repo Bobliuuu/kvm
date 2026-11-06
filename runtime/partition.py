@@ -116,6 +116,9 @@ def op_cost_us(op, a, cl: Cluster):
         return cl.task_overhead_us
     elif op == 'noop':
         return cl.task_overhead_us
+    elif op == 'adamw':                                   # 4 streams read, 3 written, ~20 flops per element
+        n = a['e1'] - a['e0']
+        return cl.task_overhead_us + max(20.0 * n / (cl.tflops * 1e6), 7 * f32 * n / (cl.hbm_gbs * 1e3))
     else:
         n = a.get('n', a.get('rows', 1) * a.get('cols', 1))
         flops, byt = 4.0 * n, 3 * f32 * n
@@ -138,10 +141,12 @@ class Prog:
     tasks: list              # program order; dicts with id, op, args, after(list of ids), priority, publishes, reads, deadline_us
 
 
-def parse_program(spec) -> Prog:
+def parse_program(spec, symbolic=False) -> Prog:
     """Flatten graphs into one program-ordered task list (ids 'graph.task'). Order respects `after` and version edges."""
     compiled = cw.compile_spec(copy.deepcopy(spec))        # full validation, and gives us the canonical buffer values
-    bufs = {b.name: dict(rows=b.rows, cols=b.cols, values=b.materialize()) for b in compiled.buffers}
+    # symbolic: nothing is materialised (init metadata only), for shapes whose values do not fit in Python lists
+    bufs = {b.name: dict(rows=b.rows, cols=b.cols, dtype=b.dtype, init=b.init, values=None if symbolic else b.materialize())
+            for b in compiled.buffers}
     tasks, idx = [], {}
     for g in spec['graphs']:
         for t in g['tasks']:
@@ -229,12 +234,12 @@ class ShardBuilder:
         self.ntmp = 0
         self.mirror: dict = {}
 
-    def buf(self, name, rows, cols, values=None):
+    def buf(self, name, rows, cols, values=None, dtype='f32', gen=None, place=None):
         if name in self.buffers:
             b = self.buffers[name]
             _need((b['rows'], b['cols']) == (rows, cols), f'shard {self.rank}: buffer {name!r} redeclared with another shape')
             return name
-        self.buffers[name] = dict(name=name, rows=rows, cols=cols, values=values)
+        self.buffers[name] = dict(name=name, rows=rows, cols=cols, values=values, dtype=dtype, gen=gen, place=place)
         self.trk[name] = Tracker()
         return name
 
@@ -302,10 +307,15 @@ class ShardBuilder:
         for name, rem in self.remotes.items():
             if rem['kind'] == 'inbox':
                 self.buffers[name]['cols'] = max(1, nvars_of(rem['rank']))
+        def bdict(b):
+            d = dict(name=b['name'], rows=b['rows'], cols=b['cols'],
+                     init={'kind': 'values', 'values': b['values']} if b['values'] is not None else
+                     {'kind': 'fill', 'value': (b['gen'] or {}).get('value', 0) if (b['gen'] or {}).get('kind') == 'fill' else 0})
+            if b.get('dtype', 'f32') != 'f32':
+                d['dtype'] = b['dtype']
+            return d
         return {'variables': self.variables,
-                'buffers': [dict(name=b['name'], rows=b['rows'], cols=b['cols'],
-                                 init={'kind': 'values', 'values': b['values']} if b['values'] is not None else
-                                 {'kind': 'fill', 'value': 0}) for b in self.buffers.values()],
+                'buffers': [bdict(b) for b in self.buffers.values()],
                 'graphs': [{'name': 'shard', 'tasks': self.tasks or [dict(id='idle', op='noop')]}]}   # a device may own no work
 
 
@@ -316,6 +326,7 @@ class Shard:
     remotes: dict            # buffer name -> {'kind': 'peer'|'inbox'|'sendq', ...}: table entries that point off-device
     in_vars: list            # variables fed by remote publishers (the pump polls their inbox slots)
     buffer_names: list       # declaration order == KvmBuf table index
+    meta: dict = field(default_factory=dict)    # buffer name -> {dtype, gen (symbolic init descriptor), place (r0, c0, GR, GC)}
 
     def buf_index(self, name):
         return self.buffer_names.index(name)
@@ -666,15 +677,29 @@ class ShardPlanner(Planner):
         if self.scalar(name) and lay in (ROWS, COLS):
             lay = R
         self.layout[name] = lay
-        shape, full = self.shape(name), self.prog.buffers[name]['values']
+        shape, B = self.shape(name), self.prog.buffers[name]
         r, c = self.phys_shape(shape, lay)
+        if self.st.get('symbolic'):
+            gen = self.st.get('gen', {}).get(name)
+            for d in range(self.P):
+                r0, nr, c0, nc = (0, shape[0], 0, shape[1]) if lay in (R, PART) else self.blk(shape, lay, d)
+                if lay == PART:
+                    desc = dict(kind='fill', value=0)
+                elif gen:
+                    desc = dict(kind='gen', **gen)
+                else:
+                    _need(B['init']['kind'] == 'fill', f'symbolic mode: {name!r} needs a fill init or a strategy.gen entry')
+                    desc = dict(kind='fill', value=B['init']['value'])
+                self.sh[d].buf(name, r, c, None, dtype=B['dtype'], gen=desc, place=(r0, c0, shape[0], shape[1]))
+            return
+        full = B['values']
         for d in range(self.P):
             if lay in (R, PART):
                 vals = list(full) if lay == R else [0.0] * len(full)
             else:
                 r0, nr, c0, nc = self.blk(shape, lay, d)
                 vals = [full[(r0 + i) * shape[1] + c0 + j] for i in range(nr) for j in range(nc)]
-            self.sh[d].buf(name, r, c, vals)
+            self.sh[d].buf(name, r, c, vals, dtype=B['dtype'], place=(0, 0, shape[0], shape[1]) if lay in (R, PART) else None)
 
     def ensure(self, name):
         self.decide(name, self.init_layout.get(name, R))
@@ -702,7 +727,9 @@ class ShardPlanner(Planner):
             except PartitionError as e:
                 raise PartitionError(f"{t['id']}: {e}") from None
         shards = [Shard(d, self.sh[d].spec(lambda r: len(self.sh[r].variables)), self.sh[d].remotes, self.sh[d].in_vars,
-                        list(self.sh[d].buffers)) for d in range(self.P)]
+                        list(self.sh[d].buffers),
+                        {n: dict(dtype=b['dtype'], gen=b['gen'], place=b['place']) for n, b in self.sh[d].buffers.items()})
+                  for d in range(self.P)]
         return Plan(shards, dict(self.layout), self.comm_bytes, self.comm_msgs, self.prog, self.cl, self.st)
 
     def emit_all(self, t, op, args_for, acc_for, label=None, carry=True):
@@ -733,8 +760,38 @@ class ShardPlanner(Planner):
             self.plan_mse(t)
         elif op == 'matmul':
             self.plan_matmul(t)
+        elif op == 'adamw':
+            self.plan_adamw(t)
         else:
             raise PartitionError(f'op {op!r} has no sharding rule')
+
+    def plan_adamw(self, t):
+        """Sharded optimizer step (ZeRO): AdamW is elementwise, so it runs on whatever shard of p/m/v a device owns. p, m, v take
+        the layout declared for p (ROWS = ZeRO-style); the gradient is brought into that layout, which for a PART gradient is a
+        reduce-scatter (no all-reduce, no replicated optimizer state). Covers the whole buffer (e0 = 0, e1 = size)."""
+        a = t['args']
+        p, g, m, v = a['p'], a['g'], a['m'], a['v']
+        full = self.shape(p)[0] * self.shape(p)[1]
+        _need(a['e0'] == 0 and a['e1'] == full, f'adamw must cover its whole buffer (e0=0, e1={full}), got [{a["e0"]},{a["e1"]})')
+        for nm in (g, m, v):
+            _need(self.shape(nm) == self.shape(p), f'adamw: {nm!r} and {p!r} differ in shape')
+        T = self.ensure(p)
+        for nm in (m, v):
+            _need(self.ensure(nm) == T, f'adamw: {nm!r} must have the layout of {p!r} ({T})')
+        gv = self.view(g, T)
+        st = self.view(a['step'], R)
+        extra = [x for x in (a.get('gscale'),) if x]
+        ev = [self.view(x, R) for x in extra]
+        n_loc = full // self.P if T in (ROWS, COLS) else full
+
+        def args_for(d):
+            args = dict(a, g=gv, step=st, e0=0, e1=n_loc)
+            if ev:
+                args['gscale'] = ev[0]
+            return args
+        self.emit_all(t, 'adamw', args_for, lambda d: self.acc(d, reads=[gv, st] + ev, writes=[p, m, v]))
+        for o in (p, m, v):
+            self.epoch[o] += 1
 
     def common_layout(self, ins, outs, linear):
         for o in outs:                                   # a decided output (parameter, in-place operand) fixes the layout
@@ -1107,7 +1164,9 @@ class PlacePlanner(Planner):
                 raise PartitionError(f"{t['id']}: {e}") from None
         where = {n: next(iter(vm.items())) for n, vm in self.valid.items()}
         shards = [Shard(d, self.sh[d].spec(lambda r: len(self.sh[r].variables)), self.sh[d].remotes, self.sh[d].in_vars,
-                        list(self.sh[d].buffers)) for d in range(self.P)]
+                        list(self.sh[d].buffers),
+                        {n: dict(dtype=b['dtype'], gen=b['gen'], place=b['place']) for n, b in self.sh[d].buffers.items()})
+                  for d in range(self.P)]
         return Plan(shards, where, self.comm_bytes, self.comm_msgs, self.prog, self.cl, self.st)
 
     def place_task(self, t, pubs, rev, readers):
@@ -1187,7 +1246,7 @@ def partition(spec, cluster: Cluster, strategy: dict) -> Plan:
     mode = strategy.get('mode', 'shard')
     if strategy.get('microbatches', 1) > 1:
         spec = microbatch(spec, strategy['microbatches'], strategy.get('split', []), strategy.get('accumulate', {}))
-    prog = parse_program(spec)
+    prog = parse_program(spec, bool(strategy.get('symbolic')))
     _need(mode in ('shard', 'place'), "strategy.mode must be 'shard' or 'place'")
     plan = (ShardPlanner if mode == 'shard' else PlacePlanner)(prog, cluster, strategy).plan()
     plan.strategy = dict(strategy, mode=mode)
@@ -1302,10 +1361,19 @@ def write_plan(plan: Plan, out_dir, golden=None):
         for b in compiled.buffers:
             rem = s.remotes.get(b.name)
             if rem is None:
-                if b.init['kind'] == 'fill':
-                    lines.append(f'buf {b.index} local {b.rows} {b.cols} fill {b.init["value"]!r}')
+                m = s.meta.get(b.name, {})
+                g = m.get('gen')
+                tail = ' i32' if b.dtype == 'i32' else ''
+                if g and g['kind'] == 'gen':
+                    pl = m['place']
+                    lines.append(f'buf {b.index} local {b.rows} {b.cols} gen {g["seed"]} {g["draws"]} {g["bias"]!r} {g["coef"]!r} '
+                                 f'{g["gr"]} {g["gc"]} {1 if g.get("transpose") else 0} {pl[0]} {pl[1]}{tail}')
+                elif g and g['kind'] == 'fill':
+                    lines.append(f'buf {b.index} local {b.rows} {b.cols} fill {g["value"]!r}{tail}')
+                elif b.init['kind'] == 'fill':
+                    lines.append(f'buf {b.index} local {b.rows} {b.cols} fill {b.init["value"]!r}{tail}')
                 else:
-                    lines.append(f'buf {b.index} local {b.rows} {b.cols} values ' + ' '.join(repr(v) for v in b.materialize()))
+                    lines.append(f'buf {b.index} local {b.rows} {b.cols} values ' + ' '.join(repr(v) for v in b.materialize()) + tail)
             elif rem['kind'] == 'peer':
                 lines.append(f'buf {b.index} peer {rem["rank"]} {plan.shards[rem["rank"]].buf_index(rem["buf"])} {b.rows} {b.cols}')
             elif rem['kind'] == 'inbox':
@@ -1317,6 +1385,10 @@ def write_plan(plan: Plan, out_dir, golden=None):
             lines.append(f'var {v.id} {0 if v.name in s.in_vars else v.base_version}')
         for nme in s.in_vars:
             lines.append(f'inbox_var {names.index(nme)}')
+        for nme in plan.strategy.get('dump', []):
+            if nme in s.meta and s.meta[nme].get('place'):
+                bi = next(b.index for b in compiled.buffers if b.name == nme)
+                lines.append(f'dump {bi} {nme} ' + ' '.join(str(x) for x in s.meta[nme]['place']))
         if golden is not None:
             for name, lay in plan.layout.items():
                 if plan.strategy['mode'] == 'place':

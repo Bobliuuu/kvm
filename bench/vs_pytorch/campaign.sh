@@ -10,7 +10,7 @@ OUT="${1:?OUT_DIR}"; REPS="${REPS:-7}"; mkdir -p "$OUT"
   git rev-parse --short HEAD 2>/dev/null || echo "commit: ${KVM_COMMIT:-unknown}"; } | tee "$OUT/env.txt"
 for cfg in ${CONFIGS:-tiny small mid tiny_p}; do
   W="w_$cfg"; D="$OUT/$cfg"; mkdir -p "$D"; cp "$W/info.json" "$D/"
-  prec=tf32; [ "$cfg" = tiny_p ] && prec=precise
+  prec=tf32; case "$cfg" in *_p) prec=precise;; esac
   echo "=== $cfg ($prec) $(date -u +%T)"
   python3 bench/vs_pytorch/torch_bench.py "$W" --reps "$REPS" --precision "$prec" --out "$D/torch.json" ${MODES:+--modes $MODES} 2>&1 | grep -v Warning | tee "$D/torch.log"
   [ -n "${SKIP_KVM:-}" ] && continue

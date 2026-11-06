@@ -111,6 +111,7 @@ int gpu_view_end(int tic) {
 }
 int gpu_split_pending(void) { return g_pending; }
 int gpu_split_log_tic(void) { return g_log_tic; }
+void gpu_split_set_tic(int t) { g_log_tic = t; }
 void gpu_split_done(void) { g_pending = 0; }
 static int g_resume;
 int gpu_split_resume(void) { const int r = g_resume; g_resume = 0; return r; }

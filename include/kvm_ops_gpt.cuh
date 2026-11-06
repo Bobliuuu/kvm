@@ -34,7 +34,8 @@
 #define KVM_GPT_THREADS 256
 #define KVM_GPT_DEVI __device__ __forceinline__
 // Rows one causal attention task covers: 128 queries (attn_fwd, attn_bwd_dq: rows [q0, q0+128)) or 128 keys (attn_bwd_dkv:
-// [k0, k0+128)), 16 per warp. A caller steps q0 / k0 by this value; a smaller step is correct but recomputes the overlap.
+// [k0, k0+128)), 16 per warp. Callers must step q0 / k0 by exactly this value: tasks that overlap write the same output rows from
+// differently grouped sums (equal to rounding, not bitwise), which is a write race and breaks the reproducibility contract.
 // Mirrored by ATTN_BLOCK in frontend/kvmfe/opset.py. The bidirectional attn_full_* ops keep their own 32-row blocks.
 #define KVM_GPT_ATTN_ROWS 128
 static_assert(KVM_GPT_THREADS / 32 * 16 == KVM_GPT_ATTN_ROWS, "attention: one m16 row tile per warp");

@@ -1,0 +1,11 @@
+{"adm":"serve_s0","t_done_us":105709,"buffers":{"serve_s0.cur0":{"dtype":"i32","values":[43]},"serve_s0.cur1":{"dtype":"i32","values":[41803]},"serve_s0.cur2":{"dtype":"i32","values":[33285]},"serve_s0.cur3":{"dtype":"i32","values":[42236]}}}
+{"adm":"game","t_done_us":4256531,"buffers":{}}
+{"adm":"train_w0","t_done_us":4492482,"buffers":{"loss.0":{"dtype":"f32","values":[10.9790077,0.000244140625]}}}
+{"adm":"train_w1","t_done_us":5999573,"buffers":{"loss.0":{"dtype":"f32","values":[10.9369097,0.000244140625]}}}
+{"adm":"serve_s2","t_done_us":6080727,"buffers":{"serve_s2.cur0":{"dtype":"i32","values":[43]},"serve_s2.cur1":{"dtype":"i32","values":[33494]},"serve_s2.cur2":{"dtype":"i32","values":[25265]},"serve_s2.cur3":{"dtype":"i32","values":[33568]}}}
+{"adm":"train_w2","t_done_us":7548290,"buffers":{"loss.0":{"dtype":"f32","values":[10.8757191,0.000244140625]}}}
+{"adm":"train_w3","t_done_us":8997878,"buffers":{"loss.0":{"dtype":"f32","values":[10.8826551,0.000244140625]}}}
+{"adm":"serve_s4","t_done_us":9079442,"buffers":{"serve_s4.cur0":{"dtype":"i32","values":[43]},"serve_s4.cur1":{"dtype":"i32","values":[49140]},"serve_s4.cur2":{"dtype":"i32","values":[49140]},"serve_s4.cur3":{"dtype":"i32","values":[26457]}}}
+{"adm":"train_w4","t_done_us":10545462,"buffers":{"loss.0":{"dtype":"f32","values":[10.8924685,0.000244140625]}}}
+{"adm":"train_w5","t_done_us":11979126,"buffers":{"loss.0":{"dtype":"f32","values":[10.9236889,0.000244140625]}}}
+{"adm":"serve_s6","t_done_us":12071370,"buffers":{"serve_s6.cur0":{"dtype":"i32","values":[43]},"serve_s6.cur1":{"dtype":"i32","values":[34196]},"serve_s6.cur2":{"dtype":"i32","values":[34196]},"serve_s6.cur3":{"dtype":"i32","values":[34196]}}}

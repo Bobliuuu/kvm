@@ -1,0 +1,8 @@
+PASS  executor: 1699336/1699336 tasks in 12070.5 ms on NVIDIA A100-SXM4-40GB (108 SMs, grid 108), sched dynamic, err_code 0
+PASS  versions: 22935 version-carrying tasks checked against the device trace (22935 exact), 0 violations; 0 at_least readers saw the version advance while running
+PASS  training: 6 step losses, first 10.9790 -> last 10.9237 (mean of first/last 1: 10.9790 -> 10.9237, falls); no CPU golden at this size
+SKIP  serving: no golden decode (--no-golden); coherence is covered by the version check
+PASS  game: compared 700 frames: raw-identical 700/700, fingerprint-identical 700/700, state-identical 700/700; final cand {'booted': 1, 'tics': 700, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 3, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 2458, 'y': -2679, 'waypoint': 17}
+PASS  cadence: 700 ticks: 171.8 frames/s (35 needed), tick gap p50/p99/max 5.65/12.18/13.27 ms, 0 of 698 gaps over 28.57 ms; tick run p50 5.40 ms, queue wait p99 15 us; boot tick 175071 us; 7 ticks past their absolute deadline (frames before the boot finishes are late by construction)
+INFO  overlap: Doom ran 4.24 s; game: 4900 tasks, 4.251 CTA-s (4.251 while Doom ran, 4894 tasks overlapping); serve: 33488 tasks, 1.051 CTA-s (0.262 while Doom ran, 8372 tasks overlapping); train: 1626864 tasks, 90.759 CTA-s (11.168 while Doom ran, 209624 tasks overlapping)
+ALL CHECKS PASSED (SKIPs are listed above)

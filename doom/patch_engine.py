@@ -133,6 +133,7 @@ typedef struct { visplane_t* pl; byte* src; lighttable_t** zl; fixed_t ph; int l
 static gpu_plane_t gpu_planes[MAXVISPLANES];
 static int gpu_nplanes;
 extern int gpu_split_logging(void);
+extern byte* ylookup[]; extern int columnofs[];
 void gpu_planes_reset(void) { gpu_nplanes = 0; }
 int gpu_plane_count(void) { return gpu_nplanes; }
 int gpu_plane_log(visplane_t* pl, byte* src, lighttable_t** zl, fixed_t ph, int lump)

@@ -8,6 +8,7 @@ Nothing about descriptor layout or the operator table is duplicated in Python, s
 compiler, the CPU reference and the CUDA executor cannot drift apart.
 """
 import logging
+import os
 import re
 import struct
 from dataclasses import dataclass
@@ -77,10 +78,21 @@ def _parse_registry(path: Path, ops: dict, ids: dict) -> None:
         ids[op_id] = name
 
 
+EXTRA_DEFS_ENV = 'KVM_EXTRA_DEFS'   # os.pathsep-separated .def files of pluggable operator packs (tools/kvm_build.sh sets it)
+
+
+def extra_defs() -> tuple[str, ...]:
+    return tuple(p for p in os.environ.get(EXTRA_DEFS_ENV, '').split(os.pathsep) if p)
+
+
+def load_ops(include_dir: Path = INCLUDE_DIR, extra: tuple | None = None) -> dict[str, OpSpec]:
+    """All operators of every registry file present in `include_dir`, in registry order, then the pluggable packs' .def files
+    (`extra`, default: $KVM_EXTRA_DEFS). Ids and names stay globally unique across all of them."""
+    return _load_ops(Path(include_dir), tuple(extra) if extra is not None else extra_defs())
+
+
 @lru_cache(maxsize=None)
-def load_ops(include_dir: Path = INCLUDE_DIR) -> dict[str, OpSpec]:
-    """All operators of every registry file present in `include_dir`, in registry order."""
-    include_dir = Path(include_dir)
+def _load_ops(include_dir: Path, extra: tuple) -> dict[str, OpSpec]:
     ops: dict[str, OpSpec] = {}
     ids: dict[int, str] = {}
     for name in REGISTRIES:
@@ -90,6 +102,10 @@ def load_ops(include_dir: Path = INCLUDE_DIR) -> dict[str, OpSpec]:
             log.debug('loaded %s (%d operators so far)', path.name, len(ops))
         elif name == REGISTRIES[0]:
             raise AbiError(f'{path}: core operator registry not found')
+    for path in extra:
+        if not Path(path).is_file():
+            raise AbiError(f'{path}: operator pack registry not found ({EXTRA_DEFS_ENV})')
+        _parse_registry(Path(path), ops, ids)
     if not ops:
         raise AbiError(f'{include_dir}: no operators found')
     return ops

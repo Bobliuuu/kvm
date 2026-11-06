@@ -182,6 +182,20 @@ float64 oracles, any dataflow order bitwise equal, accumulation == big batch, ma
 `tests/generic/run.sh` (A100, not yet run: 4 models x {cpu, a100} tiling, 3xTF32, golden_check precise; 2 MANIFEST demos through `demo/kvm_run` and
 `demo/check_demo.py`).
 
+### Reinforcement-learning losses and attention-free models (generality step 1)
+
+| Piece | Contract |
+|---|---|
+| `PolicyGradient()` | REINFORCE: `mean(adv * -log softmax(out)[action])`. Targets `('act', 'adv')` = i32 action column + f32 advantage column (data: no gradient). New logical op `pg_loss` built from existing device ops (`softmax_ce_fwd/reduce/bwd`, `row_dot`, `colsum`, `gather_rows_scaled`); with `adv == 1` it equals `CrossEntropy` bit for bit (tested) |
+| `QLearning()` | one-step TD / DQN: `mean((Q(s,a) - y)^2)`. Targets `('mask', 'y')` = one-hot f32 action mask (`generic.one_hot`) + bootstrapped target column (computed on the host from a frozen copy: data). New logical op `row_select` (`row_dot` of each Q row with its mask; VJP = scaled `gather` of the mask) feeding `mse_loss` |
+| data | `DataSource.target` may be a tuple of stream names; `ArrayData` serves logged transitions, `GeneratedData(make(micro))` serves host-simulated rollouts |
+| on-policy loops | one bundle never samples from its own policy: the loop is on the host (roll out with the latest weights, feed the batch, run a bundle window). The device program is the update half |
+| `ModelConfig(layers=0)` | attention geometry (head dim, seq % 32) is validated only when there are attention blocks; the refusal for a bad head dim now points at the generic API. Models without attention are written as a `Module` and use `compile_training(module, loss=, data=)`, never a `ModelConfig` |
+
+The audit's four models (`xfmr_odd`, `mlp_ce`, `resmlp_rms`, `bad_dims`) now run through `compile_training` with no workaround:
+`xfmr_odd` as a `ModelConfig`, the three token MLPs as zoo cases (`tests/generic/zoo.py`: `mlp_ce`, `resmlp_rms`, `bad_dims`, plus
+`pg_policy`, `dqn_q`). CPU checks: `tests/frontend/test_generic_rl.py` (loss and finite-difference gradients vs numpy float64, learning, refusals).
+
 Limits of this layer (not fixed here): no auxiliary-loss roots from inside a generic module (use a `models.py`-style model for those),
 one `loss` root per program, no dynamic shapes or control flow, no real conv/pool kernels (the CNN is gather + matmul: correct, not
 fast; a 3-tap conv reads its input 3 times), attention shapes are still bound by the device ops (head dim 16/32/64/128, sequence a

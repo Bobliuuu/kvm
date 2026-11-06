@@ -49,7 +49,7 @@ python3 -I -m unittest discover -s tests/frontend      # from the repo root
 | Fusion, remat, gradient accumulation, device LR schedule, loss scaling, bf16 | implemented + measured on the A100 (fusion -3% Llama / -11% MoE time, remat pool -41 to -59% for +36% tasks); bf16 is emulated in fp32 buffers | `results/2026-11-04-a100-models` |
 | GPT bundles on the executor | implemented + measured; 1xTF32 GEMMs are compared on losses and step-1 buffers, 3xTF32 (flag 16, `gen_bundle.py --precise`) to fp32 level | `results/2026-11-04-a100-gpt-golden` |
 | Windows / MANIFEST runner | CPU reference runner only; the GPU CLI runs single bundles | `kvmfe.run_manifest`, `results/2026-11-04-a100-exec-recycling` |
-| `gpt_162m` | code-only: compiled (318k-task template) and inspected, never run on a GPU | this file |
+| `gpt_162m` | runs on the A100 (demo `large`: 6 steps, 1.8 s/step = 2,260 tokens/s, 30x its 60 ms critical path; task-throughput bound); no CPU golden at this size | `results/2026-11-06-demo-large` |
 | Not built | dynamic shapes, data-dependent control flow, MoE serving, dropout, fp16, a frontend switch for 3xTF32, 128x128 / 256x128 matmul tile stepping in the lowering (the device tiles exist) | below, `results/2026-11-04-a100-ops-perf` |
 | Open test item | `norm_bwd_params` wants >= 64 tasks (16 columns each) to use the GPU; the partition here does not yet give that | `results/2026-11-04-a100-ops-perf` |
 

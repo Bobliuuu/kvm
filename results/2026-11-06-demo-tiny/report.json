@@ -1,0 +1,75 @@
+{
+ "checks": [
+  {
+   "name": "executor",
+   "status": "PASS",
+   "detail": "26565/26565 tasks in 4234.6 ms on NVIDIA A100-SXM4-40GB (108 SMs, grid 108), sched dynamic, err_code 0"
+  },
+  {
+   "name": "versions",
+   "status": "PASS",
+   "detail": "184 version-carrying tasks checked against the device trace (184 exact), 0 violations; 0 at_least readers saw the version advance while running"
+  },
+  {
+   "name": "training",
+   "status": "PASS",
+   "detail": "200 step losses, first 4.1460 -> last 0.0042 (mean of first/last 50: 2.6165 -> 0.0087, falls); max relative deviation from the CPU golden 3.78e-06 (tolerance 2e-03)"
+  },
+  {
+   "name": "serving",
+   "status": "PASS",
+   "detail": "20/20 served token buffers equal the golden decode of the same weights version (5 requests)"
+  },
+  {
+   "name": "game",
+   "status": "PASS",
+   "detail": "compared 700 frames: raw-identical 700/700, fingerprint-identical 700/700, state-identical 700/700; final cand {'booted': 1, 'tics': 700, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 3, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 2458, 'y': -2679, 'waypoint': 17}"
+  },
+  {
+   "name": "cadence",
+   "status": "PASS",
+   "detail": "700 ticks: 174.2 frames/s (35 needed), tick gap p50/p99/max 5.61/10.13/10.62 ms, 0 of 698 gaps over 28.57 ms; tick run p50 5.44 ms, queue wait p99 14 us; boot tick 208246 us; 8 ticks past their absolute deadline (frames before the boot finishes are late by construction)"
+  },
+  {
+   "name": "overlap",
+   "status": "INFO",
+   "detail": "Doom ran 4.22 s; serve: 365 tasks, 0.004 CTA-s (0.003 while Doom ran, 292 tasks overlapping); train: 20200 tasks, 0.212 CTA-s (0.205 while Doom ran, 19687 tasks overlapping); game: 4900 tasks, 4.227 CTA-s (4.227 while Doom ran, 4894 tasks overlapping)"
+  }
+ ],
+ "cadence": {
+  "ticks": 700,
+  "fps": 174.19876156559985,
+  "gap_p50_us": 5605.376000000164,
+  "gap_p99_us": 10132.479999999981,
+  "gap_max_us": 10620.92799999984,
+  "gaps_over_period": 0,
+  "tick_wait_p99_us": 14.336,
+  "per_class": {
+   "serve": {
+    "tasks": 365,
+    "busy_us": 3892.2240000000456,
+    "in_span_tasks": 292,
+    "in_span_busy": 2974.720000000045,
+    "first": 162.816,
+    "last": 339083.264
+   },
+   "train": {
+    "tasks": 20200,
+    "busy_us": 211567.61600000056,
+    "in_span_tasks": 19687,
+    "in_span_busy": 205442.04800000056,
+    "first": 7975.936,
+    "last": 336637.952
+   },
+   "game": {
+    "tasks": 4900,
+    "busy_us": 4226827.264000003,
+    "in_span_tasks": 4894,
+    "in_span_busy": 4226658.304000004,
+    "first": 14768.128,
+    "last": 4232462.336
+   }
+  },
+  "doom_span_s": 4.2175569920000004
+ }
+}

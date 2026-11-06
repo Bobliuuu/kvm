@@ -1,0 +1,6 @@
+rep 1/5: 1041.8 ms (1041.81 ms/step), wall 2.4 s
+rep 2/5: 1045.9 ms (1045.94 ms/step), wall 2.3 s
+rep 3/5: 1048.2 ms (1048.20 ms/step), wall 2.3 s
+rep 4/5: 1050.4 ms (1050.37 ms/step), wall 2.3 s
+rep 5/5: 1047.9 ms (1047.93 ms/step), wall 2.3 s
+executor: best 1041811 us/step  median 1047927  worst 1050369

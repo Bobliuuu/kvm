@@ -1,0 +1,22 @@
+{
+ "steps": 1,
+ "tasks": 318139,
+ "extra_args": [
+  "--live-cap",
+  "65536",
+  "--ring-words",
+  "4194304",
+  "--max-tasks",
+  "524288"
+ ],
+ "ms_total": [
+  1205.132,
+  1198.182,
+  1206.584
+ ],
+ "failed": [],
+ "ms_per_step_best": 1198.182,
+ "ms_per_step_median": 1205.132,
+ "ms_per_step_worst": 1206.584,
+ "tokens_per_s_best": 3418.5123795884097
+}

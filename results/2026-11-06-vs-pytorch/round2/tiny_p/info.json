@@ -1,0 +1,28 @@
+{
+ "model": {
+  "name": "gpt_tiny",
+  "vocab": 64,
+  "d_model": 32,
+  "layers": 1,
+  "heads": 2,
+  "seq": 32,
+  "batch": 1,
+  "ffn_mult": 4,
+  "norm": "layernorm",
+  "bias": true,
+  "init_std": 0.02,
+  "rope_theta": 10000.0,
+  "seed": 0
+ },
+ "steps": 50,
+ "mode": "precise",
+ "tiling": "a100",
+ "fuse": false,
+ "params": 16864,
+ "tasks": 5150,
+ "logical_ops": 3500,
+ "logical_depth": 1402,
+ "flops_per_step": 2981888.0,
+ "min_bytes_per_step": 854784,
+ "tokens_per_step": 32
+}

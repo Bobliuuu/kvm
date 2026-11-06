@@ -175,6 +175,8 @@ class Runtime:
         return None
 
     def _execute(self, task):
+        if task.when and (self.buffers[task.when[0]][task.when[1]] != 0) == task.when[2]:
+            return                       # predicate false: no body, outputs untouched; the task still completes, publishes and releases successors
         ref = ref_ops.OPS[task.op.name]
         bufs = {a.name: (None if task.args[a.name] is None else self.buffers[task.args[a.name]])
                 for a in task.op.args if a.type == 'buf'}

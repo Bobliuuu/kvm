@@ -1,0 +1,10 @@
+loop_0.5 tasks 25 predicated 12 {'trips': 0, 'cap': 12, 'skipped_bodies': 12, 'predicated_tasks': 12}
+loop_3 tasks 25 predicated 12 {'trips': 2, 'cap': 12, 'skipped_bodies': 10, 'predicated_tasks': 12}
+loop_10 tasks 25 predicated 12 {'trips': 4, 'cap': 12, 'skipped_bodies': 8, 'predicated_tasks': 12}
+loop_1000 tasks 25 predicated 12 {'trips': 10, 'cap': 12, 'skipped_bodies': 2, 'predicated_tasks': 12}
+loop_1e+09 tasks 25 predicated 12 {'trips': 12, 'cap': 12, 'skipped_bodies': 0, 'predicated_tasks': 12}
+branch_pos tasks 4 predicated 2 {'skipped_bodies': 1, 'predicated_tasks': 2}
+branch_neg tasks 4 predicated 2 {'skipped_bodies': 1, 'predicated_tasks': 2}
+gemmloop_0.5 tasks 43 predicated 28 {'trips': 12, 'cap': 14, 'skipped_bodies': 2, 'predicated_tasks': 28}
+gemmloop_1 tasks 43 predicated 28 {'trips': 7, 'cap': 14, 'skipped_bodies': 7, 'predicated_tasks': 28}
+gemmloop_200 tasks 43 predicated 28 {'trips': 1, 'cap': 14, 'skipped_bodies': 13, 'predicated_tasks': 28}

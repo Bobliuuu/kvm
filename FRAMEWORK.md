@@ -146,6 +146,31 @@ Any number of `--pack`s combine (the script generates one aggregate `.def`/`.cuh
 (`pack.conf` `rdc=1`, built in for `game`), not a separate hand-written recipe. Tested: `tests/test_packs.py` (CPU), `tests/packs/run.sh` (GPU).
 Not done: a pack cannot be loaded into an already-built executor (ops are a compile-time switch in one kernel); a game-pack build still
 needs `-rdc`, which costs some optimization across translation units.
+## Data-dependent control: predicated tasks (branch and bounded loops)
+
+The DAG stays static; control flow is *predication*. A task may carry a predicate in `KvmTaskDesc` (`include/kvm_task_abi.h`):
+`flags` bit0 `KVM_TF_PRED`, bit1 `KVM_TF_PRED_NEG`, bits 8..31 = element index, `reserved1` = buffer-table index of an `i32`
+buffer. In the workload JSON it is `"when": {"buf": "p", "index": 3, "negate": false}` (validated: buffer exists and is `i32`,
+index inside it, `negate` boolean). When the task starts the executor reads that element (`__ldcg`, after the pop's acquire
+that already orders every upstream write) and runs the op body only if `(value != 0) != NEG`. A skipped task is a normal task in
+every other respect: it publishes its version, decrements and releases its successors, returns its slot and window credit, and
+is counted done (`--trace-csv` column `pred_skipped`; CPU VM and frontend VM implement the same rule). Its outputs keep their old
+contents, so a predicated op should update state in place. Admission rejects a malformed predicate (`KVM_ERR_BAD_TASK`).
+
+Device op `pred_cmp` (id 160, `include/kvm_ops_extra.def`) computes a predicate element: `out[oi] = x[xi] <cmp> thresh`,
+optionally AND/OR with `prev[pi]`. Compare kinds `< <= > >= == !=`.
+
+* **Branch**: compute a value, `pred_cmp` it, put each arm's tasks under `when(p)` / `when(p, negate=True)`. One graph serves
+  every input; exactly one arm runs (`tests/ctl`, `tests/frontend/test_control.py`).
+* **Bounded while loop**: unroll `max_iters` iterations; iteration i is predicated on `flags[i]`, and a `pred_cmp` after each body
+  sets `flags[i+1] = cond AND flags[i]` (so the loop cannot restart). The trip count is decided on the device from the data; the
+  same `tasks.bin`/`args.bin` serves every input. Frontend: `Builder.while_loop`, see FRONTEND.md.
+* **Cost / limits**: a skipped task still occupies a dispatch slot (it is admitted, popped and completed like any task, about one
+  dispatch hop, no op time), so `max_iters` bounds the worst case and the overhead of an exited loop is `(max_iters - trips)`
+  skipped tasks per body task. Shapes stay static (no dynamic shapes); the iteration cap is a compile-time constant; predicates are
+  not nested (combine with `pred_cmp` AND/OR); a predicate must be written by an ancestor task (frontend dataflow adds that edge;
+  hand-written workloads must supply `after`). No `break` out of the middle of a body and no device-side re-submission of tasks
+  (a loop longer than the cap needs the host's windows, see FRONTEND.md "Windows, loops and the manifest").
 
 ## Honest limits
 

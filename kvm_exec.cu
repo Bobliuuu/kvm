@@ -779,15 +779,15 @@ static void kvm_write_trace_csv(const KvmResult& r, const char* path) {
   if (!f) throw std::runtime_error(std::string("cannot open ") + path);
   unsigned long long t0 = ~0ull;
   for (auto& t : r.trace) if (t.admit_ns) t0 = std::min(t0, t.admit_ns);
-  fprintf(f, "slot,op,workload,priority,deadline_us,admit_us,ready_us,start_us,end_us,queue_wait_us,run_us,smid,block,ver_start,ver_end,missed,exec_count,bytes,res,resv,boost,urgent\n");
+  fprintf(f, "slot,op,workload,priority,deadline_us,admit_us,ready_us,start_us,end_us,queue_wait_us,run_us,smid,block,ver_start,ver_end,missed,exec_count,bytes,res,resv,boost,urgent,pred_skipped\n");
   for (size_t i = 0; i < r.trace.size(); ++i) {
     const KvmTrace& t = r.trace[i]; const KvmTaskDesc& d = r.tasks[i];
     auto us = [&](unsigned long long x) { return x ? (double)(x - t0) / 1e3 : -1.0; };
     const KvmSlotInfo si = i < r.info.size() ? r.info[i] : KvmSlotInfo{0, 0, 0};
-    fprintf(f, "%zu,%s,%d,%d,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%d,%d,%d,%d,%d,%llu,%d,%d,%d,%d\n", i, kvm_op(d.op_id)->name, d.workload_id, d.priority, d.deadline_us,
+    fprintf(f, "%zu,%s,%d,%d,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%d,%d,%d,%d,%d,%llu,%d,%d,%d,%d,%d\n", i, kvm_op(d.op_id)->name, d.workload_id, d.priority, d.deadline_us,
             us(t.admit_ns), us(t.ready_ns), us(t.start_ns), us(t.end_ns), t.start_ns ? (double)(t.start_ns - t.ready_ns) / 1e3 : -1.0,
             t.end_ns ? (double)(t.end_ns - t.start_ns) / 1e3 : -1.0, t.smid, t.block, t.ver0, t.ver1, (t.flags & KVM_TRACE_MISSED) ? 1 : 0, t.exec_count,
-            si.bytes, si.res, (t.flags & KVM_TRACE_RESV) ? 1 : 0, (t.flags & KVM_TRACE_BOOST) ? 1 : 0, (t.flags & KVM_TRACE_URGENT) ? 1 : 0);
+            si.bytes, si.res, (t.flags & KVM_TRACE_RESV) ? 1 : 0, (t.flags & KVM_TRACE_BOOST) ? 1 : 0, (t.flags & KVM_TRACE_URGENT) ? 1 : 0, (t.flags & KVM_TRACE_PSKIP) ? 1 : 0);
   }
   fclose(f);
   KLOG(2, "trace: %zu tasks -> %s", r.trace.size(), path);

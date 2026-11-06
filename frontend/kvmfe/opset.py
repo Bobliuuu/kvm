@@ -754,6 +754,16 @@ def _scale_flat(b, a):
     b['out'].a[a['e0']:a['e1']] = [a['alpha'] * x for x in b['x'].a[a['e0']:a['e1']]]
 
 
+@impl('pred_cmp', lambda a: 1.0)
+def _pred_cmp(b, a):
+    v, th = b['x'].a[a['xi']], a['thresh']
+    c = [v < th, v <= th, v > th, v >= th, v == th, v != th][a['kind']]
+    if a['comb']:
+        p = b['prev'].a[a['pi']] != 0
+        c = (c and p) if a['comb'] == 1 else (c or p)
+    b['out'].a[a['oi']] = 1 if c else 0
+
+
 @impl('add_rowtile', lambda a: float((a['r1'] - a['r0']) * a['d']))
 def _add_rowtile(b, a):
     for r in range(a['r0'], a['r1']):

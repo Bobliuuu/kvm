@@ -64,9 +64,10 @@ class LogicalOp:
     phase: str = 'fwd'              # data | fwd | bwd | opt | serve | game
     graph: str = 'main'
     remat: int | None = None        # rematerialization group (ops recomputed in the backward pass), see Builder.remat
+    pred: tuple | None = None       # (i32 tensor, flat index, negate): run only when the predicate holds (Builder.when)
 
     def tensors(self):
-        return list(self.ins.values()) + list(self.outs.values())
+        return list(self.ins.values()) + list(self.outs.values()) + ([self.pred[0]] if self.pred else [])
 
 
 class Builder:
@@ -76,6 +77,7 @@ class Builder:
         self.graph, self.ops, self.tensors = graph, [], []
         self.step, self.phase, self._scope, self._n = 0, 'fwd', [], itertools.count()
         self._remat, self._remat_ids = None, itertools.count()
+        self._pred = None
 
     def scope(self, name):
         b = self
@@ -101,6 +103,63 @@ class Builder:
                 b._remat = s.prev
         return _R()
 
+    # ---- device-side control: predicated ops, predicates, bounded while-loops (see FRONTEND.md "Data-dependent control")
+    CMP_KINDS = {'<': 0, '<=': 1, '>': 2, '>=': 3, '==': 4, '!=': 5}
+
+    def flags(self, name, n=1, init=0):
+        """A persistent i32 tensor of n predicate/flag elements (1 x n), every element initially `init`."""
+        return self.tensor(name, 1, n, 'state', buf=name, dtype='i32', init=('fill', init))
+
+    def when(self, pred, index=0, negate=False):
+        """Context: ops emitted inside run on the device only if pred[index] != 0 (== 0 with negate=True). pred is an i32 tensor written
+        by earlier ops (`pred_cmp`). A skipped op does not write its outputs: they keep their previous contents, so a predicated op should
+        update persistent state in place (state tensors, or an output that an earlier op already wrote); otherwise the value is whatever the
+        buffer held. Predicated ops cannot be differentiated and cannot nest."""
+        self._check(pred.dtype == 'i32' and 0 <= index < pred.numel, 'when', 'pred must be an i32 tensor and index inside it', pred)
+        b = self
+
+        class _W:
+            def __enter__(s):
+                if b._pred is not None:
+                    raise FrontendError('when: predicated regions cannot nest (combine the conditions with pred_cmp comb=and/or)')
+                b._pred = (pred, index, bool(negate))
+
+            def __exit__(s, *a):
+                b._pred = None
+        return _W()
+
+    def pred_cmp(self, x, kind, thresh, index=0, out=None, out_index=0, prev=None, prev_index=0, comb=None):
+        """out[out_index] = (x[index] <kind> thresh), optionally AND/OR-ed with prev[prev_index]; comb in (None, 'and', 'or').
+        x is f32 (flat index). Returns the i32 predicate tensor (a fresh 1x1 one unless `out` is given)."""
+        self._check(kind in self.CMP_KINDS and comb in (None, 'and', 'or') and (comb is None) == (prev is None), 'pred_cmp',
+                    f'kind in {sorted(self.CMP_KINDS)}, comb in (None, and, or), prev exactly when comb is set', x)
+        self._check(x.dtype == 'f32' and 0 <= index < x.numel, 'pred_cmp', 'x must be f32 with the index inside it', x)
+        out = out or self._out('pred', 1, 1, dtype='i32')
+        self._check(out.dtype == 'i32' and 0 <= out_index < out.numel, 'pred_cmp', 'out must be i32 with out_index inside it', out)
+        ins = {'x': x, **({'prev': prev} if prev else {})}
+        if prev is not None:
+            self._check(prev.dtype == 'i32' and 0 <= prev_index < prev.numel, 'pred_cmp', 'prev must be i32 with prev_index inside it', prev)
+        self.emit('pred_cmp', ins, {'out': out}, xi=index, oi=out_index, pi=prev_index, cmp=self.CMP_KINDS[kind],
+                  comb={None: 0, 'and': 1, 'or': 2}[comb], thresh=float(thresh))
+        return out
+
+    def while_loop(self, max_iters, cond, body, name='loop'):
+        """A device-side while loop with a data-dependent trip count, unrolled to `max_iters` iterations of predicated tasks.
+        cond(b) emits nothing and returns (x, index, kind, thresh): the loop continues while x[index] <kind> thresh, evaluated on the device.
+        body(b, i) emits the body of iteration i (state is updated in place). Iteration i runs only if the condition held before it and in
+        every earlier iteration. Returns the i32 1 x (max_iters + 1) flags tensor: flags[i] = 1 iff iteration i ran (i < max_iters);
+        flags[max_iters] = 1 iff the cap was reached with the condition still true. The trip count is sum(flags[:max_iters])."""
+        self._check(max_iters >= 1, 'while_loop', 'max_iters must be >= 1', )
+        fl = self.flags(name, max_iters + 1)
+        for i in range(max_iters):
+            x, xi, kind, th = cond(self)
+            self.pred_cmp(x, kind, th, xi, out=fl, out_index=i, prev=fl if i else None, prev_index=i - 1 if i else 0, comb='and' if i else None)
+            with self.when(fl, i):
+                body(self, i)
+        x, xi, kind, th = cond(self)
+        self.pred_cmp(x, kind, th, xi, out=fl, out_index=max_iters, prev=fl, prev_index=max_iters - 1, comb='and')
+        return fl
+
     def tensor(self, name, rows, cols, kind='act', **kw):
         t = Tensor('.'.join(self._scope + [name]), rows, cols, kind, **kw)
         self.tensors.append(t)
@@ -111,7 +170,7 @@ class Builder:
 
     def emit(self, kind, ins, outs, **attrs):
         op = LogicalOp(kind, ins, outs, attrs, '.'.join(self._scope + [kind]), self.step, self.phase, self.graph,
-                       self._remat if self.phase == 'fwd' else None)
+                       self._remat if self.phase == 'fwd' else None, self._pred)
         if self.phase == 'fwd':
             for t in outs.values():
                 t.rg = t.rg or (t.dtype == 'f32' and any(i.rg for i in ins.values()))

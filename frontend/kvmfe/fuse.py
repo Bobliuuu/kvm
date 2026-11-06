@@ -36,6 +36,8 @@ def fuse(ops: list[LogicalOp]) -> tuple[list[LogicalOp], dict]:
     uses, prod = _uses(ops), _producers(ops)
     drop, replace, stats = set(), {}, Counter()
     for i, op in enumerate(ops):
+        if op.pred or any(ops[prod[t.uid]].pred for t in op.ins.values() if t.uid in prod):
+            continue                                  # predicated ops are never fused (the fused op would lose the predicate)
         if op.kind == 'gelu_bwd':
             j = prod.get(op.ins['dy'].uid)
             mm = ops[j] if j is not None else None

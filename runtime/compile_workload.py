@@ -144,6 +144,7 @@ class Task:
     wait: tuple | None = None    # (var name, version)
     pub: tuple | None = None     # (var name, version)
     reads: tuple = ()            # every declared read (including those carried by gates)
+    when: tuple | None = None    # predicate (buffer name, element index, negate): the op body runs only if it holds (flags / reserved1 in the ABI)
     gate: bool = False
 
 
@@ -375,7 +376,9 @@ class _Decl:
     reads: list = field(default_factory=list)      # (var, policy, version)
 
 
-_TASK_KEYS = {'id', 'op', 'args', 'after', 'priority', 'deadline_us', 'publishes', 'reads'}
+_TASK_KEYS = {'id', 'op', 'args', 'after', 'priority', 'deadline_us', 'publishes', 'reads', 'when'}
+_WHEN_KEYS = {'buf', 'index', 'negate'}
+PRED_MAX_INDEX = (1 << 24) - 1   # the element index shares the flags word with two flag bits
 _READ_KEYS = {'var', 'policy', 'version'}
 
 
@@ -443,7 +446,19 @@ def _parse_tasks(graphs, ops, buffers, variables, allow_nonfinite):
                     _need(r['var'] not in seen, f"{where}: reads variable {r['var']!r} twice")
                     seen.add(r['var'])
                     reads.append((r['var'], r['policy'], r['version']))
-            decls.append(_Decl(Task(where, gname, gi, plan.op, values, words, prio, dl), deps, pub, reads))
+            when = None
+            if 'when' in t:
+                w = t['when']
+                _keys(w, f'{where} when', _WHEN_KEYS, {'buf', 'index'})
+                pb = buffers.get(w['buf']) if w['buf'].__class__ is str else None
+                _need(pb is not None, f"{where} when: unknown buffer {w['buf']!r}")
+                _need(pb.dtype == 'i32', f"{where} when: predicate buffer {w['buf']!r} must be i32, is {pb.dtype}")
+                idx, neg = w['index'], w.get('negate', False)
+                _need(_is_int(idx) and 0 <= idx < min(pb.rows * pb.cols, PRED_MAX_INDEX + 1),
+                      f"{where} when: index {idx!r} outside buffer {w['buf']!r} ({pb.rows}x{pb.cols})")
+                _need(neg.__class__ is bool, f'{where} when: negate must be a boolean')
+                when = (w['buf'], idx, neg)
+            decls.append(_Decl(Task(where, gname, gi, plan.op, values, words, prio, dl, when=when), deps, pub, reads))
     return decls
 
 
@@ -661,6 +676,9 @@ def _compile_spec(spec, base_versions, allow_nonfinite, data_dir, ops) -> Compil
         values = dict(op_id=t.op.id, succ_off=graph.off[i], succ_cnt=graph.off[i + 1] - graph.off[i], indegree=graph.indegree[i],
                       priority=t.priority, deadline_us=t.deadline_us, args_off=nargs, args_words=len(t.words),
                       wait_var=wv, wait_ver=wn, pub_var=pv, pub_ver=pn, workload_id=t.workload_id)
+        if t.when:    # KVM_TF_PRED | KVM_TF_PRED_NEG | index << KVM_TF_PRED_IDX_SHIFT; the buffer-table index goes in reserved1
+            values['flags'] = 1 | (2 if t.when[2] else 0) | (t.when[1] << 8)
+            values['reserved1'] = buffers[t.when[0]].index
         desc.append(pack(*[values.get(f, 0) for f in fields]))
         flat_args.extend(t.words)
         nargs += len(t.words)

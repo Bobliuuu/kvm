@@ -98,3 +98,10 @@ X(matmul_tile_dgelu,   119, "a:buf,b:buf,out:buf,pre:buf,m0:i32,n0:i32,M:i32,N:i
 X(matmul_tile_silu_mul, 120, "a:buf,b:buf,out:buf,gate:buf,up:buf,m0:i32,n0:i32,M:i32,N:i32,K:i32,flags:i32,alpha:f32")
 // dh = C[m,n] (the SwiGLU output gradient, not stored);  dgate[m,n] = dh * up * silu'(gate);  dup[m,n] = dh * silu(gate)
 X(matmul_tile_silu_mul_bwd, 121, "a:buf,b:buf,gate:buf,up:buf,dgate:buf,dup:buf,m0:i32,n0:i32,M:i32,N:i32,K:i32,flags:i32,alpha:f32")
+
+// ---- device-side control (ids 160..175): predicates for predicated tasks (KVM_TF_PRED in kvm_task_abi.h) --------------------------------
+// out[oi] = cmp(x[xi], thresh) combined with prev[pi]: kind 0 '<', 1 '<=', 2 '>', 3 '>=', 4 '==', 5 '!=' (IEEE: NaN compares false except '!=');
+// comb 0 = out is the comparison alone (prev absent), 1 = comparison AND (prev[pi] != 0), 2 = comparison OR (prev[pi] != 0); the result is 0 or 1.
+// x is an f32 buffer, out and prev are i32 buffers (out may alias prev). One thread does the work. A while-loop iteration i+1 uses
+// out = cont[i+1], prev = cont[i], comb = 1, so once a predicate went false it stays false and the remaining unrolled iterations are skipped.
+X(pred_cmp,            160, "x:buf,out:buf,prev:buf?,xi:i32,oi:i32,pi:i32,kind:i32,comb:i32,thresh:f32")

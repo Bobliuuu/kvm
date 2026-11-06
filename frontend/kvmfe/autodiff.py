@@ -192,6 +192,8 @@ def backward(b: Builder, loss, fwd_ops: list[LogicalOp], wrt: list[Tensor], accu
         g = {r: ctx.grads.get(t.uid) for r, t in op.outs.items()}
         if all(v is None for v in g.values()):
             return
+        if op.pred:
+            raise FrontendError(f'op {op.kind!r} ({op.name}) is predicated (Builder.when): predicated ops cannot be differentiated')
         if op.kind not in VJP:
             raise FrontendError(f'op {op.kind!r} ({op.name}) has no VJP rule; register one with @autodiff.vjp({op.kind!r})')
         with b.scope('grad'):

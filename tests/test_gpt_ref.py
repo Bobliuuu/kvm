@@ -135,7 +135,7 @@ class MatmulNormTests(unittest.TestCase):
 
     def test_matmul_tile_validation(self):
         bufs = [zeros('a', 2, 2), zeros('o', 2, 2)]
-        for kw, needle in [({'flags': 32}, 'flags'), ({'m0': 2}, 'bad M/N/K'), ({'K': 0}, 'bad M/N/K')]:
+        for kw, needle in [({'flags': 128}, 'flags'), ({'flags': 96}, 'flags'), ({'flags': 32, 'm0': 1}, 'multiples'), ({'m0': 2}, 'bad M/N/K'), ({'K': 0}, 'bad M/N/K')]:
             args = dict(a='a', b='a', out='o', bias=None, res=None, pre=None, m0=0, n0=0, M=2, N=2, K=2, flags=0, alpha=1.0)
             args.update(kw)
             with self.subTest(kw=kw), self.assertRaises(CompileError) as cm:

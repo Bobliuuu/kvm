@@ -162,5 +162,31 @@ def build_edges(accesses, join_min=None):
             writers[buf].overwrite(rect)
             readers[buf].overwrite(rect)
             writers[buf].add(rect, i)
+    seq, preds = _splice_thin_joins(seq, preds)
     log.info('dataflow: %d tasks + %d joins, %d edges', len(accesses), seq.count(-1), sum(map(len, preds)))
     return seq, preds
+
+
+def _splice_thin_joins(seq, preds):
+    """Remove every join that has at most one consumer: a join is created at the second use of a predecessor set, so a set that
+    turns out to be needed only twice leaves a join with one consumer, which costs a task, an edge and a dependency hop and
+    saves nothing (R + 1 edges through the join against R direct)."""
+    uses = [0] * len(seq)
+    for ps in preds:
+        for p in ps:
+            uses[p] += 1
+    thin = [seq[k] < 0 and uses[k] <= 1 for k in range(len(seq))]
+    if not any(thin):
+        return seq, preds
+    new_of, out_seq, out_preds, inline = {}, [], [], {}
+    for k in range(len(seq)):
+        ps = set()
+        for p in preds[k]:
+            ps |= inline[p] if thin[p] else {new_of[p]}
+        if thin[k]:
+            inline[k] = ps
+            continue
+        new_of[k] = len(out_seq)
+        out_seq.append(seq[k])
+        out_preds.append(ps)
+    return out_seq, out_preds

@@ -6,11 +6,12 @@
 #include <vector>
 #include <algorithm>
 __device__ __forceinline__ void cp16(unsigned dst, const void* src) { asm volatile("cp.async.cg.shared.global [%0], [%1], 16;\n" ::"r"(dst), "l"(src)); }
+__device__ __forceinline__ void cp16z(unsigned dst, const void* src, bool ok) { asm volatile("cp.async.cg.shared.global [%0], [%1], 16, %2;\n" ::"r"(dst), "l"(src), "r"(ok ? 16 : 0)); }
 __device__ __forceinline__ void commit() { asm volatile("cp.async.commit_group;\n" ::); }
 template <int N> __device__ __forceinline__ void wait() { asm volatile("cp.async.wait_group %0;\n" ::"n"(N)); }
 
 // BK: k per slab. A is [M][K] (K-major rows of BK*2 bytes), B is [K][N] (MN-major rows of 512 bytes). NST stages in flight.
-template <int BK, int NST>
+template <int BK, int NST, bool ZF = false>   // ZF: the zero-fill form of cp.async (src-size operand = in-range ? 16 : 0), as matmul_mma_bf16 issues on edge tiles
 __global__ void __launch_bounds__(256, 1) k(const unsigned short* A, const unsigned short* B, int ld, int iters, int* sink) {
     extern __shared__ __align__(128) unsigned char sm[];
     const unsigned base = (unsigned)__cvta_generic_to_shared(sm);
@@ -22,12 +23,12 @@ __global__ void __launch_bounds__(256, 1) k(const unsigned short* A, const unsig
 #pragma unroll
         for (int s = 0; s < CA / 256; s++) {
             const int q = tid + s * 256, row = q / (BK / 8), c = q % (BK / 8);
-            cp16(st + q * 16, A + (size_t)(m0 + row) * ld + k0 + c * 8);
+            if (ZF) cp16z(st + q * 16, A + (size_t)(m0 + row) * ld + k0 + c * 8, k0 + c * 8 < ld && m0 + row < ld); else cp16(st + q * 16, A + (size_t)(m0 + row) * ld + k0 + c * 8);
         }
 #pragma unroll
         for (int s = 0; s < CB / 256; s++) {
             const int q = tid + s * 256, row = q / 32, c = q % 32;
-            cp16(st + CA * 16 + q * 16, B + (size_t)(k0 + row) * ld + n0 + c * 8);
+            if (ZF) cp16z(st + CA * 16 + q * 16, B + (size_t)(k0 + row) * ld + n0 + c * 8, k0 + row < ld && n0 + c * 8 < ld); else cp16(st + CA * 16 + q * 16, B + (size_t)(k0 + row) * ld + n0 + c * 8);
         }
     };
     for (int p = 0; p < NST - 1; p++) { issue(p); commit(); }
@@ -48,9 +49,11 @@ int main() {
     cudaFuncSetAttribute(k<64, 2>, cudaFuncAttributeMaxDynamicSharedMemorySize, 96 * 1024);
     cudaFuncSetAttribute(k<64, 3>, cudaFuncAttributeMaxDynamicSharedMemorySize, 160 * 1024);
     cudaFuncSetAttribute(k<32, 6>, cudaFuncAttributeMaxDynamicSharedMemorySize, 144 * 1024);
+    cudaFuncSetAttribute(k<32, 4, true>, cudaFuncAttributeMaxDynamicSharedMemorySize, 96 * 1024);
     const int iters = 4096 / 32 * 4;
     struct V { const char* nm; int bk, nst, smem; void (*f)(const unsigned short*, const unsigned short*, int, int, int*); } vs[] = {
-        {"BK32 NST4", 32, 4, 96 * 1024, k<32, 4>}, {"BK32 NST6", 32, 6, 144 * 1024, k<32, 6>}, {"BK64 NST2", 64, 2, 96 * 1024, k<64, 2>}, {"BK64 NST3", 64, 3, 144 * 1024, k<64, 3>}};
+        {"BK32 NST4", 32, 4, 96 * 1024, k<32, 4>}, {"BK32 NST6", 32, 6, 144 * 1024, k<32, 6>}, {"BK64 NST2", 64, 2, 96 * 1024, k<64, 2>}, {"BK64 NST3", 64, 3, 144 * 1024, k<64, 3>},
+        {"BK32 NST4 zero-fill form", 32, 4, 96 * 1024, k<32, 4, true>}};
     for (auto v : vs) {
         const int grid = 108, it = iters * 32 / v.bk;
         cudaEvent_t a, b; cudaEventCreate(&a); cudaEventCreate(&b);
@@ -62,7 +65,7 @@ int main() {
         std::sort(ts.begin(), ts.end());
         const double bytes = (double)grid * it * (128 * v.bk * 2 + v.bk * 256 * 2);
         const double bps = bytes / (ts[2] * 1e-3);
-        printf("%-10s: %6.0f GB/s total, %5.1f B/clk/SM at 1.41 GHz, %.3f ms; equal to a %3.0f TFLOP/s GEMM at the 128x256 tile (85.3 FLOP per byte)\n", v.nm, bps * 1e-9,
+        printf("%-24s: %6.0f GB/s total, %5.1f B/clk/SM at 1.41 GHz, %.3f ms; equal to a %3.0f TFLOP/s GEMM at the 128x256 tile (85.3 FLOP per byte)\n", v.nm, bps * 1e-9,
                bps / grid / 1.41e9, ts[2], bps * 85.3 * 1e-12);
     }
     return 0;

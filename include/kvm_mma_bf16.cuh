@@ -18,9 +18,6 @@
 #ifndef KVM_MMA_NST
 #define KVM_MMA_NST 4          // cp.async pipeline stages (4 x 24 KiB; 3 stages fit 72 KiB but run 7% slower at 4096^3)
 #endif
-#ifndef KVM_MMA_INTERLEAVE
-#define KVM_MMA_INTERLEAVE 0   // 1: spread the global->shared copies between the tensor-core instructions of the second k step
-#endif
 #define KVM_MMA_BM 128
 #define KVM_MMA_BN 256
 #define KVM_MMA_BK 32
@@ -45,8 +42,8 @@ KVM_GPT_DEVI unsigned mma_off_mn(int row, int c) { return (unsigned)(row * 256 +
 // Global -> shared copy of one operand tile (ROWS rows of K-major data, or ROWS columns of MN-major data) of one k slab, as ROWS*4 16-byte
 // chunks spread over the 256 threads (ROWS*4/256 per thread). KMAJ: global is [mn][k] (K contiguous); else [k][mn]. A chunk (8 bf16) that
 // starts outside [MN, K) is zero-filled by the hardware (the caller guarantees whole-chunk extents). Addresses are set up once; issuing a chunk
-// costs one 64-bit add and two compares, so the copies can be sprinkled between tensor-core instructions (a burst of them in front of the next
-// ldmatrix would queue the ldmatrix behind the copies in the memory pipe).
+// costs one 64-bit add and two compares. (Spreading the copies between the tensor-core instructions of a k step, and a plain cp.async form for
+// interior tiles, were both measured and were not faster: results/2026-11-06-a100-bf16.)
 template <bool KMAJ, int ROWS>
 struct MmaLoader {
     static constexpr int NS = ROWS * 4 / KVM_GPT_THREADS;                          // chunks per thread
@@ -143,18 +140,6 @@ KVM_GPT_DEVI void mma_bf16_tile(const uint16_t* A, int lda, const uint16_t* B, i
         cp_wait<NST - 3>();                    // stage it+1 landed (this thread's copies) ...
         __syncthreads();                       // ... for every thread, and nobody still reads the stage refilled below
         const int nxt = it + NST - 1;          // slab to fetch into the stage that was read two k steps ago
-#if KVM_MMA_INTERLEAVE
-        if (it + 1 < nk) load_frags(0, it + 1, 0);
-#pragma unroll
-        for (int i = 0; i < 4; i++) {   // chunks go out between the tensor-core instructions of this k step
-#pragma unroll
-            for (int j = 0; j < NJ; j++) mma_bf16(acc[i][j], af[1][i], bf[1][j][0], bf[1][j][1]);
-            if (nxt < nk) {
-                issue_chunk(nxt, i);
-                if (i < NCH - 4) issue_chunk(nxt, 4 + i);
-            }
-        }
-#else
         if (nxt < nk) {
 #pragma unroll
             for (int c = 0; c < NCH; c++) issue_chunk(nxt, c);
@@ -164,7 +149,6 @@ KVM_GPT_DEVI void mma_bf16_tile(const uint16_t* A, int lda, const uint16_t* B, i
         for (int i = 0; i < 4; i++)
 #pragma unroll
             for (int j = 0; j < NJ; j++) mma_bf16(acc[i][j], af[1][i], bf[1][j][0], bf[1][j][1]);
-#endif
         cp_commit();
     }
     cp_wait<0>();

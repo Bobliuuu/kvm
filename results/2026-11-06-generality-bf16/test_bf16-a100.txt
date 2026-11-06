@@ -1,0 +1,16 @@
+PASS  cast_f32_bf16 bitwise vs independent RNE, 2-byte storage  
+PASS  cast_bf16_f32 widens exactly (round trip == round_bf16)  
+PASS  cast_f32_bf16 partial range  
+PASS  matmul_tile_bf16s bitwise == matmul_tile_bf16 on widened operands (112 combos: ta/tb, A/B/both bf16, epilogue, padded ld)  
+PASS  bf16s flag 128 on an f32 buffer is refused  
+PASS  bf16s uninstantiated combination (A and B bf16, A transposed) is refused  
+PASS  bf16s bf16 buffer without its flag is refused  
+PASS  bf16s with no bf16 flag is refused  
+PASS  bf16s flag 16 is refused  
+PASS  bf16s output must be f32  
+PASS  bf16s refused calls left the output untouched  
+PASS  f32-only op refuses a bf16 buffer  
+PASS  cast_f32_bf16 refuses an f32 destination  
+PASS  cast_f32_bf16 beyond the buffer  
+
+14 passed, 0 failed

@@ -1,6 +1,6 @@
 // GPU executor tests. Build (tests need per-op IEEE arithmetic to compare bitwise against the CPU reference):
 //   nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -DKVM_EXEC_NO_MAIN tests/gpu/test_exec.cu -o test_exec
-//   ./test_exec [suite...]     suites: ops errors dag sched admission versions checker bench smoke   (default: all but bench)
+//   ./test_exec [suite...]     suites: ops errors dag sched admission admit_chunks versions checker bench smoke   (default: all but bench)
 //   ./test_exec --expect-fail versions    # negative test: exits 0 only if the suite DETECTS a violation (use with -DKVM_BREAK_FENCE)
 #include "../../kvm_exec.cu"
 #include <array>
@@ -695,6 +695,50 @@ static bool suite_checker() {
   return g_fail == before;
 }
 
+// ================= admission staging (KVM_ADM_CHUNK) =================
+// The admitter copies descriptors from the pinned ring in chunks of KVM_ADM_CHUNK through shared memory. (1) records whose size straddles a
+// chunk boundary are admitted exactly (edges, args, values bitwise vs CPU); (2) a bad descriptor in a LATER chunk is still caught;
+// (3) rate gate: independent noops must be admitted faster than the old uncoalesced word-by-word path could (it measured 0.196-0.243 us/task
+// on an A100, this path 0.08-0.10; the gate is 0.14 us/task, best of 3). The gate is the test that fails without the coalesced copy.
+static bool suite_admit_chunks() {
+  int before = g_fail;
+  {
+    const int sizes[] = {1, KVM_ADM_CHUNK - 1, KVM_ADM_CHUNK, KVM_ADM_CHUNK + 1, 2 * KVM_ADM_CHUNK - 1, 2 * KVM_ADM_CHUNK, 2 * KVM_ADM_CHUNK + 1, 300, 1000};
+    int total = 0; for (int n : sizes) total += n;
+    KvmConfig c = small_cfg(5); c.ring_words = 1 << 15; KvmExec ex(c);
+    float* arena = ex.arena(total); for (int i = 0; i < total; ++i) ex.add_view(arena + i, 1, 1);
+    ex.start();
+    std::vector<KvmBundle> bs; Rng r(5); int base = 0, w = 0;
+    for (int n : sizes) { int d; bs.push_back(gen_dag(r, {n, std::max(2, n / 8), 2, 0, 31}, w++, base, d)); base += n; }
+    for (auto& b : bs) CHECK(ex.submit(b) == KvmSubmit::OK, "submit");
+    ex.close(); const KvmResult& res = ex.finish(); CHECK(res.ok(), "device error %s", kvm_err_name(res.err_code));
+    check_trace(res, bs);
+    Bufs want(total, std::vector<float>(1, 0.f)); base = 0;
+    for (size_t b = 0; b < bs.size(); ++b) for (size_t i = 0; i < bs[b].tasks.size(); ++i) cpu_op(bs[b], (int)i, want);
+    auto got = download(arena, total); int bad = 0; for (int i = 0; i < total; ++i) if (!same_bits(got[i], want[i][0])) ++bad;
+    CHECK(bad == 0, "%d values differ", bad);
+    printf("  admit chunks: %zu records of %d..%d tasks (chunk %d) admitted exactly, values bitwise vs CPU\n", bs.size(), 1, 1000, KVM_ADM_CHUNK);
+  }
+  {
+    KvmConfig c = small_cfg(3);
+    err_case("bad op in 2nd chunk", KVM_ERR_BAD_OP, c, [&](KvmExec&) { KvmBundleBuilder bb; for (int i = 0; i < 3 * KVM_ADM_CHUNK; ++i) bb.add("noop", {}); KvmBundle b = bb.build(); b.tasks[KVM_ADM_CHUNK + 2].op_id = 126; return b; });
+    err_case("bad buffer in 3rd chunk", KVM_ERR_BAD_BUF_INDEX, c, [&](KvmExec&) { KvmBundleBuilder bb; for (int i = 0; i < 3 * KVM_ADM_CHUNK; ++i) bb.add("fill", {Bf(i == 2 * KVM_ADM_CHUNK + 5 ? 7 : 0), F(1), I(4)}); return bb.build(); });
+  }
+  {
+    const int K = 32768; double best = 1e9;
+    for (int rep = 0; rep < 3; ++rep) {
+      KvmConfig c = small_cfg(0); c.max_tasks = 1 << 17; c.live_cap = 1 << 16; c.ring_words = 1 << 22; KvmExec ex(c); ex.start();
+      for (int r = 0; r < 2; ++r) { KvmBundleBuilder b; for (int i = 0; i < K; ++i) b.add("noop", {}); CHECK(ex.submit(b.build(), 30000) == KvmSubmit::OK, "submit"); }
+      const KvmResult& res = ex.finish(); CHECK(res.ok() && res.done == 2 * K, "done %d", res.done);
+      unsigned long long a0 = ~0ull, r1 = 0; for (auto& t : res.trace) if (t.admit_ns) { a0 = std::min(a0, t.admit_ns); r1 = std::max(r1, t.ready_ns); }
+      best = std::min(best, (r1 - a0) / 1e3 / (2.0 * K));
+    }
+    CHECK(best < 0.14, "admission %.3f us/task (%.1f M tasks/s) is not faster than the uncoalesced word-by-word path (0.2 us)", best, 1.0 / best);
+    printf("  admit rate: %.3f us/task = %.1f M tasks/s independent noops (best of 3, gate < 0.14)\n", best, 1.0 / best);
+  }
+  return g_fail == before;
+}
+
 // ================= dispatch cost =================
 static bool suite_bench() {
   printf("  %-34s %8s %10s %12s %10s\n", "case", "blocks", "tasks", "us/task", "tasks/s");
@@ -987,7 +1031,7 @@ int main(int argc, char** argv) {
   bool expect_fail = false; std::vector<std::string> want;
   for (int i = 1; i < argc; ++i) { std::string a = argv[i]; if (a == "--expect-fail") expect_fail = true; else if (a == "--quiet") g_kvm_log = 0; else if (a == "--log") g_kvm_log = atoi(argv[++i]); else want.push_back(a); }
   bool quick = getenv("KVM_TEST_QUICK") != nullptr;
-  if (want.empty()) want = {"checker", "ops", "types", "init", "errors", "dag", "sched", "admission", "versions", "recycle", "litmus"};
+  if (want.empty()) want = {"checker", "ops", "types", "init", "errors", "dag", "sched", "admission", "admit_chunks", "versions", "recycle", "litmus"};
   int dev; cudaDeviceProp p; CK(cudaGetDevice(&dev)); CK(cudaGetDeviceProperties(&p, dev));
   int drv, rt; cudaDriverGetVersion(&drv); cudaRuntimeGetVersion(&rt);
   printf("GPU %s, %d SMs, sm_%d%d, driver CUDA %d.%d, runtime %d.%d%s\n", p.name, p.multiProcessorCount, p.major, p.minor, drv / 1000, drv % 1000 / 10, rt / 1000, rt % 1000 / 10, quick ? " [quick]" : "");
@@ -1001,7 +1045,7 @@ int main(int argc, char** argv) {
     try {
       if (s == "checker") ok = suite_checker(); else if (s == "ops") ok = suite_ops(); else if (s == "errors") ok = suite_errors();
       else if (s == "dag") ok = suite_dag(quick); else if (s == "sched") ok = suite_sched(); else if (s == "admission") ok = suite_admission();
-      else if (s == "versions") ok = suite_versions(quick); else if (s == "types") ok = suite_types(); else if (s == "init") ok = suite_init();
+      else if (s == "admit_chunks") ok = suite_admit_chunks(); else if (s == "versions") ok = suite_versions(quick); else if (s == "types") ok = suite_types(); else if (s == "init") ok = suite_init();
       else if (s == "recycle") ok = suite_recycle(quick); else if (s == "litmus") ok = suite_litmus(quick); else if (s == "bench") ok = suite_bench(); else if (s == "smoke") ok = suite_smoke();
       else { fprintf(stderr, "unknown suite %s\n", s.c_str()); return 2; }
     } catch (const std::exception& e) { fprintf(stderr, "  EXCEPTION: %s\n", e.what()); ++g_fail; ok = false; }

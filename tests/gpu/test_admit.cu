@@ -50,6 +50,43 @@ static bool suite_rate() {
   return g_fail == before;
 }
 
+// Head-of-line: a 1-task class-0 bundle submitted right behind a K-task class-1 record. Reports, from the executor's own timestamps
+// (microseconds from the big record's first admission): when the big record finished admitting (last ready), when the small task was
+// admitted / ready / started / ended, and the end-to-end latency seen by the host.
+static double us_since(std::chrono::steady_clock::time_point t0) { return std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count(); }
+static bool suite_hol(int blocks = 34) {
+  int before = g_fail;
+  printf("  small bundle behind a K-task record, %d blocks; times in us from the big record's admission\n", blocks);
+  printf("  %8s %10s %10s %10s %10s %10s %10s %12s\n", "K", "big_ready", "sm_admit", "sm_ready", "sm_start", "sm_end", "host_lat", "big_ready/task");
+  for (int K : {2000, 8000, 32000, 64000}) {
+    const int REPS = std::min(6, (1 << 18) / (K + 1));   // slots are never recycled below, so the trace is complete
+    KvmConfig c = sched_cfg(blocks, 2); c.max_tasks = 1 << 18; c.live_cap = 1 << 17; c.ring_words = 1 << 22;
+    std::vector<double> lat, bigr, sa, sr, ss, se;
+    KvmExec ex(c); ex.start();
+    for (int rep = 0; rep < REPS; ++rep) {
+      KvmBundleBuilder big; KvmTaskOpts o; o.workload = 1; for (int i = 0; i < K; ++i) big.add("noop", {}, o);
+      unsigned w1, w2;
+      CHECK(ex.submit(big.build(), 30000, false, &w1) == KvmSubmit::OK, "submit");
+      const auto t0 = std::chrono::steady_clock::now();
+      KvmBundleBuilder sm; KvmTaskOpts o0; o0.workload = 0; sm.add("noop", {}, o0);
+      CHECK(ex.submit(sm.build(), 30000, false, &w2) == KvmSubmit::OK, "submit");
+      while (!ex.window_done(w2)) std::this_thread::yield();
+      lat.push_back(us_since(t0));
+      while (!ex.window_done(w1)) std::this_thread::yield();
+    }
+    const KvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
+    // slots are not recycled (max_tasks > total), so slot order == admission order: record rep = tasks [rep*(K+1), rep*(K+1)+K), its small bundle next
+    for (int rep = 0; rep < REPS; ++rep) {
+      const size_t b0 = (size_t)rep * (K + 1), s0 = b0 + K;
+      unsigned long long a0 = r.trace[b0].admit_ns, lr = 0; for (size_t i = b0; i < s0; ++i) lr = std::max(lr, r.trace[i].ready_ns);
+      bigr.push_back((lr - a0) / 1e3); sa.push_back(((double)r.trace[s0].admit_ns - a0) / 1e3); sr.push_back(((double)r.trace[s0].ready_ns - a0) / 1e3);
+      ss.push_back(((double)r.trace[s0].start_ns - a0) / 1e3); se.push_back(((double)r.trace[s0].end_ns - a0) / 1e3);
+    }
+    printf("  %8d %10.0f %10.0f %10.0f %10.0f %10.0f %10.0f %12.3f\n", K, median(bigr), median(sa), median(sr), median(ss), median(se), median(lat), median(bigr) / K);
+  }
+  return g_fail == before;
+}
+
 int main(int argc, char** argv) {
   std::vector<std::string> want; for (int i = 1; i < argc; ++i) want.push_back(argv[i]);
   if (want.empty()) want = {"rate"};
@@ -59,7 +96,7 @@ int main(int argc, char** argv) {
   int failed = 0;
   for (auto& s : want) {
     int f0 = g_fail; printf("== %s\n", s.c_str()); fflush(stdout); bool ok = true;
-    try { if (s == "rate") ok = suite_rate(); else { fprintf(stderr, "unknown suite %s\n", s.c_str()); return 2; } }
+    try { if (s == "rate") ok = suite_rate(); else if (s == "hol") ok = suite_hol(); else { fprintf(stderr, "unknown suite %s\n", s.c_str()); return 2; } }
     catch (const std::exception& e) { fprintf(stderr, "  EXCEPTION: %s\n", e.what()); ++g_fail; ok = false; }
     ok = ok && g_fail == f0; printf("== %s: %s\n", s.c_str(), ok ? "PASS" : "FAIL"); failed += !ok;
   }

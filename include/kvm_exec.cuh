@@ -217,6 +217,7 @@ __device__ __forceinline__ int atom_exch(int* p, int v) { int r; asm volatile("a
 // host-shared memory: system scope
 __device__ __forceinline__ unsigned long long ld_acq_sys64(const unsigned long long* p) { unsigned long long v; asm volatile("ld.acquire.sys.global.b64 %0,[%1];" : "=l"(v) : "l"(p) : "memory"); return v; }
 __device__ __forceinline__ unsigned ld_acq_sys(const unsigned* p) { unsigned v; asm volatile("ld.acquire.sys.global.b32 %0,[%1];" : "=r"(v) : "l"(p) : "memory"); return v; }
+__device__ __forceinline__ int4 ld_sys4(const int4* p) { int4 v; asm volatile("ld.relaxed.sys.global.v4.b32 {%0,%1,%2,%3},[%4];" : "=r"(v.x), "=r"(v.y), "=r"(v.z), "=r"(v.w) : "l"(p) : "memory"); return v; }
 __device__ __forceinline__ int ld_sys(const int* p) { int v; asm volatile("ld.relaxed.sys.global.b32 %0,[%1];" : "=r"(v) : "l"(p) : "memory"); return v; }
 __device__ __forceinline__ void st_rel_sys64(unsigned long long* p, unsigned long long v) { asm volatile("st.release.sys.global.b64 [%0],%1;" ::"l"(p), "l"(v) : "memory"); }
 __device__ __forceinline__ void st_rel_sys(volatile int* p, int v) { asm volatile("st.release.sys.global.b32 [%0],%1;" ::"l"(p), "r"(v) : "memory"); }
@@ -636,6 +637,7 @@ struct KvmAdmitShared {
   unsigned long long fhead;                      // next free-ring position to pop
   unsigned win_next, win_oldest, succ_scan, succ_used, succ_free;
 };
+#define KVM_ADM_CHUNK 128   // descriptors staged per round (KVM_ADM_CHUNK * KVM_TASK_WORDS ints of shared memory)
 #define KVM_ADM_IDLE 0
 #define KVM_ADM_REC  1
 #define KVM_ADM_FINAL 2
@@ -664,7 +666,7 @@ __device__ unsigned long long g_adm_prof[16];
 #define KVM_PROF(k) do {} while (0)
 #define KVM_PROF_INIT do {} while (0)
 #endif
-__device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared& A, unsigned long long pos) {
+__device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared& A, int* stage, unsigned long long pos) {
   KVM_PROF_INIT;
   const int* rec = S.ring + (size_t)(pos % (unsigned long long)S.ring_words);
   const int nt = A.hdr[2], ne = A.hdr[3], na = A.hdr[4];
@@ -715,10 +717,19 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
   KVM_PROF(1);
   const unsigned long long now = kvm_now();
   const unsigned wid = A.win_next;
-  for (int i = threadIdx.x; i < nt; i += blockDim.x) {
+  // The record lives in pinned host memory: every load is a PCIe read. One thread per descriptor reading its 16 words strides 64 B
+  // between lanes (a warp's load = 32 separate PCIe requests, 16 times), so the descriptors are first copied with coalesced 16-byte
+  // loads into shared memory, KVM_ADM_CHUNK at a time, and decoded from there. (rt is 32 B aligned: records start on 8-word multiples.)
+  for (int base = 0; base < nt; base += KVM_ADM_CHUNK) {
+  const int cn = min(nt - base, KVM_ADM_CHUNK);
+  for (int q = threadIdx.x; q < cn * (KVM_TASK_WORDS / 4); q += blockDim.x)
+    ((int4*)stage)[q] = ld_sys4((const int4*)(rt + (size_t)base * KVM_TASK_WORDS) + q);
+  __syncthreads();
+  if (threadIdx.x < cn) {
+    const int i = base + threadIdx.x;
     int w[KVM_TASK_WORDS];
 #pragma unroll
-    for (int j = 0; j < KVM_TASK_WORDS; ++j) w[j] = ld_sys(rt + (size_t)i * KVM_TASK_WORDS + j);
+    for (int j = 0; j < KVM_TASK_WORDS; ++j) w[j] = stage[threadIdx.x * KVM_TASK_WORDS + j];
     // KvmTaskDesc word order: op, succ_off, succ_cnt, indegree, priority, deadline, args_off, args_words, wait_var,
     // wait_ver, pub_var, pub_ver, workload, flags, r0, r1
     const int slot = S.adm_slots[i];
@@ -740,7 +751,7 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
         }
       }
     }
-    if (code) { kvm_fail(S, code, slot, op, i); continue; }
+    if (!code) {
     for (int j = 0; j < aw; ++j) S.args[(size_t)slot * KVM_ARG_STRIDE + j] = ld_sys(ra + ao + j);
     w[1] = (int)(sbase + (unsigned)so);       // CSR offset into the successor ring (word sequence number)
     w[6] = slot * KVM_ARG_STRIDE;             // arguments live inline in the slot
@@ -751,6 +762,9 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
     S.indeg[slot] = ind; S.state[slot] = 0; S.park_next[slot] = -1;
     KvmTrace& t = S.trace[slot];
     t.admit_ns = now; t.ready_ns = t.start_ns = t.end_ns = 0; t.flags = 0; t.exec_count = 0; t.ver0 = t.ver1 = -1;
+    } else kvm_fail(S, code, slot, op, i);
+  }
+  __syncthreads();   // stage is reused by the next chunk
   }
   KVM_PROF(2);
   for (int e = threadIdx.x; e < ne; e += blockDim.x) {
@@ -785,7 +799,7 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
 #endif
 }
 
-__device__ void kvm_admitter(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared& A) {
+__device__ void kvm_admitter(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared& A, int* stage) {
   unsigned long long pos = 0;
   if (threadIdx.x == 0) { A.fhead = 0; A.win_next = A.win_oldest = A.succ_scan = A.succ_used = A.succ_free = 0; }
   __syncthreads();
@@ -816,7 +830,7 @@ __device__ void kvm_admitter(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared&
     if (action == KVM_ADM_EXIT) return;
     if (action == KVM_ADM_FINAL) { if (threadIdx.x == 0) st_rel(&S.cnt->admit_final, 1); kvm_dist_pump(S, t0); return; }  // KVM_DIST_HOOK
     if (action == KVM_ADM_IDLE) { kvm_dist_poll(S); __nanosleep(256); continue; }  // KVM_DIST_HOOK
-    if (A.hdr[6] == KVM_REC_BUNDLE) kvm_admit_record(S, t0, A, pos);
+    if (A.hdr[6] == KVM_REC_BUNDLE) kvm_admit_record(S, t0, A, stage, pos);
     __syncthreads();
     if (A.action == KVM_ADM_EXIT) return;
     pos += (unsigned long long)A.hdr[1];
@@ -835,7 +849,8 @@ __global__ void __launch_bounds__(KVM_THREADS) kvm_init_kernel(KvmDevState S) {
 }
 
 __global__ void __launch_bounds__(KVM_THREADS) kvm_exec_kernel(const __grid_constant__ KvmDevState S) {
-  __shared__ KvmShared sh;
+  __shared__ union { KvmShared sh; int adm_stage[KVM_ADM_CHUNK * KVM_TASK_WORDS]; } shu;   // the admitter block never runs ops: it borrows the workers' scratch
+  KvmShared& sh = shu.sh;
   __shared__ KvmAdmitShared adm;
   KvmWatch t0{kvm_now(), 0, -1, -1};
   auto pow2 = [](unsigned long long v) { return v >= 2 && !(v & (v - 1)); };
@@ -844,7 +859,7 @@ __global__ void __launch_bounds__(KVM_THREADS) kvm_exec_kernel(const __grid_cons
     return;
   }
   __shared__ KvmPolShared pol;
-  if (blockIdx.x == 0) kvm_admitter(S, t0, adm);
+  if (blockIdx.x == 0) kvm_admitter(S, t0, adm, shu.adm_stage);
   else if (S.sp.on && blockIdx.x == 1) kvm_policy(S, t0, pol);  // SCHED: block 1 is the policy block when the scheduler is on
   else kvm_worker(S, t0, sh);
 }

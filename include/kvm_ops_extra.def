@@ -74,7 +74,8 @@ X(cast_f32_bf16,       122, "x:buf,out:buf,e0:i32,e1:i32")
 X(cast_bf16_f32,       123, "x:buf,out:buf,e0:i32,e1:i32")
 // matmul_tile_bf16 whose A and/or B operands live in bf16 storage: flags bit 128 = A is a bf16-storage buffer, bit 256 = B is
 // (the other operand, bias, res, pre and out stay f32; both operands are still bf16-rounded). Same flags otherwise (1 ta, 2 tb, 4 accum,
-// 8 gelu; 16/32/64 are rejected). Results are bitwise identical to matmul_tile_bf16 on the widened operands.
+// 8 gelu; 16/32/64 are rejected). Only the combinations training uses are instantiated (A bf16 + B bf16 untransposed-A; A f32 + B bf16
+// except both transposed; A bf16 + B f32 with B untransposed): others fail with E_SHAPE. Results are bitwise identical to matmul_tile_bf16 on the widened operands.
 X(matmul_tile_bf16s,   124, "a:buf,b:buf,out:buf,bias:buf?,res:buf?,pre:buf?,m0:i32,n0:i32,M:i32,N:i32,K:i32,flags:i32,alpha:f32")
 
 // ---- optimizer schedule -----------------------------------------------------------------------------------------------------

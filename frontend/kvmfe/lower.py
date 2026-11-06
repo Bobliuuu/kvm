@@ -59,6 +59,7 @@ class TileTask:
     name: str = ''
     publishes: str | None = None
     op: LogicalOp | None = None                 # originating logical op (step, phase, graph)
+    pred: tuple | None = None                   # (i32 tensor, flat index, negate) from Builder.when
 
     def flops_bytes(self):
         sc = {k: v for k, v in self.args.items() if not isinstance(v, (Tensor, type(None)))}
@@ -93,11 +94,21 @@ def lower_op(op: LogicalOp, tc: Tiling) -> list[TileTask]:
         raise FrontendError(f'{op.name}: lowering produced no tasks')
     for i, t in enumerate(tasks):
         t.op, t.name = op, f'{op.name}.{i}'
+        if op.pred:        # predicated: the task reads its predicate and, since it may leave its outputs untouched, its outputs too
+            pt, pi, neg = op.pred
+            t.pred = (pt, pi, neg)
+            t.reads = [*t.reads, _elem(pt, pi), *t.writes]
         d = device_op(t.dev)
         missing = [a for a, _ in d.sig if a not in t.args]
         if missing or len(t.args) != len(d.sig):
             raise FrontendError(f'{op.name}: lowering of {t.dev} must set exactly {[a for a, _ in d.sig]}, missing {missing}')
     return tasks
+
+
+def _elem(t: Tensor, i):
+    """Region of flat element i of a dense tensor."""
+    r, c = divmod(i, t.cols)
+    return t.region(r, r + 1, c, c + 1)
 
 
 def _rows(t: Tensor, r0, r1):
@@ -699,3 +710,12 @@ def _(op, tc):
     a, b, out = op.ins['a'], op.ins['b'], op.outs['out']
     for r0, r1, e0, e1 in _flat_blocks(a, tc):
         yield _task('residual_add', [_rows(a, r0, r1), _rows(b, r0, r1)], [_rows(out, r0, r1)], a=a, b=b, out=out, e0=e0, e1=e1)
+
+
+# ------------------------------------------------------------------------------------------------ device-side control
+@lowers('pred_cmp')
+def _(op, tc):
+    a, x, out = op.attrs, op.ins['x'], op.outs['out']
+    prev = op.ins.get('prev')
+    yield _task('pred_cmp', [_elem(x, a['xi']), _elem(prev, a['pi']) if prev else None], [_elem(out, a['oi'])], x=x, out=out, prev=prev,
+                xi=a['xi'], oi=a['oi'], pi=a['pi'], kind=a['cmp'], comb=a['comb'], thresh=a['thresh'])

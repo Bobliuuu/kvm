@@ -24,7 +24,7 @@ executor, concurrently with serving requests on versioned weights and real Doom 
 3. With lr 3e-4 the six losses are 10.979, 10.937, 10.876, 10.883, 10.892, 10.924. The check passes, but weakly: it compares the first with the last
    loss, 6 steps is far too short to see a bigram stream learned, and the curve is back to rising from step 3 (loss at init is ln(50304) = 10.83, observed 10.98).
    Six steps prove "runs, numerically sane, no NaN", not "learns". There is no CPU golden at this size (the Python reference VM cannot run it), so the
-   gradients at scale are validated only indirectly (same ops as the verified gpt_tiny/gpt_small bundles); see the long run below if present.
+   gradients at scale are validated only indirectly (same ops as the verified gpt_tiny/gpt_small bundles); see the 40-step run below.
 
 ## Throughput (from `run.json`, `observations.jsonl`, `out/trace.csv` of the lr 3e-4 run)
 
@@ -41,3 +41,13 @@ Reading: the step is not compute bound (16 CTA-s of work would take about 150 ms
 It is bound by task throughput: 318k tasks x 21.7 edges each through the admitter and the dependency tracker at about 5.5 us per task, while 91% of the workers
 wait (queue wait p50 1.7 ms, p99 62 ms). Doom was unaffected: 172.7 frames/s against 35 needed, 0 of 698 tick gaps over 28.57 ms. The cure is fewer, bigger
 tasks (128x128 / 256x128 matmul tiles are listed as "not built" in FRONTEND.md) or a cheaper per-task path, not a fix in this change.
+
+## 40 steps (`lr3e-4-40steps/`, commit f6cd267)
+
+`demo/run_demo.sh custom --model gpt_162m --steps 40 --window 1 --serve-every 10 --frames 700 --lr 3e-4 --warmup 2 --tf32 --no-golden`:
+12,773,360 / 12,773,360 tasks in 68.5 s (1.63 s/step averaged over steps 1-39, 140 ring wraps, slots recycled so the version check and cadence are skipped by design),
+Doom still 700/700 frames identical. Losses: 10.979, 10.937, 10.876, ..., 10.572 (step 29), 11.443 (step 32), ..., 10.592 (step 39); mean of the first 10 = 10.941,
+mean of the last 10 = 10.891. So it **runs for 40 steps and stays finite, but the loss only drifts down inside +-0.3 step noise**. That is expected for this data
+(a bigram t -> 5t+3 mod 50304: 4096 tokens per step touch about 8% of the vocabulary rows, so ~40 steps cannot learn the table) and does not demonstrate that
+the 162M gradients are right. A real convergence/correctness claim at this size needs an independent reference (PyTorch fp32 with the same init, for the first
+few steps) or a stream with a much smaller effective vocabulary; neither exists yet.

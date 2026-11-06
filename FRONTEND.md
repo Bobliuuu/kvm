@@ -28,6 +28,9 @@ with capacity, gather/scatter dispatch and a load-balance loss), an MLP classifi
 ops, so autodiff, fusion, rematerialization, gradient accumulation, LR schedules, loss scaling and bf16 apply to all of them
 (section "Model zoo" below).
 
+Any traced module can be trained, not only the shipped ones: `compile_training(module, loss=MSE(), data=ArrayData(..),
+optimizer=OptimConfig(..), steps=N)` (section "Generic training" below). `ModelConfig` stays the GPT description; the generic path never touches it.
+
 Tools (run from `frontend/`, or put it on `PYTHONPATH`):
 
 ```
@@ -45,9 +48,10 @@ python3 -I -m unittest discover -s tests/frontend      # from the repo root
 
 | Piece | State | Evidence |
 |---|---|---|
-| Builder, autodiff, tiling, dataflow, memory plan, emit (GPT, Llama/GQA, MoE, MLP, ViT) | implemented + tested: 59 tests (about 30 s) against independent numpy float64 oracles, finite-difference gradients, any-topological-order bitwise state | `tests/frontend/`, `results/2026-11-04-a100-models` |
+| Builder, autodiff, tiling, dataflow, memory plan, emit (GPT, Llama/GQA, MoE, MLP, ViT) | implemented + tested: 78 tests (about 35 s) against independent numpy float64 oracles, finite-difference gradients, any-topological-order bitwise state | `tests/frontend/`, `results/2026-11-04-a100-models` |
 | Fusion, remat, gradient accumulation, device LR schedule, loss scaling, bf16 | implemented + measured on the A100 (fusion -3% Llama / -11% MoE time, remat pool -41 to -59% for +36% tasks); bf16 is emulated in fp32 buffers | `results/2026-11-04-a100-models` |
 | GPT bundles on the executor | implemented + measured; 1xTF32 GEMMs are compared on losses and step-1 buffers, 3xTF32 (flag 16, `gen_bundle.py --precise`) to fp32 level | `results/2026-11-04-a100-gpt-golden` |
+| Generic training (`generic.py`): any traced module + `CrossEntropy`/`MSE` + `ArrayData`/`GeneratedData` + SGD/AdamW | implemented; 4 never-shipped models (regression MLP, residual RMSNorm MLP, 1-D CNN, transformer encoder) vs numpy float64 oracles on the CPU and vs the CPU golden on the A100 (3xTF32, every f32 buffer), 2 emitted as MANIFEST demos through `demo/kvm_run` | `tests/frontend/test_generic.py`, `tests/generic/`, `results/2026-11-05-generic-train` |
 | Windows / MANIFEST runner | CPU reference runner only; the GPU CLI runs single bundles | `kvmfe.run_manifest`, `results/2026-11-04-a100-exec-recycling` |
 | `gpt_162m` | code-only: compiled (318k-task template) and inspected, never run on a GPU | this file |
 | Not built | dynamic shapes, data-dependent control flow, MoE serving, dropout, fp16, a frontend switch for 3xTF32, 128x128 / 256x128 matmul tile stepping in the lowering (the device tiles exist) | below, `results/2026-11-04-a100-ops-perf` |
@@ -146,6 +150,44 @@ Frontend features added with them:
   reference is the unfused reference, so the CPU result is bitwise equal (tested). Bias+GELU and the residual add were already
   fused in the `matmul_tile` epilogue.
 
+## Generic training (any traced module, pluggable loss and data)
+
+Before this, `compile_training` took a GPT/zoo config, `build_training` hard-wired a token stream and softmax cross-entropy, and
+`ModelConfig` rejected anything that was not attention-shaped (head dim 16/32/64/128, seq a multiple of 32) even for an MLP. The audit
+(`results/2026-11-04-claims-audit`, gap 7) had to call `build_training` / `lower_program` / `to_workload` by hand. Now:
+
+```python
+from kvmfe.generic import MLP, MSE, CrossEntropy, ArrayData, GeneratedData, Conv1D, SequencePool
+from kvmfe.optim import OptimConfig
+from kvmfe.pipeline import compile_training
+c = compile_training(MLP('reg', [11, 24, 13, 3], act='tanh'),            # any module: .specs + __call__(b, *inputs, w)
+                     loss=MSE(), data=ArrayData(6, {'x': X, 'y': Y}),    # batch 6 per step, wraps around the samples
+                     optimizer=OptimConfig(kind='sgd', lr=0.05), steps=20, tiling=Tiling.preset('a100'))
+c.run()                                                                  # CPU golden;  c.spec -> workload JSON -> bundle
+demo.write_training_demo('out/', module, loss=.., data=.., steps=200, window=10, precise=True)   # MANIFEST.json + bundles for demo/kvm_run
+```
+
+| Piece | Contract |
+|---|---|
+| module | `.specs` ({name: `ParamSpec`}) and `__call__(b, *inputs, w) -> Tensor`; inputs are the batch tensors named by `data.inputs`. `nn.Module` subclasses compose (`Linear`, `Norm`); `generic.MLP` (act, residual, norm), `Conv1D` (odd taps, zero 'same' padding: row `gather` per tap feeding a `linear` that accumulates the previous taps), `SequencePool` (mean per sequence = `scatter_add`) are provided |
+| loss | `CrossEntropy` (i32 class column; ids range-checked on the host) or `MSE`. `MSE` is a new logical op built from existing device ops only (`scale_flat`, `residual_add`, `row_dot`, `colsum`; no new CUDA), VJP `mse_bwd` = `scale_flat` of the saved difference. Subclass `Loss` for others |
+| data | `ArrayData(batch, arrays, dtypes)` (epochs by wrap-around) or `GeneratedData(make(micro), shapes)`; shapes, dtypes, NaN/inf and ragged rows are checked before anything is emitted. The batch of step s is selected on the device by the step counter, as for GPT |
+| optimizer | `OptimConfig` (AdamW or SGD); `tc=TrainConfig(...)` still carries accum, schedule, clip, loss scale, windows |
+| refusals | `FrontendError` naming the shape/dtype/argument: target shape, class ids out of range, ragged data, missing `loss=`/`data=`, generic-only arguments on a known model, shape mismatches inside a module (from the `Builder`) |
+
+The GPT path is the same code: `compile_training(GPT(cfg), tc, tiling, loss=CrossEntropy(), data=<token ArrayData>)` equals the
+built-in run bit for bit (`test_gpt_through_the_generic_api_equals_the_builtin_path`), and `compile_training(cfg, tc, tiling)` is
+unchanged. Checks: `tests/frontend/test_generic.py` (19 tests: loss and finite-difference gradients of every parameter against numpy
+float64 oracles, any dataflow order bitwise equal, accumulation == big batch, manifest through `kvmfe.run_manifest`, refusals) and
+`tests/generic/run.sh` (A100: 4 models x {cpu, a100} tiling, 3xTF32, golden_check precise; 2 MANIFEST demos through `demo/kvm_run` and
+`demo/check_demo.py`).
+
+Limits of this layer (not fixed here): no auxiliary-loss roots from inside a generic module (use a `models.py`-style model for those),
+one `loss` root per program, no dynamic shapes or control flow, no real conv/pool kernels (the CNN is gather + matmul: correct, not
+fast; a 3-tap conv reads its input 3 times), attention shapes are still bound by the device ops (head dim 16/32/64/128, sequence a
+multiple of 32), and nothing here made small models faster than PyTorch (the audit's 3.9-5.4x loss to a CUDA graph on small
+dependent work is a property of the VM, not of the frontend).
+
 ## Cost model (`inspect`)
 
 Task time = max(FLOPs / 1.8e11, bytes / 1.4e10) + 5 us hop (one A100 SM's share of fp32 CUDA-core peak and HBM bandwidth;
@@ -207,7 +249,7 @@ curve against the independent float64 oracle (rel. 2e-5) and served tokens again
   step-1 activations/gradients and losses (see `results/2026-11-04-a100-gpt-golden`). The frontend still has no flag for flag 16.
 * `gather_rows` (id 63) is unused; the extra pack's `gather_rows_scaled` replaces it (padding rows are zeros instead of errors).
 * Per-step losses of a window are pinned buffers `loss.<i>` reused by the next window: a host reads them between windows.
-* Dropout is not implemented (needs a counter-based RNG op); SGD does not clip; serving is greedy; MoE serving is not supported (routing
+* A generic training program has exactly one loss root (`loss`); extra roots need a `models.py`-style model. Dropout is not implemented (needs a counter-based RNG op); SGD does not clip; serving is greedy; MoE serving is not supported (routing
   capacity is defined per training microbatch).
 * Doom ops have no CPU reference (opaque; `--allow-opaque` runs them as no-ops); the real engine is the port.
 * The CPU VM is pure Python: golden runs are for tiny configs (the model tests take minutes). The 162M config is compiled and inspected,

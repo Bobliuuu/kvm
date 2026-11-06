@@ -20,29 +20,35 @@ static void prof_reset() {}
 static void prof_print(const char*) {}
 #endif
 
-// Admission rate: back-to-back records of independent noops. A record is fully admitted when its last task is ready.
-static double run_rate(int nrec, int K, int chain, bool sched, int blocks, double* span_us) {
+// Admission rate: back-to-back records. fan = 0: independent noops. fan > 0: layered DAG (layers of 256 tasks, each task has `fan` successors in the
+// next layer, 3 buffer/int arguments per task), the shape of real training records (the 162M GPT tape has 21.7 edges and ~7 arguments per task).
+// A record is fully admitted when its last task is ready; chains/DAGs also include execution of the dependency hops in that span.
+static double run_rate(int nrec, int K, int fan, bool sched, int blocks, double* span_us) {
   KvmConfig c = sched ? sched_cfg(blocks, 3) : small_cfg(blocks);
-  c.max_tasks = 1 << 17; c.live_cap = 1 << 16; c.ring_words = 1 << 22;
-  KvmExec ex(c); ex.start();
+  c.max_tasks = 1 << 17; c.live_cap = 1 << 16; c.ring_words = 1 << 22; c.succ_cap = 1 << 22;
+  KvmExec ex(c); int b0 = 0, b1 = 0;
+  if (fan) { float* a = ex.arena(64); b0 = ex.add_view(a, 1, 32); b1 = ex.add_view(a + 32, 1, 32); }
+  ex.start();
+  const int W = 256;
   for (int r = 0; r < nrec; ++r) {
     KvmBundleBuilder b; KvmTaskOpts o;
-    for (int i = 0; i < K; ++i) { b.add("noop", {}, o); if (chain && i >= 1) b.edge(i - 1, i); }
+    for (int i = 0; i < K; ++i) { if (fan) b.add("copy", {Bf(b0), Bf(b1), I(1)}, o); else b.add("noop", {}, o); }
+    for (int i = 0; fan && i + W < K; ++i) for (int d = 0; d < fan; ++d) b.edge(i, (i / W + 1) * W + (i % W + d * 13) % W);
     CHECK(ex.submit(b.build(), 30000) == KvmSubmit::OK, "submit");
   }
-  const KvmResult& res = ex.finish(); CHECK(res.ok() && res.done == nrec * K, "done %d", res.done);
+  const KvmResult& res = ex.finish(); CHECK(res.ok() && res.done == nrec * K, "done %d err %s", res.done, kvm_err_name(res.err_code));
   unsigned long long a0 = ~0ull, r1 = 0; for (auto& t : res.trace) if (t.admit_ns) { a0 = std::min(a0, t.admit_ns); r1 = std::max(r1, t.ready_ns); }
   *span_us = (r1 - a0) / 1e3; return *span_us / ((double)nrec * K);
 }
 static bool suite_rate() {
   int before = g_fail;
   printf("  admission rate: noop records; us/task = (first admit .. last task ready) / tasks, best of 3\n");
-  for (int sched : {0, 1}) for (int chain : {0, 1}) {
+  for (int sched : {0, 1}) for (int chain : {0, 20}) {
     for (int K : {1024, 8192, 32768}) {
       double best = 1e9, span = 0;
       prof_reset();
       for (int rep = 0; rep < 3; ++rep) { double s; double v = run_rate(std::max(1, 65536 / K), K, chain, sched, 0, &s); if (v < best) { best = v; span = s; } }
-      char tag[64]; snprintf(tag, sizeof tag, "sched %d chain %d K %d", sched, chain, K);
+      char tag[64]; snprintf(tag, sizeof tag, "sched %d fan %d K %d", sched, chain, K);
       printf("  %-28s %.3f us/task  (%.2f Mtasks/s)\n", tag, best, 1.0 / best);
       prof_print(tag);
     }

@@ -40,8 +40,9 @@ The TF32 path went from 0.33 to 0.52-0.54x at its best (about 1.6x faster) and d
 
 ## What changed
 
-1. `__launch_bounds__(256, 2)` on the executor kernel (`KVM_MIN_BLOCKS`, default 2; `-DKVM_MIN_BLOCKS=1` restores 255 registers). The grid is occupancy sized, so
-   it doubles (2 x SMs). This was the largest single lever: the same old matmul code went 42.8 -> 60.6 TFLOP/s (128 tile) just from two resident blocks.
+1. `__launch_bounds__(256, KVM_MIN_BLOCKS)` on the executor kernel. The macro defaults to 1 (unchanged behaviour) because the executor suites could NOT be run at 2
+   (see below); `-DKVM_MIN_BLOCKS=2` is the intended setting (128 registers, the grid is occupancy sized so it doubles to 2 x SMs). The op harness kernel (`k_run`, all ops) was
+   measured and tested at 2. This was the largest single lever: the same old matmul code went 42.8 -> 60.6 TFLOP/s (128 tile) just from two resident blocks.
    `bench_ops` `BENCH_MINB=2` on attention (`attn_minb1_vs_minb2.txt`, no attention code changed): backward B4 T2048 H16 Hkv4 hd64 6.81 -> 5.46 ms (+25%),
    backward B4 T1024 hd64 2.91 -> 2.34 ms (+24%), forward T1024 0.919 -> 0.970 ms (-5%), forward T2048 unchanged. hd=128 (not in the default union) is 12-25% slower.
 2. 256x128 tile (flag 64) is now two 128x128 passes inside one task (4x2 warps of 64x64 need 128 accumulators, which cannot fit 128 registers); same task shape and ABI.
@@ -66,7 +67,8 @@ shared traffic per FLOP, which is why it reaches 0.87. Measured, not modelled: 1
 - `test_ops` (harness kernel built with `__launch_bounds__(256, 2)`): **1979 passed, 0 failed** (was 1396 on this branch's base; new cases: shapes that reach the cp.async fast path,
   bf16 flag for every tile, NaN propagation for every tile and precision). `compute-sanitizer --tool memcheck`: 1979 passed, 0 errors (`test_ops_memcheck.txt`).
 - Golden tests: no tolerance changed. TF32 and 3xTF32 results are bitwise those of the old rounding.
-- NOT run to completion (see the end of this file for what finished): `test_extra`, `test_exec`, gptdiff, racecheck/synccheck.
+- NOT run (jobs hit Modal's 60 min timeout or were stopped after 45 min of nvcc time): `test_extra` (2089), `test_exec` suites and the gpt_tiny bundle through `kvm_exec` at `KVM_MIN_BLOCKS=2`,
+  racecheck/synccheck. `kvm_exec.cu` takes more than 40 min to compile on a Modal container at -O3. So the executor default stays at 1 until someone runs `tests/gpu/*` and `run_exec_tests.sh` with `-DKVM_MIN_BLOCKS=2`.
 
 ## What failed / did not help
 

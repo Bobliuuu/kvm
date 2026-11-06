@@ -69,6 +69,7 @@ struct Dev {
     int geterr() { int e; CK(cudaMemcpy(&e, err, 4, cudaMemcpyDeviceToHost)); CK(cudaMemset(err, 0, 4)); return e; }
 };
 
+#ifndef KVM_HARNESS_NO_FULL   // KVM_HARNESS_NO_FULL: skip the all-ops kernel (compiles for minutes); the includer launches its own kernels
 #ifndef BENCH_MINB
 #define BENCH_MINB 1   // -DBENCH_MINB=2 caps the all-ops kernel at 128 registers (two blocks per SM), as an executor could
 #endif
@@ -76,6 +77,7 @@ __global__ void __launch_bounds__(KVM_GPT_THREADS, BENCH_MINB) k_run(KvmCtx c, c
     if (!kvm_gpt_dispatch(c, op[blockIdx.x], w + off[blockIdx.x])) atomicCAS(c.err, 0, 99);
 }
 
+#endif
 struct Batch {   // independent tasks, one block each
     std::vector<int> op, off; std::vector<int32_t> w;
     void add(int id, const A& a) {
@@ -86,6 +88,7 @@ struct Batch {   // independent tasks, one block each
         op.push_back(id); off.push_back((int)w.size()); w.insert(w.end(), a.w.begin(), a.w.end());
     }
 };
+#ifndef KVM_HARNESS_NO_FULL
 static int g_smem_attr = 0;
 // Runs the batch (one block of 256 threads per task) and returns the device error word (0 = ok).
 static int run(Dev& d, const Batch& b, int smem = kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)) {   // what the executor would launch with
@@ -103,6 +106,8 @@ static int run(Dev& d, const Batch& b, int smem = kvm_gpt_smem_bytes(KVM_GPT_MAX
     return d.geterr();
 }
 static int run1(Dev& d, int id, const A& a, int smem = kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)) { Batch b; b.add(id, a); return run(d, b, smem); }
+
+#endif
 
 // ---- accounting / comparison ------------------------------------------------------------------------------------------
 static int g_pass = 0, g_fail = 0;

@@ -7,7 +7,7 @@ second implementation of the same text.
 import math
 import struct
 
-from ref_gpt import GPT_OPS, _R, _flat_ext, _need, _rng, _matmul_tile
+from ref_gpt import GPT_OPS, _R, _flat_ext, _need, _rng, _matmul_tile, mm_tile_dims
 from ref_types import f32
 
 M32 = 0xFFFFFFFF
@@ -345,11 +345,12 @@ def _add_rowtile(b, a):
 def _tile_mm(b, a, out, extra=None):
     """matmul_tile on the 64x64 tile with no epilogue, written into `out`."""
     mb = {'a': b['a'], 'b': b['b'], 'out': out, 'bias': None, 'res': None, 'pre': None}
-    _matmul_tile(mb, {**a, 'flags': a['flags'] & 3})
+    _matmul_tile(mb, {**a, 'flags': a['flags'] & 35})
 
 
 def _tile_range(a):
-    return range(a['m0'], min(a['m0'] + 64, a['M'])), range(a['n0'], min(a['n0'] + 64, a['N']))
+    tm, tn = mm_tile_dims(a['flags'])
+    return range(a['m0'], min(a['m0'] + tm, a['M'])), range(a['n0'], min(a['n0'] + tn, a['N']))
 
 
 def _mm_dgelu(b, a):
@@ -385,7 +386,7 @@ def _mm_ext(extra):
     def ext(a):
         M, N, K, fl = a['M'], a['N'], a['K'], a['flags']
         _need(M > 0 and N > 0 and K > 0 and 0 <= a['m0'] < M and 0 <= a['n0'] < N, 'matmul_tile*: bad M/N/K/m0/n0')
-        _need(fl & ~19 == 0, f'matmul_tile*: unsupported flags {fl}')
+        _need(fl & ~51 == 0, f'matmul_tile*: unsupported flags {fl}')
         return {'a': (K, M) if fl & 1 else (M, K), 'b': (N, K) if fl & 2 else (K, N), **{n: (M, N) for n in extra}}
     return ext
 

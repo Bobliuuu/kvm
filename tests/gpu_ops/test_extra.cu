@@ -520,9 +520,9 @@ static void t_sched() {
 static void t_wrappers() {
     Rng r(181);
     MmCfg shapes[] = {{1, 1, 1}, {5, 7, 3}, {64, 64, 32}, {65, 63, 33}, {130, 70, 100}, {70, 130, 17}};
-    for (int ta = 0; ta < 2; ta++) for (int tb = 0; tb < 2; tb++) for (int prec = 0; prec < 2; prec++) for (auto s : shapes) {
+    for (int bg = 0; bg < 2; bg++) for (int ta = 0; ta < 2; ta++) for (int tb = 0; tb < 2; tb++) for (int prec = 0; prec < 2; prec++) for (auto s : shapes) {
         int M = s.M, N = s.N, K = s.K;
-        int fl = ta | (tb << 1) | (prec << 4);
+        int fl = ta | (tb << 1) | (prec << 4) | (bg ? 32 : 0), step = bg ? 128 : 64;   // bg: the 128x128 tile (flag 32) the frontend picks for small GEMMs
         Dev dv;
         int ar = ta ? K : M, ac = ta ? M : K, br = tb ? N : K, bc = tb ? K : N;
         int ia = dv.addf(ar, ac, ac + 4), ib = dv.addf(br, bc, bc + 4);
@@ -533,10 +533,10 @@ static void t_wrappers() {
         // garbage in all outputs
         for (int t : {up2, o1, o2, c, dg1, dg2, du1, du2, dx2}) dv.up(t, rnd(r, M * N));
         float alpha = 0.8f;
-        std::string nm = "ta=" + S(ta) + " tb=" + S(tb) + " prec=" + S(prec) + " " + S(M) + "x" + S(N) + "x" + S(K);
+        std::string nm = "ta=" + S(ta) + " tb=" + S(tb) + " prec=" + S(prec) + " big=" + S(bg) + " " + S(M) + "x" + S(N) + "x" + S(K);
         BatchX bw, bs, bb;   // wrapper batches
         BatchX ref1, ref2, ref3;   // two-task path
-        for (int m0 = 0; m0 < M; m0 += 64) for (int n0 = 0; n0 < N; n0 += 64) {
+        for (int m0 = 0; m0 < M; m0 += step) for (int n0 = 0; n0 < N; n0 += step) {
             bw.add(OPX_matmul_tile_dgelu, A().b(ia).b(ib).b(o1).b(pre).i(m0).i(n0).i(M).i(N).i(K).i(fl).f(alpha));
             bs.add(OPX_matmul_tile_silu_mul, A().b(ia).b(ib).b(o2).b(gate).b(up2).i(m0).i(n0).i(M).i(N).i(K).i(fl).f(alpha));
             bb.add(OPX_matmul_tile_silu_mul_bwd, A().b(ia).b(ib).b(gate).b(up).b(dg1).b(du1).i(m0).i(n0).i(M).i(N).i(K).i(fl).f(alpha));
@@ -577,7 +577,7 @@ static void t_wrappers() {
     {   // flags 4 / 8 rejected, memory untouched
         int M = 8, N = 8, K = 8; Dev dv; int ia = dv.addf(M, K), ib = dv.addf(K, N), o = dv.addf(M, N), pre = dv.addf(M, N), g = dv.addf(M, N), u = dv.addf(M, N), d1 = dv.addf(M, N), d2 = dv.addf(M, N);
         for (int t : {ia, ib, o, pre, g, u, d1, d2}) dv.up(t, rnd(r, 64));
-        for (int fl : {4, 8, 32, 12}) {
+        for (int fl : {4, 8, 64, 12}) {
             std::vector<std::vector<float>> before; for (int t : {o, u, d1, d2}) before.push_back(dv.down(t));
             int e1 = run1x(dv, OPX_matmul_tile_dgelu, A().b(ia).b(ib).b(o).b(pre).i(0).i(0).i(M).i(N).i(K).i(fl).f(1.f));
             int e2 = run1x(dv, OPX_matmul_tile_silu_mul, A().b(ia).b(ib).b(o).b(g).b(u).i(0).i(0).i(M).i(N).i(K).i(fl).f(1.f));

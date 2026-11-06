@@ -29,7 +29,7 @@ def mlp(tiling, fuse, steps=2, opt=SGD, **kw):
 
 
 def xfmr(tiling, fuse, steps=2, opt=SGD, **kw):
-    cfg = ModelConfig('x', vocab=40, d_model=32, layers=2, heads=2, seq=32, batch=2, ffn_mult=2, norm='rmsnorm', bias=False)
+    cfg = ModelConfig('x', vocab=40, d_model=32, layers=1, heads=2, seq=64, batch=2, ffn_mult=2, norm='rmsnorm', bias=False)
     return compile_training(cfg, TrainConfig(steps=steps, optim=opt, clip=0), tiling, reuse='none', fuse=fuse, **kw)
 
 
@@ -44,10 +44,26 @@ class FusionGolden(unittest.TestCase):
             self.assertEqual(state(c, c.run(order='random', seed=3)), want, (tiling, fuse, 'random order'))
 
     def test_mlp_a100_tiling_and_fusion(self):
-        self.check(mlp, [(Tiling.preset('a100'), False), (Tiling.preset('a100'), True)])
+        self.check(mlp, [(Tiling.preset('a100'), False), (Tiling.preset('a100'), True), (Tiling.preset('a100', mm_merge=32), True)])
 
     def test_xfmr_a100_tiling_and_fusion(self):
         self.check(xfmr, [(Tiling.preset('a100'), False), (Tiling.preset('a100'), True)])
+
+    def test_gemm_tile_merging_cpu_tiling(self):
+        merged = Tiling.preset('cpu', mm_merge=32)
+        self.check(mlp, [(merged, False), (merged, True)])
+        self.check(xfmr, [(merged, False), (merged, True)])
+        self.check(lambda t, f: mlp(t, f, opt=ADAM), [(merged, True)])
+
+    def test_merged_gemms_use_the_big_tile_flag(self):
+        for build in (mlp, xfmr):
+            c = build(Tiling.preset('a100', mm_merge=32), True)
+            mm = [t for g in c.spec['graphs'] for t in g['tasks'] if t['op'].startswith('matmul_tile')]
+            self.assertTrue(any(t['args']['flags'] & 32 for t in mm))
+            for t in mm:                    # a big tile steps by 128 and covers its whole region
+                if t['args']['flags'] & 32:
+                    self.assertTrue(t['args']['m0'] % 128 == 0 and t['args']['n0'] % 128 == 0)
+        self.assertFalse(any(t.get('args', {}).get('flags', 0) & 32 for g in mlp(Tiling.preset('cpu'), True).spec['graphs'] for t in g['tasks']))
 
 
 if __name__ == '__main__':

@@ -17,8 +17,14 @@ from .defs import default_include_dir, read_defs
 from .ir import FrontendError
 
 MM_TILE = 64        # matmul_tile computes a 64 x 64 output tile (flags: 1 transA, 2 transB, 4 accumulate, 8 gelu)
+MM_BIG = 128        # side of the F_BIG matmul tile
 ATTN_Q = 32         # attn_fwd / attn_bwd_dq: 32 query rows per task; attn_bwd_dkv: 32 keys per task
 F_TA, F_TB, F_ACC, F_GELU, F_PRECISE = 1, 2, 4, 8, 16
+F_BIG = 32          # matmul_tile: 128 x 128 output tile (a quarter of the tasks; the caller steps m0, n0 by 128)
+
+
+def tile_dims(flags):
+    return (MM_BIG, MM_BIG) if flags & F_BIG else (MM_TILE, MM_TILE)
 
 
 class Buf:
@@ -128,7 +134,8 @@ def _argmax(b, a):
 
 # ------------------------------------------------------------------------------------------------ matmul
 def _mm_flops(a):
-    return 2.0 * max(0, min(MM_TILE, a['M'] - a['m0'])) * max(0, min(MM_TILE, a['N'] - a['n0'])) * a['K']
+    tm, tn = tile_dims(a['flags'])
+    return 2.0 * max(0, min(tm, a['M'] - a['m0'])) * max(0, min(tn, a['N'] - a['n0'])) * a['K']
 
 
 def _mm_acc(A, B, fl, m0, m1, n0, n1, K):
@@ -153,7 +160,8 @@ def _mm_acc(A, B, fl, m0, m1, n0, n1, K):
 def _matmul_tile(b, a):
     M, N, K, fl = a['M'], a['N'], a['K'], a['flags']
     A, B, out = b['a'], b['b'], b['out']
-    m1, n1 = min(a['m0'] + MM_TILE, M), min(a['n0'] + MM_TILE, N)
+    tm, tn = tile_dims(fl)
+    m1, n1 = min(a['m0'] + tm, M), min(a['n0'] + tn, N)
     prod = _mm_acc(A, B, fl, a['m0'], m1, a['n0'], n1, K)
     for i, m in enumerate(range(a['m0'], m1)):
         vals = []
@@ -755,11 +763,12 @@ def _add_rowtile(b, a):
 
 def _tile_nofx(b, a, out):
     """matmul_tile without epilogue into `out` (flags 1, 2 only)."""
-    _matmul_tile({'a': b['a'], 'b': b['b'], 'out': out, 'bias': None, 'res': None, 'pre': None}, {**a, 'flags': a['flags'] & 3})
+    _matmul_tile({'a': b['a'], 'b': b['b'], 'out': out, 'bias': None, 'res': None, 'pre': None}, {**a, 'flags': a['flags'] & 35})
 
 
 def _tile_cells(a):
-    return [(m, n) for m in range(a['m0'], min(a['m0'] + MM_TILE, a['M'])) for n in range(a['n0'], min(a['n0'] + MM_TILE, a['N']))]
+    tm, tn = tile_dims(a['flags'])
+    return [(m, n) for m in range(a['m0'], min(a['m0'] + tm, a['M'])) for n in range(a['n0'], min(a['n0'] + tn, a['N']))]
 
 
 @impl('matmul_tile_dgelu', lambda a: _mm_flops(a) + 20.0 * MM_TILE * MM_TILE)

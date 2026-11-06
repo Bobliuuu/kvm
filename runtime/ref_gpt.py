@@ -65,12 +65,18 @@ def _embedding_bwd(b, a):
 
 
 # ---- matmul -------------------------------------------------------------------------------------------------------------
+def mm_tile_dims(fl):
+    """Output tile of matmul_tile for its flags: 64x64, 128x128 (flag 32), 256x128 (flag 64)."""
+    return (256, 128) if fl & 64 else (128, 128) if fl & 32 else (64, 64)
+
+
 def _matmul_tile(b, a):
     A, B, out, bias, res, pre = b['a'], b['b'], b['out'], b['bias'], b['res'], b['pre']
     M, N, K, fl, alpha = a['M'], a['N'], a['K'], a['flags'], a['alpha']
     ta, tb, accum, gelu = fl & 1, fl & 2, fl & 4, fl & 8
-    for m in range(a['m0'], min(a['m0'] + 64, M)):
-        for n in range(a['n0'], min(a['n0'] + 64, N)):
+    tm, tn = mm_tile_dims(fl)
+    for m in range(a['m0'], min(a['m0'] + tm, M)):
+        for n in range(a['n0'], min(a['n0'] + tn, N)):
             acc = 0.0
             for k in range(K):
                 x = A.at(k, m) if ta else A.at(m, k)
@@ -92,7 +98,7 @@ def _matmul_tile(b, a):
 def _matmul_extents(a):
     M, N, K, fl = a['M'], a['N'], a['K'], a['flags']
     _need(M > 0 and N > 0 and K > 0 and 0 <= a['m0'] < M and 0 <= a['n0'] < N, 'matmul_tile: bad M/N/K/m0/n0')
-    _need(fl & ~31 == 0, f'matmul_tile: unsupported flags {fl}')
+    _need(fl & ~127 == 0 and (fl & 96) != 96, f'matmul_tile: unsupported flags {fl}')
     return {'a': (K, M) if fl & 1 else (M, K), 'b': (N, K) if fl & 2 else (K, N), 'out': (M, N), 'bias': N,
             'res': (M, N), 'pre': (M, N)}
 

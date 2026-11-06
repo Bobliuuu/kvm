@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from .ir import Builder, FrontendError, LogicalOp, Tensor
-from .opset import ATTN_Q, F_ACC, F_GELU, F_PRECISE, F_TA, F_TB, MM_TILE, op as device_op
+from .opset import ATTN_Q, F_ACC, F_BIG, F_GELU, F_PRECISE, F_TA, F_TB, MM_BIG, MM_TILE, op as device_op
 
 
 @dataclass(frozen=True)
@@ -23,11 +23,14 @@ class Tiling:
     vocab: int = 1024        # key block of the embedding gradient
     opt_elems: int = 16384   # AdamW chunk (rounded down to whole rows)
     precise: bool = False    # GEMM tiles use 3xTF32 (matmul_tile flag 16, fp32 accuracy) instead of the default 1xTF32
+    mm_merge: int = 0        # a GEMM with at most this many 64x64 tiles runs as 128x128 tiles (a quarter of the tasks, fewer dependency
+                             # hops); 0 = never (every preset: MEASURED SLOWER on the A100, results/2026-11-06-fusion/README.md: the tiles of one GEMM run in
+                             # parallel, so merging fewer tasks does not shorten the dependency chain but lengthens each link).
 
     PRESETS = {
         'cpu': dict(rows=8, ew_rows=8, cols=32, vocab=16, opt_elems=256),
-        'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=65536),
-        'b200': dict(rows=128, ew_rows=256, cols=512, vocab=4096, opt_elems=131072),
+        'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=65536, mm_merge=0),
+        'b200': dict(rows=128, ew_rows=256, cols=512, vocab=4096, opt_elems=131072, mm_merge=0),
     }
 
     @classmethod
@@ -36,9 +39,16 @@ class Tiling:
             raise FrontendError(f'unknown tiling preset {name!r}; known: {sorted(cls.PRESETS)}')
         return cls(**{**cls.PRESETS[name], **override})
 
+    def mm_tile(self, M, N):
+        """(tile side, extra matmul_tile flag) for an M x N output."""
+        n64 = -(-M // MM_TILE) * -(-N // MM_TILE)
+        return (MM_BIG, F_BIG) if self.mm_merge and 1 < n64 <= self.mm_merge else (MM_TILE, 0)
+
     def __post_init__(self):
         for k, v in vars(self).items():
             if k == 'precise':
+                continue
+            if k == 'mm_merge' and isinstance(v, int) and v >= 0:
                 continue
             if not isinstance(v, int) or v < 1:
                 raise FrontendError(f'Tiling.{k} must be a positive int, got {v!r}')
@@ -107,12 +117,14 @@ def _task(dev, reads, writes, **args):
 
 
 # ------------------------------------------------------------------------------------------------ matmul family
-def _mm_tiles(a, b, out, M, N, K, ta, tb, flags, bias=None, res=None, pre=None, acc=False, dev='matmul_tile', precise=False):
+def _mm_tiles(a, b, out, M, N, K, ta, tb, flags, bias=None, res=None, pre=None, acc=False, dev='matmul_tile', precise=False, tc=None):
     flags |= F_PRECISE if precise else 0
-    for m0 in range(0, M, MM_TILE):
-        m1 = min(m0 + MM_TILE, M)
-        for n0 in range(0, N, MM_TILE):
-            n1 = min(n0 + MM_TILE, N)
+    T, bigf = tc.mm_tile(M, N) if tc is not None and dev == 'matmul_tile' else (MM_TILE, 0)
+    flags |= bigf
+    for m0 in range(0, M, T):
+        m1 = min(m0 + T, M)
+        for n0 in range(0, N, T):
+            n1 = min(n0 + T, N)
             ra = a.region(0, K, m0, m1) if ta else a.region(m0, m1, 0, K)
             rb = b.region(n0, n1, 0, K) if tb else b.region(0, K, n0, n1)
             tile = out.region(m0, m1, n0, n1)
@@ -131,7 +143,7 @@ def _(op, tc):
     x, w, out = op.ins['x'], op.ins['w'], op.outs['out']
     wt = op.attrs['wt']
     yield from _mm_tiles(x, w, out, x.rows, out.cols, x.cols, False, wt, (F_GELU if op.attrs['gelu'] else 0) | (F_TB if wt else 0),
-                         op.ins.get('bias'), op.ins.get('res'), op.outs.get('pre'), dev=_mm_dev(op), precise=tc.precise)
+                         op.ins.get('bias'), op.ins.get('res'), op.outs.get('pre'), dev=_mm_dev(op), precise=tc.precise, tc=tc)
 
 
 @lowers('mm')
@@ -141,7 +153,7 @@ def _(op, tc):
     N = b.rows if tb else b.cols
     acc = 'into' in op.ins
     yield from _mm_tiles(a, b, out, M, N, K, ta, tb, (F_TA if ta else 0) | (F_TB if tb else 0) | (F_ACC if acc else 0), acc=acc,
-                         dev=_mm_dev(op), precise=tc.precise)
+                         dev=_mm_dev(op), precise=tc.precise, tc=tc)
 
 
 # ------------------------------------------------------------------------------------------------ data / row-wise ops
@@ -591,11 +603,12 @@ def _(op, tc):
 
 
 # ------------------------------------------------------------------------------------------------ fused matmul epilogues (fuse.py)
-def _mm_grid(a, b, M, N, K, ta, tb):
-    for m0 in range(0, M, MM_TILE):
-        m1 = min(m0 + MM_TILE, M)
-        for n0 in range(0, N, MM_TILE):
-            n1 = min(n0 + MM_TILE, N)
+def _mm_grid(a, b, M, N, K, ta, tb, tc):
+    T, _ = tc.mm_tile(M, N)
+    for m0 in range(0, M, T):
+        m1 = min(m0 + T, M)
+        for n0 in range(0, N, T):
+            n1 = min(n0 + T, N)
             ra = a.region(0, K, m0, m1) if ta else a.region(m0, m1, 0, K)
             rb = b.region(n0, n1, 0, K) if tb else b.region(0, K, n0, n1)
             yield m0, m1, n0, n1, ra, rb
@@ -606,19 +619,19 @@ def _(op, tc):
     a, b, pre, out, ta, tb = op.ins['a'], op.ins['b'], op.ins['pre'], op.outs['out'], op.attrs['ta'], op.attrs['tb']
     M, K = (a.cols, a.rows) if ta else (a.rows, a.cols)
     N = b.rows if tb else b.cols
-    for m0, m1, n0, n1, ra, rb in _mm_grid(a, b, M, N, K, ta, tb):
+    for m0, m1, n0, n1, ra, rb in _mm_grid(a, b, M, N, K, ta, tb, tc):
         tile = out.region(m0, m1, n0, n1)
         yield _task('matmul_tile_dgelu', [ra, rb, pre.region(m0, m1, n0, n1)], [tile], a=a, b=b, out=out, pre=pre, m0=m0, n0=n0,
-                    M=M, N=N, K=K, flags=(F_TA if ta else 0) | (F_TB if tb else 0) | (F_PRECISE if tc.precise else 0), alpha=1.0)
+                    M=M, N=N, K=K, flags=(F_TA if ta else 0) | (F_TB if tb else 0) | (F_PRECISE if tc.precise else 0) | tc.mm_tile(M, N)[1], alpha=1.0)
 
 
 @lowers('linear_silu_mul')
 def _(op, tc):
     x, w, gate, out, up = op.ins['x'], op.ins['w'], op.ins['gate'], op.outs['out'], op.outs['up']
-    for m0, m1, n0, n1, ra, rb in _mm_grid(x, w, x.rows, w.cols, x.cols, False, False):
+    for m0, m1, n0, n1, ra, rb in _mm_grid(x, w, x.rows, w.cols, x.cols, False, False, tc):
         t = (m0, m1, n0, n1)
         yield _task('matmul_tile_silu_mul', [ra, rb, gate.region(*t)], [out.region(*t), up.region(*t)], a=x, b=w, out=out, gate=gate,
-                    up=up, m0=m0, n0=n0, M=x.rows, N=w.cols, K=x.cols, flags=F_PRECISE if tc.precise else 0, alpha=1.0)
+                    up=up, m0=m0, n0=n0, M=x.rows, N=w.cols, K=x.cols, flags=(F_PRECISE if tc.precise else 0) | tc.mm_tile(x.rows, w.cols)[1], alpha=1.0)
 
 
 @lowers('mm_silu_mul_bwd')
@@ -627,11 +640,11 @@ def _(op, tc):
     dg, du, ta, tb = op.outs['dgate'], op.outs['dup'], op.attrs['ta'], op.attrs['tb']
     M, K = (a.cols, a.rows) if ta else (a.rows, a.cols)
     N = b.rows if tb else b.cols
-    for m0, m1, n0, n1, ra, rb in _mm_grid(a, b, M, N, K, ta, tb):
+    for m0, m1, n0, n1, ra, rb in _mm_grid(a, b, M, N, K, ta, tb, tc):
         t = (m0, m1, n0, n1)
         yield _task('matmul_tile_silu_mul_bwd', [ra, rb, gate.region(*t), up.region(*t)], [dg.region(*t), du.region(*t)], a=a, b=b,
                     gate=gate, up=up, dgate=dg, dup=du, m0=m0, n0=n0, M=M, N=N, K=K,
-                    flags=(F_TA if ta else 0) | (F_TB if tb else 0) | (F_PRECISE if tc.precise else 0), alpha=1.0)
+                    flags=(F_TA if ta else 0) | (F_TB if tb else 0) | (F_PRECISE if tc.precise else 0) | tc.mm_tile(M, N)[1], alpha=1.0)
 
 
 @lowers('add')

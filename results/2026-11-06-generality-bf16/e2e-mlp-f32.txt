@@ -1,0 +1,8 @@
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 4 (1 admitter + 3 workers)
+[kvm_exec][I] b_f32/bundle: 228 tasks, 1018 edges, 2535 arg words
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 16384, slots 262144, succ ring 2097152 words, ring 65536 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 228/228 tasks in 4.253 ms, 1 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] workload 0: 228 tasks, 0.004 CTA-s, queue wait p50 35.8 p99 195.6 max 197.6 us, 0 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] golden: 1184816 buffer values compared, 54389 bitwise equal, worst buffer relative L2 error 0.00165 (tolerance 0.005)
+[kvm_exec][I] golden: 0 reads checked, final versions compared; 0 mismatches
+OK: 228/228 tasks, 4.253 ms, golden match

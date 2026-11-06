@@ -1039,7 +1039,7 @@ static bool suite_latlane() {
     unsigned long long prev[2] = {0, 0}; int order_bad = 0;
     for (auto& kv : win) { int L = kv.first >> 31; if (kv.second.first < prev[L]) ++order_bad; prev[L] = kv.second.first; }
     CHECK(order_bad == 0, "latlane: %d windows admitted out of order within a lane", order_bad);
-    for (int k = 0; k < NB; ++k) CHECK(!(bw[k] & 0x80000000u) && win[bw[k]].second == 3 * BIG, "latlane: bulk window %d", k);
+    for (int k = 0; k < NB; ++k) CHECK(!(bw[k] & 0x80000000u) && win[bw[k]].second == 3 * BIG, "latlane: bulk window %d: id %x has %d tasks, want %d", k, bw[k], win[bw[k]].second, 3 * BIG);
     for (int k = 0; k < NS; ++k) CHECK((sw[k] & 0x80000000u) && win[sw[k]].second == 3 * SMALLC, "latlane: lat window %d id %x", k, sw[k]);
     // interleave: a lat record admitted after a bulk record's admission started and before its first root was released
     std::map<unsigned, unsigned long long> first_ready;

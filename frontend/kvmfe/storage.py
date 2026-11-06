@@ -94,7 +94,7 @@ def _narrow_operands(ops, stats):
 
 def apply(ops: list[LogicalOp], weights: bool = True) -> tuple[list[LogicalOp], dict]:
     """weights=False keeps the fp32 masters as the matmul operands (the kernel rounds them on load): no bf16 weight shadows."""
-    stats = dict(folded=0, narrowed=0, widened=0, shadows=0, operand_copies=0)
+    stats = dict(folded=0, narrowed=0, widened=0, shadows=0, operand_copies=0, bf16_pre=0)
     ops = _narrow_operands(ops, stats)
     uses: dict = {}
     prod: dict = {}
@@ -120,6 +120,18 @@ def apply(ops: list[LogicalOp], weights: bool = True) -> tuple[list[LogicalOp], 
         else:
             stats['narrowed'] += 1
     ops = [op for i, op in enumerate(ops) if i not in drop] if not out_of else _fold(ops, drop, out_of)
+
+    # 1b. the pre-activation a gelu linear keeps for the backward is only read by gelu_bwd (storage-aware): store it bf16 as well. The forward
+    # value is gelu of the fp32 accumulator; only the saved copy is rounded (torch autocast keeps the pre-activation in bf16 too).
+    readers: dict = {}
+    for op in ops:
+        for n, t in op.ins.items():
+            readers.setdefault(t.uid, []).append((op.kind, n))
+    for op in ops:
+        t = op.outs.get('pre') if _capable(op) else None
+        if t is not None and t.dtype == 'f32' and readers.get(t.uid) and all(r == ('gelu_bwd', 'pre') for r in readers[t.uid]):
+            t.dtype = 'bf16'
+            stats['bf16_pre'] += 1
 
     # 2. weight shadows (refreshed from the fp32 master at the start of each step)
     shadow: dict = {}

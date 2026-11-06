@@ -1,19 +1,44 @@
 # KVM — a "kittens" GPU virtual machine (version 2 of [open-flapping-airplanes](https://github.com/Bobliuuu/open-flapping-airplanes))
 
-Attempt to reproduce the idea from Flapping Airplanes' "kittens" VM: one persistent kernel takes over
-the whole GPU and interprets work itself, so an *entire training run* (every step: forward,
-loss, backward, optimizer) needs no kernel boundaries between ops or steps.
+One persistent kernel takes over the whole GPU and interprets a task graph itself, so GPT training, live inference on the weights being
+trained, and real Doom run at the same time on the same SMs with no kernel boundary between any of their ops. A frontend compiles a model
+to a bundle, the kernel admits it and schedules it, and every task leaves a timestamp. This is an attempt to reproduce the capability behind
+Flapping Airplanes' "kittens" VM ([their post](https://x.com/flappyairplanes/status/2052107357585649810)); not affiliated with them. They have
+published no code or numbers, so each claim here needs a result file in `results/`.
 
-This tree has two layers:
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/timeline-dark.png">
+  <img alt="Executor timeline: 106 SM rows over 4.2 s, coloured by op class: training windows, serve requests and Doom frames interleaved in one kernel" src="assets/timeline-light.png">
+</picture>
 
-1. `kvm.cu`: the original single-file prototype (80-byte instruction tape, MLP training, sm_80). Sections "How it works" to "Findings" below.
-2. The integrated framework around a generic executor, `kvm_exec.cu` + `include/kvm_exec.cuh`: a model description goes in, a task DAG runs on
-   the GPU, nothing in it is specific to one model. Map and status in the next two sections.
+*Executor timeline of the tiny demo, from the kernel's own per-task timestamps (`results/2026-11-06-demo-tiny/trace.csv.gz`, all 26,565 tasks; script
+`demo/viz/timeline.py`). The 20 vertical bursts are the 20 training windows; the sparse tail is Doom at 174 frames/s. Most workers are idle: this
+demo is latency-bound, not throughput-bound (see "What is not shown").*
+
+![Demo replay: Doom frames, loss curve, timeline filling in](assets/demo-tiny.gif)
+
+*Replay of the same run, recorded data only ([MP4](assets/demo-tiny.mp4), `demo/viz/make_video.py`): Doom frames are the device's output, raw-identical
+to the CPU engine; loss values are from `observations.jsonl`; playback is slowed (23x until 345 ms, 3x after) and the clock on screen says so.*
+
+## What runs, what was measured, what was not
+
+| Item | Result | Evidence |
+|---|---|---|
+| Training, serving and Doom in ONE kernel launch, from `MANIFEST.json` only (`gpt_tiny`, 200 AdamW steps in 20 windows, 5 requests, 700 frames) | all checks pass on A100-SXM4-40GB: 26,565/26,565 tasks in 4.23 s, 0 version violations over 184 version-carrying tasks, 20/20 token buffers equal the golden decode of the same weights version, 700/700 Doom frames identical to the CPU engine | `results/2026-11-06-demo-tiny` |
+| Training correctness at tiny scale | loss 4.146 -> 0.0042; max relative deviation from the CPU golden 3.8e-6 (tolerance 2e-3) | same |
+| Doom cadence beside the load | 174 frames/s against 35 needed, 0 of 698 gaps over 28.57 ms | same; `results/2026-11-03-a100-doom` |
+| 162M GPT (`gpt_162m`) in the same demo | runs: 1.95M tasks for 6 steps, err 0, 22,935 version tasks exact, Doom still 700/700; **1.81 s/step = 2,260 tokens/s, 30x the 59.97 ms critical-path bound** | `results/2026-11-06-demo-large` |
+| 162M GPT learns | **not shown**: over 40 steps the loss only drifts (10.94 -> 10.89 mean of first/last 10, +-0.3 step noise), there is no golden at this size | `results/2026-11-06-demo-large` |
+| Why 162M is slow | task throughput, not compute: 318k tasks/step through one admitter (1.9 us/task, 0.52M tasks/s); 9 of 106 workers busy on average | `results/2026-11-06-demo-large`, `2026-11-04-a100-adaptive` |
+| Matmul and attention speed | matmul about 0.5x cuBLAS TF32 (51.0 vs 105.6 TFLOP/s at 4096^3); attention 15-30% below torch fp32 SDPA | `results/2026-11-04-a100-ops-perf` |
+| Executor vs PyTorch eager / CUDA graph / `torch.compile` on the same model | **PLACEHOLDER: being measured on `bench/exec-vs-torch`; no number yet. Nothing here claims the demo beats PyTorch.** | pending |
+| Admission change (class-aware / sliced) | **PLACEHOLDER: being changed on `perf/admission-bottleneck`; the numbers on this page are the single-FIFO baseline.** | pending |
+| Runs on more than one GPU, NVLink or a network | not done (no hardware); the timeline above therefore has no comm ops | `results/2026-11-03-dist-singlebox` |
+
+Beyond the demo, the one place the VM beats a conventional baseline is the `kvm.cu` MLP prototype (1.50x at 1 run, 1.13x at 32; table at the bottom).
+Known failures and negatives are listed in full under "Known failures and honest negatives" below.
 
 ## Run the demo (one command, needs an sm_80 GPU box over ssh)
-
-GPT training in windows + inference on versioned weights + real Doom, concurrently in one persistent kernel, driven only by `MANIFEST.json`;
-checks loss, version coherence, Doom bytes against the CPU engine and the 35 Hz cadence. `demo/run_demo.sh` rsyncs, builds, takes the GPU lock, runs, verifies.
 
 ```
 export KVM_HOST=user@host KVM_KEY=~/.ssh/key KVM_REMOTE=my-private-scratch   # KVM_REMOTE: a scratch dir on the box (default kvm-demo-scratch)
@@ -21,8 +46,81 @@ demo/run_demo.sh tiny  --lock-wait 14400    # gpt_tiny, 200 steps: all checks pa
 demo/run_demo.sh large --lock-wait 14400    # gpt_162m, 6 steps: runs, 1.8 s/step = 2,260 tokens/s, results/2026-11-06-demo-large
 ```
 
-The first build on a busy box takes about 15 minutes (nvcc); later runs reuse `demo/kvm_run` while it is newer than its sources. Logs land in
-`logs/<UTC>-demo-<tag>/`. Options: `demo/run_demo.sh` header (`--lr`, `--warmup`, `--steps`, `--sanitize`, ...).
+`demo/run_demo.sh` rsyncs, builds, takes the GPU lock, runs the one launch and verifies it (loss, version coherence, Doom bytes against the CPU engine,
+35 Hz cadence). The first build on a busy box takes about 15 minutes (nvcc); later runs reuse `demo/kvm_run` while it is newer than its sources.
+Raw output lands in `logs/<UTC>-demo-<tag>/` (git-ignored): `run.json`, `trace.csv`, `observations.jsonl`, `check.log`, `report.json`. Options: the header of `demo/run_demo.sh`.
+
+### Reproduce the figures
+
+```
+python3 demo/viz/timeline.py                                  # assets/timeline-{light,dark}.png from results/2026-11-06-demo-tiny/trace.csv.gz
+python3 demo/viz/make_video.py --frames logs/<run>/out/doom_candidate/frames.bin --gif assets/demo-tiny.gif    # assets/demo-tiny.mp4
+python3 demo/viz/cost_figure.py                               # assets/vm-costs.svg
+```
+
+The figures need numpy, matplotlib and (video) ffmpeg. To redraw from a new run, pass `--trace`/`--run-json` (timeline) or `--trace`/`--obs` (video) of that run;
+copy its `trace.csv` (gzip it) next to the other results. `frames.bin` is 45 MB and stays out of git; the MP4 is the committed artifact.
+
+## How it fits together
+
+```mermaid
+flowchart LR
+  F["frontend/kvmfe<br/>model config -> autodiff -> tiles -> dataflow edges"] -->|workload JSON| C["runtime/compile_workload.py<br/>ABI v2 bundle: tasks, edges, args, versions<br/>+ CPU golden"]
+  C -->|bundle records| H["host runner<br/>demo/kvm_run.cu"]
+  H -->|"admission ring (records)"| A
+  subgraph K["ONE persistent kernel (grid = 1 admitter + 1 policy + 106 workers)"]
+    A["admitter<br/>slots, edge counters"] -->|task ready| R["ready rings"]
+    R --> W["workers (1 per SM)<br/>op registry: core, GPT, comm, extra, Doom"]
+    W -->|"done: decrement successors,<br/>bump variable version"| A
+    V["version waits<br/>exact / at-least"] -.-> W
+  end
+  W -->|"per-task timestamps"| T[("trace.csv")]
+  T --> P["demo/viz/timeline.py"]
+```
+
+Admission is the single serialized stage; everything else is parallel across SMs. Source: `kvm_exec.cu`, `include/kvm_exec.cuh`, `include/kvm_sched.*`.
+
+### Three workloads, one weight-version flow
+
+```mermaid
+sequenceDiagram
+  participant TR as train (windows of 10 steps)
+  participant WV as weights (versioned variable)
+  participant SV as serve (request every 50 steps)
+  participant DM as Doom (700 frames)
+  TR->>WV: window 0 writes version v1
+  SV->>WV: wait for exact version, read it
+  SV-->>SV: decode tokens (checked against golden decode of that version)
+  TR->>WV: window 1 writes v2 (next window reuses the compiled record, versions shifted)
+  Note over TR,DM: all three share the 106 workers - Doom is a tick + 4 present + status task per frame
+  DM->>DM: frames run in order (35 Hz cadence checked from the trace)
+```
+
+Serving does not stop training: the version tag on each read is recorded in the trace, and `check_demo.py` verifies that all 184
+version-carrying tasks saw the version they asked for.
+
+### Where a VM wins and loses
+
+![Per-event costs: launch costs a VM removes, hop and admission costs it adds](assets/vm-costs.svg)
+
+```mermaid
+flowchart TD
+  Q{"what dominates the step?"} -->|"launch gaps, last-wave tails, cold starts between small dependent ops"| W1["VM can win<br/>kvm.cu MLP: 1.50x at 1 run (25.3 vs 37.9 us)"]
+  Q -->|"many independent runs / workloads to interleave"| W2["VM can win<br/>Doom + serve + train share one GPU, Doom held at 35 Hz"]
+  Q -->|"big GEMMs, compute or bandwidth bound"| L1["VM has little to win<br/>matmul 0.5x cuBLAS in the registry; graphs lose nothing"]
+  Q -->|"hundreds of thousands of tiny tasks"| L2["VM loses to its own admission and dependency path<br/>162M GPT: 5.5 us/task, 30x off the critical path"]
+```
+
+Every cost the VM adds (a dependent hop through global memory, one admitter, 255-register kernel with 1 block per SM) must be paid back by a cost it removes.
+Evidence points both ways, including against us: open-flapping-airplanes' own per-op kernels beat its megakernel by 13-25% on a 56 us step, and Megatron + CUDA
+graphs beat it on a 162M GPT (43.1 s vs 48.1 s, B200).
+
+## What is not shown (read before quoting)
+
+- The tiny demo is far from its limit: 106 workers are mostly idle, the 4.2 s span is Doom ticks (700 frames, one tick task of about 5.9 ms each, plus a 208 ms boot tick), and training plus serving finish in 345 ms.
+- Nothing here says the VM is faster than PyTorch, a CUDA graph or `torch.compile` on this model: the comparison does not exist yet (placeholder above).
+- 162M: it runs and stays finite, nothing more. It is task-throughput bound (30x off its critical path), and its loss has no independent reference.
+- A run with more tasks than slots recycles slots, and the version and cadence checks then skip by design (the 40-step 162M run did; the 6-step one did not).
 
 ## The integrated framework
 
@@ -51,15 +149,16 @@ The first build on a busy box takes about 15 minutes (nvcc); later runs reuse `d
 
 | Status | What |
 |---|---|
-| **Implemented and measured** | `kvm.cu` MLP training: 1.50x over the best baseline at 1 run, 1.13x at 32 (table below; predates the loop opcode). |
+| **Implemented and measured** | Rendered executor timeline from the per-task trace (`demo/viz/timeline.py`, `results/2026-11-06-demo-tiny`); the full demo (training windows + serving on versioned weights + Doom in one launch), `results/2026-11-06-demo-tiny`. |
+| | `kvm.cu` MLP training: 1.50x over the best baseline at 1 run, 1.13x at 32 (table below; predates the loop opcode). |
 | | Executor: 8582 checks, 0 failed, in two recorded runs (`2026-11-04-a100-sched-integrated`, `2026-11-04-a100-ops-perf`); 2.1M-task DAG through 65,536 slots; both negative builds detected; sanitizers clean; litmus 15 properties pass, 7 mutants detected. Dispatch 1.38 us/task at 108 blocks, dependent hop 7.0 us (`2026-11-04-a100-exec-recycling`). |
 | | Scheduler: weighted shares, reservations, EDF, priority inheritance, overload isolation (train 8-11x better than a priority queue under a serve flood) (`2026-11-03-a100-sched`, `2026-11-04-a100-sched-integrated`). |
 | | Real Doom: every frame equals the CPU oracle in all recorded runs (2000 standalone, 700 per executor scenario, 12/12 scheduler scenarios, 162 adaptive runs with up to 8 instances); 35 Hz held beside a saturating load under the dynamic scheduler (0 of 698 gaps over 28.57 ms). |
 | | GPT/extra op packs: `test_ops` 1396 and `test_extra` 2089 checks in the recorded round-2 run, sanitizers clean (`2026-11-04-a100-ops-perf`); 2-layer GQA GPT, 200 AdamW steps vs a double CPU model, loss gap 2.0e-4 (`2026-11-03-a100-gptops`). |
 | | Model zoo: 24 bundles (5 families, bf16, fusion, remat, accumulation, LR schedule) match the CPU golden within the stated per-mode tolerances; 24 sanitizer runs clean (`2026-11-04-a100-models`). GPT golden mismatch is 1xTF32 gradient noise through AdamW, not a bug (`2026-11-04-a100-gpt-golden`). |
 | | Multi-GPU code on ONE GPU: 14 stages pass, 4 skipped (`2026-11-03-dist-singlebox`). |
-| **Code only (no result measures the claim)** | Multi-GPU and multi-node execution (needs 2+ GPUs / hosts; the stages SKIP). RDMA transport is a stub. 162M-parameter GPT: compiled and inspected, never executed on the executor. The 1T-parameter section of DISTRIBUTED.md is arithmetic. Affinity hint (implemented, tested, no benefit measured, off by default). bf16 matmul tile speed (correct, speed not benchmarked). |
-| **Not built** | Class-aware or sliced admission (the single admission FIFO is the tail-latency limit, below). Device-side task yield/preemption. Dynamic shapes, data-dependent control flow. Real bf16/fp16 storage (bf16 is emulated in fp32 buffers). Hopper/Blackwell paths (TMA, wgmma, tcgen05). A rendered timeline figure from the executor's traces. A comparison of the executor against PyTorch eager / CUDA graphs / `torch.compile` on the same model (no result has one, so "faster than the conventional stack" is shown only for the `kvm.cu` MLP). |
+| **Code only (no result measures the claim)** | Multi-GPU and multi-node execution (needs 2+ GPUs / hosts; the stages SKIP). RDMA transport is a stub. 162M-parameter GPT correctness (it runs, `results/2026-11-06-demo-large`, but has no golden and its loss only drifts). The 1T-parameter section of DISTRIBUTED.md is arithmetic. Affinity hint (implemented, tested, no benefit measured, off by default). bf16 matmul tile speed (correct, speed not benchmarked). |
+| **Not built** | Class-aware or sliced admission (the single admission FIFO is the tail-latency limit, below). Device-side task yield/preemption. Dynamic shapes, data-dependent control flow. Real bf16/fp16 storage (bf16 is emulated in fp32 buffers). Hopper/Blackwell paths (TMA, wgmma, tcgen05). A comparison of the executor against PyTorch eager / CUDA graphs / `torch.compile` on the same model (no result has one, so "faster than the conventional stack" is shown only for the `kvm.cu` MLP). |
 
 ### Known failures and honest negatives
 

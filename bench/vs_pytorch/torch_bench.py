@@ -128,6 +128,7 @@ class Trainer:
                                      capturable=True, **OPT)
         self.plist = list(self.params.values())
         self.loss_fn = self.model.loss
+        self.cudagraph_trees = False
         self.dev = dev
         torch.backends.cuda.matmul.allow_tf32 = precision == 'tf32'
         torch.backends.cudnn.allow_tf32 = precision == 'tf32'
@@ -143,13 +144,15 @@ class Trainer:
                     t.zero_()
 
     def step(self, ids, tgt):
+        if self.cudagraph_trees:                    # reduce-overhead reuses output memory across steps unless told where a step starts
+            torch.compiler.cudagraph_mark_step_begin()
         loss = self.loss_fn(self.params, ids, tgt)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.plist, CLIP, foreach=True)
         self.opt.step()
         for p in self.plist:
             p.grad = None
-        return loss.detach()
+        return loss.detach().clone() if self.cudagraph_trees else loss.detach()   # a kept loss must not alias the graph pool
 
     # ---- the four execution styles; each returns run() -> list of N loss tensors (device), and leaves the state at the initial value
     def eager(self):
@@ -195,6 +198,7 @@ class Trainer:
 
     def compiled(self, mode, graph=False):
         self.loss_fn = torch.compile(self.model.loss, mode=mode, fullgraph=True)
+        self.cudagraph_trees = mode == 'reduce-overhead'
         if graph:
             for _ in range(3):                       # compile + autotune outside the graph, then capture the whole step
                 for s in range(2):

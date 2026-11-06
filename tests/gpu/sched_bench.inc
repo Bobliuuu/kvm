@@ -34,6 +34,71 @@ static bool suite_dispatch() {
   return g_fail == before;
 }
 
+#ifdef KVM_PROF_GAP
+// Where the dispatch gap goes (build with -DKVM_PROF_GAP): mean/p50 SM-clock time of each phase between the end of one op and the start
+// of the next on the same block (see KVM_PG in kvm_exec.cuh). 32 workers, equal spin tasks, no successors.
+static bool suite_gapprof() {
+  int before = g_fail; const int W = 32;
+  static const char* ph[] = {"end bookkeeping+publish", "fence+succ release", "sched_done", "window credit", "free slot", "done count", "POP", "desc copy", "start bookkeeping"};
+  struct Cfg { const char* name; bool on; int mode, nc; };
+  for (int us : {200, 20}) for (const Cfg& cf : std::vector<Cfg>{{"sched off", false, 0, 1}, {"DYNAMIC 4 classes", true, KVM_SCHED_DYNAMIC, 4}}) {
+    KvmConfig c = sched_cfg(W + (cf.on ? 2 : 1), cf.nc, cf.mode); c.sched.on = cf.on; c.max_tasks = 1 << 17; c.live_cap = 1 << 14; c.ring_words = 1 << 17;
+    KvmExec ex(c); ex.start();
+    const int nt = us == 200 ? 400 : 3000;
+    for (int b = 0; b < 12; ++b) CHECK(ex.submit(spin_bundle(nt, us, b % cf.nc), 30000) == KvmSubmit::OK, "submit");
+    const KvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
+    std::vector<std::vector<double>> v(9); double gaps = 0; int n = 0;
+    for (auto& t : r.trace) if (t.gp[15] == 1 && t.gp[6] < 200000) { for (int k = 0; k < 9; ++k) v[k].push_back(t.gp[k] / 1.41); ++n; }
+    printf("  %3d us tasks, %-18s: %d samples (ns, SM clock 1.41 GHz)  ", us, cf.name, n);
+    for (int k = 0; k < 9; ++k) { double m = 0; for (double x : v[k]) m += x; m /= std::max<size_t>(1, v[k].size()); gaps += m; printf("| %s %.0f/%.0f ", ph[k], m, pct(v[k], 50)); }
+    printf("| TOTAL mean %.0f ns\n", gaps);
+  }
+  return g_fail == before;
+}
+#endif
+
+// Admission: how long the admitter takes per record (the next record's admission starts when this one is done), and how long a
+// 1-task record of another class waits behind a big one (head-of-line blocking).
+static KvmBundle noop_bundle(int n, int cls, bool chain = false) {
+  KvmBundleBuilder b; KvmTaskOpts o; o.workload = cls; int prev = -1;
+  for (int i = 0; i < n; ++i) { int t = b.add("noop", {}, o); if (chain && prev >= 0) b.edge(prev, t); prev = t; }
+  return b.build();
+}
+static bool suite_admit() {
+  int before = g_fail; const int W = 64;
+  auto cfg = [&](bool on) {
+    KvmConfig c = sched_cfg(W + 2, 2, KVM_SCHED_DYNAMIC); c.sched.on = on; c.max_tasks = 1 << 18; c.live_cap = 1 << 17; c.succ_cap = 1 << 18; c.ring_words = 1 << 21; c.win_cap = 1 << 10;
+    return c;
+  };
+  printf("  admission time per record = admit instant of the next record minus this one's (2 records back to back, 4 repeats, median [min,max])\n");
+  for (bool chain : {false, true}) for (int n : {1024, 16384, 65536}) {
+    std::vector<double> dur;
+    for (int rep = 0; rep < 4; ++rep) {
+      KvmExec ex(cfg(true)); ex.start();
+      CHECK(ex.submit(noop_bundle(n, 0, chain), 30000) == KvmSubmit::OK, "submit"); CHECK(ex.submit(noop_bundle(n, 0, chain), 30000) == KvmSubmit::OK, "submit");
+      const KvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
+      unsigned long long a0 = ~0ull, a1 = 0; for (auto& t : r.trace) if (t.admit_ns) { a0 = std::min(a0, t.admit_ns); a1 = std::max(a1, t.admit_ns); }
+      dur.push_back((a1 - a0) / 1e3);
+    }
+    Spread sd = spread(dur);
+    printf("  %-11s record of %6d tasks: admitted in %8.0f us [%.0f,%.0f] = %.3f us/task (%.2f M tasks/s)\n", chain ? "chain" : "independent", n, sd.med, sd.lo, sd.hi, sd.med / n, n / sd.med);
+  }
+  printf("  head-of-line: a 1-task record of class 0 submitted right behind a record of N independent tasks of class 1; wait = small.ready - big.admit\n");
+  for (int n : {1024, 16384, 65536}) {
+    std::vector<double> wt;
+    for (int rep = 0; rep < 4; ++rep) {
+      KvmExec ex(cfg(true)); ex.start();
+      CHECK(ex.submit(noop_bundle(n, 1), 30000) == KvmSubmit::OK, "submit"); CHECK(ex.submit(noop_bundle(1, 0), 30000) == KvmSubmit::OK, "submit");
+      const KvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
+      unsigned long long big0 = ~0ull, small_ready = 0; for (size_t i = 0; i < r.trace.size(); ++i) { if (r.tasks[i].workload_id == 1) big0 = std::min(big0, r.trace[i].admit_ns); else small_ready = r.trace[i].ready_ns; }
+      wt.push_back((small_ready - big0) / 1e3);
+    }
+    Spread sd = spread(wt);
+    printf("  big record %6d tasks: 1-task record ready %8.0f us [%.0f,%.0f] after the big one's admission began\n", n, sd.med, sd.lo, sd.hi);
+  }
+  return g_fail == before;
+}
+
 // Per-op running time of the generator's task types on an otherwise idle GPU (one wave of 30 CTAs), to size the loads.
 static bool suite_calib() {
   KvmConfig c = sched_cfg(32, 1); c.sched.on = false; c.max_tasks = 1 << 14; c.live_cap = 1 << 12; c.ring_words = 1 << 17;
@@ -257,6 +322,36 @@ static bool suite_arbiter() {
   return g_fail == before;
 }
 
+// Idle-CTA headroom for a latency chain next to a stream: the chain's next hop can only start on a CTA that is free NOW (tasks cannot be
+// preempted), so the lever is the number of CTAs the stream may hold (max_cta = workers - k), not the bytes it moves.
+static bool suite_headroom() {
+  int before = g_fail; const int N = 5;
+  LoadSpec L; L.serve_kind = SK_COLD; L.hops = 16; L.fan = 1; L.slo_us = 250; L.phases = {{300, 4000}};
+  L.train_bw_only = true; L.train_outstanding = 1200; L.train_bundle = 128;
+  printf("  chain request = 16 dependent cold 32 KB copies, 4000 req/s; stream = 6.3 MB adds always outstanding; stream max_cta = workers - k\n");
+  for (int blocks : {108, 0}) for (int k : {0, 1, 2, 4, 8, 16}) {
+    KvmConfig c = mode_cfg(KVM_SCHED_DYNAMIC, blocks); c.sched.p.cls[0].weight = 4; c.sched.p.cls[0].urgent_us = KVM_URGENT_ALL;
+    int w = blocks ? blocks - 2 : 0; if (!w) { KvmExec probe(c); w = probe.workers(); }
+    c.sched.p.cls[1].max_cta = w - k;
+    char nm[80]; snprintf(nm, sizeof nm, "%d workers, headroom %d", w, k); Rep r = repeat(c, L, N); CHECK(reps_ok(r), "%s", nm); print_rep(nm, r);
+  }
+  return g_fail == before;
+}
+
+// Bandwidth lever: cap on the stream's concurrent BW-bound CTAs at the build's full grid, chain p99 against the stream throughput kept.
+static bool suite_bwcap() {
+  int before = g_fail; const int N = 5;
+  LoadSpec L; L.serve_kind = SK_COLD; L.hops = 16; L.fan = 1; L.slo_us = 250; L.phases = {{300, 4000}};
+  L.train_bw_only = true; L.train_outstanding = 1200; L.train_bundle = 128;
+  KvmConfig c0 = mode_cfg(KVM_SCHED_DYNAMIC, 0); int w; { KvmExec probe(c0); w = probe.workers(); }
+  printf("  full grid: %d workers; chain = 16 dependent cold 32 KB copies at 4000 req/s; stream = 6.3 MB adds; stream bw_cta = cap\n", w);
+  for (int cap : {w, w * 3 / 4, w / 2, w * 3 / 8, w / 4, w / 8}) {
+    KvmConfig c = mode_cfg(KVM_SCHED_DYNAMIC, 0); c.sched.p.cls[0].weight = 4; c.sched.p.cls[0].urgent_us = KVM_URGENT_ALL; c.sched.p.cls[1].bw_cta = cap;
+    char nm[80]; snprintf(nm, sizeof nm, "stream BW cap %d of %d", cap, w); Rep r = repeat(c, L, N); CHECK(reps_ok(r), "%s", nm); print_rep(nm, r);
+  }
+  return g_fail == before;
+}
+
 // ================= rebalancing: controller on a time-varying load =================
 static std::vector<Phase> trace_phases() { return {{200, 0}, {200, 200}, {300, 2500}, {200, 200}, {200, 0}, {300, 2500}, {200, 0}}; }
 static LoadSpec rebalance_load() {
@@ -305,7 +400,7 @@ static bool suite_baselines() {
                                          {"dynamic + controller", KVM_SCHED_DYNAMIC, 0, 0, true, false}, {"dynamic + ctl + arbiter", KVM_SCHED_DYNAMIC, 0, 0, true, true}}) {
     KvmConfig c = mode_cfg(cf.mode, 108); LoadSpec l = L; l.serve_prio = cf.serve_prio;
     if (cf.mode == KVM_SCHED_STATIC) { kvm_static_split(c.sched.p, {cf.share, 1 - cf.share}, g_sms); }
-    c.sched.p.cls[0].weight = 1; c.sched.p.cls[0].urgent_us = cf.mode == KVM_SCHED_DYNAMIC ? 1500 : 0; c.sched.p.cls[0].protect = 1; c.sched.p.cls[0].target_wait_us = 500;
+    c.sched.p.cls[0].weight = 1; c.sched.p.cls[0].urgent_us = cf.mode == KVM_SCHED_DYNAMIC ? KVM_URGENT_ALL : 0; c.sched.p.cls[0].protect = 1; c.sched.p.cls[0].target_wait_us = 500;
     if (cf.arb) c.sched.p.flags |= KVM_SF_ARBITER;
     Rep r = repeat(c, l, N, cf.ctl, ctl_for_serve(W / 2)); CHECK(reps_ok(r), "%s: device error or no requests", cf.name); print_rep(cf.name, r); res.push_back({cf.name, r});
   }
@@ -313,6 +408,29 @@ static bool suite_baselines() {
   auto p99 = [](const Metrics& m) { return m.req_p99; }; auto kt = [](const Metrics& m) { return m.train_ktasks_s; }; auto ut = [](const Metrics& m) { return m.util; };
   printf("  ratios (dynamic + controller vs): serve p99 / train ktask/s / utilization\n");
   for (int i : {0, 1, 2, 3}) printf("    vs %-28s p99 %.2fx lower, train %.2fx, utilization %.2fx\n", res[i].first.c_str(), med(i, p99) / med(4, p99), med(4, kt) / med(i, kt), med(4, ut) / med(i, ut));
+  return g_fail == before;
+}
+
+// ================= serve tail latency: dynamic sharing against a hand-set priority queue =================
+// Same scripted load as `baselines`; every row is one policy. `urgent` = urgent_us of the serve class (the width of its EDF window before the 3000 us deadline).
+static bool suite_p99() {
+  int before = g_fail; const int W = 106, N = 5;
+  LoadSpec L = rebalance_load();
+  printf("  scripted load as in `baselines` (SLO %.0f us), %d workers, %d reps, median [min,max]\n", L.slo_us, W, N);
+  struct Cfg { const char* name; int mode; int prio; int urgent; int serve_min; bool ctl; bool arb; };
+  const int ALWAYS = KVM_URGENT_ALL;
+  std::vector<std::pair<std::string, Rep>> res;
+  for (const Cfg& cf : std::vector<Cfg>{{"global queue, serve prio 20", KVM_SCHED_GLOBAL, 20, 0, 0, false, false},
+                                         {"dyn+ctl, urgent 1500 (as before)", KVM_SCHED_DYNAMIC, 0, 1500, 0, true, false},
+                                         {"dyn+ctl, urgent always", KVM_SCHED_DYNAMIC, 0, ALWAYS, 0, true, false},
+                                         {"dyn static resv 53, urgent 1500", KVM_SCHED_DYNAMIC, 0, 1500, 53, false, false},
+                                         {"dyn static resv 53, urgent always", KVM_SCHED_DYNAMIC, 0, ALWAYS, 53, false, false},
+                                         {"dyn no resv, urgent always", KVM_SCHED_DYNAMIC, 0, ALWAYS, 0, false, false}}) {
+    KvmConfig c = mode_cfg(cf.mode, 108); LoadSpec l = L; l.serve_prio = cf.prio;
+    c.sched.p.cls[0].weight = 1; c.sched.p.cls[0].urgent_us = cf.urgent; c.sched.p.cls[0].protect = 1; c.sched.p.cls[0].target_wait_us = 500; c.sched.p.cls[0].min_cta = cf.serve_min;
+    if (cf.arb) c.sched.p.flags |= KVM_SF_ARBITER;
+    Rep r = repeat(c, l, N, cf.ctl, ctl_for_serve(W / 2)); CHECK(reps_ok(r), "%s: device error or no requests", cf.name); print_rep(cf.name, r); res.push_back({cf.name, r});
+  }
   return g_fail == before;
 }
 
@@ -361,8 +479,15 @@ static bool suite_overload() {
 }
 
 static bool sched_bench_suite(const std::string& s, bool& ok) {
+#ifdef KVM_PROF_GAP
+  if (s == "gapprof") { ok = suite_gapprof(); return true; }
+#endif
   if (s == "calib") { ok = suite_calib(); return true; }
   if (s == "dispatch") { ok = suite_dispatch(); return true; }
+  if (s == "admit") { ok = suite_admit(); return true; }
+  if (s == "bwcap") { ok = suite_bwcap(); return true; }
+  if (s == "headroom") { ok = suite_headroom(); return true; }
+  if (s == "p99") { ok = suite_p99(); return true; }
   if (s == "overload") { ok = suite_overload(); return true; }
   if (s == "affinity") { ok = suite_affinity(); return true; }
   if (s == "arbiter") { ok = suite_arbiter(); return true; }

@@ -558,6 +558,7 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
     KvmCtx c{S.bufs, S.nbufs, slot, S.cnt, S.herr, sh.smem};
     kvm_dispatch(d.op_id, c, S.args + d.args_off);
   }
+  if (!sh.skip && (d.succ_cnt > 0 || d.pub_var >= 0)) __threadfence();   // EXPERIMENT: per-warp fence before the barrier
   __syncthreads();  // all op stores of the block precede thread 0's fence below
   if (threadIdx.x == 0) {
     unsigned long long end = kvm_now();

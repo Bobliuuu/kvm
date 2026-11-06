@@ -170,7 +170,7 @@ static void err_case(const char* name, int want, KvmConfig cfg, const std::funct
 static bool suite_errors() {
   auto one = [](const char* op, std::vector<KvmArg> a, KvmTaskOpts o = {}) { KvmBundleBuilder bb; bb.add(op, a, o); return bb.build(); };
   KvmConfig c = small_cfg(3);
-  err_case("bad op id", KVM_ERR_BAD_OP, c, [&](KvmExec&) { KvmBundle b = one("noop", {}); b.tasks[0].op_id = 99; return b; });
+  err_case("bad op id", KVM_ERR_BAD_OP, c, [&](KvmExec&) { KvmBundle b = one("noop", {}); b.tasks[0].op_id = 126; return b; });
   err_case("bad arity", KVM_ERR_BAD_ARITY, c, [&](KvmExec&) { KvmBundle b = one("noop", {}); b.tasks[0].args_words = 2; b.args = {0, 0}; return b; });
   err_case("bad buffer index", KVM_ERR_BAD_BUF_INDEX, c, [&](KvmExec&) { return one("fill", {Bf(7), F(1), I(4)}); });
   err_case("n beyond buffer", KVM_ERR_BOUNDS, c, [&](KvmExec&) { return one("fill", {Bf(1), F(1), I(9)}); });
@@ -903,7 +903,11 @@ static bool suite_recycle(bool quick) {
       for (int b = 0; b < bundles_per; ++b) {
         int set = b % SETS;
         for (auto t1 = std::chrono::steady_clock::now(); used[set] && !ex.window_done(wid[set]); ) {
-          if (std::chrono::steady_clock::now() - t1 > std::chrono::seconds(60)) return;
+          if (std::chrono::steady_clock::now() - t1 > std::chrono::seconds(60)) {   // diagnostics for a stalled window (the flake this suite once showed)
+            fprintf(stderr, "  %s: producer %d gave up on window %u (set %d, bundle %d): mark %u (done == %u), %d bundles submitted, device err %d\n", what, p, wid[set], set, b,
+                    ex.window_mark(wid[set]), wid[set] + 1, ex.stats().bundles, (int)ex.device_error());
+            return;
+          }
           std::this_thread::sleep_for(std::chrono::microseconds(20));
         }
         KvmBundleBuilder bb; int prev = -1; int x = xs[p * SETS + set];

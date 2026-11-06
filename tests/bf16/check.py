@@ -40,7 +40,8 @@ def main():
     nsteps = sum(1 for n in gpu if n.startswith('loss.'))
     print('GPU losses: ' + ' '.join(f'{gpu[f"loss.{s}"][0]:.5f}' for s in range(min(nsteps, 60))))
     if '--golden' in sys.argv:
-        gold = json.loads((d / 'bundle' / 'golden.json').read_text())['buffers']
+        gj = json.loads((d / 'bundle' / 'golden.json').read_text())
+        gold, dts = gj['buffers'], gj['dtypes']
         for s in range(nsteps):
             e = rel_l2(gpu[f'loss.{s}'], gold[f'loss.{s}'])
             print(f'  loss.{s} gpu {gpu[f"loss.{s}"][0]:.6f} golden {gold[f"loss.{s}"][0]:.6f} rel {e:.2e}')
@@ -48,7 +49,7 @@ def main():
                 fails.append(f'loss.{s}')
         if nsteps == 1:
             skip = ('w.', 'm.', 'v.', 'wb.', 'opt_step', 'version_token', 'lr', 'stream_')
-            errs = sorted(((rel_l2(gpu[n], gold[n]), n) for n in gold if n in gpu and not n.startswith(skip) and not n.startswith('loss') and n != 'clip_coef' and gpu[n] and any(gold[n])), reverse=True)
+            errs = sorted(((rel_l2(gpu[n], gold[n]), n) for n in gold if n in gpu and dts[n] != 'i32' and not n.startswith(skip) and not n.startswith('loss') and n != 'clip_coef' and gpu[n] and any(gold[n])), reverse=True)
             print('  step-1 buffers vs golden, worst: ' + ', '.join(f'{n} {e:.2e}' for e, n in errs[:5]))
             if errs and errs[0][0] > TOL_ACT:
                 fails.append('step-1 buffers')

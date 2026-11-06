@@ -522,7 +522,6 @@ __device__ __forceinline__ void kvm_publish(const KvmDevState& S, int slot, int 
 struct KvmShared {
   KvmTaskDesc d;
   int cmd, skip, how, part;   // how: KVM_TRACE_* start reason from kvm_pop (| KVM_HOW_BW); part: STATIC-mode class of this worker's SM
-  int post;                   // slot whose completion bookkeeping (kvm_post_task) the helper thread still owes, -1 none
 #ifdef KVM_PROF_GAP
   long long pg[16]; int pg_valid;
 #endif
@@ -609,7 +608,6 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
     unsigned long long end = kvm_now();
     tr->end_ns = end;
     if (d.wait_var >= 0) tr->ver1 = ld_acq(S.version + d.wait_var);
-    sh.post = slot;   // completion bookkeeping runs on the helper thread, overlapped with the next pop (see kvm_worker)
     const bool missed = d.deadline_us >= 0 && end - tr->admit_ns > (unsigned long long)d.deadline_us * 1000ull;
     if (missed) tr->flags |= KVM_TRACE_MISSED;
     if (S.task_limit_ns && end - tr->start_ns > S.task_limit_ns) kvm_fail(S, KVM_ERR_TASK_LIMIT, slot, (int)((end - tr->start_ns) / 1000), (int)(S.task_limit_ns / 1000));
@@ -635,11 +633,10 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   }
 }
 
-// Completion bookkeeping of the task in sh.post (one thread; sh.d and the trace still describe it: the next descriptor is copied only after
-// the barrier that follows the pop). Order matters: statistics read the slot's info, which is recycled by kvm_free_slot; the window credit
+// Completion bookkeeping of task `slot` (one thread, overlapped with the next pop; the slot is not recycled before kvm_free_slot below, so its
+// trace and descriptor in S.tasks are intact). Order matters: statistics read the slot's info, which is recycled by kvm_free_slot; the window credit
 // returns the successor storage; `done` is counted last. The worker cannot exit before this ran (the barrier after the pop).
-__device__ void kvm_post_task(const KvmDevState& S, KvmShared& sh) {
-  const int slot = sh.post;
+__device__ void kvm_post_task(const KvmDevState& S, int slot) {
   const KvmTaskDesc& d = S.tasks[slot];   // sh.d may already hold the next task (the pop fills it concurrently)
   const KvmTrace* tr = S.trace + slot;
   if (kvm_vol(&tr->exec_count) != 1) kvm_fail(S, KVM_ERR_DOUBLE_EXEC, slot, kvm_vol(&tr->exec_count));
@@ -650,12 +647,12 @@ __device__ void kvm_post_task(const KvmDevState& S, KvmShared& sh) {
   if (atom_add(&S.wins[wid & (S.win_cap - 1)].remaining, -1) == 1) st_rel_sys((volatile int*)&S.win_done[wid & (S.win_cap - 1)], (int)(wid + 1));
   kvm_free_slot(S, slot);
   atom_add(&S.cnt->done, 1);
-  sh.post = -1;
 }
 
 __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
   unsigned backoff = 0;
-  if (threadIdx.x == 0) { sh.part = kvm_sched_part(S); sh.post = -1; }
+  if (threadIdx.x == 0) sh.part = kvm_sched_part(S);
+  int owed = -1;   // the task whose completion bookkeeping (kvm_post_task) this block still owes; every thread tracks it, thread 32 pays it during the pop
   __syncthreads();
   const int part = sh.part;
 #ifdef KVM_PROF_GAP
@@ -667,7 +664,8 @@ __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
       if (r < 0 && threadIdx.x == 0 && kvm_should_exit(S, t0)) r = KVM_POP_EXIT;
       if (threadIdx.x == 0) { sh.cmd = r; sh.how = how; }
       if (r >= 0 && threadIdx.x < KVM_TASK_WORDS) ((int*)&sh.d)[threadIdx.x] = dw;
-    } else if (threadIdx.x == 32 && sh.post >= 0) kvm_post_task(S, sh);   // overlapped with the pop above
+    } else if (threadIdx.x == 32 && owed >= 0) kvm_post_task(S, owed);   // overlapped with the pop above
+    owed = -1;
     __syncthreads();
     int cmd = sh.cmd;
     __syncthreads();  // sh.cmd is rewritten next iteration
@@ -679,6 +677,7 @@ __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
     }
     backoff = 0;
     kvm_run_task(S, cmd, sh);
+    owed = cmd;
   }
 }
 

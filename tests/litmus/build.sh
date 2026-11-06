@@ -5,7 +5,7 @@ set -euo pipefail
 OUT="${1:?outdir}"; HERE="$(cd "$(dirname "$0")" && pwd)"; ROOT="$(cd "$HERE/../.." && pwd)"
 NVCC="$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc | tail -1)"
 mkdir -p "$OUT"
-B="-O3 -arch=sm_80 -std=c++17 -lineinfo -Wno-deprecated-gpu-targets"
+B="-O3 -arch=${KVM_ARCH:-sm_80} -std=c++17 -lineinfo -Wno-deprecated-gpu-targets ${KVM_NVFLAGS:-}"   # KVM_NVFLAGS: e.g. -DKVM_MIN_BLOCKS=2
 $NVCC $B -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_prod" &
 $NVCC $B -DLIT_NOFENCE -DLIT_MUTANT='"nofence(all __threadfence)"' -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_nofence" &
 # the executor's own mutant: a waiter that never re-checks the version after parking (classic lost wakeup)

@@ -8,11 +8,15 @@ NVCC="$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc | tail -1)"
 EXE="${KVM_EXEC:-$OUT/kvm_exec}"
 [ -x "$EXE" ] || "$NVCC" -O3 -arch="${KVM_ARCH:-sm_80}" -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo kvm_exec.cu -o "$EXE"
 python3 -I tests/ctl/gen_bundles.py "$OUT/bundles" > "$OUT/gen.txt"
+# the whole run is a fraction of a second of GPU time: take the GPU lock ONCE (unless the caller holds it: KVM_NO_LOCK=1)
+if [ -z "${KVM_NO_LOCK:-}" ] && [ -z "${KVM_CTL_LOCKED:-}" ]; then
+  KVM_CTL_LOCKED=1 KVM_EXEC="$EXE" exec flock -w 1800 ~/.gpu.lock "$0" "$OUT"
+fi
 fail=0; : > "$OUT/summary.txt"
 for d in "$OUT"/bundles/*/; do
   n=$(basename "$d"); tol=1e-6; case "$n" in gemmloop*) tol=1e-2;; esac
   rc=0
-  flock -w 900 ~/.gpu.lock timeout 120 "$EXE" --blocks 4 --golden --golden-tol $tol --trace-csv "$OUT/$n.csv" "$d/bundle" > "$OUT/$n.log" 2>&1 || rc=$?
+  timeout 120 "$EXE" --blocks 4 --golden --golden-tol $tol --trace-csv "$OUT/$n.csv" "$d/bundle" > "$OUT/$n.log" 2>&1 || rc=$?
   # pred_skipped is the last CSV column; every unrolled iteration beyond the trip count must be skipped (all its predicated tasks)
   skipped=$(awk -F, 'NR>1 {s+=$NF} END {print s+0}' "$OUT/$n.csv" 2>/dev/null || echo -1)
   python3 -I - "$d/expect.json" "$skipped" "$rc" "$n" "$d/workload.json" <<'PY' | tee -a "$OUT/summary.txt" || fail=1

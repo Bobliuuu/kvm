@@ -13,7 +13,7 @@ ARCH="${KVM_ARCH:-sm_80}"
 SSH="ssh -o StrictHostKeyChecking=no -o BatchMode=yes ${KVM_KEY:+-i $KVM_KEY}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CASES_FILE="${CASES_FILE:-$ROOT/examples/models/cases.txt}"
-REMOTE='~/kvm-models-scratch'
+REMOTE="${KVM_REMOTE:-~/kvm-models-scratch}"      # rsync --delete: give a shared box your own KVM_REMOTE
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 LOG="$ROOT/logs/$STAMP-models"; mkdir -p "$LOG"; WORK="$LOG/bundles"; mkdir -p "$WORK"
 rsync -az -e "$SSH" --delete --exclude .git --exclude results --exclude logs --exclude docs "$ROOT/" "$HOST:$REMOTE/"

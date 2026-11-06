@@ -31,6 +31,9 @@ __global__ void run_frames(int n, const float* input, int n_input, float* state,
   }
 }
 
+#ifdef DOOM_PROF_READ
+extern "C" __device__ unsigned long long doom_prof[32];
+#endif
 __global__ void read_log(char* out, long* n) { for (int i = threadIdx.x; i < (int)sizeof doom_log; i += blockDim.x) out[i] = doom_log[i]; if (!threadIdx.x) *n = doom_log_n; }
 
 int main(int argc, char** argv) {
@@ -57,6 +60,13 @@ int main(int argc, char** argv) {
     CK(cudaMemcpy(logbuf, d_log, sizeof logbuf, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(&logn, d_n, 8, cudaMemcpyDeviceToHost)); }
   fprintf(stderr, "[doomtest] kernel %s in %.3f s (%.2f ms/frame incl. boot)\n--- engine log ---\n%s\n------------------\n", cudaGetErrorString(e), secs, secs * 1e3 / n, logbuf);
   if (e != cudaSuccess) return 1;
+#ifdef DOOM_PROF_READ
+  { unsigned long long p[32]; CK(cudaMemcpyFromSymbol(p, doom_prof, sizeof p)); const double nt = (double)p[11], mhz = 1410.0;   // A100 boost clock; cycles -> us
+    const char* nm[] = {"", "sim (G_BuildTiccmd, P_Ticker, sounds)", "D_Display before view (ST_Drawer, HU_Erase)", "R_SetupFrame+clear+BSP walk (incl. wall/column queueing, flush waits when queue fills)", "R_DrawPlanes (setup + flush)", "R_DrawMasked (sprites, setup + flush)", "HU_Drawer + rest of D_Display"};
+    fprintf(stderr, "[prof] %d ticks after boot, per tick (us @%.0f MHz):\n", (int)nt, mhz);
+    for (int i = 1; i <= 6; i++) fprintf(stderr, "[prof]   %-85s %8.1f\n", nm[i], p[i] / nt / mhz);
+    fprintf(stderr, "[prof]   of which: flush (bar+work+bar) %8.1f us, %.1f flushes, %.0f col cmds, %.0f span cmds per tick\n", p[7] / nt / mhz, p[10] / nt, p[8] / nt, p[9] / nt); }
+#endif
   std::vector<float> state(n_state); std::vector<unsigned long long> ns(n);
   CK(cudaMemcpy(state.data(), d_state, n_state * 4, cudaMemcpyDeviceToHost));
   CK(cudaMemcpy(ns.data(), d_ns, n * 8, cudaMemcpyDeviceToHost));

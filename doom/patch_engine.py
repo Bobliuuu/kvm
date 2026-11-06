@@ -6,6 +6,7 @@
 Both targets: the scripted player hooks into G_BuildTiccmd, and I_FinishUpdate stops converting to RGB (the palette index screen
 I_VideoBuffer and the palette `colors` are what we hash and present). gpu only: PTX-compatibility fixes and the parallel-draw hooks.
 """
+import os
 import re
 import shutil
 import sys
@@ -93,3 +94,14 @@ patch("r_draw.c", r_draw)
 patch("r_main.c", chain(
     sub1("    R_DrawPlanes ();\n", "    R_DrawPlanes ();\n    { extern void gpu_flush(void); gpu_flush(); }\n"),
     sub1("    R_DrawMasked ();\n", "    R_DrawMasked ();\n    { extern void gpu_flush(void); gpu_flush(); }\n")))
+
+# ---- optional phase profiler (DOOM_PROF=1): cycle counters per tick phase in doom_prof[] (glue/gpu_par.c), read by tests/doomtest.cu -DDOOM_PROF_READ
+if os.environ.get("DOOM_PROF"):
+    PR = "{ extern void gpu_prof(int); gpu_prof(%d); }\n"
+    patch("d_main.c", chain(
+        sub1("    TryRunTics (); // will run at least one tic\n", "    TryRunTics (); // will run at least one tic\n" + PR % 1),
+        sub1("    // draw buffered stuff to screen\n    I_UpdateNoBlit ();\n", "    // draw buffered stuff to screen\n    I_UpdateNoBlit ();\n" + PR % 2)))
+    patch("r_main.c", chain(
+        sub1("    R_RenderBSPNode (numnodes-1);\n", "    R_RenderBSPNode (numnodes-1);\n" + PR % 3),
+        sub1("    R_DrawPlanes ();\n    { extern void gpu_flush(void); gpu_flush(); }\n", "    R_DrawPlanes ();\n    { extern void gpu_flush(void); gpu_flush(); }\n" + PR % 4),
+        sub1("    R_DrawMasked ();\n    { extern void gpu_flush(void); gpu_flush(); }\n", "    R_DrawMasked ();\n    { extern void gpu_flush(void); gpu_flush(); }\n" + PR % 5)))

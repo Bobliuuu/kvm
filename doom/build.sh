@@ -15,7 +15,7 @@ clang --print-targets | grep -q nvptx64 || die "this clang has no nvptx64 target
 
 mkdir -p "$BUILD"
 STAMP="$(cat "$DOOM_DIR"/patch_engine.py "$DOOM_DIR"/build.sh "$DOOM_DIR"/lib.sh "$DOOM_DIR"/glue/*.[ch] "$DOOM_DIR"/glue/*.py "$DOOM_DIR"/glue/libc/*.h "$DOOM_DIR"/glue/libc/sys/*.h \
-  "$DOOM_DIR"/player/player.c "$DOOM_DIR"/player/route_e1m1.h | md5sum | cut -d' ' -f1)-$(git -C "$TP/doomgeneric" rev-parse HEAD)-$ARCH-n$DOOM_INSTANCES"
+  "$DOOM_DIR"/player/player.c "$DOOM_DIR"/player/route_e1m1.h | md5sum | cut -d' ' -f1)-$(git -C "$TP/doomgeneric" rev-parse HEAD)-$ARCH-n$DOOM_INSTANCES-p${DOOM_PROF:-0}"
 if [ -s "$BUILD/doom_dev.o" ] && [ "$(cat "$BUILD/stamp" 2>/dev/null)" = "$STAMP" ] && [ -z "${FORCE:-}" ]; then
   info "doom_dev.o up to date ($ARCH)"; exit 0
 fi
@@ -23,7 +23,7 @@ info "building doom_dev.o for $ARCH with $(clang --version | head -1), $("$NVCC"
 
 RES="$(clang -print-resource-dir)"
 CF=(--target=nvptx64-nvidia-cuda -march=sm_80 -O2 -ffreestanding -fno-stack-protector -fno-jump-tables -w -nostdinc
-    -isystem "$DOOM_DIR/glue/libc" -isystem "$RES/include" -I"$BUILD/src" -I"$DOOM_DIR/glue" -DNORMALUNIX -DLINUX -D_DEFAULT_SOURCE
+    -isystem "$DOOM_DIR/glue/libc" -isystem "$RES/include" -I"$BUILD/src" -I"$DOOM_DIR/glue" ${DOOM_PROF:+-DDOOM_PROF} -DNORMALUNIX -DLINUX -D_DEFAULT_SOURCE
     -DDOOMGENERIC_RESX=320 -DDOOMGENERIC_RESY=200)
 python3 "$DOOM_DIR/patch_engine.py" "$SRC" "$BUILD/src" gpu
 OBJ="$BUILD/obj"; rm -rf "$OBJ"; mkdir -p "$OBJ"

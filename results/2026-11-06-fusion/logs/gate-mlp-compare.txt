@@ -1,0 +1,39 @@
+== mlp_ce cpu fuse=0
+mlp_ce_cpu_0: f32 buffers 70, missing/mis-sized 0; max rel L2: weights 2.01e-04, loss.* 6.52e-06, all 5.69e-04
+  loss GPU [4.53692, 4.49599, 4.45481] CPU [4.53689, 4.49601, 4.45481]
+  PASS
+== xfmr_odd cpu fuse=0
+Traceback (most recent call last):
+  File "/home/ubuntu/kvm-scratch-fuse/r/results/2026-11-04-claims-audit/newmodel/compare.py", line 5, in <module>
+    d = Path(sys.argv[1]); meta = json.loads((d / 'bundle/metadata.json').read_text()); gold = json.loads((d / 'bundle/golden.json').read_text())
+  File "/usr/lib/python3.10/pathlib.py", line 1134, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+  File "/usr/lib/python3.10/pathlib.py", line 1119, in open
+    return self._accessor.open(self, mode, buffering, encoding, errors,
+FileNotFoundError: [Errno 2] No such file or directory: '/home/ubuntu/kvm-scratch-fuse/g1/xfmr_odd_cpu_0/bundle/golden.json'
+== mlp_ce a100nm fuse=1
+mlp_ce_a100nm_1: f32 buffers 64, missing/mis-sized 0; max rel L2: weights 2.01e-04, loss.* 6.52e-06, all 5.69e-04
+  loss GPU [4.53692, 4.49599, 4.45481] CPU [4.53689, 4.49601, 4.45481]
+  PASS
+== xfmr_odd a100nm fuse=1
+Traceback (most recent call last):
+  File "/home/ubuntu/kvm-scratch-fuse/r/results/2026-11-04-claims-audit/newmodel/compare.py", line 5, in <module>
+    d = Path(sys.argv[1]); meta = json.loads((d / 'bundle/metadata.json').read_text()); gold = json.loads((d / 'bundle/golden.json').read_text())
+  File "/usr/lib/python3.10/pathlib.py", line 1134, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+  File "/usr/lib/python3.10/pathlib.py", line 1119, in open
+    return self._accessor.open(self, mode, buffering, encoding, errors,
+FileNotFoundError: [Errno 2] No such file or directory: '/home/ubuntu/kvm-scratch-fuse/g1/xfmr_odd_a100nm_1/bundle/golden.json'
+== mlp_ce a100 fuse=1
+mlp_ce_a100_1: f32 buffers 64, missing/mis-sized 0; max rel L2: weights 2.01e-04, loss.* 6.52e-06, all 5.69e-04
+  loss GPU [4.53692, 4.49599, 4.45481] CPU [4.53689, 4.49601, 4.45481]
+  PASS
+== xfmr_odd a100 fuse=1
+Traceback (most recent call last):
+  File "/home/ubuntu/kvm-scratch-fuse/r/results/2026-11-04-claims-audit/newmodel/compare.py", line 5, in <module>
+    d = Path(sys.argv[1]); meta = json.loads((d / 'bundle/metadata.json').read_text()); gold = json.loads((d / 'bundle/golden.json').read_text())
+  File "/usr/lib/python3.10/pathlib.py", line 1134, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+  File "/usr/lib/python3.10/pathlib.py", line 1119, in open
+    return self._accessor.open(self, mode, buffering, encoding, errors,
+FileNotFoundError: [Errno 2] No such file or directory: '/home/ubuntu/kvm-scratch-fuse/g1/xfmr_odd_a100_1/bundle/golden.json'

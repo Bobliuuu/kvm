@@ -673,15 +673,21 @@ KVM_GPT_DEVI void matmul_tile_bf16s(const KvmCtx& ctx, const int32_t* a) {
     float* pre = k.mat(a[5], M, N, &ldp, true);
     if (k.bad) return;
     float alpha = af(a, 12);
-#define KVM_EX_MMS(TA, TB, AT, BT, AP, BP) kvmgpt::mm_tile<TA, TB, false, true, AT, BT>(AP, lda, BP, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, gelu, accum)
-#define KVM_EX_MMS_T(AT, BT, AP, BP) \
-    if (!ta && !tb) KVM_EX_MMS(false, false, AT, BT, AP, BP); else if (ta && !tb) KVM_EX_MMS(true, false, AT, BT, AP, BP); \
-    else if (!ta && tb) KVM_EX_MMS(false, true, AT, BT, AP, BP); else KVM_EX_MMS(true, true, AT, BT, AP, BP)
-    if (sa && sb) { KVM_EX_MMS_T(unsigned short, unsigned short, Ab, Bb); }
-    else if (sa) { KVM_EX_MMS_T(unsigned short, float, Ab, Bf); }
-    else { KVM_EX_MMS_T(float, unsigned short, Af, Bb); }
-#undef KVM_EX_MMS_T
+    // Only the operand/transpose combinations training needs are instantiated (each is a full 64x64 tile body): forward x@W
+    // (A f32 or bf16, B bf16; also W^T for tied weights), dW = x^T dz (A bf16 or f32 transposed, B f32 or bf16) and dx = dz W^T.
+#define KVM_EX_MMS(SA, SB, TA_, TB_, AT, BT, AP, BP) \
+    if (sa == SA && sb == SB && ta == TA_ && tb == TB_) { \
+        kvmgpt::mm_tile<TA_, TB_, false, true, AT, BT>(AP, lda, BP, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, gelu, accum); return; }
+    typedef unsigned short U;
+    KVM_EX_MMS(true, true, false, false, U, U, Ab, Bb)      // x_bf16 @ W_bf16
+    KVM_EX_MMS(true, true, false, true, U, U, Ab, Bb)       // x_bf16 @ W_bf16^T (tied)
+    KVM_EX_MMS(false, true, false, false, float, U, Af, Bb) // x_f32 @ W_bf16;  dz @ W (tied dx)
+    KVM_EX_MMS(false, true, false, true, float, U, Af, Bb)  // dz @ W_bf16^T (dx);  x_f32 @ W_bf16^T
+    KVM_EX_MMS(false, true, true, false, float, U, Af, Bb)  // dz^T @ x_bf16 (tied dW: B = x)
+    KVM_EX_MMS(true, false, true, false, U, float, Ab, Bf)  // x_bf16^T @ dz (dW)
+    KVM_EX_MMS(true, false, false, false, U, float, Ab, Bf) // x_bf16 @ dz-like f32 operand
 #undef KVM_EX_MMS
+    k.fail(KVM_GPT_E_SHAPE);                                // operand/transpose combination not instantiated
 }
 
 // ---- optimizer schedule / misc ----------------------------------------------------------------------------------------------------

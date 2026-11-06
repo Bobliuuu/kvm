@@ -1,0 +1,87 @@
+# b3 (prefetch variant, rejected in this form: 20 us occupancy fell to 36.5%) + headroom sweeps | NVIDIA A100-SXM4-40GB 108 SMs sm_80, driver 580.105.08, nvcc 12.8.93 | build: tests/gpu build flags (-O3 -arch=sm_80 -std=c++17 --fmad=false -ffp-contract=off -lineinfo) + variant flags in the spec lines | tree: working tree between 65442b1 and bc8d0ba
+##### prof3
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+== gapprof
+  200 us tasks, sched off         : 4768 samples (ns, SM clock 1.41 GHz)  | end bookkeeping+publish 597/607 | fence+succ release 88/88 | sched_done 57/57 | window credit 5/5 | free slot 1/1 | done count 7/8 | POP 3625/3127 | desc copy 12/12 | start bookkeeping 1240/1237 | TOTAL mean 5633 ns
+  200 us tasks, DYNAMIC 4 classes : 4767 samples (ns, SM clock 1.41 GHz)  | end bookkeeping+publish 613/567 | fence+succ release 128/128 | sched_done 97/96 | window credit 5/5 | free slot 1/1 | done count 5/5 | POP 7122/6057 | desc copy 12/12 | start bookkeeping 2294/2253 | TOTAL mean 10278 ns
+   20 us tasks, sched off         : 34068 samples (ns, SM clock 1.41 GHz)  | end bookkeeping+publish 585/565 | fence+succ release 88/88 | sched_done 57/57 | window credit 5/5 | free slot 1/1 | done count 7/8 | POP 23024/13814 | desc copy 12/12 | start bookkeeping 1220/1210 | TOTAL mean 24999 ns
+   20 us tasks, DYNAMIC 4 classes : 34877 samples (ns, SM clock 1.41 GHz)  | end bookkeeping+publish 590/609 | fence+succ release 128/128 | sched_done 97/96 | window credit 5/5 | free slot 1/1 | done count 5/5 | POP 29809/19047 | desc copy 12/12 | start bookkeeping 2267/2224 | TOTAL mean 32915 ns
+== gapprof: PASS (0.4s, 0 new failures)
+52 checks, 0 failed, 0 suites failed
+PASS
+##### d3
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+  200 us tasks, sched off (original)  : occupancy 97.4% [97.3, 97.6], gap p50 4.10 us [4.10, 4.10]
+  200 us tasks, GLOBAL                : occupancy 97.0% [96.8, 97.1], gap p50 5.12 us [5.12, 5.12]
+  200 us tasks, DYNAMIC 1 class       : occupancy 96.6% [96.4, 96.7], gap p50 5.12 us [5.12, 5.12]
+  200 us tasks, DYNAMIC 4 classes     : occupancy 95.8% [95.8, 95.9], gap p50 6.14 us [6.14, 7.17]
+   20 us tasks, sched off (original)  : occupancy 36.5% [36.1, 36.5], gap p50 14.34 us [14.34, 15.36]
+   20 us tasks, GLOBAL                : occupancy 37.6% [37.6, 37.6], gap p50 18.43 us [17.41, 18.43]
+   20 us tasks, DYNAMIC 1 class       : occupancy 33.0% [32.8, 33.0], gap p50 21.50 us [21.50, 21.50]
+   20 us tasks, DYNAMIC 4 classes     : occupancy 38.1% [38.1, 38.2], gap p50 21.50 us [21.50, 21.50]
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+  200 us tasks, sched off (original)  : occupancy 97.6% [97.6, 97.6], gap p50 4.10 us [4.10, 4.10]
+  200 us tasks, GLOBAL                : occupancy 97.1% [96.8, 97.2], gap p50 5.12 us [5.12, 5.12]
+  200 us tasks, DYNAMIC 1 class       : occupancy 96.5% [96.5, 96.6], gap p50 5.12 us [5.12, 5.12]
+  200 us tasks, DYNAMIC 4 classes     : occupancy 96.0% [95.8, 96.0], gap p50 6.14 us [6.14, 7.17]
+   20 us tasks, sched off (original)  : occupancy 36.5% [36.1, 36.5], gap p50 14.34 us [14.34, 15.36]
+   20 us tasks, GLOBAL                : occupancy 37.6% [37.6, 37.7], gap p50 18.43 us [18.43, 18.43]
+   20 us tasks, DYNAMIC 1 class       : occupancy 33.0% [32.8, 33.0], gap p50 21.50 us [20.48, 21.50]
+   20 us tasks, DYNAMIC 4 classes     : occupancy 38.2% [38.2, 38.2], gap p50 21.50 us [20.48, 21.50]
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+  200 us tasks, sched off (original)  : occupancy 97.5% [97.5, 97.6], gap p50 4.10 us [4.10, 4.10]
+  200 us tasks, GLOBAL                : occupancy 97.1% [96.8, 97.1], gap p50 5.12 us [4.10, 5.12]
+  200 us tasks, DYNAMIC 1 class       : occupancy 96.5% [96.5, 96.6], gap p50 5.12 us [5.12, 5.12]
+  200 us tasks, DYNAMIC 4 classes     : occupancy 95.9% [95.8, 95.9], gap p50 6.14 us [6.14, 7.17]
+   20 us tasks, sched off (original)  : occupancy 36.5% [36.1, 36.5], gap p50 15.36 us [14.34, 15.36]
+   20 us tasks, GLOBAL                : occupancy 37.6% [37.5, 37.7], gap p50 18.43 us [17.41, 18.43]
+   20 us tasks, DYNAMIC 1 class       : occupancy 33.0% [32.8, 33.0], gap p50 21.50 us [21.50, 21.50]
+   20 us tasks, DYNAMIC 4 classes     : occupancy 38.2% [38.1, 38.2], gap p50 21.50 us [20.48, 21.50]
+##### f3
+  50 runs (GLOBAL / STATIC / DYNAMIC, 2 grid sizes, random weights, reservations, caps, BW caps, deadline windows), 119500 tasks: exactly-once, edges ordered by timestamps, node values bitwise vs CPU
+== rand: PASS (1.1s, 0 new failures)
+497 checks, 0 failed, 0 suites failed
+PASS
+##### e3
+== smoke
+== smoke: PASS (0.0s, 0 new failures)
+8572 checks, 0 failed, 0 suites failed
+PASS
+##### h3
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+== headroom
+  chain request = 16 dependent cold 32 KB copies, 4000 req/s; stream = 6.3 MB adds always outstanding; stream max_cta = workers - k
+  106 workers, headroom 0    req p50     508 [507,509] p99      588 [586,632] us | hop-wait p99    29.7 [28.7,31.7] | miss 100.0% [100.0,100.0] | train   75.8 [75.6,75.9] kt/s  476.9 [475.5,477.3] GB/s burst   75.8 [75.6,75.9] kt/s | util 97.3% [97.3,97.4]
+  106 workers, headroom 1    req p50     506 [505,507] p99      591 [587,606] us | hop-wait p99    28.7 [27.6,28.7] | miss 100.0% [100.0,100.0] | train   75.8 [75.7,75.9] kt/s  476.7 [476.3,477.7] GB/s burst   75.7 [75.7,75.9] kt/s | util 97.2% [97.1,97.3]
+  106 workers, headroom 2    req p50     501 [501,503] p99      582 [580,586] us | hop-wait p99    27.6 [27.6,27.6] | miss 100.0% [100.0,100.0] | train   75.6 [75.5,75.8] kt/s  475.8 [474.9,476.6] GB/s burst   75.7 [75.5,75.8] kt/s | util 96.8% [96.7,96.9]
+  106 workers, headroom 4    req p50     488 [485,488] p99      570 [569,578] us | hop-wait p99    26.6 [26.6,27.6] | miss 100.0% [100.0,100.0] | train   74.6 [74.5,74.9] kt/s  469.4 [468.5,471.3] GB/s burst   74.6 [74.4,74.9] kt/s | util 95.6% [95.5,95.6]
+  106 workers, headroom 8    req p50     471 [469,472] p99      550 [547,564] us | hop-wait p99    25.6 [25.6,26.6] | miss 100.0% [100.0,100.0] | train   72.6 [72.3,72.7] kt/s  456.5 [454.6,457.6] GB/s burst   72.6 [72.3,72.7] kt/s | util 92.2% [92.2,92.2]
+  106 workers, headroom 16   req p50     463 [462,465] p99      538 [537,551] us | hop-wait p99    25.6 [24.6,25.6] | miss 100.0% [100.0,100.0] | train   67.5 [67.3,67.6] kt/s  424.6 [423.2,425.4] GB/s burst   67.5 [67.3,67.6] kt/s | util 84.9% [84.8,84.9]
+  106 workers, headroom 0    req p50     511 [508,513] p99      597 [586,601] us | hop-wait p99    28.7 [27.6,29.7] | miss 100.0% [100.0,100.0] | train   75.9 [75.6,76.0] kt/s  477.5 [475.7,478.3] GB/s burst   75.9 [75.6,76.0] kt/s | util 97.4% [97.3,97.4]
+  106 workers, headroom 1    req p50     509 [507,509] p99      581 [579,599] us | hop-wait p99    27.6 [26.6,28.7] | miss 100.0% [100.0,100.0] | train   75.8 [75.6,75.9] kt/s  476.9 [475.9,477.7] GB/s burst   75.8 [75.6,76.0] kt/s | util 97.3% [97.3,97.4]
+  106 workers, headroom 2    req p50     503 [502,505] p99      582 [575,587] us | hop-wait p99    27.6 [26.6,27.6] | miss 100.0% [100.0,100.0] | train   75.5 [75.3,75.7] kt/s  475.0 [473.9,476.1] GB/s burst   75.5 [75.3,75.7] kt/s | util 96.9% [96.8,97.0]
+  106 workers, headroom 4    req p50     487 [485,494] p99      575 [563,582] us | hop-wait p99    26.6 [24.6,26.6] | miss 100.0% [100.0,100.0] | train   74.7 [74.4,74.8] kt/s  469.9 [468.1,470.9] GB/s burst   74.7 [74.4,74.9] kt/s | util 95.6% [95.6,95.7]
+  106 workers, headroom 8    req p50     470 [470,473] p99      557 [534,559] us | hop-wait p99    25.6 [20.5,26.6] | miss 100.0% [100.0,100.0] | train   72.4 [72.2,72.4] kt/s  455.2 [454.0,455.8] GB/s burst   72.4 [72.1,72.4] kt/s | util 92.2% [92.2,92.3]
+  106 workers, headroom 16   req p50     467 [465,468] p99      530 [520,531] us | hop-wait p99    20.5 [17.4,23.6] | miss 100.0% [100.0,100.0] | train   67.1 [66.9,67.2] kt/s  422.1 [421.0,423.0] GB/s burst   67.1 [66.9,67.2] kt/s | util 84.9% [84.9,84.9]
+== headroom: PASS (23.3s, 0 new failures)
+12 checks, 0 failed, 0 suites failed
+PASS
+##### h3mb2
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+== headroom
+  chain request = 16 dependent cold 32 KB copies, 4000 req/s; stream = 6.3 MB adds always outstanding; stream max_cta = workers - k
+  106 workers, headroom 0    req p50     511 [509,512] p99      596 [583,601] us | hop-wait p99    29.7 [28.7,29.7] | miss 100.0% [100.0,100.0] | train   75.7 [75.3,76.0] kt/s  476.0 [473.7,478.4] GB/s burst   75.6 [75.3,76.0] kt/s | util 96.8% [96.6,96.9]
+  106 workers, headroom 1    req p50     508 [506,510] p99      590 [581,597] us | hop-wait p99    28.7 [28.7,28.7] | miss 100.0% [100.0,100.0] | train   75.7 [75.6,75.8] kt/s  476.1 [475.7,476.8] GB/s burst   75.7 [75.6,75.8] kt/s | util 96.7% [96.6,96.8]
+  106 workers, headroom 2    req p50     504 [503,505] p99      589 [578,598] us | hop-wait p99    27.6 [27.6,28.7] | miss 100.0% [100.0,100.0] | train   75.5 [75.3,75.7] kt/s  475.1 [473.6,476.0] GB/s burst   75.5 [75.3,75.6] kt/s | util 96.3% [96.3,96.4]
+  106 workers, headroom 4    req p50     486 [486,490] p99      565 [560,594] us | hop-wait p99    26.6 [26.6,26.6] | miss 100.0% [100.0,100.0] | train   74.7 [74.6,74.9] kt/s  469.9 [469.1,471.4] GB/s burst   74.7 [74.6,74.9] kt/s | util 95.2% [95.1,95.2]
+  106 workers, headroom 8    req p50     472 [471,474] p99      557 [553,583] us | hop-wait p99    25.6 [25.6,26.6] | miss 100.0% [100.0,100.0] | train   72.6 [72.4,72.6] kt/s  456.5 [455.6,456.6] GB/s burst   72.5 [72.4,72.6] kt/s | util 92.0% [91.9,92.0]
+  106 workers, headroom 16   req p50     465 [464,466] p99      551 [535,565] us | hop-wait p99    25.6 [24.6,25.6] | miss 100.0% [100.0,100.0] | train   67.6 [67.4,67.7] kt/s  425.0 [424.1,425.9] GB/s burst   67.5 [67.4,67.7] kt/s | util 84.7% [84.7,84.7]
+  214 workers, headroom 0    req p50     725 [723,729] p99      844 [826,857] us | hop-wait p99    34.8 [33.8,34.8] | miss 100.0% [100.0,100.0] | train  119.8 [119.7,120.2] kt/s  754.0 [753.2,756.4] GB/s burst  119.8 [119.7,120.3] kt/s | util 87.2% [86.9,87.3]
+  214 workers, headroom 1    req p50     726 [724,727] p99      846 [835,855] us | hop-wait p99    34.8 [33.8,34.8] | miss 100.0% [100.0,100.0] | train  120.0 [119.6,120.1] kt/s  755.0 [752.2,755.8] GB/s burst  120.0 [119.5,120.1] kt/s | util 87.1% [87.0,87.4]
+  214 workers, headroom 2    req p50     726 [724,729] p99      847 [824,856] us | hop-wait p99    34.8 [33.8,35.8] | miss 100.0% [100.0,100.0] | train  119.4 [118.7,120.6] kt/s  751.5 [746.7,758.9] GB/s burst  119.4 [118.7,120.7] kt/s | util 86.9% [86.2,87.5]
+  214 workers, headroom 4    req p50     725 [724,727] p99      845 [841,858] us | hop-wait p99    34.8 [33.8,34.8] | miss 100.0% [100.0,100.0] | train  119.7 [118.6,120.1] kt/s  753.1 [746.0,755.4] GB/s burst  119.7 [118.6,120.1] kt/s | util 86.8% [86.4,87.1]
+  214 workers, headroom 8    req p50     723 [719,725] p99      851 [827,852] us | hop-wait p99    34.8 [33.8,34.8] | miss 100.0% [100.0,100.0] | train  118.1 [117.7,119.6] kt/s  743.2 [740.6,752.7] GB/s burst  118.1 [117.7,119.7] kt/s | util 85.7% [85.6,86.6]
+  214 workers, headroom 16   req p50     712 [710,715] p99      835 [830,847] us | hop-wait p99    33.8 [33.8,33.8] | miss 100.0% [100.0,100.0] | train  116.2 [115.9,116.6] kt/s  731.2 [729.0,733.8] GB/s burst  116.3 [115.9,116.6] kt/s | util 84.1% [83.9,84.3]
+== headroom: PASS (23.3s, 0 new failures)
+12 checks, 0 failed, 0 suites failed
+PASS

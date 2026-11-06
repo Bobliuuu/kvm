@@ -1,0 +1,75 @@
+# b4-dispatch-2 (CAS first, prefetch during CAS) + bwcap sweeps | NVIDIA A100-SXM4-40GB 108 SMs sm_80, driver 580.105.08, nvcc 12.8.93 | build: tests/gpu build flags (-O3 -arch=sm_80 -std=c++17 --fmad=false -ffp-contract=off -lineinfo) + variant flags in the spec lines | tree: bc8d0ba (+ admit/bwcap suites)
+##### prof4
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+== gapprof
+  200 us tasks, sched off         : 4768 samples (ns, SM clock 1.41 GHz)  | end bookkeeping+publish 609/613 | fence+succ release 88/88 | sched_done 56/56 | window credit 5/5 | free slot 1/1 | done count 5/5 | POP 3682/3146 | desc copy 12/12 | start bookkeeping 1241/1237 | TOTAL mean 5701 ns
+  200 us tasks, DYNAMIC 4 classes : 4766 samples (ns, SM clock 1.41 GHz)  | end bookkeeping+publish 629/617 | fence+succ release 128/128 | sched_done 97/96 | window credit 5/5 | free slot 1/1 | done count 6/6 | POP 6534/5717 | desc copy 12/12 | start bookkeeping 2311/2250 | TOTAL mean 9723 ns
+   20 us tasks, sched off         : 35237 samples (ns, SM clock 1.41 GHz)  | end bookkeeping+publish 595/563 | fence+succ release 88/88 | sched_done 56/56 | window credit 5/5 | free slot 1/1 | done count 7/8 | POP 21464/11723 | desc copy 12/12 | start bookkeeping 1239/1225 | TOTAL mean 23467 ns
+   20 us tasks, DYNAMIC 4 classes : 35411 samples (ns, SM clock 1.41 GHz)  | end bookkeeping+publish 598/613 | fence+succ release 128/128 | sched_done 97/96 | window credit 5/5 | free slot 1/1 | done count 6/6 | POP 24593/17270 | desc copy 12/12 | start bookkeeping 2265/2226 | TOTAL mean 27706 ns
+== gapprof: PASS (0.4s, 0 new failures)
+52 checks, 0 failed, 0 suites failed
+PASS
+##### d4
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+  200 us tasks, sched off (original)  : occupancy 97.6% [97.6, 97.7], gap p50 4.10 us [4.10, 4.10]
+  200 us tasks, GLOBAL                : occupancy 97.0% [97.0, 97.1], gap p50 5.12 us [5.12, 5.12]
+  200 us tasks, DYNAMIC 1 class       : occupancy 96.7% [96.7, 96.8], gap p50 5.12 us [5.12, 5.12]
+  200 us tasks, DYNAMIC 4 classes     : occupancy 96.1% [95.9, 96.2], gap p50 6.14 us [6.14, 6.14]
+   20 us tasks, sched off (original)  : occupancy 44.6% [44.0, 44.7], gap p50 12.29 us [12.29, 12.29]
+   20 us tasks, GLOBAL                : occupancy 45.6% [45.2, 45.6], gap p50 12.29 us [11.26, 12.29]
+   20 us tasks, DYNAMIC 1 class       : occupancy 41.1% [40.4, 41.1], gap p50 17.41 us [17.41, 17.41]
+   20 us tasks, DYNAMIC 4 classes     : occupancy 43.7% [43.7, 43.9], gap p50 18.43 us [17.41, 18.43]
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+  200 us tasks, sched off (original)  : occupancy 97.5% [97.4, 97.7], gap p50 4.10 us [4.10, 4.10]
+  200 us tasks, GLOBAL                : occupancy 97.0% [97.0, 97.1], gap p50 4.10 us [4.10, 4.10]
+  200 us tasks, DYNAMIC 1 class       : occupancy 96.7% [96.7, 96.9], gap p50 5.12 us [5.12, 5.12]
+  200 us tasks, DYNAMIC 4 classes     : occupancy 96.0% [95.9, 96.2], gap p50 6.14 us [6.14, 6.14]
+   20 us tasks, sched off (original)  : occupancy 44.6% [44.1, 44.7], gap p50 12.29 us [12.29, 12.29]
+   20 us tasks, GLOBAL                : occupancy 45.4% [44.9, 45.5], gap p50 12.29 us [11.26, 12.29]
+   20 us tasks, DYNAMIC 1 class       : occupancy 41.1% [40.5, 41.1], gap p50 17.41 us [17.41, 17.41]
+   20 us tasks, DYNAMIC 4 classes     : occupancy 43.8% [43.6, 43.9], gap p50 18.43 us [18.43, 18.43]
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+  200 us tasks, sched off (original)  : occupancy 97.6% [97.3, 97.7], gap p50 4.10 us [4.10, 4.10]
+  200 us tasks, GLOBAL                : occupancy 97.1% [96.9, 97.2], gap p50 4.10 us [4.10, 5.12]
+  200 us tasks, DYNAMIC 1 class       : occupancy 96.8% [96.8, 96.8], gap p50 5.12 us [5.12, 5.12]
+  200 us tasks, DYNAMIC 4 classes     : occupancy 96.1% [96.1, 96.1], gap p50 6.14 us [6.14, 6.14]
+   20 us tasks, sched off (original)  : occupancy 44.4% [43.9, 44.6], gap p50 12.29 us [12.29, 12.29]
+   20 us tasks, GLOBAL                : occupancy 45.4% [45.0, 45.5], gap p50 11.26 us [11.26, 12.29]
+   20 us tasks, DYNAMIC 1 class       : occupancy 41.0% [40.4, 41.0], gap p50 17.41 us [17.41, 17.41]
+   20 us tasks, DYNAMIC 4 classes     : occupancy 43.7% [43.3, 43.8], gap p50 18.43 us [17.41, 18.43]
+##### f4
+  50 runs (GLOBAL / STATIC / DYNAMIC, 2 grid sizes, random weights, reservations, caps, BW caps, deadline windows), 119500 tasks: exactly-once, edges ordered by timestamps, node values bitwise vs CPU
+== rand: PASS (1.0s, 0 new failures)
+497 checks, 0 failed, 0 suites failed
+PASS
+##### e4
+== smoke
+== smoke: PASS (0.0s, 0 new failures)
+8572 checks, 0 failed, 0 suites failed
+PASS
+##### bw4mb2
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+== bwcap
+  full grid: 214 workers; chain = 16 dependent cold 32 KB copies at 4000 req/s; stream = 6.3 MB adds; stream bw_cta = cap
+  stream BW cap 214 of 214   req p50     762 [760,764] p99      882 [860,889] us | hop-wait p99    36.9 [35.8,36.9] | miss 100.0% [100.0,100.0] | train  126.9 [126.5,126.9] kt/s  798.1 [795.6,798.6] GB/s burst  126.8 [126.5,127.0] kt/s | util 93.3% [93.1,93.7]
+  stream BW cap 160 of 214   req p50     674 [669,675] p99      775 [764,793] us | hop-wait p99    31.7 [31.7,31.7] | miss 100.0% [100.0,100.0] | train  102.5 [102.3,102.8] kt/s  644.9 [643.8,646.5] GB/s burst  102.5 [102.3,102.8] kt/s | util 73.2% [73.2,73.3]
+  stream BW cap 107 of 214   req p50     594 [592,596] p99      696 [692,706] us | hop-wait p99    28.7 [27.6,28.7] | miss 100.0% [100.0,100.0] | train   71.8 [71.8,72.0] kt/s  452.0 [451.5,453.1] GB/s burst   71.8 [71.8,72.0] kt/s | util 49.6% [49.6,49.6]
+  stream BW cap 80 of 214    req p50     554 [554,559] p99      666 [662,671] us | hop-wait p99    27.6 [26.6,27.6] | miss 100.0% [100.0,100.0] | train   56.4 [56.3,56.4] kt/s  354.7 [354.5,355.1] GB/s burst   56.4 [56.3,56.4] kt/s | util 37.3% [37.3,37.3]
+  stream BW cap 53 of 214    req p50     518 [516,519] p99      613 [602,632] us | hop-wait p99    26.6 [26.6,27.6] | miss 100.0% [100.0,100.0] | train   40.0 [39.9,40.1] kt/s  251.7 [251.2,252.1] GB/s burst   40.0 [39.9,40.1] kt/s | util 24.9% [24.9,24.9]
+  stream BW cap 26 of 214    req p50     479 [475,482] p99      568 [563,585] us | hop-wait p99    25.6 [25.6,26.6] | miss 100.0% [100.0,100.0] | train   21.2 [21.2,21.2] kt/s  133.4 [133.2,133.5] GB/s burst   21.2 [21.2,21.2] kt/s | util 12.4% [12.4,12.5]
+== bwcap: PASS (11.9s, 0 new failures)
+6 checks, 0 failed, 0 suites failed
+PASS
+##### bw4
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+== bwcap
+  full grid: 106 workers; chain = 16 dependent cold 32 KB copies at 4000 req/s; stream = 6.3 MB adds; stream bw_cta = cap
+  stream BW cap 106 of 106   req p50     507 [506,508] p99      586 [581,595] us | hop-wait p99    29.7 [28.7,30.7] | miss 100.0% [100.0,100.0] | train   76.1 [75.8,76.4] kt/s  478.6 [476.9,480.4] GB/s burst   76.1 [75.8,76.3] kt/s | util 97.6% [97.5,97.7]
+  stream BW cap 79 of 106    req p50     456 [453,456] p99      530 [519,539] us | hop-wait p99    24.6 [24.6,25.6] | miss 100.0% [100.0,100.0] | train   60.4 [60.3,60.6] kt/s  380.2 [379.6,381.4] GB/s burst   60.4 [60.4,60.6] kt/s | util 74.6% [74.6,74.7]
+  stream BW cap 53 of 106    req p50     441 [440,442] p99      506 [492,512] us | hop-wait p99    21.5 [19.5,23.6] | miss 100.0% [100.0,100.0] | train   42.9 [42.9,43.0] kt/s  269.8 [269.7,270.4] GB/s burst   42.9 [42.9,43.0] kt/s | util 50.4% [50.3,50.4]
+  stream BW cap 39 of 106    req p50     435 [434,436] p99      485 [481,486] us | hop-wait p99    17.4 [16.4,21.5] | miss 100.0% [100.0,100.0] | train   32.6 [32.6,32.7] kt/s  205.3 [204.9,205.4] GB/s burst   32.6 [32.6,32.7] kt/s | util 37.3% [37.2,37.3]
+  stream BW cap 26 of 106    req p50     427 [426,427] p99      477 [472,484] us | hop-wait p99    16.4 [14.3,18.4] | miss 100.0% [100.0,100.0] | train   22.4 [22.4,22.5] kt/s  141.2 [140.8,141.4] GB/s burst   22.4 [22.4,22.5] kt/s | util 25.1% [25.0,25.1]
+  stream BW cap 13 of 106    req p50     409 [409,410] p99      455 [453,456] us | hop-wait p99    13.3 [11.3,14.3] | miss 100.0% [100.0,100.0] | train   11.7 [11.7,11.7] kt/s   73.5 [73.4,73.7] GB/s burst   11.7 [11.7,11.7] kt/s | util 12.9% [12.9,12.9]
+== bwcap: PASS (12.4s, 0 new failures)
+6 checks, 0 failed, 0 suites failed
+PASS

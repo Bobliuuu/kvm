@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Box side of demo/run_demo.sh (run it through that script). Builds, generates the demo from the frontend, checks the manifest on the CPU,
 # then runs the GPU part under ONE hold of the GPU lock, then verifies. Configuration arrives as environment variables:
-#   DEMO_TAG MODEL TILING STEPS WINDOW SERVE_EVERY FRAMES PRECISE(0/1) MAXB SANITIZE(0/1) RUN_ARGS NVCC_ARCH LOCK_WAIT
+#   [SKIP_BUILD=1 reuse the existing demo/kvm_run]  DEMO_TAG MODEL TILING STEPS WINDOW SERVE_EVERY FRAMES PRECISE(0/1) MAXB SANITIZE(0/1) RUN_ARGS NVCC_ARCH LOCK_WAIT
 set -euo pipefail
 cd "$(dirname "$0")/.."
 RUN="runs/$DEMO_TAG"; rm -rf "$RUN"; mkdir -p "$RUN"
@@ -22,8 +22,12 @@ ls -la doom/build/doom_dev.o doom/third_party/doom1.wad
 
 say "build kvm_run"
 BUILD="$NVCC -O3 -arch=${NVCC_ARCH:-sm_80} -std=c++17 -rdc=true -DKVM_WITH_GAME -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177"
+if [ "${SKIP_BUILD:-0}" = 1 ] && [ -x demo/kvm_run ]; then
+  echo "reusing demo/kvm_run from an earlier run (SKIP_BUILD=1; the sources are the same commit)"
+else
 echo "$BUILD demo/kvm_run.cu doom/build/doom_dev.o -o demo/kvm_run"
 $BUILD demo/kvm_run.cu doom/build/doom_dev.o -o demo/kvm_run 2>&1 | grep -v "cannot be statically determined" || true
+fi
 test -x demo/kvm_run
 
 gen() {  # dir model steps window serve_every frames

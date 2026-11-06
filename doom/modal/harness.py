@@ -93,7 +93,7 @@ def run(name, frames, wl="", ex="", binary="bin/doom_exec_n1", inst=1, split=0, 
             except Exception: pass
         res["per_instance_fps"] = {"n": len(fp), "min": min(fp), "max": max(fp), "sum": round(sum(fp), 1)} if fp else None
     for l in o.splitlines():
-        if "workload " in l and ("makespan" in l or "done" in l or "span" in l): res.setdefault("workload_lines", []).append(l.strip()[:160])
+        if "] workload " in l: res.setdefault("workload_lines", []).append(l.split("] ", 1)[1].strip()[:200])
     if cmp and rc == 0:
         cp = f"{OUT}/cpu"
         dirs = [f"{d}/run/inst{k}" for k in range(inst)] if inst > 1 else [f"{d}/run"]
@@ -166,7 +166,7 @@ def job_study():
     """Doom (serial vs split) beside the GEMM+AdamW training tenant, across scheduler modes. NO spin task anywhere."""
     F = int(os.environ.get("STUDY_FRAMES", "300"))
     oracle(700)
-    load = ARGS or "--chains 4 --rounds 400 --tenant train"
+    load = ARGS or "--chains 6 --rounds 60 --tenant train"
     modes = [("alone", None, ""), ("orig", "load", ""), ("global", "load", "--sched global --classes 2"), ("static10", "load", "--sched static --classes 2 --shares 1,9"),
              ("static25", "load", "--sched static --classes 2 --shares 1,3"), ("dyn", "load", DYN), ("dyn_noresv", "load", "--sched dynamic --classes 2 --min 0,0 --urgent-us 0,0")]
     for rep in range(int(os.environ.get("STUDY_REPS", "3"))):

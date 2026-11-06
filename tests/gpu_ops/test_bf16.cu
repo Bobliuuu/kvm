@@ -148,7 +148,7 @@ static void t_ops() {
     for (int mask = 0; mask < 4; mask++) {   // bit 0: input storage bf16, bit 1: output storage bf16
         const bool ib = mask & 1, ob = mask & 2;
         const std::string tag = std::string(" [in ") + (ib ? "bf16" : "f32") + ", out " + (ob ? "bf16" : "f32") + "]";
-        for (int d : getenv("TEST_BF16_SMALL") ? std::vector<int>{20, 96} : std::vector<int>{20, 96, 768}) {   // norms: ragged d and 4-aligned d
+        for (int d : getenv("TEST_BF16_SMALL") ? std::vector<int>{20, 22, 96} : std::vector<int>{20, 22, 96, 768}) {   // norms: 4-aligned d (vector path), d % 4 != 0 (scalar path)
             const int R = 9;
             for (int rms = 0; rms < 2; rms++) {
                 Dev dv;

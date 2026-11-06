@@ -7,6 +7,7 @@
 #
 #   bash bench/bf16/run_box.sh correctness OUT_DIR DATA_DIR    # op tests (bf16 + regression of the fp32 paths), sanitizers, model zoo, step-1 numerics
 #   bash bench/bf16/run_box.sh perf        OUT_DIR DATA_DIR    # GEMM TFLOP/s vs cuBLAS, executor step time, PyTorch baselines, 3-step losses
+#   bash bench/bf16/run_box.sh profile     OUT_DIR DATA_DIR    # traced executor launches (f32, bf16s): per-op task counts and run time
 #
 # Each mode takes the GPU lock once (flock -w 7200 ~/.gpu.lock; KVM_NO_LOCK=1 skips it) and holds it for its stages only; the stages are
 # independent, a failing stage does not stop the next, and every stage logs to OUT_DIR/<stage>.log. DATA_DIR holds the gen.py bundles:
@@ -55,8 +56,13 @@ perf)
   stage torch_tf32 3600 python3 bench/vs_pytorch/torch_bench.py "$DATA/bf16s_3" --modes eager,graph,compile_graph --precision tf32 --reps 5 --out "$OUT/torch_tf32.json"
   stage torch_bf16 3600 python3 bench/vs_pytorch/torch_bench.py "$DATA/bf16s_3" --modes eager,graph,compile_graph --precision bf16 --reps 5 --out "$OUT/torch_bf16.json"
   stage exec_bf16s_3step 2400 python3 bench/vs_pytorch/exec_bench.py "$DATA/bf16s_3" ./kvm_exec --reps 3 --out "$OUT/exec_bf16s_3step.json"
-  stage losses_vs_bf16 1500 python3 bench/vs_pytorch/exec_losses.py "$DATA/bf16s_3" ./kvm_exec --torch "$OUT/torch_bf16.json" --mode eager --out "$OUT/losses_vs_torch_bf16.json"
-  stage losses_vs_tf32 1500 python3 bench/vs_pytorch/exec_losses.py "$DATA/bf16s_3" ./kvm_exec --torch "$OUT/torch_tf32.json" --mode eager --out "$OUT/losses_vs_torch_tf32.json"
+  stage losses_vs_bf16 1500 python3 bench/bf16/exec_losses_bin.py "$DATA/bf16s_3" "$DUMP_EXEC" --torch "$OUT/torch_bf16.json" --mode eager --out "$OUT/losses_vs_torch_bf16.json"
+  stage losses_vs_tf32 1500 python3 bench/bf16/exec_losses_bin.py "$DATA/bf16s_3" "$DUMP_EXEC" --torch "$OUT/torch_tf32.json" --mode eager --out "$OUT/losses_vs_torch_tf32.json"
+  ;;
+profile)   # what the executor's step is made of: per-op task counts and run time from a traced launch (f32 and bf16s)
+  for v in f32:f32_1 bf16s:b16_1; do
+    stage "trace_${v%%:*}" 1500 bash -c "./kvm_exec --quiet --trace-csv /tmp/kvm_bf16_trace.csv '$DATA/${v##*:}/bundle' && python3 bench/vs_pytorch/trace_summary.py /tmp/kvm_bf16_trace.csv 1; rm -f /tmp/kvm_bf16_trace.csv"
+  done
   ;;
 *) echo "unknown mode $MODE" >&2; exit 2;;
 esac

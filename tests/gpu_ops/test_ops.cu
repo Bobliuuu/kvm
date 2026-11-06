@@ -228,7 +228,7 @@ static void t_rope() {
 }
 
 // ---- attention --------------------------------------------------------------------------------------------------------
-struct AttnCfg { int B, T, H, Hkv, hd; };
+struct AttnCfg { int B, T, H, Hkv, hd, step = KVM_GPT_ATTN_ROWS; };   // step: distance between task origins (a smaller one overlaps tasks and unaligns origins)
 static void attn_case(AttnCfg c) {
     Rng r(61 + c.hd + c.T);
     int B = c.B, T = c.T, H = c.H, Hkv = c.Hkv, hd = c.hd, R = B * T;
@@ -243,7 +243,7 @@ static void attn_case(AttnCfg c) {
     for (auto& x : hq) x *= 1.5f;
     dv.up(q, hq); dv.up(k, hk); dv.up(v, hv); dv.up(dO, hdo);
     Batch b;
-    for (int bb = 0; bb < B; bb++) for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += 32)
+    for (int bb = 0; bb < B; bb++) for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += c.step)
         b.add(OP_attn_fwd, A().b(q).b(k).b(v).b(o).b(lse).i(bb).i(h).i(q0).i(T).i(H).i(Hkv).i(hd).f((float)scale));
     int e = run(dv, b, smem);
     D ro, rl, rdq, rdk, rdv;
@@ -255,9 +255,9 @@ static void attn_case(AttnCfg c) {
     e |= run(dv, b2, smem);
     Batch b3;
     for (int bb = 0; bb < B; bb++) {
-        for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += 32)
+        for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += c.step)
             b3.add(OP_attn_bwd_dq, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dq).i(bb).i(h).i(q0).i(T).i(H).i(Hkv).i(hd).f((float)scale));
-        for (int h = 0; h < Hkv; h++) for (int k0 = 0; k0 < T; k0 += 32)
+        for (int h = 0; h < Hkv; h++) for (int k0 = 0; k0 < T; k0 += c.step)
             b3.add(OP_attn_bwd_dkv, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dk).b(dvv).i(bb).i(h).i(k0).i(T).i(H).i(hd).f((float)scale));
     }
     e |= run(dv, b3, smem);
@@ -270,7 +270,8 @@ static void attn_case(AttnCfg c) {
     check_true(std::string(nm) + " err==0", e == 0);
 }
 static void t_attention() {
-    for (AttnCfg c : {AttnCfg{2, 1, 2, 2, 16}, AttnCfg{1, 2, 2, 2, 16}, AttnCfg{2, 37, 4, 2, 32}, AttnCfg{1, 100, 4, 1, 64}, AttnCfg{1, 70, 2, 2, 128}, AttnCfg{2, 32, 2, 2, 16}, AttnCfg{1, 65, 4, 4, 32}, AttnCfg{2, 70, 16, 4, 64}})
+    for (AttnCfg c : {AttnCfg{2, 1, 2, 2, 16}, AttnCfg{1, 2, 2, 2, 16}, AttnCfg{2, 37, 4, 2, 32}, AttnCfg{1, 100, 4, 1, 64}, AttnCfg{1, 70, 2, 2, 128}, AttnCfg{2, 32, 2, 2, 16}, AttnCfg{1, 65, 4, 4, 32}, AttnCfg{2, 70, 16, 4, 64},
+                      AttnCfg{1, 300, 4, 2, 64}, AttnCfg{2, 257, 2, 1, 32}, AttnCfg{1, 129, 2, 2, 128}, AttnCfg{1, 200, 2, 2, 64, 48}, AttnCfg{1, 130, 3, 3, 16, 33}})   // multi-block, partial last block, GQA 2:1, overlapping unaligned origins
         attn_case(c);
     for (int T : {2, 3, 15, 31, 33, 63, 95, 97}) attn_case(AttnCfg{1, T, 2, 1, 32});   // prefill with a clipped final partial q block
     {   // reference self-check: analytic CPU backward vs central finite differences of the CPU forward

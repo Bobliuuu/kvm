@@ -397,5 +397,16 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(runtime.buffers['step'][0], steps + 1)
 
 
+class AttentionBlockSizeTests(unittest.TestCase):
+    def test_python_block_sizes_match_the_device_constant(self):
+        import re
+        m = re.search(r'#define KVM_GPT_ATTN_ROWS (\d+)', (ROOT / 'include' / 'kvm_ops_gpt.cuh').read_text())
+        self.assertIsNotNone(m)
+        sys.path.insert(0, str(ROOT / 'frontend'))
+        from kvmfe import opset
+        self.assertEqual(int(m.group(1)), ref_gpt.ATTN_ROWS)
+        self.assertEqual(int(m.group(1)), opset.ATTN_BLOCK)
+
+
 if __name__ == '__main__':
     unittest.main()

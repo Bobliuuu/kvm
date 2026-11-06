@@ -33,6 +33,11 @@
 
 #define KVM_GPT_THREADS 256
 #define KVM_GPT_DEVI __device__ __forceinline__
+// Rows one causal attention task covers: 128 queries (attn_fwd, attn_bwd_dq: rows [q0, q0+128)) or 128 keys (attn_bwd_dkv:
+// [k0, k0+128)), 16 per warp. A caller steps q0 / k0 by this value; a smaller step is correct but recomputes the overlap.
+// Mirrored by ATTN_BLOCK in frontend/kvmfe/opset.py. The bidirectional attn_full_* ops keep their own 32-row blocks.
+#define KVM_GPT_ATTN_ROWS 128
+static_assert(KVM_GPT_THREADS / 32 * 16 == KVM_GPT_ATTN_ROWS, "attention: one m16 row tile per warp");
 
 
 #ifndef KVM_GPT_BIG_BK
@@ -1003,24 +1008,79 @@ struct AttnArgs {
     float scale;
 };
 
-// ---- tensor-core attention helpers --------------------------------------------------------------------------------------
-// hi/lo TF32 split: x ~= hi + lo with both exactly representable; hi*hi + lo*hi + hi*lo reproduces an fp32 product to ~2^-21
-// (3xTF32), so attention keeps its fp32-class accuracy (2e-5 contract) while running on the tensor cores.
+// ---- tensor-core attention (flash-style) --------------------------------------------------------------------------------
+// Products run as 3xTF32 mma.sync m16n8k8 (hi/lo split: x ~= hi + lo with both exactly representable; hi*hi + lo*hi + hi*lo
+// reproduces an fp32 product to ~2^-21), so attention keeps its fp32-class accuracy (the 2e-5 contract) on the tensor cores.
+// One task covers KVM_GPT_ATTN_ROWS = 128 consecutive rows (queries for attn_fwd / attn_bwd_dq, keys for attn_bwd_dkv): warp w owns
+// 16 of them (an m16 tile), so there is no cross-warp reduction and no partial-result merge; the 8 warps share each K/V (or Q/dO)
+// tile of 32 rows through a 3-stage cp.async pipeline. The warp's own operand (Q and dO, or K and V) lives in registers as raw fp32
+// mma fragments and is split per k-step. Softmax runs in the log2 domain: scores are scaled by scale*log2(e) once, p = ex2(s - m),
+// so a masked score of -inf gives p = 0 without a branch. Causal blocks above the diagonal are skipped per warp (warp-uniform).
 KVM_GPT_DEVI void split_tf32(float x, unsigned& hi, unsigned& lo) {
     hi = __float_as_uint(x) & 0xffffe000u;                  // truncated hi: one LOP; lo = x - hi is then exact
     lo = __float_as_uint(x - __uint_as_float(hi));          // raw fp32: the tensor core reads its top 10 mantissa bits
 }
-#ifndef KVM_GPT_ATTN_MMA
-#define KVM_GPT_ATTN_MMA 3   // attention products: 3 = 3xTF32 (fp32-class, the 2e-5 contract), 2 = 2xTF32 (5e-4..1.5e-3), 1 = 1xTF32 (7e-4..3e-3); both break the 2e-5 contract, experimental
-#endif
-KVM_GPT_DEVI void mma3(float (&c)[4], const unsigned (&ah)[4], const unsigned (&al)[4], unsigned bh0, unsigned bh1, unsigned bl0, unsigned bl1) {
-#if KVM_GPT_ATTN_MMA >= 3
-    mma_tf32(c, ah, bl0, bl1);   // hi*lo
-#endif
-#if KVM_GPT_ATTN_MMA >= 2
-    mma_tf32(c, al, bh0, bh1);   // lo*hi
-#endif
-    mma_tf32(c, ah, bh0, bh1);   // small terms first
+#define KVM_GPT_L2E 1.4426950408889634f
+#define KVM_GPT_LN2 0.6931471805599453f
+KVM_GPT_DEVI float ex2f(float x) {   // 2^x, relative error 2^-22; ex2(-inf) = +0
+    float y;
+    asm("ex2.approx.ftz.f32 %0, %1;\n" : "=f"(y) : "f"(x));
+    return y;
+}
+template <int HD> struct AM {
+    static_assert(HD % 8 == 0, "hd");
+    static constexpr int LD = HD + 4, NT = HD / 8, TILE = 32 * LD, STAGE = 2 * TILE, NST = 3, NC = NT < 8 ? NT : 8;
+    static constexpr int SMEM = NST * STAGE * 4;   // bytes: 3 stages of two 32 x (HD+4) tiles = 51 KiB at hd=64, 99 KiB at hd=128
+};
+// c[n0 + i] += A * B[i], i < N, three products each; product-major so the N independent accumulator chains interleave.
+template <int N, int NA>
+KVM_GPT_DEVI void mma3n(float (&c)[NA][4], int n0, const unsigned (&ah)[4], const unsigned (&al)[4], const unsigned (&bh)[N][2], const unsigned (&bl)[N][2]) {
+#pragma unroll
+    for (int i = 0; i < N; i++) mma_tf32(c[n0 + i], ah, bl[i][0], bl[i][1]);   // small terms first
+#pragma unroll
+    for (int i = 0; i < N; i++) mma_tf32(c[n0 + i], al, bh[i][0], bh[i][1]);
+#pragma unroll
+    for (int i = 0; i < N; i++) mma_tf32(c[n0 + i], ah, bh[i][0], bh[i][1]);
+}
+KVM_GPT_DEVI void split4(const float (&x)[4], unsigned (&h)[4], unsigned (&l)[4]) {
+#pragma unroll
+    for (int e = 0; e < 4; e++) split_tf32(x[e], h[e], l[e]);
+}
+// B fragments of X * Tl^T (the n index runs over rows of the shared tile Tl): n-tiles n0..n0+N-1 of 8 rows, k-step ks.
+template <int LD, int N>
+KVM_GPT_DEVI void frag_nt(unsigned (&bh)[N][2], unsigned (&bl)[N][2], const float* Tl, int n0, int ks, int g, int t) {
+#pragma unroll
+    for (int i = 0; i < N; i++) {
+        split_tf32(Tl[((n0 + i) * 8 + g) * LD + ks * 8 + t], bh[i][0], bl[i][0]);
+        split_tf32(Tl[((n0 + i) * 8 + g) * LD + ks * 8 + t + 4], bh[i][1], bl[i][1]);
+    }
+}
+// B fragments of P * Tl (k runs over the rows of the shared tile, permuted: slot t = row 2t, slot t+4 = row 2t+1 of the k8 step `kt`,
+// which is the order the m16n8 accumulator layout hands P over in); n-tiles n0..n0+N-1 of 8 columns.
+template <int LD, int N>
+KVM_GPT_DEVI void frag_kn(unsigned (&bh)[N][2], unsigned (&bl)[N][2], const float* Tl, int kt, int n0, int g, int t) {
+    const float* r0 = Tl + (kt * 8 + 2 * t) * LD + g;
+    const float* r1 = r0 + LD;
+#pragma unroll
+    for (int i = 0; i < N; i++) {
+        split_tf32(r0[(n0 + i) * 8], bh[i][0], bl[i][0]);
+        split_tf32(r1[(n0 + i) * 8], bh[i][1], bl[i][1]);
+    }
+}
+// A fragment (16 rows x k8) of a probability-like tile from the four accumulator registers of n-tile `kt` (rows g, g+8; keys 2t, 2t+1).
+KVM_GPT_DEVI void acc_to_a(const float (&c)[4], unsigned (&h)[4], unsigned (&l)[4]) {
+    split_tf32(c[0], h[0], l[0]); split_tf32(c[2], h[1], l[1]); split_tf32(c[1], h[2], l[2]); split_tf32(c[3], h[3], l[3]);
+}
+// Raw fp32 A fragments of the warp's 16 rows of a [rows x HD] head slice: row g / g+8, column ks*8 + t / t+4; rows >= rmax are zero.
+template <int HD>
+KVM_GPT_DEVI void load_a_raw(float (&a)[HD / 8][4], const float* base, int ld, int row, int rmax, int t) {
+    const bool v0 = row < rmax, v1 = row + 8 < rmax;
+    const float* p0 = base + (size_t)row * ld + t; const float* p1 = p0 + (size_t)8 * ld;
+#pragma unroll
+    for (int ks = 0; ks < HD / 8; ks++) {
+        a[ks][0] = v0 ? p0[ks * 8] : 0.f; a[ks][1] = v1 ? p1[ks * 8] : 0.f;
+        a[ks][2] = v0 ? p0[ks * 8 + 4] : 0.f; a[ks][3] = v1 ? p1[ks * 8 + 4] : 0.f;
+    }
 }
 // cp.async copy of a 32 x HD tile (rows row0.. of a row-major matrix, leading dimension ldg) to shared rows of stride HD+4;
 // rows >= rmax are zero-filled. The padding makes every mma fragment load bank-conflict free.
@@ -1032,319 +1092,294 @@ KVM_GPT_DEVI void tile32_async(float* dst, const float* src, int ldg, int row0, 
         cp_async16(dst + r * (HD + 4) + c, gr < rmax ? src + (size_t)gr * ldg + c : src, gr < rmax ? 16 : 0);
     }
 }
+// p = exp(scale*s - lse) (c2 = scale*log2(e), lse2 = lse*log2(e)) where the mask holds, else 0.
+KVM_GPT_DEVI float p_of(float s, float c2, float lse2, bool ok) { return ok ? ex2f(fmaf(s, c2, -lse2)) : 0.f; }
 
-// Forward attention for 32 query rows. 8 warps = 2 row halves (m16 each) x 4 key slices: in every 32-key tile warp (wm, wk) runs
-// flash attention for its 16 rows over keys 8wk..8wk+7, with its own running (max, sum, O); the four slices are merged at the end
-// in fixed order (deterministic). S = QK^T and O += P V are m16n8k8 mma with 3xTF32. P reaches the PV product straight from the
-// S accumulator registers: the mma C layout holds keys (2t, 2t+1) of a thread where the A layout wants k-slots (t, t+4), so the
-// key order inside a k8 step is permuted (slot t = key 2t, slot t+4 = key 2t+1) and V rows are read in the same order.
-// K/V tiles stream through a 2-stage cp.async pipeline; shared memory = 5 x 32 x (HD+4) floats.
+// Forward attention for 128 query rows. Per 32-key tile a warp computes S (16 x 32) = Q K^T in four independent n-tile chains,
+// updates its online (max, sum) per row and rescales O (16 x HD, in registers), then O += P V with P taken straight from the S
+// accumulator registers.
 template <int HD>
 KVM_GPT_DEVI void attn_fwd_t(const AttnArgs& A) {
-    constexpr int LD = HD + 4, NT = HD / 8, TILE = 32 * LD;
-    float* Qs = reinterpret_cast<float*>(kvm_gpt_smem);
-    float* KV = Qs + TILE;   // [2 stages][K | V]
-    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3, wm = warp & 1, wk = warp >> 1, rb = wm * 16;
-    const int kvh = A.h / (A.H / A.Hkv), Tn = A.T;
-    const float* qb = A.q + (size_t)A.b * Tn * A.ldq + A.h * HD;
+    using M = AM<HD>;
+    constexpr int LD = M::LD, NT = M::NT, NC = M::NC;
+    float* KV = reinterpret_cast<float*>(kvm_gpt_smem);   // [3 stages][K | V]
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3;
+    const int kvh = A.h / (A.H / A.Hkv), Tn = A.T, wrow = A.i0 + warp * 16, rowA = wrow + g, rowB = rowA + 8;
     const float* kb_ = A.k + (size_t)A.b * Tn * A.ldk + kvh * HD;
     const float* vb_ = A.v + (size_t)A.b * Tn * A.ldv + kvh * HD;
-    const int nk = (min(A.i0 + 32, Tn) + 31) / 32;   // key tiles up to and including the diagonal one
+    const int nk = (min(A.i0 + KVM_GPT_ATTN_ROWS, Tn) + 31) / 32;   // key tiles up to and including the block's last diagonal one
     auto issue = [&](int it) {
-        float* st = KV + (it & 1) * 2 * TILE;
-        tile32_async<HD>(st, kb_, A.ldk, it * 32, Tn);
-        tile32_async<HD>(st + TILE, vb_, A.ldv, it * 32, Tn);
+        if (it < nk) {
+            float* st = KV + (it % M::NST) * M::STAGE;
+            tile32_async<HD>(st, kb_, A.ldk, it * 32, Tn);
+            tile32_async<HD>(st + M::TILE, vb_, A.ldv, it * 32, Tn);
+        }
+        cp_commit();   // empty groups too, so the wait counts stay uniform
     };
-    tile32_async<HD>(Qs, qb, A.ldq, A.i0, Tn);
-    issue(0);
-    cp_commit();
+    issue(0); issue(1);
+    float aq[NT][4];
+    load_a_raw<HD>(aq, A.q + (size_t)A.b * Tn * A.ldq + A.h * HD, A.ldq, rowA, Tn, t);
     float m0 = -INFINITY, m1 = -INFINITY, l0 = 0.f, l1 = 0.f, o[NT][4];
 #pragma unroll
     for (int n = 0; n < NT; n++)
 #pragma unroll
         for (int e = 0; e < 4; e++) o[n][e] = 0.f;
-    const int row0 = A.i0 + rb + g, row1 = row0 + 8;   // global query rows of this thread (c0,c1 | c2,c3)
-    // hd <= 64: the warp's Q fragments (hi and lo) live in registers for the whole task; hd = 128 re-reads and re-splits them.
-    constexpr bool QR = HD <= 64;
-    unsigned qhr[QR ? NT : 1][4], qlr[QR ? NT : 1][4];
+    const float c2 = A.scale * KVM_GPT_L2E;
     for (int it = 0; it < nk; it++) {
-        cp_wait<0>();
-        __syncthreads();   // tile `it` landed; every warp finished tile it-1, so the other stage is free
-        if (it + 1 < nk) issue(it + 1);
-        cp_commit();
-        const float* Ks = KV + (it & 1) * 2 * TILE; const float* Vs = Ks + TILE;
-        if (QR && it == 0) {
+        cp_wait<1>();
+        __syncthreads();   // tile `it` landed; every warp finished tile it-1, so the stage the next issue fills is free
+        issue(it + 2);
+        const int kbase = it * 32;
+        if (kbase > wrow + 15 || wrow >= Tn) continue;   // all of this tile's keys lie above all of the warp's rows (warp-uniform)
+        const float* Ks = KV + (it % M::NST) * M::STAGE; const float* Vs = Ks + M::TILE;
+        float s[4][4];
 #pragma unroll
-            for (int ks = 0; ks < NT; ks++) {
-                split_tf32(Qs[(rb + g) * LD + ks * 8 + t], qhr[ks][0], qlr[ks][0]);         split_tf32(Qs[(rb + g + 8) * LD + ks * 8 + t], qhr[ks][1], qlr[ks][1]);
-                split_tf32(Qs[(rb + g) * LD + ks * 8 + t + 4], qhr[ks][2], qlr[ks][2]);     split_tf32(Qs[(rb + g + 8) * LD + ks * 8 + t + 4], qhr[ks][3], qlr[ks][3]);
-            }
-        }
-        const int kbase = it * 32 + wk * 8;
-        if (kbase > A.i0 + rb + 15) continue;   // all of this warp's keys lie above all of its rows (warp-uniform)
-        float s[4] = {0.f, 0.f, 0.f, 0.f};
+        for (int kt = 0; kt < 4; kt++)
+#pragma unroll
+            for (int e = 0; e < 4; e++) s[kt][e] = 0.f;
 #pragma unroll
         for (int ks = 0; ks < NT; ks++) {
-            unsigned qh[4], ql[4], kh[2], kl[2];
-            if (QR) {
-#pragma unroll
-                for (int e = 0; e < 4; e++) { qh[e] = qhr[ks][e]; ql[e] = qlr[ks][e]; }
-            } else {
-                split_tf32(Qs[(rb + g) * LD + ks * 8 + t], qh[0], ql[0]);         split_tf32(Qs[(rb + g + 8) * LD + ks * 8 + t], qh[1], ql[1]);
-                split_tf32(Qs[(rb + g) * LD + ks * 8 + t + 4], qh[2], ql[2]);     split_tf32(Qs[(rb + g + 8) * LD + ks * 8 + t + 4], qh[3], ql[3]);
-            }
-            split_tf32(Ks[(wk * 8 + g) * LD + ks * 8 + t], kh[0], kl[0]);     split_tf32(Ks[(wk * 8 + g) * LD + ks * 8 + t + 4], kh[1], kl[1]);
-            mma3(s, qh, ql, kh[0], kh[1], kl[0], kl[1]);
+            unsigned ah[4], al[4], bh[4][2], bl[4][2];
+            split4(aq[ks], ah, al);
+            frag_nt<LD, 4>(bh, bl, Ks, 0, ks, g, t);
+            mma3n<4>(s, 0, ah, al, bh, bl);
         }
-        const int key0 = kbase + 2 * t;
-        float v[4] = {key0 <= row0 ? s[0] * A.scale : -INFINITY, key0 + 1 <= row0 ? s[1] * A.scale : -INFINITY,
-                      key0 <= row1 ? s[2] * A.scale : -INFINITY, key0 + 1 <= row1 ? s[3] * A.scale : -INFINITY};
-        float r0m = fmaxf(v[0], v[1]), r1m = fmaxf(v[2], v[3]);
+        float r0m = -INFINITY, r1m = -INFINITY;
+#pragma unroll
+        for (int kt = 0; kt < 4; kt++) {
+            const int key = kbase + kt * 8 + 2 * t;
+            s[kt][0] = key <= rowA ? s[kt][0] * c2 : -INFINITY;     s[kt][1] = key + 1 <= rowA ? s[kt][1] * c2 : -INFINITY;
+            s[kt][2] = key <= rowB ? s[kt][2] * c2 : -INFINITY;     s[kt][3] = key + 1 <= rowB ? s[kt][3] * c2 : -INFINITY;
+            r0m = fmaxf(r0m, fmaxf(s[kt][0], s[kt][1])); r1m = fmaxf(r1m, fmaxf(s[kt][2], s[kt][3]));
+        }
         r0m = fmaxf(r0m, __shfl_xor_sync(0xffffffffu, r0m, 1)); r0m = fmaxf(r0m, __shfl_xor_sync(0xffffffffu, r0m, 2));
         r1m = fmaxf(r1m, __shfl_xor_sync(0xffffffffu, r1m, 1)); r1m = fmaxf(r1m, __shfl_xor_sync(0xffffffffu, r1m, 2));
         const float mn0 = fmaxf(m0, r0m), mn1 = fmaxf(m1, r1m);
-        const float al0 = mn0 == -INFINITY ? 1.f : expf(m0 - mn0), al1 = mn1 == -INFINITY ? 1.f : expf(m1 - mn1);
-        float p[4];
-        p[0] = v[0] == -INFINITY ? 0.f : expf(v[0] - mn0); p[1] = v[1] == -INFINITY ? 0.f : expf(v[1] - mn0);
-        p[2] = v[2] == -INFINITY ? 0.f : expf(v[2] - mn1); p[3] = v[3] == -INFINITY ? 0.f : expf(v[3] - mn1);
-        l0 = l0 * al0 + (p[0] + p[1]); l1 = l1 * al1 + (p[2] + p[3]);
+        const float ms0 = mn0 == -INFINITY ? 0.f : mn0, ms1 = mn1 == -INFINITY ? 0.f : mn1;   // a fully masked row stays at p = 0, no NaN
+        const float al0 = ex2f(m0 - ms0), al1 = ex2f(m1 - ms1);
         m0 = mn0; m1 = mn1;
-        unsigned ph[4], pl[4];
-        split_tf32(p[0], ph[0], pl[0]); split_tf32(p[2], ph[1], pl[1]); split_tf32(p[1], ph[2], pl[2]); split_tf32(p[3], ph[3], pl[3]);
-        const float* v0r = Vs + (wk * 8 + 2 * t) * LD; const float* v1r = v0r + LD;
+        float ps0 = 0.f, ps1 = 0.f;
 #pragma unroll
-        for (int n = 0; n < NT; n++) {
-            unsigned vh[2], vl[2];
-            split_tf32(v0r[n * 8 + g], vh[0], vl[0]); split_tf32(v1r[n * 8 + g], vh[1], vl[1]);
-            o[n][0] *= al0; o[n][1] *= al0; o[n][2] *= al1; o[n][3] *= al1;
-            mma3(o[n], ph, pl, vh[0], vh[1], vl[0], vl[1]);
+        for (int kt = 0; kt < 4; kt++) {
+            s[kt][0] = ex2f(s[kt][0] - ms0); s[kt][1] = ex2f(s[kt][1] - ms0);
+            s[kt][2] = ex2f(s[kt][2] - ms1); s[kt][3] = ex2f(s[kt][3] - ms1);
+            ps0 += s[kt][0] + s[kt][1]; ps1 += s[kt][2] + s[kt][3];
+        }
+        l0 = l0 * al0 + ps0; l1 = l1 * al1 + ps1;
+#pragma unroll
+        for (int n = 0; n < NT; n++) { o[n][0] *= al0; o[n][1] *= al0; o[n][2] *= al1; o[n][3] *= al1; }
+#pragma unroll
+        for (int kt = 0; kt < 4; kt++) {
+            unsigned ph[4], pl[4];
+            acc_to_a(s[kt], ph, pl);
+#pragma unroll
+            for (int n0 = 0; n0 < NT; n0 += NC) {
+                unsigned bh[NC][2], bl[NC][2];
+                frag_kn<LD, NC>(bh, bl, Vs, kt, n0, g, t);
+                mma3n<NC>(o, n0, ph, pl, bh, bl);
+            }
         }
     }
+    cp_wait<0>();
+    if (wrow >= Tn) return;
     l0 += __shfl_xor_sync(0xffffffffu, l0, 1); l0 += __shfl_xor_sync(0xffffffffu, l0, 2);
     l1 += __shfl_xor_sync(0xffffffffu, l1, 1); l1 += __shfl_xor_sync(0xffffffffu, l1, 2);
-    cp_wait<0>();
-    __syncthreads();   // everyone is done with the K/V stages: reuse them for the four partial results
-    float* Ob = KV;                // [slice][32 rows][LD]
-    float* Mb = Qs; float* Lb = Qs + 128;   // [slice][32 rows] (Q is dead)
+    const float inv0 = l0 > 0.f ? 1.f / l0 : 0.f, inv1 = l1 > 0.f ? 1.f / l1 : 0.f;
+    float* oa = A.o + ((size_t)A.b * Tn + rowA) * A.ldo + A.h * HD + 2 * t;
+    float* ob = oa + (size_t)8 * A.ldo;
 #pragma unroll
     for (int n = 0; n < NT; n++) {
-        *reinterpret_cast<float2*>(Ob + (wk * 32 + rb + g) * LD + n * 8 + 2 * t) = make_float2(o[n][0], o[n][1]);
-        *reinterpret_cast<float2*>(Ob + (wk * 32 + rb + g + 8) * LD + n * 8 + 2 * t) = make_float2(o[n][2], o[n][3]);
+        if (rowA < Tn) { oa[n * 8] = o[n][0] * inv0; oa[n * 8 + 1] = o[n][1] * inv0; }
+        if (rowB < Tn) { ob[n * 8] = o[n][2] * inv1; ob[n * 8 + 1] = o[n][3] * inv1; }
     }
     if (t == 0) {
-        Mb[wk * 32 + rb + g] = m0; Mb[wk * 32 + rb + g + 8] = m1;
-        Lb[wk * 32 + rb + g] = l0; Lb[wk * 32 + rb + g + 8] = l1;
-    }
-    __syncthreads();
-    constexpr int CW = HD / 8;
-    const int r = threadIdx.x >> 3, c8 = threadIdx.x & 7, gq = A.i0 + r;
-    float M = -INFINITY, w[4], L = 0.f;
-#pragma unroll
-    for (int s = 0; s < 4; s++) M = fmaxf(M, Mb[s * 32 + r]);
-#pragma unroll
-    for (int s = 0; s < 4; s++) { w[s] = Mb[s * 32 + r] == -INFINITY ? 0.f : expf(Mb[s * 32 + r] - M); L += w[s] * Lb[s * 32 + r]; }
-    if (gq < Tn) {
-        const float inv = L > 0.f ? 1.f / L : 0.f;
-        float* orow = A.o + ((size_t)A.b * Tn + gq) * A.ldo + A.h * HD + c8 * CW;
-#pragma unroll
-        for (int c = 0; c < CW; c++) {
-            float acc = 0.f;
-#pragma unroll
-            for (int s = 0; s < 4; s++) acc += w[s] * Ob[(s * 32 + r) * LD + c8 * CW + c];
-            orow[c] = acc * inv;
-        }
-        if (c8 == 0) A.lsew[((size_t)A.b * A.H + A.h) * Tn + gq] = L > 0.f ? M + logf(L) : 0.f;
+        float* ls = A.lsew + ((size_t)A.b * A.H + A.h) * Tn;
+        if (rowA < Tn) ls[rowA] = l0 > 0.f ? (m0 + log2f(l0)) * KVM_GPT_LN2 : 0.f;
+        if (rowB < Tn) ls[rowB] = l1 > 0.f ? (m1 + log2f(l1)) * KVM_GPT_LN2 : 0.f;
     }
 }
 
 // dQ = scale * dS K,  dS = P (dP - delta),  P = exp(scale*QK^T - lse),  dP = dO V^T. Recomputes P from lse (no stored P). Same
-// warp decomposition and 3xTF32 mma as attn_fwd_t; the four key slices each accumulate a partial dQ, summed in fixed order.
-// Shared memory = 6 x 32 x (HD+4) floats (Q, dO, 2 stages of K|V).
+// warp ownership and pipeline as attn_fwd_t: Q and dO fragments in registers, K/V tiles streamed, dQ accumulated in registers.
 template <int HD>
 KVM_GPT_DEVI void attn_dq_t(const AttnArgs& A) {
-    constexpr int LD = HD + 4, NT = HD / 8, TILE = 32 * LD;
-    float* Qs = reinterpret_cast<float*>(kvm_gpt_smem);
-    float* Os = Qs + TILE; float* KV = Os + TILE;
-    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3, wm = warp & 1, wk = warp >> 1, rb = wm * 16;
-    const int kvh = A.h / (A.H / A.Hkv), Tn = A.T;
+    using M = AM<HD>;
+    constexpr int LD = M::LD, NT = M::NT, NC = M::NC;
+    float* KV = reinterpret_cast<float*>(kvm_gpt_smem);
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3;
+    const int kvh = A.h / (A.H / A.Hkv), Tn = A.T, wrow = A.i0 + warp * 16, rowA = wrow + g, rowB = rowA + 8;
     const float* kb_ = A.k + (size_t)A.b * Tn * A.ldk + kvh * HD;
     const float* vb_ = A.v + (size_t)A.b * Tn * A.ldv + kvh * HD;
-    const int nk = (min(A.i0 + 32, Tn) + 31) / 32;
+    const int nk = (min(A.i0 + KVM_GPT_ATTN_ROWS, Tn) + 31) / 32;
     auto issue = [&](int it) {
-        float* st = KV + (it & 1) * 2 * TILE;
-        tile32_async<HD>(st, kb_, A.ldk, it * 32, Tn);
-        tile32_async<HD>(st + TILE, vb_, A.ldv, it * 32, Tn);
+        if (it < nk) {
+            float* st = KV + (it % M::NST) * M::STAGE;
+            tile32_async<HD>(st, kb_, A.ldk, it * 32, Tn);
+            tile32_async<HD>(st + M::TILE, vb_, A.ldv, it * 32, Tn);
+        }
+        cp_commit();
     };
-    tile32_async<HD>(Qs, A.q + (size_t)A.b * Tn * A.ldq + A.h * HD, A.ldq, A.i0, Tn);
-    tile32_async<HD>(Os, A.dout + (size_t)A.b * Tn * A.ldo + A.h * HD, A.ldo, A.i0, Tn);
-    issue(0);
-    cp_commit();
-    const int row0 = A.i0 + rb + g, row1 = row0 + 8;
+    issue(0); issue(1);
+    float aq[NT][4], ad[NT][4];
+    load_a_raw<HD>(aq, A.q + (size_t)A.b * Tn * A.ldq + A.h * HD, A.ldq, rowA, Tn, t);
+    load_a_raw<HD>(ad, A.dout + (size_t)A.b * Tn * A.ldo + A.h * HD, A.ldo, rowA, Tn, t);
     const size_t hrow = ((size_t)A.b * A.H + A.h) * Tn;
-    const float lr0 = row0 < Tn ? A.lse[hrow + row0] : 0.f, lr1 = row1 < Tn ? A.lse[hrow + row1] : 0.f;
-    const float dr0 = row0 < Tn ? A.delta[hrow + row0] : 0.f, dr1 = row1 < Tn ? A.delta[hrow + row1] : 0.f;
+    const float lr0 = rowA < Tn ? A.lse[hrow + rowA] * KVM_GPT_L2E : 0.f, lr1 = rowB < Tn ? A.lse[hrow + rowB] * KVM_GPT_L2E : 0.f;
+    const float dr0 = rowA < Tn ? A.delta[hrow + rowA] : 0.f, dr1 = rowB < Tn ? A.delta[hrow + rowB] : 0.f;
     float acc[NT][4];
 #pragma unroll
     for (int n = 0; n < NT; n++)
 #pragma unroll
         for (int e = 0; e < 4; e++) acc[n][e] = 0.f;
+    const float c2 = A.scale * KVM_GPT_L2E;
     for (int it = 0; it < nk; it++) {
-        cp_wait<0>();
+        cp_wait<1>();
         __syncthreads();
-        if (it + 1 < nk) issue(it + 1);
-        cp_commit();
-        const float* Ks = KV + (it & 1) * 2 * TILE; const float* Vs = Ks + TILE;
-        const int kbase = it * 32 + wk * 8;
-        if (kbase > A.i0 + rb + 15) continue;
-        float s[4] = {0.f, 0.f, 0.f, 0.f}, dp[4] = {0.f, 0.f, 0.f, 0.f};
+        issue(it + 2);
+        const int kbase = it * 32;
+        if (kbase > wrow + 15 || wrow >= Tn) continue;
+        const float* Ks = KV + (it % M::NST) * M::STAGE; const float* Vs = Ks + M::TILE;
+        float s[4][4], dp[4][4];
+#pragma unroll
+        for (int kt = 0; kt < 4; kt++)
+#pragma unroll
+            for (int e = 0; e < 4; e++) { s[kt][e] = 0.f; dp[kt][e] = 0.f; }
 #pragma unroll
         for (int ks = 0; ks < NT; ks++) {
-            unsigned qh[4], ql[4], oh[4], ol[4], kh[2], kl[2], vh[2], vl[2];
-            const int c = ks * 8 + t;
-            split_tf32(Qs[(rb + g) * LD + c], qh[0], ql[0]);     split_tf32(Qs[(rb + g + 8) * LD + c], qh[1], ql[1]);
-            split_tf32(Qs[(rb + g) * LD + c + 4], qh[2], ql[2]); split_tf32(Qs[(rb + g + 8) * LD + c + 4], qh[3], ql[3]);
-            split_tf32(Os[(rb + g) * LD + c], oh[0], ol[0]);     split_tf32(Os[(rb + g + 8) * LD + c], oh[1], ol[1]);
-            split_tf32(Os[(rb + g) * LD + c + 4], oh[2], ol[2]); split_tf32(Os[(rb + g + 8) * LD + c + 4], oh[3], ol[3]);
-            split_tf32(Ks[(wk * 8 + g) * LD + c], kh[0], kl[0]); split_tf32(Ks[(wk * 8 + g) * LD + c + 4], kh[1], kl[1]);
-            split_tf32(Vs[(wk * 8 + g) * LD + c], vh[0], vl[0]); split_tf32(Vs[(wk * 8 + g) * LD + c + 4], vh[1], vl[1]);
-            mma3(s, qh, ql, kh[0], kh[1], kl[0], kl[1]);
-            mma3(dp, oh, ol, vh[0], vh[1], vl[0], vl[1]);
+            unsigned ah[4], al[4], bh[4][2], bl[4][2];
+            split4(aq[ks], ah, al);
+            frag_nt<LD, 4>(bh, bl, Ks, 0, ks, g, t);
+            mma3n<4>(s, 0, ah, al, bh, bl);
+            split4(ad[ks], ah, al);
+            frag_nt<LD, 4>(bh, bl, Vs, 0, ks, g, t);
+            mma3n<4>(dp, 0, ah, al, bh, bl);
         }
-        const int key0 = kbase + 2 * t;
-        float ds[4];
-        ds[0] = key0 <= row0 ? expf(s[0] * A.scale - lr0) * (dp[0] - dr0) : 0.f;
-        ds[1] = key0 + 1 <= row0 ? expf(s[1] * A.scale - lr0) * (dp[1] - dr0) : 0.f;
-        ds[2] = key0 <= row1 ? expf(s[2] * A.scale - lr1) * (dp[2] - dr1) : 0.f;
-        ds[3] = key0 + 1 <= row1 ? expf(s[3] * A.scale - lr1) * (dp[3] - dr1) : 0.f;
-        unsigned dh[4], dl[4];
-        split_tf32(ds[0], dh[0], dl[0]); split_tf32(ds[2], dh[1], dl[1]); split_tf32(ds[1], dh[2], dl[2]); split_tf32(ds[3], dh[3], dl[3]);
-        const float* k0r = Ks + (wk * 8 + 2 * t) * LD; const float* k1r = k0r + LD;
 #pragma unroll
-        for (int n = 0; n < NT; n++) {
-            unsigned bh[2], bl[2];
-            split_tf32(k0r[n * 8 + g], bh[0], bl[0]); split_tf32(k1r[n * 8 + g], bh[1], bl[1]);
-            mma3(acc[n], dh, dl, bh[0], bh[1], bl[0], bl[1]);
+        for (int kt = 0; kt < 4; kt++) {
+            const int key = kbase + kt * 8 + 2 * t;
+            s[kt][0] = p_of(s[kt][0], c2, lr0, key <= rowA) * (dp[kt][0] - dr0);
+            s[kt][1] = p_of(s[kt][1], c2, lr0, key + 1 <= rowA) * (dp[kt][1] - dr0);
+            s[kt][2] = p_of(s[kt][2], c2, lr1, key <= rowB) * (dp[kt][2] - dr1);
+            s[kt][3] = p_of(s[kt][3], c2, lr1, key + 1 <= rowB) * (dp[kt][3] - dr1);
+        }
+#pragma unroll
+        for (int kt = 0; kt < 4; kt++) {
+            unsigned dh[4], dl[4];
+            acc_to_a(s[kt], dh, dl);
+#pragma unroll
+            for (int n0 = 0; n0 < NT; n0 += NC) {
+                unsigned bh[NC][2], bl[NC][2];
+                frag_kn<LD, NC>(bh, bl, Ks, kt, n0, g, t);
+                mma3n<NC>(acc, n0, dh, dl, bh, bl);
+            }
         }
     }
     cp_wait<0>();
-    __syncthreads();
-    float* Ob = KV;   // [slice][32 rows][LD]
+    if (wrow >= Tn) return;
+    float* oa = A.dq + ((size_t)A.b * Tn + rowA) * A.lddq + A.h * HD + 2 * t;
+    float* ob = oa + (size_t)8 * A.lddq;
 #pragma unroll
     for (int n = 0; n < NT; n++) {
-        *reinterpret_cast<float2*>(Ob + (wk * 32 + rb + g) * LD + n * 8 + 2 * t) = make_float2(acc[n][0], acc[n][1]);
-        *reinterpret_cast<float2*>(Ob + (wk * 32 + rb + g + 8) * LD + n * 8 + 2 * t) = make_float2(acc[n][2], acc[n][3]);
-    }
-    __syncthreads();
-    constexpr int CW = HD / 8;
-    const int r = threadIdx.x >> 3, c8 = threadIdx.x & 7, gq = A.i0 + r;
-    if (gq < Tn) {
-        float* o = A.dq + ((size_t)A.b * Tn + gq) * A.lddq + A.h * HD + c8 * CW;
-#pragma unroll
-        for (int c = 0; c < CW; c++) {
-            const float* p = Ob + r * LD + c8 * CW + c;
-            o[c] = (((p[0] + p[32 * LD]) + p[64 * LD]) + p[96 * LD]) * A.scale;
-        }
+        if (rowA < Tn) { oa[n * 8] = acc[n][0] * A.scale; oa[n * 8 + 1] = acc[n][1] * A.scale; }
+        if (rowB < Tn) { ob[n * 8] = acc[n][2] * A.scale; ob[n * 8 + 1] = acc[n][3] * A.scale; }
     }
 }
 
 // dV = sum P^T dO, dK = scale * sum dS^T Q over the GQA group's heads and all queries >= the key block, fixed loop order.
-// The 32 keys stay resident; Q and dO tiles of (head, 32 queries) stream through a 2-stage cp.async pipeline. Warp (wm, wq): key
-// half wm (m16) x query slice wq (8 of the 32 queries). The products are computed transposed (S^T = K Q^T: keys are the mma rows),
-// so P^T and dS^T come out of the accumulators already in the A-operand layout of dV += P^T dO and dK += dS^T Q (query order
-// permuted inside a k8 step as in attn_fwd_t). Partials of the four query slices are summed in fixed order.
-// Shared memory = 6 x 32 x (HD+4) floats (K, V, 2 stages of Q|dO).
+// The warp's 16 keys stay resident as K and V fragments; Q and dO tiles of (head, 32 queries) stream through the pipeline. The
+// products are computed transposed (S^T = K Q^T: keys are the mma rows), so P^T and dS^T come out of the accumulators already in
+// the A-operand layout of dV += P^T dO and dK += dS^T Q (query order permuted inside a k8 step, as in attn_fwd_t).
 template <int HD>
 KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
-    constexpr int LD = HD + 4, NT = HD / 8, TILE = 32 * LD;
-    float* Ks = reinterpret_cast<float*>(kvm_gpt_smem);
-    float* Vs = Ks + TILE; float* QO = Vs + TILE;   // [2 stages][Q | dO]
-    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3, wm = warp & 1, wq = warp >> 1, rb = wm * 16;
-    const int Tn = A.T, G = A.H / A.Hkv, kvh = A.h, k0 = A.i0;
+    using M = AM<HD>;
+    constexpr int LD = M::LD, NT = M::NT, NC = M::NC;
+    float* QO = reinterpret_cast<float*>(kvm_gpt_smem);   // [3 stages][Q | dO]
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3;
+    const int Tn = A.T, G = A.H / A.Hkv, kvh = A.h, k0 = A.i0, wkey = k0 + warp * 16, keyA = wkey + g, keyB = keyA + 8;
     const int nq = (Tn - k0 + 31) / 32, nit = G * nq;
     auto issue = [&](int it) {
-        const int h = kvh * G + it / nq, q0 = k0 + (it % nq) * 32;
-        float* st = QO + (it & 1) * 2 * TILE;
-        tile32_async<HD>(st, A.q + (size_t)A.b * Tn * A.ldq + h * HD, A.ldq, q0, Tn);
-        tile32_async<HD>(st + TILE, A.dout + (size_t)A.b * Tn * A.ldo + h * HD, A.ldo, q0, Tn);
+        if (it < nit) {
+            const int h = kvh * G + it / nq, q0 = k0 + (it % nq) * 32;
+            float* st = QO + (it % M::NST) * M::STAGE;
+            tile32_async<HD>(st, A.q + (size_t)A.b * Tn * A.ldq + h * HD, A.ldq, q0, Tn);
+            tile32_async<HD>(st + M::TILE, A.dout + (size_t)A.b * Tn * A.ldo + h * HD, A.ldo, q0, Tn);
+        }
+        cp_commit();
     };
-    tile32_async<HD>(Ks, A.k + (size_t)A.b * Tn * A.ldk + kvh * HD, A.ldk, k0, Tn);
-    tile32_async<HD>(Vs, A.v + (size_t)A.b * Tn * A.ldv + kvh * HD, A.ldv, k0, Tn);
-    issue(0);
-    cp_commit();
+    issue(0); issue(1);
+    float ak[NT][4], av[NT][4];
+    load_a_raw<HD>(ak, A.k + (size_t)A.b * Tn * A.ldk + kvh * HD, A.ldk, keyA, Tn, t);
+    load_a_raw<HD>(av, A.v + (size_t)A.b * Tn * A.ldv + kvh * HD, A.ldv, keyA, Tn, t);
     float dk[NT][4], dv[NT][4];
 #pragma unroll
     for (int n = 0; n < NT; n++)
 #pragma unroll
         for (int e = 0; e < 4; e++) { dk[n][e] = 0.f; dv[n][e] = 0.f; }
-    const int key0 = k0 + rb + g, key1 = key0 + 8;   // keys of this thread's accumulator rows (c0,c1 | c2,c3)
+    const float c2 = A.scale * KVM_GPT_L2E;
     for (int it = 0; it < nit; it++) {
-        cp_wait<0>();
+        cp_wait<1>();
         __syncthreads();
-        if (it + 1 < nit) issue(it + 1);
-        cp_commit();
-        const int h = kvh * G + it / nq, q0 = k0 + (it % nq) * 32, qbase = q0 + wq * 8;
-        if (qbase + 7 < k0 + rb) continue;   // every query of this slice precedes every key of this half (warp-uniform)
-        const float* Qs = QO + (it & 1) * 2 * TILE; const float* Os = Qs + TILE;
+        issue(it + 2);
+        const int h = kvh * G + it / nq, q0 = k0 + (it % nq) * 32;
+        if (q0 + 31 < wkey || wkey >= Tn) continue;   // every query of this tile precedes every key of this warp (warp-uniform)
+        const float* Qs = QO + (it % M::NST) * M::STAGE; const float* Os = Qs + M::TILE;
         const size_t hrow = ((size_t)A.b * A.H + h) * Tn;
-        const int qa = qbase + 2 * t, qb = qa + 1;   // queries of this thread's accumulator columns
-        const float lra = qa < Tn ? A.lse[hrow + qa] : 0.f, lrb = qb < Tn ? A.lse[hrow + qb] : 0.f;
-        const float dra = qa < Tn ? A.delta[hrow + qa] : 0.f, drb = qb < Tn ? A.delta[hrow + qb] : 0.f;
-        float s[4] = {0.f, 0.f, 0.f, 0.f}, dp[4] = {0.f, 0.f, 0.f, 0.f};
+        float lq[4][2], dl_[4][2];   // lse (log2 units) and delta of the thread's accumulator columns: query q0 + kt*8 + 2t + {0,1}
+#pragma unroll
+        for (int kt = 0; kt < 4; kt++)
+#pragma unroll
+            for (int j = 0; j < 2; j++) {
+                const int q = q0 + kt * 8 + 2 * t + j;
+                lq[kt][j] = q < Tn ? A.lse[hrow + q] * KVM_GPT_L2E : 0.f;
+                dl_[kt][j] = q < Tn ? A.delta[hrow + q] : 0.f;
+            }
+        float s[4][4], dp[4][4];
+#pragma unroll
+        for (int kt = 0; kt < 4; kt++)
+#pragma unroll
+            for (int e = 0; e < 4; e++) { s[kt][e] = 0.f; dp[kt][e] = 0.f; }
 #pragma unroll
         for (int ks = 0; ks < NT; ks++) {
-            unsigned kh[4], kl[4], vh[4], vl[4], qh[2], ql[2], oh[2], ol[2];
-            const int c = ks * 8 + t;
-            split_tf32(Ks[(rb + g) * LD + c], kh[0], kl[0]);     split_tf32(Ks[(rb + g + 8) * LD + c], kh[1], kl[1]);
-            split_tf32(Ks[(rb + g) * LD + c + 4], kh[2], kl[2]); split_tf32(Ks[(rb + g + 8) * LD + c + 4], kh[3], kl[3]);
-            split_tf32(Vs[(rb + g) * LD + c], vh[0], vl[0]);     split_tf32(Vs[(rb + g + 8) * LD + c], vh[1], vl[1]);
-            split_tf32(Vs[(rb + g) * LD + c + 4], vh[2], vl[2]); split_tf32(Vs[(rb + g + 8) * LD + c + 4], vh[3], vl[3]);
-            split_tf32(Qs[(wq * 8 + g) * LD + c], qh[0], ql[0]); split_tf32(Qs[(wq * 8 + g) * LD + c + 4], qh[1], ql[1]);
-            split_tf32(Os[(wq * 8 + g) * LD + c], oh[0], ol[0]); split_tf32(Os[(wq * 8 + g) * LD + c + 4], oh[1], ol[1]);
-            mma3(s, kh, kl, qh[0], qh[1], ql[0], ql[1]);
-            mma3(dp, vh, vl, oh[0], oh[1], ol[0], ol[1]);
+            unsigned ah[4], al[4], bh[4][2], bl[4][2];
+            split4(ak[ks], ah, al);
+            frag_nt<LD, 4>(bh, bl, Qs, 0, ks, g, t);
+            mma3n<4>(s, 0, ah, al, bh, bl);
+            split4(av[ks], ah, al);
+            frag_nt<LD, 4>(bh, bl, Os, 0, ks, g, t);
+            mma3n<4>(dp, 0, ah, al, bh, bl);
         }
-        float p[4], ds[4];
-        p[0] = (qa < Tn && key0 <= qa) ? expf(s[0] * A.scale - lra) : 0.f;  p[1] = (qb < Tn && key0 <= qb) ? expf(s[1] * A.scale - lrb) : 0.f;
-        p[2] = (qa < Tn && key1 <= qa) ? expf(s[2] * A.scale - lra) : 0.f;  p[3] = (qb < Tn && key1 <= qb) ? expf(s[3] * A.scale - lrb) : 0.f;
-        ds[0] = p[0] * (dp[0] - dra); ds[1] = p[1] * (dp[1] - drb); ds[2] = p[2] * (dp[2] - dra); ds[3] = p[3] * (dp[3] - drb);
-        unsigned ph[4], pl[4], dh[4], dl[4];
-        split_tf32(p[0], ph[0], pl[0]); split_tf32(p[2], ph[1], pl[1]); split_tf32(p[1], ph[2], pl[2]); split_tf32(p[3], ph[3], pl[3]);
-        split_tf32(ds[0], dh[0], dl[0]); split_tf32(ds[2], dh[1], dl[1]); split_tf32(ds[1], dh[2], dl[2]); split_tf32(ds[3], dh[3], dl[3]);
-        const float* o0 = Os + (wq * 8 + 2 * t) * LD; const float* o1 = o0 + LD;
-        const float* q0r = Qs + (wq * 8 + 2 * t) * LD; const float* q1r = q0r + LD;
+        float p[4][4];
 #pragma unroll
-        for (int n = 0; n < NT; n++) {
-            unsigned bh[2], bl[2], ch[2], cl[2];
-            split_tf32(o0[n * 8 + g], bh[0], bl[0]); split_tf32(o1[n * 8 + g], bh[1], bl[1]);
-            split_tf32(q0r[n * 8 + g], ch[0], cl[0]); split_tf32(q1r[n * 8 + g], ch[1], cl[1]);
-            mma3(dv[n], ph, pl, bh[0], bh[1], bl[0], bl[1]);
-            mma3(dk[n], dh, dl, ch[0], ch[1], cl[0], cl[1]);
+        for (int kt = 0; kt < 4; kt++) {
+            const int qa = q0 + kt * 8 + 2 * t, qb = qa + 1;
+            p[kt][0] = p_of(s[kt][0], c2, lq[kt][0], qa < Tn && keyA <= qa);   p[kt][1] = p_of(s[kt][1], c2, lq[kt][1], qb < Tn && keyA <= qb);
+            p[kt][2] = p_of(s[kt][2], c2, lq[kt][0], qa < Tn && keyB <= qa);   p[kt][3] = p_of(s[kt][3], c2, lq[kt][1], qb < Tn && keyB <= qb);
+            s[kt][0] = p[kt][0] * (dp[kt][0] - dl_[kt][0]); s[kt][1] = p[kt][1] * (dp[kt][1] - dl_[kt][1]);
+            s[kt][2] = p[kt][2] * (dp[kt][2] - dl_[kt][0]); s[kt][3] = p[kt][3] * (dp[kt][3] - dl_[kt][1]);
+        }
+#pragma unroll
+        for (int kt = 0; kt < 4; kt++) {
+            unsigned ph[4], pl[4], dh[4], dl[4];
+            acc_to_a(p[kt], ph, pl);
+            acc_to_a(s[kt], dh, dl);
+#pragma unroll
+            for (int n0 = 0; n0 < NT; n0 += NC) {
+                unsigned bh[NC][2], bl[NC][2];
+                frag_kn<LD, NC>(bh, bl, Os, kt, n0, g, t);
+                mma3n<NC>(dv, n0, ph, pl, bh, bl);
+                frag_kn<LD, NC>(bh, bl, Qs, kt, n0, g, t);
+                mma3n<NC>(dk, n0, dh, dl, bh, bl);
+            }
         }
     }
     cp_wait<0>();
-    __syncthreads();
-    constexpr int CW = HD / 8;
-    const int r = threadIdx.x >> 3, c8 = threadIdx.x & 7, gk = k0 + r;
-    float* Ob = QO;   // [slice][32 keys][LD]; dV first, then dK
+    if (wkey >= Tn) return;
+    float* da = A.dk + ((size_t)A.b * Tn + keyA) * A.lddk + kvh * HD + 2 * t; float* db = da + (size_t)8 * A.lddk;
+    float* va = A.dv + ((size_t)A.b * Tn + keyA) * A.lddv + kvh * HD + 2 * t; float* vb = va + (size_t)8 * A.lddv;
 #pragma unroll
-    for (int pass = 0; pass < 2; pass++) {
-#pragma unroll
-        for (int n = 0; n < NT; n++) {
-            const float* a = pass ? dk[n] : dv[n];
-            *reinterpret_cast<float2*>(Ob + (wq * 32 + rb + g) * LD + n * 8 + 2 * t) = make_float2(a[0], a[1]);
-            *reinterpret_cast<float2*>(Ob + (wq * 32 + rb + g + 8) * LD + n * 8 + 2 * t) = make_float2(a[2], a[3]);
-        }
-        __syncthreads();
-        if (gk < Tn) {
-            const size_t row = (size_t)A.b * Tn + gk;
-            float* o = pass ? A.dk + row * A.lddk + kvh * HD + c8 * CW : A.dv + row * A.lddv + kvh * HD + c8 * CW;
-#pragma unroll
-            for (int c = 0; c < CW; c++) {
-                const float* p = Ob + r * LD + c8 * CW + c;
-                o[c] = (((p[0] + p[32 * LD]) + p[64 * LD]) + p[96 * LD]) * (pass ? A.scale : 1.f);
-            }
-        }
-        __syncthreads();
+    for (int n = 0; n < NT; n++) {
+        if (keyA < Tn) { da[n * 8] = dk[n][0] * A.scale; da[n * 8 + 1] = dk[n][1] * A.scale; va[n * 8] = dv[n][0]; va[n * 8 + 1] = dv[n][1]; }
+        if (keyB < Tn) { db[n * 8] = dk[n][2] * A.scale; db[n * 8 + 1] = dk[n][3] * A.scale; vb[n * 8] = dv[n][2]; vb[n * 8 + 1] = dv[n][3]; }
     }
 }
 

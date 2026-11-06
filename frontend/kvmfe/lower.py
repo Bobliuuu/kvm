@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from .ir import Builder, FrontendError, LogicalOp, Tensor
-from .opset import ATTN_Q, F_ACC, F_GELU, F_PRECISE, F_TA, F_TB, MM_TILE, op as device_op
+from .opset import ATTN_BLOCK, ATTN_Q, F_ACC, F_GELU, F_PRECISE, F_TA, F_TB, MM_TILE, op as device_op
 
 
 @dataclass(frozen=True)
@@ -270,7 +270,7 @@ def _(op, tc):
     for b in range(q.rows // T):
         for h in range(H):
             hc, kc = (h * hd, (h + 1) * hd), (h // G * hd, (h // G + 1) * hd)
-            for q0, q1 in _seq_blocks(T, ATTN_Q):
+            for q0, q1 in _seq_blocks(T, ATTN_BLOCK if causal else ATTN_Q):
                 R, KV = (b * T + q0, b * T + q1), _kv_rows(b, T, q1, causal)
                 yield _task('attn_fwd' if causal else 'attn_full_fwd',
                             [q.region(*R, *hc), k.region(*KV, *kc), v.region(*KV, *kc)],
@@ -292,7 +292,7 @@ def _(op, tc):
     for b in range(B):
         for h in range(H):
             hc, kc, bh = (h * hd, (h + 1) * hd), (h // G * hd, (h // G + 1) * hd), (b * H + h, b * H + h + 1)
-            for q0, q1 in _seq_blocks(T, ATTN_Q):
+            for q0, q1 in _seq_blocks(T, ATTN_BLOCK if causal else ATTN_Q):
                 R, KV = (b * T + q0, b * T + q1), _kv_rows(b, T, q1, causal)
                 yield _task('attn_bwd_dq' if causal else 'attn_full_bwd_dq',
                             [q.region(*R, *hc), k.region(*KV, *kc), v.region(*KV, *kc), do.region(*R, *hc),
@@ -302,7 +302,7 @@ def _(op, tc):
         for kvh in range(Hkv):                                    # dk/dv sum over the whole GQA group of query heads
             qc = (kvh * G * hd, (kvh + 1) * G * hd)
             kc, bh = (kvh * hd, (kvh + 1) * hd), (b * H + kvh * G, b * H + (kvh + 1) * G)
-            for k0, k1 in _seq_blocks(T, ATTN_Q):
+            for k0, k1 in _seq_blocks(T, ATTN_BLOCK if causal else ATTN_Q):
                 lo = k0 if causal else 0
                 Q, K = (b * T + lo, b * T + T), (b * T + k0, b * T + k1)
                 yield _task('attn_bwd_dkv' if causal else 'attn_full_bwd_dkv',

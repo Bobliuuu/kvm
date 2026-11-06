@@ -31,22 +31,24 @@ def main():
         kvm = {p.stem: load(p) for p in sorted(d.glob('kvm*.json'))}
         mode = info['mode']
         t_fb = max(info['flops_per_step'] / PEAK[mode], info['min_bytes_per_step'] / BW)
-        floor_kvm, floor_graph = max(t_fb, info['logical_depth'] * HOP_KVM), max(t_fb, info['logical_depth'] * HOP_GRAPH)
+        depth = info['logical_depth'] / info['steps']                 # the unrolled program chains all steps: per-step share
+        floor_kvm, floor_graph = max(t_fb, depth * HOP_KVM), max(t_fb, depth * HOP_GRAPH)
         tok = info['tokens_per_step']
         rows = [(m, r) for m, r in torch_r['modes'].items() if 'error' not in r] + [(k, v) for k, v in kvm.items()]
         ref = torch_r['modes']['eager']['losses']
         print(f'### {d.name}: {info["model"]["name"]}  {info["params"]:,} params, {tok} tokens/step, {info["steps"]} steps, {mode}, '
-              f'{info["tasks"]} tasks, depth {info["logical_depth"]} ops\n')
-        print(f'roofline per step: compute/bytes {t_fb * 1e6:.1f} us; chain at graph edge {floor_graph * 1e6:.1f} us; chain at executor hop '
-              f'{floor_kvm * 1e6:.1f} us\n')
-        print('| run | us/step best | median | worst | tokens/s (best) | vs eager | vs graph | x floor (own chain) | max loss diff vs eager |')
+              f'{info["tasks"]} tasks ({info["tasks"] / info["steps"]:.0f}/step), depth {depth:.0f} ops/step\n')
+        print(f'roofline per step: compute {info["flops_per_step"] / PEAK[mode] * 1e6:.1f} us, bytes {info["min_bytes_per_step"] / BW * 1e6:.1f} us, '
+              f'chain {depth * HOP_GRAPH * 1e6:.1f} us at a graph edge / {depth * HOP_KVM * 1e6:.1f} us at the executor hop; '
+              f'floor {floor_graph * 1e6:.1f} us (graph-style) / {floor_kvm * 1e6:.1f} us (executor)\n')
+        print('| run | us/step best | median | worst | tokens/s (best) | vs eager | vs graph | x floor (own chain) | loss diff vs eager: step 0 / worst step |')
         print('|---|---|---|---|---|---|---|---|---|')
         eb, gb = torch_r['modes']['eager']['ms_per_step_best'], torch_r['modes'].get('graph', {}).get('ms_per_step_best')
         for name, r in rows:
             b = r['ms_per_step_best']
             fl = floor_kvm if name.startswith('kvm') else floor_graph
             print(f'| {name} | {b * 1e3:.1f} | {r["ms_per_step_median"] * 1e3:.1f} | {r["ms_per_step_worst"] * 1e3:.1f} | {r["tokens_per_s_best"]:,.0f} | '
-                  f'{eb / b:.2f}x | {(gb / b if gb else float("nan")):.2f}x | {b * 1e-3 / fl:.1f} | {agree(r["losses"], ref):.1e} |')
+                  f'{eb / b:.2f}x | {(gb / b if gb else float("nan")):.2f}x | {b * 1e-3 / fl:.1f} | {agree(r["losses"][:1], ref[:1]):.1e} / {agree(r["losses"], ref):.1e} |')
         print()
         print('losses (eager): ' + ' '.join(f'{x:.4f}' for x in ref[:: max(1, len(ref) // 8)]) + f' ... {ref[-1]:.4f}\n')
 

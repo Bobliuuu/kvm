@@ -33,6 +33,7 @@ __global__ void run_frames(int n, const float* input, int n_input, float* state,
 
 #ifdef DOOM_PROF_READ
 extern "C" __device__ unsigned long long doom_prof[32];
+__global__ void read_prof(unsigned long long* out) { if (threadIdx.x < 32) out[threadIdx.x] = doom_prof[threadIdx.x]; }
 #endif
 __global__ void read_log(char* out, long* n) { for (int i = threadIdx.x; i < (int)sizeof doom_log; i += blockDim.x) out[i] = doom_log[i]; if (!threadIdx.x) *n = doom_log_n; }
 
@@ -61,7 +62,7 @@ int main(int argc, char** argv) {
   fprintf(stderr, "[doomtest] kernel %s in %.3f s (%.2f ms/frame incl. boot)\n--- engine log ---\n%s\n------------------\n", cudaGetErrorString(e), secs, secs * 1e3 / n, logbuf);
   if (e != cudaSuccess) return 1;
 #ifdef DOOM_PROF_READ
-  { unsigned long long p[32]; CK(cudaMemcpyFromSymbol(p, doom_prof, sizeof p)); const double nt = (double)p[11], mhz = 1410.0;   // A100 boost clock; cycles -> us
+  { unsigned long long p[32]; unsigned long long* dp; CK(cudaMalloc(&dp, sizeof p)); read_prof<<<1, 32>>>(dp); CK(cudaMemcpy(p, dp, sizeof p, cudaMemcpyDeviceToHost)); const double nt = (double)p[11], mhz = 1410.0;   // A100 boost clock; cycles -> us
     const char* nm[] = {"", "sim (G_BuildTiccmd, P_Ticker, sounds)", "D_Display before view (ST_Drawer, HU_Erase)", "R_SetupFrame+clear+BSP walk (incl. wall/column queueing, flush waits when queue fills)", "R_DrawPlanes (setup + flush)", "R_DrawMasked (sprites, setup + flush)", "HU_Drawer + rest of D_Display"};
     fprintf(stderr, "[prof] %d ticks after boot, per tick (us @%.0f MHz):\n", (int)nt, mhz);
     for (int i = 1; i <= 6; i++) fprintf(stderr, "[prof]   %-85s %8.1f\n", nm[i], p[i] / nt / mhz);

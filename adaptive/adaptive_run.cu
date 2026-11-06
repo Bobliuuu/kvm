@@ -88,9 +88,9 @@ static KvmBundle load_bundle(const std::string& dir, Pool& pool, int cls) {
 }
 
 // ------------------------------------------------------------ Doom
+static int g_doom_split = 0, g_doom_planes = 4;   // --doom-split T / --doom-planes P: split-tick Doom (doom_sim -> doom_planes -> T x doom_draw -> doom_post)
 #ifdef KVM_WITH_GAME
 struct DoomInst { int inst, input, state; std::vector<int> fb; };
-static int g_doom_split = 0, g_doom_planes = 4;   // --doom-split T / --doom-planes P: split-tick Doom (doom_sim -> doom_planes -> T x doom_draw -> doom_post)
 static KvmBundle doom_frame(const DoomInst& d, int f, int deadline_us, int extra_us, bool indexed) {
   KvmBundleBuilder bb; KvmTaskOpts o; o.workload = CLS_DOOM; o.deadline_us = deadline_us;
   const bool ix = indexed || g_doom_split > 0;

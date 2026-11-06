@@ -10,7 +10,7 @@ ROOT="$(cd "$DOOM_DIR/.." && pwd)"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"; LOGDIR="$ROOT/logs/$TS-doomexec"; mkdir -p "$LOGDIR"
 info "logs: $LOGDIR"
 rsync -az --delete --exclude .git --exclude 'doom/build' --exclude 'doom/third_party' --exclude logs "$ROOT/" "$KVM_HOST:kvm-doom-scratch/"
-ssh "$KVM_HOST" "ONLY='${ONLY:-}' FRAMES=${1:-700} CHAINS=${2:-300} ROUNDS=${3:-40} bash -s" <<'REMOTE' 2>&1 | tee "$LOGDIR/run.log"
+ssh "$KVM_HOST" "KVM_NO_LOCK='${KVM_NO_LOCK:-}' ONLY='${ONLY:-}' FRAMES=${1:-700} CHAINS=${2:-300} ROUNDS=${3:-40} bash -s" <<'REMOTE' 2>&1 | tee "$LOGDIR/run.log"
 set -euo pipefail
 cd ~/kvm-doom-scratch
 export NVCC=$(ls /usr/local/cuda*/bin/nvcc | tail -1)
@@ -23,13 +23,14 @@ if grep -q 'kKvmOps\[i\].id != i ||' include/kvm_exec.cuh; then
   echo "[doom] WORKAROUND: scratch copy of include/kvm_exec.cuh without the dense-id check"; sed -i 's/kKvmOps\[i\].id != i || //' include/kvm_exec.cuh
 fi
 $NVCC -O3 -arch=sm_80 -std=c++17 -rdc=true -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off doom/exec_main.cu doom/build/doom_dev.o -o doom/build/doom_exec 2>&1 | grep -v "cannot be statically determined" || true
+FLK="flock -w 900 $HOME/.gpu.lock"; [ -z "${KVM_NO_LOCK:-}" ] || FLK=""   # KVM_NO_LOCK=1: an outer hold exists
 run() {   # name, make_workload args; EXEC_ARGS = extra doom_exec options; ONLY="a b" restricts the scenarios
   local name="$1"; shift
   [ -z "${ONLY:-}" ] || [[ " $ONLY " == *" $name "* ]] || return 0
   python3 doom/make_workload.py --frames $FRAMES "$@" --out $OUT/$name.json
   python3 runtime/compile_workload.py $OUT/$name.json $OUT/$name.bundle 2>&1 | grep -v "no reference semantics"
   echo "=== scenario $name"
-  flock -w 900 ~/.gpu.lock timeout 600 doom/build/doom_exec $OUT/$name.bundle --wad doom/third_party/doom1.wad --out $OUT/$name --timeout-s 400 ${EXEC_ARGS:-}
+  ${FLK:-flock -w 900 $HOME/.gpu.lock} timeout 600 doom/build/doom_exec $OUT/$name.bundle --wad doom/third_party/doom1.wad --out $OUT/$name --timeout-s 400 ${EXEC_ARGS:-}
   python3 doom/compare.py $OUT/cpu $OUT/$name | head -3
   cat $OUT/$name/metrics.json
 }

@@ -1,0 +1,23 @@
+device: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz
+PASS  bench check: attn fwd B=4 T=1024 H=16 Hkv=16 hd=64 (b0,h0 all rows)  relerr 9.34e-07
+PASS  bench check: attn bwd dq B=4 T=1024 H=16 hd=64 (b0,h0)  relerr 3.20e-06
+PASS  bench check: attn bwd dk B=4 T=1024 H=16 hd=64 (b0,h0)  relerr 6.90e-06
+BENCH  attn fwd B=4 T=1024 H=16 Hkv=16 hd=64          full dispatch    0.716 ms [0.715..0.718]    11997.4 GFLOP/s  (61.5% of 19500)
+BENCH  attn fwd B=4 T=1024 H=16 Hkv=16 hd=64          single-op        0.714 ms [0.713..0.715]    12031.9 GFLOP/s  (61.7% of 19500)
+BENCH  attn bwd B=4 T=1024 H=16 Hkv=16 hd=64          full dispatch    2.308 ms [2.306..2.312]     9305.8 GFLOP/s  (47.7% of 19500)
+BENCH  attn bwd B=4 T=1024 H=16 Hkv=16 hd=64          single-op        2.308 ms [2.306..2.313]     9305.0 GFLOP/s  (47.7% of 19500)
+PASS  bench check: attn fwd B=4 T=2048 H=16 Hkv=4 hd=64 (b0,h0 all rows)  relerr 8.40e-07
+BENCH  attn fwd B=4 T=2048 H=16 Hkv=4 hd=64           full dispatch    2.641 ms [2.523..5.709]    13010.6 GFLOP/s  (66.7% of 19500)
+BENCH  attn fwd B=4 T=2048 H=16 Hkv=4 hd=64           single-op        2.530 ms [2.528..2.532]    13582.6 GFLOP/s  (69.7% of 19500)
+BENCH  attn bwd B=4 T=2048 H=16 Hkv=4 hd=64           full dispatch    6.938 ms [6.833..8.901]    12381.0 GFLOP/s  (63.5% of 19500)
+BENCH  attn bwd B=4 T=2048 H=16 Hkv=4 hd=64           single-op       15.551 ms [15.003..15.660]     5523.8 GFLOP/s  (28.3% of 19500)
+PASS  bench check: attn fwd B=2 T=2048 H=8 Hkv=8 hd=128 (b0,h0 all rows)  relerr 1.59e-06
+PASS  bench check: attn bwd dq B=2 T=2048 H=8 hd=128 (b0,h0)  relerr 6.93e-06
+PASS  bench check: attn bwd dk B=2 T=2048 H=8 hd=128 (b0,h0)  relerr 1.56e-05
+BENCH  attn fwd B=2 T=2048 H=8 Hkv=8 hd=128           full dispatch    2.230 ms [2.189..2.271]     7703.7 GFLOP/s  (39.5% of 19500)
+BENCH  attn fwd B=2 T=2048 H=8 Hkv=8 hd=128           single-op        2.167 ms [2.141..2.177]     7929.5 GFLOP/s  (40.7% of 19500)
+BENCH  attn bwd B=2 T=2048 H=8 Hkv=8 hd=128           full dispatch    6.481 ms [5.816..6.692]     6627.1 GFLOP/s  (34.0% of 19500)
+BENCH  attn bwd B=2 T=2048 H=8 Hkv=8 hd=128           single-op        3.101 ms [3.100..3.102]    13849.9 GFLOP/s  (71.0% of 19500)
+
+7 passed, 0 failed
+exit 0

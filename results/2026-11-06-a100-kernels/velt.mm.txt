@@ -1,0 +1,85 @@
+device: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz
+PASS  bench check: matmul TF32 NN 4096x4096x4096  400 sampled elements relerr 2.67e-04
+BENCH  matmul TF32 NN 4096x4096x4096                  full dispatch   11.661 ms [11.619..11.689]    11786.2 GFLOP/s  (7.6% of 156000)
+BENCH  matmul TF32 NN 4096x4096x4096                  single-op       11.694 ms [11.680..11.730]    11752.6 GFLOP/s  (7.5% of 156000)
+PASS  bench check: matmul TF32 TN 4096x4096x4096  400 sampled elements relerr 3.04e-04
+BENCH  matmul TF32 TN 4096x4096x4096                  full dispatch   11.699 ms [11.647..11.749]    11747.8 GFLOP/s  (7.5% of 156000)
+BENCH  matmul TF32 TN 4096x4096x4096                  single-op       11.667 ms [11.663..11.701]    11780.2 GFLOP/s  (7.6% of 156000)
+PASS  bench check: matmul TF32 NT 4096x4096x4096  400 sampled elements relerr 2.64e-04
+BENCH  matmul TF32 NT 4096x4096x4096                  full dispatch    4.967 ms [4.965..4.969]    27670.9 GFLOP/s  (17.7% of 156000)
+BENCH  matmul TF32 NT 4096x4096x4096                  single-op        5.039 ms [5.039..5.041]    27273.9 GFLOP/s  (17.5% of 156000)
+PASS  bench check: matmul 3xTF32 NN 4096x4096x4096  400 sampled elements relerr 1.78e-05
+BENCH  matmul 3xTF32 NN 4096x4096x4096                full dispatch    9.552 ms [6.776..15.476]    14388.7 GFLOP/s  (27.7% of 52000)
+BENCH  matmul 3xTF32 NN 4096x4096x4096                single-op        9.856 ms [7.128..15.903]    13945.3 GFLOP/s  (26.8% of 52000)
+PASS  bench check: matmul TF32 NN 2048x2048x2048  400 sampled elements relerr 2.51e-04
+BENCH  matmul TF32 NN 2048x2048x2048                  full dispatch    0.706 ms [0.706..0.706]    24325.4 GFLOP/s  (15.6% of 156000)
+BENCH  matmul TF32 NN 2048x2048x2048                  single-op        0.711 ms [0.711..0.711]    24174.7 GFLOP/s  (15.5% of 156000)
+PASS  bench check: matmul TF32 NN 8192x768x768  400 sampled elements relerr 2.44e-04
+BENCH  matmul TF32 NN 8192x768x768                    full dispatch    0.997 ms [0.979..1.008]     9696.1 GFLOP/s  (6.2% of 156000)
+BENCH  matmul TF32 NN 8192x768x768                    single-op        1.001 ms [0.980..1.014]     9650.5 GFLOP/s  (6.2% of 156000)
+PASS  bench check: matmul 128tile TF32 NN 4096x4096x4096  400 sampled elements relerr 2.67e-04
+BENCH  matmul 128tile TF32 NN 4096x4096x4096          full dispatch    8.128 ms [8.108..8.252]    16908.5 GFLOP/s  (10.8% of 156000)
+BENCH  matmul 128tile TF32 NN 4096x4096x4096          single-op        8.129 ms [8.063..8.216]    16906.8 GFLOP/s  (10.8% of 156000)
+PASS  bench check: matmul 128tile TF32 TN 4096x4096x4096  400 sampled elements relerr 3.03e-04
+BENCH  matmul 128tile TF32 TN 4096x4096x4096          full dispatch    7.820 ms [7.738..7.842]    17574.9 GFLOP/s  (11.3% of 156000)
+BENCH  matmul 128tile TF32 TN 4096x4096x4096          single-op        7.804 ms [7.681..7.826]    17611.1 GFLOP/s  (11.3% of 156000)
+PASS  bench check: matmul 128tile TF32 NT 4096x4096x4096  400 sampled elements relerr 2.65e-04
+BENCH  matmul 128tile TF32 NT 4096x4096x4096          full dispatch    3.258 ms [3.256..3.261]    42180.3 GFLOP/s  (27.0% of 156000)
+BENCH  matmul 128tile TF32 NT 4096x4096x4096          single-op        3.214 ms [3.213..3.216]    42758.1 GFLOP/s  (27.4% of 156000)
+PASS  bench check: matmul 128tile 3xTF32 NN 4096x4096x4096  400 sampled elements relerr 3.81e-05
+BENCH  matmul 128tile 3xTF32 NN 4096x4096x4096        full dispatch   12.631 ms [12.592..12.661]    10881.3 GFLOP/s  (20.9% of 52000)
+BENCH  matmul 128tile 3xTF32 NN 4096x4096x4096        single-op       12.624 ms [12.585..12.632]    10887.3 GFLOP/s  (20.9% of 52000)
+PASS  bench check: matmul 128tile TF32 NN 2048x2048x2048  400 sampled elements relerr 2.51e-04
+BENCH  matmul 128tile TF32 NN 2048x2048x2048          full dispatch    1.082 ms [1.074..1.082]    15883.0 GFLOP/s  (10.2% of 156000)
+BENCH  matmul 128tile TF32 NN 2048x2048x2048          single-op        1.081 ms [1.077..1.100]    15890.5 GFLOP/s  (10.2% of 156000)
+PASS  bench check: matmul 128tile TF32 NN 8192x768x768  400 sampled elements relerr 2.45e-04
+BENCH  matmul 128tile TF32 NN 8192x768x768            full dispatch    0.590 ms [0.590..0.591]    16386.8 GFLOP/s  (10.5% of 156000)
+BENCH  matmul 128tile TF32 NN 8192x768x768            single-op        0.586 ms [0.585..0.586]    16495.7 GFLOP/s  (10.6% of 156000)
+PASS  bench check: matmul 128tile TF32 NN 1024x1024x1024  400 sampled elements relerr 3.18e-04
+BENCH  matmul 128tile TF32 NN 1024x1024x1024          full dispatch    0.106 ms [0.105..0.106]    20340.9 GFLOP/s  (13.0% of 156000)
+BENCH  matmul 128tile TF32 NN 1024x1024x1024          single-op        0.106 ms [0.106..0.106]    20262.3 GFLOP/s  (13.0% of 156000)
+PASS  bench check: matmul 128tile TF32 NN 4096x3072x768  400 sampled elements relerr 2.24e-04
+BENCH  matmul 128tile TF32 NN 4096x3072x768           full dispatch    1.415 ms [1.409..1.447]    13662.2 GFLOP/s  (8.8% of 156000)
+BENCH  matmul 128tile TF32 NN 4096x3072x768           single-op        1.410 ms [1.399..1.424]    13706.9 GFLOP/s  (8.8% of 156000)
+PASS  bench check: matmul 128tile TF32 NN 512x512x512  400 sampled elements relerr 3.65e-04
+BENCH  matmul 128tile TF32 NN 512x512x512             full dispatch    0.065 ms [0.065..0.065]     4115.3 GFLOP/s  (2.6% of 156000)
+BENCH  matmul 128tile TF32 NN 512x512x512             single-op        0.065 ms [0.065..0.065]     4128.3 GFLOP/s  (2.6% of 156000)
+PASS  bench check: matmul 256x128tile TF32 NN 4096x4096x4096  400 sampled elements relerr 2.67e-04
+BENCH  matmul 256x128tile TF32 NN 4096x4096x4096      full dispatch    6.639 ms [6.633..6.685]    20700.5 GFLOP/s  (13.3% of 156000)
+BENCH  matmul 256x128tile TF32 NN 4096x4096x4096      single-op        6.640 ms [6.260..6.696]    20697.3 GFLOP/s  (13.3% of 156000)
+PASS  bench check: matmul 256x128tile TF32 TN 4096x4096x4096  400 sampled elements relerr 3.03e-04
+BENCH  matmul 256x128tile TF32 TN 4096x4096x4096      full dispatch    6.807 ms [6.752..6.922]    20189.8 GFLOP/s  (12.9% of 156000)
+BENCH  matmul 256x128tile TF32 TN 4096x4096x4096      single-op        3.024 ms [3.020..6.362]    45452.9 GFLOP/s  (29.1% of 156000)
+PASS  bench check: matmul 256x128tile TF32 NT 4096x4096x4096  400 sampled elements relerr 2.65e-04
+BENCH  matmul 256x128tile TF32 NT 4096x4096x4096      full dispatch    2.981 ms [2.979..4.268]    46110.3 GFLOP/s  (29.6% of 156000)
+BENCH  matmul 256x128tile TF32 NT 4096x4096x4096      single-op        6.595 ms [5.595..6.811]    20841.3 GFLOP/s  (13.4% of 156000)
+PASS  bench check: matmul 256x128tile 3xTF32 NN 4096x4096x4096  400 sampled elements relerr 3.81e-05
+BENCH  matmul 256x128tile 3xTF32 NN 4096x4096x4096    full dispatch   11.467 ms [11.457..11.574]    11985.5 GFLOP/s  (23.0% of 52000)
+BENCH  matmul 256x128tile 3xTF32 NN 4096x4096x4096    single-op       11.503 ms [11.402..11.520]    11948.5 GFLOP/s  (23.0% of 52000)
+PASS  bench check: matmul 256x128tile TF32 NN 2048x2048x2048  400 sampled elements relerr 2.51e-04
+BENCH  matmul 256x128tile TF32 NN 2048x2048x2048      full dispatch    1.464 ms [1.388..1.470]    11734.8 GFLOP/s  (7.5% of 156000)
+BENCH  matmul 256x128tile TF32 NN 2048x2048x2048      single-op        0.673 ms [0.672..0.675]    25516.7 GFLOP/s  (16.4% of 156000)
+PASS  bench check: matmul 256x128tile TF32 NN 8192x768x768  400 sampled elements relerr 2.45e-04
+BENCH  matmul 256x128tile TF32 NN 8192x768x768        full dispatch    0.355 ms [0.354..0.355]    27235.7 GFLOP/s  (17.5% of 156000)
+BENCH  matmul 256x128tile TF32 NN 8192x768x768        single-op        0.347 ms [0.346..0.348]    27871.2 GFLOP/s  (17.9% of 156000)
+PASS  bench check: matmul 256x128tile TF32 NN 1024x1024x1024  400 sampled elements relerr 3.18e-04
+BENCH  matmul 256x128tile TF32 NN 1024x1024x1024      full dispatch    0.170 ms [0.170..0.174]    12648.7 GFLOP/s  (8.1% of 156000)
+BENCH  matmul 256x128tile TF32 NN 1024x1024x1024      single-op        0.174 ms [0.173..0.174]    12372.6 GFLOP/s  (7.9% of 156000)
+PASS  bench check: matmul 256x128tile TF32 NN 4096x3072x768  400 sampled elements relerr 2.24e-04
+BENCH  matmul 256x128tile TF32 NN 4096x3072x768       full dispatch    1.482 ms [1.468..1.517]    13039.3 GFLOP/s  (8.4% of 156000)
+BENCH  matmul 256x128tile TF32 NN 4096x3072x768       single-op        1.487 ms [1.459..1.496]    12997.1 GFLOP/s  (8.3% of 156000)
+PASS  bench check: matmul 256x128tile TF32 NN 512x512x512  400 sampled elements relerr 3.65e-04
+BENCH  matmul 256x128tile TF32 NN 512x512x512         full dispatch    0.109 ms [0.109..0.109]     2463.8 GFLOP/s  (1.6% of 156000)
+BENCH  matmul 256x128tile TF32 NN 512x512x512         single-op        0.108 ms [0.108..0.109]     2475.4 GFLOP/s  (1.6% of 156000)
+PASS  bench check: matmul TF32 NN 1024x1024x1024  400 sampled elements relerr 3.17e-04
+BENCH  matmul TF32 NN 1024x1024x1024                  full dispatch    0.115 ms [0.115..0.115]    18624.8 GFLOP/s  (11.9% of 156000)
+BENCH  matmul TF32 NN 1024x1024x1024                  single-op        0.115 ms [0.115..0.116]    18608.3 GFLOP/s  (11.9% of 156000)
+PASS  bench check: matmul TF32 NN 4096x3072x768  400 sampled elements relerr 2.24e-04
+BENCH  matmul TF32 NN 4096x3072x768                   full dispatch    1.986 ms [1.939..2.005]     9730.6 GFLOP/s  (6.2% of 156000)
+BENCH  matmul TF32 NN 4096x3072x768                   single-op        1.954 ms [1.908..1.996]     9889.1 GFLOP/s  (6.3% of 156000)
+PASS  bench check: matmul TF32 NN 512x512x512  400 sampled elements relerr 3.65e-04
+BENCH  matmul TF32 NN 512x512x512                     full dispatch    0.025 ms [0.025..0.025]    10656.3 GFLOP/s  (6.8% of 156000)
+BENCH  matmul TF32 NN 512x512x512                     single-op        0.025 ms [0.025..0.025]    10743.6 GFLOP/s  (6.9% of 156000)
+
+27 passed, 0 failed
+exit 0

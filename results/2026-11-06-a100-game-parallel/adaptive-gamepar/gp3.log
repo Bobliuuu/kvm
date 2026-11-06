@@ -1,0 +1,26 @@
+# batch gamepar @ 2026-11-06T09:51:59Z  commit ?  reps 1 dur 24  NVIDIA A100-SXM4-40GB, 580.105.08
+=== 09:51:59 gp_global_split0 rep3: adaptive_run scn --out out/gp3/gp_global_split0/rep3 --sched global --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 0 past their deadline, frame time p50/p99/max 9.0/19.0/21.1 ms | serve: 1703 done, p50/p99 151.5/156.1 ms, 469 dropped | train: 1271 steps (52.88/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 09:52:27 gp_global_split8 rep3: adaptive_run scn --out out/gp3/gp_global_split8/rep3 --sched global --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000 --doom-split 8 --doom-planes 4
+[kvm_exec][I] doom: 840 frames, 0 past their deadline, frame time p50/p99/max 8.7/18.8/20.6 ms | serve: 1702 done, p50/p99 151.5/157.1 ms, 470 dropped | train: 1269 steps (52.82/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 09:52:56 gp_fixed_prio_split0 rep3: adaptive_run scn --out out/gp3/gp_fixed_prio_split0/rep3 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 0 past their deadline, frame time p50/p99/max 8.5/17.9/19.2 ms | serve: 2172 done, p50/p99 12.1/29.5 ms, 0 dropped | train: 1118 steps (46.54/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 09:53:25 gp_fixed_prio_split8 rep3: adaptive_run scn --out out/gp3/gp_fixed_prio_split8/rep3 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000 --doom-split 8 --doom-planes 4
+[kvm_exec][I] doom: 840 frames, 0 past their deadline, frame time p50/p99/max 7.2/16.9/19.9 ms | serve: 2172 done, p50/p99 12.1/29.6 ms, 0 dropped | train: 1118 steps (46.51/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 09:53:54 gp_adaptive_split0 rep3: adaptive_run scn --out out/gp3/gp_adaptive_split0/rep3 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 0 past their deadline, frame time p50/p99/max 8.7/18.3/19.7 ms | serve: 2172 done, p50/p99 16.2/50.9 ms, 0 dropped | train: 1118 steps (46.53/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+=== 09:54:23 gp_adaptive_split8 rep3: adaptive_run scn --out out/gp3/gp_adaptive_split8/rep3 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000 --doom-split 8 --doom-planes 4
+[kvm_exec][I] doom: 840 frames, 0 past their deadline, frame time p50/p99/max 7.4/16.9/18.9 ms | serve: 2172 done, p50/p99 16.2/51.3 ms, 0 dropped | train: 1116 steps (46.44/s)
+  doom0: compared 841 frames: raw-identical 841/841, fingerprint-identical 841/841, state-identical 841/841
+  exit 0, oracle PASS
+# batch gamepar done 2026-11-06T09:54:54Z

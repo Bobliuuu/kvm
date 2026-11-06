@@ -18,7 +18,7 @@ from .ir import FrontendError
 
 MM_TILE = 64        # matmul_tile computes a 64 x 64 output tile (flags: 1 transA, 2 transB, 4 accumulate, 8 gelu)
 ATTN_Q = 32         # attn_fwd / attn_bwd_dq: 32 query rows per task; attn_bwd_dkv: 32 keys per task
-F_TA, F_TB, F_ACC, F_GELU, F_PRECISE = 1, 2, 4, 8, 16
+F_TA, F_TB, F_ACC, F_GELU, F_PRECISE, F_BIG, F_HUGE = 1, 2, 4, 8, 16, 32, 64
 
 
 class Buf:
@@ -127,8 +127,14 @@ def _argmax(b, a):
 
 
 # ------------------------------------------------------------------------------------------------ matmul
+def mm_tile_dims(flags):
+    """Output tile (rows, cols) of matmul_tile for its flags: 64x64; F_BIG 128x128; F_HUGE 256x128 (the epilogue variants stay 64)."""
+    return (256, 128) if flags & F_HUGE else (128, 128) if flags & F_BIG else (MM_TILE, MM_TILE)
+
+
 def _mm_flops(a):
-    return 2.0 * max(0, min(MM_TILE, a['M'] - a['m0'])) * max(0, min(MM_TILE, a['N'] - a['n0'])) * a['K']
+    tm, tn = mm_tile_dims(a['flags'])
+    return 2.0 * max(0, min(tm, a['M'] - a['m0'])) * max(0, min(tn, a['N'] - a['n0'])) * a['K']
 
 
 def _mm_acc(A, B, fl, m0, m1, n0, n1, K):
@@ -153,7 +159,8 @@ def _mm_acc(A, B, fl, m0, m1, n0, n1, K):
 def _matmul_tile(b, a):
     M, N, K, fl = a['M'], a['N'], a['K'], a['flags']
     A, B, out = b['a'], b['b'], b['out']
-    m1, n1 = min(a['m0'] + MM_TILE, M), min(a['n0'] + MM_TILE, N)
+    tm, tn = mm_tile_dims(fl)
+    m1, n1 = min(a['m0'] + tm, M), min(a['n0'] + tn, N)
     prod = _mm_acc(A, B, fl, a['m0'], m1, a['n0'], n1, K)
     for i, m in enumerate(range(a['m0'], m1)):
         vals = []

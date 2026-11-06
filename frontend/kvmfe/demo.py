@@ -30,7 +30,8 @@ from .lower import Tiling
 from .nn import GPT, ModelConfig
 from .pipeline import compile_training
 from .serve import ServeRequest, compile_serving
-from .train import TrainConfig, weights_version
+from .optim import OptimConfig
+from .train import Schedule, TrainConfig, weights_version
 
 MANIFEST_VERSION = 1
 F_PRECISE = 16                 # matmul_tile flag: 3xTF32 (fp32 accuracy); the default is 1xTF32 (see tests/gptdiff)
@@ -152,6 +153,13 @@ def make_precise(spec):
     return spec
 
 
+def train_config(args, steps, total, first_step):
+    """AdamW lr (--lr) and a device-side linear warmup (--warmup steps, then constant); the defaults keep the library defaults."""
+    optim = OptimConfig(lr=args.lr) if args.lr else OptimConfig()
+    return TrainConfig(steps=steps, total_steps=total, first_step=first_step, optim=optim,
+                       schedule=Schedule('const', warmup=args.warmup) if args.warmup else None)
+
+
 def plan_train(cfg, tiling, args):
     n, s = args.train_steps, args.window or args.train_steps
     if s > n:
@@ -161,7 +169,7 @@ def plan_train(cfg, tiling, args):
     for i, (start, steps) in enumerate(segs):
         key = 'train' if steps == s else 'train_tail'
         if key not in workloads:
-            c = compile_training(cfg, TrainConfig(steps=steps, total_steps=n, first_step=start), tiling, args.reuse, args.gap)
+            c = compile_training(cfg, train_config(args, steps, n, start), tiling, args.reuse, args.gap)
             workloads[key] = Workload(key, 'train', make_precise(c.spec) if args.precise else c.spec, c.low.data_files, len(c.low.tasks), c.low.edges)
         admissions.append(dict(name=f'train_w{i}', workload=key, steps=[start, start + steps],
                                after_bundles=[f'train_w{i - 1}'] if i else [], when=[], at_us=0 if i == 0 else None,
@@ -175,6 +183,8 @@ def main(argv=None):
     p.add_argument('--all', action='store_true', help='train + serving + game with defaults (serve every 2 steps, 8 frames)')
     p.add_argument('--train-steps', type=int, default=4)
     p.add_argument('--window', type=int, default=0, help='steps per training bundle (default: serve-every, else all steps)')
+    p.add_argument('--lr', type=float, default=None, help='AdamW learning rate (default: the library default, 3e-3)')
+    p.add_argument('--warmup', type=int, default=0, help='device-side linear LR warmup steps, then constant (0: none)')
     p.add_argument('--serve-every', type=int, default=None, help='one serving request per K steps, K a multiple of the window (0: none)')
     p.add_argument('--serve-policy', choices=['exact', 'at_least'], default='at_least',
                    help='exact makes the next training window wait for the request (a host-level barrier)')

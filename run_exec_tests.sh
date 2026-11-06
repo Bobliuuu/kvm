@@ -13,7 +13,7 @@ HOST="${KVM_HOST:?set KVM_HOST=user@host (an environment variable, never a commi
 ARCH="${KVM_ARCH:-sm_80}"
 SSH="ssh -o StrictHostKeyChecking=no -o BatchMode=yes ${KVM_KEY:+-i $KVM_KEY}"
 DIR="$(cd "$(dirname "$0")" && pwd)"
-MODE=""; case "${1:-}" in --negative|--negative-park|--sanitize|--bench|--litmus|--fuzz|--gpt) MODE="$1"; shift;; esac
+MODE=""; case "${1:-}" in --negative|--negative-park|--negative-lat|--sanitize|--bench|--litmus|--fuzz|--gpt) MODE="$1"; shift;; esac
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"; WHAT="exec${MODE:+${MODE//--/-}}"
 LOG="$DIR/logs/$STAMP-$WHAT"; mkdir -p "$LOG"
 REMOTE="${KVM_REMOTE:-~/kvm-exec-scratch}"
@@ -23,6 +23,7 @@ rsync -az -e "$SSH" --delete --include 'include/***' --include 'tests/' --includ
 case "$MODE" in
   --negative) FLAGS="-DKVM_BREAK_FENCE"; RUN="./test_exec --expect-fail versions";;
   --negative-park) FLAGS="-DKVM_BREAK_PARK_RECHECK"; RUN="./test_exec --expect-fail litmus";;
+  --negative-lat) FLAGS="-DKVM_BREAK_LAT_SLICE"; RUN="./test_exec --expect-fail latlane";;
   --sanitize) FLAGS=""; RUN="";;
   --bench)    FLAGS=""; RUN="./test_exec bench";;
   *)          FLAGS=""; RUN="./test_exec ${*:-}";;

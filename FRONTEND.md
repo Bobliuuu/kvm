@@ -54,7 +54,7 @@ python3 -I -m unittest discover -s tests/frontend      # from the repo root
 | Generic training (`generic.py`): any traced module + `CrossEntropy`/`MSE` + `ArrayData`/`GeneratedData` + SGD/AdamW | implemented + CPU-tested: 4 never-shipped models (regression MLP, residual RMSNorm MLP, 1-D CNN, transformer encoder) vs numpy float64 oracles. **A100 run NOT yet done** (`tests/generic/run.sh`: bundles vs CPU golden at 3xTF32, 2 MANIFEST demos through `demo/kvm_run`; the box's GPU lock was held by an idle session for 3+ h); until it passes, the MSE device path (`scale_flat`/`row_dot`/`colsum`) and the gather-based conv are verified only against the CPU reference | `tests/frontend/test_generic.py`, `tests/generic/` |
 | Windows / MANIFEST runner | CPU reference runner only; the GPU CLI runs single bundles | `kvmfe.run_manifest`, `results/2026-11-04-a100-exec-recycling` |
 | `gpt_162m` | code-only: compiled (318k-task template) and inspected, never run on a GPU | this file |
-| Not built | dynamic shapes, data-dependent control flow, MoE serving, dropout, fp16, a frontend switch for 3xTF32, 128x128 / 256x128 matmul tile stepping in the lowering (the device tiles exist) | below, `results/2026-11-04-a100-ops-perf` |
+| Not built | dynamic shapes, MoE serving, dropout, fp16, a frontend switch for 3xTF32, 128x128 / 256x128 matmul tile stepping in the lowering (the device tiles exist) | below, `results/2026-11-04-a100-ops-perf` |
 | Open test item | `norm_bwd_params` wants >= 64 tasks (16 columns each) to use the GPU; the partition here does not yet give that | `results/2026-11-04-a100-ops-perf` |
 
 Run the frontend tests: `python3 -I -m unittest discover -s tests/frontend` (repo root). Everything else: [RUNNING_TESTS.md](RUNNING_TESTS.md).
@@ -195,6 +195,26 @@ a dependency hop through global memory, per AGENTS.md); opaque engine ops use th
 measurement). Critical path = longest path with these times. "List schedule" = greedy simulation on 108 workers. It ranks
 designs; it does not predict a GPU run, and it ignores tensor-core speed-ups and L2 locality.
 
+## Data-dependent control (predicated ops, branches, bounded while loops)
+
+```python
+fl = b.flags('p', 3)                                   # persistent i32 predicate elements
+p = b.pred_cmp(x, '>', 0.0, index=0)                   # p = (x[0] > 0), computed on the device; AND/OR via prev=, comb='and'|'or'
+with b.when(p):            b.scale_scalar(y, 2.0)      # branch arms: exactly one runs; the task graph is the same for every input
+with b.when(p, negate=True): b.scale_scalar(y, -1.0)
+flags = b.while_loop(16, lambda b: (x, 0, '>', 1.0),   # while x[0] > 1.0 (device-evaluated), at most 16 iterations
+                     lambda b, i: b.scale_scalar(x, 0.5))
+```
+
+`when` stamps every op emitted inside with a predicate; lowering turns each tile task into a predicated task (FRAMEWORK.md "Data-dependent
+control"), adds the predicate element as a read and the op's outputs as reads too (a skipped task leaves them unchanged, so they are
+read-modify-write for dataflow). `while_loop` unrolls the bound, and returns the `i32 1 x (max_iters+1)` flags tensor (`flags[i]` = iteration
+i ran; `flags[max_iters]` = cap hit with the condition still true). Predicated ops are not differentiable (clear `FrontendError`), are not fused,
+cannot nest, and write nothing when skipped: use persistent (`state`) tensors or in-place updates for what the region changes, since a fresh
+activation tensor of a skipped op holds whatever its (possibly reused) buffer held. Checks: `tests/frontend/test_control.py` (CPU, program
+and random dataflow order, compiler ABI encoding, CPU runtime VM) and `tests/ctl/run.sh` (A100, bundles with data-dependent trip counts
+and branches against the CPU VM golden, executor skip counts).
+
 ## Windows, loops and the manifest
 
 Everything that differs between training steps lives in device buffers: `select_window` picks step s's tokens from a stream
@@ -237,8 +257,8 @@ curve against the independent float64 oracle (rel. 2e-5) and served tokens again
 * **Static shapes and a static DAG, by design.** A program is a fixed set of tasks: no dynamic shapes, no data-dependent control flow
   at the frontend level. What is data-dependent lives in buffers: `select_window` (batch picked by the step counter), `lens` in decode,
   `moe_route` (expert choice and capacity are computed on the device, but the expert matmuls always run `capacity` rows, padded with
-  zero rows), `lr_schedule`. Loops are unrolled or re-admitted as windows; there is no `while`/`if` over tensor values, and no
-  early-exit decoding.
+  zero rows), `lr_schedule`. Loops are unrolled or re-admitted as windows; a `while`/`if` over device values is predicated (see
+  "Data-dependent control"), but there is no early-exit decoding.
 * MoE routing ops are single-task over all N tokens of a microbatch (O(N*E*k) serial work, fine up to a few thousand tokens); dropped tokens
   (over capacity) get no expert and keep only the residual, as in Switch Transformer.
 * bf16 is *emulated storage*: values are bfloat16-representable but live in fp32 buffers (ABI v2 dtype ids unchanged). No fp16, no dynamic

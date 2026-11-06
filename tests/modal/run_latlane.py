@@ -45,7 +45,7 @@ def exec_job(commit: str = ""):
     sh("./test_exec_core 2>&1 | grep -vE 'ring wrap|ring full|^\\[kvm_exec\\]' | tail -80", L)
     sh("./test_exec_mut --expect-fail latlane 2>&1 | grep -vE 'ring wrap|ring full|^\\[kvm_exec\\]' | tail -30", L)
     for t in ["memcheck", "racecheck", "synccheck"]:
-        sh(f"compute-sanitizer --tool {t} --error-exitcode 9 ./test_exec_core smoke latlane 2>&1 | grep -vE 'ring wrap|ring full|^\\[kvm_exec\\]' | tail -30", L)
+        sh(f"KVM_SANITIZED=1 compute-sanitizer --tool {t} --error-exitcode 9 ./test_exec_core smoke latlane 2>&1 | grep -vE 'ring wrap|ring full|^\\[kvm_exec\\]' | tail -30", L)
     vol.commit()
 
 @app.function(gpu="A100-40GB", timeout=8 * 3600, cpu=16, volumes={"/out": vol})

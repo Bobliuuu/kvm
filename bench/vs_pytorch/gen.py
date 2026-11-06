@@ -60,8 +60,6 @@ def main():
     from kvmfe.train import TrainConfig
     cfg = ModelConfig.load(a.model)
     c = compile_training(cfg, TrainConfig(steps=a.steps), Tiling.preset(a.tiling), fuse=a.fuse)
-    if c.low.data_files:
-        raise SystemExit('gen: file-initialised buffers are not supported')
     if a.mode == 'precise':
         for g in c.spec['graphs']:
             for t in g['tasks']:
@@ -69,6 +67,9 @@ def main():
                     t['args']['flags'] |= F_PRECISE
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
+    for rel, data in c.low.data_files.items():              # token streams above 4096 values travel as files next to the workload
+        (out / rel).parent.mkdir(parents=True, exist_ok=True)
+        (out / rel).write_bytes(data)
     (out / 'workload.json').write_text(json.dumps(c.spec, separators=(',', ':')))
     subprocess.run([sys.executable, str(ROOT / 'runtime/compile_workload.py'), str(out / 'workload.json'), str(out / 'bundle')], check=True)
     params = cfg.params

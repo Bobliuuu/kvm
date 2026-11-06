@@ -46,20 +46,24 @@ static int g_fail = 0;
 
 static void run(int M, int N, int K, int ta, int tb, Which which, const char* tag) {
     uint16_t *A, *B, *Cb; float *Cf, *R;
-    CK(cudaMalloc(&A, (size_t)M * K * 2)); CK(cudaMalloc(&B, (size_t)K * N * 2)); CK(cudaMalloc(&Cb, (size_t)M * N * 2 + 16)); CK(cudaMalloc(&Cf, (size_t)M * N * 4 + 16)); CK(cudaMalloc(&R, (size_t)M * N * 4));
+    const int pad = getenv("MMA_LDPAD") ? atoi(getenv("MMA_LDPAD")) : 0;   // diagnostic: leading dimension = extent + pad elements
+    const int lda_ = (ta ? M : K) + pad, ldb_ = (tb ? K : N) + pad;
+    CK(cudaMalloc(&A, (size_t)(ta ? K : M) * lda_ * 2)); CK(cudaMalloc(&B, (size_t)(tb ? N : K) * ldb_ * 2)); CK(cudaMalloc(&Cb, (size_t)M * N * 2 + 16)); CK(cudaMalloc(&Cf, (size_t)M * N * 4 + 16)); CK(cudaMalloc(&R, (size_t)M * N * 4));
     CK(cudaMemset(Cb, 0, (size_t)M * N * 2)); CK(cudaMemset(Cf, 0, (size_t)M * N * 4));
-    fill_bf16<<<1024, 256>>>(A, (size_t)M * K, 1); fill_bf16<<<1024, 256>>>(B, (size_t)K * N, 2);
+    fill_bf16<<<1024, 256>>>(A, (size_t)(ta ? K : M) * lda_, 1); fill_bf16<<<1024, 256>>>(B, (size_t)(tb ? N : K) * ldb_, 2);
     KvmBuf tab[3]{};
     tab[0].p = A; tab[0].rows = ta ? K : M; tab[0].cols = ta ? M : K; tab[0].dtype = 2;
     tab[1].p = B; tab[1].rows = tb ? N : K; tab[1].cols = tb ? K : N; tab[1].dtype = 2;
     tab[2].p = g_bf_out ? (void*)Cb : (void*)Cf; tab[2].rows = M; tab[2].cols = N; tab[2].dtype = g_bf_out ? 2 : 0;
-    for (auto& b : tab) b.ld = b.cols;
+    tab[0].ld = lda_; tab[1].ld = ldb_; tab[2].ld = tab[2].cols;
     KvmBuf* tab_d; CK(cudaMalloc(&tab_d, sizeof tab)); CK(cudaMemcpy(tab_d, tab, sizeof tab, cudaMemcpyHostToDevice));
     int32_t* err; CK(cudaMalloc(&err, 4)); CK(cudaMemset(err, 0, 4));
     const int bm = which == MMA ? KVM_MMA_BM : 64, bn = which == MMA ? KVM_MMA_BN : 64, fl = ta | (tb << 1);
     const float alpha = 1.f; int32_t afw; memcpy(&afw, &alpha, 4);
     std::vector<int32_t> w; int nt = 0;
     for (int m0 = 0; m0 < M; m0 += bm) for (int n0 = 0; n0 < N; n0 += bn) { int32_t a[13] = {0, 1, 2, -1, -1, -1, m0, n0, M, N, K, fl, afw}; w.insert(w.end(), a, a + 13); nt++; }
+    const bool same = getenv("MMA_SAME") != nullptr;   // diagnostic: every CTA computes tile (0,0): data stays in L2, wave quantisation vanishes
+    if (same) { const int total = 108 * 6; w.clear(); nt = total; for (int i = 0; i < total; i++) { int32_t a[13] = {0, 1, 2, -1, -1, -1, 0, 0, M, N, K, fl, afw}; w.insert(w.end(), a, a + 13); } }
     int32_t* wd; CK(cudaMalloc(&wd, w.size() * 4)); CK(cudaMemcpy(wd, w.data(), w.size() * 4, cudaMemcpyHostToDevice));
     KvmCtx c{tab_d, 3, err};
     const int smem = std::max(kvm_gpt_smem_bytes(64), KVM_MMA_SMEM);
@@ -71,7 +75,7 @@ static void run(int M, int N, int K, int ta, int tb, Which which, const char* ta
     // reference: cuBLAS bf16 inputs, fp32 accumulate, fp32 out (column-major view: C^T = op(B)^T op(A)^T)
     const float one = 1.f, zero = 0.f;
     auto cb = [&] {
-        cublasGemmEx(g_h, tb ? CUBLAS_OP_T : CUBLAS_OP_N, ta ? CUBLAS_OP_T : CUBLAS_OP_N, N, M, K, &one, B, CUDA_R_16BF, tb ? K : N, A, CUDA_R_16BF, ta ? M : K, &zero, R,
+        cublasGemmEx(g_h, tb ? CUBLAS_OP_T : CUBLAS_OP_N, ta ? CUBLAS_OP_T : CUBLAS_OP_N, N, M, K, &one, B, CUDA_R_16BF, ldb_, A, CUDA_R_16BF, lda_, &zero, R,
                      CUDA_R_32F, N, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
     };
     cb(); CK(cudaDeviceSynchronize());
@@ -83,7 +87,7 @@ static void run(int M, int N, int K, int ta, int tb, Which which, const char* ta
     const double tol = g_bf_out ? 5e-3 : 1e-5 * sqrt((double)K) + 1e-5;   // bf16 output: one rounding (2^-9 relative to the value); fp32: summation order only
     const bool ok = me / mx < tol && e == 0;
     if (!ok) g_fail++;
-    const double flops = 2.0 * M * N * K;
+    const double flops = same ? 2.0 * bm * bn * K * nt : 2.0 * M * N * K;
     auto tk = time_ms(kvm, 10), tc = time_ms(cb, 10);
     const double mk = med(tk), mc = med(tc);
     printf("%-9s %-5s %c%c %5dx%5dx%5d tile %3dx%-3d kvm %6.1f [%6.1f..%6.1f] cuBLAS %6.1f [%6.1f..%6.1f] TFLOP/s ratio %.3f err %.1e %s dev_err %d\n", tag, which == MMA ? "mma" : "old64",

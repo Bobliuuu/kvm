@@ -74,13 +74,17 @@ class Bf16Storage(unittest.TestCase):
                          sum(b.rows * b.cols * (2 if b.dtype == 'bf16' else 4) for b in plan.buffers.values()))
 
     def test_no_op_reads_bf16_without_support(self):
+        import ref_extra   # runtime/: the device ops' bf16-storage arguments (the same table the CPU golden and the compiler use)
         ok = {'matmul_tile_bf16', 'matmul_mma_bf16', 'round_bf16'}
+        aware = {op: set(args) for op, (args, _) in ref_extra._BF16_STORAGE.items()}
         bf = {b['name'] for b in self.sto.spec['buffers'] if b.get('dtype') == 'bf16'}
         for g in self.sto.spec['graphs']:
             for t in g['tasks']:
                 if t['op'] in ok:
                     continue
                 for k, v in t.get('args', {}).items():
+                    if k in aware.get(t['op'], ()):
+                        continue
                     self.assertNotIn(v, bf, f"{t['op']} arg {k}")
 
     def test_weights_false_has_no_shadows(self):

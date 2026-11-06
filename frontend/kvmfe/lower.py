@@ -373,6 +373,41 @@ def _(op, tc):
         yield _task('scale_flat', [_rows(diff, r0, r1)], [_rows(out, r0, r1)], x=diff, out=out, alpha=alpha, e0=e0, e1=e1)
 
 
+@lowers('pg_loss')
+def _(op, tc):
+    lg, tgt, adv, ident = op.ins['logits'], op.ins['tgt'], op.ins['adv'], op.ins['ident']
+    loss, rl, lse, ce, wrow = (op.outs[k] for k in ('loss', 'rowloss', 'lse', 'ce', 'wrow'))
+    for r0, r1 in blocks(lg.rows, tc.rows):
+        yield _task('softmax_ce_fwd', [_rows(lg, r0, r1), _rows(tgt, r0, r1)], [_rows(rl, r0, r1), _rows(lse, r0, r1)],
+                    logits=lg, tgt=tgt, rowloss=rl, lse=lse, r0=r0, r1=r1, V=lg.cols, ignore=-1)
+    yield _task('softmax_ce_reduce', [_full(rl), _full(tgt)], [_full(ce)], rowloss=rl, tgt=tgt, loss=ce, N=lg.rows, ignore=-1)
+    for r0, r1 in blocks(lg.rows, tc.rows):               # wrow[r] = rowloss[r] * adv[r]  (row_dot over one column)
+        yield _task('row_dot', [_full(rl), _rows(adv, r0, r1), _idx_rows(ident, r0, r1 - r0)], [_idx_rows(wrow, r0, r1 - r0)],
+                    a=rl, b=adv, idx=ident, out=wrow, r0=r0, r1=r1, d=1, acc=0, idx0=0)
+    yield _task('colsum', [_full(wrow)], [_full(loss)], x=wrow, out=loss, R=lg.rows, c0=0, c1=1, acc=0)
+    yield _task('scale_flat', [_full(loss)], [_full(loss)], x=loss, out=loss, alpha=1.0 / lg.rows, e0=0, e1=1)
+
+
+@lowers('pg_bwd')
+def _(op, tc):
+    lg, tgt, lse, ce, adv, ident = (op.ins[k] for k in ('logits', 'tgt', 'lse', 'ce', 'adv', 'ident'))
+    out, tmp = op.outs['out'], op.outs['tmp']
+    for r0, r1 in blocks(lg.rows, tc.rows):
+        yield _task('softmax_ce_bwd', [_rows(lg, r0, r1), _rows(tgt, r0, r1), _rows(lse, r0, r1), _full(ce)], [_rows(tmp, r0, r1)],
+                    logits=lg, tgt=tgt, lse=lse, loss=ce, dlogits=tmp, r0=r0, r1=r1, V=lg.cols, ignore=-1, scale=op.attrs['grad_scale'])
+    for r0, r1 in blocks(lg.rows, tc.rows):               # out[r,:] = adv[r] * tmp[r,:]
+        yield _task('gather_rows_scaled', [_rows(tmp, r0, r1), _idx_rows(ident, r0, r1 - r0), _idx_rows(adv, r0, r1 - r0)],
+                    [_rows(out, r0, r1)], src=tmp, idx=ident, scale=adv, dst=out, r0=r0, r1=r1, d=lg.cols, acc=0, idx0=0)
+
+
+@lowers('row_select')
+def _(op, tc):
+    x, mask, ident, out = op.ins['x'], op.ins['mask'], op.ins['ident'], op.outs['out']
+    for r0, r1 in blocks(x.rows, tc.rows):
+        yield _task('row_dot', [_full(x), _rows(mask, r0, r1), _idx_rows(ident, r0, r1 - r0)], [_idx_rows(out, r0, r1 - r0)],
+                    a=x, b=mask, idx=ident, out=out, r0=r0, r1=r1, d=x.cols, acc=0, idx0=0)
+
+
 @lowers('argmax')
 def _(op, tc):
     lg, out = op.ins['logits'], op.outs['out']

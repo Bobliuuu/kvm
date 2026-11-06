@@ -211,6 +211,37 @@ class Builder:
         self.emit('mse_bwd', {'diff': fwd.outs['diff']}, {'out': out}, grad_scale=fwd.attrs['grad_scale'])
         return out
 
+    def ident_index(self, n):
+        """i32 column 0..n-1 (a host-constant input buffer shared by every op that needs an identity row index)."""
+        return self.tensor(f'ident{n}', n, 1, 'input', buf=f'ident.{n}', dtype='i32', init=('values', list(range(n))))
+
+    def row_select(self, x, mask):
+        """out[r,0] = dot(x[r,:], mask[r,:]): with a one-hot f32 mask, the entry of each row picked by an action id (Q(s,a))."""
+        self._check(mask.shape == x.shape and mask.dtype == 'f32' and x.dtype == 'f32', 'row_select',
+                    'mask must be an f32 tensor shaped like x', x, mask)
+        ident = self.ident_index(x.rows)
+        out = self._out('rowsel', x.rows, 1)
+        self.emit('row_select', {'x': x, 'mask': mask, 'ident': ident}, {'out': out})
+        return out
+
+    def pg_loss(self, logits, tgt, adv, grad_scale=1.0):
+        """Policy-gradient loss: mean over rows of adv[r] * (-log softmax(logits[r])[tgt[r]]); adv is an f32 column that gets no
+        gradient (the advantage / return estimate is data). Minimising it is REINFORCE with that advantage."""
+        self._check(tgt.shape == (logits.rows, 1) and tgt.dtype == 'i32', 'pg_loss', 'tgt must be an i32 column', logits, tgt)
+        self._check(adv.shape == (logits.rows, 1) and adv.dtype == 'f32', 'pg_loss', 'adv must be an f32 column', logits, adv)
+        ident = self.ident_index(logits.rows)
+        outs = {'loss': self._out('loss', 1, 1), 'rowloss': self._out('rowloss', logits.rows, 1), 'lse': self._out('lse', logits.rows, 1),
+                'ce': self._out('cetmp', 1, 2), 'wrow': self._out('wrow', logits.rows, 1)}
+        self.emit('pg_loss', {'logits': logits, 'tgt': tgt, 'adv': adv, 'ident': ident}, outs, grad_scale=grad_scale)
+        return outs['loss']
+
+    def pg_bwd(self, fwd):
+        i, o = fwd.ins, fwd.outs
+        outs = {'out': self._out('dlogits', *i['logits'].shape), 'tmp': self._out('dce', *i['logits'].shape)}
+        self.emit('pg_bwd', {'logits': i['logits'], 'tgt': i['tgt'], 'lse': o['lse'], 'ce': o['ce'], 'adv': i['adv'], 'ident': i['ident']},
+                  outs, grad_scale=fwd.attrs['grad_scale'])
+        return outs['out']
+
     def argmax(self, logits, out=None):
         out = out or self._out('tok', logits.rows, 1, dtype='i32')
         self.emit('argmax', {'logits': logits}, {'out': out})

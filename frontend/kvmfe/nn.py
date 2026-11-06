@@ -27,10 +27,15 @@ class ModelConfig:
     seed: int = 0
 
     def __post_init__(self):
-        if self.d_model % self.heads or (self.d_model // self.heads) not in (16, 32, 64, 128):
-            raise FrontendError(f'head dim d_model/heads = {self.d_model}/{self.heads} must be 16, 32, 64 or 128 (attention ops)')
-        if self.seq % ATTN_Q:
-            raise FrontendError(f'seq {self.seq} must be a multiple of {ATTN_Q} (attention block size)')
+        if self.layers > 0:          # attention geometry matters only when there are attention blocks (layers=0: embedding -> norm -> head)
+            if self.heads < 1 or self.d_model % self.heads or (self.d_model // self.heads) not in (16, 32, 64, 128):
+                raise FrontendError(f'head dim d_model/heads = {self.d_model}/{self.heads} must be 16, 32, 64 or 128 (attention ops); '
+                                    f'for a model without attention use generic.MLP / a custom Module with compile_training(module, loss=, data=) '
+                                    f'(no ModelConfig)')
+            if self.seq % ATTN_Q:
+                raise FrontendError(f'seq {self.seq} must be a multiple of {ATTN_Q} (attention block size)')
+        elif self.layers < 0:
+            raise FrontendError(f'layers must be >= 0, got {self.layers}')
         if self.norm not in ('layernorm', 'rmsnorm'):
             raise FrontendError(f'norm must be layernorm or rmsnorm, got {self.norm!r}')
 

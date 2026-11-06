@@ -31,5 +31,6 @@ overridden), 1xTF32-exact (3xTF32) GEMMs. 27,003 tasks in 4231 ms.
   Not root-caused here. The main run above is not affected (it ran without sanitizer) but synccheck is not clean on the demo runner.
 - The GPU is mostly idle: Doom's tick is one CTA, training tasks are about 10 us. Busy SMs average a few of 108.
 - The shared A100 box ran other jobs around this run; absolute times are indicative.
-- Only the dynamic scheduler has data here. A static-split and a global-queue run were queued with `demo/viz/collect.sh`; if they are absent, no
-  cross-scheduler chart is drawn from them. The Doom frames (45 MB) are not committed; `demo/assets/doom_demo.mp4` was rendered from them by `demo/viz/make_video.py`.
+- Only the dynamic scheduler has data here. A static-split and a global-queue run were queued with `demo/viz/collect.sh` (the binary was built on the box) but the shared GPU lock
+  was never granted within the 2 h wait (about 15 other jobs queued), so there is no static or global data and no dynamic-vs-static figure; the charts
+  say so by omission and `make_charts.py` draws only the modes it has. The Doom frames (45 MB) are not committed; `demo/assets/doom_demo.mp4` was rendered from them by `demo/viz/make_video.py`.

@@ -1,0 +1,7 @@
+PASS  executor: 12773360/12773360 tasks in 68501.2 ms on NVIDIA A100-SXM4-40GB (108 SMs, grid 108), sched dynamic, err_code 0
+SKIP  versions: slots were recycled: the trace holds only the last occupants
+PASS  training: 40 step losses, first 10.9790 -> last 10.5919 (mean of first/last 10: 10.9413 -> 10.8905, falls); no CPU golden at this size
+SKIP  serving: no golden decode (--no-golden); coherence is covered by the version check
+PASS  game: compared 700 frames: raw-identical 700/700, fingerprint-identical 700/700, state-identical 700/700; final cand {'booted': 1, 'tics': 700, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 3, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 2458, 'y': -2679, 'waypoint': 17}
+SKIP  cadence: 0 doom_tick rows
+ALL CHECKS PASSED (SKIPs are listed above)

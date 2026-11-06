@@ -1,5 +1,5 @@
 #pragma once
-// Extra generic operator pack for the KVM megakernel framework: device side of kvm_ops_extra.def (ids 96..121).
+// Extra generic operator pack for the KVM megakernel framework: device side of kvm_ops_extra.def (ids 96..122).
 //   __device__ void kvmextra::<name>(const KvmCtx& ctx, const int32_t* args)  plus kvm_op_<name> / kvm_extra_dispatch() standalone,
 //   or KVM_OP(name) wrappers inside kvm_exec.cuh. Exact semantics are the comments in kvm_ops_extra.def.
 //
@@ -16,6 +16,8 @@
 // mma, without needing bf16 shared tiles). K is reduced exactly as in matmul_tile (two k-halves summed in the epilogue).
 // MoE routing ops are single-task: expert/token loops are spread over the 256 threads but every list is built in ascending order.
 // Limits: moe ops E <= 64, k <= 8 (KVM_GPT_E_SHAPE otherwise); attn_full hd in {16,32,64,128} (smem as attn_fwd).
+
+#include "kvm_mma_bf16.cuh"
 
 namespace kvmextra {
 using kvmgpt::Chk;
@@ -646,6 +648,47 @@ KVM_GPT_DEVI void matmul_tile_bf16(const KvmCtx& ctx, const int32_t* a) {
 #undef KVM_EX_MM
 }
 
+// bf16 tensor-core GEMM, 128 x 256 output tile (kvm_mma_bf16.cuh). Same arguments and flags (1 ta, 2 tb, 4 accumulate, 8 gelu) as
+// matmul_tile_bf16; the fast path needs bf16-storage a and b with 8-element aligned ld / K / base, otherwise matmul_tile_bf16 runs the
+// eight 64 x 64 sub-tiles (identical semantics, slower).
+KVM_GPT_DEVI void matmul_mma_bf16(const KvmCtx& ctx, const int32_t* a) {
+    Chk k(ctx);
+    int m0 = a[6], n0 = a[7], M = a[8], N = a[9], K = a[10], fl = a[11];
+    bool ta = fl & 1, tb = fl & 2, accum = fl & 4, gelu = fl & 8;
+    k.need(M > 0 && N > 0 && K > 0 && m0 >= 0 && m0 < M && n0 >= 0 && n0 < N);
+    k.need((fl & ~15) == 0, KVM_GPT_E_SHAPE);
+    if (k.bad) return;
+    int lda, ldb, ldo, ldr = 0, ldp = 0;
+    bool fa, fb, fo, fr = false, fp = false;
+    const void* A = k.mat_s(a[0], ta ? K : M, ta ? M : K, &lda, &fa);
+    const void* B = k.mat_s(a[1], tb ? N : K, tb ? K : N, &ldb, &fb);
+    void* out = k.mat_s(a[2], M, N, &ldo, &fo);
+    const float* bias = k.fvec(a[3], N, true);
+    const void* res = k.mat_s(a[4], M, N, &ldr, &fr, true);
+    void* pre = k.mat_s(a[5], M, N, &ldp, &fp, true);
+    if (k.bad) return;
+    const int mnA = ta ? M : K, mnB = tb ? K : N;   // contiguous extents of A and B in the global layout: whole 16-byte chunks only
+    const bool fast = fa && fb && (lda & 7) == 0 && (ldb & 7) == 0 && (K & 7) == 0 && (mnA & 7) == 0 && (mnB & 7) == 0 &&
+                      (((uintptr_t)A | (uintptr_t)B) & 15) == 0 && (m0 & 7) == 0 && (n0 & 7) == 0;
+    if (fast) {
+        const float alpha = af(a, 12);
+#define KVM_MMA_CALL(TA, TB) kvmgpt::mma_bf16_tile<TA, TB>((const uint16_t*)A, lda, (const uint16_t*)B, ldb, out, ldo, fo, bias, res, ldr, fr, pre, ldp, fp, m0, n0, M, N, K, alpha, gelu, accum)
+        if (!ta && !tb) KVM_MMA_CALL(false, false); else if (ta && !tb) KVM_MMA_CALL(true, false);
+        else if (!ta && tb) KVM_MMA_CALL(false, true); else KVM_MMA_CALL(true, true);
+#undef KVM_MMA_CALL
+        return;
+    }
+    int32_t w[13];
+    for (int i = 0; i < 13; i++) w[i] = a[i];
+    for (int dm = 0; dm < KVM_MMA_BM; dm += 64)
+        for (int dn = 0; dn < KVM_MMA_BN; dn += 64) {
+            if (m0 + dm >= M || n0 + dn >= N) continue;
+            w[6] = m0 + dm; w[7] = n0 + dn;
+            matmul_tile_bf16(ctx, w);
+            __syncthreads();
+        }
+}
+
 // ---- optimizer schedule / misc ----------------------------------------------------------------------------------------------------
 KVM_GPT_DEVI void adamw_lr(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
@@ -790,7 +833,7 @@ KVM_GPT_DEVI void matmul_tile_silu_mul_bwd(const KvmCtx& ctx, const int32_t* a) 
 #define X(name, id, sig) KVM_GPT_DEVI void kvm_op_##name(const KvmCtx& ctx, const int32_t* args) { kvmextra::name(ctx, args); }
 #include "kvm_ops_extra.def"
 #undef X
-// Returns false for an op id outside the extra pack (ids 96..121).
+// Returns false for an op id outside the extra pack (ids 96..122).
 KVM_GPT_DEVI bool kvm_extra_dispatch(const KvmCtx& ctx, int op, const int32_t* args) {
     switch (op) {
 #define X(name, id, sig) case id: kvm_op_##name(ctx, args); return true;

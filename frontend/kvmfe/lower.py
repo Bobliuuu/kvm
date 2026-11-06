@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from .ir import Builder, FrontendError, LogicalOp, Tensor
-from .opset import ATTN_Q, F_ACC, F_GELU, F_PRECISE, F_TA, F_TB, MM_TILE, op as device_op
+from .opset import ATTN_Q, F_ACC, F_GELU, F_PRECISE, F_TA, F_TB, MM_TILE, MMA_TILE, op as device_op
 
 
 @dataclass(frozen=True)
@@ -108,11 +108,12 @@ def _task(dev, reads, writes, **args):
 
 # ------------------------------------------------------------------------------------------------ matmul family
 def _mm_tiles(a, b, out, M, N, K, ta, tb, flags, bias=None, res=None, pre=None, acc=False, dev='matmul_tile', precise=False):
-    flags |= F_PRECISE if precise else 0
-    for m0 in range(0, M, MM_TILE):
-        m1 = min(m0 + MM_TILE, M)
-        for n0 in range(0, N, MM_TILE):
-            n1 = min(n0 + MM_TILE, N)
+    flags |= F_PRECISE if precise and dev == 'matmul_tile' else 0
+    tm, tn = MMA_TILE if dev == 'matmul_mma_bf16' else (MM_TILE, MM_TILE)
+    for m0 in range(0, M, tm):
+        m1 = min(m0 + tm, M)
+        for n0 in range(0, N, tn):
+            n1 = min(n0 + tn, N)
             ra = a.region(0, K, m0, m1) if ta else a.region(m0, m1, 0, K)
             rb = b.region(n0, n1, 0, K) if tb else b.region(0, K, n0, n1)
             tile = out.region(m0, m1, n0, n1)
@@ -123,7 +124,12 @@ def _mm_tiles(a, b, out, M, N, K, ta, tb, flags, bias=None, res=None, pre=None, 
 
 
 def _mm_dev(op):
-    return 'matmul_tile_bf16' if op.attrs.get('bf16') else 'matmul_tile'
+    """matmul_tile (TF32) or, in a bf16 precision mode, the bf16 tensor-core tile when both operands are real bf16 storage (the 128 x 256
+    matmul_mma_bf16), else the 64 x 64 matmul_tile_bf16 that rounds fp32 operands on load."""
+    if not op.attrs.get('bf16'):
+        return 'matmul_tile'
+    a, b = (op.ins['x'], op.ins['w']) if op.kind == 'linear' else (op.ins['a'], op.ins['b'])
+    return 'matmul_mma_bf16' if a.dtype == 'bf16' and b.dtype == 'bf16' else 'matmul_tile_bf16'
 
 
 @lowers('linear')

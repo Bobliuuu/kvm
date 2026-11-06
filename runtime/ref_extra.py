@@ -323,6 +323,14 @@ def _matmul_tile_bf16(b, a):
                     t[m * t.cols + n] = bf16_round(t[m * t.cols + n])
 
 
+def _matmul_mma_bf16(b, a):
+    """The 128 x 256 tile as the eight 64 x 64 matmul_tile_bf16 tiles it equals (same operand rounding, same epilogue order)."""
+    for dm in (0, 64):
+        for dn in (0, 64, 128, 192):
+            if a['m0'] + dm < a['M'] and a['n0'] + dn < a['N']:
+                _matmul_tile_bf16(b, {**a, 'm0': a['m0'] + dm, 'n0': a['n0'] + dn})
+
+
 def _adamw_lr(b, a):
     from ref_gpt import _adamw
     _adamw(b, {**a, 'lr': b['lr'][0]})
@@ -436,6 +444,7 @@ EXTRA_OPS = {
     'attn_full_bwd_dkv': _R(_full_dkv, _full_dkv_ext),
     'round_bf16': _R(_round_bf16, _flat_ext(bufs=('x', 'out')), anydt=('x', 'out')),      # storage conversion: each side f32 or bf16
     'matmul_tile_bf16': _R(_matmul_tile_bf16, GPT_OPS['matmul_tile'].extents, anydt=('a', 'b', 'out', 'res', 'pre')),
+    'matmul_mma_bf16': _R(_matmul_mma_bf16, GPT_OPS['matmul_tile'].extents, anydt=('a', 'b', 'out', 'res', 'pre')),
     'adamw_lr': _R(_adamw_lr, lambda a: (_rng(a['e0'], a['e1']), {'p': a['e1'], 'g': a['e1'], 'm': a['e1'], 'v': a['e1'], 'gscale': 1, 'step': 1,
                                                                   'lr': 1})[1], ints=('step',)),
     'lr_schedule': _R(_lr_schedule, lambda a: (_need(a['kind'] in (0, 1, 2), 'lr_schedule: kind not in 0..2'), {'step': 1, 'lr': 1})[1],

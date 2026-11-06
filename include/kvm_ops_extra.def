@@ -70,6 +70,12 @@ X(round_bf16,          113, "x:buf,out:buf,e0:i32,e1:i32")
 // A bf16 out/res/pre uses a scalar epilogue; the f32 path is unchanged.
 X(matmul_tile_bf16,    114, "a:buf,b:buf,out:buf,bias:buf?,res:buf?,pre:buf?,m0:i32,n0:i32,M:i32,N:i32,K:i32,flags:i32,alpha:f32")
 
+// bf16 tensor-core GEMM (kvm_mma_bf16.cuh): C = alpha*op(A)*op(B) over the 128 (m) x 256 (n) tile at (m0, n0), flags 1 ta, 2 tb, 4 accumulate, 8 gelu,
+// epilogue order as matmul_tile. a and b are bf16-storage buffers (ld, K and base 8-element / 16-byte aligned) for the mma.sync m16n8k16 fast
+// path, anything else is executed by matmul_tile_bf16 over the eight 64 x 64 sub-tiles. out, res and pre may each be f32 or bf16 storage; bias
+// is f32. Accumulation is fp32 in increasing k order (one accumulator per element), one RNE rounding per stored bf16 value.
+X(matmul_mma_bf16,     122, "a:buf,b:buf,out:buf,bias:buf?,res:buf?,pre:buf?,m0:i32,n0:i32,M:i32,N:i32,K:i32,flags:i32,alpha:f32")
+
 // ---- optimizer schedule -----------------------------------------------------------------------------------------------------
 // adamw (kvm_ops_gpt.def) with the learning rate read from a scalar f32 buffer lr[0] instead of an argument.
 X(adamw_lr,            115, "p:buf,g:buf,m:buf,v:buf,gscale:buf?,step:buf,e0:i32,e1:i32,lr:buf,b1:f32,b2:f32,eps:f32,wd:f32")

@@ -74,7 +74,7 @@ class Bf16Storage(unittest.TestCase):
                          sum(b.rows * b.cols * (2 if b.dtype == 'bf16' else 4) for b in plan.buffers.values()))
 
     def test_no_op_reads_bf16_without_support(self):
-        ok = {'matmul_tile_bf16', 'round_bf16'}
+        ok = {'matmul_tile_bf16', 'matmul_mma_bf16', 'round_bf16'}
         bf = {b['name'] for b in self.sto.spec['buffers'] if b.get('dtype') == 'bf16'}
         for g in self.sto.spec['graphs']:
             for t in g['tasks']:

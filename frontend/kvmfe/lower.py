@@ -110,17 +110,18 @@ def _task(dev, reads, writes, **args):
 def _mm_tiles(a, b, out, M, N, K, ta, tb, flags, bias=None, res=None, pre=None, acc=False, dev='matmul_tile', precise=False):
     flags |= F_PRECISE if precise and dev == 'matmul_tile' else 0
     tm, tn = MMA_TILE if dev == 'matmul_mma_bf16' else (MM_TILE, MM_TILE)
-    for m0 in range(0, M, tm):
-        m1 = min(m0 + tm, M)
-        for n0 in range(0, N, tn):
-            n1 = min(n0 + tn, N)
-            ra = a.region(0, K, m0, m1) if ta else a.region(m0, m1, 0, K)
-            rb = b.region(n0, n1, 0, K) if tb else b.region(0, K, n0, n1)
-            tile = out.region(m0, m1, n0, n1)
-            reads = [ra, rb, bias.region(0, 1, n0, n1) if bias else None, res.region(m0, m1, n0, n1) if res else None,
-                     tile if acc else None]
-            yield _task(dev, reads, [tile, pre.region(m0, m1, n0, n1) if pre else None],
-                        a=a, b=b, out=out, bias=bias, res=res, pre=pre, m0=m0, n0=n0, M=M, N=N, K=K, flags=flags, alpha=1.0)
+    ms, ns = list(range(0, M, tm)), list(range(0, N, tn))
+    # Admission order is execution order: iterate the dimension with more tiles outermost, so consecutive tiles share the operand block of the
+    # shorter one and the long operand streams through L2 once (4096 x 50304 x 768 logits: 1.5x faster than m-outer on the A100).
+    order = [(m0, n0) for n0 in ns for m0 in ms] if dev == 'matmul_mma_bf16' and len(ns) > len(ms) else [(m0, n0) for m0 in ms for n0 in ns]
+    for m0, n0 in order:
+        m1, n1 = min(m0 + tm, M), min(n0 + tn, N)
+        ra = a.region(0, K, m0, m1) if ta else a.region(m0, m1, 0, K)
+        rb = b.region(n0, n1, 0, K) if tb else b.region(0, K, n0, n1)
+        tile = out.region(m0, m1, n0, n1)
+        reads = [ra, rb, bias.region(0, 1, n0, n1) if bias else None, res.region(m0, m1, n0, n1) if res else None, tile if acc else None]
+        yield _task(dev, reads, [tile, pre.region(m0, m1, n0, n1) if pre else None],
+                    a=a, b=b, out=out, bias=bias, res=res, pre=pre, m0=m0, n0=n0, M=M, N=N, K=K, flags=flags, alpha=1.0)
 
 
 def _mm_dev(op):

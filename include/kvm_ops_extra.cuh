@@ -614,7 +614,13 @@ KVM_GPT_DEVI void round_bf16(const KvmCtx& ctx, const int32_t* a) {
     void* o = k.vec_s(a[1], e1, &ob);
     if (k.bad) return;
     if (!xb && !ob) { for (int i = e0 + threadIdx.x; i < e1; i += KVM_GPT_THREADS) ((float*)o)[i] = bf16r(((const float*)x)[i]); return; }
-    for (int i = e0 + threadIdx.x; i < e1; i += KVM_GPT_THREADS) kvmgpt::st_s(o, i, kvmgpt::ld_s(x, i, xb), ob);
+    int i = e0;
+    if ((e0 & 3) == 0 && kvmgpt::vec4_ok(x, 0, xb) && kvmgpt::vec4_ok(o, 0, ob)) {   // narrow / widen / copy 4 elements per access (the weight shadows are 38M-element casts)
+        const int n4 = (e1 - e0) >> 2;
+        for (int q = threadIdx.x; q < n4; q += KVM_GPT_THREADS) kvmgpt::st4(o, (size_t)e0 + 4 * q, kvmgpt::ld4(x, (size_t)e0 + 4 * q, xb), ob);
+        i = e0 + n4 * 4;
+    }
+    for (i += threadIdx.x; i < e1; i += KVM_GPT_THREADS) kvmgpt::st_s(o, i, kvmgpt::ld_s(x, i, xb), ob);
 }
 
 // bf16 matmul: kvmgpt::mm_tile<TA, TB, false, true> (64x64 tile, 3-stage cp.async, operands rounded to bf16 when read from shared memory,

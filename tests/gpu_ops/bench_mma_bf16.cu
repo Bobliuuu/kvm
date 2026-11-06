@@ -61,7 +61,10 @@ static void run(int M, int N, int K, int ta, int tb, Which which, const char* ta
     const int bm = which == MMA ? KVM_MMA_BM : 64, bn = which == MMA ? KVM_MMA_BN : 64, fl = ta | (tb << 1);
     const float alpha = 1.f; int32_t afw; memcpy(&afw, &alpha, 4);
     std::vector<int32_t> w; int nt = 0;
-    for (int m0 = 0; m0 < M; m0 += bm) for (int n0 = 0; n0 < N; n0 += bn) { int32_t a[13] = {0, 1, 2, -1, -1, -1, m0, n0, M, N, K, fl, afw}; w.insert(w.end(), a, a + 13); nt++; }
+    const bool n_outer = getenv("MMA_NOUTER") != nullptr;   // tile order: m outer (default, as the frontend lowers) or n outer (consecutive tiles share a B column block)
+    auto emit = [&](int m0, int n0) { int32_t a[13] = {0, 1, 2, -1, -1, -1, m0, n0, M, N, K, fl, afw}; w.insert(w.end(), a, a + 13); nt++; };
+    if (n_outer) { for (int n0 = 0; n0 < N; n0 += bn) for (int m0 = 0; m0 < M; m0 += bm) emit(m0, n0); }
+    else { for (int m0 = 0; m0 < M; m0 += bm) for (int n0 = 0; n0 < N; n0 += bn) emit(m0, n0); }
     const bool same = getenv("MMA_SAME") != nullptr;   // diagnostic: every CTA computes tile (0,0): data stays in L2, wave quantisation vanishes
     if (same) { const int total = 108 * 6; w.clear(); nt = total; for (int i = 0; i < total; i++) { int32_t a[13] = {0, 1, 2, -1, -1, -1, 0, 0, M, N, K, fl, afw}; w.insert(w.end(), a, a + 13); } }
     int32_t* wd; CK(cudaMalloc(&wd, w.size() * 4)); CK(cudaMemcpy(wd, w.data(), w.size() * 4, cudaMemcpyHostToDevice));

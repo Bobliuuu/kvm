@@ -533,7 +533,7 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
 // 128x128 output tile (flag 32): the same math as mm_tile with a quarter of the shared-to-L2 traffic per FLOP, which is what bounds
 // the 64x64 tile. BK=16, 3-stage cp.async pipeline (3 x 16 KiB = 48 KiB), 8 warps as 2 (m) x 4 (n), each owning a 64x32 sub-tile
 // = 4 m16 x 4 n8 fragments over the whole K (no split-K); the epilogue runs straight from the accumulator registers.
-template <bool TA, bool TB, bool PREC, int WM, int WN, int WTN>   // WM x WN warps, each owning a 64 x WTN sub-tile; tile = 64*WM x WTN*WN
+template <bool TA, bool TB, bool PREC, int WM, int WN, int WTN, bool BF = false>   // BF: bf16 operands (see below). WM x WN warps, each owning a 64 x WTN sub-tile; tile = 64*WM x WTN*WN
 KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, float* out, int ldo, const float* bias, const float* res,
                               int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, bool gelu, bool accum) {
     constexpr int BK = KVM_GPT_BIG_BK, NST = KVM_GPT_BIG_NST, BM = 64 * WM, BN = WTN * WN, NJ = WTN / 8, ATILE = BM * BK, TILE = ATILE, STAGE = (BM + BN) * BK;
@@ -567,7 +567,7 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
     for (int it = 0; it < nk; it++) {
         cp_wait<NST - 2>();
         const float* As = sm + (it % NST) * STAGE; const float* Bs = As + ATILE;
-        if constexpr (!PREC && KVM_GPT_SMEM_CVT) {   // round the operands once per CTA, in shared memory (see tile_cvt)
+        if constexpr (!PREC && !BF && KVM_GPT_SMEM_CVT) {   // round the operands once per CTA, in shared memory (see tile_cvt)
             float* Aw = sm + (it % NST) * STAGE; float* Bw = Aw + ATILE;
             if (fa) sa.cvt(Aw); else if (TA) tile_cvt<false, BK, BM>(Aw); else tile_cvt<true, BM, BK>(Aw);
             if (fb) sb.cvt(Bw); else if (TB) tile_cvt<true, BN, BK>(Bw); else tile_cvt<false, BK, BN>(Bw);
@@ -575,6 +575,49 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
         __syncthreads();
         if (it + NST - 1 < nk) issue(it + NST - 1);
         cp_commit();
+        if constexpr (BF) {
+            // bf16 operands, m16n8k16: fragments are read from the fp32 tiles exactly like the tf32 path (ldmatrix / scalar loads), then
+            // packed to bf16x2 (round to nearest even). One k16 step = two k8 halves; mma pair (k, k+4) of a half becomes one bf16x2, i.e.
+            // the k index of every k16 step is permuted the same way in A and B, which a sum over k does not care about. The tensor work
+            // per k is half the tf32 path's and the shared-memory traffic is the same, so it runs at up to twice the tf32 rate.
+            static_assert(BK % 16 == 0, "bf16 steps are k16");
+#pragma unroll
+            for (int kb = 0; kb < BK / 16; kb++) {
+                unsigned af[4][4], bfr[NJ][2];
+#pragma unroll
+                for (int h = 0; h < 2; h++) {
+                    const int kk = kb * 16 + h * 8;
+#pragma unroll
+                    for (int i = 0; i < 4; i++) {
+                        const int mb = wmi * 64 + i * 16;
+                        unsigned r[4];
+                        if (!TA) ldmatrix_x4(r, As + sw_kc<BK>(mb + (lane & 7) + 8 * ((lane >> 3) & 1), kk + 4 * (lane >> 4)));
+                        else {
+                            r[0] = __float_as_uint(As[sw_mc<BM>(kk + t, mb + g)]);     r[1] = __float_as_uint(As[sw_mc<BM>(kk + t, mb + g + 8)]);
+                            r[2] = __float_as_uint(As[sw_mc<BM>(kk + t + 4, mb + g)]); r[3] = __float_as_uint(As[sw_mc<BM>(kk + t + 4, mb + g + 8)]);
+                        }
+                        af[i][2 * h] = pack_bf16(__uint_as_float(r[0]), __uint_as_float(r[2]));
+                        af[i][2 * h + 1] = pack_bf16(__uint_as_float(r[1]), __uint_as_float(r[3]));
+                    }
+#pragma unroll
+                    for (int jp = 0; jp < NJ / 2; jp++) {
+                        const int nb = wni * WTN + jp * 16;
+                        unsigned r[4];
+                        if (TB) ldmatrix_x4(r, Bs + sw_kc<BK>(nb + (lane & 7) + 8 * (lane >> 4), kk + 4 * ((lane >> 3) & 1)));
+                        else {
+                            r[0] = __float_as_uint(Bs[sw_mc<BN>(kk + t, nb + g)]);     r[1] = __float_as_uint(Bs[sw_mc<BN>(kk + t + 4, nb + g)]);
+                            r[2] = __float_as_uint(Bs[sw_mc<BN>(kk + t, nb + 8 + g)]); r[3] = __float_as_uint(Bs[sw_mc<BN>(kk + t + 4, nb + 8 + g)]);
+                        }
+                        bfr[2 * jp][h] = pack_bf16(__uint_as_float(r[0]), __uint_as_float(r[1]));
+                        bfr[2 * jp + 1][h] = pack_bf16(__uint_as_float(r[2]), __uint_as_float(r[3]));
+                    }
+                }
+#pragma unroll
+                for (int i = 0; i < 4; i++)
+#pragma unroll
+                    for (int j = 0; j < NJ; j++) mma_bf16(acc[i][j], af[i], bfr[j][0], bfr[j][1]);
+            }
+        } else {
 #pragma unroll
         for (int kq = 0; kq < BK / 8; kq++) {
             const int kk = kq * 8;
@@ -622,6 +665,7 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
                     mma_tf32(acc[i][j], ah[i], bh[j][0], bh[j][1]);
                 }
         }
+        }
     }
     cp_wait<0>();
     // Epilogue from registers: thread holds (row g | g+8, columns 2t, 2t+1) of every fragment. Pairs of columns go out as float2
@@ -662,10 +706,10 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
 KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
     int m0 = a[6], n0 = a[7], M = a[8], N = a[9], K = a[10], fl = a[11];
-    bool ta = fl & 1, tb = fl & 2, accum = fl & 4, gelu = fl & 8, prec = fl & 16, big = fl & 32, huge = fl & 64;
-    k.need(!(big && huge), KVM_GPT_E_SHAPE);
+    bool ta = fl & 1, tb = fl & 2, accum = fl & 4, gelu = fl & 8, prec = fl & 16, big = fl & 32, huge = fl & 64, bf = fl & 128;
+    k.need(!(big && huge) && !(bf && prec), KVM_GPT_E_SHAPE);
     k.need(M > 0 && N > 0 && K > 0 && m0 >= 0 && m0 < M && n0 >= 0 && n0 < N);
-    k.need((fl & ~127) == 0, KVM_GPT_E_SHAPE);
+    k.need((fl & ~255) == 0, KVM_GPT_E_SHAPE);
     if (k.bad) return;
     int lda, ldb, ldo, ldr = 0, ldp = 0;
     const float* A = k.mat(a[0], ta ? K : M, ta ? M : K, &lda);
@@ -676,34 +720,63 @@ KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
     float* pre = k.mat(a[5], M, N, &ldp, true);
     if (k.bad) return;
     float alpha = af(a, 12);
-#define KVM_GPT_MM(F, TA, TB, P) F<TA, TB, P KVM_GPT_MM_SHAPE>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, KVM_GPT_MM_M0, n0, M, N, K, alpha, gelu, accum)
+// BFV (true/false) selects bf16 operands (flag 128); it is the last template argument of both tile functions. bf16 has no 3xTF32 form.
+#define KVM_GPT_MM(F, TA, TB, P) F<TA, TB, P KVM_GPT_MM_SHAPE, KVM_GPT_BFV>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, KVM_GPT_MM_M0, n0, M, N, K, alpha, gelu, accum)
 #define KVM_GPT_MM_T(F, P)                                                                                                   \
     if (!ta && !tb) KVM_GPT_MM(F, false, false, P); else if (ta && !tb) KVM_GPT_MM(F, true, false, P);                       \
     else if (!ta && tb) KVM_GPT_MM(F, false, true, P); else KVM_GPT_MM(F, true, true, P)
+#define KVM_GPT_MM_PREC(F) if (prec) { KVM_GPT_MM_T(F, true); } else { KVM_GPT_MM_T(F, false); }
+// 256x128 task (flag 64) = two 128x128 passes, rows m0 and m0+128. A 4x2-warp 64x64-per-warp tile needs 128 accumulator registers,
+// which cannot coexist with the 128-register budget of two blocks per SM (__launch_bounds__(256, 2)); two passes keep the task shape
+// for the compiler/frontend at the same per-warp work (the second pass re-reads B from L2).
+#define KVM_GPT_BFV false
 #define KVM_GPT_MM_M0 m0
+    if (!bf) {
 #define KVM_GPT_MM_SHAPE , 2, 4, 32
-    if (big) { if (prec) { KVM_GPT_MM_T(mm_tile_big, true); } else { KVM_GPT_MM_T(mm_tile_big, false); } }
-    // 256x128 task (flag 64) = two 128x128 passes, rows m0 and m0+128. A 4x2-warp 64x64-per-warp tile needs 128 accumulator registers,
-    // which cannot coexist with the 128-register budget of two blocks per SM (__launch_bounds__(256, 2)); two passes keep the task shape
-    // for the compiler/frontend at the same per-warp work (the second pass re-reads B from L2).
-    else if (huge) {
-        if (prec) { KVM_GPT_MM_T(mm_tile_big, true); } else { KVM_GPT_MM_T(mm_tile_big, false); }
-        if (m0 + 128 < M) {
-            __syncthreads();   // the second pass reuses the shared-memory ring
+        if (big) { KVM_GPT_MM_PREC(mm_tile_big) }
+        else if (huge) {
+            KVM_GPT_MM_PREC(mm_tile_big)
+            if (m0 + 128 < M) {
+                __syncthreads();   // the second pass reuses the shared-memory ring
 #undef KVM_GPT_MM_M0
 #define KVM_GPT_MM_M0 (m0 + 128)
-            if (prec) { KVM_GPT_MM_T(mm_tile_big, true); } else { KVM_GPT_MM_T(mm_tile_big, false); }
+                KVM_GPT_MM_PREC(mm_tile_big)
+            }
         }
-    }
 #undef KVM_GPT_MM_M0
 #undef KVM_GPT_MM_SHAPE
 #define KVM_GPT_MM_M0 m0
 #define KVM_GPT_MM_SHAPE
-    else if (prec) { KVM_GPT_MM_T(mm_tile, true); } else { KVM_GPT_MM_T(mm_tile, false); }
+        else { KVM_GPT_MM_PREC(mm_tile) }
 #undef KVM_GPT_MM_M0
+#undef KVM_GPT_MM_SHAPE
+    } else {
+#undef KVM_GPT_BFV
+#define KVM_GPT_BFV true
+#define KVM_GPT_MM_M0 m0
+#define KVM_GPT_MM_SHAPE , 2, 4, 32
+        if (big) { KVM_GPT_MM_T(mm_tile_big, false); }
+        else if (huge) {
+            KVM_GPT_MM_T(mm_tile_big, false);
+            if (m0 + 128 < M) {
+                __syncthreads();
+#undef KVM_GPT_MM_M0
+#define KVM_GPT_MM_M0 (m0 + 128)
+                KVM_GPT_MM_T(mm_tile_big, false);
+            }
+        }
+#undef KVM_GPT_MM_M0
+#undef KVM_GPT_MM_SHAPE
+#define KVM_GPT_MM_M0 m0
+#define KVM_GPT_MM_SHAPE
+        else { KVM_GPT_MM_T(mm_tile, false); }
+    }
+#undef KVM_GPT_MM_M0
+#undef KVM_GPT_MM_SHAPE
+#undef KVM_GPT_BFV
+#undef KVM_GPT_MM_PREC
 #undef KVM_GPT_MM_T
 #undef KVM_GPT_MM
-#undef KVM_GPT_MM_SHAPE
 }
 
 // ---- normalization: one warp per row ----------------------------------------------------------------------------------

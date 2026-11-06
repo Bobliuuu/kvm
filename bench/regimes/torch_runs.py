@@ -88,6 +88,7 @@ class Variants:
             def eager():
                 for st in steps: st()
             self.fns['eager'] = eager
+        self._keep = (P, ids, tgt, flat, bstep, steps, graphs)   # graphs replay on raw pointers: the tensors they read must outlive __init__
         torch.cuda.synchronize()
 
     def time(self, name, n):

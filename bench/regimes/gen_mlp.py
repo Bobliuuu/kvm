@@ -19,7 +19,18 @@ ap.add_argument('--no-golden', action='store_true'); a = ap.parse_args()
 tl = g.Tiling.preset(a.tiling)
 sgd = g.TrainConfig(steps=a.steps, optim=g.OptimConfig(kind='sgd', lr=0.05), clip=0)
 cfg = g.ModelConfig('mlp', vocab=100, d_model=48, layers=1, heads=3, seq=32, batch=3)
-net = g.MLPNet(cfg, hidden=a.hidden, depth=a.depth)
+from kvmfe import nn as _nn
+
+
+class Net(g.MLPNet):   # the audit's MLPNet predates the training-program protocol (batch_streams / losses) of the integrated tree
+    def batch_streams(self, micros):
+        return _nn.token_streams(self.cfg, micros)
+
+    def losses(self, b, batch, w, grad_scale=1.0):
+        return [('loss', b.ce_loss(self(b, batch['ids'], w), batch['tgt'], grad_scale))]
+
+
+net = Net(cfg, hidden=a.hidden, depth=a.depth)
 prog = g.build_training(net, sgd)
 low = g.lower_program(prog.b.ops, tl, 'none', 0, prefix='act')
 workload = g.to_workload(low, {'train': g.GraphPolicy()})

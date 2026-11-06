@@ -75,11 +75,11 @@ def main():
     cols = list(results[0]['best_us_per_step'])
     print('R'.rjust(4), *[c.rjust(12) for c in cols])
     for row in results:
-        print(str(row['runs']).rjust(4), *[str(row['best_us_per_step'][c]).rjust(12) for c in cols])
+        print(str(row['runs']).rjust(4), *[str(row['best_us_per_step'].get(c, '-')).rjust(12) for c in cols])
     ref = 'vm_' + next(iter(binaries))
     print('ratio vs ' + ref)
     for row in results:
-        print(str(row['runs']).rjust(4), *[('%.2fx' % (row['best_us_per_step'][c] / row['best_us_per_step'][ref])).rjust(12) for c in cols])
+        print(str(row['runs']).rjust(4), *[(('%.2fx' % (row['best_us_per_step'][c] / row['best_us_per_step'][ref])) if c in row['best_us_per_step'] else '-').rjust(12) for c in cols])
 
 
 if __name__ == '__main__':

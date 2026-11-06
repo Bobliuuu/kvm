@@ -85,6 +85,48 @@ class Lowering(unittest.TestCase):
         self.assertEqual({t.args['m0'] for t in tasks}, {0, 64, 128})
         self.assertTrue(all(t.dev == 'matmul_tile' for t in tasks))
 
+    def test_big_matmul_tiles_and_shape_fallbacks(self):
+        def tasks(M, N, **kw):
+            b = Builder()
+            b.linear(b.tensor('x', M, 40), b.tensor('w', 40, N))
+            return lower_op(b.ops[0], Tiling(mm_min_tiles=1, **kw))
+        t = tasks(500, 500, mm_tile=128)                       # 4x4 tiles of 128x128 (area efficiency 0.95)
+        self.assertEqual((len(t), t[0].args['flags'] & 96), (4 * 4, 32))
+        t = tasks(500, 500, mm_tile=256)
+        self.assertEqual((len(t), t[0].args['flags'] & 96), (2 * 4, 64))
+        self.assertEqual(tasks(100, 260, mm_tile=128)[0].args['flags'] & 96, 0)     # M < 128: 64x64
+        self.assertEqual(tasks(300, 100, mm_tile=256)[0].args['flags'] & 96, 0)     # N < 128: 64x64
+        self.assertEqual(tasks(300, 100, mm_tile=128)[0].args['flags'] & 96, 0)
+        self.assertEqual(tasks(140, 140, mm_tile=128)[0].args['flags'] & 96, 0)     # 140x140 in 2x2 128 tiles wastes 70%
+        self.assertEqual(tasks(500, 500, mm_tile=256, mm_min_eff=0.99)[0].args['flags'] & 96, 0)
+        self.assertEqual(tasks(300, 260, mm_tile=256, mm_min_eff=0.5)[0].args['flags'] & 96, 64)
+        self.assertEqual(tasks(300, 512, mm_tile=256, mm_min_eff=0.9)[0].args['flags'] & 96, 32)   # 300 rows in 512: steps down 256 -> 128 (0.94)
+        b = Builder()
+        b.linear(b.tensor('x', 500, 40), b.tensor('w', 40, 500))
+        self.assertEqual(len(lower_op(b.ops[0], Tiling(mm_min_tiles=100, mm_tile=128))), 8 * 8)  # too few tiles -> 64x64
+
+    def test_big_tiles_give_the_same_cpu_result(self):
+        import random
+        from kvmfe.opset import Buf, op as device_op
+        rnd = random.Random(1)
+        M, N, K = 300, 140, 5
+        res = {}
+        for mt in (64, 128, 256):
+            b = Builder()
+            x, w = b.tensor('x', M, K), b.tensor('w', K, N)
+            b.linear(x, w)
+            ts = lower_op(b.ops[0], Tiling(mm_tile=mt, mm_min_tiles=1, mm_min_eff=0.0))
+            rnd.seed(2)
+            bufs = {'a': Buf([rnd.random() for _ in range(M * K)], M, K), 'b': Buf([rnd.random() for _ in range(K * N)], K, N),
+                    'out': Buf([0.0] * (M * N), M, N), 'bias': None, 'res': None, 'pre': None}
+            for t in ts:
+                a = {k: v for k, v in t.args.items() if not isinstance(v, (Tensor, type(None)))}
+                device_op(t.dev).ref(bufs, a)
+            res[mt] = (len(ts), bufs['out'].a)
+        self.assertEqual([res[k][0] for k in (64, 128, 256)], [5 * 3, 3 * 2, 2 * 2])
+        self.assertEqual(res[64][1], res[128][1])
+        self.assertEqual(res[64][1], res[256][1])
+
     def test_shape_errors_are_named(self):
         b = Builder()
         with self.assertRaisesRegex(FrontendError, r'linear.*inner dims'):

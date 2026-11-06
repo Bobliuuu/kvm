@@ -10,7 +10,7 @@ image = (modal.Image.from_registry("nvidia/cuda:12.4.1-devel-ubuntu22.04", add_p
          .apt_install("rsync", "git")
          .pip_install("torch", "numpy")
          .add_local_dir(str(ROOT), "/src", copy=True,
-                        ignore=["results", "logs", ".git", "docs", "**/__pycache__"]))
+                        ignore=[".tmp", "results", "logs", ".git", "docs", "**/__pycache__"]))
 app = modal.App("kvm-h100", image=image)
 vol = modal.Volume.from_name("kvm-h100-logs", create_if_missing=True)
 

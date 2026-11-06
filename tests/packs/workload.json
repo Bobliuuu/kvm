@@ -1,0 +1,7 @@
+{"buffers": [
+  {"name": "x", "rows": 1, "cols": 8, "init": {"kind": "values", "values": [1, 2, 3, 4, 5, 6, 7, 8]}},
+  {"name": "y", "rows": 1, "cols": 8, "init": {"kind": "fill", "value": 0.5}},
+  {"name": "out", "rows": 1, "cols": 8}],
+ "graphs": [{"name": "g", "tasks": [
+  {"id": "s1", "op": "saxpy", "args": {"x": "x", "y": "y", "out": "out", "alpha": 2.0, "n": 8}},
+  {"id": "s2", "op": "saxpy", "after": ["s1"], "args": {"x": "out", "y": "x", "out": "out", "alpha": -0.5, "n": 8}}]}]}

@@ -120,6 +120,33 @@ plus 3 s to parse the JSON, peaking near 1.2 GB (mostly the JSON itself). The ho
 array-based CSR graph, one topological pass for cycle detection and a topological-position bound for reachability queries, and
 the cyclic GC is paused during compilation.
 
+## Operator packs (pluggable registries, one build flow)
+
+An operator is a line `X(name, id, "arg:type,...")` in a registry `.def` (ids are sparse and globally unique) plus a `KVM_OP(name)` body
+in a `.cuh`; the host compiler parses the same `.def` files, so the three sides cannot drift. Built-in packs: core, `gpt`, `extra`,
+`comm` (picked up automatically) and `game` (Doom). User packs are directories:
+
+```
+packs/my_pack/ops.def     X(my_op, 300, "x:buf,out:buf,n:i32")        ids >= 300 are free
+packs/my_pack/ops.cuh     KVM_OP(my_op) { ... }                       block-cooperative, ARG_BUF/ARG_I32/ARG_F32, c.fits(...)
+packs/my_pack/ref.py      OPS = {'my_op': RefOp(run, extents)}        CPU semantics for the compiler golden / CPU VM (optional)
+packs/my_pack/pack.conf   rdc=1 | link=obj.o | define=NAME[=V]       optional build needs
+```
+
+```
+eval "$(tools/kvm_build.sh --print-env --pack packs/my_pack)"          # python side: KVM_EXTRA_DEFS / KVM_EXTRA_REFS
+python3 runtime/compile_workload.py --emit-golden wl.json out/bundle   # compiler knows my_op, golden uses ref.py
+tools/kvm_build.sh --pack packs/my_pack -o kvm_exec kvm_exec.cu        # executor with my_op
+tools/kvm_build.sh --pack game --pack packs/my_pack -o kvm_run demo/kvm_run.cu   # game pack: -rdc, -DKVM_WITH_GAME, doom_dev.o added BY THE FLAG
+```
+
+Any number of `--pack`s combine (the script generates one aggregate `.def`/`.cuh` and passes it through the existing
+`KVM_EXTRA_OPS_DEF/CUH` hooks); duplicate names or ids are refused by `tools/check_packs.py` before nvcc starts and again by `abi.load_ops`.
+`-rdc=true` is only needed by packs that link relocatable device objects (the game engine); it is a property of the pack
+(`pack.conf` `rdc=1`, built in for `game`), not a separate hand-written recipe. Tested: `tests/test_packs.py` (CPU), `tests/packs/run.sh` (GPU).
+Not done: a pack cannot be loaded into an already-built executor (ops are a compile-time switch in one kernel); a game-pack build still
+needs `-rdc`, which costs some optimization across translation units.
+
 ## Honest limits
 
 - The CPU GPT reference is pure Python: fine for tiny shapes and per-op diffs, hopeless for the 162M model (use the

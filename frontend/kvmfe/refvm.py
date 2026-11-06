@@ -97,6 +97,9 @@ def _run_task(t, mem):
     d = device_op(t['op'])
     if d.ref is None:
         raise FrontendError(f"task {t['id']}: op {t['op']!r} has no CPU reference (opaque engine op)")
+    w = t.get('when')
+    if w and (mem.bufs[w['buf']].a[w['index']] != 0) == bool(w['negate']):
+        return                                   # predicate false: the op body does not run, outputs keep their contents
     args = t.get('args', {})
     bufs = {a: (mem.bufs[args[a]] if args[a] is not None else None) for a, ty in d.sig if ty in ('buf', 'buf?')}
     d.ref(bufs, {a: args[a] for a, ty in d.sig if ty not in ('buf', 'buf?')})

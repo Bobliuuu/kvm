@@ -1,0 +1,13 @@
+=== VARIANT [-DBENCH_MINB=2]
+NVIDIA A100-SXM4-80GB, 610.57.04, 1410 MHz
+Cuda compilation tools, release 12.8, V12.8.61
+Build cuda_12.8.r12.8/compiler.35404655_0
+PASS  gelu_fwd bad buf index -> err 1  
+PASS  gelu_fwd int buffer passed as f32 -> err 2  
+PASS  gelu_fwd range beyond buffer -> err 3  
+PASS  attn_fwd unsupported hd -> err 4  
+PASS  failed op leaves outputs untouched  
+PASS  unknown op id -> flagged  
+
+1979 passed, 0 failed
+

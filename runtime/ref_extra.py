@@ -8,7 +8,7 @@ import math
 import struct
 
 from ref_gpt import GPT_OPS, _R, _flat_ext, _need, _rng, _matmul_tile
-from ref_types import f32
+from ref_types import RefOp, f32
 
 M32 = 0xFFFFFFFF
 
@@ -456,3 +456,39 @@ EXTRA_OPS = {
     'matmul_tile_silu_mul': _R(_mm_silu_mul, _mm_ext(('out', 'gate', 'up'))),
     'matmul_tile_silu_mul_bwd': _R(_mm_silu_mul_bwd, _mm_ext(('gate', 'up', 'dgate', 'dup'))),
 }
+
+
+# ---- bf16 STORAGE variants of GPT-pack ops --------------------------------------------------------------------------------------
+# These device ops take fp32 or bf16-storage buffers (ld_s / st_s) on the arguments below; the arithmetic is the fp32 op's, and every value stored
+# to a bf16 buffer is rounded once (RNE). The reference runs the fp32 model, then rounds the whole bf16 output buffer: rounding is idempotent,
+# so values the task did not write (already bf16) are unchanged. Cost is O(buffer) per task: this is the small-model golden, not a 162M oracle.
+_BF16_STORAGE = {   # op: (buffers that may be bf16 storage, of which written)
+    'embedding_fwd': (('out',), ('out',)),
+    'layernorm_fwd': (('x', 'out'), ('out',)),
+    'rmsnorm_fwd': (('x', 'out'), ('out',)),
+    'layernorm_bwd_dx': (('x', 'dy', 'dx'), ('dx',)),
+    'rmsnorm_bwd_dx': (('x', 'dy', 'dx'), ('dx',)),
+    'norm_bwd_params': (('x', 'dy'), ()),
+    'colsum': (('x',), ()),
+    'gelu_bwd': (('x', 'dy', 'dx'), ('dx',)),
+    'residual_add': (('a', 'b', 'out'), ('out',)),
+    'rope_fwd': (('x', 'out'), ('out',)),
+    'rope_bwd': (('x', 'out'), ('out',)),
+    'softmax_ce_fwd': (('logits',), ()),
+    'softmax_ce_bwd': (('logits', 'dlogits'), ('dlogits',)),
+}
+
+
+def _bf16_storage(base, written):
+    def run(b, a):
+        base.run(b, a)
+        for n in written:
+            t = b.get(n)
+            if t is not None and t.dtype == 'bf16':
+                t[:] = [bf16_round(x) for x in t]
+    return run
+
+
+for _name, (_any, _written) in _BF16_STORAGE.items():
+    _base = GPT_OPS[_name]
+    EXTRA_OPS[_name] = RefOp(_bf16_storage(_base, _written), _base.extents, _base.mins, _base.ints, _base.anydt | frozenset(_any), _base.opaque)

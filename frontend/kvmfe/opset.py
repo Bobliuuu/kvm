@@ -207,13 +207,13 @@ def _gelu_fwd(b, a):
 def _gelu_bwd(b, a):
     e0, e1 = a['e0'], a['e1']
     v = [_gelu_d(x) * g + (d if a['acc'] else 0.0) for x, g, d in zip(b['x'].a[e0:e1], b['dy'].a[e0:e1], b['dx'].a[e0:e1])]
-    b['dx'].a[e0:e1] = v
+    b['dx'].put(0, e0, v)      # flat range; put() rounds when dx is bf16 storage
 
 
 @impl('residual_add', lambda a: a['e1'] - a['e0'])
 def _residual_add(b, a):
     e0, e1 = a['e0'], a['e1']
-    b['out'].a[e0:e1] = [x + y for x, y in zip(b['a'].a[e0:e1], b['b'].a[e0:e1])]
+    b['out'].put(0, e0, [x + y for x, y in zip(b['a'].a[e0:e1], b['b'].a[e0:e1])])
 
 
 @impl('rope_fwd', lambda a: 6.0 * (a['r1'] - a['r0']) * a['H'] * a['hd'])

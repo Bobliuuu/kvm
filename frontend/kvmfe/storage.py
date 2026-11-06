@@ -3,11 +3,14 @@
 The frontend's 'bf16' precision rounds values but keeps them in fp32 containers. This pass, run on the finished (post-autodiff) op list,
 makes the roundings real storage:
 
-  * every `cast` output becomes a bf16 tensor (2 bytes per element). A cast whose input is the sole output of a bf16 matmul
-    (`linear` / `mm`) is folded into it: the matmul epilogue (fp32 math) stores the rounded value directly (matmul_tile_bf16 accepts bf16
-    a, b, out, res, pre). Any other cast becomes a narrowing `cast` op (round_bf16: f32 -> bf16).
+  * every `cast` output becomes a bf16 tensor (2 bytes per element). A cast whose input is the sole output of a producer that can store
+    bf16 itself is folded into that producer: a bf16 matmul (`linear` / `mm`, fp32 epilogue then one rounding), or a storage-aware op
+    (NATIVE below: norms, rope, gelu_bwd, residual adds, embedding, cross entropy). Any other cast becomes a narrowing `cast` op (round_bf16).
+  * a bf16 matmul whose operand is an fp32 activation reads an explicit bf16 copy of it (one `cast` per tensor, shared by all its consumers
+    and folded into the producer when possible): the bf16 tensor-core tile (matmul_mma_bf16) needs bf16 storage on both operands, and the
+    emulation already rounded such operands on load, so the numbers do not change.
   * each weight a bf16 matmul reads gets a bf16 shadow `wb.<name>` refreshed from the fp32 MASTER at the start of every step; the master
-    (`w.<name>`, AdamW moments, gradients) stays fp32, so the optimizer is untouched and accumulates in fp32.
+    (`w.<name>`, AdamW moments, gradients) stays fp32, so the optimizer is untouched and accumulates in fp32. Weight GRADIENTS stay fp32 as well.
   * every other op reads and writes fp32: a bf16 tensor it touches goes through a fp32 scratch tensor (widen before, narrow after).
     The scratch tensors are short-lived and the memory planner reuses them, so the persistent activation footprint is bf16.
 
@@ -19,10 +22,29 @@ from __future__ import annotations
 from . import log
 from .ir import LogicalOp, Tensor
 
-CAPABLE = ('linear', 'mm')            # lowered to matmul_tile_bf16 when attrs['bf16'] (reads/writes bf16 storage natively)
+CAPABLE = ('linear', 'mm')            # lowered to matmul_mma_bf16 / matmul_tile_bf16 when attrs['bf16'] (read and write bf16 storage natively)
 # ins of a capable op that may be bf16 storage; everything else (bias) must be fp32
 _NATIVE_IN = {'linear': ('x', 'w', 'res'), 'mm': ('a', 'b', 'into')}
 _WEIGHT_IN = {'linear': ('w',), 'mm': ('a', 'b')}
+_OPERAND_IN = {'linear': ('x',), 'mm': ('a', 'b')}        # operands that get an explicit bf16 copy when they are fp32 activations
+
+# Storage-aware (non-matmul) ops: logical op kind -> (in slots, out slots) that may hold bf16 storage. These mirror the device ops' ld_s/st_s
+# arguments (include/kvm_ops_gpt.cuh) and runtime/ref_extra._BF16_STORAGE; every other slot of these ops is fp32 (statistics, parameters).
+NATIVE = {
+    'embedding': ((), ('out',)),
+    'layernorm': (('x',), ('out',)),
+    'rmsnorm': (('x',), ('out',)),
+    'layernorm_bwd': (('x', 'dy'), ('dx',)),
+    'rmsnorm_bwd': (('x', 'dy'), ('dx',)),
+    'rope': (('x',), ('out',)),
+    'rope_bwd': (('dy',), ('out',)),
+    'gelu_bwd': (('pre', 'dy'), ('out',)),
+    'add': (('a', 'b'), ('out',)),
+    'add_into': (('dst', 'src'), ('dst',)),
+    'colsum': (('x',), ()),
+    'ce_loss': (('logits',), ()),
+    'ce_bwd': (('logits',), ('out',)),
+}
 
 
 def _capable(op):
@@ -33,8 +55,47 @@ def _cast(x, out, like, name):
     return LogicalOp('cast', {'x': x}, {'out': out}, {'dtype': 'bf16'}, name, like.step, like.phase, like.graph)
 
 
+def _out_slot(op, x):
+    """Slot of `op` through which it can store the bf16 value of its output tensor `x`, or None. Matmuls fold only when they do not
+    accumulate into x (the epilogue would have to read an fp32 'into'); storage-aware ops only when x is not also an input (RMW)."""
+    if _capable(op):
+        return 'out' if op.outs.get('out') is x and 'into' not in op.ins else None
+    native = NATIVE.get(op.kind)
+    if native is None or any(t is x for t in op.ins.values()):
+        return None
+    return next((s for s in native[1] if op.outs.get(s) is x), None)
+
+
+def _narrow_operands(ops, stats):
+    """Insert an explicit bf16 copy of every fp32 activation a bf16 matmul reads as an operand (see module docstring). A copy is shared by
+    all consumers of the same value of the tensor (a write to the tensor starts a new value)."""
+    version: dict = {}
+    copies: dict = {}
+    out = []
+    for op in ops:
+        if _capable(op):
+            ins = dict(op.ins)
+            for n in _OPERAND_IN[op.kind]:
+                t = ins.get(n)
+                if t is None or t.dtype != 'f32' or t.kind == 'param':
+                    continue
+                key = (t.uid, version.get(t.uid, 0))
+                if key not in copies:
+                    copies[key] = Tensor(t.name + '.b16', t.rows, t.cols, 'act', dtype='bf16')
+                    out.append(_cast(t, copies[key], op, 'narrow.' + t.name))
+                    stats['operand_copies'] += 1
+                ins[n] = copies[key]
+            op = LogicalOp(op.kind, ins, op.outs, op.attrs, op.name, op.step, op.phase, op.graph, op.remat)
+        for t in op.outs.values():
+            version[t.uid] = version.get(t.uid, 0) + 1
+        out.append(op)
+    return out
+
+
 def apply(ops: list[LogicalOp], weights: bool = True) -> tuple[list[LogicalOp], dict]:
     """weights=False keeps the fp32 masters as the matmul operands (the kernel rounds them on load): no bf16 weight shadows."""
+    stats = dict(folded=0, narrowed=0, widened=0, shadows=0, operand_copies=0)
+    ops = _narrow_operands(ops, stats)
     uses: dict = {}
     prod: dict = {}
     for i, op in enumerate(ops):
@@ -42,9 +103,8 @@ def apply(ops: list[LogicalOp], weights: bool = True) -> tuple[list[LogicalOp], 
             uses[t.uid] = uses.get(t.uid, 0) + 1
         for t in op.outs.values():
             prod.setdefault(t.uid, []).append(i)
-    stats = dict(folded=0, narrowed=0, widened=0, shadows=0)
 
-    # 1. cast outputs become bf16; fold the cast into the producing bf16 matmul when that is its only consumer
+    # 1. cast outputs become bf16; fold the cast into the producing op when that is its only consumer and the producer can store bf16
     drop, out_of = set(), {}
     for i, op in enumerate(ops):
         if op.kind != 'cast' or op.attrs.get('dtype') != 'bf16':
@@ -52,10 +112,9 @@ def apply(ops: list[LogicalOp], weights: bool = True) -> tuple[list[LogicalOp], 
         x, out = op.ins['x'], op.outs['out']
         out.dtype = 'bf16'
         p = prod.get(x.uid, [])
-        m = ops[p[0]] if len(p) == 1 else None
-        if (m is not None and _capable(m) and m.outs['out'] is x and 'into' not in m.ins and uses.get(x.uid) == 1
-                and x.dtype == 'f32' and p[0] < i):
-            out_of[p[0]] = out
+        slot = _out_slot(ops[p[0]], x) if len(p) == 1 else None
+        if slot is not None and uses.get(x.uid) == 1 and x.dtype == 'f32' and p[0] < i:
+            out_of[p[0]] = (slot, out)
             drop.add(i)
             stats['folded'] += 1
         else:
@@ -73,7 +132,7 @@ def apply(ops: list[LogicalOp], weights: bool = True) -> tuple[list[LogicalOp], 
     stats['shadows'] = len(shadow)
 
     # 3. rewrite: shadows for weights, widen/narrow around ops that are not storage-aware
-    out, first_of_step, ntmp = [], {}, 0
+    out, first_of_step = [], {}
     masters = {u: t for u, t in ((t.uid, t) for op in ops for t in op.ins.values()) if u in shadow}
     for op in ops:
         if op.step not in first_of_step:
@@ -99,10 +158,13 @@ def apply(ops: list[LogicalOp], weights: bool = True) -> tuple[list[LogicalOp], 
         if op.kind == 'cast' and op.outs['out'].dtype == 'bf16' and op.ins['x'].dtype in ('f32', 'bf16'):
             out.append(op)                                       # a narrowing / copy cast: round_bf16 reads and writes storage natively
             continue
+        native_in, native_out = NATIVE.get(op.kind, ((), ()))
+        # a bf16 tensor goes through an fp32 scratch unless every slot it occupies in this op is storage-aware
+        slots = [(n, t, False) for n, t in op.ins.items()] + [(n, t, True) for n, t in op.outs.items()]
         tmps, pre, post = {}, [], []
-        for t in (*op.ins.values(), *op.outs.values()):
-            if t.dtype == 'bf16' and t.uid not in tmps:
-                tmps[t.uid] = Tensor(f'{t.name}.f32', t.rows, t.cols, 'act')
+        for n, t, is_out in slots:
+            if t.dtype == 'bf16' and n not in (native_out if is_out else native_in):
+                tmps.setdefault(t.uid, Tensor(f'{t.name}.f32', t.rows, t.cols, 'act'))
         if not tmps:
             out.append(op)
             continue
@@ -128,8 +190,9 @@ def _fold(ops, drop, out_of):
         if i in drop:
             continue
         if i in out_of:
+            slot, tensor = out_of[i]
             outs = dict(op.outs)
-            outs['out'] = out_of[i]
+            outs[slot] = tensor
             op = LogicalOp(op.kind, op.ins, outs, op.attrs, op.name, op.step, op.phase, op.graph, op.remat)
         res.append(op)
     return res

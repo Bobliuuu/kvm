@@ -236,10 +236,11 @@ static bool suite_hol() {
 static bool suite_admit_gran() {
   int before = g_fail;
   printf("  latency bundle (1 noop, class 0) submitted right behind a K-task record (K noops, class 1); end-to-end latency of the small bundle\n");
-  for (int K : {500, 2000, 8000, 32000, 64000}) {
+  for (int lat : {0, 1}) for (int K : {500, 2000, 8000, 32000, 64000}) {
     KvmConfig c = sched_cfg(34, 2); c.max_tasks = 1 << 18; c.live_cap = 1 << 17; c.ring_words = 1 << 22;
+    if (lat) c.lat_classes = 1;   // class 0 bundles use the latency ring; class 1 records over admit_slice (512) tasks are admitted in slices
     KvmExec ex(c); ex.start();
-    std::vector<double> lat, per_task;
+    std::vector<double> lat_us, per_task;
     for (int rep = 0; rep < 12; ++rep) {
       KvmBundleBuilder big; KvmTaskOpts o; o.workload = 1; for (int i = 0; i < K; ++i) big.add("noop", {}, o);
       KvmBundle bb = big.build(); unsigned w1, w2;
@@ -249,11 +250,11 @@ static bool suite_admit_gran() {
       KvmBundleBuilder sm; KvmTaskOpts o0; o0.workload = 0; sm.add("noop", {}, o0);
       CHECK(ex.submit(sm.build(), 30000, false, &w2) == KvmSubmit::OK, "submit");
       while (!ex.window_done(w2)) std::this_thread::yield();
-      lat.push_back(now_us_since(t0) - sub);
+      lat_us.push_back(now_us_since(t0) - sub);
       while (!ex.window_done(w1)) std::this_thread::yield();
       per_task.push_back((now_us_since(t0)) / K);
     }
-    printf("  K=%6d: small bundle p50 %8.0f us  max %8.0f us   (record fully done: %.2f us per task)\n", K, pct(lat, 50), pct(lat, 100), pct(per_task, 50));
+    printf("  %s K=%6d: small bundle p50 %8.0f us  max %8.0f us   (record fully done: %.2f us per task)\n", lat ? "lat lane" : "one FIFO ", K, pct(lat_us, 50), pct(lat_us, 100), pct(per_task, 50));
     ex.finish();
   }
   return g_fail == before;

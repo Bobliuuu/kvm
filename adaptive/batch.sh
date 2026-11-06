@@ -59,6 +59,11 @@ case "$GROUP" in
       one bw_sweep_cap $rep $W4 --bw-cta 1000000,1000000,1000000,24
     done;;
   all_a) mkdir -p "$OUT"; "$0" suites; "$0" main; "$0" main_big;;
+  lat)   # class-aware admission, before vs after, the same load (ungated training flood: whole-window records, no host shedding)
+    for rep in $(seq 1 "$REPS"); do for c in fixed_prio adaptive; do
+      one "lat_off_$c" $rep ${CFG[$c]} $PHASES; one "lat_on_$c" $rep ${CFG[$c]} $PHASES --lat-lane --admit-slice ${SLICE:-512}
+      one "lat_off_gated_$c" $rep ${CFG[$c]} $GATE $PHASES; one "lat_on_gated_$c" $rep ${CFG[$c]} $GATE $PHASES --lat-lane --admit-slice ${SLICE:-512}
+    done; done;;
   tuned) for rep in $(seq 1 "$REPS"); do for c in alone adaptive_gated adaptive_tuned fixed_prio_gated; do one $c $rep ${CFG[$c]} $PHASES; done; done;;
   all_b) mkdir -p "$OUT"; "$0" tuned; DUR=16 "$0" multi; DUR=16 REPS=4 "$0" bw;;
   suites) mkdir -p "$OUT"

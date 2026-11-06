@@ -169,6 +169,14 @@ struct KvmCounters {  // device memory; hot fields on separate lines
   alignas(128) int parked;                                                        // tasks parked on a version (not counted against live_cap)
   alignas(128) unsigned long long ftail;                                          // free-slot ring tail (many producers)
 };
+// Class-aware admission (lat lane). Lane 0 is the bulk admission ring; lane 1 (when lat_on) is a second, independent ring with its own
+// window table, successor ring and per-window done marks, so a latency bundle never waits behind a bulk record. A window id carries its
+// lane in bit 31 (KVM_LAT_BIT); with lat_on == 0 the lane-1 code is dead and ids are the plain record numbers.
+#define KVM_LAT_BIT 0x80000000u
+struct KvmLaneDev {
+  KvmWin* wins; unsigned* win_done; int* succ; unsigned succ_cap, win_cap;
+  int* ring; int ring_words; unsigned long long *doorbell, *ring_head;
+};
 struct KvmWatch { unsigned long long since, checked; int done, admitted; };   // per-block progress watch (thread 0)
 struct KvmHostErr { volatile int slot, a, b; volatile int code; };  // mapped mirror of the first device error
 
@@ -178,7 +186,7 @@ static_assert(KVM_ARG_STRIDE >= KVM_MAX_ARGS, "slot argument stride");
 
 // nslots, succ_cap, win_cap and live_cap are powers of two.
 struct KvmDevState {
-  int nslots, live_cap, nbufs, ring_words, num_vars, win_cap, rcap, pad1;   // rcap = ready-ring depth = 4 * live_cap (see KvmCounters::parked)
+  int nslots, live_cap, nbufs, ring_words, num_vars, win_cap, rcap, admit_slice;   // rcap = ready-ring depth = 4 * live_cap (see KvmCounters::parked)
   unsigned succ_cap;
   long long aging_ns;
   unsigned long long timeout_ns, task_limit_ns;   // stall timeout; per-task running-time limit (0 = off, checked when the task ends)
@@ -198,6 +206,8 @@ struct KvmDevState {
   unsigned int *closed, *win_done;                  // win_done[w & (win_cap-1)] == w+1 once window w has finished
   KvmHostErr* herr;
   KvmSchedPtrs sp;   // SCHED: scheduler state; sp.on == 0 reproduces the original single-queue executor
+  int lat_on, lat_reserve;   // lat lane enabled; live-window tasks kept free of bulk records for the lat lane
+  KvmLaneDev lat;            // lane 1
   const KvmDistDev* dist;  // KVM_DIST_HOOK: nullptr = single-device executor (all dist code is skipped)
 };
 
@@ -439,6 +449,14 @@ __device__ __forceinline__ uint64_t kvm_dev_types(int op) {
 }
 
 // ---------------- ready queue and scheduling policy ----------------
+__device__ __forceinline__ KvmLaneDev kvm_lane(const KvmDevState& S, int l) {
+  if (l) return S.lat;
+  KvmLaneDev d{S.wins, S.win_done, S.succ, S.succ_cap, (unsigned)S.win_cap, S.ring, S.ring_words, S.doorbell, S.ring_head};
+  return d;
+}
+__device__ __forceinline__ int kvm_wid_lane(const KvmDevState& S, unsigned wid) { return S.lat_on ? (int)(wid >> 31) : 0; }
+__device__ __forceinline__ unsigned kvm_wid_seq(const KvmDevState& S, unsigned wid) { return S.lat_on ? (wid & ~KVM_LAT_BIT) : wid; }
+
 // SCHED: kvm_enqueue / kvm_pop (per-class rings, tiers, caps) and the policy block live in kvm_sched.cuh.
 #include "kvm_sched.cuh"
 
@@ -586,7 +604,7 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   if (!sh.skip) {
     __threadfence();
     for (int e = threadIdx.x; e < d.succ_cnt; e += blockDim.x) {
-      int s = S.succ[(unsigned)(d.succ_off + e) & (S.succ_cap - 1)];
+      int s = (kvm_wid_lane(S, (unsigned)d.reserved0) ? S.lat.succ : S.succ)[(unsigned)(d.succ_off + e) & ((kvm_wid_lane(S, (unsigned)d.reserved0) ? S.lat.succ_cap : S.succ_cap) - 1)];
       if (atom_add(S.indeg + s, -1) == 1) { kvm_sched_pref(S, s); kvm_release_task(S, s); }  // SCHED: affinity = this block
     }
   }
@@ -596,7 +614,9 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
     // Nothing of this task is read again (sh.d is a copy; successors were decremented): return its window credit, which also
     // lets the admitter reclaim the window's successor storage, then recycle the slot, then count the task done.
     const unsigned wid = (unsigned)d.reserved0;
-    if (atom_add(&S.wins[wid & (S.win_cap - 1)].remaining, -1) == 1) st_rel_sys((volatile int*)&S.win_done[wid & (S.win_cap - 1)], (int)(wid + 1));
+    const KvmLaneDev ln = kvm_lane(S, kvm_wid_lane(S, wid));
+    const unsigned seq = kvm_wid_seq(S, wid);
+    if (atom_add(&ln.wins[seq & (ln.win_cap - 1)].remaining, -1) == 1) st_rel_sys((volatile int*)&ln.win_done[seq & (ln.win_cap - 1)], (int)(seq + 1));
     kvm_free_slot(S, slot);
     atom_add(&S.cnt->done, 1);
   }
@@ -631,53 +651,99 @@ __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
 // A bundle record = one "window". Resources it needs before admission, all bounded: nt free slots, ne successor-ring words,
 // one window-table entry, nt of the live window. Successor words and the window entry return in window order, once every
 // task of the window has completed (a task blocked on a version pins its window's successor words).
+struct KvmLaneAdm { unsigned long long pos; unsigned win_next, win_oldest, succ_scan, succ_used, succ_free; };   // per-lane admitter state
 struct KvmAdmitShared {
-  int action, hdr[KVM_REC_HDR];
-  unsigned long long fhead;                      // next free-ring position to pop
-  unsigned win_next, win_oldest, succ_scan, succ_used, succ_free;
+  int action, lane, hdr[KVM_REC_HDR];
+  unsigned long long fhead;                      // next free-ring position to pop (shared by both lanes: one slot pool)
+  KvmLaneAdm l[2];
 };
 #define KVM_ADM_IDLE 0
 #define KVM_ADM_REC  1
 #define KVM_ADM_FINAL 2
 #define KVM_ADM_EXIT 3
+#define KVM_LAT_POLL_MAX 8   // lat-lane records admitted at one slice boundary
 
-// Two reclaim pointers, both advanced only here. win_oldest = oldest window with a task still alive: bounds the window table.
+// Two reclaim pointers per lane, both advanced only here. win_oldest = oldest window with a task still alive: bounds the window table.
 // succ_scan walks the successor ring's regions in order: it skips windows with no edges (they own no words) and passes a
 // region only when all of its tasks completed, so a task parked on a version pins only the words of its own window.
-__device__ void kvm_reclaim_windows(const KvmDevState& S, KvmAdmitShared& A) {  // thread 0
-  while (A.win_oldest != A.win_next && ld_acq(&S.wins[A.win_oldest & (S.win_cap - 1)].remaining) == 0) ++A.win_oldest;
-  while (A.succ_scan != A.win_next) {
-    KvmWin* w = S.wins + (A.succ_scan & (S.win_cap - 1));
+__device__ void kvm_reclaim_windows(const KvmDevState& S, KvmAdmitShared& A, int L) {  // thread 0
+  const KvmLaneDev ln = kvm_lane(S, L);
+  KvmLaneAdm& a = A.l[L];
+  while (a.win_oldest != a.win_next && ld_acq(&ln.wins[a.win_oldest & (ln.win_cap - 1)].remaining) == 0) ++a.win_oldest;
+  while (a.succ_scan != a.win_next) {
+    KvmWin* w = ln.wins + (a.succ_scan & (ln.win_cap - 1));
     if (w->ne != 0) {
       if (ld_acq(&w->remaining) != 0) break;
-      A.succ_free = w->succ_end;
+      a.succ_free = w->succ_end;
     }
-    ++A.succ_scan;
+    ++a.succ_scan;
   }
 }
 
-__device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared& A, unsigned long long pos) {
-  const int* rec = S.ring + (size_t)(pos % (unsigned long long)S.ring_words);
-  const int nt = A.hdr[2], ne = A.hdr[3], na = A.hdr[4];
+// Thread 0: look at lane L's next record (the doorbell said it is published). A.action = REC with A.hdr loaded, or EXIT (bad record).
+__device__ void kvm_peek(const KvmDevState& S, KvmAdmitShared& A, int L, unsigned long long tail) {
+  const KvmLaneDev ln = kvm_lane(S, L);
+  const unsigned long long pos = A.l[L].pos;
+  const int* rec = ln.ring + (size_t)(pos % (unsigned long long)ln.ring_words);
+  for (int j = 0; j < KVM_REC_HDR; ++j) A.hdr[j] = ld_sys(rec + j);
+  unsigned long long left = (unsigned long long)ln.ring_words - pos % (unsigned long long)ln.ring_words;
+  bool ok = A.hdr[0] == KVM_REC_MAGIC && A.hdr[1] >= KVM_REC_HDR && A.hdr[1] % 8 == 0 &&
+            (unsigned long long)A.hdr[1] <= left && pos + A.hdr[1] <= tail &&
+            (A.hdr[6] == KVM_REC_PAD || (A.hdr[6] == KVM_REC_BUNDLE && A.hdr[1] == ((KVM_REC_HDR + A.hdr[2] * KVM_TASK_WORDS + A.hdr[3] + A.hdr[4] + 7) & ~7)));
+  if (!ok) { kvm_fail(S, KVM_ERR_BAD_RECORD, -1, (int)pos, A.hdr[1]); A.action = KVM_ADM_EXIT; }
+  else A.action = KVM_ADM_REC;
+}
+
+// Ring space returns to the host only after the copy (all threads call; thread 0 publishes).
+__device__ void kvm_consume(const KvmDevState& S, KvmAdmitShared& A, int L, int total) {
+  if (threadIdx.x == 0) { A.l[L].pos += (unsigned long long)total; st_rel_sys64(kvm_lane(S, L).ring_head, A.l[L].pos); }
+  __syncthreads();
+}
+
+__device__ void kvm_lat_service(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared& A, int base_nt);
+// Block-uniform view of the device error flag (all threads call): A.action = EXIT/REC decided by thread 0.
+__device__ bool kvm_adm_failed(const KvmDevState& S, KvmAdmitShared& A) {
+  if (threadIdx.x == 0) A.action = *(volatile int*)&S.cnt->err_code ? KVM_ADM_EXIT : KVM_ADM_REC;
+  __syncthreads();
+  const bool bad = A.action == KVM_ADM_EXIT;
+  __syncthreads();
+  return bad;
+}
+
+// Admit the bundle record at lane L's position (A.hdr holds its header; every thread of the block calls). Leaves A.action = REC when
+// the record was admitted, EXIT on an error, IDLE when nowait and there is no room right now (nothing was consumed or reserved).
+// sliced: a bulk record of more than admit_slice tasks. Its slots, window entry, successor words and live-window share are
+// reserved up front and its descriptors are written in slices; between slices the lat lane is serviced, so a latency record is
+// admitted after at most one slice of the bulk record instead of after all of it. Roots are released only after every task of the
+// record is written (a root may finish and decrement a successor in a later slice), also in slices.
+__device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared& A, int L, int* adm, bool nowait, bool sliced) {
+  const KvmLaneDev ln = kvm_lane(S, L);
+  const unsigned long long pos = A.l[L].pos;
+  const int* rec = ln.ring + (size_t)(pos % (unsigned long long)ln.ring_words);
+  const int nt = A.hdr[2], ne = A.hdr[3], na = A.hdr[4], hdr5 = A.hdr[5];
   const int* rt = rec + KVM_REC_HDR;
   const int* re = rt + (size_t)nt * KVM_TASK_WORDS;
   const int* ra = re + ne;
+  const int cap = (L == 0 && S.lat_on) ? S.live_cap - S.lat_reserve : S.live_cap;   // bulk records leave lat_reserve tasks of the window to the lat lane
   if (threadIdx.x == 0) {
     int code = 0;
-    if (nt < 1 || ne < 0 || na < 0 || (unsigned)A.hdr[5] != A.win_next) code = KVM_ERR_BAD_RECORD;
+    if (nt < 1 || ne < 0 || na < 0 || (unsigned)hdr5 != A.l[L].win_next) code = KVM_ERR_BAD_RECORD;
     else if (nt > S.nslots) code = KVM_ERR_SLOTS;
-    else if (nt > S.live_cap) code = KVM_ERR_BATCH_TOO_LARGE;
-    else if ((unsigned)ne > S.succ_cap) code = KVM_ERR_POOL;
-    if (code) { kvm_fail(S, code, -1, nt, A.hdr[5]); A.action = KVM_ADM_EXIT; }
+    else if (nt > cap) code = KVM_ERR_BATCH_TOO_LARGE;
+    else if ((unsigned)ne > ln.succ_cap) code = KVM_ERR_POOL;
+    A.action = KVM_ADM_REC;
+    if (code) { kvm_fail(S, code, -1, nt, hdr5); A.action = KVM_ADM_EXIT; }
     else {
       // Backpressure: wait for every bounded resource. Parked (version-waiting) tasks have their own budget of live_cap: they do not
       // consume the window the publishing bundle needs. More than live_cap parked is reported as PARK_STALL after the stall timeout.
       for (;;) {
-        kvm_reclaim_windows(S, A);
-        bool room = A.win_next - A.win_oldest < (unsigned)S.win_cap && (A.succ_used + (unsigned)ne - A.succ_free) <= S.succ_cap &&
-                    ld_acq(&S.cnt->admitted) - ld_acq(&S.cnt->done) - ld_acq(&S.cnt->parked) + nt <= S.live_cap && ld_acq(&S.cnt->parked) <= S.live_cap &&
+        kvm_reclaim_windows(S, A, L);
+        KvmLaneAdm& a = A.l[L];
+        bool room = a.win_next - a.win_oldest < ln.win_cap && (a.succ_used + (unsigned)ne - a.succ_free) <= ln.succ_cap &&
+                    ld_acq(&S.cnt->admitted) - ld_acq(&S.cnt->done) - ld_acq(&S.cnt->parked) + nt <= cap && ld_acq(&S.cnt->parked) <= S.live_cap &&
                     ld_acq64(&S.cnt->ftail) - A.fhead >= (unsigned long long)nt;
         if (room) break;
+        if (nowait) { A.action = KVM_ADM_IDLE; break; }
         if (*(volatile int*)&S.cnt->err_code || kvm_stalled(S, t0, false)) {
           kvm_fail(S, ld_acq(&S.cnt->parked) > S.live_cap ? KVM_ERR_PARK_STALL : KVM_ERR_TIMEOUT, -1, ld_acq(&S.cnt->admitted), ld_acq(&S.cnt->done));
           A.action = KVM_ADM_EXIT; break;
@@ -690,119 +756,159 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
     }
   }
   __syncthreads();
-  if (A.action == KVM_ADM_EXIT) return;
+  if (A.action != KVM_ADM_REC) return;
   const unsigned long long fbase = A.fhead;
-  const unsigned sbase = A.succ_used;
+  const unsigned sbase = A.l[L].succ_used;
   // pop nt slots from the free ring (each producer finishes its cell write within a few instructions)
   for (int i = threadIdx.x; i < nt; i += blockDim.x) {
     unsigned long long fp = fbase + i;
     KvmCell* cell = S.fcells + (fp & (unsigned long long)(S.nslots - 1));
     while (ld_acq64(&cell->seq) != fp + 1) { if (*(volatile int*)&S.cnt->err_code) break; __nanosleep(32); }   // a worker that failed in kvm_free_slot never publishes
-    S.adm_slots[i] = cell->slot;
+    adm[i] = cell->slot;
     st_rel64(&cell->seq, fp + (unsigned long long)S.nslots);
   }
   __syncthreads();
   const unsigned long long now = kvm_now();
-  const unsigned wid = A.win_next;
-  for (int i = threadIdx.x; i < nt; i += blockDim.x) {
-    int w[KVM_TASK_WORDS];
+  const unsigned seq = A.l[L].win_next;
+  const unsigned wid = L ? (seq | KVM_LAT_BIT) : seq;
+  // Reserve everything the record needs before the first slice, so a record admitted in between (other lane) sees the pools as they will be.
+  if (threadIdx.x == 0) {
+    ln.wins[seq & (ln.win_cap - 1)].remaining = nt;
+    ln.wins[seq & (ln.win_cap - 1)].succ_end = sbase + (unsigned)ne;
+    ln.wins[seq & (ln.win_cap - 1)].ne = ne;
+    __threadfence();
+    A.fhead += nt; A.l[L].succ_used += ne; A.l[L].win_next++;
+    atom_add(&S.cnt->admitted, nt);  // before any task of this bundle can be enqueued (done <= admitted always)
+  }
+  __syncthreads();
+  const int SL = sliced ? S.admit_slice : nt;
+  for (int lo = 0; lo < nt; lo += SL) {
+    const int hi = lo + SL < nt ? lo + SL : nt;
+    for (int i = lo + (int)threadIdx.x; i < hi; i += blockDim.x) {
+      int w[KVM_TASK_WORDS];
 #pragma unroll
-    for (int j = 0; j < KVM_TASK_WORDS; ++j) w[j] = ld_sys(rt + (size_t)i * KVM_TASK_WORDS + j);
-    // KvmTaskDesc word order: op, succ_off, succ_cnt, indegree, priority, deadline, args_off, args_words, wait_var,
-    // wait_ver, pub_var, pub_ver, workload, flags, r0, r1
-    const int slot = S.adm_slots[i];
-    int op = w[0], so = w[1], sc = w[2], ind = w[3], pr = w[4], ao = w[6], aw = w[7], wv = w[8], pv = w[10];
-    int code = 0;
-    if (kvm_dev_arity(op) < 0) code = KVM_ERR_BAD_OP;
-    else if (aw != kvm_dev_arity(op)) code = KVM_ERR_BAD_ARITY;
-    else if (!kvm_sched_class_ok(S, w[12])) code = KVM_ERR_BAD_TASK;
-    else if (so < 0 || sc < 0 || (long long)so + sc > ne || ao < 0 || aw < 0 || (long long)ao + aw > na || ind < 0 || ind > nt || pr < 0 || pr >= KVM_NBUCKETS || w[5] < -1) code = KVM_ERR_BAD_TASK;
-    else if (wv < -1 || wv >= S.num_vars || pv < -1 || pv >= S.num_vars) code = KVM_ERR_BAD_VAR;
-    else {
-      uint64_t ty = kvm_dev_types(op);
-      for (int j = 0; j < aw && !code; ++j) {
-        int t = (int)((ty >> (3 * j)) & 7u);
-        if (t == KVM_A_BUF || t == KVM_A_BUF_OPT) {
-          int bi = ld_sys(ra + ao + j);
-          if (bi == -1 && t == KVM_A_BUF) code = KVM_ERR_BAD_BUF;
-          else if (bi < -1 || bi >= S.nbufs) code = KVM_ERR_BAD_BUF_INDEX;
+      for (int j = 0; j < KVM_TASK_WORDS; ++j) w[j] = ld_sys(rt + (size_t)i * KVM_TASK_WORDS + j);
+      // KvmTaskDesc word order: op, succ_off, succ_cnt, indegree, priority, deadline, args_off, args_words, wait_var,
+      // wait_ver, pub_var, pub_ver, workload, flags, r0, r1
+      const int slot = adm[i];
+      int op = w[0], so = w[1], sc = w[2], ind = w[3], pr = w[4], ao = w[6], aw = w[7], wv = w[8], pv = w[10];
+      int code = 0;
+      if (kvm_dev_arity(op) < 0) code = KVM_ERR_BAD_OP;
+      else if (aw != kvm_dev_arity(op)) code = KVM_ERR_BAD_ARITY;
+      else if (!kvm_sched_class_ok(S, w[12])) code = KVM_ERR_BAD_TASK;
+      else if (so < 0 || sc < 0 || (long long)so + sc > ne || ao < 0 || aw < 0 || (long long)ao + aw > na || ind < 0 || ind > nt || pr < 0 || pr >= KVM_NBUCKETS || w[5] < -1) code = KVM_ERR_BAD_TASK;
+      else if (wv < -1 || wv >= S.num_vars || pv < -1 || pv >= S.num_vars) code = KVM_ERR_BAD_VAR;
+      else {
+        uint64_t ty = kvm_dev_types(op);
+        for (int j = 0; j < aw && !code; ++j) {
+          int t = (int)((ty >> (3 * j)) & 7u);
+          if (t == KVM_A_BUF || t == KVM_A_BUF_OPT) {
+            int bi = ld_sys(ra + ao + j);
+            if (bi == -1 && t == KVM_A_BUF) code = KVM_ERR_BAD_BUF;
+            else if (bi < -1 || bi >= S.nbufs) code = KVM_ERR_BAD_BUF_INDEX;
+          }
+        }
+      }
+      if (code) { kvm_fail(S, code, slot, op, i); continue; }
+      for (int j = 0; j < aw; ++j) S.args[(size_t)slot * KVM_ARG_STRIDE + j] = ld_sys(ra + ao + j);
+      w[1] = (int)(sbase + (unsigned)so);       // CSR offset into the successor ring (word sequence number)
+      w[6] = slot * KVM_ARG_STRIDE;             // arguments live inline in the slot
+      w[14] = (int)wid;                         // reserved0 = window id (task completion returns the window credit)
+      int* dst = (int*)(S.tasks + slot);
+#pragma unroll
+      for (int j = 0; j < KVM_TASK_WORDS; ++j) dst[j] = w[j];
+      S.indeg[slot] = ind; S.state[slot] = 0; S.park_next[slot] = -1;
+      KvmTrace& t = S.trace[slot];
+      t.admit_ns = now; t.ready_ns = t.start_ns = t.end_ns = 0; t.flags = 0; t.exec_count = 0; t.ver0 = t.ver1 = -1;
+    }
+    const int elo = (int)((long long)ne * lo / nt), ehi = (int)((long long)ne * hi / nt);
+    for (int e = elo + (int)threadIdx.x; e < ehi; e += blockDim.x) {
+      int v = ld_sys(re + e);
+      if (v < 0 || v >= nt) { kvm_fail(S, KVM_ERR_BAD_TASK, adm[0], v, e); v = 0; }
+      ln.succ[(sbase + (unsigned)e) & (ln.succ_cap - 1)] = adm[v];
+    }
+    __syncthreads();
+    for (int i = lo + (int)threadIdx.x; i < hi; i += blockDim.x) kvm_sched_admit_task(S, adm[i]);  // SCHED: cost metadata, publisher classes
+    __syncthreads();
+    if (sliced && hi < nt) { kvm_lat_service(S, t0, A, nt); if (kvm_adm_failed(S, A)) return; }
+  }
+  if (kvm_adm_failed(S, A)) return;
+  for (int lo = 0; lo < nt; lo += SL) {
+    const int hi = lo + SL < nt ? lo + SL : nt;
+    for (int i = lo + (int)threadIdx.x; i < hi; i += blockDim.x) {
+      int slot = adm[i];
+      if (S.tasks[slot].indegree == 0) kvm_release_task(S, slot);  // the descriptor is immutable; S.indeg is live and may already be 0 for a non-root
+    }
+    __syncthreads();
+    if (sliced && hi < nt) { kvm_lat_service(S, t0, A, nt); if (kvm_adm_failed(S, A)) return; }
+  }
+  kvm_adm_failed(S, A);
+}
+
+// Called by every thread between slices of a bulk record that holds base_nt tasks of adm_slots. Admits up to KVM_LAT_POLL_MAX lat-lane
+// records that are already published and fit right now (never waits: the bulk record is not complete, so waiting here could not make room).
+__device__ void kvm_lat_service(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared& A, int base_nt) {
+  if (!S.lat_on) return;
+#ifdef KVM_BREAK_LAT_SLICE  // (negative test: the latlane suite must then fail)
+  return;
+#endif
+  for (int n = 0; n < KVM_LAT_POLL_MAX; ++n) {
+    if (threadIdx.x == 0) {
+      A.action = KVM_ADM_IDLE;
+      if (!*(volatile int*)&S.cnt->err_code) {
+        const unsigned long long tail = ld_acq_sys64(S.lat.doorbell);
+        if (A.l[1].pos < tail) {
+          kvm_peek(S, A, 1, tail);
+          if (A.action == KVM_ADM_REC && A.hdr[6] == KVM_REC_BUNDLE && (long long)base_nt + A.hdr[2] > S.live_cap) A.action = KVM_ADM_IDLE;
         }
       }
     }
-    if (code) { kvm_fail(S, code, slot, op, i); continue; }
-    for (int j = 0; j < aw; ++j) S.args[(size_t)slot * KVM_ARG_STRIDE + j] = ld_sys(ra + ao + j);
-    w[1] = (int)(sbase + (unsigned)so);       // CSR offset into the successor ring (word sequence number)
-    w[6] = slot * KVM_ARG_STRIDE;             // arguments live inline in the slot
-    w[14] = (int)wid;                         // reserved0 = window id (task completion returns the window credit)
-    int* dst = (int*)(S.tasks + slot);
-#pragma unroll
-    for (int j = 0; j < KVM_TASK_WORDS; ++j) dst[j] = w[j];
-    S.indeg[slot] = ind; S.state[slot] = 0; S.park_next[slot] = -1;
-    KvmTrace& t = S.trace[slot];
-    t.admit_ns = now; t.ready_ns = t.start_ns = t.end_ns = 0; t.flags = 0; t.exec_count = 0; t.ver0 = t.ver1 = -1;
-  }
-  for (int e = threadIdx.x; e < ne; e += blockDim.x) {
-    int v = ld_sys(re + e);
-    if (v < 0 || v >= nt) { kvm_fail(S, KVM_ERR_BAD_TASK, S.adm_slots[0], v, e); v = 0; }
-    S.succ[(sbase + (unsigned)e) & (S.succ_cap - 1)] = S.adm_slots[v];
-  }
-  __syncthreads();
-  for (int i = threadIdx.x; i < nt; i += blockDim.x) kvm_sched_admit_task(S, S.adm_slots[i]);  // SCHED: cost metadata, publisher classes
-  if (threadIdx.x == 0) {
-    if (!*(volatile int*)&S.cnt->err_code) {
-      S.wins[wid & (S.win_cap - 1)].remaining = nt;
-      S.wins[wid & (S.win_cap - 1)].succ_end = sbase + (unsigned)ne;
-      S.wins[wid & (S.win_cap - 1)].ne = ne;
-      __threadfence();
-      A.fhead += nt; A.succ_used += ne; A.win_next++;
-      atom_add(&S.cnt->admitted, nt);  // before any task of this bundle can be enqueued (done <= admitted always)
+    __syncthreads();
+    if (A.action != KVM_ADM_REC) { __syncthreads(); return; }
+    __syncthreads();
+    const int total = A.hdr[1], kind = A.hdr[6];
+    __syncthreads();
+    if (kind == KVM_REC_BUNDLE) {
+      kvm_admit_record(S, t0, A, 1, S.adm_slots + base_nt, true, false);
+      if (A.action != KVM_ADM_REC) { __syncthreads(); return; }   // no room now (or an error): retry at the next boundary
     }
-  }
-  __syncthreads();
-  if (*(volatile int*)&S.cnt->err_code) return;
-  for (int i = threadIdx.x; i < nt; i += blockDim.x) {
-    int slot = S.adm_slots[i];
-    if (S.tasks[slot].indegree == 0) kvm_release_task(S, slot);  // the descriptor is immutable; S.indeg is live and may already be 0 for a non-root
+    kvm_consume(S, A, 1, total);
   }
 }
 
 __device__ void kvm_admitter(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared& A) {
-  unsigned long long pos = 0;
-  if (threadIdx.x == 0) { A.fhead = 0; A.win_next = A.win_oldest = A.succ_scan = A.succ_used = A.succ_free = 0; }
+  if (threadIdx.x == 0) { A.fhead = 0; for (int l = 0; l < 2; ++l) A.l[l] = KvmLaneAdm{0, 0, 0, 0, 0, 0}; }
   __syncthreads();
   for (;;) {
     if (threadIdx.x == 0) {
-      A.action = KVM_ADM_IDLE;
+      A.action = KVM_ADM_IDLE; A.lane = 0;
       if (*(volatile int*)&S.cnt->err_code || kvm_stalled(S, t0)) {
         kvm_fail(S, ld_acq(&S.cnt->parked) > S.live_cap ? KVM_ERR_PARK_STALL : KVM_ERR_TIMEOUT, -1, ld_acq(&S.cnt->admitted), ld_acq(&S.cnt->done));
         A.action = KVM_ADM_EXIT;
       } else {
-        unsigned closed = ld_acq_sys(S.closed);                    // BEFORE the doorbell: closed => doorbell is final
+        unsigned closed = ld_acq_sys(S.closed);                    // BEFORE the doorbells: closed => both doorbells are final
         unsigned long long tail = ld_acq_sys64(S.doorbell);        // acquire: record words below are visible
-        if (pos < tail) {
-          const int* rec = S.ring + (size_t)(pos % (unsigned long long)S.ring_words);
-          for (int j = 0; j < KVM_REC_HDR; ++j) A.hdr[j] = ld_sys(rec + j);
-          unsigned long long left = (unsigned long long)S.ring_words - pos % (unsigned long long)S.ring_words;
-          bool ok = A.hdr[0] == KVM_REC_MAGIC && A.hdr[1] >= KVM_REC_HDR && A.hdr[1] % 8 == 0 &&
-                    (unsigned long long)A.hdr[1] <= left && pos + A.hdr[1] <= tail &&
-                    (A.hdr[6] == KVM_REC_PAD || (A.hdr[6] == KVM_REC_BUNDLE && A.hdr[1] == ((KVM_REC_HDR + A.hdr[2] * KVM_TASK_WORDS + A.hdr[3] + A.hdr[4] + 7) & ~7)));
-          if (!ok) { kvm_fail(S, KVM_ERR_BAD_RECORD, -1, (int)pos, A.hdr[1]); A.action = KVM_ADM_EXIT; }
-          else A.action = KVM_ADM_REC;
-        } else if (closed) A.action = KVM_ADM_FINAL;
+        unsigned long long ltail = S.lat_on ? ld_acq_sys64(S.lat.doorbell) : 0;
+        if (S.lat_on && A.l[1].pos < ltail) { A.lane = 1; kvm_peek(S, A, 1, ltail); }   // the lat lane has strict priority between records
+        else if (A.l[0].pos < tail) kvm_peek(S, A, 0, tail);
+        else if (closed) A.action = KVM_ADM_FINAL;
       }
     }
     __syncthreads();
     int action = A.action;
+    const int L = A.lane;
     __syncthreads();
     if (action == KVM_ADM_EXIT) return;
     if (action == KVM_ADM_FINAL) { if (threadIdx.x == 0) st_rel(&S.cnt->admit_final, 1); kvm_dist_pump(S, t0); return; }  // KVM_DIST_HOOK
     if (action == KVM_ADM_IDLE) { kvm_dist_poll(S); __nanosleep(256); continue; }  // KVM_DIST_HOOK
-    if (A.hdr[6] == KVM_REC_BUNDLE) kvm_admit_record(S, t0, A, pos);
+    const int total = A.hdr[1];
+    if (A.hdr[6] == KVM_REC_BUNDLE) {
+      const bool sliced = L == 0 && S.lat_on && S.admit_slice > 0 && A.hdr[2] > S.admit_slice;
+      kvm_admit_record(S, t0, A, L, S.adm_slots, false, sliced);
+    }
     __syncthreads();
     if (A.action == KVM_ADM_EXIT) return;
-    pos += (unsigned long long)A.hdr[1];
-    if (threadIdx.x == 0) st_rel_sys64(S.ring_head, pos);  // ring space returns to the host only after the copy
-    __syncthreads();
+    kvm_consume(S, A, L, total);
   }
 }
 

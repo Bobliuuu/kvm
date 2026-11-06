@@ -22,11 +22,12 @@ F_TA, F_TB, F_ACC, F_GELU, F_PRECISE = 1, 2, 4, 8, 16
 
 
 class Buf:
-    """rows x cols dense store; `a` is the flat row-major list. Optionally rounds every write to float32."""
-    __slots__ = ('a', 'rows', 'cols', 'f32')
+    """rows x cols dense store; `a` is the flat row-major list. Optionally rounds every write to float32. bf16: a bf16-STORAGE buffer
+    (ABI dtype 2): every value written through put() or by a storage-aware op is rounded to the nearest bfloat16."""
+    __slots__ = ('a', 'rows', 'cols', 'f32', 'bf16')
 
-    def __init__(self, a, rows, cols, f32=False):
-        self.a, self.rows, self.cols, self.f32 = a, rows, cols, f32
+    def __init__(self, a, rows, cols, f32=False, bf16=False):
+        self.a, self.rows, self.cols, self.f32, self.bf16 = a, rows, cols, f32, bf16
 
     def row(self, r, c0=0, c1=None):
         o = r * self.cols
@@ -34,6 +35,8 @@ class Buf:
 
     def put(self, r, c0, vals):
         o = r * self.cols + c0
+        if self.bf16:
+            vals = [bf16_round(v) for v in vals]
         self.a[o:o + len(vals)] = [ctypes.c_float(v).value for v in vals] if self.f32 else vals
 
 
@@ -162,7 +165,7 @@ def _matmul_tile(b, a):
             if b['bias'] is not None:
                 v += b['bias'].a[n]
             if b['pre'] is not None:
-                b['pre'].a[m * b['pre'].cols + n] = ctypes.c_float(v).value if out.f32 else v
+                b['pre'].a[m * b['pre'].cols + n] = bf16_round(v) if b['pre'].bf16 else ctypes.c_float(v).value if out.f32 else v
             if fl & F_GELU:
                 v = _gelu(v)
             if b['res'] is not None:
@@ -716,7 +719,7 @@ def bf16_round(x):
 
 @impl('round_bf16', lambda a: float(a['e1'] - a['e0']))
 def _round_bf16(b, a):
-    b['out'].a[a['e0']:a['e1']] = [bf16_round(x) for x in b['x'].a[a['e0']:a['e1']]]
+    b['out'].a[a['e0']:a['e1']] = [bf16_round(x) for x in b['x'].a[a['e0']:a['e1']]]   # also the narrow / widen of bf16 storage
 
 
 @impl('matmul_tile_bf16', _mm_flops)

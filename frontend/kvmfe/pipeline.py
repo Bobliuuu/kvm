@@ -42,6 +42,9 @@ def compile_training(model_cfg, tc: TrainConfig, tiling: Tiling, reuse='shape', 
     if fuse:
         from .fuse import fuse as run_fuse
         ops, _ = run_fuse(ops)
+    if getattr(model.cfg, 'precision', 'f32') == 'bf16s':
+        from . import storage
+        ops, _ = storage.apply(ops)
     low = lower_program(ops, tiling, reuse, gap, prefix='act')
     spec = to_workload(low, {'train': GraphPolicy()}) if with_spec else None
     return Compiled(low, spec, prog)

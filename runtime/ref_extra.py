@@ -314,6 +314,13 @@ def _matmul_tile_bf16(b, a):
     rb['a'] = type(b['a'])([bf16_round(x) for x in b['a']], b['a'].rows, b['a'].cols)
     rb['b'] = type(b['b'])([bf16_round(x) for x in b['b']], b['b'].rows, b['b'].cols)
     _matmul_tile(rb, a)
+    # bf16-STORAGE outputs (dtype 'bf16'): one rounding per stored value, after the fp32 epilogue (pre before gelu, as on the device)
+    for name in ('out', 'pre'):
+        t = b.get(name)
+        if t is not None and t.dtype == 'bf16':
+            for m in range(a['m0'], min(a['m0'] + 64, a['M'])):
+                for n in range(a['n0'], min(a['n0'] + 64, a['N'])):
+                    t[m * t.cols + n] = bf16_round(t[m * t.cols + n])
 
 
 def _adamw_lr(b, a):
@@ -427,8 +434,8 @@ EXTRA_OPS = {
     'attn_full_fwd': _R(_full_fwd, _full_fwd_ext),
     'attn_full_bwd_dq': _R(_full_dq, _full_dq_ext),
     'attn_full_bwd_dkv': _R(_full_dkv, _full_dkv_ext),
-    'round_bf16': _R(_round_bf16, _flat_ext(bufs=('x', 'out'))),
-    'matmul_tile_bf16': _R(_matmul_tile_bf16, GPT_OPS['matmul_tile'].extents),
+    'round_bf16': _R(_round_bf16, _flat_ext(bufs=('x', 'out')), anydt=('x', 'out')),      # storage conversion: each side f32 or bf16
+    'matmul_tile_bf16': _R(_matmul_tile_bf16, GPT_OPS['matmul_tile'].extents, anydt=('a', 'b', 'out', 'res', 'pre')),
     'adamw_lr': _R(_adamw_lr, lambda a: (_rng(a['e0'], a['e1']), {'p': a['e1'], 'g': a['e1'], 'm': a['e1'], 'v': a['e1'], 'gscale': 1, 'step': 1,
                                                                   'lr': 1})[1], ints=('step',)),
     'lr_schedule': _R(_lr_schedule, lambda a: (_need(a['kind'] in (0, 1, 2), 'lr_schedule: kind not in 0..2'), {'step': 1, 'lr': 1})[1],

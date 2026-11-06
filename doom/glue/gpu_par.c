@@ -98,7 +98,7 @@ void gpu_q_span(byte* dest, const byte* src, const byte* cm, unsigned position, 
 }
 // planes stage (many threads): append a span computed from a plane; order within the epoch does not matter (spans never overlap)
 void gpu_q_span_mt(byte* dest, const byte* src, const byte* cm, unsigned position, unsigned step, int count, int x) {
-  const int i = __atomic_fetch_add(&g_nspan, 1, __ATOMIC_RELAXED);
+  int i; asm volatile("atom.add.u32 %0, [%1], 1;" : "=r"(i) : "l"(&g_nspan) : "memory");   // generic-address atomic add (clang's __atomic builtins become a libcall here)
   if (i >= MAXSPAN) { g_span_overflow = 1; return; }
   spancmd_t* s = &g_span[i];
   s->dest = dest; s->src = src; s->cm = cm; s->position = position; s->step = step; s->count = count; s->x = x; s->epoch = 0;

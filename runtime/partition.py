@@ -869,7 +869,7 @@ class ShardPlanner(Planner):
         la0, lb0 = self.ensure(A), self.ensure(B)
         want = self.layout.get(O) or self.init_layout.get(O)
         best = None
-        for (la, lb), lo in self.MM_RULES:
+        for (la, lb), lo in (self.MM_RULES if self.P > 1 else [((R, R), R)]):     # one device: no layout games, no slice copies
             if (lo == ROWS and m % self.P) or (lo == COLS and n % self.P) or (lo == PART and k % self.P):
                 continue
             cost = self.reshard_cost((m, k), la0, la) + self.reshard_cost((k, n), lb0, lb)

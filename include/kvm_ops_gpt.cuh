@@ -1030,7 +1030,7 @@ KVM_GPT_DEVI float ex2f(float x) {   // 2^x, relative error 2^-22; ex2(-inf) = +
 }
 template <int HD> struct AM {
     static_assert(HD % 8 == 0, "hd");
-    static constexpr int LD = HD + 4, NT = HD / 8, TILE = 32 * LD, STAGE = 2 * TILE, NST = 3, NC = NT < 8 ? NT : 8;
+    static constexpr int LD = HD + 4, NT = HD / 8, TILE = 32 * LD, STAGE = 2 * TILE, NST = 3, NF = NT < 4 ? NT : 4;
     static constexpr int SMEM = NST * STAGE * 4;   // bytes: 3 stages of two 32 x (HD+4) tiles = 51 KiB at hd=64, 99 KiB at hd=128
 };
 // c[n0 + i] += A * B[i], i < N, three products each; product-major so the N independent accumulator chains interleave.
@@ -1042,6 +1042,25 @@ KVM_GPT_DEVI void mma3n(float (&c)[NA][4], int n0, const unsigned (&ah)[4], cons
     for (int i = 0; i < N; i++) mma_tf32(c[n0 + i], al, bh[i][0], bh[i][1]);
 #pragma unroll
     for (int i = 0; i < N; i++) mma_tf32(c[n0 + i], ah, bh[i][0], bh[i][1]);
+}
+// Same products for a long-lived accumulator: the tensor core truncates its fp32 accumulator on every instruction, so three adds per
+// k-step into c over ~1000 steps cost ~1e-5 relative (measured: dK/dV 2.1e-5 at T=1024). Here c gets one add per step (hi*hi) and the two small
+// products go to a zeroed t, folded into c once per tile with an ordinary (round-to-nearest) add: ~2.6x lower error for ~3% more time.
+template <int N, int NA>
+KVM_GPT_DEVI void mma3s(float (&c)[NA][4], float (&t)[N][4], int n0, const unsigned (&ah)[4], const unsigned (&al)[4], const unsigned (&bh)[N][2], const unsigned (&bl)[N][2]) {
+#pragma unroll
+    for (int i = 0; i < N; i++) mma_tf32(t[i], ah, bl[i][0], bl[i][1]);
+#pragma unroll
+    for (int i = 0; i < N; i++) mma_tf32(t[i], al, bh[i][0], bh[i][1]);
+#pragma unroll
+    for (int i = 0; i < N; i++) mma_tf32(c[n0 + i], ah, bh[i][0], bh[i][1]);
+}
+template <int N, int NA>
+KVM_GPT_DEVI void fold(float (&c)[NA][4], float (&t)[N][4], int n0) {
+#pragma unroll
+    for (int i = 0; i < N; i++)
+#pragma unroll
+        for (int e = 0; e < 4; e++) { c[n0 + i][e] += t[i][e]; t[i][e] = 0.f; }
 }
 KVM_GPT_DEVI void split4(const float (&x)[4], unsigned (&h)[4], unsigned (&l)[4]) {
 #pragma unroll
@@ -1102,7 +1121,7 @@ KVM_GPT_DEVI float p_of(float s, float c2, float lse2, bool ok) { return ok ? ex
 template <int HD>
 KVM_GPT_DEVI void attn_fwd_t(const AttnArgs& A) {
     using M = AM<HD>;
-    constexpr int LD = M::LD, NT = M::NT, NC = M::NC;
+    constexpr int LD = M::LD, NT = M::NT, NF = M::NF;
     float* KV = reinterpret_cast<float*>(kvm_gpt_smem);   // [3 stages][K | V]
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3;
     const int kvh = A.h / (A.H / A.Hkv), Tn = A.T, wrow = A.i0 + warp * 16, rowA = wrow + g, rowB = rowA + 8;
@@ -1170,15 +1189,16 @@ KVM_GPT_DEVI void attn_fwd_t(const AttnArgs& A) {
 #pragma unroll
         for (int n = 0; n < NT; n++) { o[n][0] *= al0; o[n][1] *= al0; o[n][2] *= al1; o[n][3] *= al1; }
 #pragma unroll
-        for (int kt = 0; kt < 4; kt++) {
-            unsigned ph[4], pl[4];
-            acc_to_a(s[kt], ph, pl);
+        for (int n0 = 0; n0 < NT; n0 += NF) {
+            float tf[NF][4] = {};
 #pragma unroll
-            for (int n0 = 0; n0 < NT; n0 += NC) {
-                unsigned bh[NC][2], bl[NC][2];
-                frag_kn<LD, NC>(bh, bl, Vs, kt, n0, g, t);
-                mma3n<NC>(o, n0, ph, pl, bh, bl);
+            for (int kt = 0; kt < 4; kt++) {
+                unsigned ph[4], pl[4], bh[NF][2], bl[NF][2];
+                acc_to_a(s[kt], ph, pl);
+                frag_kn<LD, NF>(bh, bl, Vs, kt, n0, g, t);
+                mma3s<NF>(o, tf, n0, ph, pl, bh, bl);
             }
+            fold<NF>(o, tf, n0);
         }
     }
     cp_wait<0>();
@@ -1205,7 +1225,7 @@ KVM_GPT_DEVI void attn_fwd_t(const AttnArgs& A) {
 template <int HD>
 KVM_GPT_DEVI void attn_dq_t(const AttnArgs& A) {
     using M = AM<HD>;
-    constexpr int LD = M::LD, NT = M::NT, NC = M::NC;
+    constexpr int LD = M::LD, NT = M::NT, NF = M::NF;
     float* KV = reinterpret_cast<float*>(kvm_gpt_smem);
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3;
     const int kvh = A.h / (A.H / A.Hkv), Tn = A.T, wrow = A.i0 + warp * 16, rowA = wrow + g, rowB = rowA + 8;
@@ -1264,15 +1284,16 @@ KVM_GPT_DEVI void attn_dq_t(const AttnArgs& A) {
             s[kt][3] = p_of(s[kt][3], c2, lr1, key + 1 <= rowB) * (dp[kt][3] - dr1);
         }
 #pragma unroll
-        for (int kt = 0; kt < 4; kt++) {
-            unsigned dh[4], dl[4];
-            acc_to_a(s[kt], dh, dl);
+        for (int n0 = 0; n0 < NT; n0 += NF) {
+            float tf[NF][4] = {};
 #pragma unroll
-            for (int n0 = 0; n0 < NT; n0 += NC) {
-                unsigned bh[NC][2], bl[NC][2];
-                frag_kn<LD, NC>(bh, bl, Ks, kt, n0, g, t);
-                mma3n<NC>(acc, n0, dh, dl, bh, bl);
+            for (int kt = 0; kt < 4; kt++) {
+                unsigned dh[4], dl[4], bh[NF][2], bl[NF][2];
+                acc_to_a(s[kt], dh, dl);
+                frag_kn<LD, NF>(bh, bl, Ks, kt, n0, g, t);
+                mma3s<NF>(acc, tf, n0, dh, dl, bh, bl);
             }
+            fold<NF>(acc, tf, n0);
         }
     }
     cp_wait<0>();
@@ -1293,7 +1314,7 @@ KVM_GPT_DEVI void attn_dq_t(const AttnArgs& A) {
 template <int HD>
 KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
     using M = AM<HD>;
-    constexpr int LD = M::LD, NT = M::NT, NC = M::NC;
+    constexpr int LD = M::LD, NT = M::NT, NF = M::NF;
     float* QO = reinterpret_cast<float*>(kvm_gpt_smem);   // [3 stages][Q | dO]
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3;
     const int Tn = A.T, G = A.H / A.Hkv, kvh = A.h, k0 = A.i0, wkey = k0 + warp * 16, keyA = wkey + g, keyB = keyA + 8;
@@ -1359,18 +1380,24 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
             s[kt][2] = p[kt][2] * (dp[kt][2] - dl_[kt][0]); s[kt][3] = p[kt][3] * (dp[kt][3] - dl_[kt][1]);
         }
 #pragma unroll
-        for (int kt = 0; kt < 4; kt++) {
-            unsigned ph[4], pl[4], dh[4], dl[4];
-            acc_to_a(p[kt], ph, pl);
-            acc_to_a(s[kt], dh, dl);
+        for (int n0 = 0; n0 < NT; n0 += NF) {   // dV then dK of the n-tile chunk, one zeroed small-term accumulator at a time (registers)
+            float tf[NF][4] = {};
 #pragma unroll
-            for (int n0 = 0; n0 < NT; n0 += NC) {
-                unsigned bh[NC][2], bl[NC][2];
-                frag_kn<LD, NC>(bh, bl, Os, kt, n0, g, t);
-                mma3n<NC>(dv, n0, ph, pl, bh, bl);
-                frag_kn<LD, NC>(bh, bl, Qs, kt, n0, g, t);
-                mma3n<NC>(dk, n0, dh, dl, bh, bl);
+            for (int kt = 0; kt < 4; kt++) {
+                unsigned ph[4], pl[4], bh[NF][2], bl[NF][2];
+                acc_to_a(p[kt], ph, pl);
+                frag_kn<LD, NF>(bh, bl, Os, kt, n0, g, t);
+                mma3s<NF>(dv, tf, n0, ph, pl, bh, bl);
             }
+            fold<NF>(dv, tf, n0);
+#pragma unroll
+            for (int kt = 0; kt < 4; kt++) {
+                unsigned dh[4], dl[4], bh[NF][2], bl[NF][2];
+                acc_to_a(s[kt], dh, dl);
+                frag_kn<LD, NF>(bh, bl, Qs, kt, n0, g, t);
+                mma3s<NF>(dk, tf, n0, dh, dl, bh, bl);
+            }
+            fold<NF>(dk, tf, n0);
         }
     }
     cp_wait<0>();

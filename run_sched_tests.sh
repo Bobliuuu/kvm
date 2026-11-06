@@ -4,7 +4,8 @@
 #   mode: (none) functional suites: cost share reserve edf inherit rand
 #         --negative  starve_neg and inherit_neg with --expect-fail (the harness must DETECT starvation / deadlock)
 #         --sanitize  compute-sanitizer memcheck + racecheck + synccheck on the `smoke` suite
-#         --bench     measurements: calib dispatch arbiter rebalance baselines overload affinity
+#         --bench     measurements: calib dispatch arbiter rebalance baselines overload affinity mix
+#                     (KVM_BUILD_ARGS='-DKVM_COST_LEGACY' builds with the pre-audit 20-entry cost table, the A/B baseline of `mix`)
 #         --exec      the executor's own suites (tests/gpu/test_exec.cu) against this tree, scheduler off
 # Raw output goes to logs/<UTC>-<what>/ (git-ignored). The remote scratch dir is ~/kvm-sched-scratch.
 set -euo pipefail
@@ -24,7 +25,7 @@ SRC=tests/gpu/test_sched.cu; BIN=test_sched
 {
   echo "# $WHAT @ $STAMP  commit $(git -C "$DIR" rev-parse --short HEAD)$(git -C "$DIR" diff --quiet HEAD -- . 2>/dev/null || echo '+dirty')"
   BUILDER=build_sched.sh; [ "$MODE" = "--exec" ] && BUILDER=build.sh
-  $SSH "$HOST" "cd $REMOTE && $NVCC_BIN --version | tail -2 && nvidia-smi --query-gpu=name,driver_version,clocks.max.sm --format=csv,noheader && echo BUILD: tests/gpu/$BUILDER && KVM_ARCH=$ARCH bash tests/gpu/$BUILDER 2>&1 | grep -v 'warning\|^ *\^\|^\$\|Remark' || true"
+  $SSH "$HOST" "cd $REMOTE && $NVCC_BIN --version | tail -2 && nvidia-smi --query-gpu=name,driver_version,clocks.max.sm --format=csv,noheader && echo BUILD: tests/gpu/$BUILDER && KVM_ARCH=$ARCH bash tests/gpu/$BUILDER ${KVM_BUILD_ARGS:-} 2>&1 | grep -v 'warning\|^ *\^\|^\$\|Remark' || true"
   run() { $SSH "$HOST" "cd $REMOTE && echo '\$ ./$BIN $*' && $FLK timeout 900 ./$BIN $*; echo \"exit: \$?\""; }
   case "$MODE" in
     --negative) run --expect-fail starve_neg; run --expect-fail inherit_neg;;

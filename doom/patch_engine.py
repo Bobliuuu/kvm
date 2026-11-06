@@ -121,3 +121,69 @@ if os.environ.get("DOOM_PROF"):
         sub1("    R_RenderBSPNode (numnodes-1);\n", "    R_RenderBSPNode (numnodes-1);\n" + PR % 3),
         sub1("    R_DrawPlanes ();\n    { extern void gpu_epoch(void); gpu_epoch(); }\n", "    R_DrawPlanes ();\n    { extern void gpu_epoch(void); gpu_epoch(); }\n" + PR % 4),
         sub1("    R_DrawMasked ();\n    { extern void gpu_epoch(void); gpu_epoch(); }\n", "    R_DrawMasked ();\n    { extern void gpu_epoch(void); gpu_epoch(); }\n" + PR % 5)))
+
+
+# ---- split mode, flat planes: R_DrawPlanes only LOGS each flat plane (visplane, flat data, light table, height); the doom_planes tasks run
+# R_MakeSpans/R_MapPlane/R_DrawSpan for the planes in parallel, one thread per plane, with the same arithmetic and thread-local span state.
+# Planes never overlap each other or the walls, so any order gives the serial picture; the masked pass (sprites) runs after all of them.
+PLANE_CODE = r"""
+
+/* ---- GPU split mode (patch_engine.py): flat planes executed by the doom_planes tasks ---- */
+typedef struct { visplane_t* pl; byte* src; lighttable_t** zl; fixed_t ph; int lump; } gpu_plane_t;
+static gpu_plane_t gpu_planes[MAXVISPLANES];
+static int gpu_nplanes;
+extern int gpu_split_logging(void);
+void gpu_planes_reset(void) { gpu_nplanes = 0; }
+int gpu_plane_count(void) { return gpu_nplanes; }
+int gpu_plane_log(visplane_t* pl, byte* src, lighttable_t** zl, fixed_t ph, int lump)
+{
+    if (!gpu_split_logging()) return 0;
+    gpu_plane_t* g = &gpu_planes[gpu_nplanes++];
+    g->pl = pl; g->src = src; g->zl = zl; g->ph = ph; g->lump = lump;
+    return 1;
+}
+void gpu_planes_release(void) { for (int i = 0; i < gpu_nplanes; i++) W_ReleaseLumpNum(gpu_planes[i].lump); gpu_nplanes = 0; }
+static void gpu_map_plane(int y, int x1, int x2, const gpu_plane_t* g)
+{
+    angle_t angle; fixed_t distance, length, xfrac, yfrac, xstep, ystep; unsigned index; lighttable_t* cm;
+    distance = FixedMul(g->ph, yslope[y]);
+    xstep = FixedMul(distance, basexscale);
+    ystep = FixedMul(distance, baseyscale);
+    length = FixedMul(distance, distscale[x1]);
+    angle = (viewangle + xtoviewangle[x1]) >> ANGLETOFINESHIFT;
+    xfrac = viewx + FixedMul(finecosine[angle], length);
+    yfrac = -viewy - FixedMul(finesine[angle], length);
+    if (fixedcolormap) cm = fixedcolormap;
+    else { index = distance >> LIGHTZSHIFT; if (index >= MAXLIGHTZ) index = MAXLIGHTZ - 1; cm = g->zl[index]; }
+    unsigned int position = ((xfrac << 10) & 0xffff0000) | ((yfrac >> 6) & 0x0000ffff);
+    unsigned int step = ((xstep << 10) & 0xffff0000) | ((ystep >> 6) & 0x0000ffff);
+    byte* dest = ylookup[y] + columnofs[x1];
+    int count = x2 - x1;
+    do { unsigned int ytemp = (position >> 4) & 0x0fc0, xtemp = position >> 26; *dest++ = cm[g->src[xtemp | ytemp]]; position += step; } while (count--);
+}
+void gpu_plane_exec(int i)
+{
+    const gpu_plane_t* g = &gpu_planes[i]; visplane_t* pl = g->pl;
+    int ss[SCREENHEIGHT];     /* span starts: thread-local copy of spanstart[] */
+    int stop = pl->maxx + 1;
+    for (int x = pl->minx; x <= stop; x++) {
+        int t1 = pl->top[x-1], b1 = pl->bottom[x-1], t2 = pl->top[x], b2 = pl->bottom[x];
+        while (t1 < t2 && t1 <= b1) { gpu_map_plane(t1, ss[t1], x-1, g); t1++; }
+        while (b1 > b2 && b1 >= t1) { gpu_map_plane(b1, ss[b1], x-1, g); b1--; }
+        while (t2 < t1 && t2 <= b2) { ss[t2] = x; t2++; }
+        while (b2 > b1 && b2 >= t2) { ss[b2] = x; b2--; }
+    }
+}
+"""
+
+
+def r_plane(s):
+    s = s.rstrip("\n") + "\n" + PLANE_CODE
+    old = "\tpl->top[pl->maxx+1] = 0xff;\n\tpl->top[pl->minx-1] = 0xff;\n"
+    assert s.count(old) == 1, "R_DrawPlanes anchor"
+    s = s.replace(old, old + "\tif (gpu_plane_log(pl, ds_source, planezlight, planeheight, lumpnum)) continue;   /* split mode: drawn by the doom_planes tasks, lump released by doom_post */\n", 1)
+    s = s.replace("void R_DrawPlanes (void)\n{", "int gpu_plane_log(visplane_t* pl, byte* src, lighttable_t** zl, fixed_t ph, int lump);\nvoid R_DrawPlanes (void)\n{", 1)
+    return s
+
+
+patch("r_plane.c", r_plane)

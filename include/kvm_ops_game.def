@@ -24,10 +24,12 @@ X(doom_tick_n,    131, "frame:i32,input:buf,state:buf,inst:i32")
 X(doom_present_n, 132, "fb:buf,row0:i32,rows:i32,inst:i32")
 X(doom_status_n,  133, "frame:i32,state:buf,inst:i32")
 // Split tick (ids 134-136; the same game tic as doom_tick_n, as a task graph; see kvm_ops_game.cuh "split tick"). Per frame f:
-//   doom_sim(f) -> doom_draw(f, tile 0..T-1) (T independent tasks, any T in 1..320) -> doom_post(f) -> doom_present/doom_status(f) -> doom_sim(f+1)
+//   doom_sim(f) -> doom_planes(f, 0..P-1) -> doom_draw(f, tile 0..T-1) (T independent tasks, any T in 1..320) -> doom_post(f) -> doom_present/doom_status(f) -> doom_sim(f+1)
 //   doom_sim(frame, input, state, inst)  game logic + BSP/sprite/plane setup on one CTA's thread 0; logs the 3D view's columns and spans
 //   doom_draw(frame, tile, ntiles, inst) draws the logged commands of band `tile` of `ntiles` of the screen columns (block-cooperative)
 //   doom_post(frame, inst)               HU / border / menu after the view; the frame is complete (present/status check it)
 X(doom_sim,  134, "frame:i32,input:buf,state:buf,inst:i32")
 X(doom_draw, 135, "frame:i32,tile:i32,ntiles:i32,inst:i32")
 X(doom_post, 136, "frame:i32,inst:i32")
+//   doom_planes(frame, tile, ntiles, inst) the flat planes (floors/ceilings) of the logged view; plane i runs on thread i of the task group
+X(doom_planes, 137, "frame:i32,tile:i32,ntiles:i32,inst:i32")

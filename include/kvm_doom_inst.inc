@@ -72,7 +72,8 @@
   __device__ void KVM_DOOM_SYM(k, doom_state)(int32_t* out); \
   __device__ void KVM_DOOM_SYM(k, gpu_doom_sim)(uint32_t input); \
   __device__ void KVM_DOOM_SYM(k, gpu_doom_draw)(int tile, int ntiles, int tid, int nthreads); \
-  __device__ void KVM_DOOM_SYM(k, gpu_doom_post)(); \
+  __device__ int KVM_DOOM_SYM(k, gpu_doom_post)(); \
+  __device__ void KVM_DOOM_SYM(k, gpu_doom_planes)(int tile, int ntiles, int tid, int nthreads); \
   __device__ int KVM_DOOM_SYM(k, gpu_doom_pending)(); \
   __device__ int KVM_DOOM_SYM(k, gpu_doom_log_tic)(); \
   extern __device__ unsigned char* KVM_DOOM_SYM(k, I_VideoBuffer); extern __device__ uint32_t KVM_DOOM_SYM(k, colors)[256]; }

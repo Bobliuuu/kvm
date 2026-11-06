@@ -56,7 +56,8 @@ __device__ void gpu_doom_abort_tic();
 __device__ void doom_state(int32_t* out);
 __device__ void gpu_doom_sim(uint32_t input);
 __device__ void gpu_doom_draw(int tile, int ntiles, int tid, int nthreads);
-__device__ void gpu_doom_post();
+__device__ int gpu_doom_post();
+__device__ void gpu_doom_planes(int tile, int ntiles, int tid, int nthreads);
 __device__ int gpu_doom_pending();
 __device__ int gpu_doom_log_tic();
 extern __device__ unsigned char* I_VideoBuffer;
@@ -109,7 +110,7 @@ __device__ inline int kvm_doom_tick(int frame, const float* input, int n_input, 
   return KVM_DOOM_OK;
 }
 
-// ---- split tick: the same game tic as kvm_doom_tick, as a task graph  sim(f) -> draw(f, 0..T-1) -> post(f) -> present/status(f) -> sim(f+1).
+// ---- split tick: the same game tic as kvm_doom_tick, as a task graph  sim(f) -> planes(f, 0..P-1) -> draw(f, 0..T-1) -> post(f) -> present/status(f) -> sim(f+1).
 //   sim:  thread 0 only. Game logic, BSP walk, sprite/plane setup, status bar; the 3D view is LOGGED (columns and spans of every wall,
 //         plane, sprite) instead of drawn. A tick with no logged view (screen wipe, intermission) completes here.
 //   draw: block-cooperative. Tile `tile` of `ntiles` draws the logged commands of its band of screen columns, in recording order.
@@ -151,6 +152,20 @@ __device__ inline int kvm_doom_draw(int frame, int tile, int ntiles, int inst) {
   return KVM_DOOM_OK;
 }
 
+// All threads of the CTA call (every thread returns the same status). Flat planes of tick `frame`'s logged view: plane i runs on one thread.
+// Must run before the column tiles of the same frame (the masked pass draws over the planes) and after doom_sim.
+__device__ inline int kvm_doom_planes(int frame, int tile, int ntiles, int inst) {
+  if (inst < 0 || inst >= KVM_DOOM_INSTANCES) return KVM_DOOM_BAD_INSTANCE;
+  if (ntiles < 1 || ntiles > 1024 || tile < 0 || tile >= ntiles) return KVM_DOOM_SMALL_BUF;
+  int pending = 0, tic = -1;
+  KVM_DOOM_SWITCH(inst, KVM_DOOM_M_LOGTIC)
+  if (!pending) return KVM_DOOM_OK;
+  if (tic != frame + 1) return KVM_DOOM_BAD_ORDER;
+#define KVM_DOOM_M_PLANES(k) KVM_DOOM_SYM(k, gpu_doom_planes)(tile, ntiles, threadIdx.x, blockDim.x);
+  KVM_DOOM_SWITCH(inst, KVM_DOOM_M_PLANES)
+  return KVM_DOOM_OK;
+}
+
 // All threads of the CTA call; thread 0 works. Finishes the tick's display after every tile of the frame is done.
 __device__ inline int kvm_doom_post(int frame, int inst) {
   if (threadIdx.x != 0) return KVM_DOOM_OK;
@@ -158,9 +173,10 @@ __device__ inline int kvm_doom_post(int frame, int inst) {
   int pending = 0, tic = -1;
   KVM_DOOM_SWITCH(inst, KVM_DOOM_M_LOGTIC)
   if (pending && tic != frame + 1) return KVM_DOOM_BAD_ORDER;
-#define KVM_DOOM_M_POST(k) KVM_DOOM_SYM(k, gpu_doom_post)();
+  int bad = 0;
+#define KVM_DOOM_M_POST(k) bad = KVM_DOOM_SYM(k, gpu_doom_post)();
   KVM_DOOM_SWITCH(inst, KVM_DOOM_M_POST)
-  return KVM_DOOM_OK;
+  return bad ? KVM_DOOM_BAD_ORDER : KVM_DOOM_OK;       // a stage of the view (doom_planes / doom_draw) was not run before post
 }
 
 // All threads of the CTA call. Copies screen rows [row0, row0+rows) and, with row0 == 0, the palette.
@@ -262,6 +278,10 @@ KVM_OP(doom_sim) {
 KVM_OP(doom_draw) {
   const int err = kvm_doom_draw(ARG_I32(0), ARG_I32(1), ARG_I32(2), ARG_I32(3));
   if (err) c.fail(KVM_ERR_USER, 135, err);
+}
+KVM_OP(doom_planes) {
+  const int err = kvm_doom_planes(ARG_I32(0), ARG_I32(1), ARG_I32(2), ARG_I32(3));
+  if (err) c.fail(KVM_ERR_USER, 137, err);
 }
 KVM_OP(doom_post) {
   const int err = kvm_doom_post(ARG_I32(0), ARG_I32(1));

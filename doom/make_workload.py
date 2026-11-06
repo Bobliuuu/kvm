@@ -32,6 +32,7 @@ def main():
     ap.add_argument("--spin-us", type=int, default=200000, help="a spin task holds a block this long (sustains the load for the whole run)")
     ap.add_argument("--burst", action="store_true", help="bursty load: each spin lasts 5, 40 or 200 ms (seeded), chains start staggered")
     ap.add_argument("--split", type=int, default=0, help="split-tick Doom with this many draw tiles per frame (0: serial doom_tick)")
+    ap.add_argument("--planes", type=int, default=4, help="split-tick Doom: tasks of the flat-plane stage (doom_planes), run before the column tiles")
     ap.add_argument("--tenant", choices=("spin", "train"), default="spin", help="competing load: matmul+spin chains (default) or GEMM+AdamW training chains")
     ap.add_argument("--gemm-m", type=int, default=1024, help="train tenant: GEMM output is M x M (multiple of 64)")
     ap.add_argument("--gemm-k", type=int, default=16384, help="train tenant: GEMM reduction depth (K-deep 64x64 tiles ~0.15 ms: long enough for the 0.5 M tasks/s admitter)")
@@ -64,9 +65,13 @@ def main():
             prev = []
             frame_ready = tick["id"]      # the task after which the screen of frame f is complete
             if SPLIT:
+                pl = [f"planes{sfx(k)}_{f}_{t}" for t in range(a.planes)]
+                for t, tid_ in enumerate(pl):
+                    tasks.append({"id": tid_, "op": "doom_planes", "priority": a.doom_priority, "deadline_us": dl, "after": [tick["id"]],
+                                  "args": {"frame": f, "tile": t, "ntiles": a.planes, "inst": k}})
                 tiles = [f"draw{sfx(k)}_{f}_{t}" for t in range(SPLIT)]
                 for t, tid_ in enumerate(tiles):
-                    tasks.append({"id": tid_, "op": "doom_draw", "priority": a.doom_priority, "deadline_us": dl, "after": [tick["id"]],
+                    tasks.append({"id": tid_, "op": "doom_draw", "priority": a.doom_priority, "deadline_us": dl, "after": pl,
                                   "args": {"frame": f, "tile": t, "ntiles": SPLIT, "inst": k}})
                 tasks.append({"id": f"post{sfx(k)}_{f}", "op": "doom_post", "priority": a.doom_priority, "deadline_us": dl, "after": tiles,
                               "args": {"frame": f, "inst": k}})

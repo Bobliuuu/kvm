@@ -97,7 +97,7 @@ int main(int argc, char** argv) {
     auto us = [&](unsigned long long x) { return (double)(x - t0) / 1e3; };
     const int op_tick = kvm_op_by_name("doom_tick"), op_tick_n = kvm_op_by_name("doom_tick_n"), op_sim = kvm_op_by_name("doom_sim");
     auto is_tick = [&](int op) { return op == op_tick || op == op_tick_n || op == op_sim; };
-    auto is_game = [&](int op) { return is_tick(op) || op == kvm_op_by_name("doom_draw") || op == kvm_op_by_name("doom_post") || op == kvm_op_by_name("doom_present") || op == kvm_op_by_name("doom_status") || op == kvm_op_by_name("doom_present_n") || op == kvm_op_by_name("doom_status_n"); };
+    auto is_game = [&](int op) { return is_tick(op) || op == kvm_op_by_name("doom_draw") || op == kvm_op_by_name("doom_planes") || op == kvm_op_by_name("doom_post") || op == kvm_op_by_name("doom_present") || op == kvm_op_by_name("doom_status") || op == kvm_op_by_name("doom_present_n") || op == kvm_op_by_name("doom_status_n"); };
     if (multi) {   // per-instance cadence: the bundle lists instance 0's tasks first, then instance 1's, ...; ticks are in chain order
       std::vector<double> ts; for (size_t i = 0; i < r.trace.size(); ++i) if (is_tick(r.tasks[i].op_id) && r.trace[i].end_ns) ts.push_back(r.trace[i].start_ns / 1e3);
       for (int k = 0; k < NI && (size_t)(k + 1) * frames <= ts.size(); ++k) {

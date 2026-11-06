@@ -89,6 +89,17 @@ def _(b, op, g, ctx):
     return {'pred': b.mse_bwd(op)}       # the loss is a root (gradient 1); the target never needs one
 
 
+@vjp('pg_loss')
+def _(b, op, g, ctx):
+    return {'logits': b.pg_bwd(op)}      # loss root: d/d logits[r] = adv[r] * (softmax - onehot)[r] / N (adv and tgt get no gradient)
+
+
+@vjp('row_select')
+def _(b, op, g, ctx):
+    x, mask = op.ins['x'], op.ins['mask']
+    return {'x': b.gather(mask, op.ins['ident'], x.rows, 0, g['out'], into=ctx.into(x))}      # dx[r,:] = g[r] * mask[r,:]
+
+
 @vjp('add')
 def _(b, op, g, ctx):
     return {'a': g['out'], 'b': g['out']}      # both operands share the output gradient buffer (see module doc)

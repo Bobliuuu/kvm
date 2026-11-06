@@ -1,0 +1,3 @@
+2026-11-06 09:30:52,491 INFO kvm.compiler: compiled 27600 tasks (0 gates), 162745 edges, 4610 buffers, 1 variables in 0.60s (parse 0.38s, graph+versions 0.12s, pack 0.09s)
+2026-11-06 09:30:52,604 INFO kvm.compiler: wrote bundle to /tmp/w/t_mlp/bundle
+mlp_ce tasks 27600 ops ['colsum', 'embedding_bwd', 'embedding_fwd', 'gelu_bwd', 'matmul_tile', 'noop', 'select_window', 'sgd', 'softmax_ce_bwd', 'softmax_ce_fwd', 'softmax_ce_reduce']

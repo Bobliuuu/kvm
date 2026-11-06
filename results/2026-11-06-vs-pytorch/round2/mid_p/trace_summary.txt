@@ -1,0 +1,14 @@
+155052 tasks, span 473.12 ms = 23656 us/step, workers 107: task-run time 4533.1 ms, utilisation 9.0%, mean ready->start wait 99.5 us, mean task 29.2 us
+op                              tasks  sum run ms  mean us   max us % run time
+matmul_tile                    112000     3286.68     29.3     73.7      72.5%
+attn_bwd_dkv                    10240      195.94     19.1     35.8       4.3%
+adamw                            1880      187.28     99.6    192.5       4.1%
+attn_fwd                        10240      162.23     15.8     26.6       3.6%
+attn_bwd_dq                     10240      154.60     15.1     25.6       3.4%
+rope_bwd                         1280      105.70     82.6     96.3       2.3%
+rope_fwd                         1280      104.52     81.7     88.1       2.3%
+layernorm_bwd_dx                 1440       69.16     48.0     59.4       1.5%
+gelu_bwd                          640       50.58     79.0     87.0       1.1%
+colsum                            720       48.59     67.5     89.1       1.1%
+layernorm_fwd                    1440       45.07     31.3     37.9       1.0%
+attn_bwd_delta                    640       41.40     64.7     76.8       0.9%

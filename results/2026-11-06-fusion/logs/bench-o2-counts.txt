@@ -1,0 +1,6 @@
+mlp_ce steps=200 tiling=a100 fuse=1 tasks=5200 per_step=26.0
+mlp_ce steps=200 tiling=a100nm fuse=1 tasks=9800 per_step=49.0
+mlp_ce steps=200 tiling=cpu fuse=0 tasks=27600 per_step=138.0
+xfmr_odd steps=50 tiling=a100 fuse=1 tasks=12000 per_step=240.0
+xfmr_odd steps=50 tiling=a100nm fuse=1 tasks=14950 per_step=299.0
+xfmr_odd steps=50 tiling=cpu fuse=0 tasks=43650 per_step=873.0

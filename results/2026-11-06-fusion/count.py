@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Task counts of the audit newmodel cases per tiling preset / fusion switch (CPU only, no golden).
   python3 count.py CASE STEPS TILING FUSE(0/1) [OUT_DIR]   -> prints tasks, tasks/step and a per-device histogram; with OUT_DIR also writes a bundle"""
-import json, subprocess, sys
+import json, os, subprocess, sys
 from collections import Counter
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
@@ -16,7 +16,7 @@ import gen
 
 
 def build(case, steps, tiling, fuse):
-    tl = Tiling.preset(tiling)
+    tl = Tiling.preset(tiling[:-2], mm_merge=0) if tiling.endswith('nm') else Tiling.preset(tiling)   # 'a100nm' = a100 without GEMM tile merging
     sgd = TrainConfig(steps=steps, optim=OptimConfig(kind='sgd', lr=0.05), clip=0)
     if case == 'xfmr_odd':
         cfg = ModelConfig('xfmr_odd', vocab=100, d_model=48, layers=3, heads=3, seq=64, batch=2, ffn_mult=2, norm='rmsnorm', bias=False)
@@ -44,4 +44,4 @@ if __name__ == '__main__':
         for p, raw in files.items():
             (out / p).parent.mkdir(parents=True, exist_ok=True); (out / p).write_bytes(raw)
         (out / 'workload.json').write_text(json.dumps(spec, separators=(',', ':')))
-        subprocess.run([sys.executable, str(ROOT / 'runtime/compile_workload.py'), str(out / 'workload.json'), str(out / 'bundle')], check=True, stdout=subprocess.DEVNULL)
+        subprocess.run([sys.executable, str(ROOT / 'runtime/compile_workload.py'), *(['--emit-golden'] if os.environ.get('GOLDEN') else []), str(out / 'workload.json'), str(out / 'bundle')], check=True, stdout=subprocess.DEVNULL)

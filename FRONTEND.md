@@ -142,7 +142,13 @@ Frontend features added with them:
 * **Loss scaling + bf16** (`precision='bf16'`, `TrainConfig.loss_scale`): matmuls run on bf16 operands with fp32 accumulation
   (`matmul_tile_bf16`), activations are stored rounded (`cast`), parameters stay fp32 masters; the backward starts from S*dL and the
   clip coefficient (AdamW's gscale) is multiplied by 1/S. bf16 values live in fp32 containers: the ABI v2 dtype ids (0 f32, 1 i32) are
-  unchanged, so there is no memory saving and no fp16/overflow-skipping dynamic scaling.
+  unchanged for that emulated path, so it saves no memory and has no fp16/overflow-skipping dynamic scaling.
+* **Real bf16 storage** (`KvmBuf.dtype` 2, 2 bytes per element; `precision='bf16-real'` on `generic.MLP`, or `b.cast(x, 'bf16', real=True)` +
+  `linear/mm(bf16=True)` by hand): weight copies (`Linear(bf16='real')` casts the fp32 master each call; the master gets the unrounded
+  gradient) and between-layer activations live in bf16 buffers. Ops: `cast_f32_bf16`, `cast_bf16_f32`, `matmul_tile_bf16s` (A and/or B
+  bf16 storage, flags 128/256; same tile code as `matmul_tile_bf16`, so results are bit-identical to the emulated path). Everything
+  else (norms, softmax, optimizer, losses) stays fp32 and refuses bf16 buffers (`BAD_BUF`/compile error); `cast(x_bf16, 'f32')` widens.
+  The memory plan counts 2 bytes per bf16 element. Not covered: bf16 parameters/optimizer state, bf16 attention, fp16.
 * **Tied embeddings** (`linear(wt=True)`), **GQA** (`attention(kv_heads=)`, `kv_append/attn_decode` with cache heads), **multiple
   loss roots** (cross-entropy + auxiliary), **float input streams** (`select_window(cols=)`).
 * **Fusion** (`fuse.py`, `compile_training(fuse=True)`): `gelu_bwd(mm(..))` -> `mm_dgelu`, SwiGLU up-projection + gating ->

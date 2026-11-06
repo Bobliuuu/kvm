@@ -45,6 +45,23 @@ struct Dev {
     }
     int addf(int rows, int cols, int ld = 0) { return add(rows, cols, ld, 0); }
     int addi(int n) { return add(1, n, 0, 1); }
+    int addb(int rows, int cols, int ld = 0) { return add(rows, cols, ld, 2); }   // bf16 storage (2-byte elements)
+    static uint16_t bf16_bits(float x) {   // RNE, as the device cast
+        uint32_t u; memcpy(&u, &x, 4);
+        if ((u & 0x7f800000u) == 0x7f800000u) return (uint16_t)(((u & 0x007fffffu) ? (u | 0x00400000u) : u) >> 16);
+        u += 0x7fffu + ((u >> 16) & 1u); return (uint16_t)(u >> 16);
+    }
+    void upb(int i, const std::vector<float>& h) {   // rounds to bf16 on the host
+        auto& b = tab[i]; std::vector<uint16_t> t((size_t)b.rows * b.ld, 0);
+        for (int r = 0; r < b.rows; r++) for (int c = 0; c < b.cols; c++) t[(size_t)r * b.ld + c] = bf16_bits(h[(size_t)r * b.cols + c]);
+        CK(cudaMemcpy(b.p, t.data(), t.size() * 2, cudaMemcpyHostToDevice));
+    }
+    std::vector<uint16_t> downb_raw(int i) { auto& b = tab[i]; std::vector<uint16_t> t((size_t)b.rows * b.ld); CK(cudaMemcpy(t.data(), b.p, t.size() * 2, cudaMemcpyDeviceToHost)); return t; }
+    std::vector<float> downb(int i) {
+        auto& b = tab[i]; auto t = downb_raw(i); std::vector<float> o((size_t)b.rows * b.cols);
+        for (int r = 0; r < b.rows; r++) for (int c = 0; c < b.cols; c++) { uint32_t u = (uint32_t)t[(size_t)r * b.ld + c] << 16; memcpy(&o[(size_t)r * b.cols + c], &u, 4); }
+        return o;
+    }
     void up(int i, const std::vector<float>& h) {
         auto& b = tab[i]; std::vector<float> t((size_t)b.rows * b.ld, 0.f);
         for (int r = 0; r < b.rows; r++) for (int c = 0; c < b.cols; c++) t[(size_t)r * b.ld + c] = h[(size_t)r * b.cols + c];

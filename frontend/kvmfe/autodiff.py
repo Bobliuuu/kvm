@@ -155,6 +155,10 @@ def _(b, op, g, ctx):
 
 @vjp('cast')
 def _(b, op, g, ctx):
+    if op.attrs['dtype'] == 'f32':                                       # widening a bf16-storage tensor: gradient passes unchanged
+        return {'x': g['out']}
+    if not op.attrs.get('round_grad', True):
+        return {'x': g['out']}
     return {'x': b.cast(g['out'], op.attrs['dtype'])}                    # straight-through: the gradient is rounded the same way
 
 

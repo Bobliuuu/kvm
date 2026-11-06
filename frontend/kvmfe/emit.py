@@ -84,7 +84,7 @@ def _init_entry(b, data_files):
     """JSON init of a buffer. Big explicit values are returned as a `file` init and recorded in data_files (path -> bytes)."""
     init = b.init or ('fill', 0.0)
     if init[0] == 'fill':
-        return {'kind': 'fill', 'value': f32(init[1]) if b.dtype == 'f32' else int(init[1])}
+        return {'kind': 'fill', 'value': int(init[1]) if b.dtype == 'i32' else f32(init[1])}
     if init[0] == 'seeded':
         return {'kind': 'seeded', 'seed': init[1], 'scale': f32(init[2]), 'dist': 'normal'}
     vals = init_values(init, b.rows, b.cols)

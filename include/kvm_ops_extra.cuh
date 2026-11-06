@@ -600,15 +600,19 @@ KVM_GPT_DEVI void attn_full_bwd_dkv(const KvmCtx& ctx, const int32_t* a) {
 }
 
 // ---- mixed precision ------------------------------------------------------------------------------------------------------------
+// round_bf16 doubles as the storage conversion: x and out are each fp32 or raw bf16 (dtype 2), flat. fp32 -> fp32: rounded values in an
+// fp32 container (the emulation); fp32 -> bf16: narrow; bf16 -> fp32: widen (exact); bf16 -> bf16: copy. Rounding is RNE, once per store.
 KVM_GPT_DEVI void round_bf16(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
     int e0 = a[2], e1 = a[3];
+    bool xb = false, ob = false;
     k.need(e0 >= 0 && e0 <= e1);
     if (k.bad) return;
-    const float* x = k.fvec(a[0], e1);
-    float* o = k.fvec(a[1], e1);
+    const void* x = k.vec_s(a[0], e1, &xb);
+    void* o = k.vec_s(a[1], e1, &ob);
     if (k.bad) return;
-    for (int i = e0 + threadIdx.x; i < e1; i += KVM_GPT_THREADS) o[i] = bf16r(x[i]);
+    if (!xb && !ob) { for (int i = e0 + threadIdx.x; i < e1; i += KVM_GPT_THREADS) ((float*)o)[i] = bf16r(((const float*)x)[i]); return; }
+    for (int i = e0 + threadIdx.x; i < e1; i += KVM_GPT_THREADS) kvmgpt::st_s(o, i, kvmgpt::ld_s(x, i, xb), ob);
 }
 
 // bf16 matmul: kvmgpt::mm_tile<TA, TB, false, true> (64x64 tile, 3-stage cp.async, operands rounded to bf16 when read from shared memory,
@@ -620,16 +624,23 @@ KVM_GPT_DEVI void matmul_tile_bf16(const KvmCtx& ctx, const int32_t* a) {
     k.need(M > 0 && N > 0 && K > 0 && m0 >= 0 && m0 < M && n0 >= 0 && n0 < N);
     k.need((fl & ~31) == 0, KVM_GPT_E_SHAPE);
     if (k.bad) return;
-    int lda, ldb, ldo, ldr = 0, ldp = 0;
-    const float* A = k.mat(a[0], ta ? K : M, ta ? M : K, &lda);
-    const float* B = k.mat(a[1], tb ? N : K, tb ? K : N, &ldb);
-    float* out = k.mat(a[2], M, N, &ldo);
+    // Storage dtypes: a, b, out, res, pre may each be fp32 or raw bf16 (dtype 2); bias is fp32. sd bit i set = operand i is bf16.
+    int lda, ldb, ldo, ldr = 0, ldp = 0, sd = 0;
+    bool fa, fb, fo, fr = false, fp = false;
+    const void* A = k.mat_s(a[0], ta ? K : M, ta ? M : K, &lda, &fa);
+    const void* B = k.mat_s(a[1], tb ? N : K, tb ? K : N, &ldb, &fb);
+    void* out = k.mat_s(a[2], M, N, &ldo, &fo);
     const float* bias = k.fvec(a[3], N, true);
-    const float* res = k.mat(a[4], M, N, &ldr, true);
-    float* pre = k.mat(a[5], M, N, &ldp, true);
+    const void* res = k.mat_s(a[4], M, N, &ldr, &fr, true);
+    void* pre = k.mat_s(a[5], M, N, &ldp, &fp, true);
     if (k.bad) return;
+    sd = (fa ? 1 : 0) | (fb ? 2 : 0) | (fo ? 4 : 0) | (fr ? 8 : 0) | (fp ? 16 : 0);
+    if (sd & 3) {   // the bf16 loader reads uint16 elements: pointers must be 2-byte aligned (always true for cudaMalloc'd bases)
+        k.need(((((uintptr_t)A | (uintptr_t)B) & 1) == 0), KVM_GPT_E_SHAPE);
+        if (k.bad) return;
+    }
     float alpha = af(a, 12);
-#define KVM_EX_MM(TA, TB) kvmgpt::mm_tile<TA, TB, false, true>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, gelu, accum)
+#define KVM_EX_MM(TA, TB) kvmgpt::mm_tile<TA, TB, false, true>((const float*)A, lda, (const float*)B, ldb, (float*)out, ldo, bias, (const float*)res, ldr, (float*)pre, ldp, m0, n0, M, N, K, alpha, gelu, accum, sd)
     if (!ta && !tb) KVM_EX_MM(false, false); else if (ta && !tb) KVM_EX_MM(true, false);
     else if (!ta && tb) KVM_EX_MM(false, true); else KVM_EX_MM(true, true);
 #undef KVM_EX_MM

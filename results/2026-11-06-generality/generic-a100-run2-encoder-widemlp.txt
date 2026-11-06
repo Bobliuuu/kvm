@@ -1,0 +1,43 @@
+OUT/encoder_reg_cpu/bundle: encoder_reg, 2 steps, 464 tasks, cpu tiling, 3xTF32
+OUT/encoder_reg_a100/bundle: encoder_reg, 2 steps, 220 tasks, a100 tiling, 3xTF32
+OUT/encoder_reg_a100_big/bundle: encoder_reg, 2 steps, 220 tasks, a100_big tiling, 3xTF32
+OUT/wide_mlp_cpu/bundle: wide_mlp, 2 steps, 694 tasks, cpu tiling, 3xTF32
+OUT/wide_mlp_a100/bundle: wide_mlp, 2 steps, 286 tasks, a100 tiling, 3xTF32
+OUT/wide_mlp_a100_big/bundle: wide_mlp, 2 steps, 130 tasks, a100_big tiling, 3xTF32
+encoder_reg_cpu exit 0
+encoder_reg_a100 exit 0
+encoder_reg_a100_big exit 0
+wide_mlp_cpu exit 0
+wide_mlp_a100 exit 0
+wide_mlp_a100_big exit 0
+== encoder_reg_cpu
+precise: 2 step(s), 192 f32 buffers
+  worst: m.enc.q.b 2.17e-06, v.enc.q.w 1.83e-06, act110 1.79e-06, act107 1.74e-06
+  ok   all buffers rel L2 <= 0.0002: worst m.enc.q.b 2.17e-06
+PASS
+== encoder_reg_a100
+precise: 2 step(s), 192 f32 buffers
+  worst: m.enc.q.b 2.17e-06, v.enc.q.w 1.83e-06, act110 1.79e-06, act107 1.74e-06
+  ok   all buffers rel L2 <= 0.0002: worst m.enc.q.b 2.17e-06
+PASS
+== encoder_reg_a100_big
+precise: 2 step(s), 192 f32 buffers
+  worst: m.enc.q.b 2.17e-06, v.enc.q.w 1.83e-06, act110 1.79e-06, act107 1.74e-06
+  ok   all buffers rel L2 <= 0.0002: worst m.enc.q.b 2.17e-06
+PASS
+== wide_mlp_cpu
+precise: 0 step(s), 48 f32 buffers
+  worst: act30 2.22e-05, act34 1.44e-05, act31 1.13e-05, act38 9.62e-06
+  ok   all buffers rel L2 <= 0.0002: worst act30 2.22e-05
+PASS
+== wide_mlp_a100
+precise: 0 step(s), 48 f32 buffers
+  worst: act30 2.22e-05, act34 1.44e-05, act31 1.13e-05, act38 9.62e-06
+  ok   all buffers rel L2 <= 0.0002: worst act30 2.22e-05
+PASS
+== wide_mlp_a100_big
+precise: 0 step(s), 48 f32 buffers
+  worst: act30 3.52e-05, act34 2.28e-05, act31 1.78e-05, act38 1.55e-05
+  ok   all buffers rel L2 <= 0.0002: worst act30 3.52e-05
+PASS
+done (exit 0)

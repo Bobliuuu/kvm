@@ -95,5 +95,33 @@ class Bf16Storage(unittest.TestCase):
         self.assertFalse(any(n.startswith('wb.') for n in low.plan.buffers))
 
 
+class Bf16StorageModelZoo(unittest.TestCase):
+    """The same storage pass on the other model families (Llama: RMSNorm / RoPE / GQA / SwiGLU, MLP, ViT: bidirectional attention):
+    the loss curve of real bf16 storage tracks the bf16 emulation (which rounds the same values in fp32 containers)."""
+
+    def run_family(self, make):
+        steps, out = 6, {}
+        for prec in ('f32', 'bf16', 'bf16s'):
+            c = compile_training(make(prec), TrainConfig(steps=steps, loss_scale=128.0 if prec != 'f32' else 1.0), TILING)
+            out[prec] = (c, losses(c, c.run(), steps))
+        self.assertTrue(any(b.get('dtype') == 'bf16' for b in out['bf16s'][0].spec['buffers']))
+        cw.compile_spec(out['bf16s'][0].spec, data_dir=None)     # accepted by the compiler's dtype checks
+        for a, b, f in zip(out['bf16s'][1], out['bf16'][1], out['f32'][1]):
+            self.assertAlmostEqual(a, b, delta=5e-3)
+            self.assertAlmostEqual(a, f, delta=5e-2)
+
+    def test_llama(self):
+        from kvmfe.models import LlamaConfig
+        self.run_family(lambda p: LlamaConfig(name='llama_t', precision=p))
+
+    def test_mlp(self):
+        from kvmfe.models import MLPConfig
+        self.run_family(lambda p: MLPConfig(name='mlp_t', precision=p))
+
+    def test_vit(self):
+        from kvmfe.models import ViTConfig
+        self.run_family(lambda p: ViTConfig(name='vit_t', precision=p))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -34,6 +34,7 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"; TAG="${TAG:-$PRESET-$STAMP}"
 LOG="$ROOT/logs/$STAMP-demo-$TAG"; mkdir -p "$LOG"
 SSH="ssh -o StrictHostKeyChecking=no -o BatchMode=yes ${KVM_KEY:+-i $KVM_KEY}"
 REMOTE="${KVM_REMOTE:-kvm-demo-scratch}"
+status=0   # a failing check must still fetch the logs below (set -e + pipefail would exit at the pipeline)
 {
 echo "# demo $TAG  host=<KVM_HOST>  commit=$(git -C "$ROOT" rev-parse --short HEAD)$(git -C "$ROOT" diff --quiet || echo +dirty)  preset=$PRESET model=$MODEL steps=$STEPS window=$WINDOW serve_every=$SERVE_EVERY frames=$FRAMES tiling=$TILING precise=$PRECISE lr=${LR:-default} warmup=${WARMUP:-0} sanitize=$SANITIZE"
 rsync -az -e "$SSH" --delete --exclude .git --exclude logs --exclude docs --exclude results --exclude 'doom/build' --exclude 'doom/third_party' --exclude runs --exclude 'demo/kvm_run' "$ROOT/" "$HOST:$REMOTE/"
@@ -50,8 +51,7 @@ while :; do
     exit "$rc"
   fi
 done
-} 2>&1 | tee "$LOG/run.log"
-status=${PIPESTATUS[0]}
+} 2>&1 | tee "$LOG/run.log" || status=${PIPESTATUS[0]}
 rsync -az -e "$SSH" --exclude 'buffers' --exclude 'demo' --exclude 'demo_small' --exclude 'oracle' --exclude 'doom_candidate' "$HOST:$REMOTE/runs/$TAG/" "$LOG/remote/" || true
 echo "logs: $LOG (exit $status)"
 exit "$status"

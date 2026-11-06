@@ -60,11 +60,14 @@ X(attn_full_bwd_dq,    111, "q:buf,k:buf,v:buf,do:buf,lse:buf,delta:buf,dq:buf,b
 X(attn_full_bwd_dkv,   112, "q:buf,k:buf,v:buf,do:buf,lse:buf,delta:buf,dk:buf,dv:buf,b:i32,kvh:i32,k0:i32,T:i32,H:i32,hd:i32,scale:f32")
 
 // ---- mixed precision --------------------------------------------------------------------------------------------------------
-// bf16 values live in f32 containers (ABI v2 dtypes unchanged: 0 f32, 1 i32). out[i] = x[i] rounded to bfloat16 (round to nearest
-// even; inf/nan kept) over flat [e0,e1); out may alias x.
+// bf16 values live in f32 containers (precision 'bf16') or in real bf16 storage (ABI dtype 2, 2 bytes/element, precision 'bf16s').
+// out[i] = x[i] rounded to bfloat16 (round to nearest even; inf/nan kept) over flat [e0,e1); out may alias x. x and out are each an
+// f32 or a bf16-storage buffer: f32 -> bf16 narrows, bf16 -> f32 widens (exact), bf16 -> bf16 copies, f32 -> f32 is the emulation.
 X(round_bf16,          113, "x:buf,out:buf,e0:i32,e1:i32")
 // matmul_tile (same arguments, flags and epilogue) with bf16 operands: A and B are rounded to bfloat16 on load, the product is
-// accumulated in fp32 on the bf16 tensor cores. flag 16 (precise) is ignored. Output stays fp32.
+// accumulated in fp32 on the bf16 tensor cores. flag 16 (precise) is ignored. a, b, out, res and pre may each be f32 or bf16 storage
+// (dtype 2; bias stays f32): bf16 operands are widened exactly on load, bf16 outputs are rounded once (RNE) from the fp32 epilogue.
+// A bf16 out/res/pre uses a scalar epilogue; the f32 path is unchanged.
 X(matmul_tile_bf16,    114, "a:buf,b:buf,out:buf,bias:buf?,res:buf?,pre:buf?,m0:i32,n0:i32,M:i32,N:i32,K:i32,flags:i32,alpha:f32")
 
 // ---- optimizer schedule -----------------------------------------------------------------------------------------------------

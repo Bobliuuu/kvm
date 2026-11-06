@@ -1,0 +1,85 @@
+tasks 27600 roots 4800 total_span_us 85304.3
+tasks admitted AFTER their last predecessor finished: 150 / 22800 (0.7%)
+run_us                     median 5.12  p90 12.29  mean 7.11
+pred_done->enqueue_us      median 4.10  p90 4.10  mean 6.03
+enqueue->start_us          median 10.24  p90 136.19  mean 34.77
+hop_us(pred_done->start)   median 12.29  p90 20.48  mean 17.60
+critical path: 1127 tasks, sum run 9845.8 us, sum hops 21603.3 us, sum 31449.1 us of span 85304.3
+admission rate: admit window 83468.3 us for 27600 tasks = 3.02 us/task
+tasks 43650 roots 1600 total_span_us 144148.5
+tasks admitted AFTER their last predecessor finished: 545 / 42050 (1.3%)
+run_us                     median 6.14  p90 11.26  mean 7.11
+pred_done->enqueue_us      median 4.10  p90 4.10  mean 19.36
+enqueue->start_us          median 13.31  p90 31.74  mean 16.81
+hop_us(pred_done->start)   median 17.41  p90 33.79  mean 34.96
+critical path: 829 tasks, sum run 7267.3 us, sum hops 26581.0 us, sum 33848.3 us of span 144148.5
+admission rate: admit window 143137.8 us for 43650 tasks = 3.28 us/task
+total 7216
+drwxr-xr-x 1 root root     166 Nov  6 07:30 .
+drwxr-xr-x 1 root root       4 Nov  6 07:06 ..
+-rw-r--r-- 1 root root     279 Nov  6 07:06 clocks.txt
+-rw-r--r-- 1 root root     435 Nov  6 07:06 gen_mlp.log
+-rw-r--r-- 1 root root     565 Nov  6 07:06 gen_xfmr.log
+-rw-r--r-- 1 root root      11 Nov  6 07:30 gpu.txt
+-rw-r--r-- 1 root root    1272 Nov  6 07:30 mlp_blocks.txt
+-rw-r--r-- 1 root root     377 Nov  6 07:30 mlp_default.txt
+-rw-r--r-- 1 root root     535 Nov  6 07:30 mlp_hopan.txt
+-rw-r--r-- 1 root root 2837750 Nov  6 07:30 mlp_trace.csv
+-rw-r--r-- 1 root root     107 Nov  6 07:30 mlp_trace.txt
+-rw-r--r-- 1 root root     381 Nov  6 07:30 xfmr_default.txt
+-rw-r--r-- 1 root root     537 Nov  6 07:30 xfmr_hopan.txt
+-rw-r--r-- 1 root root 4541496 Nov  6 07:30 xfmr_trace.csv
+-rw-r--r-- 1 root root     108 Nov  6 07:30 xfmr_trace.txt
+mlp default rep 1
+[kvm_exec][I] kernel done: 27600/27600 tasks in 118.259 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp default rep 2
+[kvm_exec][I] kernel done: 27600/27600 tasks in 114.702 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp default rep 3
+[kvm_exec][I] kernel done: 27600/27600 tasks in 92.936 ms, 26 records, 12 ring wraps, 0 backpressure waits
+xfmr default rep 1
+[kvm_exec][I] kernel done: 43650/43650 tasks in 150.327 ms, 44 records, 21 ring wraps, 0 backpressure waits
+xfmr default rep 2
+[kvm_exec][I] kernel done: 43650/43650 tasks in 153.747 ms, 44 records, 21 ring wraps, 0 backpressure waits
+xfmr default rep 3
+[kvm_exec][I] kernel done: 43650/43650 tasks in 149.834 ms, 44 records, 21 ring wraps, 0 backpressure waits
+mlp blocks 4 rep 1
+[kvm_exec][I] kernel done: 27600/27600 tasks in 175.056 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp blocks 4 rep 2
+[kvm_exec][I] kernel done: 27600/27600 tasks in 173.903 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp blocks 8 rep 1
+[kvm_exec][I] kernel done: 27600/27600 tasks in 118.498 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp blocks 8 rep 2
+[kvm_exec][I] kernel done: 27600/27600 tasks in 120.168 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp blocks 16 rep 1
+[kvm_exec][I] kernel done: 27600/27600 tasks in 116.023 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp blocks 16 rep 2
+[kvm_exec][I] kernel done: 27600/27600 tasks in 115.016 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp blocks 32 rep 1
+[kvm_exec][I] kernel done: 27600/27600 tasks in 92.613 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp blocks 32 rep 2
+[kvm_exec][I] kernel done: 27600/27600 tasks in 91.791 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp blocks 64 rep 1
+[kvm_exec][I] kernel done: 27600/27600 tasks in 91.754 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp blocks 64 rep 2
+[kvm_exec][I] kernel done: 27600/27600 tasks in 94.457 ms, 26 records, 12 ring wraps, 0 backpressure waits
+
+--- stderr
++ cd /src
++ D=results/2026-11-06-admission
++ W=/tmp/w
++ python3 -I results/2026-11-04-claims-audit/newmodel/gen.py /tmp/w/t_mlp mlp_ce --steps 200 --no-golden
++ python3 -I results/2026-11-04-claims-audit/newmodel/gen.py /tmp/w/t_xfmr xfmr_odd --steps 50 --no-golden
++ nvidia-smi -q -d CLOCK
++ grep -A4 'Max Clocks'
++ bash results/2026-11-06-admission/build.sh /src /tmp/kvm_base
++ S=/tmp/w
++ bash results/2026-11-06-admission/diag.sh /tmp/kvm_base /out/diag
++ for c in mlp xfmr
++ python3 -I results/2026-11-06-admission/hopan.py /tmp/w/t_mlp/bundle /out/diag/mlp_trace.csv
++ cat /out/diag/mlp_hopan.txt
++ for c in mlp xfmr
++ python3 -I results/2026-11-06-admission/hopan.py /tmp/w/t_xfmr/bundle /out/diag/xfmr_trace.csv
++ cat /out/diag/xfmr_hopan.txt
++ rm -f '/out/diag/*_trace.csv.big'
++ ls -la /out/diag
++ cat /out/diag/mlp_default.txt /out/diag/xfmr_default.txt /out/diag/mlp_blocks.txt

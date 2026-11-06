@@ -1,0 +1,6 @@
+xfmr default rep 1
+[kvm_exec][I] kernel done: 43650/43650 tasks in 150.327 ms, 44 records, 21 ring wraps, 0 backpressure waits
+xfmr default rep 2
+[kvm_exec][I] kernel done: 43650/43650 tasks in 153.747 ms, 44 records, 21 ring wraps, 0 backpressure waits
+xfmr default rep 3
+[kvm_exec][I] kernel done: 43650/43650 tasks in 149.834 ms, 44 records, 21 ring wraps, 0 backpressure waits

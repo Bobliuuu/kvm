@@ -1,0 +1,19 @@
+span 144148.5 us; time with 0 running: ready-but-not-started 2366.5 us (1.6%), nothing ready 52237.3 us (36.2%)
+mean tasks in flight 2.15
+t=      0 us  admitted  2994  ready  2795  started  2780  ended  2776
+t=   8480 us  admitted  3026  ready  2267  started  2258  ended  2260
+t=  16960 us  admitted  2011  ready  2852  started  2864  ended  2861
+t=  25440 us  admitted  3008  ready  2354  started  2349  ended  2347
+t=  33920 us  admitted  2023  ready  2794  started  2811  ended  2818
+t=  42400 us  admitted  2989  ready  2318  started  2297  ended  2289
+t=  50880 us  admitted  2021  ready  2692  started  2713  ended  2721
+t=  59360 us  admitted  3023  ready  2468  started  2462  ended  2457
+t=  67840 us  admitted  1993  ready  2548  started  2554  ended  2559
+t=  76320 us  admitted  3028  ready  2604  started  2601  ended  2600
+t=  84800 us  admitted  2007  ready  2431  started  2434  ended  2435
+t=  93280 us  admitted  3011  ready  2778  started  2773  ended  2769
+t= 101760 us  admitted  3025  ready  2339  started  2269  ended  2270
+t= 110240 us  admitted  1987  ready  2789  started  2856  ended  2859
+t= 118720 us  admitted  3029  ready  2377  started  2372  ended  2368
+t= 127200 us  admitted  2012  ready  2781  started  2794  ended  2798
+t= 135680 us  admitted  2463  ready  2463  started  2463  ended  2463

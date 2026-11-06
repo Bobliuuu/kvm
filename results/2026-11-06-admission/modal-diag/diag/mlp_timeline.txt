@@ -1,0 +1,19 @@
+span 85304.3 us; time with 0 running: ready-but-not-started 7470.1 us (8.8%), nothing ready 12866.6 us (15.1%)
+mean tasks in flight 2.30
+t=      0 us  admitted  2154  ready  1703  started  1696  ended  1695
+t=   5018 us  admitted  1080  ready  1531  started  1538  ended  1539
+t=  10036 us  admitted  2158  ready  1694  started  1694  ended  1689
+t=  15054 us  admitted  1077  ready  1541  started  1541  ended  1546
+t=  20072 us  admitted  2157  ready  1677  started  1675  ended  1674
+t=  25090 us  admitted  1078  ready  1558  started  1560  ended  1561
+t=  30108 us  admitted  2157  ready  1630  started  1630  ended  1630
+t=  35126 us  admitted  1076  ready  1603  started  1603  ended  1603
+t=  40144 us  admitted  2158  ready  1639  started  1637  ended  1632
+t=  45162 us  admitted  1082  ready  1601  started  1603  ended  1608
+t=  50180 us  admitted  2154  ready  1627  started  1627  ended  1625
+t=  55198 us  admitted  1078  ready  1605  started  1605  ended  1607
+t=  60216 us  admitted  2160  ready  1699  started  1692  ended  1688
+t=  65234 us  admitted  1079  ready  1540  started  1547  ended  1551
+t=  70252 us  admitted  2154  ready  1728  started  1728  ended  1724
+t=  75270 us  admitted  2157  ready  1711  started  1545  ended  1545
+t=  80288 us  admitted   641  ready  1513  started  1679  ended  1683

@@ -522,6 +522,7 @@ __device__ __forceinline__ void kvm_publish(const KvmDevState& S, int slot, int 
 struct KvmShared {
   KvmTaskDesc d;
   int cmd, skip, how, part;   // how: KVM_TRACE_* start reason from kvm_pop (| KVM_HOW_BW); part: STATIC-mode class of this worker's SM
+  int next;                   // KVM_RUN_NEXT: a successor this block released and keeps for itself (-1 none)
 #ifdef KVM_PROF_GAP
   long long pg[16]; int pg_valid;
 #endif
@@ -607,6 +608,9 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   if (threadIdx.x == 0) {
     unsigned long long end = kvm_now();
     tr->end_ns = end;
+#ifdef KVM_RUN_NEXT
+    sh.next = -1;
+#endif
     if (d.wait_var >= 0) tr->ver1 = ld_acq(S.version + d.wait_var);
     const bool missed = d.deadline_us >= 0 && end - tr->admit_ns > (unsigned long long)d.deadline_us * 1000ull;
     if (missed) tr->flags |= KVM_TRACE_MISSED;
@@ -620,7 +624,15 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   if (!sh.skip && (int)threadIdx.x < d.succ_cnt) {
     for (int e = threadIdx.x; e < d.succ_cnt; e += blockDim.x) {
       int s = S.succ[(unsigned)(d.succ_off + e) & (S.succ_cap - 1)];
-      if (atom_add(S.indeg + s, -1) == 1) { kvm_sched_pref(S, s); kvm_release_task(S, s); }  // SCHED: affinity = this block
+      if (atom_add(S.indeg + s, -1) == 1) {
+#ifdef KVM_RUN_NEXT   // continuation: the block that released a task runs it next, skipping enqueue + pop (one per finished task; scheduler off only)
+        if (!S.sp.on) {
+          const KvmTaskDesc* sd = S.tasks + s;
+          if ((sd->wait_var < 0 || ld_acq(S.version + sd->wait_var) >= sd->wait_ver) && atomicCAS(&sh.next, -1, s) == -1) continue;
+        }
+#endif
+        kvm_sched_pref(S, s); kvm_release_task(S, s);
+      }  // SCHED: affinity = this block
     }
   }
   __syncthreads();
@@ -651,7 +663,7 @@ __device__ void kvm_post_task(const KvmDevState& S, int slot) {
 
 __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
   unsigned backoff = 0;
-  if (threadIdx.x == 0) sh.part = kvm_sched_part(S);
+  if (threadIdx.x == 0) { sh.part = kvm_sched_part(S); sh.next = -1; }
   int owed = -1;   // the task whose completion bookkeeping (kvm_post_task) this block still owes; every thread tracks it, thread 32 pays it during the pop
   __syncthreads();
   const int part = sh.part;
@@ -659,6 +671,14 @@ __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
   if (threadIdx.x == 0) sh.pg_valid = 0;
 #endif
   for (;;) {
+#ifdef KVM_RUN_NEXT
+    const int nx = sh.next;
+    if (nx >= 0) {
+      if (threadIdx.x < KVM_TASK_WORDS) ((int*)&sh.d)[threadIdx.x] = __ldcg((const int*)(S.tasks + nx) + threadIdx.x);
+      if (threadIdx.x == 0) { sh.cmd = nx; sh.how = 0; S.trace[nx].ready_ns = kvm_now(); }
+      else if (threadIdx.x == 32 && owed >= 0) kvm_post_task(S, owed);
+    } else
+#endif
     if (threadIdx.x < 32) {
       int how, dw, r = kvm_pop(S, kvm_now(), part, how, dw);
       if (r < 0 && threadIdx.x == 0 && kvm_should_exit(S, t0)) r = KVM_POP_EXIT;

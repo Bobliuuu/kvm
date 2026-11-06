@@ -1,0 +1,3 @@
+2026-11-06 07:06:33,927 INFO kvm.compiler: compiled 43650 tasks (0 gates), 307365 edges, 5881 buffers, 1 variables in 0.70s (parse 0.42s, graph+versions 0.17s, pack 0.11s)
+2026-11-06 07:06:34,015 INFO kvm.compiler: wrote bundle to /tmp/w/t_xfmr/bundle
+xfmr_odd tasks 43650 ops ['attn_bwd_delta', 'attn_bwd_dkv', 'attn_bwd_dq', 'attn_fwd', 'embedding_bwd', 'embedding_fwd', 'gelu_bwd', 'matmul_tile', 'noop', 'norm_bwd_params', 'rmsnorm_bwd_dx', 'rmsnorm_fwd', 'rope_bwd', 'rope_fwd', 'select_window', 'sgd', 'softmax_ce_bwd', 'softmax_ce_fwd', 'softmax_ce_reduce']

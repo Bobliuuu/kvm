@@ -1,0 +1,6 @@
+mlp default rep 1
+[kvm_exec][I] kernel done: 27600/27600 tasks in 118.259 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp default rep 2
+[kvm_exec][I] kernel done: 27600/27600 tasks in 114.702 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp default rep 3
+[kvm_exec][I] kernel done: 27600/27600 tasks in 92.936 ms, 26 records, 12 ring wraps, 0 backpressure waits

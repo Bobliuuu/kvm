@@ -7,7 +7,7 @@ graph "doom": per frame f   tick_f (doom_tick) -> present_f_0..3 (doom_present, 
               tick_f+1 waits for all of them (tick_f+1 overwrites the screen they read). The 35 Hz pacing is deadline_us metadata only.
 graph "compute": --chains independent chains of (matmul 256^3 then spin) x --rounds. Every chain computes the same A@B, so the result is
                  checkable; the spins keep every block busy for the whole run (chains > worker blocks, so the ready queue is never empty).
---tenant train:  instead of spin tasks, each chain is a training-step workload with REAL compute and bandwidth pressure: per round three
+--tenant train:  instead of spin tasks, each chain is a training-step workload with REAL compute and bandwidth pressure: per round two
                  tiled TF32 GEMMs (fwd Y=X@W, wgrad G=X^T@Y, dgrad D=Y@W^T; 64x64 matmul_tile tasks, a join task between GEMMs) and an AdamW
                  sweep over the W-sized parameters (p,g,m,v; 7 streams) in --adam-chunk element tasks. No timing task at all.
 --split T:       Doom as the split task graph (doom_sim -> T x doom_draw -> doom_post -> present/status; include/kvm_ops_game.cuh), frame-exact
@@ -33,8 +33,10 @@ def main():
     ap.add_argument("--burst", action="store_true", help="bursty load: each spin lasts 5, 40 or 200 ms (seeded), chains start staggered")
     ap.add_argument("--split", type=int, default=0, help="split-tick Doom with this many draw tiles per frame (0: serial doom_tick)")
     ap.add_argument("--tenant", choices=("spin", "train"), default="spin", help="competing load: matmul+spin chains (default) or GEMM+AdamW training chains")
-    ap.add_argument("--gemm-n", type=int, default=2048, help="train tenant: GEMM size (X, W, Y are n x n)")
-    ap.add_argument("--adam-chunk", type=int, default=262144, help="train tenant: AdamW elements per task")
+    ap.add_argument("--gemm-m", type=int, default=1024, help="train tenant: GEMM output is M x M (multiple of 64)")
+    ap.add_argument("--gemm-k", type=int, default=16384, help="train tenant: GEMM reduction depth (K-deep 64x64 tiles ~0.15 ms: long enough for the 0.5 M tasks/s admitter)")
+    ap.add_argument("--adam-elems", type=int, default=8 << 20, help="train tenant: AdamW parameter elements per chain")
+    ap.add_argument("--adam-chunk", type=int, default=2 << 20, help="train tenant: AdamW elements per task")
     ap.add_argument("--doom-priority", type=int, default=10)
     ap.add_argument("--compute-priority", type=int, default=0)
     ap.add_argument("--out", required=True)
@@ -80,38 +82,32 @@ def main():
     graphs = [{"name": "doom", "tasks": tasks}]
 
     if a.chains and a.tenant == "train":
-        n, ch = a.gemm_n, a.adam_chunk
-        T128 = list(range(0, n, 64))
+        M, K, E, ch = a.gemm_m, a.gemm_k, a.adam_elems, a.adam_chunk
         buffers.append({"name": "tr_step", "rows": 1, "cols": 1, "dtype": "i32", "init": {"kind": "fill", "value": 1}})
         ct = []
         for c in range(a.chains):
-            for nm, init in (("X", {"kind": "seeded", "seed": 100 + c, "scale": 0.02}), ("W", {"kind": "seeded", "seed": 200 + c, "scale": 0.02}),
-                             ("Y", None), ("G", None), ("D", None), ("M", None), ("V", None)):
-                b = {"name": f"tr{c}_{nm}", "rows": n, "cols": n}
-                if init: b["init"] = init
-                buffers.append(b)
-            P = f"tr{c}_P"; buffers.append({"name": P, "rows": n, "cols": n, "init": {"kind": "seeded", "seed": 300 + c, "scale": 0.02}})
+            for nm, rows, cols, init in (("X", M, K, 1), ("X2", M, K, 2), ("W", K, M, 3), ("Y", M, M, 0), ("Y2", M, M, 0),
+                                         ("P", 1, E, 4), ("G", 1, E, 5), ("Mo", 1, E, 0), ("Vo", 1, E, 0)):
+                b_ = {"name": f"tr{c}_{nm}", "rows": rows, "cols": cols}
+                if init: b_["init"] = {"kind": "seeded", "seed": 1000 * c + init, "scale": 0.02}
+                buffers.append(b_)
             prev = []
             for r in range(a.rounds):
-                def gemm(tag, A, B, O, flags, after):
-                    ids = []
-                    for m0 in T128:
-                        for n0 in T128:
-                            tid_ = f"{tag}_{c}_{r}_{m0}_{n0}"
-                            ids.append(tid_)
-                            ct.append({"id": tid_, "op": "matmul_tile", "priority": a.compute_priority, "after": after,
-                                       "args": {"a": A, "b": B, "out": O, "bias": None, "res": None, "pre": None, "m0": m0, "n0": n0, "M": n, "N": n, "K": n, "flags": flags, "alpha": 1.0}})
-                    j = f"join_{tag}_{c}_{r}"
-                    ct.append({"id": j, "op": "noop", "priority": a.compute_priority, "after": ids, "args": {}})
-                    return [j]
-                j1 = gemm("fwd", f"tr{c}_X", f"tr{c}_W", f"tr{c}_Y", 0, prev)              # Y = X @ W
-                j2 = gemm("wgd", f"tr{c}_X", f"tr{c}_Y", f"tr{c}_G", 1, j1)                # G = X^T @ Y
-                j3 = gemm("dgd", f"tr{c}_Y", f"tr{c}_W", f"tr{c}_D", 2, j1)                # D = Y @ W^T
                 ids = []
-                for e0 in range(0, n * n, ch):
+                for tag, X, Y in (("g1", "X", "Y"), ("g2", "X2", "Y2")):          # two forward GEMMs, K-deep tiles (compute-bound)
+                    for m0 in range(0, M, 64):
+                        for n0 in range(0, M, 64):
+                            tid_ = f"{tag}_{c}_{r}_{m0}_{n0}"; ids.append(tid_)
+                            ct.append({"id": tid_, "op": "matmul_tile", "priority": a.compute_priority, "after": prev,
+                                       "args": {"a": f"tr{c}_{X}", "b": f"tr{c}_W", "out": f"tr{c}_{Y}", "bias": None, "res": None, "pre": None,
+                                                "m0": m0, "n0": n0, "M": M, "N": M, "K": K, "flags": 0, "alpha": 1.0}})
+                j = f"join_g_{c}_{r}"
+                ct.append({"id": j, "op": "noop", "priority": a.compute_priority, "after": ids, "args": {}})
+                ids = []
+                for e0 in range(0, E, ch):                                         # AdamW sweep: 7 streams over the parameters (bandwidth-bound)
                     tid_ = f"adam_{c}_{r}_{e0}"; ids.append(tid_)
-                    ct.append({"id": tid_, "op": "adamw", "priority": a.compute_priority, "after": j2 + j3,
-                               "args": {"p": P, "g": f"tr{c}_G", "m": f"tr{c}_M", "v": f"tr{c}_V", "gscale": None, "step": "tr_step", "e0": e0, "e1": min(e0 + ch, n * n),
+                    ct.append({"id": tid_, "op": "adamw", "priority": a.compute_priority, "after": [j],
+                               "args": {"p": f"tr{c}_P", "g": f"tr{c}_G", "m": f"tr{c}_Mo", "v": f"tr{c}_Vo", "gscale": None, "step": "tr_step", "e0": e0, "e1": min(e0 + ch, E),
                                         "lr": 1e-4, "b1": 0.9, "b2": 0.999, "eps": 1e-8, "wd": 0.01}})
                 jn = f"join_adam_{c}_{r}"
                 ct.append({"id": jn, "op": "noop", "priority": a.compute_priority, "after": ids, "args": {}})

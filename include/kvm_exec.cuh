@@ -656,7 +656,16 @@ __device__ void kvm_reclaim_windows(const KvmDevState& S, KvmAdmitShared& A) {  
   }
 }
 
+#ifdef KVM_ADMIT_PROF   // measurement build: per-phase globaltimer sums of the admitter (thread 0), read by tests via cudaMemcpyFromSymbol
+__device__ unsigned long long g_adm_prof[16];
+#define KVM_PROF(k) do { if (threadIdx.x == 0) { unsigned long long n_ = kvm_now(); g_adm_prof[k] += n_ - pt_; pt_ = n_; } } while (0)
+#define KVM_PROF_INIT unsigned long long pt_ = kvm_now()
+#else
+#define KVM_PROF(k) do {} while (0)
+#define KVM_PROF_INIT do {} while (0)
+#endif
 __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared& A, unsigned long long pos) {
+  KVM_PROF_INIT;
   const int* rec = S.ring + (size_t)(pos % (unsigned long long)S.ring_words);
   const int nt = A.hdr[2], ne = A.hdr[3], na = A.hdr[4];
   const int* rt = rec + KVM_REC_HDR;
@@ -690,6 +699,7 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
     }
   }
   __syncthreads();
+  KVM_PROF(0);
   if (A.action == KVM_ADM_EXIT) return;
   const unsigned long long fbase = A.fhead;
   const unsigned sbase = A.succ_used;
@@ -702,6 +712,7 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
     st_rel64(&cell->seq, fp + (unsigned long long)S.nslots);
   }
   __syncthreads();
+  KVM_PROF(1);
   const unsigned long long now = kvm_now();
   const unsigned wid = A.win_next;
   for (int i = threadIdx.x; i < nt; i += blockDim.x) {
@@ -741,12 +752,14 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
     KvmTrace& t = S.trace[slot];
     t.admit_ns = now; t.ready_ns = t.start_ns = t.end_ns = 0; t.flags = 0; t.exec_count = 0; t.ver0 = t.ver1 = -1;
   }
+  KVM_PROF(2);
   for (int e = threadIdx.x; e < ne; e += blockDim.x) {
     int v = ld_sys(re + e);
     if (v < 0 || v >= nt) { kvm_fail(S, KVM_ERR_BAD_TASK, S.adm_slots[0], v, e); v = 0; }
     S.succ[(sbase + (unsigned)e) & (S.succ_cap - 1)] = S.adm_slots[v];
   }
   __syncthreads();
+  KVM_PROF(3);
   for (int i = threadIdx.x; i < nt; i += blockDim.x) kvm_sched_admit_task(S, S.adm_slots[i]);  // SCHED: cost metadata, publisher classes
   if (threadIdx.x == 0) {
     if (!*(volatile int*)&S.cnt->err_code) {
@@ -759,11 +772,17 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
     }
   }
   __syncthreads();
+  KVM_PROF(4);
   if (*(volatile int*)&S.cnt->err_code) return;
   for (int i = threadIdx.x; i < nt; i += blockDim.x) {
     int slot = S.adm_slots[i];
     if (S.tasks[slot].indegree == 0) kvm_release_task(S, slot);  // the descriptor is immutable; S.indeg is live and may already be 0 for a non-root
   }
+  __syncthreads();
+  KVM_PROF(5);
+#ifdef KVM_ADMIT_PROF
+  if (threadIdx.x == 0) { g_adm_prof[6] += nt; g_adm_prof[7] += 1; }
+#endif
 }
 
 __device__ void kvm_admitter(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared& A) {

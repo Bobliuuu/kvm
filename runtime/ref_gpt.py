@@ -246,7 +246,7 @@ def _rope_ext(a):
 # ---- attention ----------------------------------------------------------------------------------------------------------
 def _geom(a, kv=False):
     _need(a['hd'] in (16, 32, 64, 128), f"attention: hd {a['hd']} not in 16/32/64/128")
-    _need(a['T'] > 0 and a['H'] > 0 and a['Hkv'] > 0 and a['H'] % a['Hkv'] == 0 and a['b'] >= 0 and 0 <= a['q0'] < a['T'],
+    _need(a['T'] > 0 and a['H'] > 0 and a['Hkv'] > 0 and a['H'] % a['Hkv'] == 0 and a['b'] >= 0 and a['q0'] >= 0 and (a['q0'] & 0xFFFF) < a['T'],
           'attention: bad T/H/Hkv/b/q0')
     _need(0 <= a['h'] < (a['Hkv'] if kv else a['H']), 'attention: head index out of range')
 
@@ -255,7 +255,7 @@ def _attn_fwd(b, a):
     q, k, v, o, lse = b['q'], b['k'], b['v'], b['o'], b['lse']
     bb, h, T, H, Hkv, hd, sc = a['b'], a['h'], a['T'], a['H'], a['Hkv'], a['hd'], a['scale']
     kvh = h // (H // Hkv)
-    for gq in range(a['q0'], min(a['q0'] + 32, T)):
+    for gq in range(a['q0'] & 0xFFFF, min((a['q0'] & 0xFFFF) + 32 * ((a['q0'] >> 16) + 1), T)):
         qr = [q.at(bb * T + gq, h * hd + c) for c in range(hd)]
         s = [sum(qr[c] * k.at(bb * T + j, kvh * hd + c) for c in range(hd)) * sc for j in range(gq + 1)]
         m = max(s)
@@ -291,7 +291,7 @@ def _attn_bwd_dq(b, a):
     q, k, v, do, lse, delta, dq = b['q'], b['k'], b['v'], b['do'], b['lse'], b['delta'], b['dq']
     bb, h, T, H, Hkv, hd, sc = a['b'], a['h'], a['T'], a['H'], a['Hkv'], a['hd'], a['scale']
     kvh = h // (H // Hkv)
-    for gq in range(a['q0'], min(a['q0'] + 32, T)):
+    for gq in range(a['q0'] & 0xFFFF, min((a['q0'] & 0xFFFF) + 32 * ((a['q0'] >> 16) + 1), T)):
         li, di = lse[(bb * H + h) * T + gq], delta[(bb * H + h) * T + gq]
         acc = [0.0] * hd
         for j in range(gq + 1):
@@ -315,7 +315,7 @@ def _attn_bwd_dkv(b, a):
     q, k, v, do, lse, delta, dk, dv = (b[n] for n in ('q', 'k', 'v', 'do', 'lse', 'delta', 'dk', 'dv'))
     bb, kvh, T, H, hd, sc = a['b'], a['kvh'], a['T'], a['H'], a['hd'], a['scale']
     G = H // (k.cols // hd)
-    for gk in range(a['k0'], min(a['k0'] + 32, T)):
+    for gk in range(a['k0'] & 0xFFFF, min((a['k0'] & 0xFFFF) + 32 * ((a['k0'] >> 16) + 1), T)):
         sk, sv = [0.0] * hd, [0.0] * hd
         for h in range(kvh * G, (kvh + 1) * G):
             for gq in range(gk, T):
@@ -333,7 +333,7 @@ def _attn_bwd_dkv(b, a):
 
 def _attn_bwd_dkv_ext(a):
     _need(a['hd'] in (16, 32, 64, 128), f"attention: hd {a['hd']} not in 16/32/64/128")
-    _need(a['T'] > 0 and a['H'] > 0 and a['b'] >= 0 and 0 <= a['k0'] < a['T'] and a['kvh'] >= 0, 'attn_bwd_dkv: bad T/H/b/k0/kvh')
+    _need(a['T'] > 0 and a['H'] > 0 and a['b'] >= 0 and 0 <= (a['k0'] & 0xFFFF) < a['T'] and a['k0'] >= 0 and a['kvh'] >= 0, 'attn_bwd_dkv: bad T/H/b/k0/kvh')
     R, hd = (a['b'] + 1) * a['T'], a['hd']
     return {'q': (R, a['H'] * hd), 'k': (R, (a['kvh'] + 1) * hd), 'v': (R, (a['kvh'] + 1) * hd), 'do': (R, a['H'] * hd),
             'lse': R * a['H'], 'delta': R * a['H'], 'dk': (R, (a['kvh'] + 1) * hd), 'dv': (R, (a['kvh'] + 1) * hd)}

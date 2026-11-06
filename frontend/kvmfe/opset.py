@@ -301,8 +301,14 @@ def _norm_bwd_params(b, a):
 
 
 # ------------------------------------------------------------------------------------------------ attention (causal, GQA-capable)
+def attn_span(x):
+    """(first row/key, number of 32-row blocks) of an attention task's q0/k0 argument: bits 16.. hold the block count - 1."""
+    return x & 0xFFFF, (x >> 16) + 1
+
+
 def _attn_fl(a):
-    return 4.0 * ATTN_Q * (a.get('q0', a.get('k0', 0)) + ATTN_Q) * a['hd']
+    r0, n = attn_span(a.get('q0', a.get('k0', 0)))
+    return 4.0 * ATTN_Q * n * (r0 + ATTN_Q * (n + 1) / 2) * a['hd']
 
 
 def _head(buf, r, h, hd):
@@ -322,7 +328,8 @@ def _probs(q, K, scale, lse=None):
 def _attn_fwd(b, a):
     T, H, Hkv, hd, bb, h = a['T'], a['H'], a['Hkv'], a['hd'], a['b'], a['h']
     kvh = h // (H // Hkv)
-    for t in range(a['q0'], min(a['q0'] + ATTN_Q, T)):
+    q0, n = attn_span(a['q0'])
+    for t in range(q0, min(q0 + n * ATTN_Q, T)):
         K = [_head(b['k'], bb * T + j, kvh, hd) for j in range(t + 1)]
         p, lse = _probs(_head(b['q'], bb * T + t, h, hd), K, a['scale'])
         o = [0.0] * hd
@@ -358,7 +365,8 @@ def _ds(b, a, bb, h, kvh, t, j_range):
 def _attn_bwd_dq(b, a):
     T, hd, bb, h = a['T'], a['hd'], a['b'], a['h']
     kvh = h // (a['H'] // a['Hkv'])
-    for t in range(a['q0'], min(a['q0'] + ATTN_Q, T)):
+    q0, n = attn_span(a['q0'])
+    for t in range(q0, min(q0 + n * ATTN_Q, T)):
         _, _, terms = _ds(b, a, bb, h, kvh, t, range(t + 1))
         dq = [0.0] * hd
         for j, p, ds in terms:
@@ -371,16 +379,17 @@ def _attn_bwd_dkv(b, a):
     T, H, hd, bb, kvh = a['T'], a['H'], a['hd'], a['b'], a['kvh']
     Hkv = b['k'].cols // hd                       # the op has no Hkv argument (15-word task limit): derived from k
     G = H // Hkv
-    k1 = min(a['k0'] + ATTN_Q, T)
-    dk = {j: [0.0] * hd for j in range(a['k0'], k1)}
-    dv = {j: [0.0] * hd for j in range(a['k0'], k1)}
+    k0, n = attn_span(a['k0'])
+    k1 = min(k0 + n * ATTN_Q, T)
+    dk = {j: [0.0] * hd for j in range(k0, k1)}
+    dv = {j: [0.0] * hd for j in range(k0, k1)}
     for h in range(kvh * G, (kvh + 1) * G):
-        for t in range(a['k0'], T):
-            q, do, terms = _ds(b, a, bb, h, kvh, t, range(a['k0'], min(k1, t + 1)))
+        for t in range(k0, T):
+            q, do, terms = _ds(b, a, bb, h, kvh, t, range(k0, min(k1, t + 1)))
             for j, p, ds in terms:
                 dv[j] = [x + p * y for x, y in zip(dv[j], do)]
                 dk[j] = [x + a['scale'] * ds * y for x, y in zip(dk[j], q)]
-    for j in range(a['k0'], k1):
+    for j in range(k0, k1):
         b['dk'].put(bb * T + j, kvh * hd, dk[j])
         b['dv'].put(bb * T + j, kvh * hd, dv[j])
 
@@ -686,7 +695,8 @@ def _attn_full_fwd(b, a):
 def _attn_full_bwd_dq(b, a):
     T, hd, bb, h = a['T'], a['hd'], a['b'], a['h']
     kvh = h // (a['H'] // a['Hkv'])
-    for t in range(a['q0'], min(a['q0'] + ATTN_Q, T)):
+    q0, n = attn_span(a['q0'])
+    for t in range(q0, min(q0 + n * ATTN_Q, T)):
         _, _, terms = _ds(b, a, bb, h, kvh, t, range(T))
         dq = [0.0] * hd
         for j, p, ds in terms:
@@ -707,7 +717,7 @@ def _attn_full_bwd_dkv(b, a):
             for j, p, ds in terms:
                 dv[j] = [x + p * y for x, y in zip(dv[j], do)]
                 dk[j] = [x + a['scale'] * ds * y for x, y in zip(dk[j], q)]
-    for j in range(a['k0'], k1):
+    for j in range(k0, k1):
         b['dk'].put(bb * T + j, kvh * hd, dk[j])
         b['dv'].put(bb * T + j, kvh * hd, dv[j])
 

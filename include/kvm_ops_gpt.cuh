@@ -1516,6 +1516,16 @@ template <int HD> KVM_GPT_DEVI void attn_dkv_g(const AttnArgs& A) { if constexpr
         case 64: FN<64>(ARGS); break;  case 128: FN<128>(ARGS); break;                   \
         default: break;                                                                  \
     }
+// The query-block (keys-block for dkv) argument carries `span - 1` in its bits 16.. : one task runs `span` consecutive 32-row blocks
+// i0, i0+32, ... (stopping at T) with the same arguments; span 1 (upper bits zero) is the original single-block task. Fewer tasks, same math.
+#define KVM_GPT_ATTN_SPAN(FN)                                                            \
+    {   const int i0b = A.i0;                                                            \
+        for (int sp = 0; sp < span; sp++) {                                              \
+            A.i0 = i0b + 32 * sp;                                                        \
+            if (A.i0 >= A.T) break;                                                      \
+            if (sp) __syncthreads();                                                     \
+            KVM_GPT_HD_SWITCH(hd, FN, A)                                                 \
+        } }
 KVM_GPT_DEVI bool hd_ok(int hd) { return (hd == 16 || hd == 32 || hd == 64 || hd == 128) && hd <= KVM_GPT_MAX_HD; }
 
 // Common validation: geometry b,h,i0,T,H,Hkv,hd. Kind: 0 fwd/dq (i0 = query block, h = head), 1 dkv (h = kv head).
@@ -1528,7 +1538,7 @@ KVM_GPT_DEVI bool attn_geom(Chk& k, int b, int h, int i0, int T, int H, int Hkv,
 KVM_GPT_DEVI void attn_fwd(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
     AttnArgs A{};
-    A.b = a[5]; A.h = a[6]; A.i0 = a[7]; A.T = a[8]; A.H = a[9]; A.Hkv = a[10]; int hd = a[11]; A.scale = af(a, 12);
+    A.b = a[5]; A.h = a[6]; A.i0 = a[7] & 0xFFFF; const int span = (a[7] >> 16) + 1; A.T = a[8]; A.H = a[9]; A.Hkv = a[10]; int hd = a[11]; A.scale = af(a, 12);
     if (!attn_geom(k, A.b, A.h, A.i0, A.T, A.H, A.Hkv, hd, false)) return;
     long R = (long)(A.b + 1) * A.T;
     A.q = k.mat(a[0], R, (long)A.H * hd, &A.ldq); A.k = k.mat(a[1], R, (long)A.Hkv * hd, &A.ldk);
@@ -1537,7 +1547,7 @@ KVM_GPT_DEVI void attn_fwd(const KvmCtx& ctx, const int32_t* a) {
     if (k.bad) return;
     k.need(aligned16(A.q, A.ldq) && aligned16(A.k, A.ldk) && aligned16(A.v, A.ldv), KVM_GPT_E_SHAPE);
     if (k.bad) return;
-    KVM_GPT_HD_SWITCH(hd, attn_fwd_g, A)
+    KVM_GPT_ATTN_SPAN(attn_fwd_g)
 }
 KVM_GPT_DEVI void attn_bwd_delta(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
@@ -1560,7 +1570,7 @@ KVM_GPT_DEVI void attn_bwd_delta(const KvmCtx& ctx, const int32_t* a) {
 KVM_GPT_DEVI void attn_bwd_dq(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
     AttnArgs A{};
-    A.b = a[7]; A.h = a[8]; A.i0 = a[9]; A.T = a[10]; A.H = a[11]; A.Hkv = a[12]; int hd = a[13]; A.scale = af(a, 14);
+    A.b = a[7]; A.h = a[8]; A.i0 = a[9] & 0xFFFF; const int span = (a[9] >> 16) + 1; A.T = a[10]; A.H = a[11]; A.Hkv = a[12]; int hd = a[13]; A.scale = af(a, 14);
     if (!attn_geom(k, A.b, A.h, A.i0, A.T, A.H, A.Hkv, hd, false)) return;
     long R = (long)(A.b + 1) * A.T, nl = R * A.H;
     A.q = k.mat(a[0], R, (long)A.H * hd, &A.ldq); A.k = k.mat(a[1], R, (long)A.Hkv * hd, &A.ldk);
@@ -1569,12 +1579,12 @@ KVM_GPT_DEVI void attn_bwd_dq(const KvmCtx& ctx, const int32_t* a) {
     if (k.bad) return;
     k.need(aligned16(A.q, A.ldq) && aligned16(A.k, A.ldk) && aligned16(A.v, A.ldv) && aligned16(A.dout, A.ldo), KVM_GPT_E_SHAPE);
     if (k.bad) return;
-    KVM_GPT_HD_SWITCH(hd, attn_dq_g, A)
+    KVM_GPT_ATTN_SPAN(attn_dq_g)
 }
 KVM_GPT_DEVI void attn_bwd_dkv(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
     AttnArgs A{};
-    A.b = a[8]; A.h = a[9]; A.i0 = a[10]; A.T = a[11]; A.H = a[12]; int hd = a[13]; A.scale = af(a, 14);
+    A.b = a[8]; A.h = a[9]; A.i0 = a[10] & 0xFFFF; const int span = (a[10] >> 16) + 1; A.T = a[11]; A.H = a[12]; int hd = a[13]; A.scale = af(a, 14);
     k.need(hd > 0, KVM_GPT_E_SHAPE);
     if (k.bad) return;
     const KvmBuf* kb = k.get(a[1], KVM_GPT_F32, false);   // Hkv is not an argument (15-word task limit): Hkv = k.cols / hd
@@ -1590,7 +1600,7 @@ KVM_GPT_DEVI void attn_bwd_dkv(const KvmCtx& ctx, const int32_t* a) {
     if (k.bad) return;
     k.need(aligned16(A.q, A.ldq) && aligned16(A.k, A.ldk) && aligned16(A.v, A.ldv) && aligned16(A.dout, A.ldo), KVM_GPT_E_SHAPE);
     if (k.bad) return;
-    KVM_GPT_HD_SWITCH(hd, attn_dkv_g, A)
+    KVM_GPT_ATTN_SPAN(attn_dkv_g)
 }
 
 // ---- serving: KV cache and single-query attention ----------------------------------------------------------------------

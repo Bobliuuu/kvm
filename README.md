@@ -10,6 +10,20 @@ This tree has two layers:
 2. The integrated framework around a generic executor, `kvm_exec.cu` + `include/kvm_exec.cuh`: a model description goes in, a task DAG runs on
    the GPU, nothing in it is specific to one model. Map and status in the next two sections.
 
+## Run the demo (one command, needs an sm_80 GPU box over ssh)
+
+GPT training in windows + inference on versioned weights + real Doom, concurrently in one persistent kernel, driven only by `MANIFEST.json`;
+checks loss, version coherence, Doom bytes against the CPU engine and the 35 Hz cadence. `demo/run_demo.sh` rsyncs, builds, takes the GPU lock, runs, verifies.
+
+```
+export KVM_HOST=user@host KVM_KEY=~/.ssh/key KVM_REMOTE=my-private-scratch   # KVM_REMOTE: a scratch dir on the box (default kvm-demo-scratch)
+demo/run_demo.sh tiny  --lock-wait 14400    # gpt_tiny, 200 steps: all checks pass (about 4 s of GPU), results/2026-11-06-demo-tiny
+demo/run_demo.sh large --lock-wait 14400    # gpt_162m, 6 steps: runs, 1.8 s/step = 2,260 tokens/s, results/2026-11-06-demo-large
+```
+
+The first build on a busy box takes about 15 minutes (nvcc); later runs reuse `demo/kvm_run` while it is newer than its sources. Logs land in
+`logs/<UTC>-demo-<tag>/`. Options: `demo/run_demo.sh` header (`--lr`, `--warmup`, `--steps`, `--sanitize`, ...).
+
 ## The integrated framework
 
 ```

@@ -293,7 +293,7 @@ class KvmExec {
       CK(cudaHostAlloc((void**)&lat_ring_, (size_t)cfg_.lat_ring_words * 4, cudaHostAllocMapped)); memset(lat_ring_, 0, (size_t)cfg_.lat_ring_words * 4);
       CK(cudaHostAlloc((void**)&lat_win_done_, (size_t)cfg_.lat_win_cap * 4, cudaHostAllocMapped)); memset((void*)lat_win_done_, 0, (size_t)cfg_.lat_win_cap * 4);
     }
-    lat_doorbell_ = (unsigned long long*)(ctl_ + 512); lat_ring_head_ = (unsigned long long*)(ctl_ + 640);
+    lat_doorbell_ = (unsigned long long*)(ctl_ + 3072); lat_ring_head_ = (unsigned long long*)(ctl_ + 3200);   // the scheduler's params/telemetry occupy ctl_ + 512 .. 2112
     doorbell_ = (unsigned long long*)(ctl_ + 0); ring_head_ = (unsigned long long*)(ctl_ + 128);
     closed_ = (unsigned*)(ctl_ + 256); herr_ = (KvmHostErr*)(ctl_ + 384);
     void* d;

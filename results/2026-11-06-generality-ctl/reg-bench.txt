@@ -1,0 +1,156 @@
+== bench base run 1
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][I] kernel done: 65536/65536 tasks in 93.525 ms, 16 records, 5 ring wraps, 9 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, slots 32768, succ ring 2097152 words, ring 131072 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 4000/4000 tasks in 38.347 ms, 1 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 32 (1 admitter + 31 workers)
+[kvm_exec][I] kernel launched: grid 32 x 256 threads, live_cap 8192, slots 32768, succ ring 2097152 words, ring 131072 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 4000/4000 tasks in 35.666 ms, 1 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] kernel launched: grid 108 x 256 threads, live_cap 8192, slots 32768, succ ring 2097152 words, ring 131072 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 4000/4000 tasks in 35.322 ms, 1 records, 0 ring wraps, 0 backpressure waits
+  case                                 blocks      tasks      us/task    tasks/s
+  independent noop                          2      65536       6.2165   1.61e+05
+  independent noop                          8      65536       1.8158   5.51e+05
+  independent noop                         32      65536       1.4537   6.88e+05
+  independent noop                        108      65536       1.4166   7.06e+05
+  independent noop                        108      65536       1.4168   7.06e+05
+  dependent chain (hop latency)             2       4000       9.2449   1.08e+05
+  dependent chain (hop latency)            32       4000       8.7009   1.15e+05
+  dependent chain (hop latency)           108       4000       8.6016   1.16e+05
+== bench: PASS (1.2s, 0 new failures)
+0 checks, 0 failed, 0 suites failed
+PASS
+== bench new run 1
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][I] kernel done: 65536/65536 tasks in 93.493 ms, 16 records, 5 ring wraps, 9 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, slots 32768, succ ring 2097152 words, ring 131072 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 4000/4000 tasks in 38.806 ms, 1 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 32 (1 admitter + 31 workers)
+[kvm_exec][I] kernel launched: grid 32 x 256 threads, live_cap 8192, slots 32768, succ ring 2097152 words, ring 131072 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 4000/4000 tasks in 36.039 ms, 1 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] kernel launched: grid 108 x 256 threads, live_cap 8192, slots 32768, succ ring 2097152 words, ring 131072 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 4000/4000 tasks in 35.481 ms, 1 records, 0 ring wraps, 0 backpressure waits
+  case                                 blocks      tasks      us/task    tasks/s
+  independent noop                          2      65536       5.5835   1.79e+05
+  independent noop                          8      65536       1.8204   5.49e+05
+  independent noop                         32      65536       1.4523   6.89e+05
+  independent noop                        108      65536       1.4165   7.06e+05
+  independent noop                        108      65536       1.4151   7.07e+05
+  dependent chain (hop latency)             2       4000       9.3555   1.07e+05
+  dependent chain (hop latency)            32       4000       8.7869   1.14e+05
+  dependent chain (hop latency)           108       4000       8.6400   1.16e+05
+== bench: PASS (1.2s, 0 new failures)
+0 checks, 0 failed, 0 suites failed
+PASS
+== bench base run 2
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][I] kernel done: 65536/65536 tasks in 94.348 ms, 16 records, 5 ring wraps, 9 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, slots 32768, succ ring 2097152 words, ring 131072 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 4000/4000 tasks in 38.497 ms, 1 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 32 (1 admitter + 31 workers)
+[kvm_exec][I] kernel launched: grid 32 x 256 threads, live_cap 8192, slots 32768, succ ring 2097152 words, ring 131072 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 4000/4000 tasks in 35.786 ms, 1 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] kernel launched: grid 108 x 256 threads, live_cap 8192, slots 32768, succ ring 2097152 words, ring 131072 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 4000/4000 tasks in 35.707 ms, 1 records, 0 ring wraps, 0 backpressure waits
+  case                                 blocks      tasks      us/task    tasks/s
+  independent noop                          2      65536       6.0195   1.66e+05
+  independent noop                          8      65536       1.8188    5.5e+05
+  independent noop                         32      65536       1.4542   6.88e+05
+  independent noop                        108      65536       1.4153   7.07e+05
+  independent noop                        108      65536       1.4169   7.06e+05
+  dependent chain (hop latency)             2       4000       9.2728   1.08e+05
+  dependent chain (hop latency)            32       4000       8.7227   1.15e+05
+  dependent chain (hop latency)           108       4000       8.5972   1.16e+05
+== bench: PASS (1.5s, 0 new failures)
+0 checks, 0 failed, 0 suites failed
+PASS
+== bench new run 2
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][I] kernel done: 65536/65536 tasks in 96.442 ms, 16 records, 5 ring wraps, 9 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, slots 32768, succ ring 2097152 words, ring 131072 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 4000/4000 tasks in 38.651 ms, 1 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 32 (1 admitter + 31 workers)
+[kvm_exec][I] kernel launched: grid 32 x 256 threads, live_cap 8192, slots 32768, succ ring 2097152 words, ring 131072 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 4000/4000 tasks in 35.907 ms, 1 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] kernel launched: grid 108 x 256 threads, live_cap 8192, slots 32768, succ ring 2097152 words, ring 131072 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 4000/4000 tasks in 35.549 ms, 1 records, 0 ring wraps, 0 backpressure waits
+  case                                 blocks      tasks      us/task    tasks/s
+  independent noop                          2      65536       5.5816   1.79e+05
+  independent noop                          8      65536       1.8138   5.51e+05
+  independent noop                         32      65536       1.4500    6.9e+05
+  independent noop                        108      65536       1.4140   7.07e+05
+  independent noop                        108      65536       1.4136   7.07e+05
+  dependent chain (hop latency)             2       4000       9.2984   1.08e+05
+  dependent chain (hop latency)            32       4000       8.7542   1.14e+05
+  dependent chain (hop latency)           108       4000       8.6418   1.16e+05
+== bench: PASS (1.3s, 0 new failures)
+0 checks, 0 failed, 0 suites failed
+PASS
+== bench base run 3
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][I] kernel done: 65536/65536 tasks in 93.583 ms, 16 records, 5 ring wraps, 9 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, slots 32768, succ ring 2097152 words, ring 131072 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 4000/4000 tasks in 38.427 ms, 1 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 32 (1 admitter + 31 workers)
+[kvm_exec][I] kernel launched: grid 32 x 256 threads, live_cap 8192, slots 32768, succ ring 2097152 words, ring 131072 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 4000/4000 tasks in 38.958 ms, 1 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] kernel launched: grid 108 x 256 threads, live_cap 8192, slots 32768, succ ring 2097152 words, ring 131072 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 4000/4000 tasks in 38.896 ms, 1 records, 0 ring wraps, 0 backpressure waits
+  case                                 blocks      tasks      us/task    tasks/s
+  independent noop                          2      65536       5.5452    1.8e+05
+  independent noop                          8      65536       1.8178    5.5e+05
+  independent noop                         32      65536       1.4520   6.89e+05
+  independent noop                        108      65536       1.4147   7.07e+05
+  independent noop                        108      65536       1.4155   7.06e+05
+  dependent chain (hop latency)             2       4000       9.2434   1.08e+05
+  dependent chain (hop latency)            32       4000       8.7276   1.15e+05
+  dependent chain (hop latency)           108       4000       8.6085   1.16e+05
+== bench: PASS (1.3s, 0 new failures)
+0 checks, 0 failed, 0 suites failed
+PASS
+== bench new run 3
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][D] ring wrap: 65512 pad words
+[kvm_exec][D] ring full (262144/262144 words used): backpressure
+[kvm_exec][I] kernel done: 65536/65536 tasks in 93.391 ms, 16 records, 5 ring wraps, 9 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 8192, slots 32768, succ ring 2097152 words, ring 131072 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 4000/4000 tasks in 38.759 ms, 1 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 32 (1 admitter + 31 workers)
+[kvm_exec][I] kernel launched: grid 32 x 256 threads, live_cap 8192, slots 32768, succ ring 2097152 words, ring 131072 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 4000/4000 tasks in 35.963 ms, 1 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] kernel launched: grid 108 x 256 threads, live_cap 8192, slots 32768, succ ring 2097152 words, ring 131072 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 4000/4000 tasks in 35.462 ms, 1 records, 0 ring wraps, 0 backpressure waits
+  case                                 blocks      tasks      us/task    tasks/s
+  independent noop                          2      65536       5.5817   1.79e+05
+  independent noop                          8      65536       1.8164   5.51e+05
+  independent noop                         32      65536       1.4500    6.9e+05
+  independent noop                        108      65536       1.4131   7.08e+05
+  independent noop                        108      65536       1.4130   7.08e+05
+  dependent chain (hop latency)             2       4000       9.3261   1.07e+05
+  dependent chain (hop latency)            32       4000       8.7567   1.14e+05
+  dependent chain (hop latency)           108       4000       8.6252   1.16e+05
+== bench: PASS (1.5s, 0 new failures)
+0 checks, 0 failed, 0 suites failed
+PASS

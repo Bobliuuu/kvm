@@ -22,12 +22,13 @@ class Tiling:
     cols: int = 128          # column block of column reductions (colsum, norm parameter gradients)
     vocab: int = 1024        # key block of the embedding gradient
     opt_elems: int = 16384   # AdamW chunk (rounded down to whole rows)
+    join_min: int = 32       # a predecessor set of at least this many tasks that two tasks need is replaced by a join (dataflow.py)
     precise: bool = False    # GEMM tiles use 3xTF32 (matmul_tile flag 16, fp32 accuracy) instead of the default 1xTF32
 
     PRESETS = {
         'cpu': dict(rows=8, ew_rows=8, cols=32, vocab=16, opt_elems=256),
-        'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=65536),
-        'b200': dict(rows=128, ew_rows=256, cols=512, vocab=4096, opt_elems=131072),
+        'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8),
+        'b200': dict(rows=128, ew_rows=256, cols=512, vocab=4096, opt_elems=524288, join_min=8),
     }
 
     @classmethod
@@ -370,7 +371,13 @@ def _(op, tc):
 
 
 def _opt_chunks(w, tc):
-    return blocks(w.rows, max(1, tc.opt_elems // w.cols))
+    """Row chunks of about opt_elems elements. A chunk that spans several rows is rounded down to whole matmul-tile rows (a
+    weight gradient tile then feeds exactly one chunk: fewer chunks, and no tile-row's fan-in repeated by its neighbours); a chunk
+    shorter than one tile row (wide matrices such as the LM head) keeps its row count."""
+    rows = max(1, tc.opt_elems // w.cols)
+    if rows >= MM_TILE:
+        rows -= rows % MM_TILE
+    return blocks(w.rows, rows)
 
 
 @lowers('grad_clip')

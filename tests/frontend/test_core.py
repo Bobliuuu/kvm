@@ -109,5 +109,25 @@ class Lowering(unittest.TestCase):
             ModelConfig.load({'nope': 1})
 
 
+class OptimizerChunks(unittest.TestCase):
+    class W:
+        def __init__(self, rows, cols):
+            self.rows, self.cols = rows, cols
+
+    def test_multi_row_chunks_are_whole_matmul_tile_rows(self):
+        from kvmfe.lower import _opt_chunks
+        tc = Tiling(opt_elems=262144)
+        ch = _opt_chunks(self.W(768, 3072), tc)                    # 85 rows fit; rounded down to one tile row
+        self.assertEqual(ch, [(a, a + 64) for a in range(0, 768, 64)])
+        ch = _opt_chunks(self.W(768, 768), tc)                     # 341 rows -> 320
+        self.assertEqual([b - a for a, b in ch], [320, 320, 128])
+
+    def test_wide_matrices_keep_their_short_chunks(self):
+        from kvmfe.lower import _opt_chunks
+        ch = _opt_chunks(self.W(768, 50304), Tiling(opt_elems=262144))      # 5 rows < one tile row
+        self.assertEqual(ch[0], (0, 5))
+        self.assertEqual(ch[-1][1], 768)
+
+
 if __name__ == '__main__':
     unittest.main()

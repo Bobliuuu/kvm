@@ -95,11 +95,13 @@ class RectTable:
 JOIN_MIN = 32
 
 
-def build_edges(accesses):
+def build_edges(accesses, join_min=None):
     """accesses: list (program order) of (reads, writes), each a list of (buffer, r0, r1, c0, c1).
     Returns (seq, preds): seq[k] is the original index of the k-th task or -1 for a synthetic join (a no-op that collapses an
     R x W complete bipartite WAR/RAW fan into R + W edges, created when the same large predecessor set is needed twice);
-    preds[k] are the predecessor positions in seq (always < k)."""
+    preds[k] are the predecessor positions in seq (always < k). join_min (default JOIN_MIN): the predecessor-set size from which
+    a set needed twice is joined."""
+    join_min = JOIN_MIN if join_min is None else join_min
     writers, readers = defaultdict(RectTable), defaultdict(RectTable)
     seq, preds, new_of = [], [], {}
     group_cache, set_cache, join_of = {}, {}, {}
@@ -129,8 +131,8 @@ def build_edges(accesses):
         that is still large, and needed a second time, is then joined as a whole (a join of joins)."""
         out = set()
         for g in groups:
-            out |= group_sources(g) if len(g.tasks) >= JOIN_MIN else {new_of[t] for t in g.tasks}
-        if len(out) < JOIN_MIN:
+            out |= group_sources(g) if len(g.tasks) >= join_min else {new_of[t] for t in g.tasks}
+        if len(out) < join_min:
             return out
         key = frozenset(out)
         if key not in set_cache:

@@ -5,35 +5,35 @@
  "steps": 3,
  "ranks": 4,
  "collective": "direct",
- "lr": 0.01,
+ "lr": 0.001,
  "logical_params": 262144,
  "runs": {
   "P1": {
    "tag": "P1",
    "rc": 0,
-   "wall_s": 0.51,
-   "mem_local_bytes_total": 24444988,
+   "wall_s": 0.5,
+   "mem_local_bytes_total": 9764900,
    "mem_local_bytes_per_rank": [
-    24444988
+    9764900
    ],
-   "device_used_after_alloc_bytes": 535625728,
+   "device_used_after_alloc_bytes": 521011200,
    "kernel_ms": [
-    22.0
+    21.0
    ],
    "compared": 0,
    "bitwise_equal": 0,
    "worst_rel": 0.0,
    "tail": [
-    "[kvm_exec][I] kernel done: 194/194 tasks in 23.535 ms, 1 records, 0 ring wraps, 0 backpressure waits",
-    "  rank 0: 194 tasks, 22.00 ms kernel, device 0",
+    "[kvm_exec][I] kernel done: 99/99 tasks in 22.661 ms, 1 records, 0 ring wraps, 0 backpressure waits",
+    "  rank 0: 99 tasks, 21.00 ms kernel, device 0",
     "  0 values compared, 0 bitwise equal, worst relative difference 0"
    ],
    "plan_build_s": 0.02,
    "tasks_per_rank": [
-    194
+    99
    ],
-   "planner_predicted_local_bytes_per_rank": 24444988,
-   "planned_local_bytes_per_rank": 24444988,
+   "planner_predicted_local_bytes_per_rank": 9764900,
+   "planned_local_bytes_per_rank": 9764900,
    "planned_comm_bytes": 0,
    "planned_flops_per_rank": 585105408,
    "predicted_comm_bytes": 0,
@@ -42,7 +42,7 @@
   "P4": {
    "tag": "P4",
    "rc": 0,
-   "wall_s": 0.59,
+   "wall_s": 0.61,
    "mem_local_bytes_total": 87032048,
    "mem_local_bytes_per_rank": [
     21758012,
@@ -50,19 +50,19 @@
     21758012,
     21758012
    ],
-   "device_used_after_alloc_bytes": 743243776,
+   "device_used_after_alloc_bytes": 743309312,
    "kernel_ms": [
-    11.0,
-    11.0,
-    11.0,
-    11.0
+    14.0,
+    13.0,
+    14.0,
+    13.0
    ],
    "compared": 0,
    "bitwise_equal": 0,
    "worst_rel": 0.0,
    "tail": [
-    "  rank 2: 727 tasks, 11.00 ms kernel, device 0",
-    "  rank 3: 728 tasks, 11.00 ms kernel, device 0",
+    "  rank 2: 727 tasks, 14.00 ms kernel, device 0",
+    "  rank 3: 728 tasks, 13.00 ms kernel, device 0",
     "  0 values compared, 0 bitwise equal, worst relative difference 0"
    ],
    "plan_build_s": 0.1,
@@ -82,24 +82,24 @@
  },
  "compare_final_state": {
   "W1": {
-   "max_abs": 3.2667070627212524e-05,
-   "max_rel": 3.2667070627212524e-05,
-   "bitwise_equal_fraction": 0.0145721435546875
+   "max_abs": 2.0079314708709717e-06,
+   "max_rel": 2.0079314708709717e-06,
+   "bitwise_equal_fraction": 0.5749053955078125
   },
   "W4": {
-   "max_abs": 5.7540833950042725e-05,
-   "max_rel": 5.7540833950042725e-05,
-   "bitwise_equal_fraction": 0.034393310546875
+   "max_abs": 5.731359124183655e-06,
+   "max_rel": 5.731359124183655e-06,
+   "bitwise_equal_fraction": 0.7718505859375
   },
   "W1T": {
-   "max_abs": 1.9058585166931152e-05,
-   "max_rel": 1.9058585166931152e-05,
-   "bitwise_equal_fraction": 0.0251312255859375
+   "max_abs": 2.5890767574310303e-07,
+   "max_rel": 2.5890767574310303e-07,
+   "bitwise_equal_fraction": 0.7303924560546875
   },
   "W4T": {
-   "max_abs": 0.0004544779658317566,
-   "max_rel": 0.0004544779658317566,
-   "bitwise_equal_fraction": 0.0455169677734375
+   "max_abs": 4.5280903577804565e-05,
+   "max_rel": 4.5280903577804565e-05,
+   "bitwise_equal_fraction": 0.7393798828125
   },
   "loss1": {
    "unsharded": 0.34013378620147705,
@@ -107,24 +107,24 @@
    "rel": 0.0
   },
   "loss2": {
-   "unsharded": 0.2593229413032532,
-   "sharded": 0.2593229413032532,
-   "rel": 0.0
+   "unsharded": 0.3274739980697632,
+   "sharded": 0.32747402787208557,
+   "rel": 9.100668307837623e-08
   },
   "loss3": {
-   "unsharded": 0.19063206017017365,
-   "sharded": 0.1906319558620453,
-   "rel": 5.471699182635348e-07
+   "unsharded": 0.3156226873397827,
+   "sharded": 0.3156227171421051,
+   "rel": 9.442388915203992e-08
   }
  },
  "loss_unsharded": [
   0.34013378620147705,
-  0.2593229413032532,
-  0.19063206017017365
+  0.3274739980697632,
+  0.3156226873397827
  ],
  "loss_sharded": [
   0.34013378620147705,
-  0.2593229413032532,
-  0.1906319558620453
+  0.32747402787208557,
+  0.3156227171421051
  ]
 }

@@ -92,6 +92,15 @@ class Cli(unittest.TestCase):
             self.assertEqual(m['workloads']['serve_s2']['priority'], 10)
             self.assertEqual(m['workloads']['train']['variables'], ['weights'])
 
+    def test_demo_lr_and_warmup_reach_the_device_schedule(self):
+        """--lr / --warmup (the 'large' demo preset needs them: the default 3e-3 without warmup does not train gpt_162m)."""
+        with tempfile.TemporaryDirectory() as d:
+            self.run_cli('kvmfe.demo', '--all', '--model', 'gpt_tiny', '--train-steps', '2', '--game-frames', '0', '--lr', '1e-3', '--warmup', '2', '--out', d)
+            spec = json.loads((Path(d) / 'workloads' / 'train.json').read_text())
+            sched = [t['args'] for g in spec['graphs'] for t in g['tasks'] if t['op'] == 'lr_schedule']
+            self.assertTrue(sched)
+            self.assertEqual({(a['base'], a['warmup'], a['kind']) for a in sched}, {(1e-3, 2, 0)})
+
     def test_inspect_reports_counts(self):
         r = self.run_cli('kvmfe.inspect', '--model', 'gpt_tiny', '--steps', '2')
         self.assertIn('critical path', r.stdout)

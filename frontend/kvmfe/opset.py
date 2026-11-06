@@ -16,6 +16,7 @@ from functools import lru_cache
 from .defs import default_include_dir, read_defs
 from .ir import FrontendError
 
+MMA_TILE = (128, 256)   # matmul_mma_bf16 computes a 128 (m) x 256 (n) output tile (same flags as matmul_tile, minus precise)
 MM_TILE = 64        # matmul_tile computes a 64 x 64 output tile (flags: 1 transA, 2 transB, 4 accumulate, 8 gelu)
 ATTN_Q = 32         # attn_fwd / attn_bwd_dq: 32 query rows per task; attn_bwd_dkv: 32 keys per task
 F_TA, F_TB, F_ACC, F_GELU, F_PRECISE = 1, 2, 4, 8, 16
@@ -728,6 +729,19 @@ def _matmul_tile_bf16(b, a):
     for n in ('a', 'b'):
         rb[n] = Buf([bf16_round(x) for x in b[n].a], b[n].rows, b[n].cols)
     _matmul_tile(rb, a)
+
+
+def _mma_flops(a):
+    return 2.0 * max(0, min(MMA_TILE[0], a['M'] - a['m0'])) * max(0, min(MMA_TILE[1], a['N'] - a['n0'])) * a['K']
+
+
+@impl('matmul_mma_bf16', _mma_flops)
+def _matmul_mma_bf16(b, a):
+    """The 128 x 256 tile is the union of the 64 x 64 matmul_tile_bf16 tiles it covers (same operand rounding, same epilogue order)."""
+    for dm in range(0, MMA_TILE[0], MM_TILE):
+        for dn in range(0, MMA_TILE[1], MM_TILE):
+            if a['m0'] + dm < a['M'] and a['n0'] + dn < a['N']:
+                _matmul_tile_bf16(b, {**a, 'm0': a['m0'] + dm, 'n0': a['n0'] + dn})
 
 
 @impl('adamw_lr', lambda a: 12.0 * (a['e1'] - a['e0']))

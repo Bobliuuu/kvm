@@ -65,6 +65,20 @@ class Planner(unittest.TestCase):
         self.assertEqual(plan_memory(self.ops(10), 'none').stats['slots'], 10)
         self.assertGreater(plan_memory(self.ops(10), 'shape', 4).stats['slots'], plan_memory(self.ops(10), 'shape', 0).stats['slots'])
 
+    def test_step_policy_reuses_only_across_steps(self):
+        def two_steps(n):
+            b = Builder()
+            ts = [b.tensor(f't{i}', 4, 4) for i in range(2 * n)]
+            for st in (0, 1):
+                b.step = st
+                for i in range(n - 1):
+                    b.emit('add2', {'a': ts[st * n + i], 'b': ts[st * n + i]}, {'out': ts[st * n + i + 1]})
+            return b.ops
+        ops = two_steps(6)
+        self.assertEqual(plan_memory(ops, 'step').stats['slots'], 6)             # nothing shared inside a step, step 1 reuses step 0
+        self.assertEqual(plan_memory(ops, 'shape').stats['slots'], 2)
+        self.assertEqual(plan_memory(ops[:5], 'step').stats['slots'], 6)         # one step: no reuse at all
+
     def test_pinned_and_shape_mismatch(self):
         a, b = Tensor('a', 2, 2, buf='w'), Tensor('b', 2, 3, buf='w')
         bld = Builder()

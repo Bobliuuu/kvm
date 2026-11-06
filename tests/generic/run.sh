@@ -5,13 +5,14 @@
 # (kvm_exec --dump-buffers; kvm_run for the manifests), then checked here: golden_check.py --mode precise (every f32 buffer, activations
 # through weights and optimizer state, within 2e-4 relative L2 of the golden) and demo/check_demo.py (loss falls, equals the CPU VM).
 # Remote scratch: private ~/kvm-scratch-generic-$USER-$$ ($KVM_SCRATCH overrides; removed on success unless KVM_KEEP_SCRATCH=1).
+# KVM_LOCK_WAIT=S sets the lock wait (default 900); KVM_PREBUILT=1 skips the nvcc builds (a kept $KVM_SCRATCH already has them).
 # KVM_NO_LOCK=1 skips the GPU lock (an outer hold exists). See RUNNING_TESTS.md.
 set -euo pipefail
 HOST="${KVM_HOST:?set KVM_HOST=user@host (an environment variable, never a committed file)}"
 ARCH="${KVM_ARCH:-sm_80}"
 SSH="ssh -o StrictHostKeyChecking=no -o BatchMode=yes ${KVM_KEY:+-i $KVM_KEY}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-. "$ROOT/tests/remote_lib.sh"; kvm_scratch generic; kvm_lock 900
+. "$ROOT/tests/remote_lib.sh"; kvm_scratch generic; kvm_lock "${KVM_LOCK_WAIT:-900}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 LOG="$ROOT/logs/$STAMP-generic"; mkdir -p "$LOG"
 WORK="$LOG/work"; mkdir -p "$WORK"
@@ -32,7 +33,7 @@ $SSH "$HOST" "mkdir -p $REMOTE/generic_bundles"
 for n in $BUNDLES; do $SSH "$HOST" "mkdir -p $REMOTE/generic_bundles/$n"; rsync -az -e "$SSH" "$WORK/$n/bundle/" "$HOST:$REMOTE/generic_bundles/$n/"; done
 for c in $MANIFESTS; do rsync -az -e "$SSH" "$WORK/man_$c/" "$HOST:$REMOTE/generic_bundles/man_$c/"; done
 # build outside the lock hold (minutes of nvcc); the hold covers only the runs
-$SSH "$HOST" "cd $REMOTE && NVCC=\$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc | tail -1) && \$NVCC --version | tail -1 && nvidia-smi --query-gpu=name,driver_version --format=csv,noheader && \
+[ -n "${KVM_PREBUILT:-}" ] || $SSH "$HOST" "cd $REMOTE && NVCC=\$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc | tail -1) && \$NVCC --version | tail -1 && nvidia-smi --query-gpu=name,driver_version --format=csv,noheader && \
   FL='-O3 -arch=$ARCH -std=c++17 -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177' && \
   \$NVCC \$FL kvm_exec.cu -o kvm_exec && \$NVCC \$FL demo/kvm_run.cu -o demo/kvm_run && ls -la kvm_exec demo/kvm_run" | tee "$LOG/build.txt"
 RUN="cd $REMOTE && for n in $BUNDLES; do ./kvm_exec --blocks 4 --quiet --dump-buffers generic_bundles/\$n > generic_bundles/\$n.dump 2> generic_bundles/\$n.err; echo \"\$n exit \$?\"; done"

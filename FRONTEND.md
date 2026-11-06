@@ -51,7 +51,7 @@ python3 -I -m unittest discover -s tests/frontend      # from the repo root
 | Builder, autodiff, tiling, dataflow, memory plan, emit (GPT, Llama/GQA, MoE, MLP, ViT) | implemented + tested: 78 tests (about 35 s) against independent numpy float64 oracles, finite-difference gradients, any-topological-order bitwise state | `tests/frontend/`, `results/2026-11-04-a100-models` |
 | Fusion, remat, gradient accumulation, device LR schedule, loss scaling, bf16 | implemented + measured on the A100 (fusion -3% Llama / -11% MoE time, remat pool -41 to -59% for +36% tasks); bf16 is emulated in fp32 buffers | `results/2026-11-04-a100-models` |
 | GPT bundles on the executor | implemented + measured; 1xTF32 GEMMs are compared on losses and step-1 buffers, 3xTF32 (flag 16, `gen_bundle.py --precise`) to fp32 level | `results/2026-11-04-a100-gpt-golden` |
-| Generic training (`generic.py`): any traced module + `CrossEntropy`/`MSE` + `ArrayData`/`GeneratedData` + SGD/AdamW | implemented; 4 never-shipped models (regression MLP, residual RMSNorm MLP, 1-D CNN, transformer encoder) vs numpy float64 oracles on the CPU and vs the CPU golden on the A100 (3xTF32, every f32 buffer), 2 emitted as MANIFEST demos through `demo/kvm_run` | `tests/frontend/test_generic.py`, `tests/generic/`, `results/2026-11-05-generic-train` |
+| Generic training (`generic.py`): any traced module + `CrossEntropy`/`MSE` + `ArrayData`/`GeneratedData` + SGD/AdamW | implemented + CPU-tested: 4 never-shipped models (regression MLP, residual RMSNorm MLP, 1-D CNN, transformer encoder) vs numpy float64 oracles. **A100 run NOT yet done** (`tests/generic/run.sh`: bundles vs CPU golden at 3xTF32, 2 MANIFEST demos through `demo/kvm_run`; the box's GPU lock was held by an idle session for 3+ h); until it passes, the MSE device path (`scale_flat`/`row_dot`/`colsum`) and the gather-based conv are verified only against the CPU reference | `tests/frontend/test_generic.py`, `tests/generic/` |
 | Windows / MANIFEST runner | CPU reference runner only; the GPU CLI runs single bundles | `kvmfe.run_manifest`, `results/2026-11-04-a100-exec-recycling` |
 | `gpt_162m` | code-only: compiled (318k-task template) and inspected, never run on a GPU | this file |
 | Not built | dynamic shapes, data-dependent control flow, MoE serving, dropout, fp16, a frontend switch for 3xTF32, 128x128 / 256x128 matmul tile stepping in the lowering (the device tiles exist) | below, `results/2026-11-04-a100-ops-perf` |
@@ -179,7 +179,7 @@ The GPT path is the same code: `compile_training(GPT(cfg), tc, tiling, loss=Cros
 built-in run bit for bit (`test_gpt_through_the_generic_api_equals_the_builtin_path`), and `compile_training(cfg, tc, tiling)` is
 unchanged. Checks: `tests/frontend/test_generic.py` (19 tests: loss and finite-difference gradients of every parameter against numpy
 float64 oracles, any dataflow order bitwise equal, accumulation == big batch, manifest through `kvmfe.run_manifest`, refusals) and
-`tests/generic/run.sh` (A100: 4 models x {cpu, a100} tiling, 3xTF32, golden_check precise; 2 MANIFEST demos through `demo/kvm_run` and
+`tests/generic/run.sh` (A100, not yet run: 4 models x {cpu, a100} tiling, 3xTF32, golden_check precise; 2 MANIFEST demos through `demo/kvm_run` and
 `demo/check_demo.py`).
 
 Limits of this layer (not fixed here): no auxiliary-loss roots from inside a generic module (use a `models.py`-style model for those),

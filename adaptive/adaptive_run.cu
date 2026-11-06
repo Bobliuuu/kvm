@@ -444,7 +444,7 @@ int main(int argc, char** argv) {
     auto dv = [&]() { return atof(sv().c_str()); }; auto iv = [&]() { return atoi(sv().c_str()); };
     if (a == "--out") o.out = sv(); else if (a == "--wad") o.wad = sv(); else if (a == "--tag") o.tag = sv();
     else if (a == "--ctl") o.ctl = sv(); else if (a == "--duration-s") o.duration_s = dv(); else if (a == "--fps") o.fps = dv();
-    else if (a == "--doom-split") g_doom_split = iv(); else if (a == "--doom-planes") g_doom_planes = iv();
+    else if (a == "--doom-split") adp::g_doom_split = iv(); else if (a == "--doom-planes") adp::g_doom_planes = iv();
     else if (a == "--doom-instances") o.doom_instances = iv(); else if (a == "--train-runs") o.train_runs = iv(); else if (a == "--serve-slots") o.serve_slots = iv();
     else if (a == "--serve-rate") o.serve_rate = dv();
     else if (a == "--burst") { o.burst0 = dv(); o.burst1 = dv(); o.burst_rate = dv(); }            // --burst T0 T1 RATE

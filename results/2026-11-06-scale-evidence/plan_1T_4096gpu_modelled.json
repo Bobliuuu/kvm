@@ -1,0 +1,46 @@
+{
+ "model": {
+  "layers": 128,
+  "d": 25472,
+  "params": 997895962624.0,
+  "layer_params": 7785873408.0
+ },
+ "par": {
+  "tp": 8,
+  "pp": 16,
+  "dp": 32,
+  "zero": 3,
+  "microbatches": 64,
+  "mb_seqs": 1,
+  "recompute": true,
+  "wbytes": 2,
+  "gbytes": 2,
+  "obytes": 12,
+  "abytes": 2,
+  "sp": true
+ },
+ "memory_bytes_per_gpu": {
+  "params": 487253888.0,
+  "grads": 487253888.0,
+  "optimizer": 2923523328.0,
+  "gathered_window": 3892936704.0,
+  "activations": 1891041280.0,
+  "total": 9682009088.0,
+  "fits_hbm": true
+ },
+ "flops_per_gpu_per_step": 8273481401630720.0,
+ "model_flops_per_step_whole_job": 2.5448955287898685e+19,
+ "comm_bytes_per_gpu_per_step": {
+  "tensor_parallel": 560895885312.0,
+  "pipeline": 1669332992.0,
+  "data_parallel": 45314611584.0,
+  "total": 607879829888.0
+ },
+ "critical_path": {
+  "compute_s": 53.035137189940514,
+  "bubble_s": 12.430110278892307,
+  "lower_bound_s": 65.46524746883281
+ },
+ "gpus": 4096,
+ "mfu_at_lower_bound": 0.3041897688042683
+}

@@ -531,6 +531,44 @@ def transformer(model: Model, par: Par, peak_tflops=312.0, eff=0.5, hbm_gb=40.0)
                 mfu_at_lower_bound=model_flops_step / (tp * pp * dp) / ((ideal + bubble) * peak_tflops * 1e12) if ideal else 0.0)
 
 
+def emit_graph(model: Model, par: Par):
+    """KVM task graph (JSON) of ONE microbatch through ONE layer of ONE representative GPU, plus the per-step tasks. Op names and
+    argument names are the registry's (matmul m/n/k, put_signal/send_proxy rows/cols, adamw e0/e1); `repeat` says how many times
+    the group runs per step on that GPU. Dependencies are in program order (`after` = previous task of the group unless noted).
+    It is a description for the cost model and for review, not something partition.py can instantiate at this size."""
+    d, f, s, tp, dp = model.d, model.ffn_mult, model.seq, par.tp, par.dp
+    tok = par.mb_seqs * s
+    lps = model.layers // par.pp
+    ff = int(f * d)
+    g = []
+
+    def T(op, **a):
+        g.append(dict(id=f't{len(g)}', op=op, args=a, after=[f't{len(g) - 1}'] if g else []))
+    lay_bytes = model.layer_params() / tp * par.wbytes
+    if par.zero >= 3:
+        T('put_signal', note='ZeRO-3 all-gather of this layer weights: send own shard to dp-1 peers', bytes=lay_bytes / dp * (dp - 1))
+    T('matmul', note='qkv', m=tok, n=3 * d // tp, k=d)
+    T('matmul', note='attention scores + context (flops folded into one matmul-equivalent)', m=tok, n=2 * s // tp, k=d)
+    T('matmul', note='attention output projection', m=tok, n=d, k=d // tp)
+    if tp > 1:
+        T('put_signal', note='tensor-parallel all-reduce (reduce-scatter + all-gather)', bytes=2 * tok * d * par.abytes * (tp - 1) / tp)
+    T('matmul', note='mlp up', m=tok, n=ff // tp, k=d)
+    T('matmul', note='mlp down', m=tok, n=d, k=ff // tp)
+    if tp > 1:
+        T('put_signal', note='tensor-parallel all-reduce', bytes=2 * tok * d * par.abytes * (tp - 1) / tp)
+    layer = dict(group='layer_forward', repeat=lps * par.microbatches, tasks=g,
+                 note='backward = 2x the matmul tasks (grad wrt input and weight) with the same all-reduces; recompute = a second forward')
+    step = [dict(group='pipeline_boundary', repeat=2 * par.microbatches,
+                 tasks=[dict(id='p0', op='send_proxy', args=dict(rows=tok, cols=d // tp), bytes=tok * d * par.abytes / tp, after=[])]),
+            dict(group='gradient_reduce_scatter', repeat=1,
+                 tasks=[dict(id='r0', op='reduce_put_signal', args=dict(n=int(model.layer_params() / tp * lps)), after=[],
+                             note='ZeRO reduce-scatter of this GPU gradients over dp')]),
+            dict(group='sharded_optimizer', repeat=1,
+                 tasks=[dict(id='o0', op='adamw', args=dict(e0=0, e1=int((lps * model.layer_params() / tp) / (dp if par.zero >= 1 else 1)), lr=1e-4),
+                             after=[])])]
+    return dict(kind='kvm-task-graph-summary', model=model.__dict__, par=par.__dict__, groups=[layer] + step)
+
+
 def small_configs():
     """The configurations the golden check runs (each partitions in under a few seconds on CPU)."""
     out = []
@@ -561,6 +599,7 @@ def main(argv=None):
     t.add_argument('--eff', type=float, default=0.5)
     t.add_argument('--hbm-gb', type=float, default=40.0)
     t.add_argument('--json', action='store_true')
+    t.add_argument('--emit-graph', metavar='FILE', help='write the representative-GPU task graph summary as JSON')
     a = ap.parse_args(argv)
     if a.cmd == 'check':
         rows = []
@@ -575,7 +614,10 @@ def main(argv=None):
         return 0
     dp = a.gpus // (a.tp * a.pp)
     assert dp * a.tp * a.pp == a.gpus, 'gpus must equal tp*pp*dp'
-    res = transformer(Model.for_params(a.params, a.layers), Par(a.tp, a.pp, dp, a.zero, a.microbatches), a.peak_tflops, a.eff, a.hbm_gb)
+    mdl, par = Model.for_params(a.params, a.layers), Par(a.tp, a.pp, dp, a.zero, a.microbatches)
+    if a.emit_graph:
+        Path(a.emit_graph).write_text(json.dumps(emit_graph(mdl, par), indent=1, default=float) + '\n')
+    res = transformer(mdl, par, a.peak_tflops, a.eff, a.hbm_gb)
     print(json.dumps(res, indent=1, default=float) if a.json else json.dumps(res, indent=1, default=float))
     return 0
 

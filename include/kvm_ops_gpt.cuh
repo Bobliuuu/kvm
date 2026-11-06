@@ -65,7 +65,7 @@ enum KvmGptErr {
     KVM_GPT_E_TOKEN = KVM_GPT_ERR_BASE + 5,   // token id / target outside [0, V)
     KVM_GPT_E_KVLEN = KVM_GPT_ERR_BASE + 6    // KV cache length overflow
 };
-enum { KVM_GPT_F32 = 0, KVM_GPT_I32 = 1 };
+enum { KVM_GPT_F32 = 0, KVM_GPT_I32 = 1, KVM_GPT_BF16 = 2 };   // KvmBuf.dtype; bf16 = raw 16-bit storage
 
 namespace kvmgpt {
 
@@ -93,6 +93,26 @@ struct Chk {
         if (rows > b->rows || cols > b->cols || b->ld < b->cols) { fail(KVM_GPT_E_RANGE); return nullptr; }
         if (ld) *ld = b->ld;
         return (float*)b->p;
+    }
+    // [rows x cols] matrix view of a buffer that is fp32 (dtype 0) or raw bf16 (dtype 2); *bf tells which. Absent (opt) -> nullptr.
+    KVM_GPT_DEVI void* mat_s(int idx, long rows, long cols, int* ld, bool* bf, bool opt = false) {
+        if (idx < 0 && opt) return nullptr;
+        if (idx < 0 || idx >= c.nbufs) { fail(KVM_GPT_E_BUF); return nullptr; }
+        const KvmBuf* b = c.bufs + idx;
+        if (!b->p || (b->dtype != KVM_GPT_F32 && b->dtype != KVM_GPT_BF16)) { fail(KVM_GPT_E_DTYPE); return nullptr; }
+        if (rows > b->rows || cols > b->cols || b->ld < b->cols) { fail(KVM_GPT_E_RANGE); return nullptr; }
+        if (ld) *ld = b->ld;
+        *bf = b->dtype == KVM_GPT_BF16;
+        return b->p;
+    }
+    // contiguous vector of n elements of a buffer that is fp32 or raw bf16 (1 row, or ld == cols); *bf tells which.
+    KVM_GPT_DEVI void* vec_s(int idx, long n, bool* bf) {
+        if (idx < 0 || idx >= c.nbufs) { fail(KVM_GPT_E_BUF); return nullptr; }
+        const KvmBuf* b = c.bufs + idx;
+        if (!b->p || (b->dtype != KVM_GPT_F32 && b->dtype != KVM_GPT_BF16)) { fail(KVM_GPT_E_DTYPE); return nullptr; }
+        if ((long)b->rows * b->cols < n || (b->rows > 1 && b->ld != b->cols)) { fail(KVM_GPT_E_RANGE); return nullptr; }
+        *bf = b->dtype == KVM_GPT_BF16;
+        return b->p;
     }
     // contiguous vector of n elements (a 1-row buffer, or ld == cols)
     template <typename T> KVM_GPT_DEVI T* vec(int idx, long n, int dtype, bool opt = false) {
@@ -310,6 +330,30 @@ KVM_GPT_DEVI void tile_async(float* dst, const float* src, int ld, int gr0, int 
     }
 }
 
+// bf16-storage variant of tile_async: the global source holds raw bf16 (uint16) elements, widened to fp32 on the way into shared memory
+// (plain loads and stores; exact, a bf16 value is the top half of an fp32). Same tile geometry and swizzle as tile_async.
+template <bool KC, int ROWS, int COLS>
+KVM_GPT_DEVI void tile_bf(float* dst, const uint16_t* src, int ld, int gr0, int gc0, int rmax, int cmax) {
+    constexpr int CPR = COLS / 4;
+#pragma unroll
+    for (int s = 0; s < ROWS * CPR / KVM_GPT_THREADS; s++) {
+        int q = threadIdx.x + s * KVM_GPT_THREADS, row = q / CPR, c4 = (q % CPR) * 4, gr = gr0 + row, gc = gc0 + c4;
+        float* d = dst + (KC ? sw_kc<COLS>(row, c4) : sw_mc<COLS>(row, c4));
+        const uint16_t* p = src + (size_t)gr * ld + gc;
+        const bool rok = gr < rmax;
+#pragma unroll
+        for (int i = 0; i < 4; i++) d[i] = rok && gc + i < cmax ? __uint_as_float((uint32_t)p[i] << 16) : 0.f;
+    }
+}
+// Storage-dtype helpers for the bf16 matmul epilogue: element i of a buffer that is either fp32 or raw bf16.
+KVM_GPT_DEVI float ld_s(const void* p, size_t i, bool bf) { return bf ? __uint_as_float((uint32_t)((const uint16_t*)p)[i] << 16) : ((const float*)p)[i]; }
+KVM_GPT_DEVI uint16_t bf16_bits(float x) {   // round to nearest even, NaN stays NaN
+    uint32_t u = __float_as_uint(x);
+    if ((u & 0x7f800000u) == 0x7f800000u) return (uint16_t)((u >> 16) | ((u & 0x007fffffu) ? 0x40u : 0u));
+    return (uint16_t)((u + 0x7fffu + ((u >> 16) & 1u)) >> 16);
+}
+KVM_GPT_DEVI void st_s(void* p, size_t i, float x, bool bf) { if (bf) ((uint16_t*)p)[i] = bf16_bits(x); else ((float*)p)[i] = x; }
+
 // 64x64 output tile, BK=32, 3-stage cp.async pipeline (3 x 16 KiB = 48 KiB, the epilogue reuses it), 8 warps, mma.sync m16n8k8
 // TF32. Warp (wm, wn, kh): 32x32 sub-tile at (wm*32, wn*32) = 2 m16 x 4 n8 fragments, reducing k8-steps {2kh, 2kh+1} of each BK=32
 // slab; the two k-halves are summed in the epilogue. Shared tiles keep the global orientation (coalesced loads for all four
@@ -317,7 +361,8 @@ KVM_GPT_DEVI void tile_async(float* dst, const float* src, int ld, int gr0, int 
 // PREC: 3xTF32 split (a_lo*b_hi + a_hi*b_lo + a_hi*b_hi) restores ~fp32 accuracy.
 template <bool TA, bool TB, bool PREC, bool BF = false>   // BF: operands rounded to bf16, m16n8k16 bf16 mma (one k16 step per slab per warp half)
 KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, float* out, int ldo, const float* bias, const float* res,
-                          int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, bool gelu, bool accum) {
+                          int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, bool gelu, bool accum,
+                          int sd = 0) {   // sd (BF only): storage-dtype bits, 1 A, 2 B, 4 out, 8 res, 16 pre are raw bf16 instead of fp32
     constexpr int BK = 32, TM = 64, TN = 64, TILE = 2048, STAGE = 2 * TILE, NST = 3, CLD = TN + 8;
     float* sm = reinterpret_cast<float*>(kvm_gpt_smem);   // [stage][A | B]
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, wmi = (warp >> 1) & 1, wni = warp & 1, kh = warp >> 2;
@@ -334,8 +379,12 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
     auto issue = [&](int it) {
         float* As = sm + (it % NST) * STAGE; float* Bs = As + TILE;
         const int kk = it * BK;
-        if (TA) tile_async<false, 32, 64>(As, A, lda, kk, m0, K, M, va); else tile_async<true, 64, 32>(As, A, lda, m0, kk, M, K, va);
-        if (TB) tile_async<true, 64, 32>(Bs, B, ldb, n0, kk, N, K, vb); else tile_async<false, 32, 64>(Bs, B, ldb, kk, n0, K, N, vb);
+        if (BF && (sd & 1)) { const uint16_t* Ah = (const uint16_t*)A;
+            if (TA) tile_bf<false, 32, 64>(As, Ah, lda, kk, m0, K, M); else tile_bf<true, 64, 32>(As, Ah, lda, m0, kk, M, K); }
+        else if (TA) tile_async<false, 32, 64>(As, A, lda, kk, m0, K, M, va); else tile_async<true, 64, 32>(As, A, lda, m0, kk, M, K, va);
+        if (BF && (sd & 2)) { const uint16_t* Bh = (const uint16_t*)B;
+            if (TB) tile_bf<true, 64, 32>(Bs, Bh, ldb, n0, kk, N, K); else tile_bf<false, 32, 64>(Bs, Bh, ldb, kk, n0, K, N); }
+        else if (TB) tile_async<true, 64, 32>(Bs, B, ldb, n0, kk, N, K, vb); else tile_async<false, 32, 64>(Bs, B, ldb, kk, n0, K, N, vb);
     };
     issue(0); cp_commit();
     if (nk > 1) issue(1);
@@ -444,6 +493,22 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
     __syncthreads();
     // Epilogue: four consecutive columns per thread, 16-byte accesses when every operand allows them.
     const bool vec = ((n0 & 3) == 0) && aligned16(out, ldo) && (!bias || aligned16(bias, 0)) && (!res || aligned16(res, ldr)) && (!pre || aligned16(pre, ldp));
+    if (BF && (sd & 28)) {   // bf16-stored out / res / pre: scalar epilogue, math in fp32, one rounding per stored value
+        const bool ob = sd & 4, rb = sd & 8, pb = sd & 16;
+        for (int q = threadIdx.x; q < TM * TN; q += KVM_GPT_THREADS) {
+            const int r = q / TN, c = q % TN, gm = m0 + r, gn = n0 + c;
+            if (gm >= M || gn >= N) continue;
+            float x = (sm[r * CLD + c] + sm[TM * CLD + r * CLD + c]) * alpha;
+            if (bias) x += bias[gn];
+            if (pre) st_s(pre, (size_t)gm * ldp + gn, x, pb);
+            if (gelu) x = gelu_f(x);
+            if (res) x += ld_s(res, (size_t)gm * ldr + gn, rb);
+            const size_t oi = (size_t)gm * ldo + gn;
+            if (accum) x += ld_s(out, oi, ob);
+            st_s(out, oi, x, ob);
+        }
+        return;
+    }
     for (int q = threadIdx.x; q < TM * TN / 4; q += KVM_GPT_THREADS) {
         const int r = q / (TN / 4), c = (q % (TN / 4)) * 4, gm = m0 + r, gn = n0 + c;
         if (gm >= M || gn >= N) continue;

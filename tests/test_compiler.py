@@ -180,7 +180,7 @@ class SchemaErrorTests(unittest.TestCase):
                                 ([{'name': 'a', 'rows': 0}], 'rows must be'),
                                 ([{'name': 'a', 'rows': 2, 'init': {'kind': 'values', 'values': [1]}}], 'list of 2'),
                                 ([{'name': 'a', 'init': {'kind': 'zeros'}}], "'fill', 'values', 'seeded', 'file'"),
-                                ([{'name': 'a', 'dtype': 'bf16'}], 'dtype must be one of'),
+                                ([{'name': 'a', 'dtype': 'f16'}], 'dtype must be one of'),
                                 ([{'name': 'a', 'layout': 'x'}], 'unknown key')]:
             with self.subTest(needle=needle):
                 self.fails(wl([task('t')], buffers=buffers), needle)

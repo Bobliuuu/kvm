@@ -50,6 +50,7 @@ static void submit_all(KvmExec& ex, const std::vector<KvmBundle>& bs) {
 static bool suite_cost() {
   int before = g_fail;
   CHECK(kvm_cost_names_registered(), "a name in kvm_ops_cost.inc is not a registered operator");
+  { const char* first = ""; int m = kvm_cost_missing_ops(&first); CHECK(m == 0, "%d registered operators have no cost entry (first: %s)", m, first); }
   int32_t a[8] = {0, 1, 100000, 0, 0, 0, 0, 0};
   KvmCost c = kvm_cost(KVM_OP_copy, a);
   CHECK(c.res == KVM_RES_BW && c.bytes == 800000ull, "copy 1e5 floats: res %d bytes %llu", c.res, (unsigned long long)c.bytes);

@@ -102,6 +102,17 @@ __host__ __device__ inline KvmCost kvm_cost(int op, const int32_t* a) {
   return c;
 }
 // Host check: every name in the cost table is a registered operator (a typo would silently fall back to the default).
+// Host check, the other direction: every registered operator has a cost entry (an unlisted op is MIXED, 0 bytes, never throttled).
+// Game-pack ops count only when that pack is linked; they are in the table either way.
+static inline int kvm_cost_missing_ops(const char** first = nullptr) {
+  int miss = 0;
+  for (const KvmOpInfo& o : kKvmOps) {
+    bool f = false;
+    for (const char* n : kKvmCostNames) f = f || !strcmp(o.name, n);
+    if (!f) { if (!miss && first) *first = o.name; ++miss; }
+  }
+  return miss;
+}
 static inline bool kvm_cost_names_registered() {
   static const char* const game[] = {   // game-pack operators exist in the table even when the pack is not linked (-DKVM_WITH_GAME)
 #if __has_include("kvm_ops_game.def")

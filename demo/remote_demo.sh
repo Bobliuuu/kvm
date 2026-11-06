@@ -22,8 +22,12 @@ ls -la doom/build/doom_dev.o doom/third_party/doom1.wad
 
 say "build kvm_run"
 BUILD="$NVCC -O3 -arch=${NVCC_ARCH:-sm_80} -std=c++17 -rdc=true -DKVM_WITH_GAME -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177"
-echo "$BUILD demo/kvm_run.cu doom/build/doom_dev.o -o demo/kvm_run"
-$BUILD demo/kvm_run.cu doom/build/doom_dev.o -o demo/kvm_run 2>&1 | grep -v "cannot be statically determined" || true
+if [ -x demo/kvm_run ] && [ -z "$(find demo/kvm_run.cu kvm_exec.cu include doom/build/doom_dev.o -newer demo/kvm_run 2>/dev/null)" ]; then
+  echo "demo/kvm_run is newer than its sources: reusing it (the build takes ~15 min on a busy box)"
+else
+  echo "$BUILD demo/kvm_run.cu doom/build/doom_dev.o -o demo/kvm_run"
+  $BUILD demo/kvm_run.cu doom/build/doom_dev.o -o demo/kvm_run 2>&1 | grep -v "cannot be statically determined" || true
+fi
 test -x demo/kvm_run
 
 gen() {  # dir model steps window serve_every frames

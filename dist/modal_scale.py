@@ -74,17 +74,26 @@ def body(tag, ngpu, arch, price, big):
     vol.commit()
 
 
-def make(name):
-    gpu, arch, price = CONF[name]
-
-    @app.function(gpu=gpu, image=image, volumes={'/results': vol}, timeout=3 * 3600, name=f'run_{name}')
-    def run(tag):
-        big = [(1024, 8, 64), (2048, 8, 64)] if name != 'h100x8' else [(2048, 8, 64), (4096, 8, 64)]
-        body(tag, int(gpu.split(':')[1]), arch, price, big)
-    return run
+def _big(name):
+    return [(1024, 8, 64), (2048, 8, 64)] if name != 'h100x8' else [(2048, 8, 64), (4096, 8, 64)]
 
 
-FUNCS = {n: make(n) for n in CONF}
+@app.function(gpu='A100-40GB:2', image=image, volumes={'/results': vol}, timeout=3 * 3600)
+def run_a100x2(tag):
+    body(tag, 2, 'sm_80', 2.10, _big('a100x2'))
+
+
+@app.function(gpu='A100-40GB:4', image=image, volumes={'/results': vol}, timeout=3 * 3600)
+def run_a100x4(tag):
+    body(tag, 4, 'sm_80', 2.10, _big('a100x4'))
+
+
+@app.function(gpu='H100:8', image=image, volumes={'/results': vol}, timeout=3000)
+def run_h100x8(tag):
+    body(tag, 8, 'sm_90', 3.95, _big('h100x8'))
+
+
+FUNCS = {'a100x2': run_a100x2, 'a100x4': run_a100x4, 'h100x8': run_h100x8}
 
 
 @app.local_entrypoint()

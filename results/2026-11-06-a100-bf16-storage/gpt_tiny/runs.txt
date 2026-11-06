@@ -1,0 +1,8 @@
+f32_s50 exit 0
+0 MiB
+bf16s_s50 exit 0
+0 MiB
+bf16s_s1 exit 0
+0 MiB
+bf16s_s5 exit 0
+0 MiB

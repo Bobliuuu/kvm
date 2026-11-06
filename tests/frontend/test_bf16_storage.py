@@ -1,0 +1,95 @@
+"""Real bf16 storage (precision 'bf16s') on gpt_tiny: stored tensors are bf16 buffers, the workload compiles under the runtime dtype
+checks, the CPU golden is order-independent, the loss curve tracks fp32 and the bf16 emulation, and bf16 bytes are half of fp32 bytes."""
+import dataclasses
+import struct
+import sys
+import unittest
+
+import _path  # noqa: F401
+from kvmfe import storage
+from kvmfe.emit import lower_program
+from kvmfe.lower import Tiling
+from kvmfe.nn import GPT, PRESETS
+from kvmfe.pipeline import compile_training
+from kvmfe.train import TrainConfig, build_training
+
+sys.path.insert(0, str(_path.ROOT / 'runtime'))
+import compile_workload as cw  # noqa: E402
+
+BASE = PRESETS['gpt_tiny']
+TILING = Tiling.preset('cpu')
+
+
+def comp(prec, steps, **kw):
+    return compile_training(dataclasses.replace(BASE, precision=prec), TrainConfig(steps=steps), TILING, **kw)
+
+
+def losses(c, mem, steps):
+    return [mem.bufs[f'loss.{s}'].a[0] for s in range(steps)]
+
+
+class Bf16Storage(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.steps = 20
+        cls.f32, cls.emu, cls.sto = comp('f32', cls.steps), comp('bf16', cls.steps), comp('bf16s', cls.steps)
+        cls.mem = cls.sto.run()
+
+    def test_buffers_are_bf16_and_values_representable(self):
+        bf = [b for b in self.sto.spec['buffers'] if b.get('dtype') == 'bf16']
+        self.assertTrue(bf)
+        names = {b['name'] for b in bf}
+        self.assertTrue(any(n.startswith('wb.') for n in names), 'weight shadows')
+        for n in names:
+            for v in self.mem.bufs[n].a:
+                self.assertEqual(struct.unpack('<I', struct.pack('<f', v))[0] & 0xFFFF, 0, f'{n} holds a non-bf16 value {v}')
+
+    def test_masters_stay_fp32(self):
+        for b in self.sto.spec['buffers']:
+            if b['name'].startswith(('w.', 'm.', 'v.')):
+                self.assertNotEqual(b.get('dtype'), 'bf16', b['name'])
+
+    def test_runtime_dtype_checks_accept_workload(self):
+        cw.compile_spec(self.sto.spec, data_dir=None)
+
+    def test_order_independent(self):
+        from kvmfe.refvm import execute
+        a = execute(self.sto.spec, order='random', seed=3)
+        self.assertEqual(losses(self.sto, a, self.steps), losses(self.sto, self.mem, self.steps))
+
+    def test_loss_tracks_fp32_and_emulation(self):
+        lf, le, ls = (losses(c, c.run(), self.steps) for c in (self.f32, self.emu, self.sto))
+        self.assertLess(ls[-1], ls[0] - 0.5)
+        for a, b in zip(ls, le):
+            self.assertAlmostEqual(a, b, delta=2e-2)
+        for a, b in zip(ls, lf):
+            self.assertAlmostEqual(a, b, delta=5e-2)
+        self.assertAlmostEqual(ls[0], le[0], delta=1e-3)
+
+    def test_bf16_bytes_are_half(self):
+        plan = self.sto.low.plan
+        n = sum(b.rows * b.cols for b in plan.buffers.values() if b.dtype == 'bf16')
+        self.assertGreater(n, 0)
+        self.assertEqual(plan.stats['persistent_bytes'] + plan.stats['pool_bytes'],
+                         sum(b.rows * b.cols * (2 if b.dtype == 'bf16' else 4) for b in plan.buffers.values()))
+
+    def test_no_op_reads_bf16_without_support(self):
+        ok = {'matmul_tile_bf16', 'round_bf16'}
+        bf = {b['name'] for b in self.sto.spec['buffers'] if b.get('dtype') == 'bf16'}
+        for g in self.sto.spec['graphs']:
+            for t in g['tasks']:
+                if t['op'] in ok:
+                    continue
+                for k, v in t.get('args', {}).items():
+                    self.assertNotIn(v, bf, f"{t['op']} arg {k}")
+
+    def test_weights_false_has_no_shadows(self):
+        ops = build_training(GPT(dataclasses.replace(BASE, precision='bf16s')), TrainConfig(steps=1)).b.ops
+        new, st = storage.apply(ops, weights=False)
+        self.assertEqual(st['shadows'], 0)
+        low = lower_program(new, TILING, 'shape', 0, 'act')
+        self.assertFalse(any(n.startswith('wb.') for n in low.plan.buffers))
+
+
+if __name__ == '__main__':
+    unittest.main()

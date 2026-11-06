@@ -28,11 +28,19 @@ INT32_MAX = 2**31 - 1
 INT32_MIN = -2**31
 SEED_MAX = 2**63 - 1
 POLICIES = ('exact', 'at_least')
-DTYPES = {'f32': 0, 'i32': 1}              # KvmBuf.dtype
+DTYPES = {'f32': 0, 'i32': 1, 'bf16': 2}   # KvmBuf.dtype (bf16 = raw 16-bit storage; the init values are rounded to bf16)
 _warned_ops: set = set()
 _F32 = struct.Struct('<f')
 _I32 = struct.Struct('<i')
 _MISSING = object()
+
+
+def _bf16_value(x):
+    """float32 value rounded to the nearest bfloat16 (ties to even); inf/nan unchanged."""
+    if x != x or x in (math.inf, -math.inf):
+        return x
+    bits = struct.unpack('<I', struct.pack('<f', x))[0]
+    return struct.unpack('<f', struct.pack('<I', (bits + 0x7FFF + ((bits >> 16) & 1)) & 0xFFFF0000))[0]
 
 
 class CompileError(ValueError):
@@ -108,6 +116,9 @@ class Buffer:
         if data_dir is None:
             raise CompileError(f"buffer {self.name!r}: init file {self.init['path']!r} needs a data_dir to be read")
         raw = (Path(data_dir) / self.init['path']).read_bytes()
+        if self.dtype == 'bf16':
+            _need(len(raw) == 2 * n, f"buffer {self.name!r}: file {self.init['path']!r} has {len(raw)} bytes, expected {2 * n}")
+            return [struct.unpack('<f', struct.pack('<I', h << 16))[0] for h in struct.unpack(f'<{n}H', raw)]
         _need(len(raw) == 4 * n, f"buffer {self.name!r}: file {self.init['path']!r} has {len(raw)} bytes, expected {4 * n}")
         return list(struct.unpack(f"<{n}{'f' if self.dtype == 'f32' else 'i'}", raw))
 
@@ -194,6 +205,8 @@ def _parse_init(where, init, rows, cols, dtype, allow_nonfinite, data_dir):
     _need(isinstance(init, dict) and 'kind' in init, f"{where}: init must be an object with a 'kind'")
     kind, n = init['kind'], rows * cols
     conv = (lambda x, w: _f32_value(x, w, allow_nonfinite)) if dtype == 'f32' else _i32_value
+    if dtype == 'bf16':
+        conv = lambda x, w: _bf16_value(_f32_value(x, w, allow_nonfinite))
     if kind == 'fill':
         _keys(init, f'{where} init', {'kind', 'value'}, {'kind', 'value'})
         v = conv(init['value'], f'{where} init.value')
@@ -206,7 +219,7 @@ def _parse_init(where, init, rows, cols, dtype, allow_nonfinite, data_dir):
         return {'kind': 'values', 'values': values}, values
     if kind == 'seeded':
         _keys(init, f'{where} init', {'kind', 'seed', 'scale', 'dist'}, {'kind', 'seed', 'scale'})
-        _need(dtype == 'f32', f'{where}: seeded init needs dtype f32')
+        _need(dtype == 'f32', f'{where}: seeded init needs dtype f32 (bf16 buffers take fill / values / file)')
         seed, dist = init['seed'], init.get('dist', 'normal')
         _need(_is_int(seed) and 0 <= seed <= SEED_MAX, f'{where}: seed must be an int in [0, 2^63), got {seed!r}')
         scale = _f32_value(init['scale'], f'{where} init.scale', False)
@@ -224,7 +237,7 @@ def _parse_init(where, init, rows, cols, dtype, allow_nonfinite, data_dir):
         if data_dir is not None:
             f = Path(data_dir) / p
             _need(f.is_file(), f'{where}: init file {str(f)!r} not found')
-            _need(f.stat().st_size == 4 * n, f'{where}: init file {path!r} has {f.stat().st_size} bytes, expected {4 * n} '
+            _need(f.stat().st_size == (2 if dtype == 'bf16' else 4) * n, f'{where}: init file {path!r} has {f.stat().st_size} bytes, expected {(2 if dtype == "bf16" else 4) * n} '
                                              f'({rows}x{cols} little-endian {dtype})')
         return {'kind': 'file', 'path': p.as_posix()}, None
     raise CompileError(f"{where}: init.kind must be one of 'fill', 'values', 'seeded', 'file', got {kind!r}")

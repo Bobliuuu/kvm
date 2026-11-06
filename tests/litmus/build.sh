@@ -32,7 +32,7 @@ mut exchbefore kvm_exec.cuh 's#^(\s*)int old = atom_cas\(S.version \+ var, ver -
 # MP: publisher fence removed and release CAS demoted to a relaxed atomicCAS
 mut weakpub kvm_exec.cuh 's#^(\s*)__threadfence\(\);( +)// fence.sc.gpu: weights before version.*#\1/* mutant */#; s#int old = atom_cas\(S.version \+ var, ver - 1, ver\);#int old = atomicCAS(S.version + var, ver - 1, ver);#'
 # Queue: popper claims the head with a plain store instead of CAS (double pop under contention)
-mut popplain kvm_sched.cuh 's#if \(atom_cas64\(&q->head, cd.head, cd.head \+ 1\) == cd.head\) \{#if ((*(volatile unsigned long long*)\&q->head = cd.head + 1), true) {#'
+mut popplain kvm_sched.cuh 's#old = atom_cas64\(&S.qctl\[qi\].head, cd.head, cd.head \+ 1\);#*(volatile unsigned long long*)\&S.qctl[qi].head = cd.head + 1; old = cd.head;#'
 # Queue: producer publishes the cell with a relaxed store (no release): payload may be stale
 mut qrelax kvm_sched.cuh 's#st_rel64\(&cell->seq, pos \+ 1\);#*(volatile unsigned long long*)\&cell->seq = pos + 1;#'
 bad=0

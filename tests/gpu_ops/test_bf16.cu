@@ -74,7 +74,7 @@ static float bf16_ref(float x) {   // independent RNE to the bf16 grid (no bit t
 }
 static D rb(const std::vector<float>& v) { D o(v.size()); for (size_t i = 0; i < v.size(); i++) o[i] = bf16_ref(v[i]); return o; }
 static std::vector<float> rbf(std::vector<float> v) { for (auto& x : v) x = bf16_ref(x); return v; }
-// stores host floats (made bf16-representable if the buffer is bf16) and returns what the device holds
+// stores host floats (made bf16-representable if the buffer is bf16) and returns what the device holds: the references use these values
 static int mk(Dev& dv, bool bf, int rows, int cols, int ld = 0) { return bf ? dv.addb(rows, cols, ld) : dv.addf(rows, cols, ld); }
 static std::vector<float> put(Dev& dv, int i, bool bf, std::vector<float> h) { if (bf) { h = rbf(h); dv.upb(i, h); } else dv.up(i, h); return h; }
 static std::vector<float> get(Dev& dv, int i, bool bf) { return bf ? dv.downb(i) : dv.down(i); }
@@ -161,7 +161,7 @@ static void t_ops() {
                     else bb.add(OP_layernorm_fwd, A().b(x).b(g).b(be).b(o).b(mean).b(rstd).i(r0).i(std::min(R, r0 + 4)).i(d).f(1e-5f));
                 }
                 int e = runx(dv, bb);
-                D m, rs; D ref = norm_fwd_d(rb(hx), dbl(hg), rms ? D() : dbl(hb), R, d, 1e-5, rms, m, rs);
+                D m, rs; D ref = norm_fwd_d(dbl(hx), dbl(hg), rms ? D() : dbl(hb), R, d, 1e-5, rms, m, rs);
                 check(std::string(rms ? "rmsnorm_fwd" : "layernorm_fwd") + " d=" + S(d) + tag, get(dv, o, ob), ref, tol_of(ob));
                 check_true(std::string(rms ? "rmsnorm_fwd" : "layernorm_fwd") + " d=" + S(d) + tag + " err==0", e == 0);
                 // backward: dx and parameter gradients
@@ -174,7 +174,7 @@ static void t_ops() {
                 }
                 for (int c0 = 0; c0 < d; c0 += 100) b3.add(OP_norm_bwd_params, A().b(x).b(dy).b(rms ? -1 : mean).b(rstd).b(dg).b(rms ? -1 : db).i(R).i(d).i(c0).i(std::min(d, c0 + 100)).i(0));
                 int e2 = runx(dv, b2) | runx(dv, b3);
-                D rdx, rdg, rdb; norm_bwd_d(rb(hx), rb(hdy), dbl(hg), R, d, 1e-5, rms, rdx, rdg, rdb);
+                D rdx, rdg, rdb; norm_bwd_d(dbl(hx), dbl(hdy), dbl(hg), R, d, 1e-5, rms, rdx, rdg, rdb);
                 check(std::string(rms ? "rmsnorm_bwd_dx" : "layernorm_bwd_dx") + " d=" + S(d) + tag, get(dv, dx, ob), rdx, tol_of(ob));
                 check(std::string("norm_bwd_params dgamma d=") + S(d) + tag, dv.down(dg), rdg, 3e-5);
                 if (!rms) check(std::string("norm_bwd_params dbeta d=") + S(d) + tag, dv.down(db), rdb, 3e-5);
@@ -187,7 +187,7 @@ static void t_ops() {
             int cx = mk(dv, ib, R, C, C + 2), co = dv.addf(1, C);
             auto hcx = put(dv, cx, ib, rnd(r, n));
             BatchX b; for (int c0 = 0; c0 < C; c0 += 32) b.add(OP_colsum, A().b(cx).b(co).i(R).i(c0).i(std::min(C, c0 + 32)).i(0));
-            int e0 = runx(dv, b); D ref(C, 0); D hd = rb(hcx);
+            int e0 = runx(dv, b); D ref(C, 0); D hd = dbl(hcx);
             for (int i = 0; i < n; i++) ref[i % C] += hd[i];
             check("colsum" + tag, dv.down(co), ref, 3e-5); check_true("colsum err==0" + tag, e0 == 0);
 
@@ -197,13 +197,14 @@ static void t_ops() {
                 put(dv, pdx, ob, hdx0);
                 BatchX bg; for (int e = 0; e < n; e += 300) bg.add(OP_gelu_bwd, A().b(px).b(pdy).b(pdx).i(e).i(std::min(n, e + 300)).i(acc));
                 int eg = runx(dv, bg); D rg(n);
-                for (int i = 0; i < n; i++) rg[i] = rb(hpdy)[i] * gelu_grad_d(rb(hpx)[i]) + (acc ? rb(hdx0)[i] : 0.0);
+                const D dyv = dbl(hpdy), xv = dbl(hpx), d0v = dbl(hdx0);
+                for (int i = 0; i < n; i++) rg[i] = dyv[i] * gelu_grad_d(xv[i]) + (acc ? d0v[i] : 0.0);
                 check(std::string("gelu_bwd acc=") + S(acc) + tag, get(dv, pdx, ob), rg, tol_of(ob)); check_true("gelu_bwd err==0" + tag, eg == 0);
             }
             int ra = mk(dv, ib, 1, n), rb2 = mk(dv, ib, 1, n), ro = mk(dv, ob, 1, n);
             auto hra = put(dv, ra, ib, rnd(r, n)), hrb = put(dv, rb2, ib, rnd(r, n));
             BatchX br; for (int e = 0; e < n; e += 500) br.add(OP_residual_add, A().b(ra).b(rb2).b(ro).i(e).i(std::min(n, e + 500)));
-            int er = runx(dv, br); D rr(n); for (int i = 0; i < n; i++) rr[i] = rb(hra)[i] + rb(hrb)[i];
+            int er = runx(dv, br); D rr(n); const D ra_ = dbl(hra), rb_ = dbl(hrb); for (int i = 0; i < n; i++) rr[i] = ra_[i] + rb_[i];
             check("residual_add" + tag, get(dv, ro, ob), rr, tol_of(ob)); check_true("residual_add err==0" + tag, er == 0);
 
             const int V = 50, dd = 20, N = 11, T = 8;
@@ -219,7 +220,7 @@ static void t_ops() {
             auto hqx = put(dv, qx, ib, rnd(r, RT * H * hd2));
             for (int sign = 0; sign < 2; sign++) {
                 BatchX bq; for (int r0 = 0; r0 < RT; r0 += 5) bq.add(sign ? OP_rope_bwd : OP_rope_fwd, A().b(qx).b(qo).b(-1).i(r0).i(std::min(RT, r0 + 5)).i(TT).i(H).i(hd2).f(10000.f));
-                int eq = runx(dv, bq); D rq(RT * H * hd2); D hxd = rb(hqx);
+                int eq = runx(dv, bq); D rq(RT * H * hd2); D hxd = dbl(hqx);
                 for (int rr_ = 0; rr_ < RT; rr_++) for (int h = 0; h < H; h++) for (int i = 0; i < hd2 / 2; i++) {
                     double ang = (double)(rr_ % TT) * pow(10000.0, -(double)(2 * i) / hd2), c = cos(ang), s = sin(ang) * (sign ? -1 : 1);
                     double x1 = hxd[rr_ * H * hd2 + h * hd2 + i], x2 = hxd[rr_ * H * hd2 + h * hd2 + i + hd2 / 2];
@@ -237,7 +238,7 @@ static void t_ops() {
             dv.upi(tg, ht);
             BatchX b; for (int r0 = 0; r0 < N; r0 += 2) b.add(OP_softmax_ce_fwd, A().b(lg).b(tg).b(rl).b(ls).i(r0).i(std::min(N, r0 + 2)).i(V).i(ign));
             int e1 = runx(dv, b);
-            D dref; std::vector<int> ti(ht.begin(), ht.end()); double lref = ce_d(rb(hl), ti, N, V, ign, &dref);
+            D dref; std::vector<int> ti(ht.begin(), ht.end()); double lref = ce_d(dbl(hl), ti, N, V, ign, &dref);
             auto lsv = dv.down(ls), rlv = dv.down(rl); double s = 0; int cnt = 0; for (int i = 0; i < N; i++) if (ht[i] != ign) { s += rlv[i]; cnt++; }
             check_true(std::string("softmax_ce_fwd V=") + S(V) + tag + " loss", fabs(s / cnt - lref) <= 2e-5 * std::max(1.0, fabs(lref)) && e1 == 0, ("got " + std::to_string(s / cnt) + " ref " + std::to_string(lref)).c_str());
             dv.up(loss, {(float)lref, 1.f / (float)cnt});

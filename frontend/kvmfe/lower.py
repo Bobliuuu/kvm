@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from .ir import Builder, FrontendError, LogicalOp, Tensor
-from .opset import ATTN_Q, F_ACC, F_GELU, F_PRECISE, F_TA, F_TB, MM_TILE, op as device_op
+from .opset import ATTN_Q, F_ACC, F_BIG, F_GELU, F_HUGE, F_PRECISE, F_TA, F_TB, MM_TILE, op as device_op
 
 
 @dataclass(frozen=True)
@@ -22,10 +22,12 @@ class Tiling:
     cols: int = 128          # column block of column reductions (colsum, norm parameter gradients)
     vocab: int = 1024        # key block of the embedding gradient
     opt_elems: int = 16384   # AdamW chunk (rounded down to whole rows)
+    mm_tile: int = 64        # GEMM output tile: 64 (64x64), 128 (128x128), 256 (256x128), or 0 = per shape (128 where it fits, else 64)
     precise: bool = False    # GEMM tiles use 3xTF32 (matmul_tile flag 16, fp32 accuracy) instead of the default 1xTF32
 
     PRESETS = {
         'cpu': dict(rows=8, ew_rows=8, cols=32, vocab=16, opt_elems=256),
+        'a100_big': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=65536, mm_tile=0),
         'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=65536),
         'b200': dict(rows=128, ew_rows=256, cols=512, vocab=4096, opt_elems=131072),
     }
@@ -39,6 +41,10 @@ class Tiling:
     def __post_init__(self):
         for k, v in vars(self).items():
             if k == 'precise':
+                continue
+            if k == 'mm_tile':
+                if v not in (0, 64, 128, 256):
+                    raise FrontendError(f'Tiling.mm_tile must be 0 (auto), 64, 128 or 256, got {v!r}')
                 continue
             if not isinstance(v, int) or v < 1:
                 raise FrontendError(f'Tiling.{k} must be a positive int, got {v!r}')
@@ -107,12 +113,30 @@ def _task(dev, reads, writes, **args):
 
 
 # ------------------------------------------------------------------------------------------------ matmul family
-def _mm_tiles(a, b, out, M, N, K, ta, tb, flags, bias=None, res=None, pre=None, acc=False, dev='matmul_tile', precise=False):
+def _fill(n, t):
+    return n / (-(-n // t) * t)
+
+
+def pick_mm_tile(mode, M, N):
+    """Tile size flag for an M x N output: mode 64/128/256 is taken as given; mode 0 (auto) takes the 128x128 tile when both
+    extents hold at least one tile and waste at most a quarter of the edge tiles, else 64x64."""
+    if mode in (128, 256):
+        return mode
+    if mode == 0 and M >= 128 and N >= 128 and _fill(M, 128) >= 0.75 and _fill(N, 128) >= 0.75:
+        return 128
+    return 64
+
+
+def _mm_tiles(a, b, out, M, N, K, ta, tb, flags, bias=None, res=None, pre=None, acc=False, dev='matmul_tile', precise=False, tile=64):
     flags |= F_PRECISE if precise else 0
-    for m0 in range(0, M, MM_TILE):
-        m1 = min(m0 + MM_TILE, M)
-        for n0 in range(0, N, MM_TILE):
-            n1 = min(n0 + MM_TILE, N)
+    tm, tn = 64, 64
+    if dev == 'matmul_tile' and tile != 64:          # only the plain GEMM has the big tiles (the bf16 variant is 64x64 only)
+        flags |= F_HUGE if tile == 256 else F_BIG
+        tm, tn = (256, 128) if tile == 256 else (128, 128)
+    for m0 in range(0, M, tm):
+        m1 = min(m0 + tm, M)
+        for n0 in range(0, N, tn):
+            n1 = min(n0 + tn, N)
             ra = a.region(0, K, m0, m1) if ta else a.region(m0, m1, 0, K)
             rb = b.region(n0, n1, 0, K) if tb else b.region(0, K, n0, n1)
             tile = out.region(m0, m1, n0, n1)
@@ -131,7 +155,8 @@ def _(op, tc):
     x, w, out = op.ins['x'], op.ins['w'], op.outs['out']
     wt = op.attrs['wt']
     yield from _mm_tiles(x, w, out, x.rows, out.cols, x.cols, False, wt, (F_GELU if op.attrs['gelu'] else 0) | (F_TB if wt else 0),
-                         op.ins.get('bias'), op.ins.get('res'), op.outs.get('pre'), dev=_mm_dev(op), precise=tc.precise)
+                         op.ins.get('bias'), op.ins.get('res'), op.outs.get('pre'), dev=_mm_dev(op), precise=tc.precise,
+                         tile=pick_mm_tile(tc.mm_tile, x.rows, out.cols))
 
 
 @lowers('mm')
@@ -141,7 +166,7 @@ def _(op, tc):
     N = b.rows if tb else b.cols
     acc = 'into' in op.ins
     yield from _mm_tiles(a, b, out, M, N, K, ta, tb, (F_TA if ta else 0) | (F_TB if tb else 0) | (F_ACC if acc else 0), acc=acc,
-                         dev=_mm_dev(op), precise=tc.precise)
+                         dev=_mm_dev(op), precise=tc.precise, tile=pick_mm_tile(tc.mm_tile, M, N))
 
 
 # ------------------------------------------------------------------------------------------------ data / row-wise ops

@@ -185,4 +185,13 @@ def dqn_q():
                 OptimConfig(kind='adamw', lr=5e-3), 3, 'DQN-style TD loss (one-hot action mask, bootstrapped target), MLP Q-net, AdamW')
 
 
-CASES = {f().name: f for f in (reg_mlp, res_rms_mlp, cnn1d, encoder_reg, mlp_ce, resmlp_rms, bad_dims, pg_policy, dqn_q)}
+def wide_mlp():
+    """Shapes that take the 128x128 / 256x128 GEMM tiles under the a100_big tiling (batch 256, widths 256/384): tile-flag coverage."""
+    rng = random.Random(23)
+    x = _gauss(rng, 256, 32)
+    y = [int(abs(sum(r[:6]) * 2)) % 6 for r in x]
+    return Case('wide_mlp', MLP('wd', [32, 256, 384, 6], act='gelu'), CrossEntropy(), ArrayData(256, {'x': x, 'y': y}, dtypes={'y': 'i32'}),
+                OptimConfig(kind='sgd', lr=0.05), 2, 'wide MLP: GEMMs large enough for the big tile flags (32 / 64) under --tiling a100_big')
+
+
+CASES = {f().name: f for f in (reg_mlp, res_rms_mlp, cnn1d, encoder_reg, mlp_ce, resmlp_rms, bad_dims, pg_policy, dqn_q, wide_mlp)}

@@ -7,7 +7,7 @@ OUT="$(mkdir -p "${1:?outdir}" && cd "$1" && pwd)"; shift || true
 ARCH="${KVM_ARCH:-sm_80}"; ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; cd "$ROOT"
 CASES="${*:-$(python3 -I tests/generic/gen_bundle.py --list | cut -d: -f1)}"
 BUNDLES=""
-for c in $CASES; do for t in cpu a100; do
+for c in $CASES; do for t in cpu a100 a100_big; do
   python3 -I tests/generic/gen_bundle.py "$OUT/${c}_$t" "$c" --tiling "$t" --precise | tee -a "$OUT/gen.txt"; BUNDLES="$BUNDLES ${c}_$t"
 done; done
 NVCC="$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc | tail -1)"

@@ -399,6 +399,10 @@ def _bad_if(cond, msg):
     _need(not cond, msg)
 
 
+def _bad_bf16(a):
+    raise ValueError(f"matmul_tile_bf16: unsupported flags {a['flags']}")
+
+
 EXTRA_OPS = {
     'act_fwd': _R(_act_fwd, lambda a: (_kind(a['kind'], 'act_fwd'), _flat_ext(bufs=('x', 'out'))(a))[1]),
     'act_bwd': _R(_act_bwd, lambda a: (_kind(a['kind'], 'act_bwd'), _flat_ext(bufs=('x', 'dy', 'dx'))(a))[1]),
@@ -428,7 +432,7 @@ EXTRA_OPS = {
     'attn_full_bwd_dq': _R(_full_dq, _full_dq_ext),
     'attn_full_bwd_dkv': _R(_full_dkv, _full_dkv_ext),
     'round_bf16': _R(_round_bf16, _flat_ext(bufs=('x', 'out'))),
-    'matmul_tile_bf16': _R(_matmul_tile_bf16, GPT_OPS['matmul_tile'].extents),
+    'matmul_tile_bf16': _R(_matmul_tile_bf16, lambda a: GPT_OPS['matmul_tile'].extents({**a, 'flags': a['flags']}) if a['flags'] & ~31 == 0 else _bad_bf16(a)),
     'adamw_lr': _R(_adamw_lr, lambda a: (_rng(a['e0'], a['e1']), {'p': a['e1'], 'g': a['e1'], 'm': a['e1'], 'v': a['e1'], 'gscale': 1, 'step': 1,
                                                                   'lr': 1})[1], ints=('step',)),
     'lr_schedule': _R(_lr_schedule, lambda a: (_need(a['kind'] in (0, 1, 2), 'lr_schedule: kind not in 0..2'), {'step': 1, 'lr': 1})[1],

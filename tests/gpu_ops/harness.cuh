@@ -111,8 +111,9 @@ static int run1(Dev& d, int id, const A& a, int smem = kvm_gpt_smem_bytes(KVM_GP
 
 // ---- accounting / comparison ------------------------------------------------------------------------------------------
 static int g_pass = 0, g_fail = 0;
+static bool g_quiet = false;   // sweeps: passing checks are counted but not printed (failures always are)
 static void verdict(const std::string& name, bool ok, const char* detail) {
-    printf("%s  %s  %s\n", ok ? "PASS" : "FAIL", name.c_str(), detail);
+    if (!ok || !g_quiet) printf("%s  %s  %s\n", ok ? "PASS" : "FAIL", name.c_str(), detail);
     (ok ? g_pass : g_fail)++;
 }
 // max |got-ref| / (max|ref| + tiny) <= tol (relative to the reference's scale); also fails on NaN/Inf.

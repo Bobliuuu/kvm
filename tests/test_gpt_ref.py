@@ -187,7 +187,7 @@ class MatmulNormTests(unittest.TestCase):
 
 
 class AttentionTests(unittest.TestCase):
-    B, T, H, Hkv, hd = 1, 40, 4, 2, 16          # two query tiles (32 + 8 rows), GQA group of 2
+    B, T, H, Hkv, hd = 1, 136, 2, 1, 16         # two attention tasks (128 + 8 rows), GQA group of 2
 
     def setUp(self):
         B, T, H, Hkv, hd = self.B, self.T, self.H, self.Hkv, self.hd
@@ -208,14 +208,14 @@ class AttentionTests(unittest.TestCase):
         g = dict(b=0, T=T, H=H, hd=hd, scale=sc)
         out = []
         for h in range(H):
-            for q0 in (0, 32):
+            for q0 in (0, ref_gpt.ATTN_ROWS):
                 out.append(('attn_fwd', dict(q='q', k='k', v='v', o='o', lse='lse', h=h, q0=q0, Hkv=Hkv, **g)))
         out.append(('attn_bwd_delta', dict(o='o', do='do', delta='delta', r0=0, r1=B * T, T=T, H=H, hd=hd)))
         for h in range(H):
-            for q0 in (0, 32):
+            for q0 in (0, ref_gpt.ATTN_ROWS):
                 out.append(('attn_bwd_dq', dict(q='q', k='k', v='v', do='do', lse='lse', delta='delta', dq='dq', h=h, q0=q0, Hkv=Hkv, **g)))
         for kvh in range(Hkv):
-            for k0 in (0, 32):
+            for k0 in (0, ref_gpt.ATTN_ROWS):
                 out.append(('attn_bwd_dkv', dict(q='q', k='k', v='v', do='do', lse='lse', delta='delta', dk='dk', dv='dv', kvh=kvh, k0=k0, **g)))
         return out
 
@@ -247,7 +247,7 @@ class AttentionTests(unittest.TestCase):
                 self.assertAlmostEqual(got[i], num, delta=2e-3 * max(1.0, abs(num)), msg=f'{name}[{i}]')
 
     def test_decode_matches_last_row_of_forward(self):
-        T, H, Hkv, hd, Tmax = self.T, self.H, self.Hkv, self.hd, 64
+        T, H, Hkv, hd, Tmax = self.T, self.H, self.Hkv, self.hd, 144
         Bn = 1
         o_full = self.forward(self.q, self.k, self.v)
         n = T - 1                                         # cache T-1 tokens, then append the last one and decode it

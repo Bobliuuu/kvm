@@ -1,0 +1,41 @@
+      2     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+      1     1456 bytes stack frame, 1972 bytes spill stores, 2064 bytes spill loads
+      1     1632 bytes stack frame, 3960 bytes spill stores, 11736 bytes spill loads
+      1     168 bytes stack frame, 216 bytes spill stores, 288 bytes spill loads
+      1     64 bytes stack frame, 96 bytes spill stores, 96 bytes spill loads
+      1     728 bytes stack frame, 868 bytes spill stores, 920 bytes spill loads
+      1 ptxas info    : Used 255 registers, used 1 barriers, 1456 bytes cumulative stack size, 392 bytes cmem[0], 12 bytes cmem[2]
+      1 ptxas info    : Used 255 registers, used 1 barriers, 1632 bytes cumulative stack size, 400 bytes cmem[0], 368 bytes cmem[2]
+      1 ptxas info    : Used 255 registers, used 1 barriers, 168 bytes cumulative stack size, 392 bytes cmem[0]
+      1 ptxas info    : Used 255 registers, used 1 barriers, 64 bytes cumulative stack size, 392 bytes cmem[0]
+      1 ptxas info    : Used 255 registers, used 1 barriers, 728 bytes cumulative stack size, 392 bytes cmem[0], 12 bytes cmem[2]
+      1 ptxas info    : Used 32 registers, used 0 barriers, 392 bytes cmem[0]
+device: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz
+PASS  bench check: attn fwd B=4 T=1024 H=12 Hkv=12 hd=64 (b0,h0 all rows)  relerr 2.50e-06
+PASS  bench check: attn bwd dq B=4 T=1024 H=12 hd=64 (b0,h0)  relerr 1.54e-06
+PASS  bench check: attn bwd dk B=4 T=1024 H=12 hd=64 (b0,h0)  relerr 1.69e-05
+BENCH  attn fwd B=4 T=1024 H=12 Hkv=12 hd=64          full dispatch    0.354 ms [0.354..0.354]    18193.9 GFLOP/s  (93.3% of 19500)
+BENCH  attn fwd B=4 T=1024 H=12 Hkv=12 hd=64          single-op        0.344 ms [0.344..0.345]    18702.3 GFLOP/s  (95.9% of 19500)
+BENCH  attn bwd B=4 T=1024 H=12 Hkv=12 hd=64          full dispatch    1.539 ms [1.538..1.539]    10467.6 GFLOP/s  (53.7% of 19500)
+BENCH  attn bwd B=4 T=1024 H=12 Hkv=12 hd=64          single-op        1.535 ms [1.534..1.536]    10490.0 GFLOP/s  (53.8% of 19500)
+PASS  bench check: attn fwd B=4 T=1024 H=16 Hkv=16 hd=64 (b0,h0 all rows)  relerr 1.26e-06
+PASS  bench check: attn bwd dq B=4 T=1024 H=16 hd=64 (b0,h0)  relerr 4.02e-06
+PASS  bench check: attn bwd dk B=4 T=1024 H=16 hd=64 (b0,h0)  relerr 1.76e-05
+BENCH  attn fwd B=4 T=1024 H=16 Hkv=16 hd=64          full dispatch    0.354 ms [0.353..0.354]    24272.6 GFLOP/s  (124.5% of 19500)
+BENCH  attn fwd B=4 T=1024 H=16 Hkv=16 hd=64          single-op        0.345 ms [0.345..0.348]    24906.8 GFLOP/s  (127.7% of 19500)
+BENCH  attn bwd B=4 T=1024 H=16 Hkv=16 hd=64          full dispatch    1.590 ms [1.589..1.593]    13503.9 GFLOP/s  (69.3% of 19500)
+BENCH  attn bwd B=4 T=1024 H=16 Hkv=16 hd=64          single-op        1.592 ms [1.589..1.593]    13491.7 GFLOP/s  (69.2% of 19500)
+PASS  bench check: attn fwd B=4 T=2048 H=16 Hkv=4 hd=64 (b0,h0 all rows)  relerr 1.36e-06
+BENCH  attn fwd B=4 T=2048 H=16 Hkv=4 hd=64           full dispatch    1.228 ms [1.228..1.228]    27980.7 GFLOP/s  (143.5% of 19500)
+BENCH  attn fwd B=4 T=2048 H=16 Hkv=4 hd=64           single-op        1.202 ms [1.202..1.203]    28576.4 GFLOP/s  (146.5% of 19500)
+BENCH  attn bwd B=4 T=2048 H=16 Hkv=4 hd=64           full dispatch    4.557 ms [4.555..4.557]    18851.7 GFLOP/s  (96.7% of 19500)
+BENCH  attn bwd B=4 T=2048 H=16 Hkv=4 hd=64           single-op        4.537 ms [4.536..4.565]    18931.6 GFLOP/s  (97.1% of 19500)
+PASS  bench check: attn fwd B=2 T=2048 H=8 Hkv=8 hd=128 (b0,h0 all rows)  relerr 1.84e-06
+PASS  bench check: attn bwd dq B=2 T=2048 H=8 hd=128 (b0,h0)  relerr 6.93e-06
+PASS  bench check: attn bwd dk B=2 T=2048 H=8 hd=128 (b0,h0)  relerr 4.06e-05
+BENCH  attn fwd B=2 T=2048 H=8 Hkv=8 hd=128           full dispatch    0.815 ms [0.814..0.816]    21082.2 GFLOP/s  (108.1% of 19500)
+BENCH  attn fwd B=2 T=2048 H=8 Hkv=8 hd=128           single-op        0.786 ms [0.785..0.787]    21862.4 GFLOP/s  (112.1% of 19500)
+BENCH  attn bwd B=2 T=2048 H=8 Hkv=8 hd=128           full dispatch    4.724 ms [4.718..4.729]     9092.0 GFLOP/s  (46.6% of 19500)
+BENCH  attn bwd B=2 T=2048 H=8 Hkv=8 hd=128           single-op        4.778 ms [4.771..4.784]     8988.3 GFLOP/s  (46.1% of 19500)
+
+10 passed, 0 failed

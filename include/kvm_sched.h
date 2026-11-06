@@ -17,6 +17,7 @@
 
 #define KVM_MAX_CLS    8
 #define KVM_UNLIMITED  0x7fffffff
+#define KVM_URGENT_ALL (1 << 30)
 #define KVM_OP_SLOTS   256           // per-op running-time estimates are kept for op ids below this
 #define KVM_LAT_BYTES  16384         // a "BW" task that moves less than this is latency-bound
 

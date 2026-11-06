@@ -407,7 +407,9 @@ class KvmExec {
   const std::string& last_error() const { return last_error_; }
 
   // True once every task of window wid (a submitted bundle record) has completed.
-  bool window_done(unsigned wid) const { return __atomic_load_n(&win_done_[wid & (cfg_.win_cap - 1)], __ATOMIC_ACQUIRE) == wid + 1; }
+  bool window_done(unsigned wid) const { return window_mark(wid) == wid + 1; }
+  unsigned window_mark(unsigned wid) const { return __atomic_load_n(&win_done_[wid & (cfg_.win_cap - 1)], __ATOMIC_ACQUIRE); }
+  int device_error() const { return herr_->code; }
 
   // One huge bundle through bounded slots: the bundle is cut into windows of consecutive tasks (task order must be
   // topological: every edge points to a higher index). Edges inside a window go to the device as usual; an edge that crosses

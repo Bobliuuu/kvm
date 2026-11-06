@@ -6,7 +6,7 @@ vol = modal.Volume.from_name("kvm-admit-results", create_if_missing=True)
 img = (modal.Image.from_registry("nvidia/cuda:12.4.1-devel-ubuntu22.04", add_python="3.11")
        .add_local_dir(".", "/src", ignore=["**/.git", "**/results/20*/**/*.csv", "**/dist", "**/doom", "**/demo"], copy=True))
 
-@app.function(gpu="A100-40GB", image=img, volumes={"/out": vol}, timeout=3 * 3600, cpu=8, memory=32768)
+@app.function(gpu="A100-40GB", image=img, volumes={"/out": vol}, timeout=3 * 3600, cpu=16, memory=65536)
 def run(job: str):
     import os, shutil, time
     t0 = time.time()

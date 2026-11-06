@@ -1,0 +1,40 @@
+built base b21157fc80c7-68b329
+NVIDIA A100-SXM4-80GB, 1410 MHz
+mlp  : [kvm_exec][I] kernel done: 27600/27600 tasks in 118.471 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp --live-cap 2048 --ring-words 131072 : [kvm_exec][I] kernel done: 27600/27600 tasks in 95.400 ms, 14 records, 6 ring wraps, 0 backpressure waits
+mlp --live-cap 4096 --ring-words 262144 : [kvm_exec][I] kernel done: 27600/27600 tasks in 87.547 ms, 7 records, 3 ring wraps, 0 backpressure waits
+mlp --live-cap 8192 --ring-words 524288 : [kvm_exec][I] kernel done: 27600/27600 tasks in 89.309 ms, 4 records, 1 ring wraps, 0 backpressure waits
+mlp --live-cap 16384 --ring-words 1048576 : [kvm_exec][I] kernel done: 27600/27600 tasks in 86.311 ms, 2 records, 0 ring wraps, 0 backpressure waits
+mlp --live-cap 32768 --ring-words 2097152 : [kvm_exec][I] kernel done: 27600/27600 tasks in 83.788 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr  : [kvm_exec][I] kernel done: 43650/43650 tasks in 151.426 ms, 44 records, 21 ring wraps, 0 backpressure waits
+xfmr --live-cap 4096 --ring-words 262144 : [kvm_exec][I] kernel done: 43650/43650 tasks in 117.750 ms, 11 records, 5 ring wraps, 0 backpressure waits
+xfmr --live-cap 8192 --ring-words 524288 : [kvm_exec][I] kernel done: 43650/43650 tasks in 110.125 ms, 6 records, 2 ring wraps, 0 backpressure waits
+xfmr --live-cap 16384 --ring-words 1048576 : [kvm_exec][I] kernel done: 43650/43650 tasks in 110.712 ms, 3 records, 1 ring wraps, 0 backpressure waits
+xfmr --live-cap 32768 --ring-words 2097152 : [kvm_exec][I] kernel done: 43650/43650 tasks in 107.399 ms, 2 records, 0 ring wraps, 0 backpressure waits
+xfmr --live-cap 65536 --ring-words 4194304 : [kvm_exec][I] kernel done: 43650/43650 tasks in 104.462 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp  : [kvm_exec][I] kernel done: 27600/27600 tasks in 91.184 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp --live-cap 2048 --ring-words 131072 : [kvm_exec][I] kernel done: 27600/27600 tasks in 94.577 ms, 14 records, 6 ring wraps, 0 backpressure waits
+mlp --live-cap 4096 --ring-words 262144 : [kvm_exec][I] kernel done: 27600/27600 tasks in 87.237 ms, 7 records, 3 ring wraps, 0 backpressure waits
+mlp --live-cap 8192 --ring-words 524288 : [kvm_exec][I] kernel done: 27600/27600 tasks in 86.456 ms, 4 records, 1 ring wraps, 0 backpressure waits
+mlp --live-cap 16384 --ring-words 1048576 : [kvm_exec][I] kernel done: 27600/27600 tasks in 86.364 ms, 2 records, 0 ring wraps, 0 backpressure waits
+mlp --live-cap 32768 --ring-words 2097152 : [kvm_exec][I] kernel done: 27600/27600 tasks in 83.586 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr  : [kvm_exec][I] kernel done: 43650/43650 tasks in 152.339 ms, 44 records, 21 ring wraps, 0 backpressure waits
+xfmr --live-cap 4096 --ring-words 262144 : [kvm_exec][I] kernel done: 43650/43650 tasks in 116.586 ms, 11 records, 5 ring wraps, 0 backpressure waits
+xfmr --live-cap 8192 --ring-words 524288 : [kvm_exec][I] kernel done: 43650/43650 tasks in 110.854 ms, 6 records, 2 ring wraps, 0 backpressure waits
+xfmr --live-cap 16384 --ring-words 1048576 : [kvm_exec][I] kernel done: 43650/43650 tasks in 110.814 ms, 3 records, 1 ring wraps, 0 backpressure waits
+xfmr --live-cap 32768 --ring-words 2097152 : [kvm_exec][I] kernel done: 43650/43650 tasks in 106.807 ms, 2 records, 0 ring wraps, 0 backpressure waits
+xfmr --live-cap 65536 --ring-words 4194304 : [kvm_exec][I] kernel done: 43650/43650 tasks in 104.558 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp  : [kvm_exec][I] kernel done: 27600/27600 tasks in 91.951 ms, 26 records, 12 ring wraps, 0 backpressure waits
+mlp --live-cap 2048 --ring-words 131072 : [kvm_exec][I] kernel done: 27600/27600 tasks in 95.070 ms, 14 records, 6 ring wraps, 0 backpressure waits
+mlp --live-cap 4096 --ring-words 262144 : [kvm_exec][I] kernel done: 27600/27600 tasks in 87.625 ms, 7 records, 3 ring wraps, 0 backpressure waits
+mlp --live-cap 8192 --ring-words 524288 : [kvm_exec][I] kernel done: 27600/27600 tasks in 89.880 ms, 4 records, 1 ring wraps, 0 backpressure waits
+mlp --live-cap 16384 --ring-words 1048576 : [kvm_exec][I] kernel done: 27600/27600 tasks in 86.093 ms, 2 records, 0 ring wraps, 0 backpressure waits
+mlp --live-cap 32768 --ring-words 2097152 : [kvm_exec][I] kernel done: 27600/27600 tasks in 83.515 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr  : [kvm_exec][I] kernel done: 43650/43650 tasks in 152.598 ms, 44 records, 21 ring wraps, 0 backpressure waits
+xfmr --live-cap 4096 --ring-words 262144 : [kvm_exec][I] kernel done: 43650/43650 tasks in 116.384 ms, 11 records, 5 ring wraps, 0 backpressure waits
+xfmr --live-cap 8192 --ring-words 524288 : [kvm_exec][I] kernel done: 43650/43650 tasks in 110.395 ms, 6 records, 2 ring wraps, 0 backpressure waits
+xfmr --live-cap 16384 --ring-words 1048576 : [kvm_exec][I] kernel done: 43650/43650 tasks in 108.755 ms, 3 records, 1 ring wraps, 0 backpressure waits
+xfmr --live-cap 32768 --ring-words 2097152 : [kvm_exec][I] kernel done: 43650/43650 tasks in 106.076 ms, 2 records, 0 ring wraps, 0 backpressure waits
+xfmr --live-cap 65536 --ring-words 4194304 : [kvm_exec][I] kernel done: 43650/43650 tasks in 104.414 ms, 1 records, 0 ring wraps, 0 backpressure waits
+
+--- stderr

@@ -926,7 +926,7 @@ static void usage() {
 }
 
 int main(int argc, char** argv) {
-  KvmConfig cfg; std::vector<std::string> dirs; const char* csv = nullptr; bool dump = false, golden = false; float golden_tol = 1e-6f;
+  KvmConfig cfg; bool explicit_window = false; std::vector<std::string> dirs; const char* csv = nullptr; bool dump = false, golden = false; float golden_tol = 1e-6f;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto val = [&](long long lo = 0, long long hi = 1ll << 30) -> long long {   // strict integer in [lo, hi]
@@ -934,6 +934,7 @@ int main(int argc, char** argv) {
       char* e; errno = 0; long long v = strtoll(argv[++i], &e, 10);
       if (e == argv[i] || *e || errno || v < lo || v > hi) { fprintf(stderr, "%s: integer in [%lld,%lld] expected, got '%s'\n", a.c_str(), lo, hi, argv[i]); exit(2); }
       return v; };
+    if (a == "--live-cap" || a == "--ring-words") explicit_window = true;
     if (a == "--blocks") cfg.blocks = (int)val(0, 1 << 20);
     else if (a == "--live-cap") cfg.live_cap = (int)val(2, 1 << 24);
     else if (a == "--max-tasks") cfg.max_tasks = (int)val(2, 1 << 26);
@@ -953,6 +954,20 @@ int main(int argc, char** argv) {
   }
   if (dirs.empty()) { usage(); return 2; }
   try {
+    // Window sizing: a bundle larger than live_cap is streamed in windows, and every window boundary with a dependency across it drains the
+    // device and waits for the host (measured: 15-36% of a training run idle, results/2026-11-06-admission). Unless the user chose, size the
+    // record ring and live window so each bundle is ONE record (up to 2^17 tasks / 2^24 ring words), i.e. no boundary inside a bundle.
+    if (!explicit_window) {
+      long long maxt = 0, maxw = 0;
+      for (auto& dir : dirs) {
+        Json m = JsonParser(read_file(dir + "/metadata.json")).parse();
+        const long long nt = (long long)m.num("task_count", 0), ne = (long long)m.num("edge_count", 0), nw = (long long)m.num("args_words", 0);
+        maxt = std::max(maxt, nt); maxw = std::max(maxw, KVM_REC_HDR + nt * KVM_TASK_WORDS + ne + nw + 8);
+      }
+      auto pow2 = [](long long v) { long long p = 1; while (p < v) p <<= 1; return p; };
+      if (maxt > cfg.live_cap) cfg.live_cap = (int)std::min<long long>(pow2(maxt), 1 << 17);
+      if (maxw * 2 > cfg.ring_words) cfg.ring_words = (int)std::min<long long>(pow2(maxw * 2), 1 << 24);
+    }
     KvmExec ex(cfg);
     std::vector<KvmBundle> bundles;
     std::vector<std::pair<int, int>> shapes;

@@ -537,6 +537,9 @@ struct KvmShared {
 #define KVM_PG(k) do { } while (0)
 #endif
 #define KVM_POP_EXIT (-2)
+#ifndef KVM_BACKOFF_CAP
+#define KVM_BACKOFF_CAP 512   // idle worker poll back-off cap in ns (0 = spin)
+#endif
 
 // Stall detector (one per thread 0 of a block): `timeout` is the longest the executor may go without a single task finishing or
 // being admitted while work is pending. Waiting idle for the host is never a stall, and a long-lived service is never killed for
@@ -671,16 +674,29 @@ __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
   if (threadIdx.x == 0) sh.pg_valid = 0;
 #endif
   for (;;) {
-#ifdef KVM_RUN_NEXT
-    const int nx = sh.next;
-    if (nx >= 0) {
-      if (threadIdx.x < KVM_TASK_WORDS) ((int*)&sh.d)[threadIdx.x] = __ldcg((const int*)(S.tasks + nx) + threadIdx.x);
-      if (threadIdx.x == 0) { sh.cmd = nx; sh.how = 0; S.trace[nx].ready_ns = kvm_now(); }
-      else if (threadIdx.x == 32 && owed >= 0) kvm_post_task(S, owed);
-    } else
-#endif
     if (threadIdx.x < 32) {
-      int how, dw, r = kvm_pop(S, kvm_now(), part, how, dw);
+      int how = 0, dw = 0, r;
+#ifdef KVM_RUN_NEXT
+      // Continuation: the task this block released last. It is run directly (no enqueue, no pop) unless a higher-priority bucket has
+      // queued work, in which case it goes through the queue like any other task.
+      int nx = sh.next; __syncwarp();
+      if (threadIdx.x == 0) sh.next = -1;
+      bool take = false;
+      if (nx >= 0) {
+        const int lane = threadIdx.x;
+        const int pri = __ldcg(&S.tasks[nx].priority);
+        const KvmQCtl* q = S.qctl + lane;
+        const unsigned long long h = kvm_voll(&q->head), t = kvm_voll(&q->tail);
+        take = __ballot_sync(0xffffffffu, lane > pri && t != h) == 0u;
+        if (!take && lane == 0) kvm_enqueue(S, nx);
+      }
+      if (take) {
+        r = nx;
+        if (threadIdx.x < KVM_TASK_WORDS) dw = __ldcg((const int*)(S.tasks + nx) + threadIdx.x);
+        if (threadIdx.x == 0) S.trace[nx].ready_ns = kvm_now();
+      } else
+#endif
+      r = kvm_pop(S, kvm_now(), part, how, dw);
       if (r < 0 && threadIdx.x == 0 && kvm_should_exit(S, t0)) r = KVM_POP_EXIT;
       if (threadIdx.x == 0) { sh.cmd = r; sh.how = how; }
       if (r >= 0 && threadIdx.x < KVM_TASK_WORDS) ((int*)&sh.d)[threadIdx.x] = dw;
@@ -691,8 +707,10 @@ __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
     __syncthreads();  // sh.cmd is rewritten next iteration
     if (cmd == KVM_POP_EXIT) return;
     if (cmd < 0) {
+#if KVM_BACKOFF_CAP > 0
       if (threadIdx.x < 32) __nanosleep(backoff);
-      backoff = backoff ? min(backoff * 2, 512u) : 32u;
+#endif
+      backoff = backoff ? min(backoff * 2, (unsigned)KVM_BACKOFF_CAP) : 32u;
       continue;
     }
     backoff = 0;

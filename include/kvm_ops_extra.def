@@ -67,6 +67,16 @@ X(round_bf16,          113, "x:buf,out:buf,e0:i32,e1:i32")
 // accumulated in fp32 on the bf16 tensor cores. flag 16 (precise) is ignored. Output stays fp32.
 X(matmul_tile_bf16,    114, "a:buf,b:buf,out:buf,bias:buf?,res:buf?,pre:buf?,m0:i32,n0:i32,M:i32,N:i32,K:i32,flags:i32,alpha:f32")
 
+// ---- real bf16 storage (KvmBuf dtype 2: 2-byte elements; only these ops and the dispatch below accept such buffers) -------------
+// cast_f32_bf16: out (bf16 storage)[i] = round_to_bf16(x[i]) over flat [e0,e1); x f32. out may not alias x (different dtypes).
+X(cast_f32_bf16,       122, "x:buf,out:buf,e0:i32,e1:i32")
+// cast_bf16_f32: out (f32)[i] = x (bf16 storage)[i], exact widening, over flat [e0,e1).
+X(cast_bf16_f32,       123, "x:buf,out:buf,e0:i32,e1:i32")
+// matmul_tile_bf16 whose A and/or B operands live in bf16 storage: flags bit 128 = A is a bf16-storage buffer, bit 256 = B is
+// (the other operand, bias, res, pre and out stay f32; both operands are still bf16-rounded). Same flags otherwise (1 ta, 2 tb, 4 accum,
+// 8 gelu; 16/32/64 are rejected). Results are bitwise identical to matmul_tile_bf16 on the widened operands.
+X(matmul_tile_bf16s,   124, "a:buf,b:buf,out:buf,bias:buf?,res:buf?,pre:buf?,m0:i32,n0:i32,M:i32,N:i32,K:i32,flags:i32,alpha:f32")
+
 // ---- optimizer schedule -----------------------------------------------------------------------------------------------------
 // adamw (kvm_ops_gpt.def) with the learning rate read from a scalar f32 buffer lr[0] instead of an argument.
 X(adamw_lr,            115, "p:buf,g:buf,m:buf,v:buf,gscale:buf?,step:buf,e0:i32,e1:i32,lr:buf,b1:f32,b2:f32,eps:f32,wd:f32")

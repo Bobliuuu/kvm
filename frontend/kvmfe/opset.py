@@ -734,6 +734,21 @@ def _matmul_tile_bf16(b, a):
     _matmul_tile(rb, a)
 
 
+@impl('cast_f32_bf16', lambda a: float(a['e1'] - a['e0']))
+def _cast_f32_bf16(b, a):
+    b['out'].a[a['e0']:a['e1']] = [bf16_round(x) for x in b['x'].a[a['e0']:a['e1']]]
+
+
+@impl('cast_bf16_f32', lambda a: float(a['e1'] - a['e0']))
+def _cast_bf16_f32(b, a):
+    b['out'].a[a['e0']:a['e1']] = list(b['x'].a[a['e0']:a['e1']])
+
+
+@impl('matmul_tile_bf16s', _mm_flops)
+def _matmul_tile_bf16s(b, a):
+    _matmul_tile_bf16(b, a)
+
+
 @impl('adamw_lr', lambda a: 12.0 * (a['e1'] - a['e0']))
 def _adamw_lr(b, a):
     _adamw(b, {**a, 'lr': b['lr'].a[0]})

@@ -1,4 +1,4 @@
-"""CPU reference (compiler golden, float32 results) of the extra operator pack (include/kvm_ops_extra.def, ids 96-121).
+"""CPU reference (compiler golden, float32 results) of the extra operator pack (include/kvm_ops_extra.def, ids 96-124).
 
 Same model as ref_gpt.py: inputs/outputs are float32, intermediates in double, every stored result rounded to float32. The
 semantics are the comments of kvm_ops_extra.def; the frontend's float64 oracle (frontend/kvmfe/opset.py) is an independent
@@ -8,7 +8,7 @@ import math
 import struct
 
 from ref_gpt import GPT_OPS, _R, _flat_ext, _need, _rng, _matmul_tile
-from ref_types import f32
+from ref_types import RefOp, f32
 
 M32 = 0xFFFFFFFF
 
@@ -316,6 +316,22 @@ def _matmul_tile_bf16(b, a):
     _matmul_tile(rb, a)
 
 
+def _cast_f32_bf16(b, a):
+    for i in range(a['e0'], a['e1']):
+        b['out'][i] = f32(bf16_round(b['x'][i]))
+
+
+def _cast_bf16_f32(b, a):
+    for i in range(a['e0'], a['e1']):
+        b['out'][i] = b['x'][i]
+
+
+def _mm_bf16s_ext(a):
+    fl = a['flags']
+    _need(fl & ~(31 | 128 | 256) == 0 and not fl & 16 and fl & (128 | 256), f'matmul_tile_bf16s: unsupported flags {fl}')
+    return GPT_OPS['matmul_tile'].extents({**a, 'flags': fl & 15})
+
+
 def _adamw_lr(b, a):
     from ref_gpt import _adamw
     _adamw(b, {**a, 'lr': b['lr'][0]})
@@ -452,6 +468,10 @@ EXTRA_OPS = {
     'attn_full_bwd_dkv': _R(_full_dkv, _full_dkv_ext),
     'round_bf16': _R(_round_bf16, _flat_ext(bufs=('x', 'out'))),
     'matmul_tile_bf16': _R(_matmul_tile_bf16, lambda a: GPT_OPS['matmul_tile'].extents({**a, 'flags': a['flags']}) if a['flags'] & ~31 == 0 else _bad_bf16(a)),
+    'cast_f32_bf16': RefOp(_cast_f32_bf16, _flat_ext(bufs=('x', 'out')), {}, frozenset(), frozenset(), frozenset({'out'})),
+    'cast_bf16_f32': RefOp(_cast_bf16_f32, _flat_ext(bufs=('x', 'out')), {}, frozenset(), frozenset(), frozenset({'x'})),
+    'matmul_tile_bf16s': RefOp(_matmul_tile_bf16, _mm_bf16s_ext, {}, frozenset(), frozenset({'a', 'b'}), frozenset(), lambda a: {
+        **({'a': 'bf16'} if a['flags'] & 128 else {'a': 'f32'}), **({'b': 'bf16'} if a['flags'] & 256 else {'b': 'f32'})}),
     'adamw_lr': _R(_adamw_lr, lambda a: (_rng(a['e0'], a['e1']), {'p': a['e1'], 'g': a['e1'], 'm': a['e1'], 'v': a['e1'], 'gscale': 1, 'step': 1,
                                                                   'lr': 1})[1], ints=('step',)),
     'lr_schedule': _R(_lr_schedule, lambda a: (_need(a['kind'] in (0, 1, 2), 'lr_schedule: kind not in 0..2'), {'step': 1, 'lr': 1})[1],

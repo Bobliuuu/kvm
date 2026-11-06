@@ -635,6 +635,55 @@ KVM_GPT_DEVI void matmul_tile_bf16(const KvmCtx& ctx, const int32_t* a) {
 #undef KVM_EX_MM
 }
 
+// ---- real bf16 storage ---------------------------------------------------------------------------------------------------------
+KVM_GPT_DEVI void cast_f32_bf16(const KvmCtx& ctx, const int32_t* a) {
+    Chk k(ctx);
+    int e0 = a[2], e1 = a[3];
+    k.need(e0 >= 0 && e0 <= e1);
+    if (k.bad) return;
+    const float* x = k.fvec(a[0], e1);
+    unsigned short* o = k.bvec(a[1], e1);
+    if (k.bad) return;
+    for (int i = e0 + threadIdx.x; i < e1; i += KVM_GPT_THREADS) o[i] = (unsigned short)(__float_as_uint(bf16r(x[i])) >> 16);
+}
+KVM_GPT_DEVI void cast_bf16_f32(const KvmCtx& ctx, const int32_t* a) {
+    Chk k(ctx);
+    int e0 = a[2], e1 = a[3];
+    k.need(e0 >= 0 && e0 <= e1);
+    if (k.bad) return;
+    const unsigned short* x = k.bvec(a[0], e1);
+    float* o = k.fvec(a[1], e1);
+    if (k.bad) return;
+    for (int i = e0 + threadIdx.x; i < e1; i += KVM_GPT_THREADS) o[i] = __uint_as_float(((unsigned)x[i]) << 16);
+}
+KVM_GPT_DEVI void matmul_tile_bf16s(const KvmCtx& ctx, const int32_t* a) {
+    Chk k(ctx);
+    int m0 = a[6], n0 = a[7], M = a[8], N = a[9], K = a[10], fl = a[11];
+    bool ta = fl & 1, tb = fl & 2, accum = fl & 4, gelu = fl & 8, sa = fl & 128, sb = fl & 256;
+    k.need(M > 0 && N > 0 && K > 0 && m0 >= 0 && m0 < M && n0 >= 0 && n0 < N);
+    k.need((fl & ~(31 | 128 | 256)) == 0 && (fl & 16) == 0 && (sa || sb), KVM_GPT_E_SHAPE);
+    if (k.bad) return;
+    int lda, ldb, ldo, ldr = 0, ldp = 0;
+    const float* Af = nullptr; const float* Bf = nullptr; const unsigned short* Ab = nullptr; const unsigned short* Bb = nullptr;
+    if (sa) Ab = k.bmat(a[0], ta ? K : M, ta ? M : K, &lda); else Af = k.mat(a[0], ta ? K : M, ta ? M : K, &lda);
+    if (sb) Bb = k.bmat(a[1], tb ? N : K, tb ? K : N, &ldb); else Bf = k.mat(a[1], tb ? N : K, tb ? K : N, &ldb);
+    float* out = k.mat(a[2], M, N, &ldo);
+    const float* bias = k.fvec(a[3], N, true);
+    const float* res = k.mat(a[4], M, N, &ldr, true);
+    float* pre = k.mat(a[5], M, N, &ldp, true);
+    if (k.bad) return;
+    float alpha = af(a, 12);
+#define KVM_EX_MMS(TA, TB, AT, BT, AP, BP) kvmgpt::mm_tile<TA, TB, false, true, AT, BT>(AP, lda, BP, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, gelu, accum)
+#define KVM_EX_MMS_T(AT, BT, AP, BP) \
+    if (!ta && !tb) KVM_EX_MMS(false, false, AT, BT, AP, BP); else if (ta && !tb) KVM_EX_MMS(true, false, AT, BT, AP, BP); \
+    else if (!ta && tb) KVM_EX_MMS(false, true, AT, BT, AP, BP); else KVM_EX_MMS(true, true, AT, BT, AP, BP)
+    if (sa && sb) { KVM_EX_MMS_T(unsigned short, unsigned short, Ab, Bb); }
+    else if (sa) { KVM_EX_MMS_T(unsigned short, float, Ab, Bf); }
+    else { KVM_EX_MMS_T(float, unsigned short, Af, Bb); }
+#undef KVM_EX_MMS_T
+#undef KVM_EX_MMS
+}
+
 // ---- optimizer schedule / misc ----------------------------------------------------------------------------------------------------
 KVM_GPT_DEVI void adamw_lr(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);

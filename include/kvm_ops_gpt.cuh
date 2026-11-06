@@ -42,7 +42,7 @@
 #define KVM_GPT_BIG_BK 16    // k per pipeline stage of the 128x128 tile (16 or 32)
 #endif
 #ifndef KVM_GPT_BIG_NST
-#define KVM_GPT_BIG_NST 3    // pipeline stages of the 128x128 tile
+#define KVM_GPT_BIG_NST 4    // pipeline stages of the 128x128 tile (4 x 16 KiB = 64 KiB; two blocks per SM still fit in 164 KiB)
 #endif
 // Dynamic shared memory an op needs for a launch of the op set: 104 KiB covers hd=128 attention backward/forward (6 tiles of
 // 32 x 132 floats = 101 KiB); 56 KiB covers every other op (matmul 48 KiB, attention up to hd=64 at 52 KiB), so two blocks per SM still

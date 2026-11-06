@@ -74,7 +74,7 @@ def fwd_cnn(p, d, length=12):
 def fwd_encoder(p, d, seq=32):
     x = d['x'] @ p['enc.embed.w'] + p['enc.embed.b']
     h = om.layernorm(x, p['enc.n1.g'], p['enc.n1.b'])
-    lin = lambda t, n: t @ p[f'enc.{n}.w'] + p[f'enc.{n}.b']
+    lin = lambda t, n: t @ p[f'enc.{n}.w'] + (p[f'enc.{n}.b'] if f'enc.{n}.b' in p else 0)
     x = x + lin(om.attention(lin(h, 'q'), lin(h, 'k'), lin(h, 'v'), 2, 2, seq, False), 'o')
     x = x + om.lin(om.layernorm(x, p['enc.n2.g'], p['enc.n2.b']), p['enc.fc1.w'], p['enc.fc1.b'], gelu=True) @ p['enc.fc2.w'] + p['enc.fc2.b']
     pooled = om.layernorm(x, p['enc.nf.g'], p['enc.nf.b']).reshape(-1, seq, x.shape[1]).mean(1)

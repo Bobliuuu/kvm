@@ -40,8 +40,9 @@
 
 #define KVM_THREADS    256        // blockDim contract: all 256 threads enter every op (game ops: thread 0 = game thread)
 #ifndef KVM_MIN_BLOCKS
-#define KVM_MIN_BLOCKS 2          // __launch_bounds__ minimum resident blocks per SM: 2 caps the persistent kernel at 128 registers (65536 / 512),
-                                  // so a task-dispatch-bound or latency-bound workload overlaps one block's stalls with the other (1 = 255 registers)
+#define KVM_MIN_BLOCKS 1          // __launch_bounds__ minimum resident blocks per SM. 2 caps the persistent kernel at 128 registers (65536 / 512) so one
+                                  // block's stalls overlap the other's (+40-60% on matmul, +25% attention backward in the op harness), but the executor suites
+                                  // have NOT been run at 2 yet (results/2026-11-06-matmul2-perf): build with -DKVM_MIN_BLOCKS=2 to try it. 1 = 255 registers.
 #endif
 #define KVM_NBUCKETS   32          // priority levels 0..31; larger runs first (validated, never silently clamped)
 static_assert(KVM_NBUCKETS == 32, "kvm_pop maps one bucket to each lane of a warp");

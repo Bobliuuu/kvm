@@ -8,6 +8,10 @@ about attention geometry, token streams or softmax cross-entropy, so `ModelConfi
 `TrainableModule` adapts (module, loss, data) to the protocol `train.build_training` consumes, so microbatch accumulation, LR
 schedules, loss scaling, rematerialization and fusion work unchanged.
 
+Reinforcement-learning pieces: `PolicyGradient` (REINFORCE with an advantage stream) and `QLearning` (TD/DQN on a one-hot action mask) losses; data
+from logged or host-simulated rollouts through `GeneratedData` / `ArrayData`. An on-policy loop is a host loop around launches (roll
+out with the latest weights on the host, feed the batch, run the bundle); one bundle never samples from its own policy.
+
 Not supported (the program is a static DAG): data-dependent control flow, dynamic shapes, auxiliary losses from inside a module.
 """
 from __future__ import annotations
@@ -21,8 +25,11 @@ from .nn import Linear, Module, Norm, Stream
 
 # ====================================================================================================== losses
 class Loss:
-    """A loss turns (module output, target) into a scalar loss tensor whose loss[0,0] is the value reported per step."""
+    """A loss turns (module output, target) into a scalar loss tensor whose loss[0,0] is the value reported per step.
+    `n_targets` host streams feed it: `target` is one Stream/Tensor when it is 1, else a tuple in the order of `DataSource.target`
+    (a tuple of stream names)."""
     target_dtype = 'f32'
+    n_targets = 1
 
     def check(self, out: Tensor, target: Stream):
         raise NotImplementedError
@@ -59,11 +66,55 @@ class MSE(Loss):
         return b.mse_loss(out, target, grad_scale)
 
 
+class PolicyGradient(Loss):
+    """REINFORCE with a given advantage: mean over rows of advantage * (-log pi(action | state)), pi = softmax of the module output
+    [N, actions]. Targets, in this order: the taken action (i32 column, in [0, actions)) and the advantage / return (f32 column;
+    data, so it gets no gradient). Data comes from a rollout function (GeneratedData) or logged episodes (ArrayData)."""
+    n_targets = 2
+
+    def check(self, out, target):
+        act, adv = target
+        if (act.rows, act.cols, act.dtype) != (out.rows, 1, 'i32') or (adv.rows, adv.cols, adv.dtype) != (out.rows, 1, 'f32'):
+            raise FrontendError(f'PolicyGradient: targets must be (i32 action column, f32 advantage column) of {out.rows} rows; got '
+                                f'{act.name!r} {act.rows}x{act.cols} {act.dtype}, {adv.name!r} {adv.rows}x{adv.cols} {adv.dtype}')
+        bad = [v for v in act.values if not 0 <= v < out.cols]
+        if bad:
+            raise FrontendError(f'PolicyGradient: action ids outside [0, {out.cols}): e.g. {bad[:3]}')
+
+    def __call__(self, b, out, target, grad_scale):
+        return b.pg_loss(out, target[0], target[1], grad_scale)
+
+
+class QLearning(Loss):
+    """One-step TD / DQN loss: mean over rows of (Q(s, a) - y)^2 with Q = the module output [N, actions]. Targets, in this order: a
+    one-hot f32 action mask [N, actions] (so Q(s,a) is a dot with the row) and the bootstrapped target y (f32 column, e.g.
+    r + gamma * max_a' Q_target(s', a'), computed on the host from a frozen copy: data, no gradient)."""
+    n_targets = 2
+
+    def check(self, out, target):
+        mask, y = target
+        if (mask.rows, mask.cols, mask.dtype) != (out.rows, out.cols, 'f32') or (y.rows, y.cols, y.dtype) != (out.rows, 1, 'f32'):
+            raise FrontendError(f'QLearning: targets must be (f32 one-hot mask {out.rows}x{out.cols}, f32 target column {out.rows}x1); got '
+                                f'{mask.name!r} {mask.rows}x{mask.cols} {mask.dtype}, {y.name!r} {y.rows}x{y.cols} {y.dtype}')
+
+    def __call__(self, b, out, target, grad_scale):
+        return b.mse_loss(b.row_select(out, target[0]), target[1], grad_scale)
+
+
+def one_hot(actions, n):
+    """Rows of a one-hot f32 mask for action ids (a host helper for QLearning data)."""
+    return [[1.0 if c == int(a) else 0.0 for c in range(n)] for a in actions]
+
+
 # ====================================================================================================== data sources
 class DataSource:
     """Host data consumed one window per microbatch. `inputs`: stream names passed to the module; `target`: the stream the loss reads."""
     inputs: tuple = ('x',)
-    target: str = 'y'
+    target: str | tuple = 'y'        # one stream name, or a tuple of names for a loss with several targets (PolicyGradient, QLearning)
+
+    @property
+    def targets(self) -> tuple:
+        return (self.target,) if isinstance(self.target, str) else tuple(self.target)
 
     def streams(self, micros: int) -> list[Stream]:
         raise NotImplementedError
@@ -94,7 +145,7 @@ class ArrayData(DataSource):
         self.inputs, self.target, self.batch = tuple(inputs), target, batch
         dtypes = dtypes or {}
         unknown = sorted(set(dtypes) - set(arrays))
-        missing = sorted({*self.inputs, target} - set(arrays))
+        missing = sorted({*self.inputs, *self.targets} - set(arrays))
         if unknown or missing:
             raise FrontendError(f'ArrayData: dtypes for unknown arrays {unknown}; inputs/target missing from arrays: {missing}')
         self.dtypes = {n: dtypes.get(n, 'f32') for n in arrays}
@@ -109,7 +160,7 @@ class ArrayData(DataSource):
 
     def streams(self, micros):
         out = []
-        for n in (*self.inputs, self.target):
+        for n in (*self.inputs, *self.targets):
             a = self.arrays[n]
             vals = [v for m in range(micros) for i in range(self.batch) for v in a[(m * self.batch + i) % self.samples]]
             out.append(Stream(n, self.batch, len(a[0]), self.dtypes[n], vals))
@@ -122,12 +173,12 @@ class GeneratedData(DataSource):
 
     def __init__(self, make, shapes: dict, inputs=('x',), target='y'):
         self.make, self.shapes, self.inputs, self.target = make, dict(shapes), tuple(inputs), target
-        missing = sorted({*self.inputs, target} - set(shapes))
+        missing = sorted({*self.inputs, *self.targets} - set(shapes))
         if missing:
             raise FrontendError(f'GeneratedData: no shape for {missing}')
 
     def streams(self, micros):
-        cols = {n: [] for n in (*self.inputs, self.target)}
+        cols = {n: [] for n in (*self.inputs, *self.targets)}
         for m in range(micros):
             got = self.make(m)
             for n in cols:
@@ -158,20 +209,24 @@ class TrainableModule:
     def batch_streams(self, micros):
         streams = self.data.streams(micros)
         by_name = {s.name: s for s in streams}
-        for n in (*self.data.inputs, self.data.target):
+        for n in (*self.data.inputs, *self.data.targets):
             if n not in by_name:
                 raise FrontendError(f'data source produced no stream {n!r}; has {sorted(by_name)}')
-        return [by_name[n] for n in (*self.data.inputs, self.data.target)]
+        return [by_name[n] for n in (*self.data.inputs, *self.data.targets)]
 
     def losses(self, b, batch, w, grad_scale=1.0):
         out = self.module(b, *(batch[n] for n in self.data.inputs), w)
         if not isinstance(out, Tensor):
             raise FrontendError(f'module {self.cfg.name!r} returned {type(out).__name__}, not a Tensor')
-        target = self.data.target
+        names = self.data.targets
+        if len(names) != self.loss.n_targets:
+            raise FrontendError(f'{type(self.loss).__name__} needs {self.loss.n_targets} target stream(s), the data source names {len(names)}: {names}')
         if not self._checked:                                   # shapes are fixed for the whole run: check once, with a clear message
-            self.loss.check(out, next(s for s in self.batch_streams(1) if s.name == target))
+            by = {s.name: s for s in self.batch_streams(1)}
+            self.loss.check(out, by[names[0]] if len(names) == 1 else tuple(by[n] for n in names))
             self._checked = True
-        return [('loss', self.loss(b, out, batch[target], grad_scale))]
+        tg = batch[names[0]] if len(names) == 1 else tuple(batch[n] for n in names)
+        return [('loss', self.loss(b, out, tg, grad_scale))]
 
 
 # ====================================================================================================== building blocks

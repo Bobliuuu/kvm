@@ -146,15 +146,16 @@ def job_speed():
 def job_instances():
     F = 120
     oracle(700)
-    for n in [1, 2, 4, 8, 16, 32, 64]:
+    for n in [int(x) for x in os.environ.get("INST_LIST", "1,2,4,8,16,32,64").split(",")]:
         if n > NINST: break
-        b = "bin/doom_exec_nN" if n > 1 else "bin/doom_exec_n1"
+        b = os.environ.get("BIN_NN", "bin/doom_exec_nN") if n > 1 else "bin/doom_exec_n1"
         run(f"inst{n}_serial", F, binary=b, inst=n)
         run(f"inst{n}_split4", F, binary=b, inst=n, split=4)
     if NINST >= 16:
         load = "--chains 3 --rounds 40 --tenant train"
-        run("inst16_split4_trainload", F, binary="bin/doom_exec_nN", inst=16, split=4, wl=load, ex=DYN)
-        run("inst16_serial_trainload", F, binary="bin/doom_exec_nN", inst=16, wl=load, ex=DYN)
+        bn = os.environ.get("BIN_NN", "bin/doom_exec_nN")
+        run("inst16_split4_trainload", F, binary=bn, inst=16, split=4, wl=load, ex=DYN)
+        run("inst16_serial_trainload", F, binary=bn, inst=16, wl=load, ex=DYN)
 
 
 def job_prof():

@@ -46,7 +46,7 @@ static void run(int M, int N, int K, int ta, int tb, int prec, int big, int bf =
     for (auto& b : tab) b.ld = b.cols;
     KvmBuf* tab_d; CK(cudaMalloc(&tab_d, sizeof tab)); CK(cudaMemcpy(tab_d, tab, sizeof tab, cudaMemcpyHostToDevice));
     int32_t* err; CK(cudaMalloc(&err, 4)); CK(cudaMemset(err, 0, 4));
-    const int bm = big == 2 ? 256 : big == 1 ? 128 : 64, bn = big ? 128 : 64, fl = ta | (tb << 1) | (prec << 4) | (bf << 7) | (big == 1 ? 32 : big == 2 ? 64 : 0);
+    const int bm = big == 2 ? 256 : big == 1 ? 128 : 64, bn = big ? 128 : 64, fl = ta | (tb << 1) | (prec << 4) | (bf << 7) | (big == 1 ? 32 : big == 2 ? 64 : 0) | (big && !prec && !bf && getenv("MM_RZ") ? 256 : 0);   // MM_RZ=1: flag 256, operands truncated like cuBLAS TF32
     const float alpha = 1.f; int32_t af; memcpy(&af, &alpha, 4);
     std::vector<int32_t> w; int nt = 0;
     for (int m0 = 0; m0 < M; m0 += bm) for (int n0 = 0; n0 < N; n0 += bn) { int32_t a[13] = {0, 1, 2, -1, -1, -1, m0, n0, M, N, K, fl, af}; w.insert(w.end(), a, a + 13); nt++; }
@@ -77,6 +77,11 @@ int main(int argc, char** argv) {
     const char* only = getenv("MM_ONLY");   // e.g. "NN4096" restricts shapes
     const int tiles[3] = {0, 1, 2};
     struct S { int M, N, K; } shapes[] = {{4096, 4096, 4096}, {2048, 2048, 2048}, {8192, 768, 768}, {4096, 3072, 768}, {1024, 1024, 1024}, {512, 512, 512}};
+    if (getenv("MM_GPT162")) {   // the gpt_162m GEMMs (4096 tokens): forward NN, input-grad NT, weight-grad TN, each at 128x128 and 256x128
+        struct G { int M, N, K; } g[] = {{4096, 2304, 768}, {4096, 768, 768}, {4096, 3072, 768}, {4096, 768, 3072}, {4096, 50304, 768}};
+        for (auto s : g) for (int t = 1; t <= 2; t++) { run(s.M, s.N, s.K, 0, 0, 0, t); run(s.M, s.K, s.N, 0, 1, 0, t); run(s.K, s.N, s.M, 1, 0, 0, t); }
+        return 0;
+    }
     for (auto s : shapes) {
         if (only && (atoi(only) != s.M)) continue;
         for (int t : tiles) {

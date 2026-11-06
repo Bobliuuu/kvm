@@ -93,7 +93,7 @@ def _matmul_tile(b, a):
 def _matmul_extents(a):
     M, N, K, fl = a['M'], a['N'], a['K'], a['flags']
     _need(M > 0 and N > 0 and K > 0 and 0 <= a['m0'] < M and 0 <= a['n0'] < N, 'matmul_tile: bad M/N/K/m0/n0')
-    _need(fl & ~127 == 0 and not (fl & 32 and fl & 64), f'matmul_tile: unsupported flags {fl}')
+    _need(fl & ~(127 | 256) == 0 and not (fl & 32 and fl & 64), f'matmul_tile: unsupported flags {fl}')   # 256: truncated operands, same exact-product golden
     return {'a': (K, M) if fl & 1 else (M, K), 'b': (N, K) if fl & 2 else (K, N), 'out': (M, N), 'bias': N,
             'res': (M, N), 'pre': (M, N)}
 

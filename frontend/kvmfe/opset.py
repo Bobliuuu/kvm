@@ -20,6 +20,7 @@ MM_TILE = 64        # matmul_tile computes a 64 x 64 output tile (flags: 1 trans
 ATTN_Q = 32         # attn_fwd / attn_bwd_dq: 32 query rows per task; attn_bwd_dkv: 32 keys per task
 F_TA, F_TB, F_ACC, F_GELU, F_PRECISE = 1, 2, 4, 8, 16
 F_BIG, F_HUGE = 32, 64   # matmul_tile flags: 32 = 128x128 output tile, 64 = 256x128 (rows x cols; two 128x128 passes). Default 64x64.
+F_TRUNC = 256            # matmul_tile flag, big/huge 1xTF32 tiles only: operands are truncated by the tensor core (as cuBLAS TF32 does), not rounded to tf32 first
 
 
 def mm_dims(fl):

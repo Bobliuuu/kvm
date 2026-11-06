@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from .ir import Builder, FrontendError, LogicalOp, Tensor
-from .opset import ATTN_Q, F_ACC, F_BIG, F_GELU, F_HUGE, F_PRECISE, F_TA, F_TB, MM_TILE, mm_dims, op as device_op
+from .opset import ATTN_Q, F_ACC, F_BIG, F_GELU, F_HUGE, F_PRECISE, F_TA, F_TB, F_TRUNC, MM_TILE, mm_dims, op as device_op
 
 
 @dataclass(frozen=True)
@@ -27,10 +27,12 @@ class Tiling:
     mm_min_eff: float = 0.75 # ... and so does one whose padded tiles would waste more than 1 - this of their area
     attn_span: int = 1       # causal attention: 32-row blocks per task (attn_fwd / attn_bwd_dq query blocks, attn_bwd_dkv key blocks)
     precise: bool = False    # GEMM tiles use 3xTF32 (matmul_tile flag 16, fp32 accuracy) instead of the default 1xTF32
+    tf32_trunc: bool = False # big (128x128 / 256x128) 1xTF32 GEMM tiles skip the operand rounding (flag 256): cuBLAS TF32 numerics, ~25% faster tile
 
     PRESETS = {
         'cpu': dict(rows=8, ew_rows=8, cols=32, vocab=16, opt_elems=256),
         'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=65536, mm_tile=128, attn_span=4),
+        'a100_trunc': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=65536, mm_tile=128, attn_span=4, tf32_trunc=True),
         'a100_mm64': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=65536),   # the previous a100 (64x64 GEMM tiles)
         'a100_mm256': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=65536, mm_tile=256, attn_span=4),
         'b200': dict(rows=128, ew_rows=256, cols=512, vocab=4096, opt_elems=131072),
@@ -46,7 +48,7 @@ class Tiling:
         if self.mm_tile not in (64, 128, 256):
             raise FrontendError(f'Tiling.mm_tile must be 64, 128 or 256, got {self.mm_tile!r}')
         for k, v in vars(self).items():
-            if k in ('precise', 'mm_min_eff'):
+            if k in ('precise', 'mm_min_eff', 'tf32_trunc'):
                 continue
             if not isinstance(v, int) or v < 1:
                 raise FrontendError(f'Tiling.{k} must be a positive int, got {v!r}')
@@ -135,6 +137,8 @@ _STEPS = {64: (), 128: (F_BIG,), 256: (F_HUGE, F_BIG)}
 def _mm_tiles(a, b, out, M, N, K, ta, tb, flags, bias=None, res=None, pre=None, acc=False, dev='matmul_tile', precise=False, tc=None):
     flags |= F_PRECISE if precise else 0
     flags |= mm_choice(M, N, tc, allow_big=(dev != 'matmul_tile_bf16')) if tc is not None else 0
+    if tc is not None and tc.tf32_trunc and dev == 'matmul_tile' and flags & (F_BIG | F_HUGE) and not flags & F_PRECISE:
+        flags |= F_TRUNC
     TM, TN = mm_dims(flags)
     for m0 in range(0, M, TM):
         m1 = min(m0 + TM, M)

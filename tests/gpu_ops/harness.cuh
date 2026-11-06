@@ -82,6 +82,7 @@ struct Dev {
     int geterr() { int e; CK(cudaMemcpy(&e, err, 4, cudaMemcpyDeviceToHost)); CK(cudaMemset(err, 0, 4)); return e; }
 };
 
+#ifndef KVM_HARNESS_NO_RUN   // a test that defines its own (small) dispatcher skips the all-ops kernel, which dominates the compile time
 #ifndef BENCH_MINB
 #define BENCH_MINB 1   // -DBENCH_MINB=2 caps the all-ops kernel at 128 registers (two blocks per SM), as an executor could
 #endif
@@ -116,6 +117,7 @@ static int run(Dev& d, const Batch& b, int smem = kvm_gpt_smem_bytes(KVM_GPT_MAX
     return d.geterr();
 }
 static int run1(Dev& d, int id, const A& a, int smem = kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)) { Batch b; b.add(id, a); return run(d, b, smem); }
+#endif  // KVM_HARNESS_NO_RUN
 
 // ---- accounting / comparison ------------------------------------------------------------------------------------------
 static int g_pass = 0, g_fail = 0;

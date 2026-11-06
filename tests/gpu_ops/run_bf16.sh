@@ -16,7 +16,7 @@ $SSH "$HOST" "cd $REMOTE/tests/gpu_ops && NVCC=\$(command -v nvcc || ls /usr/loc
   \$NVCC -O2 -arch=$ARCH -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -lineinfo -I../../include -I. bench_mma_bf16.cu -lcublas -o bench_mma_bf16"
 RUN="./test_bf16"
 if [ "${1:-}" = "--sanitize" ]; then
-  RUN="./test_bf16; for t in memcheck racecheck synccheck; do echo == \$t; compute-sanitizer --tool \$t --error-exitcode 9 ./test_bf16 | tail -4; echo exit \${PIPESTATUS[0]}; done"
+  RUN="./test_bf16; for t in memcheck racecheck synccheck; do echo == \$t; TEST_BF16_SMALL=1 compute-sanitizer --tool \$t --error-exitcode 9 ./test_bf16 | tail -4; echo exit \${PIPESTATUS[0]}; done"
   shift
 fi
 [ "${1:-}" = "--no-bench" ] || RUN="$RUN; ./bench_mma_bf16"

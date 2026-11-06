@@ -815,11 +815,13 @@ static void usage() {
     "  --op-affinity a,b (1 = class prefers the block that last ran the same op)  --shares a,b (static SM shares)  --arbiter  --bw-limit N   adaptive concurrent bandwidth-bound CTA limit   --affinity-us N   --no-guarantee  --no-inherit\n"
 
     "  --golden [--golden-tol R]  compare with <bundle_dir>/golden.json (single bundle): final buffers, versions, observed versions\n"
-    "  --trace-csv FILE   per-task timeline  --dump-buffers   print buffers   --quiet   errors only   --check-ops   print registry\n");
+    "  --trace-csv FILE   per-task timeline  --dump-buffers   print buffers   --quiet   errors only   --check-ops   print registry\n"
+    "  --dump-bin DIR i,j,..  write the listed buffers (by metadata index, widened to little-endian f32 / raw i32) to DIR/<index>.bin after the run\n");
 }
 
 int main(int argc, char** argv) {
   KvmConfig cfg; std::vector<std::string> dirs; const char* csv = nullptr; bool dump = false, golden = false; float golden_tol = 1e-6f;
+  std::string dump_dir; std::vector<int> dump_idx;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto val = [&](long long lo = 0, long long hi = 1ll << 30) -> long long {   // strict integer in [lo, hi]
@@ -837,6 +839,11 @@ int main(int argc, char** argv) {
     else if (int r = kvm_cli_sched_option(cfg, i, argc, argv)) { if (r < 0) { usage(); return 2; } }
     else if (a == "--trace-csv") { if (i + 1 >= argc) { usage(); return 2; } csv = argv[++i]; }
     else if (a == "--dump-buffers") dump = true;
+    else if (a == "--dump-bin") {
+      if (i + 2 >= argc) { usage(); return 2; }
+      dump_dir = argv[++i];
+      for (char* p = argv[++i]; *p;) { char* e; long v = strtol(p, &e, 10); if (e == p || v < 0) { usage(); return 2; } dump_idx.push_back((int)v); p = *e == ',' ? e + 1 : e; }
+    }
     else if (a == "--golden") golden = true;
     else if (a == "--golden-tol") { if (i + 1 >= argc) { usage(); return 2; } golden_tol = (float)atof(argv[++i]); }
     else if (a == "--quiet") g_kvm_log = 0;
@@ -934,6 +941,14 @@ int main(int argc, char** argv) {
       KLOG(2, "golden: %d reads checked, final versions compared; %d mismatches", nreads, golden_bad);
     }
     if (dump) for (int i = 0; i < ex.nbufs(); ++i) { auto v = ex.read_buffer(i); printf("buffer %d:", i); for (float x : v) printf(" %.9g", x); printf("\n"); }
+    for (int idx : dump_idx) {   // raw dump of selected buffers: the text dump above is ~11 bytes per element, too slow for a 162M-parameter model
+      if (idx >= ex.nbufs()) { fprintf(stderr, "--dump-bin: buffer %d out of range (%d buffers)\n", idx, ex.nbufs()); return 2; }
+      auto v = ex.read_buffer(idx);
+      std::string path = dump_dir + "/" + std::to_string(idx) + ".bin";
+      FILE* f = fopen(path.c_str(), "wb");
+      if (!f || fwrite(v.data(), sizeof(float), v.size(), f) != v.size()) { fprintf(stderr, "--dump-bin: cannot write %s\n", path.c_str()); return 2; }
+      fclose(f);
+    }
     bool pass = r.ok() && golden_bad == 0;
     printf("%s: %d/%d tasks, %.3f ms%s\n", pass ? "OK" : "FAIL", r.done, r.admitted, r.kernel_ms, golden ? (golden_bad ? ", golden MISMATCH" : ", golden match") : "");
     return pass ? 0 : 1;

@@ -40,7 +40,7 @@ case "$GROUP" in
   smoke) mkdir -p "$OUT"; "$0" suites; REPS=1 "$0" main; REPS=1 "$0" bw;;
   main)  for rep in $(seq 1 "$REPS"); do for c in global global_gated static fixed_fair fixed_prio fixed_prio_gated fixed_resv_peak v1_demand adaptive adaptive_gated; do one $c $rep ${CFG[$c]} $PHASES; done; done;;
   gamepar) # serial Doom vs split-tick Doom (doom_sim -> planes -> tiles -> post) under the same phased serve/train load; same configs as `main`
-    for rep in $(seq 1 "$REPS"); do for c in global fixed_prio adaptive; do for sp in 0 8; do
+    for rep in $(seq "${REP0:-1}" $(( ${REP0:-1} + REPS - 1 ))); do for c in global fixed_prio adaptive; do for sp in 0 8; do
       one "gp_${c}_split$sp" $rep ${CFG[$c]} $PHASES $([ $sp = 0 ] || echo --doom-split $sp --doom-planes 4)
     done; done; done;;
   main_big) export SCN=scn_big LIVE_CAP=131072 RING_WORDS=8388608 GATE="--gate-serve 50000 --gate-train 60000"

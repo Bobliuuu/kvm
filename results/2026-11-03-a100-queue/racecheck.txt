@@ -1,0 +1,20 @@
+=== racecheck: compute-sanitizer --tool racecheck ./kvm --runs 2 --steps 10 --reps 1 --modes claim,queue --watchdog-ms 60000 ===
+========= COMPUTE-SANITIZER
+model B=128 D=128 H=256 O=64  runs=2 steps=10  tile=32 kc=64 stg=4  tape=2400 instrs executed, 240-entry step template (0.02 MB)
+[queue] lowered 2400 tasks, 65792 edges (27.4/task), 64 initially ready, 0.3 MB device, 3 ms host
+NVIDIA A100-SXM4-40GB  SMs=108  driver CUDA 13.0  runtime 12.8  vm grid=216 (occ 2)  queue grid=216 (occ 2)  watchdog 60000 ms
+[pass -1] KVM: claim-and-wait                       2091.806 ms  weight words differing from 'claim': 0
+[pass -1] KVM: ready queue                          2064.549 ms  weight words differing from 'claim': 0
+[pass  0] KVM: claim-and-wait                       2009.412 ms  weight words differing from 'claim': 0
+[pass  0] KVM: ready queue                          2092.115 ms  weight words differing from 'claim': 0
+
+mode                                         min ms  median ms     max ms    us/step/run run-steps/s
+KVM: claim-and-wait                        2009.412   2009.412   2009.412      100470.58          10
+KVM: ready queue                           2092.115   2092.115   2092.115      104605.75          10
+queue vs claim: 0.96x  [min 0.96x, max 0.96x] over 1 passes
+
+loss run0: 0.31605 -> 0.30851 (lr 0.0125)   run1: 0.31605 -> 0.26664 (lr 0.0875)
+max rel loss err vs cpu fp32 (runs 0 and 1, first 10 steps, all modes): 1.91e-05
+final weights, 2 modes x 2 passes vs 'claim': 0 differing words, max |dW| 0.00e+00 (must be exactly 0)
+PASS
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)

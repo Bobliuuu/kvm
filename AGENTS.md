@@ -62,8 +62,11 @@ Known failures and honest negatives (do not paper over them):
 - The adaptive controller did not beat a hand-set fixed priority configuration; the dynamic scheduler is 1.7-1.8x worse on serve p99 than a
   global queue with serve priority (`2026-11-04-a100-sched-integrated`).
 - RTX 5070 Laptop (sm_120): `kvm.cu` passes but never clearly beats the batched graph, 0.73-1.12x (`2026-11-03-rtx5070-laptop-sm120`).
-- `kvm.cu` open gaps: no timeline (`prof = nullptr`, no `%smid`); the weights check allows 1e-3 although weights are bitwise identical in all
-  four modes (check exact equality); on the README's A100 batching alone gives 9.5x of the 10.7x at 32 runs.
+- `kvm.cu` has a ready-queue mode (tape dependencies lowered to a DAG on the host, successors released on the device), a device watchdog on
+  every VM spin, and an exact bitwise weights check (`2026-11-03-a100-queue`). On the A100 the queue is slower than claim-and-wait
+  (0.78x at 1 run, 0.94x at 8 and 32: a 6.6 us hop against 5.2 us); the generic executor's own parked-waiter ready queue
+  (`include/kvm_exec.cuh`) is a separate design and is what the integrated tree uses. Open: no timeline (`prof = nullptr`, no `%smid`);
+  on the README's A100 batching alone gives about 9.6x of the 9.9x at 32 runs.
 
 ## How the best do it (read before designing)
 

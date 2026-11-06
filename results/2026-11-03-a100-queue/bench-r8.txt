@@ -1,0 +1,59 @@
+=== bench-r8: ./kvm --runs 8 --steps 300 --reps 7 ===
+model B=128 D=128 H=256 O=64  runs=8 steps=300  tile=32 kc=64 stg=4  tape=288000 instrs executed, 960-entry step template (0.07 MB)
+[queue] lowered 288000 tasks, 8281088 edges (28.8/task), 256 initially ready, 37.7 MB device, 352 ms host
+NVIDIA A100-SXM4-40GB  SMs=108  driver CUDA 13.0  runtime 12.8  vm grid=216 (occ 2)  queue grid=216 (occ 2)  watchdog 5000 ms
+[pass -1] sequential, launch-per-op                  106.215 ms  weight words differing from 'seq': 0
+[pass -1] sequential, CUDA graph/run                  74.718 ms  weight words differing from 'seq': 0
+[pass -1] batched across runs (vmap-like graph)       17.141 ms  weight words differing from 'seq': 0
+[pass -1] KVM: claim-and-wait                         11.001 ms  weight words differing from 'seq': 0
+[pass -1] KVM: ready queue                            11.637 ms  weight words differing from 'seq': 0
+[pass  0] sequential, launch-per-op                   87.825 ms  weight words differing from 'seq': 0
+[pass  0] sequential, CUDA graph/run                  69.302 ms  weight words differing from 'seq': 0
+[pass  0] batched across runs (vmap-like graph)       15.526 ms  weight words differing from 'seq': 0
+[pass  0] KVM: claim-and-wait                         10.291 ms  weight words differing from 'seq': 0
+[pass  0] KVM: ready queue                            10.896 ms  weight words differing from 'seq': 0
+[pass  1] sequential, launch-per-op                   83.782 ms  weight words differing from 'seq': 0
+[pass  1] sequential, CUDA graph/run                  69.299 ms  weight words differing from 'seq': 0
+[pass  1] batched across runs (vmap-like graph)       15.525 ms  weight words differing from 'seq': 0
+[pass  1] KVM: claim-and-wait                         10.313 ms  weight words differing from 'seq': 0
+[pass  1] KVM: ready queue                            10.863 ms  weight words differing from 'seq': 0
+[pass  2] sequential, launch-per-op                   83.778 ms  weight words differing from 'seq': 0
+[pass  2] sequential, CUDA graph/run                  69.301 ms  weight words differing from 'seq': 0
+[pass  2] batched across runs (vmap-like graph)       15.520 ms  weight words differing from 'seq': 0
+[pass  2] KVM: claim-and-wait                         10.307 ms  weight words differing from 'seq': 0
+[pass  2] KVM: ready queue                            10.939 ms  weight words differing from 'seq': 0
+[pass  3] sequential, launch-per-op                   83.793 ms  weight words differing from 'seq': 0
+[pass  3] sequential, CUDA graph/run                  69.304 ms  weight words differing from 'seq': 0
+[pass  3] batched across runs (vmap-like graph)       15.513 ms  weight words differing from 'seq': 0
+[pass  3] KVM: claim-and-wait                         10.303 ms  weight words differing from 'seq': 0
+[pass  3] KVM: ready queue                            10.930 ms  weight words differing from 'seq': 0
+[pass  4] sequential, launch-per-op                   83.801 ms  weight words differing from 'seq': 0
+[pass  4] sequential, CUDA graph/run                  69.295 ms  weight words differing from 'seq': 0
+[pass  4] batched across runs (vmap-like graph)       15.523 ms  weight words differing from 'seq': 0
+[pass  4] KVM: claim-and-wait                         10.299 ms  weight words differing from 'seq': 0
+[pass  4] KVM: ready queue                            10.899 ms  weight words differing from 'seq': 0
+[pass  5] sequential, launch-per-op                   83.796 ms  weight words differing from 'seq': 0
+[pass  5] sequential, CUDA graph/run                  69.293 ms  weight words differing from 'seq': 0
+[pass  5] batched across runs (vmap-like graph)       15.517 ms  weight words differing from 'seq': 0
+[pass  5] KVM: claim-and-wait                         10.308 ms  weight words differing from 'seq': 0
+[pass  5] KVM: ready queue                            10.982 ms  weight words differing from 'seq': 0
+[pass  6] sequential, launch-per-op                   83.765 ms  weight words differing from 'seq': 0
+[pass  6] sequential, CUDA graph/run                  69.292 ms  weight words differing from 'seq': 0
+[pass  6] batched across runs (vmap-like graph)       15.515 ms  weight words differing from 'seq': 0
+[pass  6] KVM: claim-and-wait                         10.298 ms  weight words differing from 'seq': 0
+[pass  6] KVM: ready queue                            10.913 ms  weight words differing from 'seq': 0
+
+mode                                         min ms  median ms     max ms    us/step/run run-steps/s
+sequential, launch-per-op                    83.765     83.793     87.825          34.90       28651
+sequential, CUDA graph/run                   69.292     69.299     69.304          28.87       34636
+batched across runs (vmap-like graph)        15.513     15.520     15.526           6.46      154713
+KVM: claim-and-wait                          10.291     10.303     10.313           4.29      233209
+KVM: ready queue                             10.863     10.913     10.982           4.53      220942
+claim vs batched: 1.51x  [min 1.51x, max 1.51x] over 7 passes
+queue vs batched: 1.42x  [min 1.41x, max 1.43x] over 7 passes
+queue vs claim: 0.94x  [min 0.94x, max 0.95x] over 7 passes
+
+loss run0: 0.31605 -> 0.21904 (lr 0.0125)   run7: 0.31605 -> 0.14475 (lr 0.0875)
+max rel loss err vs cpu fp32 (runs 0 and 7, first 100 steps, all modes): 3.79e-05
+final weights, 5 modes x 8 passes vs 'seq': 0 differing words, max |dW| 0.00e+00 (must be exactly 0)
+PASS

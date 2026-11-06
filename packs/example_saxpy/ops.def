@@ -1,0 +1,2 @@
+// Example operator pack (ids 300+ are free for user packs). Same X(name, id, "arg:type,...") grammar as include/kvm_ops*.def.
+X(saxpy, 300, "x:buf,y:buf,out:buf,alpha:f32,n:i32")      // out[i] = alpha * x[i] + y[i]  (out may alias y)

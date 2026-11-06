@@ -15,6 +15,11 @@ static volatile int g_exit;
 // ONE shared barrier instruction: lane 0 (running the game) and its warp-mates (workers) must execute the identical bar.sync instruction or the warp never arrives
 __attribute__((noinline)) void gpu_bar(void) { asm volatile("bar.sync 2, 256;" ::: "memory"); }
 #define bar gpu_bar
+#ifdef DOOM_PROF
+unsigned long long doom_prof[32]; static unsigned long long prof_last;
+static unsigned long long clk(void) { unsigned long long t; asm volatile("mov.u64 %0, %%clock64;" : "=l"(t)); return t; }
+void gpu_prof(int id) { unsigned long long t = clk(); if (id == 0) { prof_last = t; return; } doom_prof[id] += t - prof_last; prof_last = t; }
+#endif
 
 static void do_col(const colcmd_t* c) {
   byte* d = c->dest; int f = c->frac, n = c->count;
@@ -30,7 +35,13 @@ static void work(int tid) {
 }
 void gpu_flush(void) {                                   // thread 0 only
   if (!gpu_par_active || (g_ncol == 0 && g_nspan == 0)) return;
+#ifdef DOOM_PROF
+  unsigned long long t0 = clk(); doom_prof[8] += g_ncol; doom_prof[9] += g_nspan; doom_prof[10]++;
+#endif
   bar(); work(0); bar();
+#ifdef DOOM_PROF
+  doom_prof[7] += clk() - t0;
+#endif
   g_ncol = 0; g_nspan = 0;
 }
 void gpu_q_col(byte* dest, const byte* src, const byte* cm, int frac, int step, int count, int x) {

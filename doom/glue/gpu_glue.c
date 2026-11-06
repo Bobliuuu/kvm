@@ -13,7 +13,13 @@ void gpu_doom_boot(const unsigned char* wad, long wad_len) {
   doom_create("doom1.wad");
 }
 // Thread 0: one game tic; threads 1..255 must be inside gpu_doom_worker() for the whole tic.
+#ifdef DOOM_PROF
+void gpu_prof(int id); extern unsigned long long doom_prof[32];
+void gpu_doom_tic(uint32_t input) { gpu_prof(0); gpu_par_begin(); doom_tic(input); gpu_par_end(); gpu_prof(6);
+  static int first = 1; if (first) { first = 0; for (int i = 0; i < 32; i++) doom_prof[i] = 0; } else doom_prof[11]++; }
+#else
 void gpu_doom_tic(uint32_t input) { gpu_par_begin(); doom_tic(input); gpu_par_end(); }
+#endif
 void gpu_doom_worker(int tid) { gpu_par_worker(tid); }
 // Thread 0: leave the tic protocol without running a tic (invalid call), so the workers still return.
 void gpu_doom_abort_tic(void) { gpu_par_begin(); gpu_par_end(); }

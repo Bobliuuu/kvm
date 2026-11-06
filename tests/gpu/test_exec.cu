@@ -1082,6 +1082,15 @@ static bool suite_latlane() {
     ex.close(); const KvmResult& r = ex.finish();
     CHECK(r.ok() && r.done == 4 && !(wm & 0x80000000u) && (wl & 0x80000000u), "latlane routing: ids %x %x done %d", wm, wl, r.done);
   }
+  {  // the scheduler on: its host-mapped params/telemetry must not alias the lat lane's control words (they once did: BAD_RECORD)
+    KvmConfig c = small_cfg(4); c.lat_classes = 1; c.admit_slice = 64; c.sched.on = true; c.sched.mode = KVM_SCHED_DYNAMIC; c.sched.num_classes = 3;
+    KvmExec ex(c); ex.start();
+    auto tb = [](int n, int wl) { KvmBundleBuilder bb; KvmTaskOpts o; o.workload = wl; for (int i = 0; i < n; ++i) bb.add("noop", {}, o); return bb.build(); };
+    int ok = 0;
+    for (int k = 0; k < 6; ++k) { ok += ex.submit(tb(700, 2), 20000) == KvmSubmit::OK; ok += ex.submit(tb(6, 0), 20000) == KvmSubmit::OK; ok += ex.submit(tb(20, 1), 20000) == KvmSubmit::OK; }
+    ex.close(); const KvmResult& r = ex.finish();
+    CHECK(ok == 18 && r.ok() && r.done == 6 * 726, "latlane + scheduler: %s done %d ok %d", kvm_err_name(r.err_code), r.done, ok);
+  }
   {  // errors: bad task in the LAST slice of a bulk record; bad records in the lat lane; bulk record larger than live_cap - reserve
     KvmConfig c = small_cfg(3); c.lat_classes = 1; c.admit_slice = 32; c.ring_words = 1 << 15;
     err_case("lat: bad op in last slice", KVM_ERR_BAD_OP, c, [&](KvmExec&) { KvmBundleBuilder bb; KvmTaskOpts o; o.workload = 1; for (int i = 0; i < 200; ++i) bb.add("noop", {}, o); KvmBundle b = bb.build(); b.tasks[199].op_id = 126; return b; });

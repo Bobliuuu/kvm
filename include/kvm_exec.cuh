@@ -716,6 +716,8 @@ __device__ bool kvm_adm_failed(const KvmDevState& S, KvmAdmitShared& A) {
 // reserved up front and its descriptors are written in slices; between slices the lat lane is serviced, so a latency record is
 // admitted after at most one slice of the bulk record instead of after all of it. Roots are released only after every task of the
 // record is written (a root may finish and decrement a successor in a later slice), also in slices.
+// CAN_SLICE = false is the instantiation kvm_lat_service uses: it never services the lat lane itself, so there is no recursion (stack).
+template <bool CAN_SLICE>
 __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared& A, int L, int* adm, bool nowait, bool sliced) {
   const KvmLaneDev ln = kvm_lane(S, L);
   const unsigned long long pos = A.l[L].pos;
@@ -731,32 +733,46 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
     else if (nt > S.nslots) code = KVM_ERR_SLOTS;
     else if (nt > cap) code = KVM_ERR_BATCH_TOO_LARGE;
     else if ((unsigned)ne > ln.succ_cap) code = KVM_ERR_POOL;
-    A.action = KVM_ADM_REC;
     if (code) { kvm_fail(S, code, -1, nt, hdr5); A.action = KVM_ADM_EXIT; }
-    else {
-      // Backpressure: wait for every bounded resource. Parked (version-waiting) tasks have their own budget of live_cap: they do not
-      // consume the window the publishing bundle needs. More than live_cap parked is reported as PARK_STALL after the stall timeout.
-      for (;;) {
-        kvm_reclaim_windows(S, A, L);
-        KvmLaneAdm& a = A.l[L];
-        bool room = a.win_next - a.win_oldest < ln.win_cap && (a.succ_used + (unsigned)ne - a.succ_free) <= ln.succ_cap &&
-                    ld_acq(&S.cnt->admitted) - ld_acq(&S.cnt->done) - ld_acq(&S.cnt->parked) + nt <= cap && ld_acq(&S.cnt->parked) <= S.live_cap &&
-                    ld_acq64(&S.cnt->ftail) - A.fhead >= (unsigned long long)nt;
-        if (room) break;
-        if (nowait) { A.action = KVM_ADM_IDLE; break; }
+    else A.action = KVM_ADM_IDLE;   // IDLE = still waiting for room
+  }
+  __syncthreads();
+  // Backpressure: wait for every bounded resource. Parked (version-waiting) tasks have their own budget of live_cap: they do not
+  // consume the window the publishing bundle needs. More than live_cap parked is reported as PARK_STALL after the stall timeout.
+  // A bulk record that waits for room keeps servicing the lat lane (its slots are not popped yet, so adm is free).
+  for (;;) {
+    if (threadIdx.x == 0 && A.action == KVM_ADM_IDLE) {
+      kvm_reclaim_windows(S, A, L);
+      KvmLaneAdm& a = A.l[L];
+      bool room = a.win_next - a.win_oldest < ln.win_cap && (a.succ_used + (unsigned)ne - a.succ_free) <= ln.succ_cap &&
+                  ld_acq(&S.cnt->admitted) - ld_acq(&S.cnt->done) - ld_acq(&S.cnt->parked) + nt <= cap && ld_acq(&S.cnt->parked) <= S.live_cap &&
+                  ld_acq64(&S.cnt->ftail) - A.fhead >= (unsigned long long)nt;
+      if (room) A.action = KVM_ADM_REC;
+      else if (!nowait) {
         if (*(volatile int*)&S.cnt->err_code || kvm_stalled(S, t0, false)) {
           kvm_fail(S, ld_acq(&S.cnt->parked) > S.live_cap ? KVM_ERR_PARK_STALL : KVM_ERR_TIMEOUT, -1, ld_acq(&S.cnt->admitted), ld_acq(&S.cnt->done));
-          A.action = KVM_ADM_EXIT; break;
-        }
+          A.action = KVM_ADM_EXIT;
+        } else {
 #ifndef KVM_DIST_NO_BP_POLL  // (negative test: tests/dist backpressure suite must then fail)
-        kvm_dist_poll_strided(S, 0, 1);  // KVM_DIST_HOOK: remote publishes must keep flowing while admission waits for room
+          kvm_dist_poll_strided(S, 0, 1);  // KVM_DIST_HOOK: remote publishes must keep flowing while admission waits for room
 #endif
-        __nanosleep(256);
+          __nanosleep(256);
+        }
+      }
+    }
+    __syncthreads();
+    const int act = A.action;
+    __syncthreads();
+    if (act == KVM_ADM_REC) break;
+    if (act == KVM_ADM_EXIT || nowait) return;   // nowait + IDLE: declined, nothing reserved
+    if constexpr (CAN_SLICE) {
+      if (S.lat_on) {
+        kvm_lat_service(S, t0, A, 0);
+        if (threadIdx.x == 0) A.action = *(volatile int*)&S.cnt->err_code ? KVM_ADM_EXIT : KVM_ADM_IDLE;
+        __syncthreads();
       }
     }
   }
-  __syncthreads();
-  if (A.action != KVM_ADM_REC) return;
   const unsigned long long fbase = A.fhead;
   const unsigned sbase = A.l[L].succ_used;
   // pop nt slots from the free ring (each producer finishes its cell write within a few instructions)
@@ -830,7 +846,7 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
     __syncthreads();
     for (int i = lo + (int)threadIdx.x; i < hi; i += blockDim.x) kvm_sched_admit_task(S, adm[i]);  // SCHED: cost metadata, publisher classes
     __syncthreads();
-    if (sliced && hi < nt) { kvm_lat_service(S, t0, A, nt); if (kvm_adm_failed(S, A)) return; }
+    if constexpr (CAN_SLICE) { if (sliced && hi < nt) { kvm_lat_service(S, t0, A, nt); if (kvm_adm_failed(S, A)) return; } }
   }
   if (kvm_adm_failed(S, A)) return;
   for (int lo = 0; lo < nt; lo += SL) {
@@ -840,7 +856,7 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
       if (S.tasks[slot].indegree == 0) kvm_release_task(S, slot);  // the descriptor is immutable; S.indeg is live and may already be 0 for a non-root
     }
     __syncthreads();
-    if (sliced && hi < nt) { kvm_lat_service(S, t0, A, nt); if (kvm_adm_failed(S, A)) return; }
+    if constexpr (CAN_SLICE) { if (sliced && hi < nt) { kvm_lat_service(S, t0, A, nt); if (kvm_adm_failed(S, A)) return; } }
   }
   kvm_adm_failed(S, A);
 }
@@ -869,7 +885,7 @@ __device__ void kvm_lat_service(const KvmDevState& S, KvmWatch& t0, KvmAdmitShar
     const int total = A.hdr[1], kind = A.hdr[6];
     __syncthreads();
     if (kind == KVM_REC_BUNDLE) {
-      kvm_admit_record(S, t0, A, 1, S.adm_slots + base_nt, true, false);
+      kvm_admit_record<false>(S, t0, A, 1, S.adm_slots + base_nt, true, false);
       if (A.action != KVM_ADM_REC) { __syncthreads(); return; }   // no room now (or an error): retry at the next boundary
     }
     kvm_consume(S, A, 1, total);
@@ -904,7 +920,8 @@ __device__ void kvm_admitter(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared&
     const int total = A.hdr[1];
     if (A.hdr[6] == KVM_REC_BUNDLE) {
       const bool sliced = L == 0 && S.lat_on && S.admit_slice > 0 && A.hdr[2] > S.admit_slice;
-      kvm_admit_record(S, t0, A, L, S.adm_slots, false, sliced);
+      if (L == 0) kvm_admit_record<true>(S, t0, A, L, S.adm_slots, false, sliced);
+      else kvm_admit_record<false>(S, t0, A, L, S.adm_slots, false, false);
     }
     __syncthreads();
     if (A.action == KVM_ADM_EXIT) return;

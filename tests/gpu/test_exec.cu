@@ -1049,6 +1049,20 @@ static bool suite_latlane() {
     CHECK(inside > 0, "latlane: no lat record was admitted inside a bulk record's admission (%d)", inside);
     printf("  latlane: %d bulk x %d chains (slice %d) + %d lat x %d chains: all results bitwise right, each task once, lane order kept, %d lat records admitted inside a bulk record, lat ring wrapped (%d words)\n", NB, BIG, SLICE, NS, SMALLC, inside, c.lat_ring_words);
   }
+  {  // a bulk record WAITING for window room keeps servicing the lat lane: the lat record is admitted before the waiting record
+    KvmConfig c = small_cfg(4); c.max_tasks = 1 << 14; c.live_cap = 1 << 12; c.ring_words = 1 << 18; c.lat_classes = 1; c.lat_reserve = 512; c.admit_slice = 256;
+    KvmExec ex(c); ex.start();
+    auto spins = [](int n, int wl) { KvmBundleBuilder bb; KvmTaskOpts o; o.workload = wl; for (int i = 0; i < n; ++i) bb.add("spin", {I(100)}, o); return bb.build(); };
+    unsigned wa = 0, wb = 0, wl = 0;
+    CHECK(ex.submit(spins(3000, 1), 30000, true, &wa) == KvmSubmit::OK && ex.submit(spins(3000, 1), 30000, true, &wb) == KvmSubmit::OK, "submit bulk");
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));   // record A is admitted, record B waits for room (3000 + 3000 > 4096 - 512)
+    CHECK(ex.submit(spins(1, 0), 30000, true, &wl) == KvmSubmit::OK, "submit lat");
+    ex.close(); const KvmResult& r = ex.finish();
+    CHECK(r.ok() && r.done == 6001, "latlane wait: %s done %d", kvm_err_name(r.err_code), r.done);
+    unsigned long long ab = 0, al = 0;
+    for (size_t i = 0; i < r.tasks.size() && i < (size_t)r.done; ++i) { unsigned w = (unsigned)r.tasks[i].reserved0; if (w == wb) ab = r.trace[i].admit_ns; if (w == wl) al = r.trace[i].admit_ns; }
+    CHECK(ab && al && al < ab, "latlane wait: lat record admitted at %llu, the waiting bulk record at %llu (lat must come first)", al, ab);
+  }
   {  // a lat task parked on a version published by a bulk record that is still being admitted
     KvmConfig c = small_cfg(4); c.max_tasks = 1 << 14; c.live_cap = 1 << 12; c.ring_words = 1 << 16; c.lat_classes = 1; c.admit_slice = 64;
     KvmExec ex(c); ex.start();

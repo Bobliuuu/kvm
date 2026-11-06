@@ -495,7 +495,7 @@ static void t_bf16_storage() {
         check_true("round_bf16 bf16 storage -> f32 widen is exact", ok2 && e1 == 0);
         int e2 = run1x(dv, OPX_round_bf16, A().b(nb).b(c).i(5).i(n - 5));
         auto gc = dv.downb(c); bool ok3 = true;
-        for (int i = 0; i < n; i++) ok3 &= i < 5 ? bitsf(gc[i]) == 0 : bitsf(gc[i]) == bitsf(g[i]);
+        for (int i = 0; i < n; i++) ok3 &= (i < 5 || i >= n - 5) ? bitsf(gc[i]) == 0 : bitsf(gc[i]) == bitsf(g[i]);
         check_true("round_bf16 bf16 -> bf16 copy, partial range", ok3 && e2 == 0);
     }
     MmCfg shapes[] = {{1, 1, 1}, {5, 7, 3}, {64, 64, 32}, {65, 63, 33}, {130, 70, 100}, {1, 300, 17}, {70, 1, 90}, {64, 64, 512}};

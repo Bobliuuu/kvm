@@ -1,0 +1,8257 @@
+{
+  "abi_version": 2,
+  "task_count": 2100,
+  "edge_count": 9505,
+  "args_words": 15535,
+  "task_names": [
+    "train/s0/0:shadow.wb.gpt.h0.attn.q.w.0",
+    "train/s0/0:shadow.wb.gpt.h0.attn.q.w.1",
+    "train/s0/0:shadow.wb.gpt.h0.attn.q.w.2",
+    "train/s0/0:shadow.wb.gpt.h0.attn.q.w.3",
+    "train/s0/1:shadow.wb.gpt.h0.attn.k.w.0",
+    "train/s0/1:shadow.wb.gpt.h0.attn.k.w.1",
+    "train/s0/1:shadow.wb.gpt.h0.attn.k.w.2",
+    "train/s0/1:shadow.wb.gpt.h0.attn.k.w.3",
+    "train/s0/2:shadow.wb.gpt.h0.attn.v.w.0",
+    "train/s0/2:shadow.wb.gpt.h0.attn.v.w.1",
+    "train/s0/2:shadow.wb.gpt.h0.attn.v.w.2",
+    "train/s0/2:shadow.wb.gpt.h0.attn.v.w.3",
+    "train/s0/3:shadow.wb.gpt.h0.attn.proj.w.0",
+    "train/s0/3:shadow.wb.gpt.h0.attn.proj.w.1",
+    "train/s0/3:shadow.wb.gpt.h0.attn.proj.w.2",
+    "train/s0/3:shadow.wb.gpt.h0.attn.proj.w.3",
+    "train/s0/4:shadow.wb.gpt.h0.mlp.fc1.w.0",
+    "train/s0/4:shadow.wb.gpt.h0.mlp.fc1.w.1",
+    "train/s0/4:shadow.wb.gpt.h0.mlp.fc1.w.2",
+    "train/s0/4:shadow.wb.gpt.h0.mlp.fc1.w.3",
+    "train/s0/5:shadow.wb.gpt.h0.mlp.fc2.w.0",
+    "train/s0/5:shadow.wb.gpt.h0.mlp.fc2.w.1",
+    "train/s0/5:shadow.wb.gpt.h0.mlp.fc2.w.2",
+    "train/s0/5:shadow.wb.gpt.h0.mlp.fc2.w.3",
+    "train/s0/5:shadow.wb.gpt.h0.mlp.fc2.w.4",
+    "train/s0/5:shadow.wb.gpt.h0.mlp.fc2.w.5",
+    "train/s0/5:shadow.wb.gpt.h0.mlp.fc2.w.6",
+    "train/s0/5:shadow.wb.gpt.h0.mlp.fc2.w.7",
+    "train/s0/5:shadow.wb.gpt.h0.mlp.fc2.w.8",
+    "train/s0/5:shadow.wb.gpt.h0.mlp.fc2.w.9",
+    "train/s0/5:shadow.wb.gpt.h0.mlp.fc2.w.10",
+    "train/s0/5:shadow.wb.gpt.h0.mlp.fc2.w.11",
+    "train/s0/5:shadow.wb.gpt.h0.mlp.fc2.w.12",
+    "train/s0/5:shadow.wb.gpt.h0.mlp.fc2.w.13",
+    "train/s0/5:shadow.wb.gpt.h0.mlp.fc2.w.14",
+    "train/s0/5:shadow.wb.gpt.h0.mlp.fc2.w.15",
+    "train/s0/6:shadow.wb.gpt.head.w.0",
+    "train/s0/6:shadow.wb.gpt.head.w.1",
+    "train/s0/6:shadow.wb.gpt.head.w.2",
+    "train/s0/6:shadow.wb.gpt.head.w.3",
+    "train/s0/7:select_window.0",
+    "train/s0/7:select_window.1",
+    "train/s0/7:select_window.2",
+    "train/s0/7:select_window.3",
+    "train/s0/8:select_window.0",
+    "train/s0/8:select_window.1",
+    "train/s0/8:select_window.2",
+    "train/s0/8:select_window.3",
+    "train/s0/9:embedding.0",
+    "train/s0/9:embedding.1",
+    "train/s0/9:embedding.2",
+    "train/s0/9:embedding.3",
+    "train/s0/10:gpt.h0.layernorm.0",
+    "train/s0/10:gpt.h0.layernorm.1",
+    "train/s0/10:gpt.h0.layernorm.2",
+    "train/s0/10:gpt.h0.layernorm.3",
+    "train/s0/11:gpt.h0.linear.0",
+    "train/s0/12:widen.gpt.h0.cast7.0",
+    "train/s0/12:widen.gpt.h0.cast7.1",
+    "train/s0/12:widen.gpt.h0.cast7.2",
+    "train/s0/12:widen.gpt.h0.cast7.3",
+    "train/s0/13:gpt.h0.rope.0",
+    "train/s0/13:gpt.h0.rope.1",
+    "train/s0/13:gpt.h0.rope.2",
+    "train/s0/13:gpt.h0.rope.3",
+    "train/s0/14:gpt.h0.linear.0",
+    "train/s0/15:widen.gpt.h0.cast10.0",
+    "train/s0/15:widen.gpt.h0.cast10.1",
+    "train/s0/15:widen.gpt.h0.cast10.2",
+    "train/s0/15:widen.gpt.h0.cast10.3",
+    "train/s0/16:gpt.h0.rope.0",
+    "train/s0/16:gpt.h0.rope.1",
+    "train/s0/16:gpt.h0.rope.2",
+    "train/s0/16:gpt.h0.rope.3",
+    "train/s0/17:gpt.h0.linear.0",
+    "train/s0/18:widen.gpt.h0.cast13.0",
+    "train/s0/18:widen.gpt.h0.cast13.1",
+    "train/s0/18:widen.gpt.h0.cast13.2",
+    "train/s0/18:widen.gpt.h0.cast13.3",
+    "train/s0/19:gpt.h0.attention.0",
+    "train/s0/19:gpt.h0.attention.1",
+    "train/s0/20:gpt.h0.linear.0",
+    "train/s0/21:widen.gpt.h0.cast17.0",
+    "train/s0/21:widen.gpt.h0.cast17.1",
+    "train/s0/21:widen.gpt.h0.cast17.2",
+    "train/s0/21:widen.gpt.h0.cast17.3",
+    "train/s0/22:gpt.h0.layernorm.0",
+    "train/s0/22:gpt.h0.layernorm.1",
+    "train/s0/22:gpt.h0.layernorm.2",
+    "train/s0/22:gpt.h0.layernorm.3",
+    "train/s0/23:gpt.h0.linear.0",
+    "train/s0/23:gpt.h0.linear.1",
+    "train/s0/24:gpt.h0.linear.0",
+    "train/s0/25:widen.gpt.h0.cast25.0",
+    "train/s0/25:widen.gpt.h0.cast25.1",
+    "train/s0/25:widen.gpt.h0.cast25.2",
+    "train/s0/25:widen.gpt.h0.cast25.3",
+    "train/s0/26:layernorm.0",
+    "train/s0/26:layernorm.1",
+    "train/s0/26:layernorm.2",
+    "train/s0/26:layernorm.3",
+    "train/s0/27:linear.0",
+    "train/s0/28:widen.cast30.0",
+    "train/s0/28:widen.cast30.1",
+    "train/s0/28:widen.cast30.2",
+    "train/s0/28:widen.cast30.3",
+    "train/s0/29:ce_loss.0",
+    "train/s0/29:ce_loss.1",
+    "train/s0/29:ce_loss.2",
+    "train/s0/29:ce_loss.3",
+    "train/s0/29:ce_loss.4",
+    "train/s0/30:widen.cast30.0",
+    "train/s0/30:widen.cast30.1",
+    "train/s0/30:widen.cast30.2",
+    "train/s0/30:widen.cast30.3",
+    "train/s0/31:grad.ce_bwd.0",
+    "train/s0/31:grad.ce_bwd.1",
+    "train/s0/31:grad.ce_bwd.2",
+    "train/s0/31:grad.ce_bwd.3",
+    "train/s0/32:grad.cast.0",
+    "train/s0/32:grad.cast.1",
+    "train/s0/32:grad.cast.2",
+    "train/s0/32:grad.cast.3",
+    "train/s0/33:grad.mm.0",
+    "train/s0/34:grad.mm.0",
+    "train/s0/35:widen.gpt.h0.cast25.0",
+    "train/s0/35:widen.gpt.h0.cast25.1",
+    "train/s0/35:widen.gpt.h0.cast25.2",
+    "train/s0/35:widen.gpt.h0.cast25.3",
+    "train/s0/36:grad.layernorm_bwd.0",
+    "train/s0/36:grad.layernorm_bwd.1",
+    "train/s0/36:grad.layernorm_bwd.2",
+    "train/s0/36:grad.layernorm_bwd.3",
+    "train/s0/36:grad.layernorm_bwd.4",
+    "train/s0/37:grad.cast.0",
+    "train/s0/37:grad.cast.1",
+    "train/s0/37:grad.cast.2",
+    "train/s0/37:grad.cast.3",
+    "train/s0/38:widen.grad.cast41.0",
+    "train/s0/38:widen.grad.cast41.1",
+    "train/s0/38:widen.grad.cast41.2",
+    "train/s0/38:widen.grad.cast41.3",
+    "train/s0/39:grad.colsum.0",
+    "train/s0/40:grad.mm.0",
+    "train/s0/40:grad.mm.1",
+    "train/s0/41:grad.mm.0",
+    "train/s0/41:grad.mm.1",
+    "train/s0/42:widen.grad.cast45.0",
+    "train/s0/42:widen.grad.cast45.1",
+    "train/s0/42:widen.grad.cast45.2",
+    "train/s0/42:widen.grad.cast45.3",
+    "train/s0/43:grad.gelu_bwd.0",
+    "train/s0/43:grad.gelu_bwd.1",
+    "train/s0/43:grad.gelu_bwd.2",
+    "train/s0/43:grad.gelu_bwd.3",
+    "train/s0/44:grad.colsum.0",
+    "train/s0/44:grad.colsum.1",
+    "train/s0/44:grad.colsum.2",
+    "train/s0/44:grad.colsum.3",
+    "train/s0/45:grad.mm.0",
+    "train/s0/45:grad.mm.1",
+    "train/s0/46:grad.mm.0",
+    "train/s0/47:widen.gpt.h0.cast17.0",
+    "train/s0/47:widen.gpt.h0.cast17.1",
+    "train/s0/47:widen.gpt.h0.cast17.2",
+    "train/s0/47:widen.gpt.h0.cast17.3",
+    "train/s0/48:widen.grad.cast41.0",
+    "train/s0/48:widen.grad.cast41.1",
+    "train/s0/48:widen.grad.cast41.2",
+    "train/s0/48:widen.grad.cast41.3",
+    "train/s0/49:grad.layernorm_bwd.0",
+    "train/s0/49:grad.layernorm_bwd.1",
+    "train/s0/49:grad.layernorm_bwd.2",
+    "train/s0/49:grad.layernorm_bwd.3",
+    "train/s0/49:grad.layernorm_bwd.4",
+    "train/s0/50:narrow.grad.cast41.0",
+    "train/s0/50:narrow.grad.cast41.1",
+    "train/s0/50:narrow.grad.cast41.2",
+    "train/s0/50:narrow.grad.cast41.3",
+    "train/s0/51:grad.cast.0",
+    "train/s0/51:grad.cast.1",
+    "train/s0/51:grad.cast.2",
+    "train/s0/51:grad.cast.3",
+    "train/s0/52:widen.grad.cast52.0",
+    "train/s0/52:widen.grad.cast52.1",
+    "train/s0/52:widen.grad.cast52.2",
+    "train/s0/52:widen.grad.cast52.3",
+    "train/s0/53:grad.colsum.0",
+    "train/s0/54:grad.mm.0",
+    "train/s0/55:grad.mm.0",
+    "train/s0/56:widen.gpt.h0.cast13.0",
+    "train/s0/56:widen.gpt.h0.cast13.1",
+    "train/s0/56:widen.gpt.h0.cast13.2",
+    "train/s0/56:widen.gpt.h0.cast13.3",
+    "train/s0/57:grad.attention_bwd.0",
+    "train/s0/57:grad.attention_bwd.1",
+    "train/s0/57:grad.attention_bwd.2",
+    "train/s0/57:grad.attention_bwd.3",
+    "train/s0/57:grad.attention_bwd.4",
+    "train/s0/57:grad.attention_bwd.5",
+    "train/s0/57:grad.attention_bwd.6",
+    "train/s0/57:grad.attention_bwd.7",
+    "train/s0/58:grad.cast.0",
+    "train/s0/58:grad.cast.1",
+    "train/s0/58:grad.cast.2",
+    "train/s0/58:grad.cast.3",
+    "train/s0/59:widen.grad.cast60.0",
+    "train/s0/59:widen.grad.cast60.1",
+    "train/s0/59:widen.grad.cast60.2",
+    "train/s0/59:widen.grad.cast60.3",
+    "train/s0/60:grad.colsum.0",
+    "train/s0/61:grad.mm.0",
+    "train/s0/62:grad.mm.0",
+    "train/s0/63:grad.rope_bwd.0",
+    "train/s0/63:grad.rope_bwd.1",
+    "train/s0/63:grad.rope_bwd.2",
+    "train/s0/63:grad.rope_bwd.3",
+    "train/s0/64:grad.cast.0",
+    "train/s0/64:grad.cast.1",
+    "train/s0/64:grad.cast.2",
+    "train/s0/64:grad.cast.3",
+    "train/s0/65:widen.grad.cast65.0",
+    "train/s0/65:widen.grad.cast65.1",
+    "train/s0/65:widen.grad.cast65.2",
+    "train/s0/65:widen.grad.cast65.3",
+    "train/s0/66:grad.colsum.0",
+    "train/s0/67:grad.mm.0",
+    "train/s0/68:grad.mm.0",
+    "train/s0/69:grad.rope_bwd.0",
+    "train/s0/69:grad.rope_bwd.1",
+    "train/s0/69:grad.rope_bwd.2",
+    "train/s0/69:grad.rope_bwd.3",
+    "train/s0/70:grad.cast.0",
+    "train/s0/70:grad.cast.1",
+    "train/s0/70:grad.cast.2",
+    "train/s0/70:grad.cast.3",
+    "train/s0/71:widen.grad.cast69.0",
+    "train/s0/71:widen.grad.cast69.1",
+    "train/s0/71:widen.grad.cast69.2",
+    "train/s0/71:widen.grad.cast69.3",
+    "train/s0/72:grad.colsum.0",
+    "train/s0/73:grad.mm.0",
+    "train/s0/74:grad.mm.0",
+    "train/s0/75:widen.grad.cast52.0",
+    "train/s0/75:widen.grad.cast52.1",
+    "train/s0/75:widen.grad.cast52.2",
+    "train/s0/75:widen.grad.cast52.3",
+    "train/s0/76:grad.layernorm_bwd.0",
+    "train/s0/76:grad.layernorm_bwd.1",
+    "train/s0/76:grad.layernorm_bwd.2",
+    "train/s0/76:grad.layernorm_bwd.3",
+    "train/s0/76:grad.layernorm_bwd.4",
+    "train/s0/77:narrow.grad.cast52.0",
+    "train/s0/77:narrow.grad.cast52.1",
+    "train/s0/77:narrow.grad.cast52.2",
+    "train/s0/77:narrow.grad.cast52.3",
+    "train/s0/78:widen.grad.cast52.0",
+    "train/s0/78:widen.grad.cast52.1",
+    "train/s0/78:widen.grad.cast52.2",
+    "train/s0/78:widen.grad.cast52.3",
+    "train/s0/79:grad.embedding_bwd.0",
+    "train/s0/79:grad.embedding_bwd.1",
+    "train/s0/79:grad.embedding_bwd.2",
+    "train/s0/79:grad.embedding_bwd.3",
+    "train/s0/80:grad_clip.0",
+    "train/s0/80:grad_clip.1",
+    "train/s0/80:grad_clip.2",
+    "train/s0/80:grad_clip.3",
+    "train/s0/80:grad_clip.4",
+    "train/s0/80:grad_clip.5",
+    "train/s0/80:grad_clip.6",
+    "train/s0/80:grad_clip.7",
+    "train/s0/80:grad_clip.8",
+    "train/s0/80:grad_clip.9",
+    "train/s0/80:grad_clip.10",
+    "train/s0/80:grad_clip.11",
+    "train/s0/80:grad_clip.12",
+    "train/s0/80:grad_clip.13",
+    "train/s0/80:grad_clip.14",
+    "train/s0/80:grad_clip.15",
+    "train/s0/80:grad_clip.16",
+    "train/s0/80:grad_clip.17",
+    "train/s0/80:grad_clip.18",
+    "train/s0/80:grad_clip.19",
+    "train/s0/80:grad_clip.20",
+    "train/s0/80:grad_clip.21",
+    "train/s0/80:grad_clip.22",
+    "train/s0/80:grad_clip.23",
+    "train/s0/80:grad_clip.24",
+    "train/s0/80:grad_clip.25",
+    "train/s0/80:grad_clip.26",
+    "train/s0/80:grad_clip.27",
+    "train/s0/80:grad_clip.28",
+    "train/s0/80:grad_clip.29",
+    "train/s0/80:grad_clip.30",
+    "train/s0/80:grad_clip.31",
+    "train/s0/80:grad_clip.32",
+    "train/s0/80:grad_clip.33",
+    "train/s0/80:grad_clip.34",
+    "train/s0/80:grad_clip.35",
+    "train/s0/80:grad_clip.36",
+    "train/s0/80:grad_clip.37",
+    "train/s0/80:grad_clip.38",
+    "train/s0/80:grad_clip.39",
+    "train/s0/80:grad_clip.40",
+    "train/s0/80:grad_clip.41",
+    "train/s0/80:grad_clip.42",
+    "train/s0/80:grad_clip.43",
+    "train/s0/80:grad_clip.44",
+    "train/s0/80:grad_clip.45",
+    "train/s0/80:grad_clip.46",
+    "train/s0/80:grad_clip.47",
+    "train/s0/80:grad_clip.48",
+    "train/s0/80:grad_clip.49",
+    "train/s0/80:grad_clip.50",
+    "train/s0/80:grad_clip.51",
+    "train/s0/80:grad_clip.52",
+    "train/s0/80:grad_clip.53",
+    "train/s0/80:grad_clip.54",
+    "train/s0/80:grad_clip.55",
+    "train/s0/80:grad_clip.56",
+    "train/s0/80:grad_clip.57",
+    "train/s0/80:grad_clip.58",
+    "train/s0/80:grad_clip.59",
+    "train/s0/80:grad_clip.60",
+    "train/s0/80:grad_clip.61",
+    "train/s0/80:grad_clip.62",
+    "train/s0/80:grad_clip.63",
+    "train/s0/80:grad_clip.64",
+    "train/s0/80:grad_clip.65",
+    "train/s0/80:grad_clip.66",
+    "train/s0/80:grad_clip.67",
+    "train/s0/80:grad_clip.68",
+    "train/s0/80:grad_clip.69",
+    "train/s0/80:grad_clip.70",
+    "train/s0/80:grad_clip.71",
+    "train/s0/80:grad_clip.72",
+    "train/s0/80:grad_clip.73",
+    "train/s0/80:grad_clip.74",
+    "train/s0/80:grad_clip.75",
+    "train/s0/80:grad_clip.76",
+    "train/s0/81:counter_inc.0",
+    "train/s0/82:barrier.0",
+    "train/s0/83:opt.adamw.0",
+    "train/s0/83:opt.adamw.1",
+    "train/s0/83:opt.adamw.2",
+    "train/s0/83:opt.adamw.3",
+    "train/s0/83:opt.adamw.4",
+    "train/s0/83:opt.adamw.5",
+    "train/s0/83:opt.adamw.6",
+    "train/s0/83:opt.adamw.7",
+    "train/s0/84:opt.adamw.0",
+    "train/s0/85:opt.adamw.0",
+    "train/s0/86:opt.adamw.0",
+    "train/s0/86:opt.adamw.1",
+    "train/s0/86:opt.adamw.2",
+    "train/s0/86:opt.adamw.3",
+    "train/s0/87:opt.adamw.0",
+    "train/s0/88:opt.adamw.0",
+    "train/s0/88:opt.adamw.1",
+    "train/s0/88:opt.adamw.2",
+    "train/s0/88:opt.adamw.3",
+    "train/s0/89:opt.adamw.0",
+    "train/s0/90:opt.adamw.0",
+    "train/s0/90:opt.adamw.1",
+    "train/s0/90:opt.adamw.2",
+    "train/s0/90:opt.adamw.3",
+    "train/s0/91:opt.adamw.0",
+    "train/s0/92:opt.adamw.0",
+    "train/s0/92:opt.adamw.1",
+    "train/s0/92:opt.adamw.2",
+    "train/s0/92:opt.adamw.3",
+    "train/s0/93:opt.adamw.0",
+    "train/s0/94:opt.adamw.0",
+    "train/s0/95:opt.adamw.0",
+    "train/s0/96:opt.adamw.0",
+    "train/s0/96:opt.adamw.1",
+    "train/s0/96:opt.adamw.2",
+    "train/s0/96:opt.adamw.3",
+    "train/s0/96:opt.adamw.4",
+    "train/s0/96:opt.adamw.5",
+    "train/s0/96:opt.adamw.6",
+    "train/s0/96:opt.adamw.7",
+    "train/s0/96:opt.adamw.8",
+    "train/s0/96:opt.adamw.9",
+    "train/s0/96:opt.adamw.10",
+    "train/s0/96:opt.adamw.11",
+    "train/s0/96:opt.adamw.12",
+    "train/s0/96:opt.adamw.13",
+    "train/s0/96:opt.adamw.14",
+    "train/s0/96:opt.adamw.15",
+    "train/s0/97:opt.adamw.0",
+    "train/s0/98:opt.adamw.0",
+    "train/s0/98:opt.adamw.1",
+    "train/s0/98:opt.adamw.2",
+    "train/s0/98:opt.adamw.3",
+    "train/s0/98:opt.adamw.4",
+    "train/s0/98:opt.adamw.5",
+    "train/s0/98:opt.adamw.6",
+    "train/s0/98:opt.adamw.7",
+    "train/s0/98:opt.adamw.8",
+    "train/s0/98:opt.adamw.9",
+    "train/s0/98:opt.adamw.10",
+    "train/s0/98:opt.adamw.11",
+    "train/s0/98:opt.adamw.12",
+    "train/s0/98:opt.adamw.13",
+    "train/s0/98:opt.adamw.14",
+    "train/s0/98:opt.adamw.15",
+    "train/s0/99:opt.adamw.0",
+    "train/s0/100:opt.adamw.0",
+    "train/s0/101:opt.adamw.0",
+    "train/s0/102:opt.adamw.0",
+    "train/s0/102:opt.adamw.1",
+    "train/s0/102:opt.adamw.2",
+    "train/s0/102:opt.adamw.3",
+    "train/s0/102:opt.adamw.4",
+    "train/s0/102:opt.adamw.5",
+    "train/s0/102:opt.adamw.6",
+    "train/s0/102:opt.adamw.7",
+    "train/s0/103:barrier.0",
+    "train/s1/104:shadow.wb.gpt.h0.attn.q.w.0",
+    "train/s1/104:shadow.wb.gpt.h0.attn.q.w.1",
+    "train/s1/104:shadow.wb.gpt.h0.attn.q.w.2",
+    "train/s1/104:shadow.wb.gpt.h0.attn.q.w.3",
+    "train/s1/105:shadow.wb.gpt.h0.attn.k.w.0",
+    "train/s1/105:shadow.wb.gpt.h0.attn.k.w.1",
+    "train/s1/105:shadow.wb.gpt.h0.attn.k.w.2",
+    "train/s1/105:shadow.wb.gpt.h0.attn.k.w.3",
+    "train/s1/106:shadow.wb.gpt.h0.attn.v.w.0",
+    "train/s1/106:shadow.wb.gpt.h0.attn.v.w.1",
+    "train/s1/106:shadow.wb.gpt.h0.attn.v.w.2",
+    "train/s1/106:shadow.wb.gpt.h0.attn.v.w.3",
+    "train/s1/107:shadow.wb.gpt.h0.attn.proj.w.0",
+    "train/s1/107:shadow.wb.gpt.h0.attn.proj.w.1",
+    "train/s1/107:shadow.wb.gpt.h0.attn.proj.w.2",
+    "train/s1/107:shadow.wb.gpt.h0.attn.proj.w.3",
+    "train/s1/108:shadow.wb.gpt.h0.mlp.fc1.w.0",
+    "train/s1/108:shadow.wb.gpt.h0.mlp.fc1.w.1",
+    "train/s1/108:shadow.wb.gpt.h0.mlp.fc1.w.2",
+    "train/s1/108:shadow.wb.gpt.h0.mlp.fc1.w.3",
+    "train/s1/109:shadow.wb.gpt.h0.mlp.fc2.w.0",
+    "train/s1/109:shadow.wb.gpt.h0.mlp.fc2.w.1",
+    "train/s1/109:shadow.wb.gpt.h0.mlp.fc2.w.2",
+    "train/s1/109:shadow.wb.gpt.h0.mlp.fc2.w.3",
+    "train/s1/109:shadow.wb.gpt.h0.mlp.fc2.w.4",
+    "train/s1/109:shadow.wb.gpt.h0.mlp.fc2.w.5",
+    "train/s1/109:shadow.wb.gpt.h0.mlp.fc2.w.6",
+    "train/s1/109:shadow.wb.gpt.h0.mlp.fc2.w.7",
+    "train/s1/109:shadow.wb.gpt.h0.mlp.fc2.w.8",
+    "train/s1/109:shadow.wb.gpt.h0.mlp.fc2.w.9",
+    "train/s1/109:shadow.wb.gpt.h0.mlp.fc2.w.10",
+    "train/s1/109:shadow.wb.gpt.h0.mlp.fc2.w.11",
+    "train/s1/109:shadow.wb.gpt.h0.mlp.fc2.w.12",
+    "train/s1/109:shadow.wb.gpt.h0.mlp.fc2.w.13",
+    "train/s1/109:shadow.wb.gpt.h0.mlp.fc2.w.14",
+    "train/s1/109:shadow.wb.gpt.h0.mlp.fc2.w.15",
+    "train/s1/110:shadow.wb.gpt.head.w.0",
+    "train/s1/110:shadow.wb.gpt.head.w.1",
+    "train/s1/110:shadow.wb.gpt.head.w.2",
+    "train/s1/110:shadow.wb.gpt.head.w.3",
+    "train/s1/111:select_window.0",
+    "train/s1/111:select_window.1",
+    "train/s1/111:select_window.2",
+    "train/s1/111:select_window.3",
+    "train/s1/112:select_window.0",
+    "train/s1/112:select_window.1",
+    "train/s1/112:select_window.2",
+    "train/s1/112:select_window.3",
+    "train/s1/113:embedding.0",
+    "train/s1/113:embedding.1",
+    "train/s1/113:embedding.2",
+    "train/s1/113:embedding.3",
+    "train/s1/114:gpt.h0.layernorm.0",
+    "train/s1/114:gpt.h0.layernorm.1",
+    "train/s1/114:gpt.h0.layernorm.2",
+    "train/s1/114:gpt.h0.layernorm.3",
+    "train/s1/115:gpt.h0.linear.0",
+    "train/s1/116:widen.gpt.h0.cast83.0",
+    "train/s1/116:widen.gpt.h0.cast83.1",
+    "train/s1/116:widen.gpt.h0.cast83.2",
+    "train/s1/116:widen.gpt.h0.cast83.3",
+    "train/s1/117:gpt.h0.rope.0",
+    "train/s1/117:gpt.h0.rope.1",
+    "train/s1/117:gpt.h0.rope.2",
+    "train/s1/117:gpt.h0.rope.3",
+    "train/s1/118:gpt.h0.linear.0",
+    "train/s1/119:widen.gpt.h0.cast86.0",
+    "train/s1/119:widen.gpt.h0.cast86.1",
+    "train/s1/119:widen.gpt.h0.cast86.2",
+    "train/s1/119:widen.gpt.h0.cast86.3",
+    "train/s1/120:gpt.h0.rope.0",
+    "train/s1/120:gpt.h0.rope.1",
+    "train/s1/120:gpt.h0.rope.2",
+    "train/s1/120:gpt.h0.rope.3",
+    "train/s1/121:gpt.h0.linear.0",
+    "train/s1/122:widen.gpt.h0.cast89.0",
+    "train/s1/122:widen.gpt.h0.cast89.1",
+    "train/s1/122:widen.gpt.h0.cast89.2",
+    "train/s1/122:widen.gpt.h0.cast89.3",
+    "train/s1/123:gpt.h0.attention.0",
+    "train/s1/123:gpt.h0.attention.1",
+    "train/s1/124:gpt.h0.linear.0",
+    "train/s1/125:widen.gpt.h0.cast93.0",
+    "train/s1/125:widen.gpt.h0.cast93.1",
+    "train/s1/125:widen.gpt.h0.cast93.2",
+    "train/s1/125:widen.gpt.h0.cast93.3",
+    "train/s1/126:gpt.h0.layernorm.0",
+    "train/s1/126:gpt.h0.layernorm.1",
+    "train/s1/126:gpt.h0.layernorm.2",
+    "train/s1/126:gpt.h0.layernorm.3",
+    "train/s1/127:gpt.h0.linear.0",
+    "train/s1/127:gpt.h0.linear.1",
+    "train/s1/128:gpt.h0.linear.0",
+    "train/s1/129:widen.gpt.h0.cast101.0",
+    "train/s1/129:widen.gpt.h0.cast101.1",
+    "train/s1/129:widen.gpt.h0.cast101.2",
+    "train/s1/129:widen.gpt.h0.cast101.3",
+    "train/s1/130:layernorm.0",
+    "train/s1/130:layernorm.1",
+    "train/s1/130:layernorm.2",
+    "train/s1/130:layernorm.3",
+    "train/s1/131:linear.0",
+    "train/s1/132:widen.cast106.0",
+    "train/s1/132:widen.cast106.1",
+    "train/s1/132:widen.cast106.2",
+    "train/s1/132:widen.cast106.3",
+    "train/s1/133:ce_loss.0",
+    "train/s1/133:ce_loss.1",
+    "train/s1/133:ce_loss.2",
+    "train/s1/133:ce_loss.3",
+    "train/s1/133:ce_loss.4",
+    "train/s1/134:widen.cast106.0",
+    "train/s1/134:widen.cast106.1",
+    "train/s1/134:widen.cast106.2",
+    "train/s1/134:widen.cast106.3",
+    "train/s1/135:grad.ce_bwd.0",
+    "train/s1/135:grad.ce_bwd.1",
+    "train/s1/135:grad.ce_bwd.2",
+    "train/s1/135:grad.ce_bwd.3",
+    "train/s1/136:grad.cast.0",
+    "train/s1/136:grad.cast.1",
+    "train/s1/136:grad.cast.2",
+    "train/s1/136:grad.cast.3",
+    "train/s1/137:grad.mm.0",
+    "train/s1/138:grad.mm.0",
+    "train/s1/139:widen.gpt.h0.cast101.0",
+    "train/s1/139:widen.gpt.h0.cast101.1",
+    "train/s1/139:widen.gpt.h0.cast101.2",
+    "train/s1/139:widen.gpt.h0.cast101.3",
+    "train/s1/140:grad.layernorm_bwd.0",
+    "train/s1/140:grad.layernorm_bwd.1",
+    "train/s1/140:grad.layernorm_bwd.2",
+    "train/s1/140:grad.layernorm_bwd.3",
+    "train/s1/140:grad.layernorm_bwd.4",
+    "train/s1/141:grad.cast.0",
+    "train/s1/141:grad.cast.1",
+    "train/s1/141:grad.cast.2",
+    "train/s1/141:grad.cast.3",
+    "train/s1/142:widen.grad.cast117.0",
+    "train/s1/142:widen.grad.cast117.1",
+    "train/s1/142:widen.grad.cast117.2",
+    "train/s1/142:widen.grad.cast117.3",
+    "train/s1/143:grad.colsum.0",
+    "train/s1/144:grad.mm.0",
+    "train/s1/144:grad.mm.1",
+    "train/s1/145:grad.mm.0",
+    "train/s1/145:grad.mm.1",
+    "train/s1/146:widen.grad.cast121.0",
+    "train/s1/146:widen.grad.cast121.1",
+    "train/s1/146:widen.grad.cast121.2",
+    "train/s1/146:widen.grad.cast121.3",
+    "train/s1/147:grad.gelu_bwd.0",
+    "train/s1/147:grad.gelu_bwd.1",
+    "train/s1/147:grad.gelu_bwd.2",
+    "train/s1/147:grad.gelu_bwd.3",
+    "train/s1/148:grad.colsum.0",
+    "train/s1/148:grad.colsum.1",
+    "train/s1/148:grad.colsum.2",
+    "train/s1/148:grad.colsum.3",
+    "train/s1/149:grad.mm.0",
+    "train/s1/149:grad.mm.1",
+    "train/s1/150:grad.mm.0",
+    "train/s1/151:widen.gpt.h0.cast93.0",
+    "train/s1/151:widen.gpt.h0.cast93.1",
+    "train/s1/151:widen.gpt.h0.cast93.2",
+    "train/s1/151:widen.gpt.h0.cast93.3",
+    "train/s1/152:widen.grad.cast117.0",
+    "train/s1/152:widen.grad.cast117.1",
+    "train/s1/152:widen.grad.cast117.2",
+    "train/s1/152:widen.grad.cast117.3",
+    "train/s1/153:grad.layernorm_bwd.0",
+    "train/s1/153:grad.layernorm_bwd.1",
+    "train/s1/153:grad.layernorm_bwd.2",
+    "train/s1/153:grad.layernorm_bwd.3",
+    "train/s1/153:grad.layernorm_bwd.4",
+    "train/s1/154:narrow.grad.cast117.0",
+    "train/s1/154:narrow.grad.cast117.1",
+    "train/s1/154:narrow.grad.cast117.2",
+    "train/s1/154:narrow.grad.cast117.3",
+    "train/s1/155:grad.cast.0",
+    "train/s1/155:grad.cast.1",
+    "train/s1/155:grad.cast.2",
+    "train/s1/155:grad.cast.3",
+    "train/s1/156:widen.grad.cast128.0",
+    "train/s1/156:widen.grad.cast128.1",
+    "train/s1/156:widen.grad.cast128.2",
+    "train/s1/156:widen.grad.cast128.3",
+    "train/s1/157:grad.colsum.0",
+    "train/s1/158:grad.mm.0",
+    "train/s1/159:grad.mm.0",
+    "train/s1/160:widen.gpt.h0.cast89.0",
+    "train/s1/160:widen.gpt.h0.cast89.1",
+    "train/s1/160:widen.gpt.h0.cast89.2",
+    "train/s1/160:widen.gpt.h0.cast89.3",
+    "train/s1/161:grad.attention_bwd.0",
+    "train/s1/161:grad.attention_bwd.1",
+    "train/s1/161:grad.attention_bwd.2",
+    "train/s1/161:grad.attention_bwd.3",
+    "train/s1/161:grad.attention_bwd.4",
+    "train/s1/161:grad.attention_bwd.5",
+    "train/s1/161:grad.attention_bwd.6",
+    "train/s1/161:grad.attention_bwd.7",
+    "train/s1/162:grad.cast.0",
+    "train/s1/162:grad.cast.1",
+    "train/s1/162:grad.cast.2",
+    "train/s1/162:grad.cast.3",
+    "train/s1/163:widen.grad.cast136.0",
+    "train/s1/163:widen.grad.cast136.1",
+    "train/s1/163:widen.grad.cast136.2",
+    "train/s1/163:widen.grad.cast136.3",
+    "train/s1/164:grad.colsum.0",
+    "train/s1/165:grad.mm.0",
+    "train/s1/166:grad.mm.0",
+    "train/s1/167:grad.rope_bwd.0",
+    "train/s1/167:grad.rope_bwd.1",
+    "train/s1/167:grad.rope_bwd.2",
+    "train/s1/167:grad.rope_bwd.3",
+    "train/s1/168:grad.cast.0",
+    "train/s1/168:grad.cast.1",
+    "train/s1/168:grad.cast.2",
+    "train/s1/168:grad.cast.3",
+    "train/s1/169:widen.grad.cast141.0",
+    "train/s1/169:widen.grad.cast141.1",
+    "train/s1/169:widen.grad.cast141.2",
+    "train/s1/169:widen.grad.cast141.3",
+    "train/s1/170:grad.colsum.0",
+    "train/s1/171:grad.mm.0",
+    "train/s1/172:grad.mm.0",
+    "train/s1/173:grad.rope_bwd.0",
+    "train/s1/173:grad.rope_bwd.1",
+    "train/s1/173:grad.rope_bwd.2",
+    "train/s1/173:grad.rope_bwd.3",
+    "train/s1/174:grad.cast.0",
+    "train/s1/174:grad.cast.1",
+    "train/s1/174:grad.cast.2",
+    "train/s1/174:grad.cast.3",
+    "train/s1/175:widen.grad.cast145.0",
+    "train/s1/175:widen.grad.cast145.1",
+    "train/s1/175:widen.grad.cast145.2",
+    "train/s1/175:widen.grad.cast145.3",
+    "train/s1/176:grad.colsum.0",
+    "train/s1/177:grad.mm.0",
+    "train/s1/178:grad.mm.0",
+    "train/s1/179:widen.grad.cast128.0",
+    "train/s1/179:widen.grad.cast128.1",
+    "train/s1/179:widen.grad.cast128.2",
+    "train/s1/179:widen.grad.cast128.3",
+    "train/s1/180:grad.layernorm_bwd.0",
+    "train/s1/180:grad.layernorm_bwd.1",
+    "train/s1/180:grad.layernorm_bwd.2",
+    "train/s1/180:grad.layernorm_bwd.3",
+    "train/s1/180:grad.layernorm_bwd.4",
+    "train/s1/181:narrow.grad.cast128.0",
+    "train/s1/181:narrow.grad.cast128.1",
+    "train/s1/181:narrow.grad.cast128.2",
+    "train/s1/181:narrow.grad.cast128.3",
+    "train/s1/182:widen.grad.cast128.0",
+    "train/s1/182:widen.grad.cast128.1",
+    "train/s1/182:widen.grad.cast128.2",
+    "train/s1/182:widen.grad.cast128.3",
+    "train/s1/183:grad.embedding_bwd.0",
+    "train/s1/183:grad.embedding_bwd.1",
+    "train/s1/183:grad.embedding_bwd.2",
+    "train/s1/183:grad.embedding_bwd.3",
+    "train/s1/184:grad_clip.0",
+    "train/s1/184:grad_clip.1",
+    "train/s1/184:grad_clip.2",
+    "train/s1/184:grad_clip.3",
+    "train/s1/184:grad_clip.4",
+    "train/s1/184:grad_clip.5",
+    "train/s1/184:grad_clip.6",
+    "train/s1/184:grad_clip.7",
+    "train/s1/184:grad_clip.8",
+    "train/s1/184:grad_clip.9",
+    "train/s1/184:grad_clip.10",
+    "train/s1/184:grad_clip.11",
+    "train/s1/184:grad_clip.12",
+    "train/s1/184:grad_clip.13",
+    "train/s1/184:grad_clip.14",
+    "train/s1/184:grad_clip.15",
+    "train/s1/184:grad_clip.16",
+    "train/s1/184:grad_clip.17",
+    "train/s1/184:grad_clip.18",
+    "train/s1/184:grad_clip.19",
+    "train/s1/184:grad_clip.20",
+    "train/s1/184:grad_clip.21",
+    "train/s1/184:grad_clip.22",
+    "train/s1/184:grad_clip.23",
+    "train/s1/184:grad_clip.24",
+    "train/s1/184:grad_clip.25",
+    "train/s1/184:grad_clip.26",
+    "train/s1/184:grad_clip.27",
+    "train/s1/184:grad_clip.28",
+    "train/s1/184:grad_clip.29",
+    "train/s1/184:grad_clip.30",
+    "train/s1/184:grad_clip.31",
+    "train/s1/184:grad_clip.32",
+    "train/s1/184:grad_clip.33",
+    "train/s1/184:grad_clip.34",
+    "train/s1/184:grad_clip.35",
+    "train/s1/184:grad_clip.36",
+    "train/s1/184:grad_clip.37",
+    "train/s1/184:grad_clip.38",
+    "train/s1/184:grad_clip.39",
+    "train/s1/184:grad_clip.40",
+    "train/s1/184:grad_clip.41",
+    "train/s1/184:grad_clip.42",
+    "train/s1/184:grad_clip.43",
+    "train/s1/184:grad_clip.44",
+    "train/s1/184:grad_clip.45",
+    "train/s1/184:grad_clip.46",
+    "train/s1/184:grad_clip.47",
+    "train/s1/184:grad_clip.48",
+    "train/s1/184:grad_clip.49",
+    "train/s1/184:grad_clip.50",
+    "train/s1/184:grad_clip.51",
+    "train/s1/184:grad_clip.52",
+    "train/s1/184:grad_clip.53",
+    "train/s1/184:grad_clip.54",
+    "train/s1/184:grad_clip.55",
+    "train/s1/184:grad_clip.56",
+    "train/s1/184:grad_clip.57",
+    "train/s1/184:grad_clip.58",
+    "train/s1/184:grad_clip.59",
+    "train/s1/184:grad_clip.60",
+    "train/s1/184:grad_clip.61",
+    "train/s1/184:grad_clip.62",
+    "train/s1/184:grad_clip.63",
+    "train/s1/184:grad_clip.64",
+    "train/s1/184:grad_clip.65",
+    "train/s1/184:grad_clip.66",
+    "train/s1/184:grad_clip.67",
+    "train/s1/184:grad_clip.68",
+    "train/s1/184:grad_clip.69",
+    "train/s1/184:grad_clip.70",
+    "train/s1/184:grad_clip.71",
+    "train/s1/184:grad_clip.72",
+    "train/s1/184:grad_clip.73",
+    "train/s1/184:grad_clip.74",
+    "train/s1/184:grad_clip.75",
+    "train/s1/184:grad_clip.76",
+    "train/s1/185:counter_inc.0",
+    "train/s1/186:barrier.0",
+    "train/s1/187:opt.adamw.0",
+    "train/s1/187:opt.adamw.1",
+    "train/s1/187:opt.adamw.2",
+    "train/s1/187:opt.adamw.3",
+    "train/s1/187:opt.adamw.4",
+    "train/s1/187:opt.adamw.5",
+    "train/s1/187:opt.adamw.6",
+    "train/s1/187:opt.adamw.7",
+    "train/s1/188:opt.adamw.0",
+    "train/s1/189:opt.adamw.0",
+    "train/s1/190:opt.adamw.0",
+    "train/s1/190:opt.adamw.1",
+    "train/s1/190:opt.adamw.2",
+    "train/s1/190:opt.adamw.3",
+    "train/s1/191:opt.adamw.0",
+    "train/s1/192:opt.adamw.0",
+    "train/s1/192:opt.adamw.1",
+    "train/s1/192:opt.adamw.2",
+    "train/s1/192:opt.adamw.3",
+    "train/s1/193:opt.adamw.0",
+    "train/s1/194:opt.adamw.0",
+    "train/s1/194:opt.adamw.1",
+    "train/s1/194:opt.adamw.2",
+    "train/s1/194:opt.adamw.3",
+    "train/s1/195:opt.adamw.0",
+    "train/s1/196:opt.adamw.0",
+    "train/s1/196:opt.adamw.1",
+    "train/s1/196:opt.adamw.2",
+    "train/s1/196:opt.adamw.3",
+    "train/s1/197:opt.adamw.0",
+    "train/s1/198:opt.adamw.0",
+    "train/s1/199:opt.adamw.0",
+    "train/s1/200:opt.adamw.0",
+    "train/s1/200:opt.adamw.1",
+    "train/s1/200:opt.adamw.2",
+    "train/s1/200:opt.adamw.3",
+    "train/s1/200:opt.adamw.4",
+    "train/s1/200:opt.adamw.5",
+    "train/s1/200:opt.adamw.6",
+    "train/s1/200:opt.adamw.7",
+    "train/s1/200:opt.adamw.8",
+    "train/s1/200:opt.adamw.9",
+    "train/s1/200:opt.adamw.10",
+    "train/s1/200:opt.adamw.11",
+    "train/s1/200:opt.adamw.12",
+    "train/s1/200:opt.adamw.13",
+    "train/s1/200:opt.adamw.14",
+    "train/s1/200:opt.adamw.15",
+    "train/s1/201:opt.adamw.0",
+    "train/s1/202:opt.adamw.0",
+    "train/s1/202:opt.adamw.1",
+    "train/s1/202:opt.adamw.2",
+    "train/s1/202:opt.adamw.3",
+    "train/s1/202:opt.adamw.4",
+    "train/s1/202:opt.adamw.5",
+    "train/s1/202:opt.adamw.6",
+    "train/s1/202:opt.adamw.7",
+    "train/s1/202:opt.adamw.8",
+    "train/s1/202:opt.adamw.9",
+    "train/s1/202:opt.adamw.10",
+    "train/s1/202:opt.adamw.11",
+    "train/s1/202:opt.adamw.12",
+    "train/s1/202:opt.adamw.13",
+    "train/s1/202:opt.adamw.14",
+    "train/s1/202:opt.adamw.15",
+    "train/s1/203:opt.adamw.0",
+    "train/s1/204:opt.adamw.0",
+    "train/s1/205:opt.adamw.0",
+    "train/s1/206:opt.adamw.0",
+    "train/s1/206:opt.adamw.1",
+    "train/s1/206:opt.adamw.2",
+    "train/s1/206:opt.adamw.3",
+    "train/s1/206:opt.adamw.4",
+    "train/s1/206:opt.adamw.5",
+    "train/s1/206:opt.adamw.6",
+    "train/s1/206:opt.adamw.7",
+    "train/s1/207:barrier.0",
+    "train/s2/208:shadow.wb.gpt.h0.attn.q.w.0",
+    "train/s2/208:shadow.wb.gpt.h0.attn.q.w.1",
+    "train/s2/208:shadow.wb.gpt.h0.attn.q.w.2",
+    "train/s2/208:shadow.wb.gpt.h0.attn.q.w.3",
+    "train/s2/209:shadow.wb.gpt.h0.attn.k.w.0",
+    "train/s2/209:shadow.wb.gpt.h0.attn.k.w.1",
+    "train/s2/209:shadow.wb.gpt.h0.attn.k.w.2",
+    "train/s2/209:shadow.wb.gpt.h0.attn.k.w.3",
+    "train/s2/210:shadow.wb.gpt.h0.attn.v.w.0",
+    "train/s2/210:shadow.wb.gpt.h0.attn.v.w.1",
+    "train/s2/210:shadow.wb.gpt.h0.attn.v.w.2",
+    "train/s2/210:shadow.wb.gpt.h0.attn.v.w.3",
+    "train/s2/211:shadow.wb.gpt.h0.attn.proj.w.0",
+    "train/s2/211:shadow.wb.gpt.h0.attn.proj.w.1",
+    "train/s2/211:shadow.wb.gpt.h0.attn.proj.w.2",
+    "train/s2/211:shadow.wb.gpt.h0.attn.proj.w.3",
+    "train/s2/212:shadow.wb.gpt.h0.mlp.fc1.w.0",
+    "train/s2/212:shadow.wb.gpt.h0.mlp.fc1.w.1",
+    "train/s2/212:shadow.wb.gpt.h0.mlp.fc1.w.2",
+    "train/s2/212:shadow.wb.gpt.h0.mlp.fc1.w.3",
+    "train/s2/213:shadow.wb.gpt.h0.mlp.fc2.w.0",
+    "train/s2/213:shadow.wb.gpt.h0.mlp.fc2.w.1",
+    "train/s2/213:shadow.wb.gpt.h0.mlp.fc2.w.2",
+    "train/s2/213:shadow.wb.gpt.h0.mlp.fc2.w.3",
+    "train/s2/213:shadow.wb.gpt.h0.mlp.fc2.w.4",
+    "train/s2/213:shadow.wb.gpt.h0.mlp.fc2.w.5",
+    "train/s2/213:shadow.wb.gpt.h0.mlp.fc2.w.6",
+    "train/s2/213:shadow.wb.gpt.h0.mlp.fc2.w.7",
+    "train/s2/213:shadow.wb.gpt.h0.mlp.fc2.w.8",
+    "train/s2/213:shadow.wb.gpt.h0.mlp.fc2.w.9",
+    "train/s2/213:shadow.wb.gpt.h0.mlp.fc2.w.10",
+    "train/s2/213:shadow.wb.gpt.h0.mlp.fc2.w.11",
+    "train/s2/213:shadow.wb.gpt.h0.mlp.fc2.w.12",
+    "train/s2/213:shadow.wb.gpt.h0.mlp.fc2.w.13",
+    "train/s2/213:shadow.wb.gpt.h0.mlp.fc2.w.14",
+    "train/s2/213:shadow.wb.gpt.h0.mlp.fc2.w.15",
+    "train/s2/214:shadow.wb.gpt.head.w.0",
+    "train/s2/214:shadow.wb.gpt.head.w.1",
+    "train/s2/214:shadow.wb.gpt.head.w.2",
+    "train/s2/214:shadow.wb.gpt.head.w.3",
+    "train/s2/215:select_window.0",
+    "train/s2/215:select_window.1",
+    "train/s2/215:select_window.2",
+    "train/s2/215:select_window.3",
+    "train/s2/216:select_window.0",
+    "train/s2/216:select_window.1",
+    "train/s2/216:select_window.2",
+    "train/s2/216:select_window.3",
+    "train/s2/217:embedding.0",
+    "train/s2/217:embedding.1",
+    "train/s2/217:embedding.2",
+    "train/s2/217:embedding.3",
+    "train/s2/218:gpt.h0.layernorm.0",
+    "train/s2/218:gpt.h0.layernorm.1",
+    "train/s2/218:gpt.h0.layernorm.2",
+    "train/s2/218:gpt.h0.layernorm.3",
+    "train/s2/219:gpt.h0.linear.0",
+    "train/s2/220:widen.gpt.h0.cast159.0",
+    "train/s2/220:widen.gpt.h0.cast159.1",
+    "train/s2/220:widen.gpt.h0.cast159.2",
+    "train/s2/220:widen.gpt.h0.cast159.3",
+    "train/s2/221:gpt.h0.rope.0",
+    "train/s2/221:gpt.h0.rope.1",
+    "train/s2/221:gpt.h0.rope.2",
+    "train/s2/221:gpt.h0.rope.3",
+    "train/s2/222:gpt.h0.linear.0",
+    "train/s2/223:widen.gpt.h0.cast162.0",
+    "train/s2/223:widen.gpt.h0.cast162.1",
+    "train/s2/223:widen.gpt.h0.cast162.2",
+    "train/s2/223:widen.gpt.h0.cast162.3",
+    "train/s2/224:gpt.h0.rope.0",
+    "train/s2/224:gpt.h0.rope.1",
+    "train/s2/224:gpt.h0.rope.2",
+    "train/s2/224:gpt.h0.rope.3",
+    "train/s2/225:gpt.h0.linear.0",
+    "train/s2/226:widen.gpt.h0.cast165.0",
+    "train/s2/226:widen.gpt.h0.cast165.1",
+    "train/s2/226:widen.gpt.h0.cast165.2",
+    "train/s2/226:widen.gpt.h0.cast165.3",
+    "train/s2/227:gpt.h0.attention.0",
+    "train/s2/227:gpt.h0.attention.1",
+    "train/s2/228:gpt.h0.linear.0",
+    "train/s2/229:widen.gpt.h0.cast169.0",
+    "train/s2/229:widen.gpt.h0.cast169.1",
+    "train/s2/229:widen.gpt.h0.cast169.2",
+    "train/s2/229:widen.gpt.h0.cast169.3",
+    "train/s2/230:gpt.h0.layernorm.0",
+    "train/s2/230:gpt.h0.layernorm.1",
+    "train/s2/230:gpt.h0.layernorm.2",
+    "train/s2/230:gpt.h0.layernorm.3",
+    "train/s2/231:gpt.h0.linear.0",
+    "train/s2/231:gpt.h0.linear.1",
+    "train/s2/232:gpt.h0.linear.0",
+    "train/s2/233:widen.gpt.h0.cast177.0",
+    "train/s2/233:widen.gpt.h0.cast177.1",
+    "train/s2/233:widen.gpt.h0.cast177.2",
+    "train/s2/233:widen.gpt.h0.cast177.3",
+    "train/s2/234:layernorm.0",
+    "train/s2/234:layernorm.1",
+    "train/s2/234:layernorm.2",
+    "train/s2/234:layernorm.3",
+    "train/s2/235:linear.0",
+    "train/s2/236:widen.cast182.0",
+    "train/s2/236:widen.cast182.1",
+    "train/s2/236:widen.cast182.2",
+    "train/s2/236:widen.cast182.3",
+    "train/s2/237:ce_loss.0",
+    "train/s2/237:ce_loss.1",
+    "train/s2/237:ce_loss.2",
+    "train/s2/237:ce_loss.3",
+    "train/s2/237:ce_loss.4",
+    "train/s2/238:widen.cast182.0",
+    "train/s2/238:widen.cast182.1",
+    "train/s2/238:widen.cast182.2",
+    "train/s2/238:widen.cast182.3",
+    "train/s2/239:grad.ce_bwd.0",
+    "train/s2/239:grad.ce_bwd.1",
+    "train/s2/239:grad.ce_bwd.2",
+    "train/s2/239:grad.ce_bwd.3",
+    "train/s2/240:grad.cast.0",
+    "train/s2/240:grad.cast.1",
+    "train/s2/240:grad.cast.2",
+    "train/s2/240:grad.cast.3",
+    "train/s2/241:grad.mm.0",
+    "train/s2/242:grad.mm.0",
+    "train/s2/243:widen.gpt.h0.cast177.0",
+    "train/s2/243:widen.gpt.h0.cast177.1",
+    "train/s2/243:widen.gpt.h0.cast177.2",
+    "train/s2/243:widen.gpt.h0.cast177.3",
+    "train/s2/244:grad.layernorm_bwd.0",
+    "train/s2/244:grad.layernorm_bwd.1",
+    "train/s2/244:grad.layernorm_bwd.2",
+    "train/s2/244:grad.layernorm_bwd.3",
+    "train/s2/244:grad.layernorm_bwd.4",
+    "train/s2/245:grad.cast.0",
+    "train/s2/245:grad.cast.1",
+    "train/s2/245:grad.cast.2",
+    "train/s2/245:grad.cast.3",
+    "train/s2/246:widen.grad.cast193.0",
+    "train/s2/246:widen.grad.cast193.1",
+    "train/s2/246:widen.grad.cast193.2",
+    "train/s2/246:widen.grad.cast193.3",
+    "train/s2/247:grad.colsum.0",
+    "train/s2/248:grad.mm.0",
+    "train/s2/248:grad.mm.1",
+    "train/s2/249:grad.mm.0",
+    "train/s2/249:grad.mm.1",
+    "train/s2/250:widen.grad.cast197.0",
+    "train/s2/250:widen.grad.cast197.1",
+    "train/s2/250:widen.grad.cast197.2",
+    "train/s2/250:widen.grad.cast197.3",
+    "train/s2/251:grad.gelu_bwd.0",
+    "train/s2/251:grad.gelu_bwd.1",
+    "train/s2/251:grad.gelu_bwd.2",
+    "train/s2/251:grad.gelu_bwd.3",
+    "train/s2/252:grad.colsum.0",
+    "train/s2/252:grad.colsum.1",
+    "train/s2/252:grad.colsum.2",
+    "train/s2/252:grad.colsum.3",
+    "train/s2/253:grad.mm.0",
+    "train/s2/253:grad.mm.1",
+    "train/s2/254:grad.mm.0",
+    "train/s2/255:widen.gpt.h0.cast169.0",
+    "train/s2/255:widen.gpt.h0.cast169.1",
+    "train/s2/255:widen.gpt.h0.cast169.2",
+    "train/s2/255:widen.gpt.h0.cast169.3",
+    "train/s2/256:widen.grad.cast193.0",
+    "train/s2/256:widen.grad.cast193.1",
+    "train/s2/256:widen.grad.cast193.2",
+    "train/s2/256:widen.grad.cast193.3",
+    "train/s2/257:grad.layernorm_bwd.0",
+    "train/s2/257:grad.layernorm_bwd.1",
+    "train/s2/257:grad.layernorm_bwd.2",
+    "train/s2/257:grad.layernorm_bwd.3",
+    "train/s2/257:grad.layernorm_bwd.4",
+    "train/s2/258:narrow.grad.cast193.0",
+    "train/s2/258:narrow.grad.cast193.1",
+    "train/s2/258:narrow.grad.cast193.2",
+    "train/s2/258:narrow.grad.cast193.3",
+    "train/s2/259:grad.cast.0",
+    "train/s2/259:grad.cast.1",
+    "train/s2/259:grad.cast.2",
+    "train/s2/259:grad.cast.3",
+    "train/s2/260:widen.grad.cast204.0",
+    "train/s2/260:widen.grad.cast204.1",
+    "train/s2/260:widen.grad.cast204.2",
+    "train/s2/260:widen.grad.cast204.3",
+    "train/s2/261:grad.colsum.0",
+    "train/s2/262:grad.mm.0",
+    "train/s2/263:grad.mm.0",
+    "train/s2/264:widen.gpt.h0.cast165.0",
+    "train/s2/264:widen.gpt.h0.cast165.1",
+    "train/s2/264:widen.gpt.h0.cast165.2",
+    "train/s2/264:widen.gpt.h0.cast165.3",
+    "train/s2/265:grad.attention_bwd.0",
+    "train/s2/265:grad.attention_bwd.1",
+    "train/s2/265:grad.attention_bwd.2",
+    "train/s2/265:grad.attention_bwd.3",
+    "train/s2/265:grad.attention_bwd.4",
+    "train/s2/265:grad.attention_bwd.5",
+    "train/s2/265:grad.attention_bwd.6",
+    "train/s2/265:grad.attention_bwd.7",
+    "train/s2/266:grad.cast.0",
+    "train/s2/266:grad.cast.1",
+    "train/s2/266:grad.cast.2",
+    "train/s2/266:grad.cast.3",
+    "train/s2/267:widen.grad.cast212.0",
+    "train/s2/267:widen.grad.cast212.1",
+    "train/s2/267:widen.grad.cast212.2",
+    "train/s2/267:widen.grad.cast212.3",
+    "train/s2/268:grad.colsum.0",
+    "train/s2/269:grad.mm.0",
+    "train/s2/270:grad.mm.0",
+    "train/s2/271:grad.rope_bwd.0",
+    "train/s2/271:grad.rope_bwd.1",
+    "train/s2/271:grad.rope_bwd.2",
+    "train/s2/271:grad.rope_bwd.3",
+    "train/s2/272:grad.cast.0",
+    "train/s2/272:grad.cast.1",
+    "train/s2/272:grad.cast.2",
+    "train/s2/272:grad.cast.3",
+    "train/s2/273:widen.grad.cast217.0",
+    "train/s2/273:widen.grad.cast217.1",
+    "train/s2/273:widen.grad.cast217.2",
+    "train/s2/273:widen.grad.cast217.3",
+    "train/s2/274:grad.colsum.0",
+    "train/s2/275:grad.mm.0",
+    "train/s2/276:grad.mm.0",
+    "train/s2/277:grad.rope_bwd.0",
+    "train/s2/277:grad.rope_bwd.1",
+    "train/s2/277:grad.rope_bwd.2",
+    "train/s2/277:grad.rope_bwd.3",
+    "train/s2/278:grad.cast.0",
+    "train/s2/278:grad.cast.1",
+    "train/s2/278:grad.cast.2",
+    "train/s2/278:grad.cast.3",
+    "train/s2/279:widen.grad.cast221.0",
+    "train/s2/279:widen.grad.cast221.1",
+    "train/s2/279:widen.grad.cast221.2",
+    "train/s2/279:widen.grad.cast221.3",
+    "train/s2/280:grad.colsum.0",
+    "train/s2/281:grad.mm.0",
+    "train/s2/282:grad.mm.0",
+    "train/s2/283:widen.grad.cast204.0",
+    "train/s2/283:widen.grad.cast204.1",
+    "train/s2/283:widen.grad.cast204.2",
+    "train/s2/283:widen.grad.cast204.3",
+    "train/s2/284:grad.layernorm_bwd.0",
+    "train/s2/284:grad.layernorm_bwd.1",
+    "train/s2/284:grad.layernorm_bwd.2",
+    "train/s2/284:grad.layernorm_bwd.3",
+    "train/s2/284:grad.layernorm_bwd.4",
+    "train/s2/285:narrow.grad.cast204.0",
+    "train/s2/285:narrow.grad.cast204.1",
+    "train/s2/285:narrow.grad.cast204.2",
+    "train/s2/285:narrow.grad.cast204.3",
+    "train/s2/286:widen.grad.cast204.0",
+    "train/s2/286:widen.grad.cast204.1",
+    "train/s2/286:widen.grad.cast204.2",
+    "train/s2/286:widen.grad.cast204.3",
+    "train/s2/287:grad.embedding_bwd.0",
+    "train/s2/287:grad.embedding_bwd.1",
+    "train/s2/287:grad.embedding_bwd.2",
+    "train/s2/287:grad.embedding_bwd.3",
+    "train/s2/288:grad_clip.0",
+    "train/s2/288:grad_clip.1",
+    "train/s2/288:grad_clip.2",
+    "train/s2/288:grad_clip.3",
+    "train/s2/288:grad_clip.4",
+    "train/s2/288:grad_clip.5",
+    "train/s2/288:grad_clip.6",
+    "train/s2/288:grad_clip.7",
+    "train/s2/288:grad_clip.8",
+    "train/s2/288:grad_clip.9",
+    "train/s2/288:grad_clip.10",
+    "train/s2/288:grad_clip.11",
+    "train/s2/288:grad_clip.12",
+    "train/s2/288:grad_clip.13",
+    "train/s2/288:grad_clip.14",
+    "train/s2/288:grad_clip.15",
+    "train/s2/288:grad_clip.16",
+    "train/s2/288:grad_clip.17",
+    "train/s2/288:grad_clip.18",
+    "train/s2/288:grad_clip.19",
+    "train/s2/288:grad_clip.20",
+    "train/s2/288:grad_clip.21",
+    "train/s2/288:grad_clip.22",
+    "train/s2/288:grad_clip.23",
+    "train/s2/288:grad_clip.24",
+    "train/s2/288:grad_clip.25",
+    "train/s2/288:grad_clip.26",
+    "train/s2/288:grad_clip.27",
+    "train/s2/288:grad_clip.28",
+    "train/s2/288:grad_clip.29",
+    "train/s2/288:grad_clip.30",
+    "train/s2/288:grad_clip.31",
+    "train/s2/288:grad_clip.32",
+    "train/s2/288:grad_clip.33",
+    "train/s2/288:grad_clip.34",
+    "train/s2/288:grad_clip.35",
+    "train/s2/288:grad_clip.36",
+    "train/s2/288:grad_clip.37",
+    "train/s2/288:grad_clip.38",
+    "train/s2/288:grad_clip.39",
+    "train/s2/288:grad_clip.40",
+    "train/s2/288:grad_clip.41",
+    "train/s2/288:grad_clip.42",
+    "train/s2/288:grad_clip.43",
+    "train/s2/288:grad_clip.44",
+    "train/s2/288:grad_clip.45",
+    "train/s2/288:grad_clip.46",
+    "train/s2/288:grad_clip.47",
+    "train/s2/288:grad_clip.48",
+    "train/s2/288:grad_clip.49",
+    "train/s2/288:grad_clip.50",
+    "train/s2/288:grad_clip.51",
+    "train/s2/288:grad_clip.52",
+    "train/s2/288:grad_clip.53",
+    "train/s2/288:grad_clip.54",
+    "train/s2/288:grad_clip.55",
+    "train/s2/288:grad_clip.56",
+    "train/s2/288:grad_clip.57",
+    "train/s2/288:grad_clip.58",
+    "train/s2/288:grad_clip.59",
+    "train/s2/288:grad_clip.60",
+    "train/s2/288:grad_clip.61",
+    "train/s2/288:grad_clip.62",
+    "train/s2/288:grad_clip.63",
+    "train/s2/288:grad_clip.64",
+    "train/s2/288:grad_clip.65",
+    "train/s2/288:grad_clip.66",
+    "train/s2/288:grad_clip.67",
+    "train/s2/288:grad_clip.68",
+    "train/s2/288:grad_clip.69",
+    "train/s2/288:grad_clip.70",
+    "train/s2/288:grad_clip.71",
+    "train/s2/288:grad_clip.72",
+    "train/s2/288:grad_clip.73",
+    "train/s2/288:grad_clip.74",
+    "train/s2/288:grad_clip.75",
+    "train/s2/288:grad_clip.76",
+    "train/s2/289:counter_inc.0",
+    "train/s2/290:barrier.0",
+    "train/s2/291:opt.adamw.0",
+    "train/s2/291:opt.adamw.1",
+    "train/s2/291:opt.adamw.2",
+    "train/s2/291:opt.adamw.3",
+    "train/s2/291:opt.adamw.4",
+    "train/s2/291:opt.adamw.5",
+    "train/s2/291:opt.adamw.6",
+    "train/s2/291:opt.adamw.7",
+    "train/s2/292:opt.adamw.0",
+    "train/s2/293:opt.adamw.0",
+    "train/s2/294:opt.adamw.0",
+    "train/s2/294:opt.adamw.1",
+    "train/s2/294:opt.adamw.2",
+    "train/s2/294:opt.adamw.3",
+    "train/s2/295:opt.adamw.0",
+    "train/s2/296:opt.adamw.0",
+    "train/s2/296:opt.adamw.1",
+    "train/s2/296:opt.adamw.2",
+    "train/s2/296:opt.adamw.3",
+    "train/s2/297:opt.adamw.0",
+    "train/s2/298:opt.adamw.0",
+    "train/s2/298:opt.adamw.1",
+    "train/s2/298:opt.adamw.2",
+    "train/s2/298:opt.adamw.3",
+    "train/s2/299:opt.adamw.0",
+    "train/s2/300:opt.adamw.0",
+    "train/s2/300:opt.adamw.1",
+    "train/s2/300:opt.adamw.2",
+    "train/s2/300:opt.adamw.3",
+    "train/s2/301:opt.adamw.0",
+    "train/s2/302:opt.adamw.0",
+    "train/s2/303:opt.adamw.0",
+    "train/s2/304:opt.adamw.0",
+    "train/s2/304:opt.adamw.1",
+    "train/s2/304:opt.adamw.2",
+    "train/s2/304:opt.adamw.3",
+    "train/s2/304:opt.adamw.4",
+    "train/s2/304:opt.adamw.5",
+    "train/s2/304:opt.adamw.6",
+    "train/s2/304:opt.adamw.7",
+    "train/s2/304:opt.adamw.8",
+    "train/s2/304:opt.adamw.9",
+    "train/s2/304:opt.adamw.10",
+    "train/s2/304:opt.adamw.11",
+    "train/s2/304:opt.adamw.12",
+    "train/s2/304:opt.adamw.13",
+    "train/s2/304:opt.adamw.14",
+    "train/s2/304:opt.adamw.15",
+    "train/s2/305:opt.adamw.0",
+    "train/s2/306:opt.adamw.0",
+    "train/s2/306:opt.adamw.1",
+    "train/s2/306:opt.adamw.2",
+    "train/s2/306:opt.adamw.3",
+    "train/s2/306:opt.adamw.4",
+    "train/s2/306:opt.adamw.5",
+    "train/s2/306:opt.adamw.6",
+    "train/s2/306:opt.adamw.7",
+    "train/s2/306:opt.adamw.8",
+    "train/s2/306:opt.adamw.9",
+    "train/s2/306:opt.adamw.10",
+    "train/s2/306:opt.adamw.11",
+    "train/s2/306:opt.adamw.12",
+    "train/s2/306:opt.adamw.13",
+    "train/s2/306:opt.adamw.14",
+    "train/s2/306:opt.adamw.15",
+    "train/s2/307:opt.adamw.0",
+    "train/s2/308:opt.adamw.0",
+    "train/s2/309:opt.adamw.0",
+    "train/s2/310:opt.adamw.0",
+    "train/s2/310:opt.adamw.1",
+    "train/s2/310:opt.adamw.2",
+    "train/s2/310:opt.adamw.3",
+    "train/s2/310:opt.adamw.4",
+    "train/s2/310:opt.adamw.5",
+    "train/s2/310:opt.adamw.6",
+    "train/s2/310:opt.adamw.7",
+    "train/s2/311:barrier.0",
+    "train/s3/312:shadow.wb.gpt.h0.attn.q.w.0",
+    "train/s3/312:shadow.wb.gpt.h0.attn.q.w.1",
+    "train/s3/312:shadow.wb.gpt.h0.attn.q.w.2",
+    "train/s3/312:shadow.wb.gpt.h0.attn.q.w.3",
+    "train/s3/313:shadow.wb.gpt.h0.attn.k.w.0",
+    "train/s3/313:shadow.wb.gpt.h0.attn.k.w.1",
+    "train/s3/313:shadow.wb.gpt.h0.attn.k.w.2",
+    "train/s3/313:shadow.wb.gpt.h0.attn.k.w.3",
+    "train/s3/314:shadow.wb.gpt.h0.attn.v.w.0",
+    "train/s3/314:shadow.wb.gpt.h0.attn.v.w.1",
+    "train/s3/314:shadow.wb.gpt.h0.attn.v.w.2",
+    "train/s3/314:shadow.wb.gpt.h0.attn.v.w.3",
+    "train/s3/315:shadow.wb.gpt.h0.attn.proj.w.0",
+    "train/s3/315:shadow.wb.gpt.h0.attn.proj.w.1",
+    "train/s3/315:shadow.wb.gpt.h0.attn.proj.w.2",
+    "train/s3/315:shadow.wb.gpt.h0.attn.proj.w.3",
+    "train/s3/316:shadow.wb.gpt.h0.mlp.fc1.w.0",
+    "train/s3/316:shadow.wb.gpt.h0.mlp.fc1.w.1",
+    "train/s3/316:shadow.wb.gpt.h0.mlp.fc1.w.2",
+    "train/s3/316:shadow.wb.gpt.h0.mlp.fc1.w.3",
+    "train/s3/317:shadow.wb.gpt.h0.mlp.fc2.w.0",
+    "train/s3/317:shadow.wb.gpt.h0.mlp.fc2.w.1",
+    "train/s3/317:shadow.wb.gpt.h0.mlp.fc2.w.2",
+    "train/s3/317:shadow.wb.gpt.h0.mlp.fc2.w.3",
+    "train/s3/317:shadow.wb.gpt.h0.mlp.fc2.w.4",
+    "train/s3/317:shadow.wb.gpt.h0.mlp.fc2.w.5",
+    "train/s3/317:shadow.wb.gpt.h0.mlp.fc2.w.6",
+    "train/s3/317:shadow.wb.gpt.h0.mlp.fc2.w.7",
+    "train/s3/317:shadow.wb.gpt.h0.mlp.fc2.w.8",
+    "train/s3/317:shadow.wb.gpt.h0.mlp.fc2.w.9",
+    "train/s3/317:shadow.wb.gpt.h0.mlp.fc2.w.10",
+    "train/s3/317:shadow.wb.gpt.h0.mlp.fc2.w.11",
+    "train/s3/317:shadow.wb.gpt.h0.mlp.fc2.w.12",
+    "train/s3/317:shadow.wb.gpt.h0.mlp.fc2.w.13",
+    "train/s3/317:shadow.wb.gpt.h0.mlp.fc2.w.14",
+    "train/s3/317:shadow.wb.gpt.h0.mlp.fc2.w.15",
+    "train/s3/318:shadow.wb.gpt.head.w.0",
+    "train/s3/318:shadow.wb.gpt.head.w.1",
+    "train/s3/318:shadow.wb.gpt.head.w.2",
+    "train/s3/318:shadow.wb.gpt.head.w.3",
+    "train/s3/319:select_window.0",
+    "train/s3/319:select_window.1",
+    "train/s3/319:select_window.2",
+    "train/s3/319:select_window.3",
+    "train/s3/320:select_window.0",
+    "train/s3/320:select_window.1",
+    "train/s3/320:select_window.2",
+    "train/s3/320:select_window.3",
+    "train/s3/321:embedding.0",
+    "train/s3/321:embedding.1",
+    "train/s3/321:embedding.2",
+    "train/s3/321:embedding.3",
+    "train/s3/322:gpt.h0.layernorm.0",
+    "train/s3/322:gpt.h0.layernorm.1",
+    "train/s3/322:gpt.h0.layernorm.2",
+    "train/s3/322:gpt.h0.layernorm.3",
+    "train/s3/323:gpt.h0.linear.0",
+    "train/s3/324:widen.gpt.h0.cast235.0",
+    "train/s3/324:widen.gpt.h0.cast235.1",
+    "train/s3/324:widen.gpt.h0.cast235.2",
+    "train/s3/324:widen.gpt.h0.cast235.3",
+    "train/s3/325:gpt.h0.rope.0",
+    "train/s3/325:gpt.h0.rope.1",
+    "train/s3/325:gpt.h0.rope.2",
+    "train/s3/325:gpt.h0.rope.3",
+    "train/s3/326:gpt.h0.linear.0",
+    "train/s3/327:widen.gpt.h0.cast238.0",
+    "train/s3/327:widen.gpt.h0.cast238.1",
+    "train/s3/327:widen.gpt.h0.cast238.2",
+    "train/s3/327:widen.gpt.h0.cast238.3",
+    "train/s3/328:gpt.h0.rope.0",
+    "train/s3/328:gpt.h0.rope.1",
+    "train/s3/328:gpt.h0.rope.2",
+    "train/s3/328:gpt.h0.rope.3",
+    "train/s3/329:gpt.h0.linear.0",
+    "train/s3/330:widen.gpt.h0.cast241.0",
+    "train/s3/330:widen.gpt.h0.cast241.1",
+    "train/s3/330:widen.gpt.h0.cast241.2",
+    "train/s3/330:widen.gpt.h0.cast241.3",
+    "train/s3/331:gpt.h0.attention.0",
+    "train/s3/331:gpt.h0.attention.1",
+    "train/s3/332:gpt.h0.linear.0",
+    "train/s3/333:widen.gpt.h0.cast245.0",
+    "train/s3/333:widen.gpt.h0.cast245.1",
+    "train/s3/333:widen.gpt.h0.cast245.2",
+    "train/s3/333:widen.gpt.h0.cast245.3",
+    "train/s3/334:gpt.h0.layernorm.0",
+    "train/s3/334:gpt.h0.layernorm.1",
+    "train/s3/334:gpt.h0.layernorm.2",
+    "train/s3/334:gpt.h0.layernorm.3",
+    "train/s3/335:gpt.h0.linear.0",
+    "train/s3/335:gpt.h0.linear.1",
+    "train/s3/336:gpt.h0.linear.0",
+    "train/s3/337:widen.gpt.h0.cast253.0",
+    "train/s3/337:widen.gpt.h0.cast253.1",
+    "train/s3/337:widen.gpt.h0.cast253.2",
+    "train/s3/337:widen.gpt.h0.cast253.3",
+    "train/s3/338:layernorm.0",
+    "train/s3/338:layernorm.1",
+    "train/s3/338:layernorm.2",
+    "train/s3/338:layernorm.3",
+    "train/s3/339:linear.0",
+    "train/s3/340:widen.cast258.0",
+    "train/s3/340:widen.cast258.1",
+    "train/s3/340:widen.cast258.2",
+    "train/s3/340:widen.cast258.3",
+    "train/s3/341:ce_loss.0",
+    "train/s3/341:ce_loss.1",
+    "train/s3/341:ce_loss.2",
+    "train/s3/341:ce_loss.3",
+    "train/s3/341:ce_loss.4",
+    "train/s3/342:widen.cast258.0",
+    "train/s3/342:widen.cast258.1",
+    "train/s3/342:widen.cast258.2",
+    "train/s3/342:widen.cast258.3",
+    "train/s3/343:grad.ce_bwd.0",
+    "train/s3/343:grad.ce_bwd.1",
+    "train/s3/343:grad.ce_bwd.2",
+    "train/s3/343:grad.ce_bwd.3",
+    "train/s3/344:grad.cast.0",
+    "train/s3/344:grad.cast.1",
+    "train/s3/344:grad.cast.2",
+    "train/s3/344:grad.cast.3",
+    "train/s3/345:grad.mm.0",
+    "train/s3/346:grad.mm.0",
+    "train/s3/347:widen.gpt.h0.cast253.0",
+    "train/s3/347:widen.gpt.h0.cast253.1",
+    "train/s3/347:widen.gpt.h0.cast253.2",
+    "train/s3/347:widen.gpt.h0.cast253.3",
+    "train/s3/348:grad.layernorm_bwd.0",
+    "train/s3/348:grad.layernorm_bwd.1",
+    "train/s3/348:grad.layernorm_bwd.2",
+    "train/s3/348:grad.layernorm_bwd.3",
+    "train/s3/348:grad.layernorm_bwd.4",
+    "train/s3/349:grad.cast.0",
+    "train/s3/349:grad.cast.1",
+    "train/s3/349:grad.cast.2",
+    "train/s3/349:grad.cast.3",
+    "train/s3/350:widen.grad.cast269.0",
+    "train/s3/350:widen.grad.cast269.1",
+    "train/s3/350:widen.grad.cast269.2",
+    "train/s3/350:widen.grad.cast269.3",
+    "train/s3/351:grad.colsum.0",
+    "train/s3/352:grad.mm.0",
+    "train/s3/352:grad.mm.1",
+    "train/s3/353:grad.mm.0",
+    "train/s3/353:grad.mm.1",
+    "train/s3/354:widen.grad.cast273.0",
+    "train/s3/354:widen.grad.cast273.1",
+    "train/s3/354:widen.grad.cast273.2",
+    "train/s3/354:widen.grad.cast273.3",
+    "train/s3/355:grad.gelu_bwd.0",
+    "train/s3/355:grad.gelu_bwd.1",
+    "train/s3/355:grad.gelu_bwd.2",
+    "train/s3/355:grad.gelu_bwd.3",
+    "train/s3/356:grad.colsum.0",
+    "train/s3/356:grad.colsum.1",
+    "train/s3/356:grad.colsum.2",
+    "train/s3/356:grad.colsum.3",
+    "train/s3/357:grad.mm.0",
+    "train/s3/357:grad.mm.1",
+    "train/s3/358:grad.mm.0",
+    "train/s3/359:widen.gpt.h0.cast245.0",
+    "train/s3/359:widen.gpt.h0.cast245.1",
+    "train/s3/359:widen.gpt.h0.cast245.2",
+    "train/s3/359:widen.gpt.h0.cast245.3",
+    "train/s3/360:widen.grad.cast269.0",
+    "train/s3/360:widen.grad.cast269.1",
+    "train/s3/360:widen.grad.cast269.2",
+    "train/s3/360:widen.grad.cast269.3",
+    "train/s3/361:grad.layernorm_bwd.0",
+    "train/s3/361:grad.layernorm_bwd.1",
+    "train/s3/361:grad.layernorm_bwd.2",
+    "train/s3/361:grad.layernorm_bwd.3",
+    "train/s3/361:grad.layernorm_bwd.4",
+    "train/s3/362:narrow.grad.cast269.0",
+    "train/s3/362:narrow.grad.cast269.1",
+    "train/s3/362:narrow.grad.cast269.2",
+    "train/s3/362:narrow.grad.cast269.3",
+    "train/s3/363:grad.cast.0",
+    "train/s3/363:grad.cast.1",
+    "train/s3/363:grad.cast.2",
+    "train/s3/363:grad.cast.3",
+    "train/s3/364:widen.grad.cast280.0",
+    "train/s3/364:widen.grad.cast280.1",
+    "train/s3/364:widen.grad.cast280.2",
+    "train/s3/364:widen.grad.cast280.3",
+    "train/s3/365:grad.colsum.0",
+    "train/s3/366:grad.mm.0",
+    "train/s3/367:grad.mm.0",
+    "train/s3/368:widen.gpt.h0.cast241.0",
+    "train/s3/368:widen.gpt.h0.cast241.1",
+    "train/s3/368:widen.gpt.h0.cast241.2",
+    "train/s3/368:widen.gpt.h0.cast241.3",
+    "train/s3/369:grad.attention_bwd.0",
+    "train/s3/369:grad.attention_bwd.1",
+    "train/s3/369:grad.attention_bwd.2",
+    "train/s3/369:grad.attention_bwd.3",
+    "train/s3/369:grad.attention_bwd.4",
+    "train/s3/369:grad.attention_bwd.5",
+    "train/s3/369:grad.attention_bwd.6",
+    "train/s3/369:grad.attention_bwd.7",
+    "train/s3/370:grad.cast.0",
+    "train/s3/370:grad.cast.1",
+    "train/s3/370:grad.cast.2",
+    "train/s3/370:grad.cast.3",
+    "train/s3/371:widen.grad.cast288.0",
+    "train/s3/371:widen.grad.cast288.1",
+    "train/s3/371:widen.grad.cast288.2",
+    "train/s3/371:widen.grad.cast288.3",
+    "train/s3/372:grad.colsum.0",
+    "train/s3/373:grad.mm.0",
+    "train/s3/374:grad.mm.0",
+    "train/s3/375:grad.rope_bwd.0",
+    "train/s3/375:grad.rope_bwd.1",
+    "train/s3/375:grad.rope_bwd.2",
+    "train/s3/375:grad.rope_bwd.3",
+    "train/s3/376:grad.cast.0",
+    "train/s3/376:grad.cast.1",
+    "train/s3/376:grad.cast.2",
+    "train/s3/376:grad.cast.3",
+    "train/s3/377:widen.grad.cast293.0",
+    "train/s3/377:widen.grad.cast293.1",
+    "train/s3/377:widen.grad.cast293.2",
+    "train/s3/377:widen.grad.cast293.3",
+    "train/s3/378:grad.colsum.0",
+    "train/s3/379:grad.mm.0",
+    "train/s3/380:grad.mm.0",
+    "train/s3/381:grad.rope_bwd.0",
+    "train/s3/381:grad.rope_bwd.1",
+    "train/s3/381:grad.rope_bwd.2",
+    "train/s3/381:grad.rope_bwd.3",
+    "train/s3/382:grad.cast.0",
+    "train/s3/382:grad.cast.1",
+    "train/s3/382:grad.cast.2",
+    "train/s3/382:grad.cast.3",
+    "train/s3/383:widen.grad.cast297.0",
+    "train/s3/383:widen.grad.cast297.1",
+    "train/s3/383:widen.grad.cast297.2",
+    "train/s3/383:widen.grad.cast297.3",
+    "train/s3/384:grad.colsum.0",
+    "train/s3/385:grad.mm.0",
+    "train/s3/386:grad.mm.0",
+    "train/s3/387:widen.grad.cast280.0",
+    "train/s3/387:widen.grad.cast280.1",
+    "train/s3/387:widen.grad.cast280.2",
+    "train/s3/387:widen.grad.cast280.3",
+    "train/s3/388:grad.layernorm_bwd.0",
+    "train/s3/388:grad.layernorm_bwd.1",
+    "train/s3/388:grad.layernorm_bwd.2",
+    "train/s3/388:grad.layernorm_bwd.3",
+    "train/s3/388:grad.layernorm_bwd.4",
+    "train/s3/389:narrow.grad.cast280.0",
+    "train/s3/389:narrow.grad.cast280.1",
+    "train/s3/389:narrow.grad.cast280.2",
+    "train/s3/389:narrow.grad.cast280.3",
+    "train/s3/390:widen.grad.cast280.0",
+    "train/s3/390:widen.grad.cast280.1",
+    "train/s3/390:widen.grad.cast280.2",
+    "train/s3/390:widen.grad.cast280.3",
+    "train/s3/391:grad.embedding_bwd.0",
+    "train/s3/391:grad.embedding_bwd.1",
+    "train/s3/391:grad.embedding_bwd.2",
+    "train/s3/391:grad.embedding_bwd.3",
+    "train/s3/392:grad_clip.0",
+    "train/s3/392:grad_clip.1",
+    "train/s3/392:grad_clip.2",
+    "train/s3/392:grad_clip.3",
+    "train/s3/392:grad_clip.4",
+    "train/s3/392:grad_clip.5",
+    "train/s3/392:grad_clip.6",
+    "train/s3/392:grad_clip.7",
+    "train/s3/392:grad_clip.8",
+    "train/s3/392:grad_clip.9",
+    "train/s3/392:grad_clip.10",
+    "train/s3/392:grad_clip.11",
+    "train/s3/392:grad_clip.12",
+    "train/s3/392:grad_clip.13",
+    "train/s3/392:grad_clip.14",
+    "train/s3/392:grad_clip.15",
+    "train/s3/392:grad_clip.16",
+    "train/s3/392:grad_clip.17",
+    "train/s3/392:grad_clip.18",
+    "train/s3/392:grad_clip.19",
+    "train/s3/392:grad_clip.20",
+    "train/s3/392:grad_clip.21",
+    "train/s3/392:grad_clip.22",
+    "train/s3/392:grad_clip.23",
+    "train/s3/392:grad_clip.24",
+    "train/s3/392:grad_clip.25",
+    "train/s3/392:grad_clip.26",
+    "train/s3/392:grad_clip.27",
+    "train/s3/392:grad_clip.28",
+    "train/s3/392:grad_clip.29",
+    "train/s3/392:grad_clip.30",
+    "train/s3/392:grad_clip.31",
+    "train/s3/392:grad_clip.32",
+    "train/s3/392:grad_clip.33",
+    "train/s3/392:grad_clip.34",
+    "train/s3/392:grad_clip.35",
+    "train/s3/392:grad_clip.36",
+    "train/s3/392:grad_clip.37",
+    "train/s3/392:grad_clip.38",
+    "train/s3/392:grad_clip.39",
+    "train/s3/392:grad_clip.40",
+    "train/s3/392:grad_clip.41",
+    "train/s3/392:grad_clip.42",
+    "train/s3/392:grad_clip.43",
+    "train/s3/392:grad_clip.44",
+    "train/s3/392:grad_clip.45",
+    "train/s3/392:grad_clip.46",
+    "train/s3/392:grad_clip.47",
+    "train/s3/392:grad_clip.48",
+    "train/s3/392:grad_clip.49",
+    "train/s3/392:grad_clip.50",
+    "train/s3/392:grad_clip.51",
+    "train/s3/392:grad_clip.52",
+    "train/s3/392:grad_clip.53",
+    "train/s3/392:grad_clip.54",
+    "train/s3/392:grad_clip.55",
+    "train/s3/392:grad_clip.56",
+    "train/s3/392:grad_clip.57",
+    "train/s3/392:grad_clip.58",
+    "train/s3/392:grad_clip.59",
+    "train/s3/392:grad_clip.60",
+    "train/s3/392:grad_clip.61",
+    "train/s3/392:grad_clip.62",
+    "train/s3/392:grad_clip.63",
+    "train/s3/392:grad_clip.64",
+    "train/s3/392:grad_clip.65",
+    "train/s3/392:grad_clip.66",
+    "train/s3/392:grad_clip.67",
+    "train/s3/392:grad_clip.68",
+    "train/s3/392:grad_clip.69",
+    "train/s3/392:grad_clip.70",
+    "train/s3/392:grad_clip.71",
+    "train/s3/392:grad_clip.72",
+    "train/s3/392:grad_clip.73",
+    "train/s3/392:grad_clip.74",
+    "train/s3/392:grad_clip.75",
+    "train/s3/392:grad_clip.76",
+    "train/s3/393:counter_inc.0",
+    "train/s3/394:barrier.0",
+    "train/s3/395:opt.adamw.0",
+    "train/s3/395:opt.adamw.1",
+    "train/s3/395:opt.adamw.2",
+    "train/s3/395:opt.adamw.3",
+    "train/s3/395:opt.adamw.4",
+    "train/s3/395:opt.adamw.5",
+    "train/s3/395:opt.adamw.6",
+    "train/s3/395:opt.adamw.7",
+    "train/s3/396:opt.adamw.0",
+    "train/s3/397:opt.adamw.0",
+    "train/s3/398:opt.adamw.0",
+    "train/s3/398:opt.adamw.1",
+    "train/s3/398:opt.adamw.2",
+    "train/s3/398:opt.adamw.3",
+    "train/s3/399:opt.adamw.0",
+    "train/s3/400:opt.adamw.0",
+    "train/s3/400:opt.adamw.1",
+    "train/s3/400:opt.adamw.2",
+    "train/s3/400:opt.adamw.3",
+    "train/s3/401:opt.adamw.0",
+    "train/s3/402:opt.adamw.0",
+    "train/s3/402:opt.adamw.1",
+    "train/s3/402:opt.adamw.2",
+    "train/s3/402:opt.adamw.3",
+    "train/s3/403:opt.adamw.0",
+    "train/s3/404:opt.adamw.0",
+    "train/s3/404:opt.adamw.1",
+    "train/s3/404:opt.adamw.2",
+    "train/s3/404:opt.adamw.3",
+    "train/s3/405:opt.adamw.0",
+    "train/s3/406:opt.adamw.0",
+    "train/s3/407:opt.adamw.0",
+    "train/s3/408:opt.adamw.0",
+    "train/s3/408:opt.adamw.1",
+    "train/s3/408:opt.adamw.2",
+    "train/s3/408:opt.adamw.3",
+    "train/s3/408:opt.adamw.4",
+    "train/s3/408:opt.adamw.5",
+    "train/s3/408:opt.adamw.6",
+    "train/s3/408:opt.adamw.7",
+    "train/s3/408:opt.adamw.8",
+    "train/s3/408:opt.adamw.9",
+    "train/s3/408:opt.adamw.10",
+    "train/s3/408:opt.adamw.11",
+    "train/s3/408:opt.adamw.12",
+    "train/s3/408:opt.adamw.13",
+    "train/s3/408:opt.adamw.14",
+    "train/s3/408:opt.adamw.15",
+    "train/s3/409:opt.adamw.0",
+    "train/s3/410:opt.adamw.0",
+    "train/s3/410:opt.adamw.1",
+    "train/s3/410:opt.adamw.2",
+    "train/s3/410:opt.adamw.3",
+    "train/s3/410:opt.adamw.4",
+    "train/s3/410:opt.adamw.5",
+    "train/s3/410:opt.adamw.6",
+    "train/s3/410:opt.adamw.7",
+    "train/s3/410:opt.adamw.8",
+    "train/s3/410:opt.adamw.9",
+    "train/s3/410:opt.adamw.10",
+    "train/s3/410:opt.adamw.11",
+    "train/s3/410:opt.adamw.12",
+    "train/s3/410:opt.adamw.13",
+    "train/s3/410:opt.adamw.14",
+    "train/s3/410:opt.adamw.15",
+    "train/s3/411:opt.adamw.0",
+    "train/s3/412:opt.adamw.0",
+    "train/s3/413:opt.adamw.0",
+    "train/s3/414:opt.adamw.0",
+    "train/s3/414:opt.adamw.1",
+    "train/s3/414:opt.adamw.2",
+    "train/s3/414:opt.adamw.3",
+    "train/s3/414:opt.adamw.4",
+    "train/s3/414:opt.adamw.5",
+    "train/s3/414:opt.adamw.6",
+    "train/s3/414:opt.adamw.7",
+    "train/s3/415:barrier.0",
+    "train/s4/416:shadow.wb.gpt.h0.attn.q.w.0",
+    "train/s4/416:shadow.wb.gpt.h0.attn.q.w.1",
+    "train/s4/416:shadow.wb.gpt.h0.attn.q.w.2",
+    "train/s4/416:shadow.wb.gpt.h0.attn.q.w.3",
+    "train/s4/417:shadow.wb.gpt.h0.attn.k.w.0",
+    "train/s4/417:shadow.wb.gpt.h0.attn.k.w.1",
+    "train/s4/417:shadow.wb.gpt.h0.attn.k.w.2",
+    "train/s4/417:shadow.wb.gpt.h0.attn.k.w.3",
+    "train/s4/418:shadow.wb.gpt.h0.attn.v.w.0",
+    "train/s4/418:shadow.wb.gpt.h0.attn.v.w.1",
+    "train/s4/418:shadow.wb.gpt.h0.attn.v.w.2",
+    "train/s4/418:shadow.wb.gpt.h0.attn.v.w.3",
+    "train/s4/419:shadow.wb.gpt.h0.attn.proj.w.0",
+    "train/s4/419:shadow.wb.gpt.h0.attn.proj.w.1",
+    "train/s4/419:shadow.wb.gpt.h0.attn.proj.w.2",
+    "train/s4/419:shadow.wb.gpt.h0.attn.proj.w.3",
+    "train/s4/420:shadow.wb.gpt.h0.mlp.fc1.w.0",
+    "train/s4/420:shadow.wb.gpt.h0.mlp.fc1.w.1",
+    "train/s4/420:shadow.wb.gpt.h0.mlp.fc1.w.2",
+    "train/s4/420:shadow.wb.gpt.h0.mlp.fc1.w.3",
+    "train/s4/421:shadow.wb.gpt.h0.mlp.fc2.w.0",
+    "train/s4/421:shadow.wb.gpt.h0.mlp.fc2.w.1",
+    "train/s4/421:shadow.wb.gpt.h0.mlp.fc2.w.2",
+    "train/s4/421:shadow.wb.gpt.h0.mlp.fc2.w.3",
+    "train/s4/421:shadow.wb.gpt.h0.mlp.fc2.w.4",
+    "train/s4/421:shadow.wb.gpt.h0.mlp.fc2.w.5",
+    "train/s4/421:shadow.wb.gpt.h0.mlp.fc2.w.6",
+    "train/s4/421:shadow.wb.gpt.h0.mlp.fc2.w.7",
+    "train/s4/421:shadow.wb.gpt.h0.mlp.fc2.w.8",
+    "train/s4/421:shadow.wb.gpt.h0.mlp.fc2.w.9",
+    "train/s4/421:shadow.wb.gpt.h0.mlp.fc2.w.10",
+    "train/s4/421:shadow.wb.gpt.h0.mlp.fc2.w.11",
+    "train/s4/421:shadow.wb.gpt.h0.mlp.fc2.w.12",
+    "train/s4/421:shadow.wb.gpt.h0.mlp.fc2.w.13",
+    "train/s4/421:shadow.wb.gpt.h0.mlp.fc2.w.14",
+    "train/s4/421:shadow.wb.gpt.h0.mlp.fc2.w.15",
+    "train/s4/422:shadow.wb.gpt.head.w.0",
+    "train/s4/422:shadow.wb.gpt.head.w.1",
+    "train/s4/422:shadow.wb.gpt.head.w.2",
+    "train/s4/422:shadow.wb.gpt.head.w.3",
+    "train/s4/423:select_window.0",
+    "train/s4/423:select_window.1",
+    "train/s4/423:select_window.2",
+    "train/s4/423:select_window.3",
+    "train/s4/424:select_window.0",
+    "train/s4/424:select_window.1",
+    "train/s4/424:select_window.2",
+    "train/s4/424:select_window.3",
+    "train/s4/425:embedding.0",
+    "train/s4/425:embedding.1",
+    "train/s4/425:embedding.2",
+    "train/s4/425:embedding.3",
+    "train/s4/426:gpt.h0.layernorm.0",
+    "train/s4/426:gpt.h0.layernorm.1",
+    "train/s4/426:gpt.h0.layernorm.2",
+    "train/s4/426:gpt.h0.layernorm.3",
+    "train/s4/427:gpt.h0.linear.0",
+    "train/s4/428:widen.gpt.h0.cast311.0",
+    "train/s4/428:widen.gpt.h0.cast311.1",
+    "train/s4/428:widen.gpt.h0.cast311.2",
+    "train/s4/428:widen.gpt.h0.cast311.3",
+    "train/s4/429:gpt.h0.rope.0",
+    "train/s4/429:gpt.h0.rope.1",
+    "train/s4/429:gpt.h0.rope.2",
+    "train/s4/429:gpt.h0.rope.3",
+    "train/s4/430:gpt.h0.linear.0",
+    "train/s4/431:widen.gpt.h0.cast314.0",
+    "train/s4/431:widen.gpt.h0.cast314.1",
+    "train/s4/431:widen.gpt.h0.cast314.2",
+    "train/s4/431:widen.gpt.h0.cast314.3",
+    "train/s4/432:gpt.h0.rope.0",
+    "train/s4/432:gpt.h0.rope.1",
+    "train/s4/432:gpt.h0.rope.2",
+    "train/s4/432:gpt.h0.rope.3",
+    "train/s4/433:gpt.h0.linear.0",
+    "train/s4/434:widen.gpt.h0.cast317.0",
+    "train/s4/434:widen.gpt.h0.cast317.1",
+    "train/s4/434:widen.gpt.h0.cast317.2",
+    "train/s4/434:widen.gpt.h0.cast317.3",
+    "train/s4/435:gpt.h0.attention.0",
+    "train/s4/435:gpt.h0.attention.1",
+    "train/s4/436:gpt.h0.linear.0",
+    "train/s4/437:widen.gpt.h0.cast321.0",
+    "train/s4/437:widen.gpt.h0.cast321.1",
+    "train/s4/437:widen.gpt.h0.cast321.2",
+    "train/s4/437:widen.gpt.h0.cast321.3",
+    "train/s4/438:gpt.h0.layernorm.0",
+    "train/s4/438:gpt.h0.layernorm.1",
+    "train/s4/438:gpt.h0.layernorm.2",
+    "train/s4/438:gpt.h0.layernorm.3",
+    "train/s4/439:gpt.h0.linear.0",
+    "train/s4/439:gpt.h0.linear.1",
+    "train/s4/440:gpt.h0.linear.0",
+    "train/s4/441:widen.gpt.h0.cast329.0",
+    "train/s4/441:widen.gpt.h0.cast329.1",
+    "train/s4/441:widen.gpt.h0.cast329.2",
+    "train/s4/441:widen.gpt.h0.cast329.3",
+    "train/s4/442:layernorm.0",
+    "train/s4/442:layernorm.1",
+    "train/s4/442:layernorm.2",
+    "train/s4/442:layernorm.3",
+    "train/s4/443:linear.0",
+    "train/s4/444:widen.cast334.0",
+    "train/s4/444:widen.cast334.1",
+    "train/s4/444:widen.cast334.2",
+    "train/s4/444:widen.cast334.3",
+    "train/s4/445:ce_loss.0",
+    "train/s4/445:ce_loss.1",
+    "train/s4/445:ce_loss.2",
+    "train/s4/445:ce_loss.3",
+    "train/s4/445:ce_loss.4",
+    "train/s4/446:widen.cast334.0",
+    "train/s4/446:widen.cast334.1",
+    "train/s4/446:widen.cast334.2",
+    "train/s4/446:widen.cast334.3",
+    "train/s4/447:grad.ce_bwd.0",
+    "train/s4/447:grad.ce_bwd.1",
+    "train/s4/447:grad.ce_bwd.2",
+    "train/s4/447:grad.ce_bwd.3",
+    "train/s4/448:grad.cast.0",
+    "train/s4/448:grad.cast.1",
+    "train/s4/448:grad.cast.2",
+    "train/s4/448:grad.cast.3",
+    "train/s4/449:grad.mm.0",
+    "train/s4/450:grad.mm.0",
+    "train/s4/451:widen.gpt.h0.cast329.0",
+    "train/s4/451:widen.gpt.h0.cast329.1",
+    "train/s4/451:widen.gpt.h0.cast329.2",
+    "train/s4/451:widen.gpt.h0.cast329.3",
+    "train/s4/452:grad.layernorm_bwd.0",
+    "train/s4/452:grad.layernorm_bwd.1",
+    "train/s4/452:grad.layernorm_bwd.2",
+    "train/s4/452:grad.layernorm_bwd.3",
+    "train/s4/452:grad.layernorm_bwd.4",
+    "train/s4/453:grad.cast.0",
+    "train/s4/453:grad.cast.1",
+    "train/s4/453:grad.cast.2",
+    "train/s4/453:grad.cast.3",
+    "train/s4/454:widen.grad.cast345.0",
+    "train/s4/454:widen.grad.cast345.1",
+    "train/s4/454:widen.grad.cast345.2",
+    "train/s4/454:widen.grad.cast345.3",
+    "train/s4/455:grad.colsum.0",
+    "train/s4/456:grad.mm.0",
+    "train/s4/456:grad.mm.1",
+    "train/s4/457:grad.mm.0",
+    "train/s4/457:grad.mm.1",
+    "train/s4/458:widen.grad.cast349.0",
+    "train/s4/458:widen.grad.cast349.1",
+    "train/s4/458:widen.grad.cast349.2",
+    "train/s4/458:widen.grad.cast349.3",
+    "train/s4/459:grad.gelu_bwd.0",
+    "train/s4/459:grad.gelu_bwd.1",
+    "train/s4/459:grad.gelu_bwd.2",
+    "train/s4/459:grad.gelu_bwd.3",
+    "train/s4/460:grad.colsum.0",
+    "train/s4/460:grad.colsum.1",
+    "train/s4/460:grad.colsum.2",
+    "train/s4/460:grad.colsum.3",
+    "train/s4/461:grad.mm.0",
+    "train/s4/461:grad.mm.1",
+    "train/s4/462:grad.mm.0",
+    "train/s4/463:widen.gpt.h0.cast321.0",
+    "train/s4/463:widen.gpt.h0.cast321.1",
+    "train/s4/463:widen.gpt.h0.cast321.2",
+    "train/s4/463:widen.gpt.h0.cast321.3",
+    "train/s4/464:widen.grad.cast345.0",
+    "train/s4/464:widen.grad.cast345.1",
+    "train/s4/464:widen.grad.cast345.2",
+    "train/s4/464:widen.grad.cast345.3",
+    "train/s4/465:grad.layernorm_bwd.0",
+    "train/s4/465:grad.layernorm_bwd.1",
+    "train/s4/465:grad.layernorm_bwd.2",
+    "train/s4/465:grad.layernorm_bwd.3",
+    "train/s4/465:grad.layernorm_bwd.4",
+    "train/s4/466:narrow.grad.cast345.0",
+    "train/s4/466:narrow.grad.cast345.1",
+    "train/s4/466:narrow.grad.cast345.2",
+    "train/s4/466:narrow.grad.cast345.3",
+    "train/s4/467:grad.cast.0",
+    "train/s4/467:grad.cast.1",
+    "train/s4/467:grad.cast.2",
+    "train/s4/467:grad.cast.3",
+    "train/s4/468:widen.grad.cast356.0",
+    "train/s4/468:widen.grad.cast356.1",
+    "train/s4/468:widen.grad.cast356.2",
+    "train/s4/468:widen.grad.cast356.3",
+    "train/s4/469:grad.colsum.0",
+    "train/s4/470:grad.mm.0",
+    "train/s4/471:grad.mm.0",
+    "train/s4/472:widen.gpt.h0.cast317.0",
+    "train/s4/472:widen.gpt.h0.cast317.1",
+    "train/s4/472:widen.gpt.h0.cast317.2",
+    "train/s4/472:widen.gpt.h0.cast317.3",
+    "train/s4/473:grad.attention_bwd.0",
+    "train/s4/473:grad.attention_bwd.1",
+    "train/s4/473:grad.attention_bwd.2",
+    "train/s4/473:grad.attention_bwd.3",
+    "train/s4/473:grad.attention_bwd.4",
+    "train/s4/473:grad.attention_bwd.5",
+    "train/s4/473:grad.attention_bwd.6",
+    "train/s4/473:grad.attention_bwd.7",
+    "train/s4/474:grad.cast.0",
+    "train/s4/474:grad.cast.1",
+    "train/s4/474:grad.cast.2",
+    "train/s4/474:grad.cast.3",
+    "train/s4/475:widen.grad.cast364.0",
+    "train/s4/475:widen.grad.cast364.1",
+    "train/s4/475:widen.grad.cast364.2",
+    "train/s4/475:widen.grad.cast364.3",
+    "train/s4/476:grad.colsum.0",
+    "train/s4/477:grad.mm.0",
+    "train/s4/478:grad.mm.0",
+    "train/s4/479:grad.rope_bwd.0",
+    "train/s4/479:grad.rope_bwd.1",
+    "train/s4/479:grad.rope_bwd.2",
+    "train/s4/479:grad.rope_bwd.3",
+    "train/s4/480:grad.cast.0",
+    "train/s4/480:grad.cast.1",
+    "train/s4/480:grad.cast.2",
+    "train/s4/480:grad.cast.3",
+    "train/s4/481:widen.grad.cast369.0",
+    "train/s4/481:widen.grad.cast369.1",
+    "train/s4/481:widen.grad.cast369.2",
+    "train/s4/481:widen.grad.cast369.3",
+    "train/s4/482:grad.colsum.0",
+    "train/s4/483:grad.mm.0",
+    "train/s4/484:grad.mm.0",
+    "train/s4/485:grad.rope_bwd.0",
+    "train/s4/485:grad.rope_bwd.1",
+    "train/s4/485:grad.rope_bwd.2",
+    "train/s4/485:grad.rope_bwd.3",
+    "train/s4/486:grad.cast.0",
+    "train/s4/486:grad.cast.1",
+    "train/s4/486:grad.cast.2",
+    "train/s4/486:grad.cast.3",
+    "train/s4/487:widen.grad.cast373.0",
+    "train/s4/487:widen.grad.cast373.1",
+    "train/s4/487:widen.grad.cast373.2",
+    "train/s4/487:widen.grad.cast373.3",
+    "train/s4/488:grad.colsum.0",
+    "train/s4/489:grad.mm.0",
+    "train/s4/490:grad.mm.0",
+    "train/s4/491:widen.grad.cast356.0",
+    "train/s4/491:widen.grad.cast356.1",
+    "train/s4/491:widen.grad.cast356.2",
+    "train/s4/491:widen.grad.cast356.3",
+    "train/s4/492:grad.layernorm_bwd.0",
+    "train/s4/492:grad.layernorm_bwd.1",
+    "train/s4/492:grad.layernorm_bwd.2",
+    "train/s4/492:grad.layernorm_bwd.3",
+    "train/s4/492:grad.layernorm_bwd.4",
+    "train/s4/493:narrow.grad.cast356.0",
+    "train/s4/493:narrow.grad.cast356.1",
+    "train/s4/493:narrow.grad.cast356.2",
+    "train/s4/493:narrow.grad.cast356.3",
+    "train/s4/494:widen.grad.cast356.0",
+    "train/s4/494:widen.grad.cast356.1",
+    "train/s4/494:widen.grad.cast356.2",
+    "train/s4/494:widen.grad.cast356.3",
+    "train/s4/495:grad.embedding_bwd.0",
+    "train/s4/495:grad.embedding_bwd.1",
+    "train/s4/495:grad.embedding_bwd.2",
+    "train/s4/495:grad.embedding_bwd.3",
+    "train/s4/496:grad_clip.0",
+    "train/s4/496:grad_clip.1",
+    "train/s4/496:grad_clip.2",
+    "train/s4/496:grad_clip.3",
+    "train/s4/496:grad_clip.4",
+    "train/s4/496:grad_clip.5",
+    "train/s4/496:grad_clip.6",
+    "train/s4/496:grad_clip.7",
+    "train/s4/496:grad_clip.8",
+    "train/s4/496:grad_clip.9",
+    "train/s4/496:grad_clip.10",
+    "train/s4/496:grad_clip.11",
+    "train/s4/496:grad_clip.12",
+    "train/s4/496:grad_clip.13",
+    "train/s4/496:grad_clip.14",
+    "train/s4/496:grad_clip.15",
+    "train/s4/496:grad_clip.16",
+    "train/s4/496:grad_clip.17",
+    "train/s4/496:grad_clip.18",
+    "train/s4/496:grad_clip.19",
+    "train/s4/496:grad_clip.20",
+    "train/s4/496:grad_clip.21",
+    "train/s4/496:grad_clip.22",
+    "train/s4/496:grad_clip.23",
+    "train/s4/496:grad_clip.24",
+    "train/s4/496:grad_clip.25",
+    "train/s4/496:grad_clip.26",
+    "train/s4/496:grad_clip.27",
+    "train/s4/496:grad_clip.28",
+    "train/s4/496:grad_clip.29",
+    "train/s4/496:grad_clip.30",
+    "train/s4/496:grad_clip.31",
+    "train/s4/496:grad_clip.32",
+    "train/s4/496:grad_clip.33",
+    "train/s4/496:grad_clip.34",
+    "train/s4/496:grad_clip.35",
+    "train/s4/496:grad_clip.36",
+    "train/s4/496:grad_clip.37",
+    "train/s4/496:grad_clip.38",
+    "train/s4/496:grad_clip.39",
+    "train/s4/496:grad_clip.40",
+    "train/s4/496:grad_clip.41",
+    "train/s4/496:grad_clip.42",
+    "train/s4/496:grad_clip.43",
+    "train/s4/496:grad_clip.44",
+    "train/s4/496:grad_clip.45",
+    "train/s4/496:grad_clip.46",
+    "train/s4/496:grad_clip.47",
+    "train/s4/496:grad_clip.48",
+    "train/s4/496:grad_clip.49",
+    "train/s4/496:grad_clip.50",
+    "train/s4/496:grad_clip.51",
+    "train/s4/496:grad_clip.52",
+    "train/s4/496:grad_clip.53",
+    "train/s4/496:grad_clip.54",
+    "train/s4/496:grad_clip.55",
+    "train/s4/496:grad_clip.56",
+    "train/s4/496:grad_clip.57",
+    "train/s4/496:grad_clip.58",
+    "train/s4/496:grad_clip.59",
+    "train/s4/496:grad_clip.60",
+    "train/s4/496:grad_clip.61",
+    "train/s4/496:grad_clip.62",
+    "train/s4/496:grad_clip.63",
+    "train/s4/496:grad_clip.64",
+    "train/s4/496:grad_clip.65",
+    "train/s4/496:grad_clip.66",
+    "train/s4/496:grad_clip.67",
+    "train/s4/496:grad_clip.68",
+    "train/s4/496:grad_clip.69",
+    "train/s4/496:grad_clip.70",
+    "train/s4/496:grad_clip.71",
+    "train/s4/496:grad_clip.72",
+    "train/s4/496:grad_clip.73",
+    "train/s4/496:grad_clip.74",
+    "train/s4/496:grad_clip.75",
+    "train/s4/496:grad_clip.76",
+    "train/s4/497:counter_inc.0",
+    "train/s4/498:barrier.0",
+    "train/s4/499:opt.adamw.0",
+    "train/s4/499:opt.adamw.1",
+    "train/s4/499:opt.adamw.2",
+    "train/s4/499:opt.adamw.3",
+    "train/s4/499:opt.adamw.4",
+    "train/s4/499:opt.adamw.5",
+    "train/s4/499:opt.adamw.6",
+    "train/s4/499:opt.adamw.7",
+    "train/s4/500:opt.adamw.0",
+    "train/s4/501:opt.adamw.0",
+    "train/s4/502:opt.adamw.0",
+    "train/s4/502:opt.adamw.1",
+    "train/s4/502:opt.adamw.2",
+    "train/s4/502:opt.adamw.3",
+    "train/s4/503:opt.adamw.0",
+    "train/s4/504:opt.adamw.0",
+    "train/s4/504:opt.adamw.1",
+    "train/s4/504:opt.adamw.2",
+    "train/s4/504:opt.adamw.3",
+    "train/s4/505:opt.adamw.0",
+    "train/s4/506:opt.adamw.0",
+    "train/s4/506:opt.adamw.1",
+    "train/s4/506:opt.adamw.2",
+    "train/s4/506:opt.adamw.3",
+    "train/s4/507:opt.adamw.0",
+    "train/s4/508:opt.adamw.0",
+    "train/s4/508:opt.adamw.1",
+    "train/s4/508:opt.adamw.2",
+    "train/s4/508:opt.adamw.3",
+    "train/s4/509:opt.adamw.0",
+    "train/s4/510:opt.adamw.0",
+    "train/s4/511:opt.adamw.0",
+    "train/s4/512:opt.adamw.0",
+    "train/s4/512:opt.adamw.1",
+    "train/s4/512:opt.adamw.2",
+    "train/s4/512:opt.adamw.3",
+    "train/s4/512:opt.adamw.4",
+    "train/s4/512:opt.adamw.5",
+    "train/s4/512:opt.adamw.6",
+    "train/s4/512:opt.adamw.7",
+    "train/s4/512:opt.adamw.8",
+    "train/s4/512:opt.adamw.9",
+    "train/s4/512:opt.adamw.10",
+    "train/s4/512:opt.adamw.11",
+    "train/s4/512:opt.adamw.12",
+    "train/s4/512:opt.adamw.13",
+    "train/s4/512:opt.adamw.14",
+    "train/s4/512:opt.adamw.15",
+    "train/s4/513:opt.adamw.0",
+    "train/s4/514:opt.adamw.0",
+    "train/s4/514:opt.adamw.1",
+    "train/s4/514:opt.adamw.2",
+    "train/s4/514:opt.adamw.3",
+    "train/s4/514:opt.adamw.4",
+    "train/s4/514:opt.adamw.5",
+    "train/s4/514:opt.adamw.6",
+    "train/s4/514:opt.adamw.7",
+    "train/s4/514:opt.adamw.8",
+    "train/s4/514:opt.adamw.9",
+    "train/s4/514:opt.adamw.10",
+    "train/s4/514:opt.adamw.11",
+    "train/s4/514:opt.adamw.12",
+    "train/s4/514:opt.adamw.13",
+    "train/s4/514:opt.adamw.14",
+    "train/s4/514:opt.adamw.15",
+    "train/s4/515:opt.adamw.0",
+    "train/s4/516:opt.adamw.0",
+    "train/s4/517:opt.adamw.0",
+    "train/s4/518:opt.adamw.0",
+    "train/s4/518:opt.adamw.1",
+    "train/s4/518:opt.adamw.2",
+    "train/s4/518:opt.adamw.3",
+    "train/s4/518:opt.adamw.4",
+    "train/s4/518:opt.adamw.5",
+    "train/s4/518:opt.adamw.6",
+    "train/s4/518:opt.adamw.7",
+    "train/s4/519:barrier.0"
+  ],
+  "initial_ready": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47
+  ],
+  "operator_ids": {
+    "noop": 0,
+    "copy": 1,
+    "add": 2,
+    "scale": 3,
+    "relu": 4,
+    "sgd": 5,
+    "predict": 6,
+    "mse_grad": 7,
+    "matmul": 8,
+    "fill": 9,
+    "spin": 10,
+    "embedding_fwd": 32,
+    "embedding_bwd": 33,
+    "matmul_tile": 34,
+    "layernorm_fwd": 35,
+    "rmsnorm_fwd": 36,
+    "layernorm_bwd_dx": 37,
+    "rmsnorm_bwd_dx": 38,
+    "norm_bwd_params": 39,
+    "gelu_fwd": 40,
+    "gelu_bwd": 41,
+    "residual_add": 42,
+    "rope_fwd": 43,
+    "rope_bwd": 44,
+    "attn_fwd": 45,
+    "attn_bwd_delta": 46,
+    "attn_bwd_dq": 47,
+    "attn_bwd_dkv": 48,
+    "kv_append": 49,
+    "attn_decode": 50,
+    "softmax_ce_fwd": 51,
+    "softmax_ce_reduce": 52,
+    "softmax_ce_bwd": 53,
+    "adamw": 54,
+    "gradnorm_partial": 55,
+    "gradnorm_finish": 56,
+    "sample": 57,
+    "argmax": 58,
+    "zero_buf": 59,
+    "counter_inc": 60,
+    "colsum": 61,
+    "select_window": 62,
+    "gather_rows": 63,
+    "act_fwd": 96,
+    "act_bwd": 97,
+    "silu_mul_fwd": 98,
+    "silu_mul_bwd": 99,
+    "softmax_rows_fwd": 100,
+    "softmax_rows_bwd": 101,
+    "gather_rows_scaled": 102,
+    "scatter_add_rows": 103,
+    "row_dot": 104,
+    "moe_route": 105,
+    "moe_gates_fwd": 106,
+    "moe_gates_bwd": 107,
+    "moe_balance_fwd": 108,
+    "moe_balance_bwd": 109,
+    "attn_full_fwd": 110,
+    "attn_full_bwd_dq": 111,
+    "attn_full_bwd_dkv": 112,
+    "round_bf16": 113,
+    "matmul_tile_bf16": 114,
+    "adamw_lr": 115,
+    "lr_schedule": 116,
+    "scale_flat": 117,
+    "add_rowtile": 118,
+    "matmul_tile_dgelu": 119,
+    "matmul_tile_silu_mul": 120,
+    "matmul_tile_silu_mul_bwd": 121,
+    "doom_tick": 128,
+    "doom_present": 129,
+    "doom_status": 130,
+    "doom_tick_n": 131,
+    "doom_present_n": 132,
+    "doom_status_n": 133,
+    "put": 64,
+    "put_signal": 65,
+    "signal": 66,
+    "reduce2": 67,
+    "reduce_put_signal": 68,
+    "send_proxy": 69,
+    "pack_bf16": 70,
+    "unpack_bf16": 71
+  },
+  "buffers": [
+    {
+      "name": "w.gpt.h0.attn.q.w",
+      "index": 0,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "seeded",
+        "seed": 2070800510,
+        "scale": 0.019999999552965164,
+        "dist": "normal",
+        "draws": 4,
+        "bias": 2.0,
+        "coef": 0.03464101627469063
+      }
+    },
+    {
+      "name": "wb.gpt.h0.attn.q.w",
+      "index": 1,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "w.gpt.h0.attn.k.w",
+      "index": 2,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "seeded",
+        "seed": 1792855768,
+        "scale": 0.019999999552965164,
+        "dist": "normal",
+        "draws": 4,
+        "bias": 2.0,
+        "coef": 0.03464101627469063
+      }
+    },
+    {
+      "name": "wb.gpt.h0.attn.k.w",
+      "index": 3,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "w.gpt.h0.attn.v.w",
+      "index": 4,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "seeded",
+        "seed": 2116222715,
+        "scale": 0.019999999552965164,
+        "dist": "normal",
+        "draws": 4,
+        "bias": 2.0,
+        "coef": 0.03464101627469063
+      }
+    },
+    {
+      "name": "wb.gpt.h0.attn.v.w",
+      "index": 5,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "w.gpt.h0.attn.proj.w",
+      "index": 6,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "seeded",
+        "seed": 666817896,
+        "scale": 0.01414213515818119,
+        "dist": "normal",
+        "draws": 4,
+        "bias": 2.0,
+        "coef": 0.024494895711541176
+      }
+    },
+    {
+      "name": "wb.gpt.h0.attn.proj.w",
+      "index": 7,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "w.gpt.h0.mlp.fc1.w",
+      "index": 8,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "seeded",
+        "seed": 4148708344,
+        "scale": 0.019999999552965164,
+        "dist": "normal",
+        "draws": 4,
+        "bias": 2.0,
+        "coef": 0.03464101627469063
+      }
+    },
+    {
+      "name": "wb.gpt.h0.mlp.fc1.w",
+      "index": 9,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "w.gpt.h0.mlp.fc2.w",
+      "index": 10,
+      "rows": 128,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "seeded",
+        "seed": 4111400353,
+        "scale": 0.01414213515818119,
+        "dist": "normal",
+        "draws": 4,
+        "bias": 2.0,
+        "coef": 0.024494895711541176
+      }
+    },
+    {
+      "name": "wb.gpt.h0.mlp.fc2.w",
+      "index": 11,
+      "rows": 128,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "w.gpt.head.w",
+      "index": 12,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "seeded",
+        "seed": 2999968046,
+        "scale": 0.019999999552965164,
+        "dist": "normal",
+        "draws": 4,
+        "bias": 2.0,
+        "coef": 0.03464101627469063
+      }
+    },
+    {
+      "name": "wb.gpt.head.w",
+      "index": 13,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "stream_ids",
+      "index": 14,
+      "rows": 160,
+      "cols": 1,
+      "dtype": 1,
+      "init": {
+        "kind": "values",
+        "values": [
+          0,
+          3,
+          18,
+          29,
+          20,
+          39,
+          6,
+          33,
+          40,
+          11,
+          58,
+          37,
+          60,
+          47,
+          46,
+          41,
+          16,
+          19,
+          34,
+          45,
+          36,
+          55,
+          22,
+          49,
+          56,
+          27,
+          10,
+          53,
+          12,
+          63,
+          62,
+          57,
+          47,
+          46,
+          41,
+          16,
+          19,
+          34,
+          45,
+          36,
+          55,
+          22,
+          49,
+          56,
+          27,
+          10,
+          53,
+          12,
+          63,
+          62,
+          57,
+          32,
+          35,
+          50,
+          61,
+          52,
+          7,
+          38,
+          1,
+          8,
+          43,
+          26,
+          5,
+          28,
+          30,
+          25,
+          0,
+          3,
+          18,
+          29,
+          20,
+          39,
+          6,
+          33,
+          40,
+          11,
+          58,
+          37,
+          60,
+          47,
+          46,
+          41,
+          16,
+          19,
+          34,
+          45,
+          36,
+          55,
+          22,
+          49,
+          56,
+          27,
+          10,
+          53,
+          12,
+          63,
+          13,
+          4,
+          23,
+          54,
+          17,
+          24,
+          59,
+          42,
+          21,
+          44,
+          31,
+          30,
+          25,
+          0,
+          3,
+          18,
+          29,
+          20,
+          39,
+          6,
+          33,
+          40,
+          11,
+          58,
+          37,
+          60,
+          47,
+          46,
+          41,
+          16,
+          19,
+          34,
+          60,
+          47,
+          46,
+          41,
+          16,
+          19,
+          34,
+          45,
+          36,
+          55,
+          22,
+          49,
+          56,
+          27,
+          10,
+          53,
+          12,
+          63,
+          62,
+          57,
+          32,
+          35,
+          50,
+          61,
+          52,
+          7,
+          38,
+          1,
+          8,
+          43,
+          26,
+          5
+        ]
+      }
+    },
+    {
+      "name": "opt_step",
+      "index": 15,
+      "rows": 1,
+      "cols": 1,
+      "dtype": 1,
+      "init": {
+        "kind": "fill",
+        "value": 0
+      }
+    },
+    {
+      "name": "stream_tgt",
+      "index": 16,
+      "rows": 160,
+      "cols": 1,
+      "dtype": 1,
+      "init": {
+        "kind": "values",
+        "values": [
+          3,
+          18,
+          29,
+          20,
+          39,
+          6,
+          33,
+          40,
+          11,
+          58,
+          37,
+          60,
+          47,
+          46,
+          41,
+          16,
+          19,
+          34,
+          45,
+          36,
+          55,
+          22,
+          49,
+          56,
+          27,
+          10,
+          53,
+          12,
+          63,
+          62,
+          57,
+          32,
+          46,
+          41,
+          16,
+          19,
+          34,
+          45,
+          36,
+          55,
+          22,
+          49,
+          56,
+          27,
+          10,
+          53,
+          12,
+          63,
+          62,
+          57,
+          32,
+          35,
+          50,
+          61,
+          52,
+          7,
+          38,
+          1,
+          8,
+          43,
+          26,
+          5,
+          28,
+          15,
+          25,
+          0,
+          3,
+          18,
+          29,
+          20,
+          39,
+          6,
+          33,
+          40,
+          11,
+          58,
+          37,
+          60,
+          47,
+          46,
+          41,
+          16,
+          19,
+          34,
+          45,
+          36,
+          55,
+          22,
+          49,
+          56,
+          27,
+          10,
+          53,
+          12,
+          63,
+          62,
+          4,
+          23,
+          54,
+          17,
+          24,
+          59,
+          42,
+          21,
+          44,
+          31,
+          30,
+          25,
+          0,
+          3,
+          18,
+          29,
+          20,
+          39,
+          6,
+          33,
+          40,
+          11,
+          58,
+          37,
+          60,
+          47,
+          46,
+          41,
+          16,
+          19,
+          34,
+          45,
+          47,
+          46,
+          41,
+          16,
+          19,
+          34,
+          45,
+          36,
+          55,
+          22,
+          49,
+          56,
+          27,
+          10,
+          53,
+          12,
+          63,
+          62,
+          57,
+          32,
+          35,
+          50,
+          61,
+          52,
+          7,
+          38,
+          1,
+          8,
+          43,
+          26,
+          5,
+          28
+        ]
+      }
+    },
+    {
+      "name": "w.gpt.wte",
+      "index": 17,
+      "rows": 64,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "seeded",
+        "seed": 3335983838,
+        "scale": 0.019999999552965164,
+        "dist": "normal",
+        "draws": 4,
+        "bias": 2.0,
+        "coef": 0.03464101627469063
+      }
+    },
+    {
+      "name": "w.gpt.h0.n1.g",
+      "index": 18,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 1.0
+      }
+    },
+    {
+      "name": "w.gpt.h0.n1.b",
+      "index": 19,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "w.gpt.h0.attn.q.b",
+      "index": 20,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "w.gpt.h0.attn.k.b",
+      "index": 21,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "w.gpt.h0.attn.v.b",
+      "index": 22,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "w.gpt.h0.attn.proj.b",
+      "index": 23,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "w.gpt.h0.n2.g",
+      "index": 24,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 1.0
+      }
+    },
+    {
+      "name": "w.gpt.h0.n2.b",
+      "index": 25,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "w.gpt.h0.mlp.fc1.b",
+      "index": 26,
+      "rows": 1,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "w.gpt.h0.mlp.fc2.b",
+      "index": 27,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "w.gpt.nf.g",
+      "index": 28,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 1.0
+      }
+    },
+    {
+      "name": "w.gpt.nf.b",
+      "index": 29,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "loss.0",
+      "index": 30,
+      "rows": 1,
+      "cols": 2,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "clip_coef",
+      "index": 31,
+      "rows": 1,
+      "cols": 2,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 1.0
+      }
+    },
+    {
+      "name": "version_token",
+      "index": 32,
+      "rows": 1,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.wte",
+      "index": 33,
+      "rows": 64,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.wte",
+      "index": 34,
+      "rows": 64,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.h0.n1.g",
+      "index": 35,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.h0.n1.g",
+      "index": 36,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.h0.n1.b",
+      "index": 37,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.h0.n1.b",
+      "index": 38,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.h0.attn.q.w",
+      "index": 39,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.h0.attn.q.w",
+      "index": 40,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.h0.attn.q.b",
+      "index": 41,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.h0.attn.q.b",
+      "index": 42,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.h0.attn.k.w",
+      "index": 43,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.h0.attn.k.w",
+      "index": 44,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.h0.attn.k.b",
+      "index": 45,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.h0.attn.k.b",
+      "index": 46,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.h0.attn.v.w",
+      "index": 47,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.h0.attn.v.w",
+      "index": 48,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.h0.attn.v.b",
+      "index": 49,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.h0.attn.v.b",
+      "index": 50,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.h0.attn.proj.w",
+      "index": 51,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.h0.attn.proj.w",
+      "index": 52,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.h0.attn.proj.b",
+      "index": 53,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.h0.attn.proj.b",
+      "index": 54,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.h0.n2.g",
+      "index": 55,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.h0.n2.g",
+      "index": 56,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.h0.n2.b",
+      "index": 57,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.h0.n2.b",
+      "index": 58,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.h0.mlp.fc1.w",
+      "index": 59,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.h0.mlp.fc1.w",
+      "index": 60,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.h0.mlp.fc1.b",
+      "index": 61,
+      "rows": 1,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.h0.mlp.fc1.b",
+      "index": 62,
+      "rows": 1,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.h0.mlp.fc2.w",
+      "index": 63,
+      "rows": 128,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.h0.mlp.fc2.w",
+      "index": 64,
+      "rows": 128,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.h0.mlp.fc2.b",
+      "index": 65,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.h0.mlp.fc2.b",
+      "index": 66,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.nf.g",
+      "index": 67,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.nf.g",
+      "index": 68,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.nf.b",
+      "index": 69,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.nf.b",
+      "index": 70,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "m.gpt.head.w",
+      "index": 71,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "v.gpt.head.w",
+      "index": 72,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "loss.1",
+      "index": 73,
+      "rows": 1,
+      "cols": 2,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "loss.2",
+      "index": 74,
+      "rows": 1,
+      "cols": 2,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "loss.3",
+      "index": 75,
+      "rows": 1,
+      "cols": 2,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "loss.4",
+      "index": 76,
+      "rows": 1,
+      "cols": 2,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act0",
+      "index": 77,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 1,
+      "init": {
+        "kind": "fill",
+        "value": 0
+      }
+    },
+    {
+      "name": "act1",
+      "index": 78,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 1,
+      "init": {
+        "kind": "fill",
+        "value": 0
+      }
+    },
+    {
+      "name": "act2",
+      "index": 79,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act3",
+      "index": 80,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act4",
+      "index": 81,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act5",
+      "index": 82,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act6",
+      "index": 83,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act7",
+      "index": 84,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act8",
+      "index": 85,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act9",
+      "index": 86,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act10",
+      "index": 87,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act11",
+      "index": 88,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act12",
+      "index": 89,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act13",
+      "index": 90,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act14",
+      "index": 91,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act15",
+      "index": 92,
+      "rows": 2,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act16",
+      "index": 93,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act17",
+      "index": 94,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act18",
+      "index": 95,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act19",
+      "index": 96,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act20",
+      "index": 97,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act21",
+      "index": 98,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act22",
+      "index": 99,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act23",
+      "index": 100,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act24",
+      "index": 101,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act25",
+      "index": 102,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act26",
+      "index": 103,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act27",
+      "index": 104,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act28",
+      "index": 105,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act29",
+      "index": 106,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act30",
+      "index": 107,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act31",
+      "index": 108,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act32",
+      "index": 109,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act33",
+      "index": 110,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act34",
+      "index": 111,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act35",
+      "index": 112,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act36",
+      "index": 113,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act37",
+      "index": 114,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act38",
+      "index": 115,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act39",
+      "index": 116,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act40",
+      "index": 117,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act41",
+      "index": 118,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act42",
+      "index": 119,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act43",
+      "index": 120,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act44",
+      "index": 121,
+      "rows": 128,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act45",
+      "index": 122,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act46",
+      "index": 123,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act47",
+      "index": 124,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act48",
+      "index": 125,
+      "rows": 1,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act49",
+      "index": 126,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act50",
+      "index": 127,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act51",
+      "index": 128,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act52",
+      "index": 129,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act53",
+      "index": 130,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act54",
+      "index": 131,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act55",
+      "index": 132,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act56",
+      "index": 133,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act57",
+      "index": 134,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act58",
+      "index": 135,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act59",
+      "index": 136,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act60",
+      "index": 137,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act61",
+      "index": 138,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act62",
+      "index": 139,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act63",
+      "index": 140,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act64",
+      "index": 141,
+      "rows": 2,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act65",
+      "index": 142,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act66",
+      "index": 143,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act67",
+      "index": 144,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act68",
+      "index": 145,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act69",
+      "index": 146,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act70",
+      "index": 147,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act71",
+      "index": 148,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act72",
+      "index": 149,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act73",
+      "index": 150,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act74",
+      "index": 151,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act75",
+      "index": 152,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act76",
+      "index": 153,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act77",
+      "index": 154,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act78",
+      "index": 155,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act79",
+      "index": 156,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act80",
+      "index": 157,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act81",
+      "index": 158,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act82",
+      "index": 159,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act83",
+      "index": 160,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act84",
+      "index": 161,
+      "rows": 64,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act85",
+      "index": 162,
+      "rows": 396,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act86",
+      "index": 163,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 1,
+      "init": {
+        "kind": "fill",
+        "value": 0
+      }
+    },
+    {
+      "name": "act87",
+      "index": 164,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 1,
+      "init": {
+        "kind": "fill",
+        "value": 0
+      }
+    },
+    {
+      "name": "act88",
+      "index": 165,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act89",
+      "index": 166,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act90",
+      "index": 167,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act91",
+      "index": 168,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act92",
+      "index": 169,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act93",
+      "index": 170,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act94",
+      "index": 171,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act95",
+      "index": 172,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act96",
+      "index": 173,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act97",
+      "index": 174,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act98",
+      "index": 175,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act99",
+      "index": 176,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act100",
+      "index": 177,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act101",
+      "index": 178,
+      "rows": 2,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act102",
+      "index": 179,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act103",
+      "index": 180,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act104",
+      "index": 181,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act105",
+      "index": 182,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act106",
+      "index": 183,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act107",
+      "index": 184,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act108",
+      "index": 185,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act109",
+      "index": 186,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act110",
+      "index": 187,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act111",
+      "index": 188,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act112",
+      "index": 189,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act113",
+      "index": 190,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act114",
+      "index": 191,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act115",
+      "index": 192,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act116",
+      "index": 193,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act117",
+      "index": 194,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act118",
+      "index": 195,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act119",
+      "index": 196,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act120",
+      "index": 197,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act121",
+      "index": 198,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act122",
+      "index": 199,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act123",
+      "index": 200,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act124",
+      "index": 201,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act125",
+      "index": 202,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act126",
+      "index": 203,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act127",
+      "index": 204,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act128",
+      "index": 205,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act129",
+      "index": 206,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act130",
+      "index": 207,
+      "rows": 128,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act131",
+      "index": 208,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act132",
+      "index": 209,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act133",
+      "index": 210,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act134",
+      "index": 211,
+      "rows": 1,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act135",
+      "index": 212,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act136",
+      "index": 213,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act137",
+      "index": 214,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act138",
+      "index": 215,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act139",
+      "index": 216,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act140",
+      "index": 217,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act141",
+      "index": 218,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act142",
+      "index": 219,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act143",
+      "index": 220,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act144",
+      "index": 221,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act145",
+      "index": 222,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act146",
+      "index": 223,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act147",
+      "index": 224,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act148",
+      "index": 225,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act149",
+      "index": 226,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act150",
+      "index": 227,
+      "rows": 2,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act151",
+      "index": 228,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act152",
+      "index": 229,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act153",
+      "index": 230,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act154",
+      "index": 231,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act155",
+      "index": 232,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act156",
+      "index": 233,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act157",
+      "index": 234,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act158",
+      "index": 235,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act159",
+      "index": 236,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act160",
+      "index": 237,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act161",
+      "index": 238,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act162",
+      "index": 239,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act163",
+      "index": 240,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act164",
+      "index": 241,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act165",
+      "index": 242,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act166",
+      "index": 243,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act167",
+      "index": 244,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act168",
+      "index": 245,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act169",
+      "index": 246,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act170",
+      "index": 247,
+      "rows": 64,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act171",
+      "index": 248,
+      "rows": 396,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act172",
+      "index": 249,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 1,
+      "init": {
+        "kind": "fill",
+        "value": 0
+      }
+    },
+    {
+      "name": "act173",
+      "index": 250,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 1,
+      "init": {
+        "kind": "fill",
+        "value": 0
+      }
+    },
+    {
+      "name": "act174",
+      "index": 251,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act175",
+      "index": 252,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act176",
+      "index": 253,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act177",
+      "index": 254,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act178",
+      "index": 255,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act179",
+      "index": 256,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act180",
+      "index": 257,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act181",
+      "index": 258,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act182",
+      "index": 259,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act183",
+      "index": 260,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act184",
+      "index": 261,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act185",
+      "index": 262,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act186",
+      "index": 263,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act187",
+      "index": 264,
+      "rows": 2,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act188",
+      "index": 265,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act189",
+      "index": 266,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act190",
+      "index": 267,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act191",
+      "index": 268,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act192",
+      "index": 269,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act193",
+      "index": 270,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act194",
+      "index": 271,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act195",
+      "index": 272,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act196",
+      "index": 273,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act197",
+      "index": 274,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act198",
+      "index": 275,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act199",
+      "index": 276,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act200",
+      "index": 277,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act201",
+      "index": 278,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act202",
+      "index": 279,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act203",
+      "index": 280,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act204",
+      "index": 281,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act205",
+      "index": 282,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act206",
+      "index": 283,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act207",
+      "index": 284,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act208",
+      "index": 285,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act209",
+      "index": 286,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act210",
+      "index": 287,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act211",
+      "index": 288,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act212",
+      "index": 289,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act213",
+      "index": 290,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act214",
+      "index": 291,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act215",
+      "index": 292,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act216",
+      "index": 293,
+      "rows": 128,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act217",
+      "index": 294,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act218",
+      "index": 295,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act219",
+      "index": 296,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act220",
+      "index": 297,
+      "rows": 1,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act221",
+      "index": 298,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act222",
+      "index": 299,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act223",
+      "index": 300,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act224",
+      "index": 301,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act225",
+      "index": 302,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act226",
+      "index": 303,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act227",
+      "index": 304,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act228",
+      "index": 305,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act229",
+      "index": 306,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act230",
+      "index": 307,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act231",
+      "index": 308,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act232",
+      "index": 309,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act233",
+      "index": 310,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act234",
+      "index": 311,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act235",
+      "index": 312,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act236",
+      "index": 313,
+      "rows": 2,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act237",
+      "index": 314,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act238",
+      "index": 315,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act239",
+      "index": 316,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act240",
+      "index": 317,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act241",
+      "index": 318,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act242",
+      "index": 319,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act243",
+      "index": 320,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act244",
+      "index": 321,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act245",
+      "index": 322,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act246",
+      "index": 323,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act247",
+      "index": 324,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act248",
+      "index": 325,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act249",
+      "index": 326,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act250",
+      "index": 327,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act251",
+      "index": 328,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act252",
+      "index": 329,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act253",
+      "index": 330,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act254",
+      "index": 331,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act255",
+      "index": 332,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act256",
+      "index": 333,
+      "rows": 64,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act257",
+      "index": 334,
+      "rows": 396,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act258",
+      "index": 335,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 1,
+      "init": {
+        "kind": "fill",
+        "value": 0
+      }
+    },
+    {
+      "name": "act259",
+      "index": 336,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 1,
+      "init": {
+        "kind": "fill",
+        "value": 0
+      }
+    },
+    {
+      "name": "act260",
+      "index": 337,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act261",
+      "index": 338,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act262",
+      "index": 339,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act263",
+      "index": 340,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act264",
+      "index": 341,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act265",
+      "index": 342,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act266",
+      "index": 343,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act267",
+      "index": 344,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act268",
+      "index": 345,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act269",
+      "index": 346,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act270",
+      "index": 347,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act271",
+      "index": 348,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act272",
+      "index": 349,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act273",
+      "index": 350,
+      "rows": 2,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act274",
+      "index": 351,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act275",
+      "index": 352,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act276",
+      "index": 353,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act277",
+      "index": 354,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act278",
+      "index": 355,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act279",
+      "index": 356,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act280",
+      "index": 357,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act281",
+      "index": 358,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act282",
+      "index": 359,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act283",
+      "index": 360,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act284",
+      "index": 361,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act285",
+      "index": 362,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act286",
+      "index": 363,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act287",
+      "index": 364,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act288",
+      "index": 365,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act289",
+      "index": 366,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act290",
+      "index": 367,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act291",
+      "index": 368,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act292",
+      "index": 369,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act293",
+      "index": 370,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act294",
+      "index": 371,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act295",
+      "index": 372,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act296",
+      "index": 373,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act297",
+      "index": 374,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act298",
+      "index": 375,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act299",
+      "index": 376,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act300",
+      "index": 377,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act301",
+      "index": 378,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act302",
+      "index": 379,
+      "rows": 128,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act303",
+      "index": 380,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act304",
+      "index": 381,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act305",
+      "index": 382,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act306",
+      "index": 383,
+      "rows": 1,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act307",
+      "index": 384,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act308",
+      "index": 385,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act309",
+      "index": 386,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act310",
+      "index": 387,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act311",
+      "index": 388,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act312",
+      "index": 389,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act313",
+      "index": 390,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act314",
+      "index": 391,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act315",
+      "index": 392,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act316",
+      "index": 393,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act317",
+      "index": 394,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act318",
+      "index": 395,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act319",
+      "index": 396,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act320",
+      "index": 397,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act321",
+      "index": 398,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act322",
+      "index": 399,
+      "rows": 2,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act323",
+      "index": 400,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act324",
+      "index": 401,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act325",
+      "index": 402,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act326",
+      "index": 403,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act327",
+      "index": 404,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act328",
+      "index": 405,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act329",
+      "index": 406,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act330",
+      "index": 407,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act331",
+      "index": 408,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act332",
+      "index": 409,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act333",
+      "index": 410,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act334",
+      "index": 411,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act335",
+      "index": 412,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act336",
+      "index": 413,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act337",
+      "index": 414,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act338",
+      "index": 415,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act339",
+      "index": 416,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act340",
+      "index": 417,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act341",
+      "index": 418,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act342",
+      "index": 419,
+      "rows": 64,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act343",
+      "index": 420,
+      "rows": 396,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act344",
+      "index": 421,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 1,
+      "init": {
+        "kind": "fill",
+        "value": 0
+      }
+    },
+    {
+      "name": "act345",
+      "index": 422,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 1,
+      "init": {
+        "kind": "fill",
+        "value": 0
+      }
+    },
+    {
+      "name": "act346",
+      "index": 423,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act347",
+      "index": 424,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act348",
+      "index": 425,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act349",
+      "index": 426,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act350",
+      "index": 427,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act351",
+      "index": 428,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act352",
+      "index": 429,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act353",
+      "index": 430,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act354",
+      "index": 431,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act355",
+      "index": 432,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act356",
+      "index": 433,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act357",
+      "index": 434,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act358",
+      "index": 435,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act359",
+      "index": 436,
+      "rows": 2,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act360",
+      "index": 437,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act361",
+      "index": 438,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act362",
+      "index": 439,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act363",
+      "index": 440,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act364",
+      "index": 441,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act365",
+      "index": 442,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act366",
+      "index": 443,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act367",
+      "index": 444,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act368",
+      "index": 445,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act369",
+      "index": 446,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act370",
+      "index": 447,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act371",
+      "index": 448,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act372",
+      "index": 449,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act373",
+      "index": 450,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act374",
+      "index": 451,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act375",
+      "index": 452,
+      "rows": 32,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act376",
+      "index": 453,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act377",
+      "index": 454,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act378",
+      "index": 455,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act379",
+      "index": 456,
+      "rows": 32,
+      "cols": 64,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act380",
+      "index": 457,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act381",
+      "index": 458,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act382",
+      "index": 459,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act383",
+      "index": 460,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act384",
+      "index": 461,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act385",
+      "index": 462,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act386",
+      "index": 463,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act387",
+      "index": 464,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act388",
+      "index": 465,
+      "rows": 128,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act389",
+      "index": 466,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act390",
+      "index": 467,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act391",
+      "index": 468,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act392",
+      "index": 469,
+      "rows": 1,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act393",
+      "index": 470,
+      "rows": 32,
+      "cols": 128,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act394",
+      "index": 471,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act395",
+      "index": 472,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act396",
+      "index": 473,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act397",
+      "index": 474,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act398",
+      "index": 475,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act399",
+      "index": 476,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act400",
+      "index": 477,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act401",
+      "index": 478,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act402",
+      "index": 479,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act403",
+      "index": 480,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act404",
+      "index": 481,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act405",
+      "index": 482,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act406",
+      "index": 483,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act407",
+      "index": 484,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act408",
+      "index": 485,
+      "rows": 2,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act409",
+      "index": 486,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act410",
+      "index": 487,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act411",
+      "index": 488,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act412",
+      "index": 489,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act413",
+      "index": 490,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act414",
+      "index": 491,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act415",
+      "index": 492,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act416",
+      "index": 493,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act417",
+      "index": 494,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act418",
+      "index": 495,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act419",
+      "index": 496,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act420",
+      "index": 497,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 2,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act421",
+      "index": 498,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act422",
+      "index": 499,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act423",
+      "index": 500,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act424",
+      "index": 501,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act425",
+      "index": 502,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act426",
+      "index": 503,
+      "rows": 1,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act427",
+      "index": 504,
+      "rows": 32,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act428",
+      "index": 505,
+      "rows": 64,
+      "cols": 32,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    },
+    {
+      "name": "act429",
+      "index": 506,
+      "rows": 396,
+      "cols": 1,
+      "dtype": 0,
+      "init": {
+        "kind": "fill",
+        "value": 0.0
+      }
+    }
+  ],
+  "variables": [
+    {
+      "name": "weights",
+      "id": 0,
+      "base_version": 0
+    }
+  ],
+  "publishers": [
+    {
+      "task": 342,
+      "name": "train/s0/82:barrier.0",
+      "var": 0,
+      "version": 1
+    },
+    {
+      "task": 419,
+      "name": "train/s0/103:barrier.0",
+      "var": 0,
+      "version": 2
+    },
+    {
+      "task": 762,
+      "name": "train/s1/186:barrier.0",
+      "var": 0,
+      "version": 3
+    },
+    {
+      "task": 839,
+      "name": "train/s1/207:barrier.0",
+      "var": 0,
+      "version": 4
+    },
+    {
+      "task": 1182,
+      "name": "train/s2/290:barrier.0",
+      "var": 0,
+      "version": 5
+    },
+    {
+      "task": 1259,
+      "name": "train/s2/311:barrier.0",
+      "var": 0,
+      "version": 6
+    },
+    {
+      "task": 1602,
+      "name": "train/s3/394:barrier.0",
+      "var": 0,
+      "version": 7
+    },
+    {
+      "task": 1679,
+      "name": "train/s3/415:barrier.0",
+      "var": 0,
+      "version": 8
+    },
+    {
+      "task": 2022,
+      "name": "train/s4/498:barrier.0",
+      "var": 0,
+      "version": 9
+    },
+    {
+      "task": 2099,
+      "name": "train/s4/519:barrier.0",
+      "var": 0,
+      "version": 10
+    }
+  ],
+  "reads": [],
+  "final_versions": {
+    "weights": 10
+  }
+}

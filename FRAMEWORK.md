@@ -37,7 +37,8 @@ Add an op: append an `X(...)` line to a registry (never renumber), add its CUDA 
 
 Buffer args are buffer names or `null` (absent optional); they resolve to `KvmBuf` table indices = declaration order.
 `i32`/`f32` are JSON numbers. A buffer has `dtype` `f32` (default, `KvmBuf.dtype` 0) or `i32` (1, index and counter
-buffers); each op declares which of its buffer args are `i32` (checked at compile time, e.g. `ids`, `tgt`, `step`).
+buffers) or `bf16` (2: real 2-byte storage, `fill`/`values` inits only, rounded to bf16; only the `cast_*` and
+`matmul_tile_bf16s` ops accept it); each op declares which of its buffer args are `i32` (checked at compile time, e.g. `ids`, `tgt`, `step`).
 Unknown keys, ops or args, missing/extra/mistyped args, int32/float32 overflow, NaN/inf (unless `--allow-nonfinite`), values
 below an op's minimum, and tasks that touch more elements than their buffer holds are `CompileError`s naming `graph/task`
 and the argument. `rows`/`cols` default to 1 (a scalar buffer).

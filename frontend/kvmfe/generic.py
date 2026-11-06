@@ -288,8 +288,12 @@ class MLP(Module):
     every hidden layer whose width equals its input width, `norm` ('layernorm' | 'rmsnorm' | None) is applied after each hidden
     layer. dims = [in, hidden..., out]."""
 
-    def __init__(self, name, dims, act='relu', norm=None, residual=False, bias=True, std=None):
+    def __init__(self, name, dims, act='relu', norm=None, residual=False, bias=True, std=None, precision='f32'):
         super().__init__(name)
+        if precision not in ('f32', 'bf16', 'bf16-real'):
+            raise FrontendError(f"MLP {name}: precision must be 'f32', 'bf16' (emulated: bf16 values in fp32 containers) or "
+                                f"'bf16-real' (2-byte bf16 storage for weight copies and activations), got {precision!r}")
+        self.precision = precision
         if len(dims) < 2 or any(d < 1 for d in dims):
             raise FrontendError(f'MLP {name}: dims must be [in, hidden..., out] with positive widths, got {dims}')
         if act not in (*Builder.ACT_KINDS, 'gelu'):
@@ -302,15 +306,19 @@ class MLP(Module):
 
     def __call__(self, b, x, w):
         last = len(self.layers) - 1
+        lp = {'f32': False, 'bf16': True, 'bf16-real': 'real'}[self.precision]
+        f32 = lambda t: b.cast(t, 'f32') if t.dtype == 'bf16' else t
         for i, fc in enumerate(self.layers):
             if i == last:
-                return fc(b, x, w)
-            skip = x if self.residual and self.specs[fc.w].cols == x.cols else None
+                return fc(b, x, w, bf16=lp, cast_out=False)
+            skip = f32(x) if self.residual and self.specs[fc.w].cols == x.cols else None
             if self.act == 'gelu':
-                x = fc(b, x, w, res=skip, gelu=True)                   # fused epilogue: gelu(x W + b) + skip
+                x = fc(b, x, w, res=skip, gelu=True, bf16=lp, cast_out=False)    # fused epilogue: gelu(x W + b) + skip
             else:
-                h = b.act(fc(b, x, w), self.act)
+                h = b.act(fc(b, x, w, bf16=lp, cast_out=False), self.act)
                 x = b.add(h, skip) if skip is not None else h
             if self.norms:
                 x = self.norms[i](b, x, w)
+            if lp:
+                x = b.cast(x, 'bf16', real=lp == 'real')               # the activation between layers is stored in bf16
         return x

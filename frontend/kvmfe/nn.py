@@ -99,9 +99,17 @@ class Linear(Module):
         self.w = self.add('w', din, dout, ('normal', std), decay=True)
         self.b = self.add('b', 1, dout, ('fill', 0.0)) if bias else None
 
-    def __call__(self, b, x, w, res=None, gelu=False, bf16=False):
-        out = b.linear(x, w[self.w], w[self.b] if self.b else None, res, gelu, bf16=bf16)
-        return b.cast(out) if bf16 else out          # bf16 mode: activations are stored rounded as well
+    def __call__(self, b, x, w, res=None, gelu=False, bf16=False, cast_out=True):
+        """bf16: False (fp32), True (operands rounded inside the matmul; the output is stored bf16-rounded in an fp32 container) or
+        'real' (the weight is cast to a real 2-byte bf16 copy each call and the output is a real bf16-storage tensor; x may be
+        a bf16-storage tensor). cast_out=False leaves the fp32 matmul output unrounded in both bf16 modes."""
+        wt = w[self.w]
+        if bf16 == 'real':
+            wt = b.cast(wt, 'bf16', real=True, round_grad=False)      # the fp32 master gets the unrounded gradient, as in the emulated path
+        out = b.linear(x, wt, w[self.b] if self.b else None, res, gelu, bf16=bool(bf16))
+        if not (bf16 and cast_out):
+            return out
+        return b.cast(out, 'bf16', real=bf16 == 'real')              # bf16 mode: activations are stored rounded as well
 
 
 class Norm(Module):

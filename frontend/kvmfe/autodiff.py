@@ -84,6 +84,11 @@ def _(b, op, g, ctx):
     return {'logits': b.ce_bwd(op)}      # d(mean loss)/d logits = (softmax - onehot) / count, scale 1 (loss is the root)
 
 
+@vjp('mse_loss')
+def _(b, op, g, ctx):
+    return {'pred': b.mse_bwd(op)}       # the loss is a root (gradient 1); the target never needs one
+
+
 @vjp('add')
 def _(b, op, g, ctx):
     return {'a': g['out'], 'b': g['out']}      # both operands share the output gradient buffer (see module doc)

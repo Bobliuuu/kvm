@@ -16,5 +16,9 @@ for cfg in ${CONFIGS:-tiny small mid tiny_p}; do
   [ -n "${SKIP_KVM:-}" ] && continue
   python3 bench/vs_pytorch/kvm_bench.py "$W" ./kvm_exec --reps "$REPS" --out "$D/kvm.json" 2>&1 | tee "$D/kvm.log"
   python3 bench/vs_pytorch/kvm_bench.py "$W" ./kvm_exec --reps "$REPS" --out "$D/kvm_b4.json" -- --blocks 4 2>&1 | tee -a "$D/kvm.log"
+  if [ -n "${TRACE:-}" ]; then   # one traced run: where the executor's time goes (the CSV is large and stays on the box)
+    ./kvm_exec --quiet --trace-csv "$D/trace.csv" "$W/bundle" > "$D/trace_run.txt" 2>&1
+    python3 bench/vs_pytorch/trace_summary.py "$D/trace.csv" "$(python3 -c "import json;print(json.load(open('$W/info.json'))['steps'])")" | tee "$D/trace_summary.txt"
+  fi
 done
 echo "=== done $(date -u +%T)"

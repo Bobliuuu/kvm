@@ -65,7 +65,7 @@ enum KvmGptErr {
     KVM_GPT_E_TOKEN = KVM_GPT_ERR_BASE + 5,   // token id / target outside [0, V)
     KVM_GPT_E_KVLEN = KVM_GPT_ERR_BASE + 6    // KV cache length overflow
 };
-enum { KVM_GPT_F32 = 0, KVM_GPT_I32 = 1 };
+enum { KVM_GPT_F32 = 0, KVM_GPT_I32 = 1, KVM_GPT_BF16 = 2 };
 
 namespace kvmgpt {
 
@@ -103,6 +103,15 @@ struct Chk {
     }
     KVM_GPT_DEVI float* fvec(int idx, long n, bool opt = false) { return vec<float>(idx, n, KVM_GPT_F32, opt); }
     KVM_GPT_DEVI int32_t* ivec(int idx, long n, bool opt = false) { return vec<int32_t>(idx, n, KVM_GPT_I32, opt); }
+    KVM_GPT_DEVI unsigned short* bvec(int idx, long n, bool opt = false) { return vec<unsigned short>(idx, n, KVM_GPT_BF16, opt); }   // bf16 storage
+    // [rows x cols] bf16-storage matrix with leading dimension *ld
+    KVM_GPT_DEVI const unsigned short* bmat(int idx, long rows, long cols, int* ld) {
+        const KvmBuf* b = get(idx, KVM_GPT_BF16, false);
+        if (!b) return nullptr;
+        if (rows > b->rows || cols > b->cols || b->ld < b->cols) { fail(KVM_GPT_E_RANGE); return nullptr; }
+        *ld = b->ld;
+        return (const unsigned short*)b->p;
+    }
 };
 KVM_GPT_DEVI float af(const int32_t* a, int i) { return __int_as_float(a[i]); }
 KVM_GPT_DEVI bool aligned16(const void* p, int ld) { return (((uintptr_t)p & 15) == 0) && ((ld & 3) == 0); }
@@ -291,14 +300,20 @@ KVM_GPT_DEVI int sw_mc(int r, int c) { return r * W + (c ^ ((r & 3) << 3)); }
 // Copies one ROWS x COLS tile (KC: k along the columns; MC: m/n along the columns) whose origin is (gr0, gc0) in the row-major global matrix [rmax x cmax] into shared
 // memory (ROWS*COLS/4 chunks of 4 floats, spread over the 256 threads). Aligned in-bounds chunks use cp.async (out-of-range rows zero-fill in hardware);
 // ragged chunks (cmax or ld not a multiple of 4, unaligned base) are written with plain stores, published by the same barrier.
-template <bool KC, int ROWS, int COLS>
-KVM_GPT_DEVI void tile_async(float* dst, const float* src, int ld, int gr0, int gc0, int rmax, int cmax, bool vec) {
+// T = unsigned short: the source holds bf16 storage; elements are widened to float with plain loads/stores (same smem layout).
+template <bool KC, int ROWS, int COLS, typename T = float>
+KVM_GPT_DEVI void tile_async(float* dst, const T* src, int ld, int gr0, int gc0, int rmax, int cmax, bool vec) {
     constexpr int CPR = COLS / 4;   // chunks per row
 #pragma unroll
     for (int s = 0; s < ROWS * CPR / KVM_GPT_THREADS; s++) {
         int q = threadIdx.x + s * KVM_GPT_THREADS, row = q / CPR, c4 = (q % CPR) * 4, gr = gr0 + row, gc = gc0 + c4;
         float* d = dst + (KC ? sw_kc<COLS>(row, c4) : sw_mc<COLS>(row, c4));
-        if (vec && gc + 4 <= cmax) cp_async16(d, gr < rmax ? src + (size_t)gr * ld + gc : src, gr < rmax ? 16 : 0);
+        if constexpr (!std::is_same<T, float>::value) {
+            const T* p = src + (size_t)gr * ld + gc;
+            const bool rok = gr < rmax;
+#pragma unroll
+            for (int e = 0; e < 4; e++) d[e] = rok && gc + e < cmax ? __uint_as_float(((unsigned)p[e]) << 16) : 0.f;
+        } else if (vec && gc + 4 <= cmax) cp_async16(d, gr < rmax ? src + (size_t)gr * ld + gc : src, gr < rmax ? 16 : 0);
         else {
             const float* p = src + (size_t)gr * ld + gc;
             bool rok = gr < rmax;
@@ -315,8 +330,8 @@ KVM_GPT_DEVI void tile_async(float* dst, const float* src, int ld, int gr0, int 
 // slab; the two k-halves are summed in the epilogue. Shared tiles keep the global orientation (coalesced loads for all four
 // transpose combinations). K-contiguous operands (A as [m][k], B as [n][k]) are fed by ldmatrix, the others by 32-bit loads.
 // PREC: 3xTF32 split (a_lo*b_hi + a_hi*b_lo + a_hi*b_hi) restores ~fp32 accuracy.
-template <bool TA, bool TB, bool PREC, bool BF = false>   // BF: operands rounded to bf16, m16n8k16 bf16 mma (one k16 step per slab per warp half)
-KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, float* out, int ldo, const float* bias, const float* res,
+template <bool TA, bool TB, bool PREC, bool BF = false, typename AT = float, typename BT = float>   // BF: operands rounded to bf16, m16n8k16 bf16 mma (one k16 step per slab per warp half); AT/BT = unsigned short: bf16-storage operand
+KVM_GPT_DEVI void mm_tile(const AT* A, int lda, const BT* B, int ldb, float* out, int ldo, const float* bias, const float* res,
                           int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, bool gelu, bool accum) {
     constexpr int BK = 32, TM = 64, TN = 64, TILE = 2048, STAGE = 2 * TILE, NST = 3, CLD = TN + 8;
     float* sm = reinterpret_cast<float*>(kvm_gpt_smem);   // [stage][A | B]
@@ -334,8 +349,8 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
     auto issue = [&](int it) {
         float* As = sm + (it % NST) * STAGE; float* Bs = As + TILE;
         const int kk = it * BK;
-        if (TA) tile_async<false, 32, 64>(As, A, lda, kk, m0, K, M, va); else tile_async<true, 64, 32>(As, A, lda, m0, kk, M, K, va);
-        if (TB) tile_async<true, 64, 32>(Bs, B, ldb, n0, kk, N, K, vb); else tile_async<false, 32, 64>(Bs, B, ldb, kk, n0, K, N, vb);
+        if (TA) tile_async<false, 32, 64, AT>(As, A, lda, kk, m0, K, M, va); else tile_async<true, 64, 32, AT>(As, A, lda, m0, kk, M, K, va);
+        if (TB) tile_async<true, 64, 32, BT>(Bs, B, ldb, n0, kk, N, K, vb); else tile_async<false, 32, 64, BT>(Bs, B, ldb, kk, n0, K, N, vb);
     };
     issue(0); cp_commit();
     if (nk > 1) issue(1);

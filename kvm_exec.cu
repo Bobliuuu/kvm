@@ -302,12 +302,19 @@ class KvmExec {
   }
   KvmExec(const KvmExec&) = delete; KvmExec& operator=(const KvmExec&) = delete;
 
-  // Allocates a rows x cols buffer of dtype 0 (f32) or 1 (i32) and initialises it on the device.
+  // Allocates a rows x cols buffer of dtype 0 (f32), 1 (i32) or 2 (bf16: 2-byte elements, real storage) and initialises it on the device.
+  static size_t elem_bytes(int dtype) { return dtype == 2 ? 2 : 4; }
+  static uint16_t bf16_bits(float x) {   // round to nearest even; NaN stays quiet NaN
+    uint32_t u; memcpy(&u, &x, 4);
+    if ((u & 0x7f800000u) == 0x7f800000u) return (uint16_t)(((u & 0x007fffffu) ? (u | 0x00400000u) : u) >> 16);
+    u += 0x7fffu + ((u >> 16) & 1u); return (uint16_t)(u >> 16);
+  }
+  static float bf16_float(uint16_t h) { uint32_t u = (uint32_t)h << 16; float f; memcpy(&f, &u, 4); return f; }
   int add_buffer(int rows, int cols, const KvmInit& init = {}, int dtype = 0) {
     if (started_ || prepared_) throw std::logic_error("buffers are fixed at start()");
-    if (rows < 1 || cols < 1 || (dtype != 0 && dtype != 1)) throw std::invalid_argument("bad buffer shape or dtype");
+    if (rows < 1 || cols < 1 || (dtype < 0 || dtype > 2)) throw std::invalid_argument("bad buffer shape or dtype");
     const size_t n = (size_t)rows * cols;
-    KvmBuf b{}; CK(cudaMalloc(&b.p, n * 4));
+    KvmBuf b{}; CK(cudaMalloc(&b.p, n * elem_bytes(dtype)));
     b.rows = rows; b.cols = cols; b.ld = cols; b.dtype = dtype;
     init_buffer((float*)b.p, n, init, dtype);
     bufs_.push_back(b);
@@ -557,6 +564,12 @@ class KvmExec {
   std::vector<float> read_buffer(int idx) const {
     if (idx < 0 || idx >= nbufs()) throw std::out_of_range("buffer index");
     std::vector<float> v((size_t)bufs_[idx].rows * bufs_[idx].cols);
+    if (bufs_[idx].dtype == 2) {   // bf16 storage: widened exactly to float
+      std::vector<uint16_t> h(v.size());
+      CK(cudaMemcpy(h.data(), bufs_[idx].p, h.size() * 2, cudaMemcpyDeviceToHost));
+      for (size_t i = 0; i < h.size(); ++i) v[i] = bf16_float(h[i]);
+      return v;
+    }
     CK(cudaMemcpy(v.data(), bufs_[idx].p, v.size() * 4, cudaMemcpyDeviceToHost));
     return v;
   }
@@ -589,6 +602,25 @@ class KvmExec {
     KvmController::write_params(hp_, sc.p);   // generation 1: the policy block's first tick re-reads the launch parameters
   }
   void init_buffer(float* p, size_t n, const KvmInit& in, int dtype) {
+    if (dtype == 2) {   // bf16: fill/values are rounded to bf16 on the host; files hold raw 2-byte elements
+      std::vector<uint16_t> h;
+      switch (in.kind) {
+        case KvmInit::ZERO: CK(cudaMemset(p, 0, n * 2)); return;
+        case KvmInit::FILL: h.assign(n, bf16_bits(in.value)); break;
+        case KvmInit::VALUES:
+          if (in.values.size() != n) throw std::invalid_argument("buffer init size");
+          h.resize(n); for (size_t i = 0; i < n; ++i) h[i] = bf16_bits(in.values[i]); break;
+        case KvmInit::FILE: {
+          FILE* f = fopen(in.path.c_str(), "rb");
+          if (!f) throw std::runtime_error("cannot open init file " + in.path);
+          h.resize(n); size_t got = fread(h.data(), 2, n, f); fclose(f);
+          if (got != n) throw std::runtime_error(in.path + ": expected " + std::to_string(n * 2) + " bytes for a bf16 buffer");
+          break;
+        }
+        default: throw std::invalid_argument("seeded init needs an f32 buffer");
+      }
+      CK(cudaMemcpy(p, h.data(), n * 2, cudaMemcpyHostToDevice)); return;
+    }
     switch (in.kind) {
       case KvmInit::ZERO: CK(cudaMemset(p, 0, n * 4)); break;
       case KvmInit::FILL: {

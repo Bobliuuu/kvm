@@ -14,7 +14,8 @@ class FrontendError(ValueError):
 
 
 class Tensor:
-    """A dense rows x cols array. kind: param | state | input | act. dtype: f32 | i32 (index buffers).
+    """A dense rows x cols array. kind: param | state | input | act. dtype: f32 | i32 (index buffers) | bf16 (real 2-byte storage;
+    accepted by cast/linear/mm only).
     `buf` pins a physical buffer name (weights, optimizer state, request buffers); None lets the memory planner choose."""
     __slots__ = ('uid', 'name', 'rows', 'cols', 'kind', 'buf', 'init', 'rg', 'dtype')
     _uid = itertools.count()
@@ -114,7 +115,7 @@ class Builder:
                        self._remat if self.phase == 'fwd' else None)
         if self.phase == 'fwd':
             for t in outs.values():
-                t.rg = t.rg or (t.dtype == 'f32' and any(i.rg for i in ins.values()))
+                t.rg = t.rg or (t.dtype in ('f32', 'bf16') and any(i.rg for i in ins.values()))
         self.ops.append(op)
         return op
 
@@ -135,6 +136,9 @@ class Builder:
         wt: w is stored [N, K] and used transposed (tied embeddings). bf16: operands rounded to bfloat16, fp32 accumulate."""
         K, N = (w.cols, w.rows) if wt else (w.rows, w.cols)
         self._check(x.cols == K, 'linear', f'inner dims {x.cols} != {K}', x, w)
+        self._check('i32' not in (x.dtype, w.dtype) and (x.dtype == w.dtype == 'f32' or bf16), 'linear',
+                    'bf16-storage operands need bf16=True; i32 operands are not matrices', x, w)
+        self._check(all(t is None or t.dtype == 'f32' for t in (bias, res)), 'linear', 'bias and res must be f32', w)
         self._check(bias is None or bias.shape == (1, N), 'linear', 'bias must be 1 x N', w)
         self._check(res is None or res.shape == (x.rows, N), 'linear', 'res must match the output', x, w)
         ins = {'x': x, 'w': w, **({'bias': bias} if bias else {}), **({'res': res} if res else {})}
@@ -222,6 +226,8 @@ class Builder:
         M, K = (a.cols, a.rows) if ta else (a.rows, a.cols)
         K2, N = (b.cols, b.rows) if tb else (b.rows, b.cols)
         self._check(K == K2, 'mm', f'inner dims {K} != {K2} (ta={ta}, tb={tb})', a, b)
+        self._check('i32' not in (a.dtype, b.dtype) and (a.dtype == b.dtype == 'f32' or bf16), 'mm',
+                    'bf16-storage operands need bf16=True; i32 operands are not matrices', a, b)
         out = into or self._out('mm', M, N)
         self._check(out.shape == (M, N), 'mm', 'into has the wrong shape', out)
         self.emit('mm', {'a': a, 'b': b, **({'into': into} if into else {})}, {'out': out}, ta=ta, tb=tb, bf16=bf16)
@@ -408,11 +414,19 @@ class Builder:
         self.emit('pos_bwd', {'dout': dout, **({'into': into} if into else {})}, {'dpos': out}, seq=fwd.attrs['seq'])
         return out
 
-    def cast(self, x, dtype='bf16'):
-        """Round x to a lower-precision value set (bf16 values stay in fp32 containers). Gradients pass straight through, rounded the same way."""
-        self._check(dtype == 'bf16', 'cast', f'unsupported dtype {dtype!r}; supported: bf16', x)
-        out = self._out('cast', x.rows, x.cols)
-        self.emit('cast', {'x': x}, {'out': out}, dtype=dtype)
+    def cast(self, x, dtype='bf16', real=False, round_grad=True):
+        """Round x to bfloat16 values. Default (real=False): the result stays an f32 tensor (bf16 values in fp32 containers, the
+        emulated path). real=True: the result is a tensor of dtype 'bf16' stored in 2 bytes per element (KvmBuf dtype 2); it can
+        feed linear/mm(bf16=True) and cast(.., 'f32') only. cast(x_bf16, 'f32') widens exactly back to an f32 tensor.
+        Gradients pass straight through; with round_grad (default) the gradient is rounded to bf16 values like the forward value
+        (use round_grad=False for a weight copy whose master stays f32)."""
+        self._check(dtype in ('bf16', 'f32'), 'cast', f'unsupported dtype {dtype!r}; supported: bf16, f32', x)
+        if dtype == 'f32':
+            self._check(x.dtype == 'bf16', 'cast', "cast to f32 widens a bf16-storage tensor (x is not one)", x)
+        else:
+            self._check(x.dtype == 'f32', 'cast', "cast to bf16 needs an f32 tensor", x)
+        out = self._out('cast', x.rows, x.cols, dtype='bf16' if real and dtype == 'bf16' else 'f32')
+        self.emit('cast', {'x': x}, {'out': out}, dtype=dtype, real=bool(real) and dtype == 'bf16', round_grad=round_grad)
         return out
 
     def lr_schedule(self, step, lr, sched, base, warmup, total, min_ratio):

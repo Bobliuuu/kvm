@@ -28,7 +28,7 @@ INT32_MAX = 2**31 - 1
 INT32_MIN = -2**31
 SEED_MAX = 2**63 - 1
 POLICIES = ('exact', 'at_least')
-DTYPES = {'f32': 0, 'i32': 1}              # KvmBuf.dtype
+DTYPES = {'f32': 0, 'i32': 1, 'bf16': 2}   # KvmBuf.dtype (bf16: 2-byte storage, only bf16-aware ops accept it)
 _warned_ops: set = set()
 _F32 = struct.Struct('<f')
 _I32 = struct.Struct('<i')
@@ -189,11 +189,22 @@ def _parse_variables(names, base_versions):
     return out
 
 
+def _bf16_round(x):
+    """Nearest bfloat16 (ties to even) of a float32 value, as a float."""
+    if x != x or x in (float('inf'), float('-inf')):
+        return x
+    bits = struct.unpack('<I', struct.pack('<f', x))[0]
+    bits = (bits + 0x7FFF + ((bits >> 16) & 1)) & 0xFFFF0000
+    return struct.unpack('<f', struct.pack('<I', bits))[0]
+
+
 def _parse_init(where, init, rows, cols, dtype, allow_nonfinite, data_dir):
     """Returns (metadata init dict, explicit values or None)."""
     _need(isinstance(init, dict) and 'kind' in init, f"{where}: init must be an object with a 'kind'")
     kind, n = init['kind'], rows * cols
     conv = (lambda x, w: _f32_value(x, w, allow_nonfinite)) if dtype == 'f32' else _i32_value
+    if dtype == 'bf16':       # explicit values are rounded to the nearest bfloat16 (what the device stores)
+        conv = lambda x, w: _bf16_round(_f32_value(x, w, allow_nonfinite))
     if kind == 'fill':
         _keys(init, f'{where} init', {'kind', 'value'}, {'kind', 'value'})
         v = conv(init['value'], f'{where} init.value')
@@ -218,6 +229,7 @@ def _parse_init(where, init, rows, cols, dtype, allow_nonfinite, data_dir):
         _keys(init, f'{where} init', {'kind', 'path'}, {'kind', 'path'})
         path = init['path']
         _need(isinstance(path, str) and path, f'{where}: init.path must be a non-empty string')
+        _need(dtype != 'bf16', f'{where}: bf16 buffers take fill or values inits, not files')
         p = Path(path)
         _need(not p.is_absolute() and '..' not in p.parts and '\\' not in path,
               f'{where}: init.path {path!r} must be relative to the bundle without ..')
@@ -261,7 +273,7 @@ class _ArgPlan:
         self.sig = ', '.join(f'{a.name}:{a.type}{"?" if a.optional else ""}' for a in op.args)
         self.dtype_checks = ()
         if self.ref and not self.ref.opaque:
-            self.dtype_checks = tuple((a.name, 'i32' if a.name in self.ref.ints else 'f32')
+            self.dtype_checks = tuple((a.name, 'i32' if a.name in self.ref.ints else 'bf16' if a.name in self.ref.bf16 else 'f32')
                                       for a in op.args if a.type == 'buf' and a.name not in self.ref.anydt)
 
 
@@ -330,7 +342,8 @@ def _check_semantics(where, plan, values, buffers):
             _warned_ops.add(op.name)
             log.warning('op %r has no reference semantics: dtypes and extents are not checked for it', op.name)
         return
-    for arg, want in plan.dtype_checks:
+    dyn = ref.dtfn(values) if ref.dtfn else {}
+    for arg, want in (*plan.dtype_checks, *dyn.items()):
         name = values[arg]
         if name is not None and buffers[name].dtype != want:
             raise CompileError(f"{where} arg '{arg}': op '{op.name}' needs a {want} buffer, '{name}' is {buffers[name].dtype}")

@@ -39,4 +39,6 @@ class RefOp:
     mins: dict = field(default_factory=dict)
     ints: frozenset = frozenset()
     anydt: frozenset = frozenset()
+    bf16: frozenset = frozenset()                # buf args that must be bf16-storage buffers (dtype 2)
+    dtfn: Callable | None = None                 # scalars -> {buf arg: dtype} for args whose dtype depends on a flag word
     opaque: bool = False

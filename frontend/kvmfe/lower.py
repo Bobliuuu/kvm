@@ -60,7 +60,7 @@ class TileTask:
         if d.fixed_us is not None:
             return 0.0, 0.0
         regs = {(r.t.uid, r.r0, r.r1, r.c0, r.c1): r for r in self.reads + self.writes}
-        return d.flops(sc), 4.0 * sum((r.r1 - r.r0) * (r.c1 - r.c0) for r in regs.values())
+        return d.flops(sc), sum((r.r1 - r.r0) * (r.c1 - r.c0) * (2.0 if r.t.dtype == 'bf16' else 4.0) for r in regs.values())
 
 
 LOWER: dict[str, Callable] = {}
@@ -109,6 +109,10 @@ def _task(dev, reads, writes, **args):
 # ------------------------------------------------------------------------------------------------ matmul family
 def _mm_tiles(a, b, out, M, N, K, ta, tb, flags, bias=None, res=None, pre=None, acc=False, dev='matmul_tile', precise=False):
     flags |= F_PRECISE if precise else 0
+    if 'bf16' in (a.dtype, b.dtype):             # real bf16 storage operands: the storage-aware matmul (flags 128 = A, 256 = B)
+        if dev != 'matmul_tile_bf16':
+            raise FrontendError(f'{dev}: bf16-storage operand {a.name if a.dtype == "bf16" else b.name} needs bf16=True')
+        dev, flags = 'matmul_tile_bf16s', (flags & ~F_PRECISE) | (128 if a.dtype == 'bf16' else 0) | (256 if b.dtype == 'bf16' else 0)
     for m0 in range(0, M, MM_TILE):
         m1 = min(m0 + MM_TILE, M)
         for n0 in range(0, N, MM_TILE):
@@ -573,8 +577,9 @@ def _(op, tc):
 @lowers('cast')
 def _(op, tc):
     x, out = op.ins['x'], op.outs['out']
+    dev = {('f32', 'f32'): 'round_bf16', ('f32', 'bf16'): 'cast_f32_bf16', ('bf16', 'f32'): 'cast_bf16_f32'}[(x.dtype, out.dtype)]
     for r0, r1, e0, e1 in _flat_blocks(x, tc):
-        yield _task('round_bf16', [_rows(x, r0, r1)], [_rows(out, r0, r1)], x=x, out=out, e0=e0, e1=e1)
+        yield _task(dev, [_rows(x, r0, r1)], [_rows(out, r0, r1)], x=x, out=out, e0=e0, e1=e1)
 
 
 @lowers('lr_schedule')

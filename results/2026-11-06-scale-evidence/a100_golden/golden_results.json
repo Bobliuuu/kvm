@@ -1,0 +1,287 @@
+[
+ {
+  "tag": "zero_P2_L2_s1_direct",
+  "rc": 0,
+  "wall_s": 0.58,
+  "mem_local_bytes_total": 26408,
+  "mem_local_bytes_per_rank": [
+   13204,
+   13204
+  ],
+  "device_used_after_alloc_bytes": 508362752,
+  "kernel_ms": [
+   0.0,
+   0.0
+  ],
+  "compared": 2560,
+  "bitwise_equal": 2560,
+  "worst_rel": 0.0,
+  "tail": [
+   "  rank 0: 50 tasks, 0.00 ms kernel, device 0",
+   "  rank 1: 50 tasks, 0.00 ms kernel, device 0",
+   "  2560 values compared, 2560 bitwise equal, worst relative difference 0"
+  ],
+  "strategy": "zero",
+  "P": 2,
+  "dims": [
+   8,
+   16,
+   8
+  ],
+  "steps": 1,
+  "collective": "direct",
+  "exact_required": true
+ },
+ {
+  "tag": "zero_P2_L2_s1_ring",
+  "rc": 0,
+  "wall_s": 0.58,
+  "mem_local_bytes_total": 26408,
+  "mem_local_bytes_per_rank": [
+   13204,
+   13204
+  ],
+  "device_used_after_alloc_bytes": 508362752,
+  "kernel_ms": [
+   0.0,
+   0.0
+  ],
+  "compared": 2560,
+  "bitwise_equal": 2560,
+  "worst_rel": 0.0,
+  "tail": [
+   "  rank 0: 52 tasks, 0.00 ms kernel, device 0",
+   "  rank 1: 52 tasks, 0.00 ms kernel, device 0",
+   "  2560 values compared, 2560 bitwise equal, worst relative difference 0"
+  ],
+  "strategy": "zero",
+  "P": 2,
+  "dims": [
+   8,
+   16,
+   8
+  ],
+  "steps": 1,
+  "collective": "ring",
+  "exact_required": true
+ },
+ {
+  "tag": "zero_P4_L2_s1_direct",
+  "rc": 0,
+  "wall_s": 0.61,
+  "mem_local_bytes_total": 51024,
+  "mem_local_bytes_per_rank": [
+   12756,
+   12756,
+   12756,
+   12756
+  ],
+  "device_used_after_alloc_bytes": 552402944,
+  "kernel_ms": [
+   1.0,
+   1.0,
+   1.0,
+   1.0
+  ],
+  "compared": 2304,
+  "bitwise_equal": 2304,
+  "worst_rel": 0.0,
+  "tail": [
+   "  rank 2: 117 tasks, 1.00 ms kernel, device 0",
+   "  rank 3: 117 tasks, 1.00 ms kernel, device 0",
+   "  2304 values compared, 2304 bitwise equal, worst relative difference 0"
+  ],
+  "strategy": "zero",
+  "P": 4,
+  "dims": [
+   8,
+   16,
+   8
+  ],
+  "steps": 1,
+  "collective": "direct",
+  "exact_required": true
+ },
+ {
+  "tag": "zero_P4_L2_s1_ring",
+  "rc": 0,
+  "wall_s": 0.63,
+  "mem_local_bytes_total": 46928,
+  "mem_local_bytes_per_rank": [
+   11732,
+   11732,
+   11732,
+   11732
+  ],
+  "device_used_after_alloc_bytes": 552402944,
+  "kernel_ms": [
+   1.0,
+   1.0,
+   1.0,
+   1.0
+  ],
+  "compared": 2304,
+  "bitwise_equal": 2304,
+  "worst_rel": 0.0,
+  "tail": [
+   "  rank 2: 120 tasks, 1.00 ms kernel, device 0",
+   "  rank 3: 120 tasks, 1.00 ms kernel, device 0",
+   "  2304 values compared, 2304 bitwise equal, worst relative difference 0"
+  ],
+  "strategy": "zero",
+  "P": 4,
+  "dims": [
+   8,
+   16,
+   8
+  ],
+  "steps": 1,
+  "collective": "ring",
+  "exact_required": true
+ },
+ {
+  "tag": "zero_P4_L3_s1_ring",
+  "rc": 0,
+  "wall_s": 0.67,
+  "mem_local_bytes_total": 42832,
+  "mem_local_bytes_per_rank": [
+   10708,
+   10708,
+   10708,
+   10708
+  ],
+  "device_used_after_alloc_bytes": 552402944,
+  "kernel_ms": [
+   2.0,
+   2.0,
+   2.0,
+   2.0
+  ],
+  "compared": 1984,
+  "bitwise_equal": 1984,
+  "worst_rel": 0.0,
+  "tail": [
+   "  rank 2: 265 tasks, 2.00 ms kernel, device 0",
+   "  rank 3: 265 tasks, 2.00 ms kernel, device 0",
+   "  1984 values compared, 1984 bitwise equal, worst relative difference 0"
+  ],
+  "strategy": "zero",
+  "P": 4,
+  "dims": [
+   8,
+   8,
+   8,
+   8
+  ],
+  "steps": 1,
+  "collective": "ring",
+  "exact_required": true
+ },
+ {
+  "tag": "tp_P2_L2_s1_direct",
+  "rc": 0,
+  "wall_s": 0.6,
+  "mem_local_bytes_total": 50200,
+  "mem_local_bytes_per_rank": [
+   25100,
+   25100
+  ],
+  "device_used_after_alloc_bytes": 508362752,
+  "kernel_ms": [
+   0.0,
+   0.0
+  ],
+  "compared": 11012,
+  "bitwise_equal": 11012,
+  "worst_rel": 0.0,
+  "tail": [
+   "  rank 0: 21 tasks, 0.00 ms kernel, device 0",
+   "  rank 1: 21 tasks, 0.00 ms kernel, device 0",
+   "  11012 values compared, 11012 bitwise equal, worst relative difference 0"
+  ],
+  "strategy": "tp",
+  "P": 2,
+  "dims": [
+   16,
+   32,
+   16
+  ],
+  "steps": 1,
+  "collective": "direct",
+  "exact_required": true
+ },
+ {
+  "tag": "tp_P4_L2_s1_ring",
+  "rc": 0,
+  "wall_s": 0.63,
+  "mem_local_bytes_total": 63536,
+  "mem_local_bytes_per_rank": [
+   15884,
+   15884,
+   15884,
+   15884
+  ],
+  "device_used_after_alloc_bytes": 552402944,
+  "kernel_ms": [
+   1.0,
+   1.0,
+   0.0,
+   0.0
+  ],
+  "compared": 12808,
+  "bitwise_equal": 12808,
+  "worst_rel": 0.0,
+  "tail": [
+   "  rank 2: 37 tasks, 0.00 ms kernel, device 0",
+   "  rank 3: 37 tasks, 0.00 ms kernel, device 0",
+   "  12808 values compared, 12808 bitwise equal, worst relative difference 0"
+  ],
+  "strategy": "tp",
+  "P": 4,
+  "dims": [
+   16,
+   32,
+   16
+  ],
+  "steps": 1,
+  "collective": "ring",
+  "exact_required": true
+ },
+ {
+  "tag": "zero_P4_L2_s3_direct",
+  "rc": 0,
+  "wall_s": 0.63,
+  "mem_local_bytes_total": 104944,
+  "mem_local_bytes_per_rank": [
+   26236,
+   26236,
+   26236,
+   26236
+  ],
+  "device_used_after_alloc_bytes": 552402944,
+  "kernel_ms": [
+   3.0,
+   3.0,
+   3.0,
+   3.0
+  ],
+  "compared": 2304,
+  "bitwise_equal": 1343,
+  "worst_rel": 1.34e-05,
+  "tail": [
+   "  rank 2: 325 tasks, 3.00 ms kernel, device 0",
+   "  rank 3: 323 tasks, 3.00 ms kernel, device 0",
+   "  2304 values compared, 1343 bitwise equal, worst relative difference 1.34e-05"
+  ],
+  "strategy": "zero",
+  "P": 4,
+  "dims": [
+   8,
+   16,
+   8
+  ],
+  "steps": 3,
+  "collective": "direct",
+  "exact_required": false
+ }
+]

@@ -526,7 +526,8 @@ int main(int argc, char** argv) {
     if (argc > 2 && !strcmp(argv[1], "--emit-vectors")) g_vec = fopen(argv[2], "w");
     cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0));
     printf("device: %s, %d SMs, cc %d.%d\n", pr.name, pr.multiProcessorCount, pr.major, pr.minor);
-    t_philox(); t_embedding(); t_matmul(); t_norms(); t_elementwise(); t_rope(); t_attention(); t_decode(); t_ce(); t_adamw(); t_sample(); t_batch(); t_errors();
+    if (getenv("TEST_ONLY") && !strcmp(getenv("TEST_ONLY"), "attention")) t_attention();   // TEST_ONLY=attention: the attention cases alone (sanitizer runs)
+    else { t_philox(); t_embedding(); t_matmul(); t_norms(); t_elementwise(); t_rope(); t_attention(); t_decode(); t_ce(); t_adamw(); t_sample(); t_batch(); t_errors(); }
     if (g_vec) fclose(g_vec);
     printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;

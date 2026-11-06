@@ -1,0 +1,8 @@
+mlp base dump md5 807c3b88d0f918e7806e01719debf7bd  -
+mlp rn dump md5 e129629675f60ee6b001f9b417d5db6c  -
+mlp p64 dump md5 675b0826d11cf6af432a8accde4984a4  -
+mlp rnp64 dump md5 05d9204cd878c3373359f4ac1792c8e7  -
+xfmr base dump md5 864f47eacdc77f6bf64b21d91b911db4  -
+xfmr rn dump md5 d762253c3f068aea1249797bb5c337e7  -
+xfmr p64 dump md5 aff6828afc90e33cfc6c8f696b43d32c  -
+xfmr rnp64 dump md5 ba6e4e073b1103f9b8edbad0b0062d2e  -

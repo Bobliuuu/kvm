@@ -1,0 +1,119 @@
+built base d598a1132a94-68b329
+built te_rnp64
+built p64 d598a1132a94-49c516
+built rn d598a1132a94-d48eea
+built te_rn
+built rnp64 d598a1132a94-4c71dc
+NVIDIA A100-SXM4-80GB, 1410 MHz
+mlp base rep 1 [kvm_exec][I] kernel done: 27600/27600 tasks in 101.850 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp rn rep 1 [kvm_exec][I] kernel done: 27600/27600 tasks in 85.806 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp p64 rep 1 [kvm_exec][I] kernel done: 27600/27600 tasks in 85.951 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp rnp64 rep 1 [kvm_exec][I] kernel done: 27600/27600 tasks in 85.497 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp base rep 2 [kvm_exec][I] kernel done: 27600/27600 tasks in 87.023 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp rn rep 2 [kvm_exec][I] kernel done: 27600/27600 tasks in 85.180 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp p64 rep 2 [kvm_exec][I] kernel done: 27600/27600 tasks in 87.606 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp rnp64 rep 2 [kvm_exec][I] kernel done: 27600/27600 tasks in 87.807 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp base rep 3 [kvm_exec][I] kernel done: 27600/27600 tasks in 86.689 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp rn rep 3 [kvm_exec][I] kernel done: 27600/27600 tasks in 85.300 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp p64 rep 3 [kvm_exec][I] kernel done: 27600/27600 tasks in 97.715 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp rnp64 rep 3 [kvm_exec][I] kernel done: 27600/27600 tasks in 85.383 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp base rep 4 [kvm_exec][I] kernel done: 27600/27600 tasks in 85.916 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp rn rep 4 [kvm_exec][I] kernel done: 27600/27600 tasks in 85.417 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp p64 rep 4 [kvm_exec][I] kernel done: 27600/27600 tasks in 85.955 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp rnp64 rep 4 [kvm_exec][I] kernel done: 27600/27600 tasks in 87.286 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp base rep 5 [kvm_exec][I] kernel done: 27600/27600 tasks in 85.714 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp rn rep 5 [kvm_exec][I] kernel done: 27600/27600 tasks in 85.358 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp p64 rep 5 [kvm_exec][I] kernel done: 27600/27600 tasks in 85.934 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp rnp64 rep 5 [kvm_exec][I] kernel done: 27600/27600 tasks in 85.569 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr base rep 1 [kvm_exec][I] kernel done: 43650/43650 tasks in 107.089 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr rn rep 1 [kvm_exec][I] kernel done: 43650/43650 tasks in 102.568 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr p64 rep 1 [kvm_exec][I] kernel done: 43650/43650 tasks in 106.910 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr rnp64 rep 1 [kvm_exec][I] kernel done: 43650/43650 tasks in 100.493 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr base rep 2 [kvm_exec][I] kernel done: 43650/43650 tasks in 106.961 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr rn rep 2 [kvm_exec][I] kernel done: 43650/43650 tasks in 101.601 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr p64 rep 2 [kvm_exec][I] kernel done: 43650/43650 tasks in 106.660 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr rnp64 rep 2 [kvm_exec][I] kernel done: 43650/43650 tasks in 100.933 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr base rep 3 [kvm_exec][I] kernel done: 43650/43650 tasks in 106.471 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr rn rep 3 [kvm_exec][I] kernel done: 43650/43650 tasks in 105.822 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr p64 rep 3 [kvm_exec][I] kernel done: 43650/43650 tasks in 106.726 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr rnp64 rep 3 [kvm_exec][I] kernel done: 43650/43650 tasks in 100.717 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr base rep 4 [kvm_exec][I] kernel done: 43650/43650 tasks in 109.658 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr rn rep 4 [kvm_exec][I] kernel done: 43650/43650 tasks in 100.504 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr p64 rep 4 [kvm_exec][I] kernel done: 43650/43650 tasks in 106.665 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr rnp64 rep 4 [kvm_exec][I] kernel done: 43650/43650 tasks in 100.938 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr base rep 5 [kvm_exec][I] kernel done: 43650/43650 tasks in 107.884 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr rn rep 5 [kvm_exec][I] kernel done: 43650/43650 tasks in 103.100 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr p64 rep 5 [kvm_exec][I] kernel done: 43650/43650 tasks in 108.998 ms, 1 records, 0 ring wraps, 0 backpressure waits
+xfmr rnp64 rep 5 [kvm_exec][I] kernel done: 43650/43650 tasks in 100.957 ms, 1 records, 0 ring wraps, 0 backpressure waits
+mlp base dump md5 807c3b88d0f918e7806e01719debf7bd  -
+mlp rn dump md5 e129629675f60ee6b001f9b417d5db6c  -
+mlp p64 dump md5 675b0826d11cf6af432a8accde4984a4  -
+mlp rnp64 dump md5 05d9204cd878c3373359f4ac1792c8e7  -
+xfmr base dump md5 864f47eacdc77f6bf64b21d91b911db4  -
+xfmr rn dump md5 d762253c3f068aea1249797bb5c337e7  -
+xfmr p64 dump md5 aff6828afc90e33cfc6c8f696b43d32c  -
+xfmr rnp64 dump md5 ba6e4e073b1103f9b8edbad0b0062d2e  -
+== mlp base
+tasks 27600 roots 4800 total_span_us 93751.3
+tasks admitted AFTER their last predecessor finished: 0 / 22800 (0.0%)
+run_us                     median 7.17  p90 15.36  mean 8.66
+pred_done->enqueue_us      median 5.12  p90 5.12  mean 4.97
+enqueue->start_us          median 11.26  p90 3449.86  mean 711.80
+hop_us(pred_done->start)   median 14.34  p90 23.55  mean 17.99
+critical path: 3002 tasks, sum run 31865.9 us, sum hops 60764.2 us, sum 92630.0 us of span 93751.3
+admission rate: admit window 8.2 us for 27600 tasks = 0.00 us/task
+== xfmr base
+tasks 43650 roots 1600 total_span_us 113000.4
+tasks admitted AFTER their last predecessor finished: 0 / 42050 (0.0%)
+run_us                     median 7.17  p90 13.31  mean 8.65
+pred_done->enqueue_us      median 5.12  p90 5.12  mean 5.01
+enqueue->start_us          median 16.38  p90 36.86  mean 66.51
+hop_us(pred_done->start)   median 20.48  p90 38.91  mean 23.80
+critical path: 3452 tasks, sum run 36558.8 us, sum hops 74583.0 us, sum 111141.9 us of span 113000.4
+admission rate: admit window 6.1 us for 43650 tasks = 0.00 us/task
+== mlp rn
+tasks 27600 roots 4800 total_span_us 77162.5
+tasks admitted AFTER their last predecessor finished: 0 / 22800 (0.0%)
+run_us                     median 5.12  p90 12.29  mean 7.13
+pred_done->enqueue_us      median 4.10  p90 6.14  mean 4.66
+enqueue->start_us          median 8.19  p90 2857.98  mean 589.81
+hop_us(pred_done->start)   median 11.26  p90 18.43  mean 13.20
+critical path: 3002 tasks, sum run 25773.1 us, sum hops 50477.1 us, sum 76250.1 us of span 77162.5
+admission rate: admit window 5.1 us for 27600 tasks = 0.00 us/task
+== xfmr rn
+tasks 43650 roots 1600 total_span_us 88427.5
+tasks admitted AFTER their last predecessor finished: 0 / 42050 (0.0%)
+run_us                     median 6.14  p90 11.26  mean 7.16
+pred_done->enqueue_us      median 4.10  p90 6.14  mean 4.71
+enqueue->start_us          median 10.24  p90 24.58  mean 52.58
+hop_us(pred_done->start)   median 14.34  p90 25.60  mean 17.09
+critical path: 3452 tasks, sum run 30011.4 us, sum hops 56882.2 us, sum 86893.6 us of span 88427.5
+admission rate: admit window 11.3 us for 43650 tasks = 0.00 us/task
+== mlp rnp64
+tasks 27600 roots 4800 total_span_us 77202.4
+tasks admitted AFTER their last predecessor finished: 0 / 22800 (0.0%)
+run_us                     median 6.14  p90 12.29  mean 7.12
+pred_done->enqueue_us      median 4.10  p90 6.14  mean 4.68
+enqueue->start_us          median 8.19  p90 2855.94  mean 589.24
+hop_us(pred_done->start)   median 11.26  p90 18.43  mean 13.24
+critical path: 3002 tasks, sum run 25762.8 us, sum hops 50514.9 us, sum 76277.8 us of span 77202.4
+admission rate: admit window 6.1 us for 27600 tasks = 0.00 us/task
+== xfmr rnp64
+tasks 43650 roots 1600 total_span_us 88312.8
+tasks admitted AFTER their last predecessor finished: 0 / 42050 (0.0%)
+run_us                     median 6.14  p90 11.26  mean 7.16
+pred_done->enqueue_us      median 4.10  p90 6.14  mean 4.70
+enqueue->start_us          median 9.22  p90 24.58  mean 52.74
+hop_us(pred_done->start)   median 13.31  p90 25.60  mean 17.03
+critical path: 3452 tasks, sum run 30109.7 us, sum hops 56694.8 us, sum 86804.5 us of span 88312.8
+admission rate: admit window 6.1 us for 43650 tasks = 0.00 us/task
+== litmus: PASS (21.4s, 0 new failures)
+8607 checks, 2 failed, 2 suites failed
+FAIL
+exit 1
+== litmus: PASS (21.3s, 0 new failures)
+8607 checks, 1 failed, 1 suites failed
+FAIL
+exit 1
+
+--- stderr

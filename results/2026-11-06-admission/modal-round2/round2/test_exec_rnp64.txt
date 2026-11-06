@@ -1,0 +1,95 @@
+GPU NVIDIA A100-SXM4-80GB, 108 SMs, sm_80, driver CUDA 13.3, runtime 12.4
+== checker
+  checker: 9 hand-made reader observations classified correctly; trace checker flagged 2/2 injected faults
+== checker: PASS (0.0s, 0 new failures)
+== ops
+  ops: 48074 integer elements bitwise equal, 48074 fp elements within 1e-5 rel (max rel err 0); spin(300us) ran 302.1 us
+== ops: PASS (0.3s, 0 new failures)
+== types
+[kvm_exec][E] DEVICE ERROR BAD_BUF (buffer not f32 / ld != cols): slot 0, a=1, b=0; done 1/1
+[kvm_exec][E] DEVICE ERROR BAD_BUF (buffer not f32 / ld != cols): slot 0, a=0, b=0; done 1/1
+[kvm_exec][E] DEVICE ERROR BAD_BUF (buffer not f32 / ld != cols): slot 0, a=9, b=0; done 0/0
+[kvm_exec][E] DEVICE ERROR BAD_BUF_INDEX (buffer index outside the device table): slot 0, a=200, b=0; done 0/0
+[kvm_exec][E] DEVICE ERROR BOUNDS (element count exceeds buffer): slot 0, a=99, b=0; done 1/1
+  error i32 buffer into f32 op       -> BAD_BUF
+  error f32 buffer as i32 index      -> BAD_BUF
+  error required buf given as -1     -> BAD_BUF
+  error optional buf index < -1      -> BAD_BUF_INDEX
+  error gather index out of range    -> BOUNDS
+  types: buf? (present/absent), i32 buffers (gather, iota, optional i32), dtype and absent-buffer errors
+== types: PASS (0.0s, 0 new failures)
+== init
+  seeded: 30 cases / 9798 values: device kernel and host reference bit-identical to runtime/initgen.py
+  seeded: 3,000,001 normal values device == host reference
+  file: 20 MB streamed in chunks, size mismatch rejected
+== init: PASS (0.1s, 0 new failures)
+== errors
+[kvm_exec][E] DEVICE ERROR BAD_OP (op_id not in registry): slot 0, a=126, b=0; done 0/0
+[kvm_exec][E] DEVICE ERROR BAD_ARITY (args_words != operator arity): slot 0, a=0, b=0; done 0/0
+[kvm_exec][E] DEVICE ERROR BAD_BUF_INDEX (buffer index outside the device table): slot 0, a=9, b=0; done 0/0
+[kvm_exec][E] DEVICE ERROR BOUNDS (element count exceeds buffer): slot 0, a=9, b=0; done 1/1
+[kvm_exec][E] DEVICE ERROR BOUNDS (element count exceeds buffer): slot 0, a=-1, b=0; done 1/1
+[kvm_exec][E] DEVICE ERROR BAD_TASK (task descriptor out of range (succ/args/priority/indegree)): slot 0, a=0, b=0; done 0/0
+[kvm_exec][E] DEVICE ERROR BAD_VAR (version variable out of range): slot 0, a=0, b=0; done 0/0
+[kvm_exec][E] DEVICE ERROR VERSION_GAP (pub_ver != version[pub_var]+1 (publisher not contiguous or two writers)): slot 0, a=0, b=5; done 1/1
+[kvm_exec][E] DEVICE ERROR BAD_TASK (task descriptor out of range (succ/args/priority/indegree)): slot 0, a=5, b=0; done 0/0
+[kvm_exec][E] DEVICE ERROR SLOTS (task slot pool exhausted (max_tasks)): slot -1, a=9, b=0; done 0/0
+[kvm_exec][E] DEVICE ERROR BATCH_TOO_LARGE (bundle larger than live_cap): slot -1, a=9, b=0; done 0/0
+[kvm_exec][E] DEVICE ERROR POOL (successor/args pool exhausted): slot -1, a=4, b=0; done 0/0
+[kvm_exec][E] DEVICE ERROR TIMEOUT (device timeout (deadlock or stalled admission)): slot -1, a=1, b=0; done 0/1
+[kvm_exec][E] bundle rejected: task 0: priority 99 outside [0,31]
+[kvm_exec][E] bundle rejected: dependency cycle
+[kvm_exec][E] bundle rejected: 4097 tasks > live_cap 4096
+  error bad op id          -> BAD_OP (slot 0 a=126 b=0)
+  error bad arity          -> BAD_ARITY (slot 0 a=0 b=0)
+  error bad buffer index   -> BAD_BUF_INDEX (slot 0 a=9 b=0)
+  error n beyond buffer    -> BOUNDS (slot 0 a=9 b=0)
+  error negative n         -> BOUNDS (slot 0 a=-1 b=0)
+  error bad priority       -> BAD_TASK (slot 0 a=0 b=0)
+  error bad version var    -> BAD_VAR (slot 0 a=0 b=0)
+  error version gap        -> VERSION_GAP (slot 0 a=0 b=5)
+  error bad successor      -> BAD_TASK (slot 0 a=5 b=0)
+  error slot pool exhausted -> SLOTS (slot -1 a=9 b=0)
+  error batch > live_cap   -> BATCH_TOO_LARGE (slot -1 a=9 b=0)
+  error successor ring too small -> POOL (slot -1 a=4 b=0)
+  error unsatisfied wait -> timeout -> TIMEOUT (slot -1 a=1 b=0)
+== errors: PASS (0.5s, 0 new failures)
+== dag
+  wraparound: 6000 tasks through 32 rings of 64 cells (one ring took all of them: 93 wraps)
+  dag: 267600 tasks over seeds x grids {1,2,15,auto workers}, all exactly-once, edges ordered by timestamps, values bitwise vs CPU; 1570 duplicate edges removed by the builder
+== dag: PASS (3.4s, 0 new failures)
+== sched
+  FAIL tests/gpu/test_exec.cu:327: pos < H - 20 -- aging: low-priority task should overtake the chain (ran after 400 of 400)
+  priority: 340 queued tasks ran in non-increasing priority order (0 inversions), FIFO within a priority (0 violations)
+  aging    0 us/level: low-priority task ran after 400 of 400 high-priority chain tasks, waited 43.68 ms of a 43.65 ms chain
+  aging 2000 us/level: low-priority task ran after 400 of 400 high-priority chain tasks, waited 43.67 ms of a 43.64 ms chain
+  deadlines: missed flag set only for the 1 us deadline; smid/block recorded; CSV written
+== sched: FAIL (0.1s, 1 new failures)
+== admission
+[kvm_exec][E] bundle record larger than the admission ring (200 > 128 words)
+[kvm_exec][E] DEVICE ERROR PARK_STALL (more tasks parked on versions than the park budget (live_cap) and admission needs room): slot -1, a=32, b=0; done 0/32
+  admission ring: 300 bundles / 3600 tasks through a 512-word ring: 218 wraps (pad records), 256 backpressure waits, values bitwise vs CPU
+  backpressure: 30 bundles x 3 x 300 us on one worker, 256-word ring: host waited 7 times, nothing dropped (90/90 done)
+  explicit failures: TOO_BIG for an oversized record; BACKPRESSURE_TIMEOUT after 22 submits against a stalled live window; device ended with PARK_STALL (admitted 32, done 0)
+  cross-bundle wait: 8 waiters (a full live_cap) admitted before the bundle that publishes their version: 9/9 done, no deadlock
+  close(): empty launch exits; close() right after submit drains all 50 tasks
+  4 producer threads x 60 bundles concurrently: 2400 tasks, exactly-once, values bitwise vs CPU
+== admission: PASS (1.9s, 0 new failures)
+== front
+  front: 5000 tasks in 8 chunks x2 bundles, 16 ring submissions, every chain counter exact
+== front: PASS (0.0s, 0 new failures)
+== versions
+  versions: 180 runs (vector 64Ki-float weights and the real predict->mse_grad->sgd graph): 3225 exact + 653 at_least readers checked, 0 violations
+== versions: PASS (3.1s, 0 new failures)
+== recycle
+  stream: 2097152 tasks (6289920 edges) through 65536 slots in 128 windows (127 waited on predecessor windows): 1.91 s wall, 0.91 us/task; final layer bitwise vs CPU
+  chain: 200000 dependent tasks through 1024 slots, 782 windows: counter == 200000 (every task ran once, in order)
+  long-running admission: 3000000 tasks in 100000 bundles (4096 slots, 1024-entry window table, 8192-word successor ring, 16666 ring wraps), 13.55 s, all counters exact
+  recycling beside a parked task: 600002 tasks in 20002 bundles (1024 slots, 32768-entry window table, 8192-word successor ring, 3333 ring wraps), 3.01 s, all counters exact
+== recycle: PASS (21.2s, 0 new failures)
+== litmus
+  litmus: 12 runs, 1872000 tasks; each iteration races a waiter's park against the publish of its version; no lost wakeup, early run or double run
+== litmus: PASS (21.3s, 0 new failures)
+8607 checks, 1 failed, 1 suites failed
+FAIL
+exit 1

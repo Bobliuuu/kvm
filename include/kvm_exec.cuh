@@ -218,6 +218,9 @@ __device__ __forceinline__ void st_rel(int* p, int v) { asm volatile("st.release
 __device__ __forceinline__ void st_rel64(unsigned long long* p, unsigned long long v) { asm volatile("st.release.gpu.global.b64 [%0],%1;" ::"l"(p), "l"(v) : "memory"); }
 __device__ __forceinline__ int atom_add(int* p, int v) { int r; asm volatile("atom.acq_rel.gpu.global.add.u32 %0,[%1],%2;" : "=r"(r) : "l"(p), "r"(v) : "memory"); return r; }
 __device__ __forceinline__ unsigned long long atom_add64(unsigned long long* p, unsigned long long v) { unsigned long long r; asm volatile("atom.acq_rel.gpu.global.add.u64 %0,[%1],%2;" : "=l"(r) : "l"(p), "l"(v) : "memory"); return r; }
+__device__ __forceinline__ int atom_add_rlx(int* p, int v) { int r; asm volatile("atom.relaxed.gpu.global.add.u32 %0,[%1],%2;" : "=r"(r) : "l"(p), "r"(v) : "memory"); return r; }
+__device__ __forceinline__ unsigned long long atom_add64_rlx(unsigned long long* p, unsigned long long v) { unsigned long long r; asm volatile("atom.relaxed.gpu.global.add.u64 %0,[%1],%2;" : "=l"(r) : "l"(p), "l"(v) : "memory"); return r; }
+__device__ __forceinline__ void red_add_rel(int* p, int v) { asm volatile("red.release.gpu.global.add.s32 [%0],%1;" ::"l"(p), "r"(v) : "memory"); }
 __device__ __forceinline__ int atom_cas(int* p, int c, int v) { int r; asm volatile("atom.acq_rel.gpu.global.cas.b32 %0,[%1],%2,%3;" : "=r"(r) : "l"(p), "r"(c), "r"(v) : "memory"); return r; }
 __device__ __forceinline__ unsigned long long atom_cas64(unsigned long long* p, unsigned long long c, unsigned long long v) { unsigned long long r; asm volatile("atom.acq_rel.gpu.global.cas.b64 %0,[%1],%2,%3;" : "=l"(r) : "l"(p), "l"(c), "l"(v) : "memory"); return r; }
 __device__ __forceinline__ int atom_exch(int* p, int v) { int r; asm volatile("atom.acq_rel.gpu.global.exch.b32 %0,[%1],%2;" : "=r"(r) : "l"(p), "r"(v) : "memory"); return r; }
@@ -654,14 +657,28 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
 __device__ void kvm_post_task(const KvmDevState& S, int slot) {
   const KvmTaskDesc& d = S.tasks[slot];   // sh.d may already hold the next task (the pop fills it concurrently)
   const KvmTrace* tr = S.trace + slot;
-  if (kvm_vol(&tr->exec_count) != 1) kvm_fail(S, KVM_ERR_DOUBLE_EXEC, slot, kvm_vol(&tr->exec_count));
-  kvm_sched_account(S, slot, tr->start_ns, tr->end_ns, tr->flags & KVM_TRACE_MISSED);   // SCHED: statistics and estimates (before the slot is recycled)
-  // Nothing of this task is read again (sh.d is a copy; successors were decremented): return its window credit, which also
-  // lets the admitter reclaim the window's successor storage, then recycle the slot, then count the task done.
+  // The bookkeeping is on the dispatch critical path (the block's next barrier waits for this thread), so its memory operations are issued
+  // together instead of as a chain of acquire-release atomics (each of which also drains the thread's earlier accesses): one release fence
+  // for the task's effects, then the window credit and the free-slot ticket in flight at once, the cell write, and a posted release add for `done`.
+  const int ec = kvm_vol(&tr->exec_count);
   const unsigned wid = (unsigned)d.reserved0;
-  if (atom_add(&S.wins[wid & (S.win_cap - 1)].remaining, -1) == 1) st_rel_sys((volatile int*)&S.win_done[wid & (S.win_cap - 1)], (int)(wid + 1));
-  kvm_free_slot(S, slot);
-  atom_add(&S.cnt->done, 1);
+  kvm_sched_account(S, slot, tr->start_ns, tr->end_ns, tr->flags & KVM_TRACE_MISSED);   // SCHED: statistics and estimates (before the slot is recycled)
+  asm volatile("fence.acq_rel.gpu;" ::: "memory");   // release: this task's stores are visible before its window credit and its done count
+  const int left = atom_add_rlx(&S.wins[wid & (S.win_cap - 1)].remaining, -1);
+  const unsigned long long pos = atom_add64_rlx(&S.cnt->ftail, 1ull);
+  if (ec != 1) kvm_fail(S, KVM_ERR_DOUBLE_EXEC, slot, ec);
+  if (left == 1) {   // last task of the window: acquire the other tasks' releases, then tell the host
+    asm volatile("fence.acq_rel.gpu;" ::: "memory");
+    st_rel_sys((volatile int*)&S.win_done[wid & (S.win_cap - 1)], (int)(wid + 1));
+  }
+  KvmCell* cell = S.fcells + (pos & (unsigned long long)(S.nslots - 1));   // free-slot ring push (see kvm_free_slot)
+  bool pushed = true;
+  for (int spin = 0; ld_acq64(&cell->seq) != pos; ++spin) {
+    if (spin > (1 << 22)) { kvm_fail(S, KVM_ERR_QUEUE_OVERFLOW, slot, -1, (int)pos); pushed = false; break; }
+    __nanosleep(32);
+  }
+  if (pushed) { cell->slot = slot; st_rel64(&cell->seq, pos + 1); }
+  red_add_rel(&S.cnt->done, 1);   // counted last
 }
 
 __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
@@ -687,7 +704,7 @@ __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
         const int pri = __ldcg(&S.tasks[nx].priority);
         const KvmQCtl* q = S.qctl + lane;
         const unsigned long long h = kvm_voll(&q->head), t = kvm_voll(&q->tail);
-        take = __ballot_sync(0xffffffffu, lane > pri && t != h) == 0u;
+        take = __ballot_sync(0xffffffffu, (lane > pri || (S.aging_ns < (1ll << 50) && lane != pri)) && t != h) == 0u;   // aging on: any other waiting bucket may be due
         if (!take && lane == 0) kvm_enqueue(S, nx);
       }
       if (take) {

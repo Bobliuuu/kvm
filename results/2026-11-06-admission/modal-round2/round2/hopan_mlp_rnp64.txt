@@ -1,0 +1,8 @@
+tasks 27600 roots 4800 total_span_us 77202.4
+tasks admitted AFTER their last predecessor finished: 0 / 22800 (0.0%)
+run_us                     median 6.14  p90 12.29  mean 7.12
+pred_done->enqueue_us      median 4.10  p90 6.14  mean 4.68
+enqueue->start_us          median 8.19  p90 2855.94  mean 589.24
+hop_us(pred_done->start)   median 11.26  p90 18.43  mean 13.24
+critical path: 3002 tasks, sum run 25762.8 us, sum hops 50514.9 us, sum 76277.8 us of span 77202.4
+admission rate: admit window 6.1 us for 27600 tasks = 0.00 us/task

@@ -25,13 +25,14 @@ class Tiling:
     mm_tile: int = 64        # GEMM output tile: 64 (64x64), 128 (128x128, flag 32) or 256 (256x128, flag 64); see mm_choice for fallbacks
     mm_min_tiles: int = 8    # a GEMM that would give fewer tiles than this at mm_tile steps down to a smaller tile (parallelism over hop cost)
     mm_min_eff: float = 0.75 # ... and so does one whose padded tiles would waste more than 1 - this of their area
+    attn_span: int = 1       # causal attention: 32-row blocks per task (attn_fwd / attn_bwd_dq query blocks, attn_bwd_dkv key blocks)
     precise: bool = False    # GEMM tiles use 3xTF32 (matmul_tile flag 16, fp32 accuracy) instead of the default 1xTF32
 
     PRESETS = {
         'cpu': dict(rows=8, ew_rows=8, cols=32, vocab=16, opt_elems=256),
-        'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=65536, mm_tile=128),
+        'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=65536, mm_tile=128, attn_span=4),
         'a100_mm64': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=65536),   # the previous a100 (64x64 GEMM tiles)
-        'a100_mm256': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=65536, mm_tile=256),
+        'a100_mm256': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=65536, mm_tile=256, attn_span=4),
         'b200': dict(rows=128, ew_rows=256, cols=512, vocab=4096, opt_elems=131072),
     }
 
@@ -278,6 +279,13 @@ def _seq_blocks(n, size):
     return [(a, min(a + size, n)) for a in range(0, n, size)]
 
 
+def _attn_spans(T, tc, causal):
+    """(start, end, arg) per attention task: `arg` is the device q0/k0 word, start | (blocks - 1) << 16 (see attn_span in opset.py)."""
+    n = tc.attn_span if causal else 1
+    for a in range(0, T, ATTN_Q * n):
+        yield a, min(a + ATTN_Q * n, T), a | ((-(-(min(a + ATTN_Q * n, T) - a) // ATTN_Q) - 1) << 16)
+
+
 def _attn_geom(op):
     q, k = op.ins['q'], op.ins['k']
     T, H, Hkv = op.attrs['seq'], op.attrs['heads'], op.attrs['kv_heads']
@@ -296,12 +304,12 @@ def _(op, tc):
     for b in range(q.rows // T):
         for h in range(H):
             hc, kc = (h * hd, (h + 1) * hd), (h // G * hd, (h // G + 1) * hd)
-            for q0, q1 in _seq_blocks(T, ATTN_Q):
+            for q0, q1, qa in _attn_spans(T, tc, causal):
                 R, KV = (b * T + q0, b * T + q1), _kv_rows(b, T, q1, causal)
                 yield _task('attn_fwd' if causal else 'attn_full_fwd',
                             [q.region(*R, *hc), k.region(*KV, *kc), v.region(*KV, *kc)],
                             [out.region(*R, *hc), lse.region(b * H + h, b * H + h + 1, q0, q1)],
-                            q=q, k=k, v=v, o=out, lse=lse, b=b, h=h, q0=q0, T=T, H=H, Hkv=Hkv, hd=hd, scale=hd ** -0.5)
+                            q=q, k=k, v=v, o=out, lse=lse, b=b, h=h, q0=qa, T=T, H=H, Hkv=Hkv, hd=hd, scale=hd ** -0.5)
 
 
 @lowers('attention_bwd')
@@ -318,24 +326,24 @@ def _(op, tc):
     for b in range(B):
         for h in range(H):
             hc, kc, bh = (h * hd, (h + 1) * hd), (h // G * hd, (h // G + 1) * hd), (b * H + h, b * H + h + 1)
-            for q0, q1 in _seq_blocks(T, ATTN_Q):
+            for q0, q1, qa in _attn_spans(T, tc, causal):
                 R, KV = (b * T + q0, b * T + q1), _kv_rows(b, T, q1, causal)
                 yield _task('attn_bwd_dq' if causal else 'attn_full_bwd_dq',
                             [q.region(*R, *hc), k.region(*KV, *kc), v.region(*KV, *kc), do.region(*R, *hc),
                              lse.region(*bh, q0, q1), delta.region(*bh, q0, q1)], [dq.region(*R, *hc)],
-                            q=q, k=k, v=v, do=do, lse=lse, delta=delta, dq=dq, b=b, h=h, q0=q0, T=T, H=H, Hkv=Hkv, hd=hd,
+                            q=q, k=k, v=v, do=do, lse=lse, delta=delta, dq=dq, b=b, h=h, q0=qa, T=T, H=H, Hkv=Hkv, hd=hd,
                             scale=hd ** -0.5)
         for kvh in range(Hkv):                                    # dk/dv sum over the whole GQA group of query heads
             qc = (kvh * G * hd, (kvh + 1) * G * hd)
             kc, bh = (kvh * hd, (kvh + 1) * hd), (b * H + kvh * G, b * H + (kvh + 1) * G)
-            for k0, k1 in _seq_blocks(T, ATTN_Q):
+            for k0, k1, ka in _attn_spans(T, tc, causal):
                 lo = k0 if causal else 0
                 Q, K = (b * T + lo, b * T + T), (b * T + k0, b * T + k1)
                 yield _task('attn_bwd_dkv' if causal else 'attn_full_bwd_dkv',
                             [q.region(*Q, *qc), k.region(*K, *kc), v.region(*K, *kc), do.region(*Q, *qc),
                              lse.region(*bh, lo, T), delta.region(*bh, lo, T)],
                             [dk.region(*K, *kc), dv.region(*K, *kc)],
-                            q=q, k=k, v=v, do=do, lse=lse, delta=delta, dk=dk, dv=dv, b=b, kvh=kvh, k0=k0, T=T, H=H, hd=hd,
+                            q=q, k=k, v=v, do=do, lse=lse, delta=delta, dk=dk, dv=dv, b=b, kvh=kvh, k0=ka, T=T, H=H, hd=hd,
                             scale=hd ** -0.5)
 
 

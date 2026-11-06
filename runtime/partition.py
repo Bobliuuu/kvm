@@ -1400,7 +1400,10 @@ def write_plan(plan: Plan, out_dir, golden=None):
                     if lay == PART:
                         continue
                     vals, target = expected_shard(plan, golden, name, lay, s.rank), name
-                bi = next(b.index for b in compiled.buffers if b.name == target)
+                tb = next(b for b in compiled.buffers if b.name == target)
+                if tb.dtype == 'i32':
+                    continue                  # the harness compares floats; integer buffers (step counters) are inputs only
+                bi = tb.index
                 lines.append(f'expect {bi} {len(vals)} ' + ' '.join(repr(float(v)) for v in vals))
         (d / 'dist.txt').write_text('\n'.join(lines) + '\n')
     log.info('plan written to %s', out)

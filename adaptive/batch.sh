@@ -62,7 +62,7 @@ case "$GROUP" in
   lat|lat_big)   # class-aware admission, before vs after, the same load. _off = one FIFO ring; _on = --lat-lane (Doom + serve bundles on the latency ring,
                  # training records admitted in slices). Ungated = the training flood arrives as whole-window records; gated = host budgets too.
     # lat_big: scenario made with the big model (47k-task training window); run it with that scenario dir as the argument
-    [ "$GROUP" = lat_big ] && { export LIVE_CAP=131072 RING_WORDS=8388608; GATE="--gate-serve 50000 --gate-train 60000"; }
+    [ "$GROUP" = lat_big ] && { export SCN=scn_big LIVE_CAP=131072 RING_WORDS=8388608; GATE="--gate-serve 50000 --gate-train 60000"; }
     for rep in $(seq 1 "$REPS"); do for c in fixed_prio adaptive; do
       one "${GROUP}_off_$c" $rep ${CFG[$c]} $PHASES; one "${GROUP}_on_$c" $rep ${CFG[$c]} $PHASES --lat-lane --admit-slice ${SLICE:-512}
       one "${GROUP}_off_gated_$c" $rep ${CFG[$c]} $GATE $PHASES; one "${GROUP}_on_gated_$c" $rep ${CFG[$c]} $GATE $PHASES --lat-lane --admit-slice ${SLICE:-512}

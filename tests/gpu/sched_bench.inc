@@ -298,21 +298,24 @@ static bool suite_baselines() {
   int before = g_fail; const int W = 106, N = 5;   // 108 blocks, one per SM, in every mode (a static split by SM id is then a split by worker count)
   LoadSpec L = rebalance_load();
   printf("  scripted load: %zu phases (idle/low/BURST/low/idle/BURST/idle) over %d ms, %d workers (108 blocks: 1 admitter, 1 policy, the rest workers), best-of-%d, median [min,max]\n", L.phases.size(), 1600, W, N);
-  struct Cfg { const char* name; int mode; int serve_prio; double share; bool ctl; bool arb; };
+  struct Cfg { const char* name; int mode; int serve_prio; double share; bool ctl; bool arb; bool nolf; };
   std::vector<std::pair<std::string, Rep>> res;
   for (const Cfg& cf : std::vector<Cfg>{{"global queue, flat", KVM_SCHED_GLOBAL, 0, 0, false, false}, {"global queue, serve prio 20", KVM_SCHED_GLOBAL, 20, 0, false, false},
                                          {"static split 25% serve", KVM_SCHED_STATIC, 0, 0.25, false, false}, {"static split 50% serve", KVM_SCHED_STATIC, 0, 0.5, false, false},
-                                         {"dynamic + controller", KVM_SCHED_DYNAMIC, 0, 0, true, false}, {"dynamic + ctl + arbiter", KVM_SCHED_DYNAMIC, 0, 0, true, true}}) {
+                                         {"dynamic + controller (LATFIRST off)", KVM_SCHED_DYNAMIC, 0, 0, true, false, true}, {"dynamic + controller", KVM_SCHED_DYNAMIC, 0, 0, true, false},
+                                         {"dynamic + ctl + arbiter", KVM_SCHED_DYNAMIC, 0, 0, true, true}}) {
     KvmConfig c = mode_cfg(cf.mode, 108); LoadSpec l = L; l.serve_prio = cf.serve_prio;
     if (cf.mode == KVM_SCHED_STATIC) { kvm_static_split(c.sched.p, {cf.share, 1 - cf.share}, g_sms); }
     c.sched.p.cls[0].weight = 1; c.sched.p.cls[0].urgent_us = cf.mode == KVM_SCHED_DYNAMIC ? 1500 : 0; c.sched.p.cls[0].protect = 1; c.sched.p.cls[0].target_wait_us = 500;
     if (cf.arb) c.sched.p.flags |= KVM_SF_ARBITER;
+    if (cf.nolf) c.sched.p.flags &= ~KVM_SF_LATFIRST;
     Rep r = repeat(c, l, N, cf.ctl, ctl_for_serve(W / 2)); CHECK(reps_ok(r), "%s: device error or no requests", cf.name); print_rep(cf.name, r); res.push_back({cf.name, r});
   }
   auto med = [&](int i, auto f) { return sp(res[i].second, f).med; };
   auto p99 = [](const Metrics& m) { return m.req_p99; }; auto kt = [](const Metrics& m) { return m.train_ktasks_s; }; auto ut = [](const Metrics& m) { return m.util; };
-  printf("  ratios (dynamic + controller vs): serve p99 / train ktask/s / utilization\n");
-  for (int i : {0, 1, 2, 3}) printf("    vs %-28s p99 %.2fx lower, train %.2fx, utilization %.2fx\n", res[i].first.c_str(), med(i, p99) / med(4, p99), med(4, kt) / med(i, kt), med(4, ut) / med(i, ut));
+  printf("  ratios (dynamic + controller, LATFIRST on, vs): serve p99 / train ktask/s / utilization\n");
+  for (int i : {0, 1, 2, 3, 4}) printf("    vs %-36s p99 %.2fx lower, train %.2fx, utilization %.2fx\n", res[i].first.c_str(), med(i, p99) / med(5, p99), med(5, kt) / med(i, kt), med(5, ut) / med(i, ut));
+  CHECK(med(5, p99) <= 1.15 * med(1, p99), "dynamic serve p99 %.0f us must not be worse than the global queue with serve priority (%.0f us) by more than 15%%", med(5, p99), med(1, p99));
   return g_fail == before;
 }
 
@@ -360,6 +363,163 @@ static bool suite_overload() {
   return g_fail == before;
 }
 
+
+// ================= mix: serve + train + a Doom-rate frame stream on real GPT-pack ops =================
+// serve (class 0): open-loop requests, each a chain of dependent `layernorm_fwd` hops over cold 16 x 1024 slabs (memory-bound, latency-critical: the decode/norm
+//   side of inference).  train (class 1): a saturating backlog of `matmul_tile` (128x128 tiles, K = 1024, L2-resident operands: compute-bound), and two
+//   memory-bound sweeps, `layernorm_fwd` over 256 x 1024 and `gelu_fwd` over 512K elements, from distinct cold slices.  frames (class 2): a Doom-RATE stream, 35 Hz,
+//   frame = 1 `spin` tick of 5.4 ms (the measured real tick) then 4 parallel `spin` presents of 100 us, deadline = frame period. This is a stand-in: spin moves no
+//   memory; the real Doom engine through the scheduler is doom/tests/run_sched.sh. All three use the SAME cost table path as production (kvm_cost()).
+struct MixSpec { double ms = 600, serve_rate = 3000; int hops = 12, serve_prio = 0, train_prio = 0, frame_prio = 0, outstanding = 1500, bundle = 128; double mm_frac = 0.5, ln_frac = 0.25; bool frames = true, serve = true; unsigned seed = 1; double slo_us = 600; };
+struct MixOut {
+  int err = 0, nreq = 0, nframes = 0, frame_miss = 0; double req_p50 = 0, req_p99 = 0, frame_p99 = 0, frame_max = 0, mm_tflops = 0, sweep_gbs = 0, ktask_s = 0, util = 0, hop_run_p50 = 0, hop_wait_p99 = 0;
+  std::vector<KvmBwArbSample> arb; int arb_changes = 0, cap1_min = KVM_UNLIMITED;
+};
+static MixOut run_mix(KvmConfig cfg, const MixSpec& L, bool ctl, bool hostarb, KvmBwArbConfig ac = {}) {
+  MixOut out; Rng rg(L.seed);
+  cfg.max_tasks = 1 << 20; cfg.live_cap = 1 << 14; cfg.ring_words = 1 << 18; cfg.timeout_us = 120ull * 1000000;
+  KvmExec ex(cfg);
+  auto zf = [&](size_t n) { float* p = ex.arena(n); CK(cudaMemset(p, 0, n * 4)); return p; };
+  const int PS = 64, R = 16, D = 1024;                      // serve pool: 64 request variants x 12 hops, each hop its own cold slab (x, out)
+  const int NSL = 2048; float* sx = zf((size_t)NSL * R * D); float* so = zf((size_t)NSL * R * D);
+  int vg = ex.add_view(zf(D), 1, D), vb = ex.add_view(zf(D), 1, D);
+  std::vector<int> sxv, sov, smean, srstd;
+  for (int i = 0; i < NSL; ++i) { sxv.push_back(ex.add_view(sx + (size_t)i * R * D, R, D)); sov.push_back(ex.add_view(so + (size_t)i * R * D, R, D)); }
+  for (int i = 0; i < PS; ++i) { smean.push_back(ex.add_view(zf(R), 1, R)); srstd.push_back(ex.add_view(zf(R), 1, R)); }
+  const int TR = 256, SL = 96, GN = 524288;                 // train sweeps: layernorm 256 x 1024 (2 MB in, 2 MB out); gelu over 2 MB in + 2 MB out
+  float* tx = zf((size_t)SL * TR * D); float* to = zf((size_t)SL * TR * D);
+  float* gx = zf((size_t)SL * GN); float* go = zf((size_t)SL * GN);
+  std::vector<int> txv, tov, gxv, gov;
+  for (int i = 0; i < SL; ++i) { txv.push_back(ex.add_view(tx + (size_t)i * TR * D, TR, D)); tov.push_back(ex.add_view(to + (size_t)i * TR * D, TR, D)); gxv.push_back(ex.add_view(gx + (size_t)i * GN, 1, GN)); gov.push_back(ex.add_view(go + (size_t)i * GN, 1, GN)); }
+  int tmean = ex.add_view(zf(TR), 1, TR), trstd = ex.add_view(zf(TR), 1, TR);
+  const int MK = 1024; int ma = ex.add_view(zf((size_t)128 * MK), 128, MK), mb = ex.add_view(zf((size_t)MK * 128), MK, 128), mc = ex.add_view(zf(128 * 128), 128, 128);
+  ex.start();
+  auto make_req = [&](int var) {
+    KvmBundleBuilder b; KvmTaskOpts o; o.workload = 0; o.priority = L.serve_prio; o.deadline_us = (int)L.slo_us; int prev = -1;
+    for (int h = 0; h < L.hops; ++h) {
+      int sl = (var * 131 + h * 17) % NSL;
+      int t = b.add("layernorm_fwd", {Bf(sxv[sl]), Bf(vg), Bf(vb), Bf(sov[sl]), Bf(smean[var]), Bf(srstd[var]), I(0), I(R), I(D), F(1e-5f)}, o);
+      if (prev >= 0) b.edge(prev, t); prev = t;
+    }
+    return b.build();
+  };
+  std::vector<KvmBundle> pool; for (int i = 0; i < PS; ++i) pool.push_back(make_req(i));
+  auto make_train = [&](int base) {
+    KvmBundleBuilder b; KvmTaskOpts o; o.workload = 1; o.priority = L.train_prio;
+    for (int i = 0; i < L.bundle; ++i) {
+      int sl = (base + i) % SL; int u = rg.in(0, 99);
+      if (u < (int)(L.mm_frac * 100)) b.add("matmul_tile", {Bf(ma), Bf(mb), Bf(mc), KvmArg::none(), KvmArg::none(), KvmArg::none(), I(0), I(0), I(128), I(128), I(MK), I(32), F(1.f)}, o);
+      else if (u < (int)((L.mm_frac + L.ln_frac) * 100)) b.add("layernorm_fwd", {Bf(txv[sl]), Bf(vg), Bf(vb), Bf(tov[sl]), Bf(tmean), Bf(trstd), I(0), I(TR), I(D), F(1e-5f)}, o);
+      else b.add("gelu_fwd", {Bf(gxv[sl]), Bf(gov[sl]), I(0), I(GN)}, o);
+    }
+    return b.build();
+  };
+  std::atomic<bool> stop{false}; std::atomic<long long> train_sub{0};
+  std::thread tp([&] {
+    int base = 0;
+    while (!stop.load()) {
+      long long done = (long long)ex.telemetry()->cls[1].done;
+      if (train_sub.load() - done < L.outstanding) { KvmBundle b = make_train(base); base += L.bundle; if (ex.submit(b, 5000) != KvmSubmit::OK) break; train_sub += L.bundle; }
+      else std::this_thread::sleep_for(std::chrono::microseconds(100));
+    }
+  });
+  std::unique_ptr<KvmController> kc; std::unique_ptr<KvmBwArbiter> ba;
+  KvmCtlConfig cc = ctl_for_serve(40);
+  if (ctl) { kc.reset(new KvmController(ex.sched_params(), ex.telemetry(), cfg.sched.p, cc)); kc->start(); }
+  if (hostarb) { ba.reset(new KvmBwArbiter(ex.sched_params(), ex.telemetry(), cfg.sched.p, cfg.sched.num_classes, ac)); ba->start(); }
+  std::thread fp;
+  if (L.frames) fp = std::thread([&] {
+    auto f0 = std::chrono::steady_clock::now();
+    for (int f = 0; (double)f * 1e3 / 35.0 < L.ms; ++f) {
+      while (std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - f0).count() < f * 1e6 / 35.0) {}
+      KvmBundleBuilder b; KvmTaskOpts o; o.workload = 2; o.priority = L.frame_prio; o.deadline_us = (int)(1e6 / 35.0);
+      int tk = b.add("spin", {I(5400)}, o);
+      for (int k = 0; k < 4; ++k) { int pr = b.add("spin", {I(100)}, o); b.edge(tk, pr); }
+      if (ex.submit(b.build(), 5000) != KvmSubmit::OK) break;
+    }
+  });
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  auto t0 = std::chrono::steady_clock::now(); int variant = 0;
+  if (L.serve) {
+    double t = 0, tend = L.ms * 1e3;
+    while (true) {
+      t += -std::log(1.0 - (rg.in(0, 999999) / 1e6)) / L.serve_rate * 1e6; if (t >= tend) break;
+      while (std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count() < t) {}
+      if (ex.submit(pool[variant++ % pool.size()], 5000) != KvmSubmit::OK) { CHECK(false, "serve submit failed"); break; }
+    }
+  } else std::this_thread::sleep_for(std::chrono::milliseconds((int)L.ms));
+  while (std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() < L.ms) std::this_thread::sleep_for(std::chrono::microseconds(50));
+  stop.store(true); tp.join(); if (fp.joinable()) fp.join();
+  if (kc) kc->stop(); if (ba) { ba->stop(); out.arb = ba->log(); out.arb_changes = ba->changes(); }
+  const KvmResult& r = ex.finish(); out.err = r.err_code;
+  if (!r.ok()) { CHECK(false, "device error %s", kvm_err_name(r.err_code)); return out; }
+  auto v = tview(r);
+  std::vector<double> lat, hopr, hopw, fl; { int cnt = 0; double mn = 1e30, mx = 0;
+    for (size_t i = 0; i < v.size(); ++i) if (v[i].cls == 0) {
+      mn = std::min(mn, (r.trace[i].admit_ns - r.trace[0].admit_ns) / 1e3); mx = std::max(mx, v[i].end); hopr.push_back(v[i].end - v[i].start); hopw.push_back(v[i].start - v[i].ready);
+      if (++cnt == L.hops) { lat.push_back(mx - mn); cnt = 0; mn = 1e30; mx = 0; } } }
+  { int cnt = 0; double mn = 1e30, mx = 0;
+    for (size_t i = 0; i < v.size(); ++i) if (v[i].cls == 2) {
+      mn = std::min(mn, (r.trace[i].admit_ns - r.trace[0].admit_ns) / 1e3); mx = std::max(mx, v[i].end);
+      if (++cnt == 5) { fl.push_back(mx - mn); cnt = 0; mn = 1e30; mx = 0; } } }
+  out.nreq = (int)lat.size(); out.req_p50 = pct(lat, 50); out.req_p99 = pct(lat, 99); out.hop_run_p50 = pct(hopr, 50); out.hop_wait_p99 = pct(hopw, 99);
+  out.nframes = (int)fl.size(); out.frame_p99 = pct(fl, 99); out.frame_max = fl.empty() ? 0 : *std::max_element(fl.begin(), fl.end());
+  for (double x : fl) out.frame_miss += x > 1e6 / 35.0;
+  double w0 = 1e30, w1 = 0; for (size_t i = 0; i < v.size(); ++i) if (v[i].cls == 0) { w0 = std::min(w0, v[i].start); w1 = std::max(w1, v[i].end); }
+  if (!L.serve) { w0 = 1e30; w1 = 0; for (size_t i = 0; i < v.size(); ++i) if (v[i].cls == 1) { w0 = std::min(w0, v[i].start); w1 = std::max(w1, v[i].end); } }
+  double mmn = 0, swb = 0, tn = 0, busy = 0;
+  for (size_t i = 0; i < v.size(); ++i) {
+    double a = std::max(v[i].start, w0), b = std::min(v[i].end, w1); if (b > a) busy += b - a;
+    if (v[i].cls == 1 && v[i].end >= w0 && v[i].end <= w1) { tn += 1; if (v[i].op == KVM_OP_matmul_tile) mmn += 1; else if (v[i].op == KVM_OP_layernorm_fwd) swb += 8.0 * TR * D + 8.0 * TR; else swb += 8.0 * GN; }   // analytic, independent of the cost table so both builds are comparable
+  }
+  double span = std::max(w1 - w0, 1.0);
+  out.mm_tflops = mmn * 2.0 * 128 * 128 * MK / (span * 1e6); out.sweep_gbs = swb / (span * 1e3); out.ktask_s = tn / span * 1e3; out.util = busy / (span * ex.workers());
+  return out;
+}
+static void print_mix(const char* name, const std::vector<MixOut>& rs) {
+  auto med = [&](auto f) { std::vector<double> x; for (auto& m : rs) x.push_back(f(m)); return spread(x); };
+  Spread p50 = med([](const MixOut& m) { return m.req_p50; }), p99 = med([](const MixOut& m) { return m.req_p99; }), fp = med([](const MixOut& m) { return m.frame_p99; }), fm = med([](const MixOut& m) { return (double)m.frame_miss; });
+  Spread tf = med([](const MixOut& m) { return m.mm_tflops; }), sg = med([](const MixOut& m) { return m.sweep_gbs; }), ut = med([](const MixOut& m) { return 100 * m.util; }), hr = med([](const MixOut& m) { return m.hop_run_p50; }), hw = med([](const MixOut& m) { return m.hop_wait_p99; });
+  printf("  %-34s serve p50 %6.0f p99 %7.0f [%.0f,%.0f] us (hop run p50 %.1f, wait p99 %.0f) | frames p99 %.1f ms, missed %.0f/%d | train: matmul %.2f TFLOP/s, sweeps %.1f GB/s | util %.1f%%\n",
+         name, p50.med, p99.med, p99.lo, p99.hi, hr.med, hw.med, fp.med / 1e3, fm.med, rs[0].nframes, tf.med, sg.med, ut.med);
+}
+static bool suite_mix() {
+  int before = g_fail; const int N = 5, W = 106;
+  MixSpec L;
+  // 1. measured peak: train sweeps alone (no matmul, no serve, no frames), cost-table GB/s of the whole GPU
+  double peak = 0;
+  { MixSpec p = L; p.serve = false; p.frames = false; p.mm_frac = 0; p.ln_frac = 0.5; p.ms = 400; std::vector<double> g;
+    for (int i = 0; i < 3; ++i) { p.seed = 100 + i; MixOut o = run_mix(mode_cfg(KVM_SCHED_GLOBAL, 108), p, false, false); CHECK(o.err == 0, "peak run"); g.push_back(o.sweep_gbs); }
+    peak = spread(g).med; printf("  measured peak: memory-bound train sweeps alone move %.1f GB/s by the cost table (3 runs: %.1f..%.1f)\n", peak, spread(g).lo, spread(g).hi); }
+  { MixSpec p = L; p.serve = false; p.frames = false; p.mm_frac = 1; p.ln_frac = 0; p.ms = 400; MixOut o = run_mix(mode_cfg(KVM_SCHED_GLOBAL, 108), p, false, false); CHECK(o.err == 0, "mm run");
+    printf("  measured: matmul_tile 128x128xK1024 tiles alone sustain %.2f TFLOP/s\n", o.mm_tflops); }
+  { MixSpec p = L; p.serve = true; p.frames = false; p.mm_frac = 0; p.ln_frac = 0; p.outstanding = 0; MixOut o = run_mix(mode_cfg(KVM_SCHED_GLOBAL, 108), p, false, false); CHECK(o.err == 0, "serve alone");
+    printf("  serve alone (no train, no frames): p50 %.0f p99 %.0f us, hop run p50 %.1f us\n", o.req_p50, o.req_p99, o.hop_run_p50); }
+  printf("  mix: serve %.0f req/s x %d dependent layernorm hops (SLO %.0f us); train backlog %d: %.0f%% matmul_tile / %.0f%% layernorm 256x1024 / %.0f%% gelu 512K; frames 35 Hz stand-in; %d workers; median [min,max] of %d\n",
+         L.serve_rate, L.hops, L.slo_us, L.outstanding, 100 * L.mm_frac, 100 * L.ln_frac, 100 * (1 - L.mm_frac - L.ln_frac), W, N);
+  struct Cfg { const char* name; int mode; bool prio; double share_serve, share_frame; bool ctl; int arb; };   // arb: 0 off, 1 device AIMD, 2 host measured
+  for (const Cfg& cf : std::vector<Cfg>{{"global queue, flat", KVM_SCHED_GLOBAL, false, 0, 0, false, 0}, {"global queue, prio frames>serve>train", KVM_SCHED_GLOBAL, true, 0, 0, false, 0},
+                                         {"static 10%/20%/70%", KVM_SCHED_STATIC, false, 0.2, 0.1, false, 0}, {"dynamic + controller", KVM_SCHED_DYNAMIC, false, 0, 0, true, 0},
+                                         {"dynamic + ctl + device arbiter", KVM_SCHED_DYNAMIC, false, 0, 0, true, 1}, {"dynamic + ctl + host measured arb", KVM_SCHED_DYNAMIC, false, 0, 0, true, 2}}) {
+    std::vector<MixOut> rs; std::vector<KvmBwArbSample> lastlog;
+    for (int i = 0; i < N; ++i) {
+      MixSpec l = L; l.seed = 1 + i; if (cf.prio) { l.serve_prio = 20; l.frame_prio = 30; }
+      KvmConfig c = mode_cfg(cf.mode, 108); c.sched.num_classes = 3; c.sched.p.cls[0].weight = 1; c.sched.p.cls[1].weight = 1; c.sched.p.cls[2].weight = 1;
+      if (cf.mode == KVM_SCHED_STATIC) kvm_static_split(c.sched.p, {cf.share_serve, 1 - cf.share_serve - cf.share_frame, cf.share_frame}, g_sms);
+      if (cf.mode == KVM_SCHED_DYNAMIC) { c.sched.p.cls[0].urgent_us = 300; c.sched.p.cls[2].min_cta = 1; c.sched.p.cls[2].urgent_us = 20000; }
+      c.sched.p.cls[0].protect = 1; c.sched.p.cls[0].target_wait_us = 100;
+      if (cf.arb == 1) { c.sched.p.flags |= KVM_SF_ARBITER; c.sched.p.bw_limit_min = 16; c.sched.p.window_us = 200; }
+      KvmBwArbConfig ac; ac.peak_gbs = peak;
+      MixOut o = run_mix(c, l, cf.ctl, cf.arb == 2, ac); CHECK(o.err == 0 && o.nreq > 100, "%s: device error or no requests", cf.name); rs.push_back(o);
+    }
+    print_mix(cf.name, rs);
+    if (cf.arb == 2) { const MixOut& o = rs[rs.size() / 2]; int ncap = 0; double smin = 1; for (auto& s : o.arb) { ncap += s.cap[1] != KVM_UNLIMITED; smin = std::min(smin, s.sat); }
+      printf("    host arbiter (one run): %zu periods, %d cap writes, train capped in %d periods, min sat %.2f, total measured GB/s p50 over periods:", o.arb.size(), o.arb_changes, ncap, smin);
+      std::vector<double> tg; for (auto& s : o.arb) tg.push_back(s.total_gbs); printf(" %.1f (peak %.1f)\n", pct(tg, 50), peak); }
+  }
+  return g_fail == before;
+}
+
 static bool sched_bench_suite(const std::string& s, bool& ok) {
   if (s == "calib") { ok = suite_calib(); return true; }
   if (s == "dispatch") { ok = suite_dispatch(); return true; }
@@ -368,6 +528,7 @@ static bool sched_bench_suite(const std::string& s, bool& ok) {
   if (s == "arbiter") { ok = suite_arbiter(); return true; }
   if (s == "rebalance") { ok = suite_rebalance(); return true; }
   if (s == "baselines") { ok = suite_baselines(); return true; }
+  if (s == "mix") { ok = suite_mix(); return true; }
   if (s == "loadsmoke") {
     LoadSpec L = rebalance_load(); L.phases = {{150, 2500}, {100, 0}};
     KvmConfig c = mode_cfg(KVM_SCHED_DYNAMIC, 132); RunOut o = run_load(c, L); print_metrics("dynamic", o.m); ok = o.m.nreq > 100; return true;

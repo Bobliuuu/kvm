@@ -29,7 +29,8 @@ enum KvmRes { KVM_RES_COMPUTE = 0, KVM_RES_BW = 1, KVM_RES_LAT = 2, KVM_RES_MIXE
 #define KVM_SF_GUARANTEE 1   // reservations (min_cta) are enforced; clear = negative test of the starvation check
 #define KVM_SF_INHERIT   2   // priority inheritance across version waits; clear = the deadlock the design prevents
 #define KVM_SF_ARBITER   4   // global concurrent-BW-task limit, adapted online by the policy block
-#define KVM_SF_DEFAULT   (KVM_SF_GUARANTEE | KVM_SF_INHERIT)
+#define KVM_SF_LATFIRST  8   // a protected class (KVM_CF_PROTECT) with ready work is served before fair-share classes (below reservation/boost, EDF-urgent first); caps still apply
+#define KVM_SF_DEFAULT   (KVM_SF_GUARANTEE | KVM_SF_INHERIT | KVM_SF_LATFIRST)
 #define KVM_CF_PROTECT 1
 #define KVM_CF_OPAFF   2     // a ready task is offered first to the block that last ran a task of the same op (warm code/state), for affinity_us
 // Bits the device records in KvmTrace.flags for how a task was started (bit0 is KVM_TRACE_MISSED).
@@ -62,7 +63,8 @@ struct KvmClassTele {          // 128 B, written by the policy block (about ever
   volatile unsigned long long dl_n, near_miss, wait_over, wait_sum_ns;   // dl_n: finished tasks with a deadline; near_miss: of those, finished
                                                                           // with less than 1/4 of their deadline budget left (misses included);
                                                                           // wait_over: tasks that waited longer than the class's target_wait_us in the queue
-  volatile int running, ready, win_wait_avg_us, win_wait_max_us, win_n, resv_max_us, pad[10];
+  volatile unsigned long long bw_ns, bw_bytes;   // running time and (cost-table) bytes of finished bandwidth-bound tasks: bw_bytes / bw_ns = what one such CTA streams, in bytes/ns = GB/s
+  volatile int running, ready, win_wait_avg_us, win_wait_max_us, win_n, resv_max_us, pad[6];
 };
 struct KvmSchedTele {
   volatile unsigned long long ticks;
@@ -87,6 +89,7 @@ struct alignas(128) KvmClsDev {
   unsigned long long bytes, tasks, missed, resv_starts, resv_wait_max_ns;
   unsigned long long w_wait_sum, w_n, w_wait_max, w_miss;   // window accumulators, drained by the policy block
   unsigned long long dl_n, near_miss, wait_over, wait_sum;  // cumulative, exported as is (KvmClassTele)
+  unsigned long long bw_ns, bw_bytes;                       // BW-class tasks only (the arbiter's measured per-class bandwidth)
 };
 
 static_assert(offsetof(KvmClsDev, running) == 128 && offsetof(KvmClsDev, sm_ns) == 256, "KvmClsDev lines");
@@ -184,7 +187,7 @@ class KvmController {
         if (nxt != cur) { p_.cls[c.cls].min_cta = nxt; dirty = true; ++changes_; }
         log_.push_back({now_ms, c.cls, running, ready, p_.cls[c.cls].min_cta, wait});
       }
-      if (dirty) write_params(hp_, p_);
+      if (dirty) { for (int i = 0; i < KVM_MAX_CLS; ++i) p_.cls[i].bw_cta = hp_->cls[i].bw_cta; write_params(hp_, p_); }   // the bandwidth arbiter owns bw_cta
     }
   }
   KvmSchedParams* hp_; const KvmSchedTele* ht_; KvmSchedParams p_; KvmCtlConfig cfg_;
@@ -192,3 +195,75 @@ class KvmController {
   std::vector<KvmCtlSample> log_; int changes_ = 0;
   std::atomic<bool> stop_{false}; std::thread th_; std::chrono::steady_clock::time_point t0_;
 };
+
+// ---------------- host bandwidth arbiter: per-class caps from MEASURED per-class bandwidth ----------------
+// The device-side arbiter (KVM_SF_ARBITER) AIMDs one global count of concurrent bandwidth-bound tasks and cannot tell a 6 MB sweep from a
+// 20 KB gather. This one works in bytes/s: telemetry gives, per class, the bytes (cost table, so only as good as kvm_ops_cost.inc) and
+// the running time of finished BW-class tasks (KvmClassTele.bw_bytes / bw_ns), from which it derives, every period,
+//   rate_c   = d(bw_bytes_c) / dt                       what class c streams now                   [GB/s]
+//   per_cta  = d(bw_bytes_c) / d(bw_ns_c)               what ONE BW task of class c streams        [GB/s per CTA]
+// and the memory system's budget  B = sat * peak  (peak = configured, or the largest total rate seen). Protected classes (KVM_CF_PROTECT)
+// are never capped. The others share  max(0, B - sum(protected rate))  in proportion to weight, and a class's cap is its share divided by
+// per_cta, written into bw_cta (never below min_cap, never above its current running demand's headroom). `sat` is tightened by
+// `tighten` when a protected class's queue wait exceeds its target and relaxed by `relax` per calm period back to `sat_max`, so the
+// feed-forward budget is corrected by the latency signal rather than relying on it alone.
+struct KvmBwArbConfig {
+  double peak_gbs = 0;        // 0 = learn: the largest total rate seen (decays 0.5% per period)
+  double sat_max = 0.95, sat_min = 0.35, tighten = 0.85, relax = 0.02;
+  int period_us = 500, min_cap = 2, calm_periods = 4;
+};
+struct KvmBwArbSample { double t_ms, total_gbs, peak_gbs, sat; int cap[KVM_MAX_CLS]; double rate[KVM_MAX_CLS], per_cta[KVM_MAX_CLS]; };
+class KvmBwArbiter {
+ public:
+  KvmBwArbiter(KvmSchedParams* hp, const KvmSchedTele* ht, KvmSchedParams base, int nc, KvmBwArbConfig cfg) : hp_(hp), ht_(ht), p_(base), nc_(nc), cfg_(cfg), sat_(cfg.sat_max) {}
+  ~KvmBwArbiter() { stop(); }
+  void start() { stop_.store(false); t0_ = std::chrono::steady_clock::now(); th_ = std::thread([this] { loop(); }); }
+  void stop() { stop_.store(true); if (th_.joinable()) th_.join(); }
+  const std::vector<KvmBwArbSample>& log() const { return log_; }
+  int changes() const { return changes_; }
+ private:
+  void loop() {
+    unsigned long long pb[KVM_MAX_CLS] = {}, pn[KVM_MAX_CLS] = {}; auto pt = std::chrono::steady_clock::now(); int calm = 0;
+    double per_cta[KVM_MAX_CLS] = {};
+    while (!stop_.load()) {
+      std::this_thread::sleep_for(std::chrono::microseconds(cfg_.period_us));
+      auto now = std::chrono::steady_clock::now(); double dt = std::chrono::duration<double>(now - pt).count(); pt = now;
+      KvmBwArbSample sm{}; sm.t_ms = std::chrono::duration<double, std::milli>(now - t0_).count();
+      double rate[KVM_MAX_CLS] = {}, total = 0, prot_rate = 0, wsum = 0; bool pressure = false;
+      for (int c = 0; c < nc_; ++c) {
+        const KvmClassTele& t = ht_->cls[c];
+        unsigned long long b = t.bw_bytes, n = t.bw_ns, db = b - pb[c], dn = n - pn[c]; pb[c] = b; pn[c] = n;
+        rate[c] = dt > 0 ? (double)db / dt / 1e9 : 0;
+        if (dn > 0 && db > 0) per_cta[c] = per_cta[c] > 0 ? 0.7 * per_cta[c] + 0.3 * ((double)db / (double)dn) : (double)db / (double)dn;   // bytes/ns = GB/s
+        total += rate[c];
+        const bool prot = (p_.cls[c].protect & KVM_CF_PROTECT) != 0;
+        if (prot) { prot_rate += rate[c]; if (t.win_n > 0 && p_.cls[c].target_wait_us > 0 && t.win_wait_max_us > p_.cls[c].target_wait_us) pressure = true; }
+        else wsum += std::max(p_.cls[c].weight, 1);
+        sm.rate[c] = rate[c]; sm.per_cta[c] = per_cta[c];
+      }
+      peak_ = cfg_.peak_gbs > 0 ? cfg_.peak_gbs : std::max(peak_ * 0.995, total);
+      if (pressure) { sat_ = std::max(cfg_.sat_min, sat_ * cfg_.tighten); calm = 0; }
+      else if (++calm >= cfg_.calm_periods) { sat_ = std::min(cfg_.sat_max, sat_ + cfg_.relax); calm = 0; }
+      const double budget = std::max(0.0, sat_ * peak_ - prot_rate);
+      bool dirty = false;
+      for (int c = 0; c < nc_; ++c) {
+        sm.cap[c] = p_.cls[c].bw_cta;
+        if ((p_.cls[c].protect & KVM_CF_PROTECT) || per_cta[c] <= 0 || wsum <= 0) continue;
+        const double share = budget * std::max(p_.cls[c].weight, 1) / wsum;
+        int want = (int)std::floor(share / per_cta[c]);
+        want = std::max(cfg_.min_cap, want);
+        // while the whole system is far below its budget, do not cap at all (a cap only exists to hold the total near the budget)
+        if (total < 0.6 * sat_ * peak_ && !pressure) want = KVM_UNLIMITED;
+        if (want != p_.cls[c].bw_cta) { p_.cls[c].bw_cta = want; dirty = true; ++changes_; }
+        sm.cap[c] = p_.cls[c].bw_cta;
+      }
+      sm.total_gbs = total; sm.peak_gbs = peak_; sm.sat = sat_;
+      if (dirty) { for (int i = 0; i < KVM_MAX_CLS; ++i) p_.cls[i].min_cta = hp_->cls[i].min_cta; KvmController::write_params(hp_, p_); }   // the rebalancing controller owns min_cta
+      log_.push_back(sm);
+    }
+  }
+  KvmSchedParams* hp_; const KvmSchedTele* ht_; KvmSchedParams p_; int nc_; KvmBwArbConfig cfg_;
+  double sat_, peak_ = 0; std::vector<KvmBwArbSample> log_; int changes_ = 0;
+  std::atomic<bool> stop_{false}; std::thread th_; std::chrono::steady_clock::time_point t0_;
+};
+

@@ -1,0 +1,14 @@
+{"adm":"serve_s0","t_done_us":103286,"buffers":{"serve_s0.cur0":{"dtype":"i32","values":[43]},"serve_s0.cur1":{"dtype":"i32","values":[41803]},"serve_s0.cur2":{"dtype":"i32","values":[33285]},"serve_s0.cur3":{"dtype":"i32","values":[42236]}}}
+{"adm":"game","t_done_us":4238943,"buffers":{}}
+{"adm":"train_w0","t_done_us":4680159,"buffers":{"loss.0":{"dtype":"f32","values":[10.979002,0.000244140625]}}}
+{"adm":"train_w1","t_done_us":6480402,"buffers":{"loss.0":{"dtype":"f32","values":[10.936902,0.000244140625]}}}
+{"adm":"serve_s2","t_done_us":6562988,"buffers":{"serve_s2.cur0":{"dtype":"i32","values":[43]},"serve_s2.cur1":{"dtype":"i32","values":[33494]},"serve_s2.cur2":{"dtype":"i32","values":[25265]},"serve_s2.cur3":{"dtype":"i32","values":[33568]}}}
+{"adm":"train_w2","t_done_us":8269561,"buffers":{"loss.0":{"dtype":"f32","values":[10.8757257,0.000244140625]}}}
+{"adm":"train_w3","t_done_us":10000988,"buffers":{"loss.0":{"dtype":"f32","values":[10.8826694,0.000244140625]}}}
+{"adm":"serve_s4","t_done_us":10081898,"buffers":{"serve_s4.cur0":{"dtype":"i32","values":[43]},"serve_s4.cur1":{"dtype":"i32","values":[49140]},"serve_s4.cur2":{"dtype":"i32","values":[49140]},"serve_s4.cur3":{"dtype":"i32","values":[26457]}}}
+{"adm":"train_w4","t_done_us":11832738,"buffers":{"loss.0":{"dtype":"f32","values":[10.8924646,0.000244140625]}}}
+{"adm":"train_w5","t_done_us":13544207,"buffers":{"loss.0":{"dtype":"f32","values":[10.9236917,0.000244140625]}}}
+{"adm":"serve_s6","t_done_us":13625886,"buffers":{"serve_s6.cur0":{"dtype":"i32","values":[43]},"serve_s6.cur1":{"dtype":"i32","values":[34196]},"serve_s6.cur2":{"dtype":"i32","values":[34196]},"serve_s6.cur3":{"dtype":"i32","values":[34196]}}}
+{"adm":"train_w6","t_done_us":15393175,"buffers":{"loss.0":{"dtype":"f32","values":[11.0022402,0.000244140625]}}}
+{"adm":"train_w7","t_done_us":17143637,"buffers":{"loss.0":{"dtype":"f32","values":[11.0932474,0.000244140625]}}}
+{"adm":"serve_s8","t_done_us":17224323,"buffers":{"serve_s8.cur0":{"dtype":"i32","values":[43]},"serve_s8.cur1":{"dtype":"i32","values":[16666]},"serve_s8.cur2":{"dtype":"i32","values":[16666]},"serve_s8.cur3":{"dtype":"i32","values":[16666]}}}

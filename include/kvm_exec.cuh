@@ -776,6 +776,8 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
   }
   const unsigned long long fbase = A.fhead;
   const unsigned sbase = A.l[L].succ_used;
+  const unsigned seq = A.l[L].win_next;   // read before the sync below: thread 0 advances win_next right after it
+  const unsigned wid = L ? (seq | KVM_LAT_BIT) : seq;
   // pop nt slots from the free ring (each producer finishes its cell write within a few instructions)
   for (int i = threadIdx.x; i < nt; i += blockDim.x) {
     unsigned long long fp = fbase + i;
@@ -786,8 +788,6 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
   }
   __syncthreads();
   const unsigned long long now = kvm_now();
-  const unsigned seq = A.l[L].win_next;
-  const unsigned wid = L ? (seq | KVM_LAT_BIT) : seq;
   // Reserve everything the record needs before the first slice, so a record admitted in between (other lane) sees the pools as they will be.
   if (threadIdx.x == 0) {
     ln.wins[seq & (ln.win_cap - 1)].remaining = nt;

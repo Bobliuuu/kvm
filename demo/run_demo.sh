@@ -7,6 +7,7 @@
 #     --model M --steps N --window W --serve-every K --frames F --tiling T   (override the preset)
 #     --tf32           1xTF32 GEMMs instead of the exact 3xTF32 (the preset 'large' uses it)
 #     --sanitize       also run compute-sanitizer memcheck/racecheck/synccheck on a small demo, inside the same lock hold
+#     env KVM_REMOTE=dir  private remote scratch dir (default kvm-demo-scratch)
 #     --tag NAME       run name (default: preset-UTC)     --lock-wait S (default 900)
 # Output: logs/<UTC>-demo-<tag>/ (git-ignored): run.json, trace.csv, observations.jsonl, check.log, report.json, kvm_run.log.
 set -euo pipefail
@@ -31,7 +32,7 @@ esac
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"; TAG="${TAG:-$PRESET-$STAMP}"
 LOG="$ROOT/logs/$STAMP-demo-$TAG"; mkdir -p "$LOG"
 SSH="ssh -o StrictHostKeyChecking=no -o BatchMode=yes ${KVM_KEY:+-i $KVM_KEY}"
-REMOTE='kvm-demo-scratch'
+REMOTE="${KVM_REMOTE:-kvm-demo-scratch}"
 {
 echo "# demo $TAG  host=<KVM_HOST>  commit=$(git -C "$ROOT" rev-parse --short HEAD)$(git -C "$ROOT" diff --quiet || echo +dirty)  preset=$PRESET model=$MODEL steps=$STEPS window=$WINDOW serve_every=$SERVE_EVERY frames=$FRAMES tiling=$TILING precise=$PRECISE sanitize=$SANITIZE"
 rsync -az -e "$SSH" --delete --exclude .git --exclude logs --exclude docs --exclude results --exclude 'doom/build' --exclude 'doom/third_party' --exclude runs --exclude 'demo/kvm_run' "$ROOT/" "$HOST:$REMOTE/"

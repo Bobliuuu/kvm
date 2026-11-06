@@ -51,7 +51,7 @@ def seeded_np(seed, n, draws, bias, coef):
     return (acc - np.float32(bias)) * np.float32(coef)
 
 
-def init_values(buf):
+def init_values(buf, wl_dir):
     init = buf['init']
     n = buf['rows'] * buf['cols']
     if init['kind'] == 'fill':
@@ -59,6 +59,10 @@ def init_values(buf):
     if init['kind'] == 'seeded':
         draws, bias, coef = initgen.params(init.get('dist', 'normal'), init['scale'])
         return seeded_np(init['seed'], n, draws, bias, coef).astype(np.float32)
+    if init['kind'] == 'file':
+        return np.fromfile(Path(wl_dir) / init['path'], dtype='<f4' if buf.get('dtype', 'f32') == 'f32' else '<i4')
+    if init['kind'] == 'values':
+        return np.array(init['values'])
     raise SystemExit(f'unsupported init {init["kind"]} for {buf["name"]}')
 
 
@@ -104,19 +108,19 @@ class TorchGPT:
 
 # ------------------------------------------------------------------ one training run = N steps from the initial state
 class Trainer:
-    def __init__(self, wl_dir, precision, dev='cuda'):
+    def __init__(self, wl_dir, precision, dev='cuda'):          # dev='cpu' only for the offline correctness check (eager)
         spec = json.loads((Path(wl_dir) / 'workload.json').read_text())
         info = json.loads((Path(wl_dir) / 'info.json').read_text())
         self.cfg = ModelConfig(**info['model'])
         self.steps = info['steps']
         bufs = {b['name']: b for b in spec['buffers']}
         specs = GPT(self.cfg).specs
-        self.init = {n: torch.from_numpy(init_values(bufs['w.' + n]).reshape(s.rows, s.cols)).to(dev) for n, s in specs.items()}
+        self.init = {n: torch.from_numpy(init_values(bufs['w.' + n], wl_dir).reshape(s.rows, s.cols)).to(dev) for n, s in specs.items()}
         # biases / norm params are stored [1, n] in the executor; PyTorch wants vectors
         self.shape = {n: (v.shape if specs[n].rows > 1 else (v.shape[1],)) for n, v in self.init.items()}
         self.params = {n: v.reshape(self.shape[n]).clone().requires_grad_(True) for n, v in self.init.items()}
-        self.ids = torch.tensor(bufs['stream_ids']['init']['values'], dtype=torch.int64, device=dev).view(self.steps, -1)
-        self.tgt = torch.tensor(bufs['stream_tgt']['init']['values'], dtype=torch.int64, device=dev).view(self.steps, -1)
+        stream = lambda n: torch.from_numpy(init_values(bufs[n], wl_dir).astype(np.int64)).to(dev).view(self.steps, -1)
+        self.ids, self.tgt = stream('stream_ids'), stream('stream_tgt')
         self.model = TorchGPT(self.cfg, specs, dev)
         dec = [self.params[n] for n, s in specs.items() if s.decay]
         nod = [self.params[n] for n, s in specs.items() if not s.decay]
@@ -207,6 +211,13 @@ def timed(trainer, run, reps):
     ts, losses = [], None
     for r in range(reps + 1):                        # rep 0 is warm-up (also the loss record)
         trainer.reset()
+        if trainer.dev != 'cuda':
+            t0 = time.time()
+            out = run()
+            if r == 0:
+                losses = [float(x) for x in out]
+            ts.append((time.time() - t0) * 1e3)
+            continue
         torch.cuda.synchronize()
         e0, e1 = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
         e0.record()
@@ -226,14 +237,16 @@ def main():
     ap.add_argument('--modes', default='eager,graph,compile_mat,compile_ro,compile_graph')
     ap.add_argument('--reps', type=int, default=7)
     ap.add_argument('--precision', choices=['tf32', 'precise'], default='tf32')
+    ap.add_argument('--device', default='cuda')
     ap.add_argument('--out')
     a = ap.parse_args()
     self_check_init()
-    result = {'torch': torch.__version__, 'cuda': torch.version.cuda, 'gpu': torch.cuda.get_device_name(0),
-              'sms': torch.cuda.get_device_properties(0).multi_processor_count, 'precision': a.precision, 'reps': a.reps, 'modes': {}}
+    on_gpu = a.device == 'cuda'
+    result = {'torch': torch.__version__, 'cuda': torch.version.cuda, 'gpu': torch.cuda.get_device_name(0) if on_gpu else 'cpu',
+              'sms': torch.cuda.get_device_properties(0).multi_processor_count if on_gpu else 0, 'precision': a.precision, 'reps': a.reps, 'modes': {}}
     for mode in a.modes.split(','):
         torch.manual_seed(0)
-        t = Trainer(a.workload_dir, a.precision)
+        t = Trainer(a.workload_dir, a.precision, a.device)
         t0 = time.time()
         try:
             run = {'eager': t.eager, 'graph': t.graphed,
@@ -252,7 +265,8 @@ def main():
         print(f'{mode}: best {min(ts) / n * 1e3:.1f} us/step  median {statistics.median(ts) / n * 1e3:.1f}  worst {max(ts) / n * 1e3:.1f}  '
               f'loss {losses[0]:.4f} -> {losses[-1]:.4f}  (setup {time.time() - t0:.0f}s)', flush=True)
         del t
-        torch.cuda.empty_cache()
+        if on_gpu:
+            torch.cuda.empty_cache()
     if a.out:
         Path(a.out).write_text(json.dumps(result, indent=1))
 

@@ -729,7 +729,7 @@ static bool suite_bench() {
            r.done / (us / 1e6), drain, drain / std::max(1, nw - 1), wait / std::max(1, nw) / 1e3, bd.succ.size());
     (void)n;
   };
-  for (int b : {32, 108}) {
+  for (int b : {2, 32, 108}) {
     const int N = 8000;
     graph(b, "fan-out 1 -> 8000 (pop rate)", N, [&] { KvmBundleBuilder bb; int r0 = bb.add("noop", {}); for (int i = 0; i < N; ++i) bb.edge(r0, bb.add("noop", {})); return bb.build(); });
     graph(b, "fan-in 8000 -> 1", N, [&] { KvmBundleBuilder bb; std::vector<int> p; for (int i = 0; i < N; ++i) p.push_back(bb.add("noop", {})); int j = bb.add("noop", {}); for (int x : p) bb.edge(x, j); return bb.build(); });

@@ -7,6 +7,7 @@
 #ifndef KVM_GPT_MAX_HD
 #define KVM_GPT_MAX_HD 64
 #endif
+#define KVM_HARNESS_NO_RUN   // this test dispatches only the ops it exercises (the all-ops kernel of the harness costs minutes of compile time)
 #include "harness.cuh"
 #include "refs.hpp"
 #include "kvm_ops_extra.cuh"
@@ -22,9 +23,25 @@ enum {
 #include "kvm_ops_extra.def"
 #undef X
 };
-__global__ void k_runx(KvmCtx c, const int32_t* w, const int* op, const int* off) {
+__global__ void __launch_bounds__(256, 1) k_runx(KvmCtx c, const int32_t* w, const int* op, const int* off) {
     const int32_t* a = w + off[blockIdx.x];
-    if (!kvm_extra_dispatch(c, op[blockIdx.x], a) && !kvm_gpt_dispatch(c, op[blockIdx.x], a)) atomicCAS(c.err, 0, 99);
+    switch (op[blockIdx.x]) {
+        case OPX_matmul_mma_bf16: kvmextra::matmul_mma_bf16(c, a); break;
+        case OP_embedding_fwd: kvmgpt::embedding_fwd(c, a); break;
+        case OP_layernorm_fwd: kvmgpt::layernorm_fwd(c, a); break;
+        case OP_rmsnorm_fwd: kvmgpt::rmsnorm_fwd(c, a); break;
+        case OP_layernorm_bwd_dx: kvmgpt::layernorm_bwd_dx(c, a); break;
+        case OP_rmsnorm_bwd_dx: kvmgpt::rmsnorm_bwd_dx(c, a); break;
+        case OP_norm_bwd_params: kvmgpt::norm_bwd_params(c, a); break;
+        case OP_colsum: kvmgpt::colsum(c, a); break;
+        case OP_gelu_bwd: kvmgpt::gelu_bwd(c, a); break;
+        case OP_residual_add: kvmgpt::residual_add(c, a); break;
+        case OP_rope_fwd: kvmgpt::rope_fwd(c, a); break;
+        case OP_rope_bwd: kvmgpt::rope_bwd(c, a); break;
+        case OP_softmax_ce_fwd: kvmgpt::softmax_ce_fwd(c, a); break;
+        case OP_softmax_ce_bwd: kvmgpt::softmax_ce_bwd(c, a); break;
+        default: atomicCAS(c.err, 0, 99);
+    }
 }
 struct BatchX {
     std::vector<int> op, off; std::vector<int32_t> w;
@@ -65,7 +82,10 @@ static std::vector<float> get(Dev& dv, int i, bool bf) { return bf ? dv.downb(i)
 // ---- matmul_mma_bf16 -------------------------------------------------------------------------------------------------------------------
 static void t_mma() {
     Rng r(2024);
-    struct Cfg { int M, N, K; } shapes[] = {{128, 256, 32}, {130, 260, 40}, {1, 1, 8}, {200, 300, 96}, {64, 64, 16}, {5, 7, 3}, {256, 512, 128}, {17, 33, 24}, {131, 9, 1000}, {300, 513, 72}};
+    struct Cfg { int M, N, K; };
+    const bool small = getenv("TEST_BF16_SMALL") != nullptr;   // sanitizer runs: fewer, smaller shapes
+    const std::vector<Cfg> shapes = small ? std::vector<Cfg>{{130, 260, 40}, {1, 1, 8}, {5, 7, 3}, {17, 33, 24}, {129, 9, 72}}
+                                          : std::vector<Cfg>{{128, 256, 32}, {130, 260, 40}, {1, 1, 8}, {200, 300, 96}, {64, 64, 16}, {5, 7, 3}, {256, 512, 128}, {17, 33, 24}, {131, 9, 1000}, {300, 513, 72}};
     int combos = 0; double worst = 0;
     for (int ta = 0; ta < 2; ta++) for (int tb = 0; tb < 2; tb++) for (auto s : shapes)
         for (int mode = 0; mode < 6; mode++) {   // 0 plain bf16 out; 1 plain f32 out; 2 full bf16; 3 full f32 out, bf16 res/pre; 4 full, f32 res/pre; 5 fp32 operands (fallback)
@@ -128,7 +148,7 @@ static void t_ops() {
     for (int mask = 0; mask < 4; mask++) {   // bit 0: input storage bf16, bit 1: output storage bf16
         const bool ib = mask & 1, ob = mask & 2;
         const std::string tag = std::string(" [in ") + (ib ? "bf16" : "f32") + ", out " + (ob ? "bf16" : "f32") + "]";
-        for (int d : {20, 96, 768}) {   // norms: ragged d (scalar path) and 4-aligned d
+        for (int d : getenv("TEST_BF16_SMALL") ? std::vector<int>{20, 96} : std::vector<int>{20, 96, 768}) {   // norms: ragged d and 4-aligned d
             const int R = 9;
             for (int rms = 0; rms < 2; rms++) {
                 Dev dv;
@@ -208,7 +228,7 @@ static void t_ops() {
                 check(std::string(sign ? "rope_bwd" : "rope_fwd") + tag, get(dv, qo, ob), rq, tol_of(ob) + (ob ? 0 : 3e-5)); check_true("rope err==0" + tag, eq == 0);
             }
         }
-        for (int V : {50, 64, 130, 4101}) {   // cross entropy: ragged V (scalar path) and 4-aligned V (vector path)
+        for (int V : getenv("TEST_BF16_SMALL") ? std::vector<int>{50, 64, 130} : std::vector<int>{50, 64, 130, 4101}) {   // cross entropy: ragged V (scalar path) and 4-aligned V (vector path)
             const int N = 6; const int ign = -100;
             Dev dv;
             int lg = mk(dv, ib, N, V, V + (V % 4 ? 3 : 0)), tg = dv.addi(N), rl = dv.addf(1, N), ls = dv.addf(1, N), loss = dv.addf(1, 2), dl = mk(dv, ob, N, V, V + (V % 4 ? 3 : 0));

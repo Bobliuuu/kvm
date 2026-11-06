@@ -46,7 +46,7 @@ python3 -I -m unittest discover -s tests/frontend      # from the repo root
 | Piece | State | Evidence |
 |---|---|---|
 | Builder, autodiff, tiling, dataflow, memory plan, emit (GPT, Llama/GQA, MoE, MLP, ViT) | implemented + tested: 59 tests (about 30 s) against independent numpy float64 oracles, finite-difference gradients, any-topological-order bitwise state | `tests/frontend/`, `results/2026-11-04-a100-models` |
-| Fusion, remat, gradient accumulation, device LR schedule, loss scaling, bf16 | implemented + measured on the A100 (fusion -3% Llama / -11% MoE time, remat pool -41 to -59% for +36% tasks); bf16 is emulated in fp32 buffers; `precision='bf16s'` (GPT) stores bf16 for real (ABI dtype 2), see below | `results/2026-11-04-a100-models` |
+| Fusion, remat, gradient accumulation, device LR schedule, loss scaling, bf16 | implemented + measured on the A100 (fusion -3% Llama / -11% MoE time, remat pool -41 to -59% for +36% tasks); bf16 is emulated in fp32 buffers; `precision='bf16s'` stores bf16 for real (ABI dtype 2) and runs the bf16 tensor-core GEMM, see below | `results/2026-11-04-a100-models` |
 | GPT bundles on the executor | implemented + measured; 1xTF32 GEMMs are compared on losses and step-1 buffers, 3xTF32 (flag 16, `gen_bundle.py --precise`) to fp32 level | `results/2026-11-04-a100-gpt-golden` |
 | Windows / MANIFEST runner | CPU reference runner only; the GPU CLI runs single bundles | `kvmfe.run_manifest`, `results/2026-11-04-a100-exec-recycling` |
 | `gpt_162m` | runs on the A100 (demo `large`: 6 steps, 1.8 s/step = 2,260 tokens/s, 30x its 60 ms critical path; task-throughput bound); no CPU golden at this size | `results/2026-11-06-demo-large` |
@@ -199,7 +199,7 @@ curve against the independent float64 oracle (rel. 2e-5) and served tokens again
   early-exit decoding.
 * MoE routing ops are single-task over all N tokens of a microbatch (O(N*E*k) serial work, fine up to a few thousand tokens); dropped tokens
   (over capacity) get no expert and keep only the residual, as in Switch Transformer.
-* `precision='bf16'` is *emulated storage*: values are bfloat16-representable but live in fp32 buffers. `precision='bf16s'` (GPT only so far) stores them as bf16 (ABI dtype 2), see "Real bf16 storage". No fp16, no dynamic
+* `precision='bf16'` is *emulated storage*: values are bfloat16-representable but live in fp32 buffers. `precision='bf16s'` stores them as bf16 (ABI dtype 2), see "Real bf16 storage". No fp16, no dynamic
   loss scaling (no overflow detection or step skipping).
 * Fused tiles save a task and a dependency hop per tile, nothing more: the matmul epilogue cannot hold a full row, so norms are never
   fused into a matmul.
@@ -216,9 +216,18 @@ curve against the independent float64 oracle (rel. 2e-5) and served tokens again
 ## Real bf16 storage (`precision='bf16s'`)
 
 `kvmfe/storage.py` rewrites the finished op list so the roundings of `precision='bf16'` become real 2-byte storage (ABI `KvmBuf.dtype` 2,
-workload dtype `"bf16"`): cast outputs are bf16 tensors (a cast after a bf16 matmul is folded into its epilogue: `matmul_tile_bf16`
-reads and writes bf16 a/b/out/res/pre with fp32 math), weights get a bf16 shadow `wb.<name>` refreshed from the fp32 master at the start of
-each step (AdamW, its moments and the gradients stay fp32), and every op without bf16 support sees fp32 scratch (`round_bf16` widens
-before, narrows after; the planner reuses the scratch). The compiler rejects a bf16 buffer given to any other op. CPU golden: `Buf.bf16`
-rounds every stored value, so the golden and the device agree to one bf16 ulp. Not built: fp16, bf16-native norm / rope / attention /
-softmax / AdamW gradients (so activation memory does not halve overall, see `results/2026-11-06-a100-bf16-storage`), bf16 for the Llama/MoE/ViT families.
+workload dtype `"bf16"`; GPT, Llama, MLP and ViT families; the ABI is backward compatible, a bundle without dtype 2 is unchanged):
+
+* cast outputs are bf16 tensors; a cast after a producer that can store bf16 is folded into it (a bf16 matmul epilogue: fp32 math, one rounding;
+  or a storage-aware op: layernorm / rmsnorm fwd and bwd, rope, gelu_bwd, residual adds, embedding, cross entropy, colsum);
+* a bf16 matmul operand that is an fp32 activation reads an explicit bf16 copy (one `cast` per tensor, folded into its producer when possible):
+  with bf16 `a` and `b` the matmul lowers to **`matmul_mma_bf16`** (op id 122, 128 x 256 output tile, `mma.sync m16n8k16`, bf16 shared tiles,
+  `ldmatrix`, 4-stage `cp.async`), otherwise to the 64 x 64 `matmul_tile_bf16`;
+* weights get a bf16 shadow `wb.<name>` refreshed from the fp32 master at the start of each step; masters, AdamW moments and weight gradients
+  stay fp32 (fp32 accumulation, fp32 optimizer state); the saved GELU pre-activation is stored bf16;
+* every other op (attention, SwiGLU, softmax, MoE, ...) sees fp32 scratch: `round_bf16` widens before and narrows after, the planner reuses it.
+
+The compiler rejects a bf16 buffer given to an op that does not list it (`anydt` in `runtime/ref_*.py`, the same table the CPU golden uses).
+CPU golden: bf16 outputs are rounded after the fp32 op (`ref_extra._BF16_STORAGE`), so golden and device agree to one bf16 ulp.
+Measured: `results/2026-11-06-a100-bf16` (GEMM TFLOP/s, numerics against PyTorch fp64 / autocast-bf16, step time, memory).
+Not built: fp16, bf16-native attention / SwiGLU / softmax / MoE ops (they run through fp32 scratch), bf16 weight gradients, dynamic loss scaling.

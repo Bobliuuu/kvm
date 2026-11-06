@@ -26,8 +26,8 @@ while IFS='|' read -r name model steps mode tol flags; do
   d="$WORK/$name"
   if [ -n "$PREBUILT" ] && [ -f "$PREBUILT/$name/bundle/golden.json" ]; then cp -R "$PREBUILT/$name" "$d"; echo "$name: prebuilt";
   else python3 "$ROOT/examples/models/gen_bundle.py" "$d" --model "$model" --steps "$steps" $([ "$mode" = precise ] && echo --precise) $flags | tail -1; fi
-  $SSH "$HOST" "mkdir -p $REMOTE/mbundles/$name"
-  rsync -az -e "$SSH" "$d/bundle/" "$HOST:$REMOTE/mbundles/$name/"
+  $SSH "$HOST" "mkdir -p $REMOTE/mbundles/$name" < /dev/null          # ssh/rsync must not eat the cases file read by the loop
+  rsync -az -e "$SSH" "$d/bundle/" "$HOST:$REMOTE/mbundles/$name/" < /dev/null
   NAMES+=("$name"); MODES+=("$mode"); TOLS+=("$tol")
 done < "$CASES_FILE"
 RUN="cd $REMOTE && for c in ${NAMES[*]}; do ./kvm_exec --quiet --dump-buffers mbundles/\$c > mbundles/\$c.dump 2> mbundles/\$c.err; echo \"\$c exit \$?\"; for i in 1 2 3; do ./kvm_exec --quiet mbundles/\$c | tail -n1; done > mbundles/\$c.times; done"

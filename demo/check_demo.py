@@ -2,7 +2,7 @@
 """Verify one kvm_run output against independent references. Every check prints PASS / FAIL / SKIP with the measured numbers; the exit
 status is 0 only when no check FAILed.
 
-  check_demo.py DEMO_DIR RUN_DIR [--doom-oracle DIR] [--golden FILE] [--report OUT.json] [--loss-tol R]
+  check_demo.py DEMO_DIR RUN_DIR [--doom-oracle DIR] [--golden FILE] [--report OUT.json] [--loss-tol R] [--no-golden --model M [--precise]]
 
 DEMO_DIR  the directory kvm_run ran (MANIFEST.json, workloads/, bundles/)
 RUN_DIR   kvm_run --out directory (run.json, trace.csv, observations.jsonl, buffers/)
@@ -12,7 +12,8 @@ Checks (nothing here is specific to a model; names come from the manifest):
   versions      the executor's trace shows every version-carrying task saw the requested version: `exact` readers saw the same version at
                 start and end (a torn mix of two weight versions is impossible), `at_least` readers saw >= the version
   training      observed per-window loss buffers against the CPU golden (kvmfe.run_manifest, float32 reference VM), and that the loss falls
-  serving       served token buffers equal the golden decode of the weights snapshot at the version the request read
+  serving       served token buffers equal the golden decode of the weights snapshot at the version the request read: the CPU VM's, or
+                with --no-golden --model M a PyTorch float64 decode (serve_golden.py) of the requests whose weights are known (version 0, final)
   game          per-frame fingerprints, game state and (when every frame was kept) raw frame bytes equal the CPU build of the same engine
   cadence       tick-gap percentiles, frames per second against the 35 Hz period (from the executor's own per-task timestamps)
 """
@@ -31,6 +32,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'frontend'))
+sys.path.insert(0, str(ROOT / 'demo'))
 PERIOD_US = 1e6 / 35
 
 results: list[tuple[str, str, str]] = []
@@ -130,12 +132,56 @@ def check_training(manifest, obs, golden, tol):
     return None
 
 
-def check_serving(manifest, obs, golden):
+def check_serving_torch(serve, obs, demo, run_dir, run, model, precise):
+    """Teacher-forced PyTorch float64 decode (demo/serve_golden.py) of every request whose weights are known: version 0 (the initial
+    values, rebuilt from the config) and the final version (RUN/buffers/w.*.bin). Other versions leave no snapshot: reported unchecked."""
+    import serve_golden as sg
+    cfg = sg.ModelConfig.load(model)
+    final = run['final_versions'].get('weights', 0)
+    wdir = Path(run_dir) / 'buffers'
+    has_dump = (wdir / f'w.{next(iter(sg.GPT(cfg).specs))}.bin').exists()
+    weights, checked, skipped, exact_reqs, bad = {}, 0, [], 0, []
+    for a in serve:
+        o, v = obs.get(a['name']), a['base_versions'].get('weights', 0)
+        if not o:
+            bad.append(f"{a['name']}: not observed")
+            continue
+        src = 'init' if v == 0 else 'dump' if v == final and has_dump else None
+        if src is None:
+            skipped.append(f"{a['name']}@v{v}")
+            continue
+        if src not in weights:
+            weights[src] = sg.init_weights(cfg) if src == 'init' else sg.load_dumped(cfg, wdir)
+        wl = load_json(demo / a['compile']['workload'])
+        init = {b['name']: b['init'] for b in wl['buffers'] if b['name'].startswith(a['name'] + '.') and 'init' in b}
+        prompt = [int(x) for x in init.get(f"{a['name']}.prompt", {'values': []})['values']] + [int(init[f"{a['name']}.cur0"]['values'][0])]
+        gen = sorted((int(re.search(r'(\d+)$', n).group(1)), n) for n in o['buffers'] if re.search(r'\.cur[1-9]\d*$', n))
+        toks = [int(o['buffers'][n]['values'][0]) for _, n in gen]
+        r = sg.check_request(cfg, weights[src], prompt, toks, precise)
+        checked += 1
+        exact_reqs += r['exact'] == r['steps']
+        print(f"  serving {a['name']} (weights version {v}, {'initial values' if src == 'init' else 'dumped final weights'}): tokens {toks} vs float64 "
+              f"argmax {[t['ref_argmax'] for t in r['tokens']]}, min top1-top2 margin {min(t['top1_top2_margin'] for t in r['tokens']):.3f}, "
+              f"tie tolerance {max(t['tie_tol'] for t in r['tokens']):.4f}", flush=True)
+        if not r['ok']:
+            bad.append(f"{a['name']}: tokens {toks} vs float64 argmax {[t['ref_argmax'] for t in r['tokens']]} (logit gaps {[round(t['gap'], 4) for t in r['tokens']]})")
+    if bad:
+        return verdict('serving', 'FAIL', '; '.join(bad[:3]))
+    if not checked:
+        return verdict('serving', 'SKIP', f'no request reads a known weights version (unchecked: {skipped})')
+    return verdict('serving', 'PASS', f'{checked} of {len(serve)} requests equal the PyTorch float64 decode ({exact_reqs} token-exact on every step, the rest within the '
+                   f'TF32 near-tie tolerance); unchecked, no weights snapshot survives: {skipped or "none"}')
+
+
+def check_serving(manifest, obs, golden, torch_ctx=None):
+    """Served tokens against a golden decode: the CPU VM's, or when it was skipped (--no-golden) PyTorch's (demo/serve_golden.py)."""
     serve = [a for a in manifest['admissions'] if a['steps'] is None and a['when'] and not a['publishes']]   # version-gated readers
     if not serve:
         return verdict('serving', 'SKIP', 'no serving admissions')
     if not golden:
-        return verdict('serving', 'SKIP', 'no golden decode (--no-golden); coherence is covered by the version check')
+        if torch_ctx is None:
+            return verdict('serving', 'SKIP', 'no golden decode (--no-golden without --model); coherence is covered by the version check')
+        return check_serving_torch(serve, obs, **torch_ctx)
     same = total = 0
     detail = []
     for a in serve:
@@ -244,6 +290,9 @@ def main(argv=None):
     ap.add_argument('--golden', default=None, help='cache file for the CPU golden observations (computed once with the CPU VM)')
     ap.add_argument('--observe', default=r'^(loss\.|.*\.cur[0-9]+$)', help='must equal the regex kvm_run observed with')
     ap.add_argument('--no-golden', action='store_true', help='no CPU reference (model too large): loss must fall, tokens are not compared')
+    ap.add_argument('--model', default=None, help='the demo\'s model (preset, JSON file or string): without a CPU golden, serving is checked against a PyTorch decode '
+                    '(needs torch; weights: initial values for version 0, RUN/buffers/w.*.bin from kvm_run --dump \'^w\\.\' for the final version)')
+    ap.add_argument('--precise', action='store_true', help='the demo ran 3xTF32 tiles (tokens must equal the float64 argmax, no near-tie slack)')
     ap.add_argument('--loss-tol', type=float, default=2e-3)
     ap.add_argument('--report', default=None)
     a = ap.parse_args(argv)
@@ -254,7 +303,8 @@ def main(argv=None):
     obs = observations(run_dir)
     golden = golden_observations(demo, a.observe, Path(a.golden) if a.golden else None) if obs and not a.no_golden else {}
     check_training(manifest, obs, golden, a.loss_tol)
-    check_serving(manifest, obs, golden)
+    torch_ctx = dict(demo=demo, run_dir=run_dir, run=run, model=a.model, precise=a.precise) if a.model and not golden else None
+    check_serving(manifest, obs, golden, torch_ctx)
     check_game(run_dir, a.doom_oracle)
     cad = check_cadence(run_dir, run, manifest)
     if a.report:

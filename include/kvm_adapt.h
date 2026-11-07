@@ -40,11 +40,7 @@ struct KvmAdaptConfig {
   int deadband = 2;                         // a reservation falls only by more than this many CTAs at a time (it rises at once)
   int release_periods = 50;                 // calm periods before the boost halves
   double wait_frac = 0.02;                  // a LATENCY class is under pressure when more than this fraction of its tasks waited over target
-  bool arbiter_assist = false;              // switch the device's bandwidth arbiter (KVM_SF_ARBITER) on while a protected class is under pressure
-                                            // AND the memory system is saturated; off again after `release_periods` calm periods
-  int bw_sat_pct = 70;                      // saturated = achieved bandwidth above this percentage of the observed peak
 };
-struct KvmAdaptGlobal { int bw_mbps = 0, bw_peak_mbps = 0; };
 struct KvmAdaptSnap {                       // one class's cumulative counters + instantaneous queue state (a copy of KvmClassTele)
   unsigned long long sm_ns = 0, done = 0, missed = 0, dl_n = 0, near_miss = 0, wait_over = 0;
   int running = 0, ready = 0;
@@ -69,9 +65,8 @@ class KvmAdaptive {
 
   // One control step. `snaps[i]` belongs to cfg.classes[i]; dt_us is the time since the previous step. Returns true when the
   // parameters changed (the caller writes them). Pure with respect to the device: this is what the unit tests drive.
-  bool update(const std::vector<KvmAdaptSnap>& snaps, double dt_us, double t_ms = 0, KvmAdaptGlobal g = {}) {
+  bool update(const std::vector<KvmAdaptSnap>& snaps, double dt_us, double t_ms = 0) {
     bool dirty = false;
-    bool any_pressure = false;
     const int n = (int)cfg_.classes.size();
     std::vector<int> want_min(n, 0);
     int batch_floor = 0;
@@ -89,7 +84,6 @@ class KvmAdaptive {
         pressure = dnear > 0 || (c.target_wait_us > 0 && ddone > 0 && (double)dwait > cfg_.wait_frac * (double)ddone);
       }
       s.prev = now; s.valid = true; s.share = share;
-      any_pressure |= pressure && c.role != KvmRole::BATCH;
       s.demand += ((now.running + now.ready) - s.demand) * cfg_.alpha;
       if (c.role == KvmRole::BATCH) {
         const int want = (now.running + now.ready > 0) ? c.floor_cta : 0;
@@ -126,13 +120,6 @@ class KvmAdaptive {
       const int cur = q.min_cta, nxt = (want_min[i] >= cur || want_min[i] == 0 || cur - want_min[i] > cfg_.deadband) ? want_min[i] : cur;
       dirty |= set(q.min_cta, nxt);
     }
-    if (cfg_.arbiter_assist) {
-      const bool saturated = g.bw_peak_mbps > 0 && (long long)g.bw_mbps * 100 >= (long long)cfg_.bw_sat_pct * g.bw_peak_mbps;
-      if (any_pressure && saturated) arb_calm_ = 0; else if (arb_calm_ < cfg_.release_periods) ++arb_calm_;
-      const int flags = arb_calm_ < cfg_.release_periods ? (p_.flags | KVM_SF_ARBITER) : (p_.flags & ~KVM_SF_ARBITER);
-      dirty |= set(p_.flags, flags);
-      for (int i = 0; i < n; ++i) if (cfg_.classes[i].role != KvmRole::BATCH) dirty |= set(p_.cls[cfg_.classes[i].cls].protect, p_.cls[cfg_.classes[i].cls].protect | KVM_CF_PROTECT);
-    }
     if (dirty) ++changes_;
     for (int i = 0; i < n; ++i) {
       const KvmAdaptClass& c = cfg_.classes[i]; const KvmClassParams& q = p_.cls[c.cls];
@@ -166,11 +153,11 @@ class KvmAdaptive {
         const KvmClassTele& x = ht_->cls[cfg_.classes[i].cls];
         snaps[i] = {x.sm_ns, x.done, x.missed, x.dl_n, x.near_miss, x.wait_over, x.running, x.ready < 0 ? 0 : x.ready};
       }
-      if (update(snaps, dt_us, t_ms, {ht_->bw_mbps, ht_->bw_peak_mbps})) KvmController::write_params(hp_, p_);
+      if (update(snaps, dt_us, t_ms)) KvmController::write_params(hp_, p_);
     }
   }
   KvmSchedParams* hp_ = nullptr; const KvmSchedTele* ht_ = nullptr; KvmSchedParams p_; KvmAdaptConfig cfg_;
-  std::vector<State> st_; std::vector<KvmAdaptSample> log_; int changes_ = 0, arb_calm_ = 1 << 20;
+  std::vector<State> st_; std::vector<KvmAdaptSample> log_; int changes_ = 0;
   std::atomic<bool> stop_{false}; std::thread th_; std::chrono::steady_clock::time_point t0_, last_;
 };
 

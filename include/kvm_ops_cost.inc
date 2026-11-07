@@ -4,7 +4,7 @@
 //     RES    COMPUTE | BW | LAT | MIXED      what the task is limited by
 //     bytes  expression for the bytes one task moves to/from DRAM, in terms of U(k) = argument word k read as a non-negative
 //            i32 (see the op's signature in kvm_ops.def; the index is the argument position)
-//     flops  same, for arithmetic (informational; the arbiter only uses bytes)
+//     flops  same, for arithmetic (informational; only bytes are used)
 // An operator that is not listed gets KVM_COST_DEFAULT: MIXED, 0 bytes (never throttled as bandwidth-bound).
 // A BW task that moves fewer than KVM_LAT_BYTES is demoted to LAT at run time (a 4 KiB copy is latency-bound, not a stream).
 // Duplicate names fail to compile (duplicate specialization); a name that is not registered is caught by
@@ -21,7 +21,7 @@ KC(matmul,   MIXED,   4ull * (U(3) * U(5) + U(5) * U(4) + U(3) * U(4)), 2ull * U
 KC(fill,     BW,      4ull * U(2), 0)                                  // x,value,n
 KC(spin,     LAT,     0, 0)                                            // us
 // ---- GPT pack (include/kvm_ops_gpt.def). Only the operators that stream memory are listed (bytes from the element ranges); GEMM tiles,
-// attention and the small reductions keep the default (MIXED, 0 bytes). Without these entries the bandwidth arbiter and bw_cta caps could
+// attention and the small reductions keep the default (MIXED, 0 bytes). Without these entries bw_cta caps could
 // not see AdamW or the other sweeps at all.
 KC(adamw,            BW, 28ull * (U(7) - U(6)), 10ull * (U(7) - U(6)))          // p,g,m,v read; p,m,v written: 7 words per element
 KC(gradnorm_partial, BW, 4ull * (U(4) - U(3)), 2ull * (U(4) - U(3)))            // g read

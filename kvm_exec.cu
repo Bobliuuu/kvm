@@ -369,7 +369,7 @@ class KvmExec {
     S_.bufs = d; S_.nbufs = (int)bufs_.size();
     if (cfg_.sched.on) {  // the policy mirror starts as the launch parameters, so workers never see a zero weight
       KvmSchedDev init{}; for (int& b : init.op_blk) b = -1; const KvmSchedParams& p = cfg_.sched.p;
-      init.flags = p.flags; init.affinity_ns = p.affinity_us * 1000; init.bw_limit = std::max(p.bw_limit_min, std::min(p.bw_limit_max, p.bw_limit_init));
+      init.flags = p.flags; init.affinity_ns = p.affinity_us * 1000;
       for (int c = 0; c < nc_; ++c) {
         KvmClsDev& k = init.cls[c]; const KvmClassParams& q = p.cls[c];
         k.weight = q.weight; k.min_cta = q.min_cta; k.max_cta = q.max_cta; k.bw_cta = q.bw_cta; k.urgent_us = q.urgent_us;
@@ -583,7 +583,6 @@ class KvmExec {
       if (q.weight < 1 || q.min_cta < 0 || q.max_cta < 0 || q.bw_cta < 0 || q.urgent_us < 0) throw std::invalid_argument("class " + std::to_string(c) + ": weight >= 1, min/max/bw caps and urgent_us >= 0");
       if (q.max_cta < q.min_cta) throw std::invalid_argument("class " + std::to_string(c) + ": max_cta < min_cta");
     }
-    if (p.bw_limit_min < 0 || p.bw_limit_max < p.bw_limit_min) throw std::invalid_argument("bw_limit_min <= bw_limit_max");
   }
   void init_sched() {
     const KvmSchedCfg& sc = cfg_.sched;
@@ -785,8 +784,6 @@ static int kvm_cli_sched_option(KvmConfig& cfg, int& i, int argc, char** argv) {
     std::stringstream ss(argv[++i]); std::string tok; std::vector<double> sh; while (std::getline(ss, tok, ',')) sh.push_back(atof(tok.c_str()));
     cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0)); kvm_static_split(cfg.sched.p, sh, pr.multiProcessorCount);
   }
-  else if (a == "--arbiter") cfg.sched.p.flags |= KVM_SF_ARBITER;
-  else if (a == "--bw-limit") { long long v = val(0, 1 << 24); if (v < 0) return -1; cfg.sched.p.bw_limit_init = (int)v; }
   else if (a == "--affinity-us") { long long v = val(0, 1000000); if (v < 0) return -1; cfg.sched.p.affinity_us = (int)v; }
   else if (a == "--no-guarantee") cfg.sched.p.flags &= ~KVM_SF_GUARANTEE;
   else if (a == "--no-inherit") cfg.sched.p.flags &= ~KVM_SF_INHERIT;
@@ -800,7 +797,7 @@ static void usage() {
     "  --blocks N --live-cap N --max-tasks N --ring-words N --aging-us N --timeout-s N (stall timeout) --task-limit-s N\n"
     "  --sched MODE        global|static|dynamic: per-workload scheduling (workload_id = class, up to 8)  --classes N\n"
     "  --weights a,b,..    --min a,b,.. (reserved CTAs)  --max a,b,.. (CTA caps)  --bw-cta a,b,..  --urgent-us a,b,..  --strict 1,0,.. (strict-priority classes)\n"
-    "  --op-affinity a,b (1 = class prefers the block that last ran the same op)  --shares a,b (static SM shares)  --arbiter  --bw-limit N   adaptive concurrent bandwidth-bound CTA limit   --affinity-us N   --no-guarantee  --no-inherit\n"
+    "  --op-affinity a,b (1 = class prefers the block that last ran the same op)  --shares a,b (static SM shares)  --affinity-us N   --no-guarantee  --no-inherit\n"
 
     "  --golden [--golden-tol R]  compare with <bundle_dir>/golden.json (single bundle): final buffers, versions, observed versions\n"
     "  --trace-csv FILE   per-task timeline  --dump-buffers   print buffers   --quiet   errors only   --check-ops   print registry\n");

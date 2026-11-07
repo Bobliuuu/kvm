@@ -1,4 +1,4 @@
-// Measurement suites (included by test_sched.cu): dispatch, arbiter, rebalance, baselines. They print the numbers quoted in results/.
+// Measurement suites (included by test_sched.cu): dispatch, rebalance, baselines. They print the numbers quoted in results/.
 struct GapStats { double p50, p90, p99, occ; };
 static GapStats gap_stats(const KvmResult& r, int workers) {
   auto v = tview(r); std::vector<std::vector<std::pair<double, double>>> byb(r.grid);
@@ -229,34 +229,6 @@ static void print_rep(const char* name, const Rep& r) {
 }
 static bool reps_ok(const Rep& r) { for (auto& m : r.m) if (m.err || m.nreq == 0) return false; return true; }
 
-// ================= memory-bandwidth arbiter: streaming copies vs a dependent latency chain =================
-static bool suite_arbiter() {
-  int before = g_fail; const int N = 5;
-  LoadSpec L; L.serve_kind = SK_COLD; L.hops = 16; L.fan = 1; L.slo_us = 250; L.phases = {{300, 4000}};
-  L.train_bw_only = true; L.train_outstanding = 1200; L.train_bundle = 128;
-  printf("  chain request = 16 dependent cold 32 KB copies (5 us each when idle), 4000 req/s, SLO %.0f us; stream = 6.3 MB `add` tasks (~1 ms), always 1200 outstanding; whole GPU\n", L.slo_us);
-  struct Cfg { const char* name; int mode; int serve_prio; bool resv; bool arb; };
-  std::vector<std::pair<std::string, Rep>> res;
-  for (const Cfg& cf : std::vector<Cfg>{{"global queue, flat", KVM_SCHED_GLOBAL, 0, false, false}, {"global queue, chain prio 20", KVM_SCHED_GLOBAL, 20, false, false},
-                                         {"dynamic, arbiter OFF", KVM_SCHED_DYNAMIC, 0, true, false}, {"dynamic, arbiter ON (60us)", KVM_SCHED_DYNAMIC, 0, true, true}, {"dynamic, arbiter ON (25us)", KVM_SCHED_DYNAMIC, 0, true, true}}) {
-    KvmConfig c = mode_cfg(cf.mode, 0); LoadSpec l = L; l.serve_prio = cf.serve_prio;
-    if (cf.resv) { c.sched.p.cls[0].min_cta = 8; c.sched.p.cls[0].urgent_us = 150; c.sched.p.cls[0].weight = 4; }
-    if (cf.arb) { c.sched.p.flags |= KVM_SF_ARBITER; c.sched.p.cls[0].protect = 1; c.sched.p.cls[0].target_wait_us = strstr(cf.name, "25us") ? 25 : 60; c.sched.p.bw_limit_init = 1 << 20; c.sched.p.bw_limit_min = 16; c.sched.p.window_us = 200; }
-    Rep r = repeat(c, l, N); CHECK(reps_ok(r), "%s: device error or no requests", cf.name); print_rep(cf.name, r); res.push_back({cf.name, r});
-  }
-  printf("  sweep of a static cap on concurrent stream (BW-bound) CTAs, arbiter flag off (the curve the adaptive limit searches):\n");
-  for (int cap : {320, 256, 192, 128, 96, 64, 32}) {
-    KvmConfig c = mode_cfg(KVM_SCHED_DYNAMIC, 0); c.sched.p.cls[0].min_cta = 8; c.sched.p.cls[0].urgent_us = 150; c.sched.p.cls[0].weight = 4; c.sched.p.cls[1].bw_cta = cap;
-    char nm[64]; snprintf(nm, sizeof nm, "stream BW cap %d", cap); Rep r = repeat(c, L, 3); CHECK(reps_ok(r), "%s", nm); print_rep(nm, r);
-  }
-  for (int k : {3, 4}) {
-    double off = sp(res[2].second, [](const Metrics& m) { return m.train_gbs; }).med, on = sp(res[k].second, [](const Metrics& m) { return m.train_gbs; }).med;
-    double p_off = sp(res[2].second, [](const Metrics& m) { return m.req_p99; }).med, p_on = sp(res[k].second, [](const Metrics& m) { return m.req_p99; }).med;
-    printf("  %s vs OFF: chain request p99 %.0f -> %.0f us (%.2fx), stream throughput retained %.1f%% (%.1f -> %.1f GB/s)\n", res[k].first.c_str(), p_off, p_on, p_off / std::max(p_on, 1.0), 100 * on / std::max(off, 1e-9), off, on);
-  }
-  return g_fail == before;
-}
-
 // ================= rebalancing: controller on a time-varying load =================
 static std::vector<Phase> trace_phases() { return {{200, 0}, {200, 200}, {300, 2500}, {200, 200}, {200, 0}, {300, 2500}, {200, 0}}; }
 static LoadSpec rebalance_load() {
@@ -267,7 +239,7 @@ static KvmCtlConfig ctl_for_serve(int hi) { KvmCtlConfig cc; cc.classes = {{0, 0
 static bool suite_rebalance() {
   int before = g_fail; const int W = 106;   // 108 blocks = one per SM: 1 admitter + 1 policy + 106 workers, identical in every mode
   LoadSpec L = rebalance_load();
-  KvmConfig c = mode_cfg(KVM_SCHED_DYNAMIC, 108); c.sched.p.cls[0].weight = 1; c.sched.p.cls[0].urgent_us = 1500; c.sched.p.cls[0].target_wait_us = 500; c.sched.p.cls[0].protect = 1;
+  KvmConfig c = mode_cfg(KVM_SCHED_DYNAMIC, 108); c.sched.p.cls[0].weight = 1; c.sched.p.cls[0].urgent_us = 1500; c.sched.p.cls[0].target_wait_us = 500;
   RunOut o = run_load(c, L, true, ctl_for_serve(W / 2));
   CHECK(o.m.err == 0 && o.m.nreq > 100, "run failed");
   printf("  serve: bursts of 48-task requests (matmul 128^3); train: saturating mix of 6.3 MB adds and matmuls; %d workers; controller period 500 us, deadband 2, slow release 8 periods\n", W);
@@ -298,17 +270,16 @@ static bool suite_baselines() {
   int before = g_fail; const int W = 106, N = 5;   // 108 blocks, one per SM, in every mode (a static split by SM id is then a split by worker count)
   LoadSpec L = rebalance_load();
   printf("  scripted load: %zu phases (idle/low/BURST/low/idle/BURST/idle) over %d ms, %d workers (108 blocks: 1 admitter, 1 policy, the rest workers), best-of-%d, median [min,max]\n", L.phases.size(), 1600, W, N);
-  struct Cfg { const char* name; int mode; int serve_prio; double share; bool ctl; bool arb; bool strict; int train_floor; };   // strict: serve class is KVM_CF_STRICT; train_floor: train reservation (CTAs)
+  struct Cfg { const char* name; int mode; int serve_prio; double share; bool ctl; bool strict; int train_floor; };   // strict: serve class is KVM_CF_STRICT; train_floor: train reservation (CTAs)
   std::vector<std::pair<std::string, Rep>> res;
-  for (const Cfg& cf : std::vector<Cfg>{{"global queue, flat", KVM_SCHED_GLOBAL, 0, 0, false, false, false, 0}, {"global queue, serve prio 20", KVM_SCHED_GLOBAL, 20, 0, false, false, false, 0},
-                                         {"static split 25% serve", KVM_SCHED_STATIC, 0, 0.25, false, false, false, 0}, {"static split 50% serve", KVM_SCHED_STATIC, 0, 0.5, false, false, false, 0},
-                                         {"dynamic + controller", KVM_SCHED_DYNAMIC, 0, 0, true, false, false, 0}, {"dynamic + ctl + arbiter", KVM_SCHED_DYNAMIC, 0, 0, true, true, false, 0},
-                                         {"dynamic strict serve", KVM_SCHED_DYNAMIC, 0, 0, false, false, true, 0}, {"dynamic strict, train floor 8", KVM_SCHED_DYNAMIC, 0, 0, false, false, true, 8},
-                                         {"dynamic strict + controller", KVM_SCHED_DYNAMIC, 0, 0, true, false, true, 0}}) {
+  for (const Cfg& cf : std::vector<Cfg>{{"global queue, flat", KVM_SCHED_GLOBAL, 0, 0, false, false, 0}, {"global queue, serve prio 20", KVM_SCHED_GLOBAL, 20, 0, false, false, 0},
+                                         {"static split 25% serve", KVM_SCHED_STATIC, 0, 0.25, false, false, 0}, {"static split 50% serve", KVM_SCHED_STATIC, 0, 0.5, false, false, 0},
+                                         {"dynamic + controller", KVM_SCHED_DYNAMIC, 0, 0, true, false, 0},
+                                         {"dynamic strict serve", KVM_SCHED_DYNAMIC, 0, 0, false, true, 0}, {"dynamic strict, train floor 8", KVM_SCHED_DYNAMIC, 0, 0, false, true, 8},
+                                         {"dynamic strict + controller", KVM_SCHED_DYNAMIC, 0, 0, true, true, 0}}) {
     KvmConfig c = mode_cfg(cf.mode, 108); LoadSpec l = L; l.serve_prio = cf.serve_prio;
     if (cf.mode == KVM_SCHED_STATIC) { kvm_static_split(c.sched.p, {cf.share, 1 - cf.share}, g_sms); }
-    c.sched.p.cls[0].weight = 1; c.sched.p.cls[0].urgent_us = cf.mode == KVM_SCHED_DYNAMIC ? 1500 : 0; c.sched.p.cls[0].protect = 1; c.sched.p.cls[0].target_wait_us = 500;
-    if (cf.arb) c.sched.p.flags |= KVM_SF_ARBITER;
+    c.sched.p.cls[0].weight = 1; c.sched.p.cls[0].urgent_us = cf.mode == KVM_SCHED_DYNAMIC ? 1500 : 0; c.sched.p.cls[0].target_wait_us = 500;
     if (cf.strict) c.sched.p.cls[0].protect |= KVM_CF_STRICT;
     c.sched.p.cls[1].min_cta = cf.train_floor;
     Rep r = repeat(c, l, N, cf.ctl, ctl_for_serve(W / 2)); CHECK(reps_ok(r), "%s: device error or no requests", cf.name); print_rep(cf.name, r); res.push_back({cf.name, r});
@@ -371,7 +342,6 @@ static bool sched_bench_suite(const std::string& s, bool& ok) {
   if (s == "dispatch") { ok = suite_dispatch(); return true; }
   if (s == "overload") { ok = suite_overload(); return true; }
   if (s == "affinity") { ok = suite_affinity(); return true; }
-  if (s == "arbiter") { ok = suite_arbiter(); return true; }
   if (s == "rebalance") { ok = suite_rebalance(); return true; }
   if (s == "baselines") { ok = suite_baselines(); return true; }
   if (s == "loadsmoke") {

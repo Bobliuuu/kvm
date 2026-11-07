@@ -4,7 +4,7 @@
 #   mode: (none) functional suites: cost share reserve edf inherit rand
 #         --negative  starve_neg and inherit_neg with --expect-fail (the harness must DETECT starvation / deadlock)
 #         --sanitize  compute-sanitizer memcheck + racecheck + synccheck on the `smoke` suite
-#         --bench     measurements: calib dispatch arbiter rebalance baselines overload affinity
+#         --bench     measurements: calib dispatch rebalance baselines overload affinity
 #         --exec      the executor's own suites (tests/gpu/test_exec.cu) against this tree, scheduler off
 # Raw output goes to logs/<UTC>-<what>/ (git-ignored). The remote scratch dir is ~/kvm-sched-scratch.
 set -euo pipefail
@@ -33,7 +33,7 @@ SRC=tests/gpu/test_sched.cu; BIN=test_sched
         echo "== compute-sanitizer --tool $tool smoke"
         $SSH "$HOST" "cd $REMOTE && $FLK timeout 900 compute-sanitizer --tool $tool --error-exitcode 9 ./$BIN --quiet smoke 2>&1 | tail -30; echo \"sanitizer exit: \${PIPESTATUS[0]}\""
       done;;
-    --bench) run --quiet ${*:-calib dispatch arbiter rebalance baselines overload affinity};;
+    --bench) run --quiet ${*:-calib dispatch rebalance baselines overload affinity};;
     --exec)  run --quiet ${*:-};;
     *)       run ${*:---quiet cost share reserve edf inherit rand};;
   esac

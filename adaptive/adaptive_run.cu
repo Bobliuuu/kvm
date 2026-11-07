@@ -37,7 +37,7 @@ struct Opt {
   int sample_us = 2000, seed = 1, log_level = 2;
   double sweep_gb = 0; int sweep_chunk_k = 256, sweep_inflight = 2;   // co-runner: AdamW over 4 tensors of sweep_gb/4 GB each, chunks of sweep_chunk_k*1024 elements
   long long gate_serve = -1, gate_train = -1;   // admission budgets (tasks in flight per class); -1 = none
-  bool express = false, gate_tune = false, arbiter_assist = false, no_doom = false, no_serve = false, no_train = false, dump_frames = true;
+  bool express = false, gate_tune = false, no_doom = false, no_serve = false, no_train = false, dump_frames = true;
   KvmConfig cfg;
 };
 
@@ -330,7 +330,7 @@ int Run::go() {
       cc.classes = {{CLS_DOOM, 0, o_.doom_min_hi}, {CLS_SERVE, 0, std::max(1, W / 2)}};
       v1.reset(new KvmController(ex_->sched_params(), ex_->telemetry(), base, cc));
     } else if (o_.ctl == "adaptive") {
-      KvmAdaptConfig ac; ac.workers = W; ac.period_us = o_.ctl_period_us; ac.arbiter_assist = o_.arbiter_assist; ac.release_periods = o_.release_periods; ac.slack = o_.slack;
+      KvmAdaptConfig ac; ac.workers = W; ac.period_us = o_.ctl_period_us; ac.release_periods = o_.release_periods; ac.slack = o_.slack;
       KvmAdaptClass d; d.cls = CLS_DOOM; d.role = KvmRole::DEADLINE; d.min_hi = o_.doom_min_hi; d.w_lo = 2; d.w_hi = 16; d.urgent_max_us = (int)(1e6 / o_.fps); d.boost_max = o_.doom_min_hi;
       KvmAdaptClass s; s.cls = CLS_SERVE; s.role = KvmRole::LATENCY; s.min_hi = o_.serve_min_hi ? o_.serve_min_hi : W; s.w_lo = 1; s.w_hi = 8; s.target_wait_us = o_.target_wait_us;
       KvmAdaptClass t; t.cls = CLS_TRAIN; t.role = KvmRole::BATCH; t.floor_cta = std::max(1, W * o_.floor_pct / 100);
@@ -448,7 +448,6 @@ int main(int argc, char** argv) {
     else if (a == "--live-cap") o.cfg.live_cap = iv(); else if (a == "--ring-words") o.cfg.ring_words = iv();
     else if (a == "--gate-tune") o.gate_tune = true;
     else if (a == "--express") o.express = true;   // Doom frames and serve requests are express records: admitted ahead of the training record being copied
-    else if (a == "--arbiter-assist") o.arbiter_assist = true;
     else if (a == "--no-doom") o.no_doom = true; else if (a == "--no-serve") o.no_serve = true; else if (a == "--no-train") o.no_train = true; else if (a == "--no-dump-frames") o.dump_frames = false;
     else if (a == "--sched") {
       o.sched = sv();
@@ -458,9 +457,6 @@ int main(int argc, char** argv) {
     else if (int r = kvm_cli_sched_option(o.cfg, i, argc, argv)) { if (r < 0) { fprintf(stderr, "missing value for %s\n", a.c_str()); return 2; } }
     else if (a[0] == '-') { fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
     else o.scn = a;
-  }
-  if (o.cfg.sched.p.flags & KVM_SF_ARBITER) {   // the arbiter throttles bandwidth-bound tasks while a PROTECTED class waits longer than its target
-    for (int c : {adp::CLS_DOOM, adp::CLS_SERVE}) { o.cfg.sched.p.cls[c].protect |= KVM_CF_PROTECT; o.cfg.sched.p.cls[c].target_wait_us = c == adp::CLS_DOOM ? 500 : o.target_wait_us; }
   }
   if (o.scn.empty() || o.out.empty()) { fprintf(stderr, "usage: adaptive_run SCENARIO_DIR --out DIR --wad doom1.wad [options]\n"); return 2; }
   g_kvm_log = o.log_level;

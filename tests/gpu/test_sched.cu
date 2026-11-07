@@ -1,7 +1,7 @@
 // Scheduler tests and measurements for the KVM executor (include/kvm_sched.h, include/kvm_sched.cuh).
 //   nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DKVM_EXEC_NO_MAIN tests/gpu/test_sched.cu -o test_sched
 //   ./test_sched [suite...]   functional: cost share reserve edf inherit rand      (default)
-//                             measurements: arbiter rebalance baselines            (explicit; they print the numbers quoted in results/)
+//                             measurements: rebalance baselines                    (explicit; they print the numbers quoted in results/)
 //                             sanitizer smoke: smoke
 //   ./test_sched --expect-fail starve_neg inherit_neg    # negative tests: exit 0 only if the harness DETECTS the violation
 // Everything here is workload-agnostic: the scheduler sees workload_id, priority, deadline_us and the op cost table. "train",

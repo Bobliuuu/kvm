@@ -28,9 +28,7 @@ enum KvmRes { KVM_RES_COMPUTE = 0, KVM_RES_BW = 1, KVM_RES_LAT = 2, KVM_RES_MIXE
 // Policy switches (KvmSchedParams.flags), changeable at run time.
 #define KVM_SF_GUARANTEE 1   // reservations (min_cta) are enforced; clear = negative test of the starvation check
 #define KVM_SF_INHERIT   2   // priority inheritance across version waits; clear = the deadlock the design prevents
-#define KVM_SF_ARBITER   4   // global concurrent-BW-task limit, adapted online by the policy block
 #define KVM_SF_DEFAULT   (KVM_SF_GUARANTEE | KVM_SF_INHERIT)
-#define KVM_CF_PROTECT 1
 #define KVM_CF_STRICT  4     // strict priority: the class is served before every non-strict class in the fair-share tier (below inheritance, reservations and EDF-urgent); among strict classes, by virtual time
 #define KVM_CF_OPAFF   2     // a ready task is offered first to the block that last ran a task of the same op (warm code/state), for affinity_us
 // Bits the device records in KvmTrace.flags for how a task was started (bit0 is KVM_TRACE_MISSED).
@@ -44,14 +42,15 @@ struct KvmClassParams {        // 32 B; written by the host at any time through 
   int max_cta;                 // concurrency cap; KVM_UNLIMITED = none, 0 = fully throttled (reservations/inheritance override)
   int bw_cta;                  // cap on this class's concurrent bandwidth-bound tasks (KVM_UNLIMITED = none)
   int urgent_us;               // a ready task whose deadline is within this many us is served by EDF first (0 = off)
-  int protect;                 // bit0 (KVM_CF_PROTECT): this class's queue wait feeds the arbiter's pressure signal; bit1 (KVM_CF_OPAFF): op affinity
-  int target_wait_us;          // queue-wait target of a protected class (arbiter and controller)
+  int protect;                 // bit flags KVM_CF_* (op affinity, strict priority)
+  int target_wait_us;          // queue-wait target (counted in wait_over; the controller's pressure signal)
   int sm_hi;                   // STATIC mode: this class owns SM ids below this bound (cumulative)
 };
 struct KvmSchedParams {        // seqlock: writer bumps gen_a, writes, then sets gen_b = gen_a
   volatile int gen_a;
-  int flags, bw_limit_init, bw_limit_min, bw_limit_max, sat_pct, window_us;
+  int flags;
   int affinity_us;             // a ready task whose last predecessor ran on block B is offered only to B for this long (warm caches); 0 = off
+  int pad0[5];                 // (keeps the 320-byte layout of the mapped block)
   KvmClassParams cls[KVM_MAX_CLS];
   volatile int gen_b, pad1[7];
 };
@@ -67,7 +66,7 @@ struct KvmClassTele {          // 128 B, written by the policy block (about ever
 };
 struct KvmSchedTele {
   volatile unsigned long long ticks;
-  volatile int bw_mbps, bw_peak_mbps, bw_limit, boost_mask, params_gen, bw_running, pad[8];
+  volatile int boost_mask, params_gen, pad[12];
   KvmClassTele cls[KVM_MAX_CLS];
 };
 static_assert(sizeof(KvmClassTele) == 128 && sizeof(KvmSchedTele) == 64 + 8 * 128, "telemetry layout");
@@ -92,9 +91,7 @@ struct alignas(128) KvmClsDev {
 
 static_assert(offsetof(KvmClsDev, running) == 128 && offsetof(KvmClsDev, sm_ns) == 256, "KvmClsDev lines");
 struct alignas(128) KvmSchedDev {
-  int flags, bw_limit, boost_mask, affinity_ns, pad0[28];
-  alignas(128) int bw_total;                   // concurrently running bandwidth-bound CTAs
-  alignas(128) unsigned long long bw_bytes;    // cumulative bytes of finished bandwidth-bound tasks
+  int flags, boost_mask, affinity_ns, pad0[29];
   alignas(128) unsigned ema_ns[KVM_OP_SLOTS];  // running-time estimate per op id
   int op_blk[KVM_OP_SLOTS];                    // block that last finished a task of this op (-1 none)
   KvmClsDev cls[KVM_MAX_CLS];
@@ -115,7 +112,7 @@ struct KvmSchedCfg {
   int num_classes = 2;
   KvmSchedParams p{};
   KvmSchedCfg() {
-    p.flags = KVM_SF_DEFAULT; p.bw_limit_init = 1 << 20; p.bw_limit_min = 8; p.bw_limit_max = 1 << 20; p.sat_pct = 90; p.window_us = 200;
+    p.flags = KVM_SF_DEFAULT;
     for (auto& c : p.cls) c = {1, 0, KVM_UNLIMITED, KVM_UNLIMITED, 0, 0, 0, KVM_UNLIMITED};
   }
 };
@@ -157,8 +154,7 @@ class KvmController {
     int g = hp->gen_a + 1;
     __atomic_store_n(&hp->gen_a, g, __ATOMIC_RELEASE);
     std::atomic_thread_fence(std::memory_order_seq_cst);
-    hp->flags = v.flags; hp->bw_limit_init = v.bw_limit_init; hp->bw_limit_min = v.bw_limit_min; hp->bw_limit_max = v.bw_limit_max;
-    hp->sat_pct = v.sat_pct; hp->window_us = v.window_us; hp->affinity_us = v.affinity_us;
+    hp->flags = v.flags; hp->affinity_us = v.affinity_us;
     for (int i = 0; i < KVM_MAX_CLS; ++i) hp->cls[i] = v.cls[i];
     std::atomic_thread_fence(std::memory_order_seq_cst);
     __atomic_store_n(&hp->gen_b, g, __ATOMIC_RELEASE);

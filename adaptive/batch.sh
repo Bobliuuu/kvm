@@ -54,8 +54,7 @@ case "$GROUP" in
     for rep in $(seq 1 "$REPS"); do
       one bw_none $rep --sched dynamic --weights 4,4,1,16 --urgent-us 28571,0,0,0 --serve-rate 40
       one bw_sweep $rep $W4
-      one bw_sweep_arbiter $rep $W4 --arbiter
-      one bw_sweep_adaptive $rep ${CFG[adaptive]} --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6 --arbiter-assist
+      one bw_sweep_adaptive $rep ${CFG[adaptive]} --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6
       one bw_sweep_cap $rep $W4 --bw-cta 1000000,1000000,1000000,24
     done;;
   all_a) mkdir -p "$OUT"; "$0" suites; "$0" main; "$0" main_big;;

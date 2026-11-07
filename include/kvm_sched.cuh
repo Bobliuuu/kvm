@@ -18,7 +18,7 @@
 //            banks credit while idle (work conservation lends idle time out for free) nor is it starved by the others' debt.
 //  Task affinity: a ready task is offered only to the block that ran its releasing predecessor for affinity_us (warm L1/code),
 //  then to anyone.
-//  Caps (max_cta, bw_cta, the arbiter's global BW limit) apply to tiers 2 and 3 only: a reservation or an inheritance boost
+//  Caps (max_cta, bw_cta) apply to tiers 2 and 3 only: a reservation or an inheritance boost
 //  overrides a throttle, otherwise a throttled class holding the only publisher of a version a reservation-holder waits on
 //  would deadlock the waiter. A cap is enforced with fetch_add-then-check-then-rollback, so it is a hard bound.
 //  Inside a class the original rule holds: score = priority * aging + age, FIFO per bucket.
@@ -239,9 +239,9 @@ __device__ __forceinline__ int kvm_pop(const KvmDevState& S, unsigned long long 
       KvmCand cd = kvm_scan(S, c, now, false, 0, aff);
       if (cd.score < 0) return -1;
       const bool isbw = cd.res == KVM_RES_BW;
-      if (acct && lane == 0) { red_add(&k.running, 1); if (isbw) { red_add(&k.bw_running, 1); red_add(&D->bw_total, 1); } }
+      if (acct && lane == 0) { red_add(&k.running, 1); if (isbw) red_add(&k.bw_running, 1); }
       int got = kvm_claim(S, c, cd);
-      if (got < 0) { if (acct && lane == 0) { red_add(&k.running, -1); if (isbw) { red_add(&k.bw_running, -1); red_add(&D->bw_total, -1); } } continue; }
+      if (got < 0) { if (acct && lane == 0) { red_add(&k.running, -1); if (isbw) red_add(&k.bw_running, -1); } continue; }
       if (lane == 0) { red_add(&k.ready, -1); if (cd.dl) red_add(&k.dl_ready, -1); }
       return got;
     }
@@ -250,9 +250,7 @@ __device__ __forceinline__ int kvm_pop(const KvmDevState& S, unsigned long long 
   const int nc = sp.nc;
   const int flags = kvm_vol(&D->flags);
   const int boost = (flags & KVM_SF_INHERIT) ? kvm_vol(&D->boost_mask) : 0;
-  const bool arb = (flags & KVM_SF_ARBITER) != 0;
   const long long aff = kvm_vol(&D->affinity_ns);
-  const int bw_total = arb ? kvm_vol(&D->bw_total) : 0, bw_limit = arb ? kvm_vol(&D->bw_limit) : 0;
   unsigned excl = 0, bwblk = 0;
   for (int attempt = 0; attempt < 6; ++attempt) {
     int pw[KVM_MAX_CLS], hw[KVM_MAX_CLS];   // lane i holds word i of the class's policy line / hot line
@@ -273,7 +271,7 @@ __device__ __forceinline__ int kvm_pop(const KvmDevState& S, unsigned long long 
       bool bwb = (bwblk >> c) & 1; bool have = false; KvmCand cd{};
       if (tier >= 2) {  // throttles apply only to unprivileged service
         if (run >= mx) continue;
-        bwb = bwb || bwr >= bwc || (arb && bw_total >= bw_limit);
+        bwb = bwb || bwr >= bwc;
         if (urg_us > 0 && dlr > 0) {
           cd = kvm_scan(S, c, now, bwb, (long long)urg_us * 1000, aff); have = true;
           if (cd.score < 0) continue;
@@ -293,15 +291,15 @@ __device__ __forceinline__ int kvm_pop(const KvmDevState& S, unsigned long long 
     // is counted after the CAS with posted adds, which keeps the hot line off the critical path of a 300-CTA herd.
     int ok = 1, why = 0;
     const bool isbw = bcd.res == KVM_RES_BW;
-    const bool pre_run = btier >= 2 && bmx != KVM_UNLIMITED, pre_bw = isbw && btier >= 2 && (bbwc != KVM_UNLIMITED || arb), pre = pre_run || pre_bw;
+    const bool pre_run = btier >= 2 && bmx != KVM_UNLIMITED, pre_bw = isbw && btier >= 2 && bbwc != KVM_UNLIMITED, pre = pre_run || pre_bw;
     KvmClsDev& bk = D->cls[bc];
     if (pre && lane == 0) {
       int old = atom_add(&bk.running, 1);
       if (btier >= 2 && old >= bmx) { red_add(&bk.running, -1); ok = 0; why = 1; }
       else if (isbw) {
-        int ob = atom_add(&bk.bw_running, 1), og = atom_add(&D->bw_total, 1);
-        if (btier >= 2 && (ob >= bbwc || (arb && og >= kvm_vol(&D->bw_limit)))) {
-          red_add(&bk.bw_running, -1); red_add(&D->bw_total, -1); red_add(&bk.running, -1); ok = 0; why = 2;
+        int ob = atom_add(&bk.bw_running, 1);
+        if (btier >= 2 && ob >= bbwc) {
+          red_add(&bk.bw_running, -1); red_add(&bk.running, -1); ok = 0; why = 2;
         }
       }
     }
@@ -309,10 +307,10 @@ __device__ __forceinline__ int kvm_pop(const KvmDevState& S, unsigned long long 
     if (!ok) { if (why == 1) excl |= 1u << bc; else bwblk |= 1u << bc; continue; }
     int got = kvm_claim(S, bc, bcd);
     if (got < 0) {
-      if (pre && lane == 0) { red_add(&bk.running, -1); if (isbw) { red_add(&bk.bw_running, -1); red_add(&D->bw_total, -1); } }
+      if (pre && lane == 0) { red_add(&bk.running, -1); if (isbw) red_add(&bk.bw_running, -1); }
       continue;
     }
-    if (!pre && lane == 0) { red_add(&bk.running, 1); if (isbw) { red_add(&bk.bw_running, 1); red_add(&D->bw_total, 1); } }
+    if (!pre && lane == 0) { red_add(&bk.running, 1); if (isbw) red_add(&bk.bw_running, 1); }
     if (lane == 0) {
       red_add(&bk.ready, -1);
       if (bcd.dl) red_add(&bk.dl_ready, -1);
@@ -344,8 +342,7 @@ __device__ __forceinline__ void kvm_sched_done(const KvmDevState& S, int slot, u
   const unsigned long long run = end - start;
   red_add(&k.running, -1);
   if (in.res == KVM_RES_BW) {
-    red_add(&k.bw_running, -1); red_add(&D->bw_total, -1);
-    atomicAdd(&D->bw_bytes, in.bytes);
+    red_add(&k.bw_running, -1);
   }
   atomicAdd(&k.sm_ns, run); atomicAdd(&k.tasks, 1ull); atomicAdd(&k.bytes, in.bytes);
   if (missed) { atomicAdd(&k.missed, 1ull); atomicAdd(&k.w_miss, 1ull); }
@@ -387,22 +384,20 @@ __device__ __forceinline__ void kvm_sched_admit_task(const KvmDevState& S, int s
 // ---------------- policy block (block 1) ----------------
 struct KvmPolShared {
   int exit, g1, ok, last_gen, do_export, wants[KVM_MAX_CLS];
-  int window_us, lim_lo, lim_hi;                 // arbiter parameters of the last consistent parameter set
   unsigned long long ticks;
   int words[sizeof(KvmSchedParams) / 4];
   int win_avg_us[KVM_MAX_CLS], win_max_us[KVM_MAX_CLS], win_n[KVM_MAX_CLS];
-  int bw_mbps, bw_peak_mbps;
 };
 
-// One block, all threads. Every tick (~2 us): pick up new host parameters, recompute the inheritance boost, every window_us
-// measure achieved bandwidth and run the arbiter (AIMD on the global concurrent-BW-task limit), every ~20 us export telemetry.
+// One block, all threads. Every tick (~2 us): pick up new host parameters, recompute the inheritance boost, every KVM_POL_WINDOW_US
+// drain the per-class queue-wait window, every ~20 us export telemetry.
+#define KVM_POL_WINDOW_US 200
 __device__ void kvm_policy(const KvmDevState& S, KvmWatch& t0, KvmPolShared& P) {
   const KvmSchedPtrs& sp = S.sp;
   KvmSchedDev* D = sp.dev;
   const int tid = threadIdx.x, nc = sp.nc;
-  unsigned long long win_start = kvm_now(), last_bytes = 0, peak = 0;
-  int calm = 0, cool = 0;
-  if (tid == 0) { P.last_gen = -1; P.ticks = 0; P.window_us = 200; P.lim_lo = 8; P.lim_hi = 1 << 20; for (int c = 0; c < KVM_MAX_CLS; ++c) P.win_avg_us[c] = P.win_max_us[c] = P.win_n[c] = 0; P.bw_mbps = P.bw_peak_mbps = 0; }
+  unsigned long long win_start = kvm_now();
+  if (tid == 0) { P.last_gen = -1; P.ticks = 0; for (int c = 0; c < KVM_MAX_CLS; ++c) P.win_avg_us[c] = P.win_max_us[c] = P.win_n[c] = 0; }
   __syncthreads();
   for (;;) {
     if (tid == 0) { P.exit = kvm_should_exit(S, t0); P.g1 = (int)ld_acq_sys((const unsigned*)&sp.hp->gen_b); P.do_export = (P.ticks++ % 8) == 0; }
@@ -418,8 +413,6 @@ __device__ void kvm_policy(const KvmDevState& S, KvmWatch& t0, KvmPolShared& P) 
         const KvmSchedParams* q = (const KvmSchedParams*)P.words;
         if (tid == 0) {
           D->flags = q->flags; D->affinity_ns = q->affinity_us * 1000;
-          P.window_us = max(q->window_us, 20); P.lim_lo = q->bw_limit_min; P.lim_hi = q->bw_limit_max;
-          D->bw_limit = max(P.lim_lo, min(P.lim_hi, kvm_vol(&D->bw_limit)));
         }
         if (tid < nc) {
           KvmClsDev& k = D->cls[tid]; const KvmClassParams& p = q->cls[tid];
@@ -444,30 +437,16 @@ __device__ void kvm_policy(const KvmDevState& S, KvmWatch& t0, KvmPolShared& P) 
       for (int w = 0; w < nc; ++w) B |= P.wants[w];
       for (int it = 0; it < nc; ++it) for (int c = 0; c < nc; ++c) if ((B >> c) & 1) B |= P.wants[c];
       D->boost_mask = B;
-      // 3. bandwidth arbiter window
+      // 3. queue-wait window
       unsigned long long now = kvm_now();
-      if (now - win_start >= (unsigned long long)P.window_us * 1000ull) {
-        unsigned long long bytes = kvm_voll(&D->bw_bytes), dt = now - win_start;
-        unsigned long long rate = (bytes - last_bytes) * 1000ull / dt;   // MB/s (bytes per ns * 1000)
-        peak = max(peak - (peak >> 8), rate);
-        bool pressure = false;
+      if (now - win_start >= (unsigned long long)KVM_POL_WINDOW_US * 1000ull) {
         for (int c = 0; c < nc; ++c) {
           KvmClsDev& k = D->cls[c];
           unsigned long long wn = atomicExch(&k.w_n, 0ull), ws = atomicExch(&k.w_wait_sum, 0ull), wm = atomicExch(&k.w_wait_max, 0ull), mi = atomicExch(&k.w_miss, 0ull);
           P.win_n[c] = (int)wn; P.win_avg_us[c] = wn ? (int)(ws / wn / 1000) : 0; P.win_max_us[c] = (int)(wm / 1000);
-          int tgt = kvm_vol(&k.target_wait_us);
-          (void)mi;   // deadline misses are reported, not used: an unattainable SLO would pin the limit at its floor
-          if ((kvm_vol(&k.protect) & KVM_CF_PROTECT) && wn && tgt > 0 && (int)(wm / 1000) > tgt) pressure = true;
+          (void)mi;   // deadline misses are reported by the cumulative counters
         }
-        if (flags & KVM_SF_ARBITER) {
-          int lim = kvm_vol(&D->bw_limit), lo = P.lim_lo, hi = P.lim_hi;
-          if (cool > 0) --cool;
-          if (pressure) { lim = max(lo, lim - max(1, lim / 4)); calm = 0; cool = 2; }          // multiplicative decrease
-          else if (++calm >= 4 && cool == 0 && kvm_vol(&D->bw_total) * 10 >= lim * 9) { lim = min(hi, lim + 1 + lim / 16); calm = 0; }  // slow increase when binding
-          D->bw_limit = lim;
-        }
-        P.bw_mbps = (int)min(rate, 0x7fffffffull); P.bw_peak_mbps = (int)min(peak, 0x7fffffffull);
-        last_bytes = bytes; win_start = now;
+        win_start = now;
       }
     }
     __syncthreads();
@@ -482,8 +461,7 @@ __device__ void kvm_policy(const KvmDevState& S, KvmWatch& t0, KvmPolShared& P) 
         t->resv_max_us = (int)min(kvm_voll(&k.resv_wait_max_ns) / 1000ull, 0x7fffffffull);
       } else if (tid == 32) {
         KvmSchedTele* t = sp.ht;
-        t->bw_mbps = P.bw_mbps; t->bw_peak_mbps = P.bw_peak_mbps; t->bw_limit = kvm_vol(&D->bw_limit); t->boost_mask = kvm_vol(&D->boost_mask);
-        t->params_gen = P.last_gen; t->bw_running = kvm_vol(&D->bw_total); t->ticks = P.ticks;
+        t->boost_mask = kvm_vol(&D->boost_mask); t->params_gen = P.last_gen; t->ticks = P.ticks;
       }
     }
     if (tid < 32) __nanosleep(1000);

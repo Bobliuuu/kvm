@@ -17,7 +17,7 @@ run "scheduler off, auto grid"
 run "global, 2 classes" --sched global --classes 2 --blocks 16
 run "static, 1 class" --sched static --classes 1 --blocks 16
 run "dynamic, 2 classes" --sched dynamic --classes 2 --blocks 16 --weights 2,1 --min 1,0
-run "dynamic, arbiter, affinity" --sched dynamic --classes 2 --blocks 16 --arbiter --affinity-us 50
+run "dynamic, affinity" --sched dynamic --classes 2 --blocks 16 --affinity-us 50
 for tool in memcheck racecheck synccheck; do
   o="$($L compute-sanitizer --tool $tool --error-exitcode 9 out/kvm_exec_gpt --quiet --blocks 4 --sched dynamic --classes 2 $B 2>&1 | tail -3)"; echo "sanitizer $tool: $(echo "$o" | tr '\n' ' ' | cut -c1-200)"
   echo "$o" | grep -qE "0 errors|0 hazards" || fail=$((fail+1))

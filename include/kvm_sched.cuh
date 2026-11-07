@@ -128,6 +128,7 @@ __device__ __forceinline__ void kvm_enqueue(const KvmDevState& S, int slot) {
   } else cell->res = KVM_RES_MIXED;
   if (S.sp.on) { kvm_sched_ready(S, c); if (cell->deadline_ns) atom_add(&S.sp.dev->cls[c].dl_ready, 1); }
   st_rel64(&cell->seq, pos + 1);
+  atom_add64(&q->avail, 1ull);   // after the publish: a successful reservation (kvm_claim) implies a cell that is published or about to be
 }
 
 // ---------------- pop ----------------
@@ -168,17 +169,33 @@ __device__ __forceinline__ KvmCand kvm_scan(const KvmDevState& S, int c, unsigne
   return r;
 }
 
-// Head CAS on the scanned bucket. All lanes call; returns the slot, or -2 if another worker took it first.
+// Claim from the scanned bucket. All lanes call; returns the slot, or -2 if the bucket was emptied first.
+// A head CAS makes every worker that raced for the same cell retry: with 100+ polling workers one pop wins per memory round trip
+// (about 1.7 us), a dispatch ceiling of 0.6 M tasks/s whatever the tasks are. Instead the worker RESERVES an item with a fetch-add on
+// avail (published minus reserved; an item that exists for it, or that an enqueuer is about to publish) and then takes a ticket with a
+// fetch-add on head: no retries, and the ring stays FIFO per bucket. The ticket's cell may be the one scanned or a later one.
 __device__ __forceinline__ int kvm_claim(const KvmDevState& S, int c, const KvmCand& cd) {
   const int lane = threadIdx.x & 31;
   int got = -2;
   if (lane == cd.lane) {
     const size_t qi = (size_t)c * KVM_NBUCKETS + lane;
     KvmQCtl* q = S.qctl + qi;
-    if (atom_cas64(&q->head, cd.head, cd.head + 1) == cd.head) {
-      KvmCell* cell = S.cells + qi * S.rcap + (cd.head & (unsigned long long)(S.rcap - 1));
-      got = cell->slot;
-      st_rel64(&cell->seq, cd.head + (unsigned long long)S.rcap);  // recycle before running
+    // Look before reserving: a failed reservation is a decrement plus a restore on the contended line, and with many more pollers than
+    // items that storm starves individual warps (litmus queue, 200 CTAs on 1024 tokens).
+    if ((long long)ld_acq64(&q->avail) > 0) {
+      if ((long long)atom_add64(&q->avail, ~0ull) > 0) {
+        const unsigned long long h = atom_add64(&q->head, 1ull);
+        KvmCell* cell = S.cells + qi * S.rcap + (h & (unsigned long long)(S.rcap - 1));
+        int spin = 0;
+        while (ld_acq64(&cell->seq) != h + 1) {   // its enqueuer publishes within a few instructions
+          if (++spin > (1 << 22) || *(volatile int*)&S.cnt->err_code) { kvm_fail(S, KVM_ERR_QUEUE_OVERFLOW, -1, 99, (int)h); break; }
+          __nanosleep(16);
+        }
+        if (spin <= (1 << 22) && !*(volatile int*)&S.cnt->err_code) {
+          got = cell->slot;
+          st_rel64(&cell->seq, h + (unsigned long long)S.rcap);  // recycle before running
+        }
+      } else atom_add64(&q->avail, 1ull);   // lost the race for the last item: give the reservation back
     }
   }
   return __shfl_sync(0xffffffffu, got, cd.lane);

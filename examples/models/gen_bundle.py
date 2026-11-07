@@ -67,7 +67,13 @@ def main():
     ops = {}
     for t in c.spec['graphs'][0]['tasks']:
         ops[t['op']] = ops.get(t['op'], 0) + 1
+    from kvmfe.optim import OptimConfig
+    from kvmfe.pipeline import build_model
+    specs = build_model(cfg).specs
+    opt = OptimConfig()
     meta = dict(model=getattr(cfg, 'name', a.model), config=json.loads(json.dumps(cfg.__dict__, default=list)), steps=a.steps,
+                invariant_params=sorted(n for n, sp in specs.items() if sp.invariant),     # structurally zero gradient: check.py judges them in absolute terms
+                optim=dict(lr=opt.lr, b1=opt.b1, b2=opt.b2),
                 accum=a.accum, tiling=a.tiling, precise=a.precise, fuse=a.fuse, tasks=len(c.low.tasks), edges=c.low.edges,
                 ops=dict(sorted(ops.items(), key=lambda kv: -kv[1])), plan=c.low.plan.stats)
     (out / 'meta.json').write_text(json.dumps(meta, indent=1, default=str))

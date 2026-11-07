@@ -1,0 +1,1962 @@
+[kvm_exec][I] manifest ok: 1 workloads, 300 admissions, 985 buffers, serial order train_w0 ... train_w299
+[kvm_exec][I] config: live_cap 65536, slots 2097152, ring 4194304 words, stack 0 B, sched dynamic, classes [train]
+[kvm_exec][I]   class 0 train    weight 1 min_cta 0 max_cta 2147483647 urgent_us 0
+[kvm_exec][I] device NVIDIA A100-SXM4-80GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 108 (1 admitter + 1 policy + 106 workers)
+[kvm_exec][I] kernel launched: grid 108 x 256 threads, live_cap 65536, slots 2097152, succ ring 2097152 words, ring 4194304 words, aging 0 us, sched dynamic
+[kvm_exec][I] started: 300 admissions, 1 classes, 1 version variables, 985 buffers
+[kvm_exec][I] [      379 us] admit     train_w0       (class train) versions [0,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [  1610658 us] done      train_w0       318140 tasks, versions [2,0,0,0,0,0,0,0]
+[kvm_exec][I] [  1611453 us] admit     train_w1       (class train) versions [2,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [  3000266 us] done      train_w1       318140 tasks, versions [4,0,0,0,0,0,0,0]
+[kvm_exec][I] [  3001111 us] admit     train_w2       (class train) versions [4,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [  4206877 us] done      train_w2       318140 tasks, versions [6,0,0,0,0,0,0,0]
+[kvm_exec][I] [  4207804 us] admit     train_w3       (class train) versions [6,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [  5426268 us] done      train_w3       318140 tasks, versions [8,0,0,0,0,0,0,0]
+[kvm_exec][I] [  5427065 us] admit     train_w4       (class train) versions [8,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [  6644968 us] done      train_w4       318140 tasks, versions [10,0,0,0,0,0,0,0]
+[kvm_exec][I] [  6645891 us] admit     train_w5       (class train) versions [10,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [  7849868 us] done      train_w5       318140 tasks, versions [12,0,0,0,0,0,0,0]
+[kvm_exec][I] [  7850695 us] admit     train_w6       (class train) versions [12,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [  9052185 us] done      train_w6       318140 tasks, versions [14,0,0,0,0,0,0,0]
+[kvm_exec][I] [  9052979 us] admit     train_w7       (class train) versions [14,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 10364697 us] done      train_w7       318140 tasks, versions [16,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 10365520 us] admit     train_w8       (class train) versions [16,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 11592968 us] done      train_w8       318140 tasks, versions [18,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 11593963 us] admit     train_w9       (class train) versions [18,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 12887078 us] done      train_w9       318140 tasks, versions [20,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 12887897 us] admit     train_w10      (class train) versions [20,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 14089283 us] done      train_w10      318140 tasks, versions [22,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 14090196 us] admit     train_w11      (class train) versions [22,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 15389904 us] done      train_w11      318140 tasks, versions [24,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 15390775 us] admit     train_w12      (class train) versions [24,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 16620624 us] done      train_w12      318140 tasks, versions [26,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 16621443 us] admit     train_w13      (class train) versions [26,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 17934808 us] done      train_w13      318140 tasks, versions [28,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 17935616 us] admit     train_w14      (class train) versions [28,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 19132040 us] done      train_w14      318140 tasks, versions [30,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 19132825 us] admit     train_w15      (class train) versions [30,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 20470866 us] done      train_w15      318140 tasks, versions [32,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 20471651 us] admit     train_w16      (class train) versions [32,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 21678375 us] done      train_w16      318140 tasks, versions [34,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 21679183 us] admit     train_w17      (class train) versions [34,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 23033866 us] done      train_w17      318140 tasks, versions [36,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 23034741 us] admit     train_w18      (class train) versions [36,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 24259793 us] done      train_w18      318140 tasks, versions [38,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 24260595 us] admit     train_w19      (class train) versions [38,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 25482968 us] done      train_w19      318140 tasks, versions [40,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 25483778 us] admit     train_w20      (class train) versions [40,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 26689798 us] done      train_w20      318140 tasks, versions [42,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 26690595 us] admit     train_w21      (class train) versions [42,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 27906669 us] done      train_w21      318140 tasks, versions [44,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 27907648 us] admit     train_w22      (class train) versions [44,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 29108794 us] done      train_w22      318140 tasks, versions [46,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 29109590 us] admit     train_w23      (class train) versions [46,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 30314653 us] done      train_w23      318140 tasks, versions [48,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 30315482 us] admit     train_w24      (class train) versions [48,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 31521476 us] done      train_w24      318140 tasks, versions [50,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 31522285 us] admit     train_w25      (class train) versions [50,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 32727180 us] done      train_w25      318140 tasks, versions [52,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 32728098 us] admit     train_w26      (class train) versions [52,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 33930970 us] done      train_w26      318140 tasks, versions [54,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 33931737 us] admit     train_w27      (class train) versions [54,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 35140004 us] done      train_w27      318140 tasks, versions [56,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 35140830 us] admit     train_w28      (class train) versions [56,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 36345375 us] done      train_w28      318140 tasks, versions [58,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 36346182 us] admit     train_w29      (class train) versions [58,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 37549907 us] done      train_w29      318140 tasks, versions [60,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 37550739 us] admit     train_w30      (class train) versions [60,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 38755485 us] done      train_w30      318140 tasks, versions [62,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 38756243 us] admit     train_w31      (class train) versions [62,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 39961786 us] done      train_w31      318140 tasks, versions [64,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 39962607 us] admit     train_w32      (class train) versions [64,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 41165909 us] done      train_w32      318140 tasks, versions [66,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 41167027 us] admit     train_w33      (class train) versions [66,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 42371062 us] done      train_w33      318140 tasks, versions [68,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 42371968 us] admit     train_w34      (class train) versions [68,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 43576061 us] done      train_w34      318140 tasks, versions [70,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 43576872 us] admit     train_w35      (class train) versions [70,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 44789171 us] done      train_w35      318140 tasks, versions [72,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 44790002 us] admit     train_w36      (class train) versions [72,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 45993768 us] done      train_w36      318140 tasks, versions [74,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 45994596 us] admit     train_w37      (class train) versions [74,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 47207581 us] done      train_w37      318140 tasks, versions [76,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 47208372 us] admit     train_w38      (class train) versions [76,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 48414370 us] done      train_w38      318140 tasks, versions [78,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 48415154 us] admit     train_w39      (class train) versions [78,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 49624864 us] done      train_w39      318140 tasks, versions [80,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 49625732 us] admit     train_w40      (class train) versions [80,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 50841798 us] done      train_w40      318140 tasks, versions [82,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 50842743 us] admit     train_w41      (class train) versions [82,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 52077576 us] done      train_w41      318140 tasks, versions [84,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 52078548 us] admit     train_w42      (class train) versions [84,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 53308236 us] done      train_w42      318140 tasks, versions [86,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 53309101 us] admit     train_w43      (class train) versions [86,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 54538395 us] done      train_w43      318140 tasks, versions [88,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 54539194 us] admit     train_w44      (class train) versions [88,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 55767088 us] done      train_w44      318140 tasks, versions [90,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 55767988 us] admit     train_w45      (class train) versions [90,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 57011989 us] done      train_w45      318140 tasks, versions [92,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 57012907 us] admit     train_w46      (class train) versions [92,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 58240014 us] done      train_w46      318140 tasks, versions [94,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 58240964 us] admit     train_w47      (class train) versions [94,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 59449780 us] done      train_w47      318140 tasks, versions [96,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 59450694 us] admit     train_w48      (class train) versions [96,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 60658275 us] done      train_w48      318140 tasks, versions [98,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 60659160 us] admit     train_w49      (class train) versions [98,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 61859860 us] done      train_w49      318140 tasks, versions [100,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 61860769 us] admit     train_w50      (class train) versions [100,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 63070371 us] done      train_w50      318140 tasks, versions [102,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 63071207 us] admit     train_w51      (class train) versions [102,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 64276830 us] done      train_w51      318140 tasks, versions [104,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 64277632 us] admit     train_w52      (class train) versions [104,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 65479861 us] done      train_w52      318140 tasks, versions [106,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 65480720 us] admit     train_w53      (class train) versions [106,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 66684733 us] done      train_w53      318140 tasks, versions [108,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 66685516 us] admit     train_w54      (class train) versions [108,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 67891785 us] done      train_w54      318140 tasks, versions [110,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 67892617 us] admit     train_w55      (class train) versions [110,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 69124142 us] done      train_w55      318140 tasks, versions [112,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 69124965 us] admit     train_w56      (class train) versions [112,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 70331987 us] done      train_w56      318140 tasks, versions [114,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 70332852 us] admit     train_w57      (class train) versions [114,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 71541509 us] done      train_w57      318140 tasks, versions [116,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 71542391 us] admit     train_w58      (class train) versions [116,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 72748193 us] done      train_w58      318140 tasks, versions [118,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 72749075 us] admit     train_w59      (class train) versions [118,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 73952452 us] done      train_w59      318140 tasks, versions [120,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 73953374 us] admit     train_w60      (class train) versions [120,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 75161437 us] done      train_w60      318140 tasks, versions [122,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 75162221 us] admit     train_w61      (class train) versions [122,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 76363967 us] done      train_w61      318140 tasks, versions [124,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 76364848 us] admit     train_w62      (class train) versions [124,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 77589939 us] done      train_w62      318140 tasks, versions [126,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 77590835 us] admit     train_w63      (class train) versions [126,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 78817812 us] done      train_w63      318140 tasks, versions [128,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 78818685 us] admit     train_w64      (class train) versions [128,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 80022180 us] done      train_w64      318140 tasks, versions [130,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 80023032 us] admit     train_w65      (class train) versions [130,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 81251599 us] done      train_w65      318140 tasks, versions [132,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 81252456 us] admit     train_w66      (class train) versions [132,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 82478163 us] done      train_w66      318140 tasks, versions [134,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 82478962 us] admit     train_w67      (class train) versions [134,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 83708273 us] done      train_w67      318140 tasks, versions [136,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 83709140 us] admit     train_w68      (class train) versions [136,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 84939009 us] done      train_w68      318140 tasks, versions [138,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 84939893 us] admit     train_w69      (class train) versions [138,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 86172848 us] done      train_w69      318140 tasks, versions [140,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 86173731 us] admit     train_w70      (class train) versions [140,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 87423546 us] done      train_w70      318140 tasks, versions [142,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 87424392 us] admit     train_w71      (class train) versions [142,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 88651967 us] done      train_w71      318140 tasks, versions [144,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 88652840 us] admit     train_w72      (class train) versions [144,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 89857506 us] done      train_w72      318140 tasks, versions [146,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 89858327 us] admit     train_w73      (class train) versions [146,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 91063927 us] done      train_w73      318140 tasks, versions [148,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 91064856 us] admit     train_w74      (class train) versions [148,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 92307839 us] done      train_w74      318140 tasks, versions [150,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 92308715 us] admit     train_w75      (class train) versions [150,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 93513458 us] done      train_w75      318140 tasks, versions [152,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 93514234 us] admit     train_w76      (class train) versions [152,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 94716468 us] done      train_w76      318140 tasks, versions [154,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 94717498 us] admit     train_w77      (class train) versions [154,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 95923649 us] done      train_w77      318140 tasks, versions [156,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 95924664 us] admit     train_w78      (class train) versions [156,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 97124756 us] done      train_w78      318140 tasks, versions [158,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 97125548 us] admit     train_w79      (class train) versions [158,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 98328556 us] done      train_w79      318140 tasks, versions [160,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 98329381 us] admit     train_w80      (class train) versions [160,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [ 99526931 us] done      train_w80      318140 tasks, versions [162,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 99527781 us] admit     train_w81      (class train) versions [162,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [100733461 us] done      train_w81      318140 tasks, versions [164,0,0,0,0,0,0,0]
+[kvm_exec][I] [100734363 us] admit     train_w82      (class train) versions [164,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [101945162 us] done      train_w82      318140 tasks, versions [166,0,0,0,0,0,0,0]
+[kvm_exec][I] [101945975 us] admit     train_w83      (class train) versions [166,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [103150221 us] done      train_w83      318140 tasks, versions [168,0,0,0,0,0,0,0]
+[kvm_exec][I] [103151036 us] admit     train_w84      (class train) versions [168,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [104366937 us] done      train_w84      318140 tasks, versions [170,0,0,0,0,0,0,0]
+[kvm_exec][I] [104367750 us] admit     train_w85      (class train) versions [170,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [105569591 us] done      train_w85      318140 tasks, versions [172,0,0,0,0,0,0,0]
+[kvm_exec][I] [105570500 us] admit     train_w86      (class train) versions [172,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [106778922 us] done      train_w86      318140 tasks, versions [174,0,0,0,0,0,0,0]
+[kvm_exec][I] [106779764 us] admit     train_w87      (class train) versions [174,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [107989168 us] done      train_w87      318140 tasks, versions [176,0,0,0,0,0,0,0]
+[kvm_exec][I] [107990304 us] admit     train_w88      (class train) versions [176,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [109197875 us] done      train_w88      318140 tasks, versions [178,0,0,0,0,0,0,0]
+[kvm_exec][I] [109198705 us] admit     train_w89      (class train) versions [178,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [110396826 us] done      train_w89      318140 tasks, versions [180,0,0,0,0,0,0,0]
+[kvm_exec][I] [110397670 us] admit     train_w90      (class train) versions [180,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [111604253 us] done      train_w90      318140 tasks, versions [182,0,0,0,0,0,0,0]
+[kvm_exec][I] [111605083 us] admit     train_w91      (class train) versions [182,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [112805537 us] done      train_w91      318140 tasks, versions [184,0,0,0,0,0,0,0]
+[kvm_exec][I] [112806488 us] admit     train_w92      (class train) versions [184,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [114012642 us] done      train_w92      318140 tasks, versions [186,0,0,0,0,0,0,0]
+[kvm_exec][I] [114013521 us] admit     train_w93      (class train) versions [186,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [115222689 us] done      train_w93      318140 tasks, versions [188,0,0,0,0,0,0,0]
+[kvm_exec][I] [115223620 us] admit     train_w94      (class train) versions [188,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [116436552 us] done      train_w94      318140 tasks, versions [190,0,0,0,0,0,0,0]
+[kvm_exec][I] [116437363 us] admit     train_w95      (class train) versions [190,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [117642516 us] done      train_w95      318140 tasks, versions [192,0,0,0,0,0,0,0]
+[kvm_exec][I] [117643367 us] admit     train_w96      (class train) versions [192,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [118846642 us] done      train_w96      318140 tasks, versions [194,0,0,0,0,0,0,0]
+[kvm_exec][I] [118847474 us] admit     train_w97      (class train) versions [194,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [120078400 us] done      train_w97      318140 tasks, versions [196,0,0,0,0,0,0,0]
+[kvm_exec][I] [120079317 us] admit     train_w98      (class train) versions [196,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [121307183 us] done      train_w98      318140 tasks, versions [198,0,0,0,0,0,0,0]
+[kvm_exec][I] [121308062 us] admit     train_w99      (class train) versions [198,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [122545975 us] done      train_w99      318140 tasks, versions [200,0,0,0,0,0,0,0]
+[kvm_exec][I] [122546904 us] admit     train_w100     (class train) versions [200,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [123792609 us] done      train_w100     318140 tasks, versions [202,0,0,0,0,0,0,0]
+[kvm_exec][I] [123793525 us] admit     train_w101     (class train) versions [202,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [125055881 us] done      train_w101     318140 tasks, versions [204,0,0,0,0,0,0,0]
+[kvm_exec][I] [125056854 us] admit     train_w102     (class train) versions [204,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [126296179 us] done      train_w102     318140 tasks, versions [206,0,0,0,0,0,0,0]
+[kvm_exec][I] [126297085 us] admit     train_w103     (class train) versions [206,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [127574126 us] done      train_w103     318140 tasks, versions [208,0,0,0,0,0,0,0]
+[kvm_exec][I] [127575006 us] admit     train_w104     (class train) versions [208,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [128815443 us] done      train_w104     318140 tasks, versions [210,0,0,0,0,0,0,0]
+[kvm_exec][I] [128816303 us] admit     train_w105     (class train) versions [210,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [130117819 us] done      train_w105     318140 tasks, versions [212,0,0,0,0,0,0,0]
+[kvm_exec][I] [130118675 us] admit     train_w106     (class train) versions [212,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [131332266 us] done      train_w106     318140 tasks, versions [214,0,0,0,0,0,0,0]
+[kvm_exec][I] [131333033 us] admit     train_w107     (class train) versions [214,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [132629664 us] done      train_w107     318140 tasks, versions [216,0,0,0,0,0,0,0]
+[kvm_exec][I] [132630539 us] admit     train_w108     (class train) versions [216,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [133853380 us] done      train_w108     318140 tasks, versions [218,0,0,0,0,0,0,0]
+[kvm_exec][I] [133854177 us] admit     train_w109     (class train) versions [218,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [135177094 us] done      train_w109     318140 tasks, versions [220,0,0,0,0,0,0,0]
+[kvm_exec][I] [135177809 us] admit     train_w110     (class train) versions [220,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [136410439 us] done      train_w110     318140 tasks, versions [222,0,0,0,0,0,0,0]
+[kvm_exec][I] [136411270 us] admit     train_w111     (class train) versions [222,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [137655866 us] done      train_w111     318140 tasks, versions [224,0,0,0,0,0,0,0]
+[kvm_exec][I] [137656635 us] admit     train_w112     (class train) versions [224,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [138908331 us] done      train_w112     318140 tasks, versions [226,0,0,0,0,0,0,0]
+[kvm_exec][I] [138909148 us] admit     train_w113     (class train) versions [226,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [140173377 us] done      train_w113     318140 tasks, versions [228,0,0,0,0,0,0,0]
+[kvm_exec][I] [140174259 us] admit     train_w114     (class train) versions [228,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [141446507 us] done      train_w114     318140 tasks, versions [230,0,0,0,0,0,0,0]
+[kvm_exec][I] [141447253 us] admit     train_w115     (class train) versions [230,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [142730866 us] done      train_w115     318140 tasks, versions [232,0,0,0,0,0,0,0]
+[kvm_exec][I] [142731759 us] admit     train_w116     (class train) versions [232,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [144053267 us] done      train_w116     318140 tasks, versions [234,0,0,0,0,0,0,0]
+[kvm_exec][I] [144054087 us] admit     train_w117     (class train) versions [234,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [145369866 us] done      train_w117     318140 tasks, versions [236,0,0,0,0,0,0,0]
+[kvm_exec][I] [145370656 us] admit     train_w118     (class train) versions [236,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [146705664 us] done      train_w118     318140 tasks, versions [238,0,0,0,0,0,0,0]
+[kvm_exec][I] [146706430 us] admit     train_w119     (class train) versions [238,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [148055420 us] done      train_w119     318140 tasks, versions [240,0,0,0,0,0,0,0]
+[kvm_exec][I] [148056398 us] admit     train_w120     (class train) versions [240,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [149408670 us] done      train_w120     318140 tasks, versions [242,0,0,0,0,0,0,0]
+[kvm_exec][I] [149409467 us] admit     train_w121     (class train) versions [242,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [150776930 us] done      train_w121     318140 tasks, versions [244,0,0,0,0,0,0,0]
+[kvm_exec][I] [150777719 us] admit     train_w122     (class train) versions [244,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [152141860 us] done      train_w122     318140 tasks, versions [246,0,0,0,0,0,0,0]
+[kvm_exec][I] [152142671 us] admit     train_w123     (class train) versions [246,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [153504522 us] done      train_w123     318140 tasks, versions [248,0,0,0,0,0,0,0]
+[kvm_exec][I] [153505335 us] admit     train_w124     (class train) versions [248,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [154865725 us] done      train_w124     318140 tasks, versions [250,0,0,0,0,0,0,0]
+[kvm_exec][I] [154866545 us] admit     train_w125     (class train) versions [250,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [156228153 us] done      train_w125     318140 tasks, versions [252,0,0,0,0,0,0,0]
+[kvm_exec][I] [156229026 us] admit     train_w126     (class train) versions [252,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [157591052 us] done      train_w126     318140 tasks, versions [254,0,0,0,0,0,0,0]
+[kvm_exec][I] [157591858 us] admit     train_w127     (class train) versions [254,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [158954038 us] done      train_w127     318140 tasks, versions [256,0,0,0,0,0,0,0]
+[kvm_exec][I] [158954899 us] admit     train_w128     (class train) versions [256,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [160314918 us] done      train_w128     318140 tasks, versions [258,0,0,0,0,0,0,0]
+[kvm_exec][I] [160315720 us] admit     train_w129     (class train) versions [258,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [161678960 us] done      train_w129     318140 tasks, versions [260,0,0,0,0,0,0,0]
+[kvm_exec][I] [161679832 us] admit     train_w130     (class train) versions [260,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [163034761 us] done      train_w130     318140 tasks, versions [262,0,0,0,0,0,0,0]
+[kvm_exec][I] [163035652 us] admit     train_w131     (class train) versions [262,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [164388152 us] done      train_w131     318140 tasks, versions [264,0,0,0,0,0,0,0]
+[kvm_exec][I] [164388974 us] admit     train_w132     (class train) versions [264,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [165745071 us] done      train_w132     318140 tasks, versions [266,0,0,0,0,0,0,0]
+[kvm_exec][I] [165745872 us] admit     train_w133     (class train) versions [266,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [167106557 us] done      train_w133     318140 tasks, versions [268,0,0,0,0,0,0,0]
+[kvm_exec][I] [167107449 us] admit     train_w134     (class train) versions [268,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [168463762 us] done      train_w134     318140 tasks, versions [270,0,0,0,0,0,0,0]
+[kvm_exec][I] [168464592 us] admit     train_w135     (class train) versions [270,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [169824103 us] done      train_w135     318140 tasks, versions [272,0,0,0,0,0,0,0]
+[kvm_exec][I] [169824870 us] admit     train_w136     (class train) versions [272,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [171223173 us] done      train_w136     318140 tasks, versions [274,0,0,0,0,0,0,0]
+[kvm_exec][I] [171223981 us] admit     train_w137     (class train) versions [274,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [172585263 us] done      train_w137     318140 tasks, versions [276,0,0,0,0,0,0,0]
+[kvm_exec][I] [172586095 us] admit     train_w138     (class train) versions [276,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [173973892 us] done      train_w138     318140 tasks, versions [278,0,0,0,0,0,0,0]
+[kvm_exec][I] [173974812 us] admit     train_w139     (class train) versions [278,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [175351739 us] done      train_w139     318140 tasks, versions [280,0,0,0,0,0,0,0]
+[kvm_exec][I] [175352601 us] admit     train_w140     (class train) versions [280,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [176729343 us] done      train_w140     318140 tasks, versions [282,0,0,0,0,0,0,0]
+[kvm_exec][I] [176730198 us] admit     train_w141     (class train) versions [282,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [178109667 us] done      train_w141     318140 tasks, versions [284,0,0,0,0,0,0,0]
+[kvm_exec][I] [178110594 us] admit     train_w142     (class train) versions [284,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [179483169 us] done      train_w142     318140 tasks, versions [286,0,0,0,0,0,0,0]
+[kvm_exec][I] [179483965 us] admit     train_w143     (class train) versions [286,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [180862200 us] done      train_w143     318140 tasks, versions [288,0,0,0,0,0,0,0]
+[kvm_exec][I] [180863052 us] admit     train_w144     (class train) versions [288,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [182258749 us] done      train_w144     318140 tasks, versions [290,0,0,0,0,0,0,0]
+[kvm_exec][I] [182259699 us] admit     train_w145     (class train) versions [290,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [183633647 us] done      train_w145     318140 tasks, versions [292,0,0,0,0,0,0,0]
+[kvm_exec][I] [183634526 us] admit     train_w146     (class train) versions [292,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [185022039 us] done      train_w146     318140 tasks, versions [294,0,0,0,0,0,0,0]
+[kvm_exec][I] [185022942 us] admit     train_w147     (class train) versions [294,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [186406688 us] done      train_w147     318140 tasks, versions [296,0,0,0,0,0,0,0]
+[kvm_exec][I] [186407574 us] admit     train_w148     (class train) versions [296,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [187775632 us] done      train_w148     318140 tasks, versions [298,0,0,0,0,0,0,0]
+[kvm_exec][I] [187776501 us] admit     train_w149     (class train) versions [298,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [189151670 us] done      train_w149     318140 tasks, versions [300,0,0,0,0,0,0,0]
+[kvm_exec][I] [189152520 us] admit     train_w150     (class train) versions [300,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [190524472 us] done      train_w150     318140 tasks, versions [302,0,0,0,0,0,0,0]
+[kvm_exec][I] [190525321 us] admit     train_w151     (class train) versions [302,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [191900473 us] done      train_w151     318140 tasks, versions [304,0,0,0,0,0,0,0]
+[kvm_exec][I] [191901422 us] admit     train_w152     (class train) versions [304,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [193264130 us] done      train_w152     318140 tasks, versions [306,0,0,0,0,0,0,0]
+[kvm_exec][I] [193264977 us] admit     train_w153     (class train) versions [306,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [194632025 us] done      train_w153     318140 tasks, versions [308,0,0,0,0,0,0,0]
+[kvm_exec][I] [194632948 us] admit     train_w154     (class train) versions [308,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [195996915 us] done      train_w154     318140 tasks, versions [310,0,0,0,0,0,0,0]
+[kvm_exec][I] [195997858 us] admit     train_w155     (class train) versions [310,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [197374048 us] done      train_w155     318140 tasks, versions [312,0,0,0,0,0,0,0]
+[kvm_exec][I] [197374948 us] admit     train_w156     (class train) versions [312,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [198749143 us] done      train_w156     318140 tasks, versions [314,0,0,0,0,0,0,0]
+[kvm_exec][I] [198750195 us] admit     train_w157     (class train) versions [314,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [200117434 us] done      train_w157     318140 tasks, versions [316,0,0,0,0,0,0,0]
+[kvm_exec][I] [200118337 us] admit     train_w158     (class train) versions [316,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [201485928 us] done      train_w158     318140 tasks, versions [318,0,0,0,0,0,0,0]
+[kvm_exec][I] [201486824 us] admit     train_w159     (class train) versions [318,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [202845955 us] done      train_w159     318140 tasks, versions [320,0,0,0,0,0,0,0]
+[kvm_exec][I] [202846777 us] admit     train_w160     (class train) versions [320,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [204222605 us] done      train_w160     318140 tasks, versions [322,0,0,0,0,0,0,0]
+[kvm_exec][I] [204223428 us] admit     train_w161     (class train) versions [322,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [205593246 us] done      train_w161     318140 tasks, versions [324,0,0,0,0,0,0,0]
+[kvm_exec][I] [205594213 us] admit     train_w162     (class train) versions [324,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [206982386 us] done      train_w162     318140 tasks, versions [326,0,0,0,0,0,0,0]
+[kvm_exec][I] [206983279 us] admit     train_w163     (class train) versions [326,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [208354499 us] done      train_w163     318140 tasks, versions [328,0,0,0,0,0,0,0]
+[kvm_exec][I] [208355295 us] admit     train_w164     (class train) versions [328,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [209706714 us] done      train_w164     318140 tasks, versions [330,0,0,0,0,0,0,0]
+[kvm_exec][I] [209707488 us] admit     train_w165     (class train) versions [330,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [211075460 us] done      train_w165     318140 tasks, versions [332,0,0,0,0,0,0,0]
+[kvm_exec][I] [211076315 us] admit     train_w166     (class train) versions [332,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [212427149 us] done      train_w166     318140 tasks, versions [334,0,0,0,0,0,0,0]
+[kvm_exec][I] [212427966 us] admit     train_w167     (class train) versions [334,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [213779931 us] done      train_w167     318140 tasks, versions [336,0,0,0,0,0,0,0]
+[kvm_exec][I] [213780752 us] admit     train_w168     (class train) versions [336,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [215121528 us] done      train_w168     318140 tasks, versions [338,0,0,0,0,0,0,0]
+[kvm_exec][I] [215122362 us] admit     train_w169     (class train) versions [338,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [216487923 us] done      train_w169     318140 tasks, versions [340,0,0,0,0,0,0,0]
+[kvm_exec][I] [216488733 us] admit     train_w170     (class train) versions [340,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [217825476 us] done      train_w170     318140 tasks, versions [342,0,0,0,0,0,0,0]
+[kvm_exec][I] [217826318 us] admit     train_w171     (class train) versions [342,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [219175558 us] done      train_w171     318140 tasks, versions [344,0,0,0,0,0,0,0]
+[kvm_exec][I] [219176386 us] admit     train_w172     (class train) versions [344,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [220521462 us] done      train_w172     318140 tasks, versions [346,0,0,0,0,0,0,0]
+[kvm_exec][I] [220522313 us] admit     train_w173     (class train) versions [346,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [221863761 us] done      train_w173     318140 tasks, versions [348,0,0,0,0,0,0,0]
+[kvm_exec][I] [221864563 us] admit     train_w174     (class train) versions [348,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [223206323 us] done      train_w174     318140 tasks, versions [350,0,0,0,0,0,0,0]
+[kvm_exec][I] [223207222 us] admit     train_w175     (class train) versions [350,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [224546831 us] done      train_w175     318140 tasks, versions [352,0,0,0,0,0,0,0]
+[kvm_exec][I] [224547771 us] admit     train_w176     (class train) versions [352,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [225882365 us] done      train_w176     318140 tasks, versions [354,0,0,0,0,0,0,0]
+[kvm_exec][I] [225883175 us] admit     train_w177     (class train) versions [354,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [227219359 us] done      train_w177     318140 tasks, versions [356,0,0,0,0,0,0,0]
+[kvm_exec][I] [227220176 us] admit     train_w178     (class train) versions [356,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [228563036 us] done      train_w178     318140 tasks, versions [358,0,0,0,0,0,0,0]
+[kvm_exec][I] [228563972 us] admit     train_w179     (class train) versions [358,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [229892753 us] done      train_w179     318140 tasks, versions [360,0,0,0,0,0,0,0]
+[kvm_exec][I] [229893596 us] admit     train_w180     (class train) versions [360,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [231228660 us] done      train_w180     318140 tasks, versions [362,0,0,0,0,0,0,0]
+[kvm_exec][I] [231229460 us] admit     train_w181     (class train) versions [362,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [232558266 us] done      train_w181     318140 tasks, versions [364,0,0,0,0,0,0,0]
+[kvm_exec][I] [232559066 us] admit     train_w182     (class train) versions [364,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [233888266 us] done      train_w182     318140 tasks, versions [366,0,0,0,0,0,0,0]
+[kvm_exec][I] [233889070 us] admit     train_w183     (class train) versions [366,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [235218999 us] done      train_w183     318140 tasks, versions [368,0,0,0,0,0,0,0]
+[kvm_exec][I] [235219804 us] admit     train_w184     (class train) versions [368,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [236544459 us] done      train_w184     318140 tasks, versions [370,0,0,0,0,0,0,0]
+[kvm_exec][I] [236545274 us] admit     train_w185     (class train) versions [370,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [237873620 us] done      train_w185     318140 tasks, versions [372,0,0,0,0,0,0,0]
+[kvm_exec][I] [237874721 us] admit     train_w186     (class train) versions [372,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [239211186 us] done      train_w186     318140 tasks, versions [374,0,0,0,0,0,0,0]
+[kvm_exec][I] [239211981 us] admit     train_w187     (class train) versions [374,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [240538365 us] done      train_w187     318140 tasks, versions [376,0,0,0,0,0,0,0]
+[kvm_exec][I] [240539137 us] admit     train_w188     (class train) versions [376,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [241870103 us] done      train_w188     318140 tasks, versions [378,0,0,0,0,0,0,0]
+[kvm_exec][I] [241871026 us] admit     train_w189     (class train) versions [378,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [243216459 us] done      train_w189     318140 tasks, versions [380,0,0,0,0,0,0,0]
+[kvm_exec][I] [243217326 us] admit     train_w190     (class train) versions [380,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [244543941 us] done      train_w190     318140 tasks, versions [382,0,0,0,0,0,0,0]
+[kvm_exec][I] [244544740 us] admit     train_w191     (class train) versions [382,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [245869398 us] done      train_w191     318140 tasks, versions [384,0,0,0,0,0,0,0]
+[kvm_exec][I] [245870498 us] admit     train_w192     (class train) versions [384,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [247217700 us] done      train_w192     318140 tasks, versions [386,0,0,0,0,0,0,0]
+[kvm_exec][I] [247218509 us] admit     train_w193     (class train) versions [386,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [248568364 us] done      train_w193     318140 tasks, versions [388,0,0,0,0,0,0,0]
+[kvm_exec][I] [248569256 us] admit     train_w194     (class train) versions [388,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [249918848 us] done      train_w194     318140 tasks, versions [390,0,0,0,0,0,0,0]
+[kvm_exec][I] [249919660 us] admit     train_w195     (class train) versions [390,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [251247368 us] done      train_w195     318140 tasks, versions [392,0,0,0,0,0,0,0]
+[kvm_exec][I] [251248203 us] admit     train_w196     (class train) versions [392,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [252580364 us] done      train_w196     318140 tasks, versions [394,0,0,0,0,0,0,0]
+[kvm_exec][I] [252581213 us] admit     train_w197     (class train) versions [394,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [253927196 us] done      train_w197     318140 tasks, versions [396,0,0,0,0,0,0,0]
+[kvm_exec][I] [253928264 us] admit     train_w198     (class train) versions [396,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [255266758 us] done      train_w198     318140 tasks, versions [398,0,0,0,0,0,0,0]
+[kvm_exec][I] [255267586 us] admit     train_w199     (class train) versions [398,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [256612026 us] done      train_w199     318140 tasks, versions [400,0,0,0,0,0,0,0]
+[kvm_exec][I] [256612962 us] admit     train_w200     (class train) versions [400,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [257956576 us] done      train_w200     318140 tasks, versions [402,0,0,0,0,0,0,0]
+[kvm_exec][I] [257957463 us] admit     train_w201     (class train) versions [402,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [259296839 us] done      train_w201     318140 tasks, versions [404,0,0,0,0,0,0,0]
+[kvm_exec][I] [259297682 us] admit     train_w202     (class train) versions [404,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [260639393 us] done      train_w202     318140 tasks, versions [406,0,0,0,0,0,0,0]
+[kvm_exec][I] [260640230 us] admit     train_w203     (class train) versions [406,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [261980673 us] done      train_w203     318140 tasks, versions [408,0,0,0,0,0,0,0]
+[kvm_exec][I] [261981494 us] admit     train_w204     (class train) versions [408,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [263320277 us] done      train_w204     318140 tasks, versions [410,0,0,0,0,0,0,0]
+[kvm_exec][I] [263321139 us] admit     train_w205     (class train) versions [410,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [264676367 us] done      train_w205     318140 tasks, versions [412,0,0,0,0,0,0,0]
+[kvm_exec][I] [264677278 us] admit     train_w206     (class train) versions [412,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [266015492 us] done      train_w206     318140 tasks, versions [414,0,0,0,0,0,0,0]
+[kvm_exec][I] [266016326 us] admit     train_w207     (class train) versions [414,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [267366265 us] done      train_w207     318140 tasks, versions [416,0,0,0,0,0,0,0]
+[kvm_exec][I] [267367056 us] admit     train_w208     (class train) versions [416,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [268706265 us] done      train_w208     318140 tasks, versions [418,0,0,0,0,0,0,0]
+[kvm_exec][I] [268707090 us] admit     train_w209     (class train) versions [418,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [270047698 us] done      train_w209     318140 tasks, versions [420,0,0,0,0,0,0,0]
+[kvm_exec][I] [270048522 us] admit     train_w210     (class train) versions [420,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [271395140 us] done      train_w210     318140 tasks, versions [422,0,0,0,0,0,0,0]
+[kvm_exec][I] [271396051 us] admit     train_w211     (class train) versions [422,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [272735194 us] done      train_w211     318140 tasks, versions [424,0,0,0,0,0,0,0]
+[kvm_exec][I] [272736035 us] admit     train_w212     (class train) versions [424,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [274084837 us] done      train_w212     318140 tasks, versions [426,0,0,0,0,0,0,0]
+[kvm_exec][I] [274085667 us] admit     train_w213     (class train) versions [426,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [275401651 us] done      train_w213     318140 tasks, versions [428,0,0,0,0,0,0,0]
+[kvm_exec][I] [275402451 us] admit     train_w214     (class train) versions [428,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [276721804 us] done      train_w214     318140 tasks, versions [430,0,0,0,0,0,0,0]
+[kvm_exec][I] [276722635 us] admit     train_w215     (class train) versions [430,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [278044870 us] done      train_w215     318140 tasks, versions [432,0,0,0,0,0,0,0]
+[kvm_exec][I] [278045700 us] admit     train_w216     (class train) versions [432,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [279390032 us] done      train_w216     318140 tasks, versions [434,0,0,0,0,0,0,0]
+[kvm_exec][I] [279390856 us] admit     train_w217     (class train) versions [434,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [280723925 us] done      train_w217     318140 tasks, versions [436,0,0,0,0,0,0,0]
+[kvm_exec][I] [280724770 us] admit     train_w218     (class train) versions [436,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [282037456 us] done      train_w218     318140 tasks, versions [438,0,0,0,0,0,0,0]
+[kvm_exec][I] [282038334 us] admit     train_w219     (class train) versions [438,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [283366020 us] done      train_w219     318140 tasks, versions [440,0,0,0,0,0,0,0]
+[kvm_exec][I] [283366831 us] admit     train_w220     (class train) versions [440,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [284679212 us] done      train_w220     318140 tasks, versions [442,0,0,0,0,0,0,0]
+[kvm_exec][I] [284680004 us] admit     train_w221     (class train) versions [442,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [285993842 us] done      train_w221     318140 tasks, versions [444,0,0,0,0,0,0,0]
+[kvm_exec][I] [285994614 us] admit     train_w222     (class train) versions [444,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [287306266 us] done      train_w222     318140 tasks, versions [446,0,0,0,0,0,0,0]
+[kvm_exec][I] [287307002 us] admit     train_w223     (class train) versions [446,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [288617604 us] done      train_w223     318140 tasks, versions [448,0,0,0,0,0,0,0]
+[kvm_exec][I] [288618416 us] admit     train_w224     (class train) versions [448,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [289934826 us] done      train_w224     318140 tasks, versions [450,0,0,0,0,0,0,0]
+[kvm_exec][I] [289935666 us] admit     train_w225     (class train) versions [450,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [291250817 us] done      train_w225     318140 tasks, versions [452,0,0,0,0,0,0,0]
+[kvm_exec][I] [291251660 us] admit     train_w226     (class train) versions [452,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [292563646 us] done      train_w226     318140 tasks, versions [454,0,0,0,0,0,0,0]
+[kvm_exec][I] [292564443 us] admit     train_w227     (class train) versions [454,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [293898743 us] done      train_w227     318140 tasks, versions [456,0,0,0,0,0,0,0]
+[kvm_exec][I] [293899721 us] admit     train_w228     (class train) versions [456,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [295209924 us] done      train_w228     318140 tasks, versions [458,0,0,0,0,0,0,0]
+[kvm_exec][I] [295210885 us] admit     train_w229     (class train) versions [458,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [296514453 us] done      train_w229     318140 tasks, versions [460,0,0,0,0,0,0,0]
+[kvm_exec][I] [296515211 us] admit     train_w230     (class train) versions [460,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [297820550 us] done      train_w230     318140 tasks, versions [462,0,0,0,0,0,0,0]
+[kvm_exec][I] [297821329 us] admit     train_w231     (class train) versions [462,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [299132011 us] done      train_w231     318140 tasks, versions [464,0,0,0,0,0,0,0]
+[kvm_exec][I] [299132854 us] admit     train_w232     (class train) versions [464,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [300437739 us] done      train_w232     318140 tasks, versions [466,0,0,0,0,0,0,0]
+[kvm_exec][I] [300438512 us] admit     train_w233     (class train) versions [466,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [301749102 us] done      train_w233     318140 tasks, versions [468,0,0,0,0,0,0,0]
+[kvm_exec][I] [301749900 us] admit     train_w234     (class train) versions [468,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [303058113 us] done      train_w234     318140 tasks, versions [470,0,0,0,0,0,0,0]
+[kvm_exec][I] [303058914 us] admit     train_w235     (class train) versions [470,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [304366457 us] done      train_w235     318140 tasks, versions [472,0,0,0,0,0,0,0]
+[kvm_exec][I] [304367234 us] admit     train_w236     (class train) versions [472,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [305680737 us] done      train_w236     318140 tasks, versions [474,0,0,0,0,0,0,0]
+[kvm_exec][I] [305681536 us] admit     train_w237     (class train) versions [474,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [306992547 us] done      train_w237     318140 tasks, versions [476,0,0,0,0,0,0,0]
+[kvm_exec][I] [306993371 us] admit     train_w238     (class train) versions [476,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [308298116 us] done      train_w238     318140 tasks, versions [478,0,0,0,0,0,0,0]
+[kvm_exec][I] [308298951 us] admit     train_w239     (class train) versions [478,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [309616799 us] done      train_w239     318140 tasks, versions [480,0,0,0,0,0,0,0]
+[kvm_exec][I] [309617654 us] admit     train_w240     (class train) versions [480,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [310926452 us] done      train_w240     318140 tasks, versions [482,0,0,0,0,0,0,0]
+[kvm_exec][I] [310927197 us] admit     train_w241     (class train) versions [482,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [312240835 us] done      train_w241     318140 tasks, versions [484,0,0,0,0,0,0,0]
+[kvm_exec][I] [312241688 us] admit     train_w242     (class train) versions [484,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [313553014 us] done      train_w242     318140 tasks, versions [486,0,0,0,0,0,0,0]
+[kvm_exec][I] [313554020 us] admit     train_w243     (class train) versions [486,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [314860547 us] done      train_w243     318140 tasks, versions [488,0,0,0,0,0,0,0]
+[kvm_exec][I] [314861359 us] admit     train_w244     (class train) versions [488,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [316166742 us] done      train_w244     318140 tasks, versions [490,0,0,0,0,0,0,0]
+[kvm_exec][I] [316167674 us] admit     train_w245     (class train) versions [490,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [317477547 us] done      train_w245     318140 tasks, versions [492,0,0,0,0,0,0,0]
+[kvm_exec][I] [317478372 us] admit     train_w246     (class train) versions [492,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [318794112 us] done      train_w246     318140 tasks, versions [494,0,0,0,0,0,0,0]
+[kvm_exec][I] [318794955 us] admit     train_w247     (class train) versions [494,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [320101731 us] done      train_w247     318140 tasks, versions [496,0,0,0,0,0,0,0]
+[kvm_exec][I] [320102632 us] admit     train_w248     (class train) versions [496,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [321410267 us] done      train_w248     318140 tasks, versions [498,0,0,0,0,0,0,0]
+[kvm_exec][I] [321411102 us] admit     train_w249     (class train) versions [498,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [322724197 us] done      train_w249     318140 tasks, versions [500,0,0,0,0,0,0,0]
+[kvm_exec][I] [322725086 us] admit     train_w250     (class train) versions [500,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [324036920 us] done      train_w250     318140 tasks, versions [502,0,0,0,0,0,0,0]
+[kvm_exec][I] [324037716 us] admit     train_w251     (class train) versions [502,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [325340913 us] done      train_w251     318140 tasks, versions [504,0,0,0,0,0,0,0]
+[kvm_exec][I] [325341707 us] admit     train_w252     (class train) versions [504,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [326645510 us] done      train_w252     318140 tasks, versions [506,0,0,0,0,0,0,0]
+[kvm_exec][I] [326646439 us] admit     train_w253     (class train) versions [506,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [327961017 us] done      train_w253     318140 tasks, versions [508,0,0,0,0,0,0,0]
+[kvm_exec][I] [327961846 us] admit     train_w254     (class train) versions [508,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [329277453 us] done      train_w254     318140 tasks, versions [510,0,0,0,0,0,0,0]
+[kvm_exec][I] [329278307 us] admit     train_w255     (class train) versions [510,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [330595936 us] done      train_w255     318140 tasks, versions [512,0,0,0,0,0,0,0]
+[kvm_exec][I] [330596829 us] admit     train_w256     (class train) versions [512,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [331907727 us] done      train_w256     318140 tasks, versions [514,0,0,0,0,0,0,0]
+[kvm_exec][I] [331908564 us] admit     train_w257     (class train) versions [514,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [333218822 us] done      train_w257     318140 tasks, versions [516,0,0,0,0,0,0,0]
+[kvm_exec][I] [333219746 us] admit     train_w258     (class train) versions [516,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [334536519 us] done      train_w258     318140 tasks, versions [518,0,0,0,0,0,0,0]
+[kvm_exec][I] [334537299 us] admit     train_w259     (class train) versions [518,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [335847146 us] done      train_w259     318140 tasks, versions [520,0,0,0,0,0,0,0]
+[kvm_exec][I] [335848159 us] admit     train_w260     (class train) versions [520,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [337167210 us] done      train_w260     318140 tasks, versions [522,0,0,0,0,0,0,0]
+[kvm_exec][I] [337168161 us] admit     train_w261     (class train) versions [522,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [338482188 us] done      train_w261     318140 tasks, versions [524,0,0,0,0,0,0,0]
+[kvm_exec][I] [338483064 us] admit     train_w262     (class train) versions [524,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [339799848 us] done      train_w262     318140 tasks, versions [526,0,0,0,0,0,0,0]
+[kvm_exec][I] [339800704 us] admit     train_w263     (class train) versions [526,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [341115930 us] done      train_w263     318140 tasks, versions [528,0,0,0,0,0,0,0]
+[kvm_exec][I] [341116765 us] admit     train_w264     (class train) versions [528,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [342432866 us] done      train_w264     318140 tasks, versions [530,0,0,0,0,0,0,0]
+[kvm_exec][I] [342433832 us] admit     train_w265     (class train) versions [530,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [343747924 us] done      train_w265     318140 tasks, versions [532,0,0,0,0,0,0,0]
+[kvm_exec][I] [343748888 us] admit     train_w266     (class train) versions [532,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [345082775 us] done      train_w266     318140 tasks, versions [534,0,0,0,0,0,0,0]
+[kvm_exec][I] [345083675 us] admit     train_w267     (class train) versions [534,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [346412171 us] done      train_w267     318140 tasks, versions [536,0,0,0,0,0,0,0]
+[kvm_exec][I] [346412940 us] admit     train_w268     (class train) versions [536,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [347749552 us] done      train_w268     318140 tasks, versions [538,0,0,0,0,0,0,0]
+[kvm_exec][I] [347750460 us] admit     train_w269     (class train) versions [538,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [349089271 us] done      train_w269     318140 tasks, versions [540,0,0,0,0,0,0,0]
+[kvm_exec][I] [349090187 us] admit     train_w270     (class train) versions [540,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [350428936 us] done      train_w270     318140 tasks, versions [542,0,0,0,0,0,0,0]
+[kvm_exec][I] [350429985 us] admit     train_w271     (class train) versions [542,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [351778269 us] done      train_w271     318140 tasks, versions [544,0,0,0,0,0,0,0]
+[kvm_exec][I] [351779131 us] admit     train_w272     (class train) versions [544,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [353120839 us] done      train_w272     318140 tasks, versions [546,0,0,0,0,0,0,0]
+[kvm_exec][I] [353121704 us] admit     train_w273     (class train) versions [546,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [354452837 us] done      train_w273     318140 tasks, versions [548,0,0,0,0,0,0,0]
+[kvm_exec][I] [354453688 us] admit     train_w274     (class train) versions [548,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [355791189 us] done      train_w274     318140 tasks, versions [550,0,0,0,0,0,0,0]
+[kvm_exec][I] [355792027 us] admit     train_w275     (class train) versions [550,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [357124643 us] done      train_w275     318140 tasks, versions [552,0,0,0,0,0,0,0]
+[kvm_exec][I] [357125512 us] admit     train_w276     (class train) versions [552,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [358460364 us] done      train_w276     318140 tasks, versions [554,0,0,0,0,0,0,0]
+[kvm_exec][I] [358461165 us] admit     train_w277     (class train) versions [554,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [359794013 us] done      train_w277     318140 tasks, versions [556,0,0,0,0,0,0,0]
+[kvm_exec][I] [359794859 us] admit     train_w278     (class train) versions [556,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [361106361 us] done      train_w278     318140 tasks, versions [558,0,0,0,0,0,0,0]
+[kvm_exec][I] [361107131 us] admit     train_w279     (class train) versions [558,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [362419011 us] done      train_w279     318140 tasks, versions [560,0,0,0,0,0,0,0]
+[kvm_exec][I] [362419846 us] admit     train_w280     (class train) versions [560,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [363736008 us] done      train_w280     318140 tasks, versions [562,0,0,0,0,0,0,0]
+[kvm_exec][I] [363736890 us] admit     train_w281     (class train) versions [562,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [365053005 us] done      train_w281     318140 tasks, versions [564,0,0,0,0,0,0,0]
+[kvm_exec][I] [365053821 us] admit     train_w282     (class train) versions [564,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [366367094 us] done      train_w282     318140 tasks, versions [566,0,0,0,0,0,0,0]
+[kvm_exec][I] [366367900 us] admit     train_w283     (class train) versions [566,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [367678568 us] done      train_w283     318140 tasks, versions [568,0,0,0,0,0,0,0]
+[kvm_exec][I] [367679405 us] admit     train_w284     (class train) versions [568,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [368997726 us] done      train_w284     318140 tasks, versions [570,0,0,0,0,0,0,0]
+[kvm_exec][I] [368998467 us] admit     train_w285     (class train) versions [570,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [370302999 us] done      train_w285     318140 tasks, versions [572,0,0,0,0,0,0,0]
+[kvm_exec][I] [370303785 us] admit     train_w286     (class train) versions [572,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [371620552 us] done      train_w286     318140 tasks, versions [574,0,0,0,0,0,0,0]
+[kvm_exec][I] [371621458 us] admit     train_w287     (class train) versions [574,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [372936823 us] done      train_w287     318140 tasks, versions [576,0,0,0,0,0,0,0]
+[kvm_exec][I] [372937565 us] admit     train_w288     (class train) versions [576,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [374246911 us] done      train_w288     318140 tasks, versions [578,0,0,0,0,0,0,0]
+[kvm_exec][I] [374247698 us] admit     train_w289     (class train) versions [578,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [375561269 us] done      train_w289     318140 tasks, versions [580,0,0,0,0,0,0,0]
+[kvm_exec][I] [375562150 us] admit     train_w290     (class train) versions [580,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [376888995 us] done      train_w290     318140 tasks, versions [582,0,0,0,0,0,0,0]
+[kvm_exec][I] [376889771 us] admit     train_w291     (class train) versions [582,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [378199273 us] done      train_w291     318140 tasks, versions [584,0,0,0,0,0,0,0]
+[kvm_exec][I] [378200044 us] admit     train_w292     (class train) versions [584,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [379502466 us] done      train_w292     318140 tasks, versions [586,0,0,0,0,0,0,0]
+[kvm_exec][I] [379503280 us] admit     train_w293     (class train) versions [586,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [380826085 us] done      train_w293     318140 tasks, versions [588,0,0,0,0,0,0,0]
+[kvm_exec][I] [380826943 us] admit     train_w294     (class train) versions [588,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [382176904 us] done      train_w294     318140 tasks, versions [590,0,0,0,0,0,0,0]
+[kvm_exec][I] [382177861 us] admit     train_w295     (class train) versions [590,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [383503175 us] done      train_w295     318140 tasks, versions [592,0,0,0,0,0,0,0]
+[kvm_exec][I] [383503914 us] admit     train_w296     (class train) versions [592,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [384818451 us] done      train_w296     318140 tasks, versions [594,0,0,0,0,0,0,0]
+[kvm_exec][I] [384819226 us] admit     train_w297     (class train) versions [594,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [386131543 us] done      train_w297     318140 tasks, versions [596,0,0,0,0,0,0,0]
+[kvm_exec][I] [386132361 us] admit     train_w298     (class train) versions [596,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 827280 pad words
+[kvm_exec][D] ring wrap: 211592 pad words
+[kvm_exec][D] ring wrap: 1064976 pad words
+[kvm_exec][D] ring wrap: 280368 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [387469092 us] done      train_w298     318140 tasks, versions [598,0,0,0,0,0,0,0]
+[kvm_exec][I] [387469841 us] admit     train_w299     (class train) versions [598,0,0,0,0,0,0,0]
+[kvm_exec][D] ring wrap: 132160 pad words
+[kvm_exec][D] ring wrap: 1586032 pad words
+[kvm_exec][D] ring wrap: 411080 pad words
+[kvm_exec][D] stream: 318140 tasks in 8 windows
+[kvm_exec][I] [388788566 us] done      train_w299     318140 tasks, versions [600,0,0,0,0,0,0,0]
+[kvm_exec][I] kernel done: 95442000/95442000 tasks in 388793.344 ms, 2400 records, 1049 ring wraps, 0 backpressure waits
+[kvm_exec][W] version check: 95442000 tasks > 2097152 slots, slots were recycled; trace covers only the last occupants: skipped
+[kvm_exec][I] workload 0: 2097152 tasks, 132.263 CTA-s, queue wait p50 1791.0 p99 64972.8 max 72697.9 us, 0 deadline misses, 34.69 GB moved (4.0 GB/s over the run)
+[kvm_exec][I] trace: 2097152 tasks -> /work/scr/out/trace.csv
+[kvm_exec][I] dumped 196 buffers to /work/scr/out/buffers
+[kvm_exec][I] wrote /work/scr/out/run.json
+OK: 95442000/95442000 tasks, 388793.344 ms, 300 admissions

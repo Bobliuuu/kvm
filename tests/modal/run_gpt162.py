@@ -9,7 +9,7 @@ import modal, os, pathlib
 _p = pathlib.Path(__file__).resolve().parents
 ROOT = _p[2] if len(_p) > 2 else pathlib.Path('/')
 image = (modal.Image.from_registry("nvidia/cuda:12.4.1-devel-ubuntu22.04", add_python="3.11")
-         .apt_install("rsync", "git")
+         .apt_install("rsync", "git", "time")
          .pip_install("torch", "numpy")
          .add_local_dir(str(ROOT), "/src", copy=True,
                         ignore=[".tmp", "results", "logs", ".git", "docs", "**/__pycache__", "doom/third_party", "doom/build"]))
@@ -76,6 +76,19 @@ echo "== done"
 '''
 
 
+# learn: the executor and torch on a low-entropy noisy-bigram stream (tests/gpt162/learning.sh; no shared-box lock on a private GPU), then the plot.
+LEARN = r'''
+cp /logs/BIN/kvm_run demo/kvm_run
+OUT=/logs/$TAG; mkdir -p $OUT
+M='{"name":"gpt_162m","vocab":50304,"d_model":768,"layers":12,"heads":12,"seq":1024,"batch":4,"data_vocab":'$K',"data_noise":'$NOISE'}'
+echo "$M" > $OUT/model.json
+KVM_NO_LOCK=1 KVM_SCRATCH=/work/scr bash tests/gpt162/learning.sh $OUT/run "$M" $STEPS $LR $WARMUP 8
+pip list 2>/dev/null | grep -i matplotlib || pip install -q matplotlib
+python3 tests/gpt162/learning_plot.py $OUT/run --model-json "$M" --png $OUT/run/loss.png --csv $OUT/run/loss.csv
+echo "== done"
+'''
+
+
 def _drive(script, tag, extra_env, logname):
     import subprocess, time
     out = f"/logs/{tag}"; os.makedirs(out, exist_ok=True)
@@ -98,9 +111,17 @@ def check(tag: str, n1: int, n2: int):
     _drive(CHECK, tag, {"N1": str(n1), "N2": str(n2)}, "check.log")
 
 
+@app.function(gpu="A100-80GB", cpu=8, memory=65536, timeout=10800, volumes={"/logs": vol})
+def learn(tag: str, k: int, noise: float, steps: int, lr: str, warmup: int):
+    _drive(LEARN, tag, {"K": str(k), "NOISE": str(noise), "STEPS": str(steps), "LR": lr, "WARMUP": str(warmup)}, "learn.log")
+
+
 @app.local_entrypoint()
-def main(stage: str = "check", tag: str = "run", n1: int = 40, n2: int = 50):
+def main(stage: str = "check", tag: str = "run", n1: int = 40, n2: int = 50, k: int = 256, noise: float = 0.1, steps: int = 300,
+         lr: str = "3e-4", warmup: int = 5):
     if stage == "build":
         build.remote(tag)
+    elif stage == "learn":
+        learn.remote(tag, k, noise, steps, lr, warmup)
     else:
         check.remote(tag, n1, n2)

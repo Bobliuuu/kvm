@@ -27,6 +27,8 @@ class ModelConfig:
     seed: int = 0
     repeat_batch: bool = False       # every step trains on step 0's batch (an overfitting check: the loss must fall far below ln(vocab))
     precision: str = 'f32'          # f32 | bf16 (matmuls on bf16 operands, activations rounded, fp32 containers) | bf16s (bf16 values in real bf16 storage)
+    data_vocab: int = 0              # > 0: token stream drawn from the first data_vocab ids only (0: the whole vocabulary)
+    data_noise: float = 0.0          # with data_vocab: probability that a token is uniform over the subset instead of its bigram successor
 
     def __post_init__(self):
         if self.precision not in ('f32', 'bf16', 'bf16s'):
@@ -35,6 +37,8 @@ class ModelConfig:
             raise FrontendError(f'head dim d_model/heads = {self.d_model}/{self.heads} must be 16, 32, 64 or 128 (attention ops)')
         if self.seq % ATTN_Q:
             raise FrontendError(f'seq {self.seq} must be a multiple of {ATTN_Q} (attention block size)')
+        if not 0 <= self.data_vocab <= self.vocab or not 0 <= self.data_noise <= 1:
+            raise FrontendError(f'bad data stream: data_vocab {self.data_vocab} in [0, vocab {self.vocab}], data_noise {self.data_noise} in [0, 1]')
         if self.norm not in ('layernorm', 'rmsnorm'):
             raise FrontendError(f'norm must be layernorm or rmsnorm, got {self.norm!r}')
 

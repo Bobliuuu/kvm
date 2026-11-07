@@ -161,9 +161,10 @@ __device__ void gemm_acc(const Buf A, const Buf B, int m0, int n0, int K, float*
 // ---- in-kernel hyperparameter control: successive halving (SH). A rung boundary is a SEL slot at the end of step E*e-1:
 // the block that claims it waits for every alive run's last step, ranks them by mean loss over the last `win` steps, and
 // retires the worse half (g_alive[r]=0). Retired runs' later tiles are claimed, see the flag, and are skipped without waits.
-struct SHP { int E, K, R, CPS, nRB, needDW1, needDW2, steps, win; };
+struct SHP { int E, K, R, CPS, nRB, needDW1, needDW2, steps, win, mode; float target, divthr, prune; };
 __constant__ SHP g_sh;
 __device__ volatile int g_alive[64];
+__device__ int g_kill[64];   // rung index at which a run was retired (0 = never)
 __device__ void do_select(int e, int stp, const int* ctr, int* selctr, const float* loss) {
   const int R = g_sh.R, pitch = g_sh.nRB + 1;
   for (int r = 0; r < R; r++) if (g_alive[r]) {
@@ -177,13 +178,20 @@ __device__ void do_select(int e, int stp, const int* ctr, int* selctr, const flo
     a /= g_sh.win; m[r] = (a == a) ? a : 3.4e38f;   // NaN ranks last
     n += g_alive[r] ? 1 : 0;
   }
-  int keep = n / 2 > 0 ? n / 2 : 1;
   int nal[64];
-  for (int r = 0; r < R; r++) {
-    int rank = 0;
-    if (g_alive[r]) for (int j = 0; j < R; j++) if (g_alive[j] && (m[j] < m[r] || (m[j] == m[r] && j < r))) rank++;
-    nal[r] = g_alive[r] && rank < keep;
+  if (g_sh.mode == 0) {   // successive halving: keep the better half
+    int keep = n / 2 > 0 ? n / 2 : 1;
+    for (int r = 0; r < R; r++) {
+      int rank = 0;
+      if (g_alive[r]) for (int j = 0; j < R; j++) if (g_alive[j] && (m[j] < m[r] || (m[j] == m[r] && j < r))) rank++;
+      nal[r] = g_alive[r] && rank < keep;
+    }
+  } else {                // data-dependent control: retire diverged, converged (early stop), and runs worse than prune x best
+    float best = 3.4e38f;
+    for (int r = 0; r < R; r++) if (g_alive[r] && m[r] < best) best = m[r];
+    for (int r = 0; r < R; r++) nal[r] = g_alive[r] && m[r] < g_sh.divthr && m[r] >= g_sh.target && m[r] <= g_sh.prune * best;
   }
+  for (int r = 0; r < R; r++) if (g_alive[r] && !nal[r]) g_kill[r] = e;
   for (int r = 0; r < R; r++) g_alive[r] = nal[r];
   __threadfence();
   atomicAdd(selctr + e, 1);
@@ -295,13 +303,14 @@ static void dump(const std::string& dir, const char* name, const void* p, size_t
 
 int main(int argc, char** argv) {
   int steps = 300, B = 128, D = 128, Hd = 256, O = 64, NB = 4, R = 32, E = 75, K = 3, reps = 7;
-  float lrlo = 0.01f, lrhi = 0.6f; std::string out = "";
+  float lrlo = 0.01f, lrhi = 0.6f, target = 0.f, divthr = 1.f, prune = 1e9f; int mode = 0; std::string out = "";
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];
     auto nx = [&]() { return atof(argv[++i]); };
     if (a == "--steps") steps = nx(); else if (a == "--B") B = nx(); else if (a == "--D") D = nx();
     else if (a == "--H") Hd = nx(); else if (a == "--O") O = nx(); else if (a == "--nb") NB = nx();
     else if (a == "--runs") R = nx(); else if (a == "--E") E = nx(); else if (a == "--K") K = nx(); else if (a == "--reps") reps = nx();
+    else if (a == "--mode") mode = nx(); else if (a == "--target") target = nx(); else if (a == "--divthr") divthr = nx(); else if (a == "--prune") prune = nx();
     else if (a == "--lrlo") lrlo = nx(); else if (a == "--lrhi") lrhi = nx(); else if (a == "--out") out = argv[++i];
   }
   if (B % TILE || D % TILE || Hd % TILE || O % TILE || B % KC || D % KC || Hd % KC || O % KC) { fprintf(stderr, "dims must be multiples of max(TILE=%d, KC=%d)\n", TILE, KC); return 1; }
@@ -379,9 +388,9 @@ int main(int argc, char** argv) {
       i.w0c = ctr(r, s, P_DH1, -1); i.w0v = nRB * nHC; i.s1 = ctr(r, s, P_DW1, -1); tape.push_back(i);
     }
   };
-  // step template: run-major (all phases of run 0, then run 1, ...) then one SEL slot
+  // step template: phase-major (phase p of every run, then phase p+1) then one SEL slot; keeps many runs in flight per phase
   std::vector<Instr> tapeP;
-  for (int r = 0; r < R; r++) for (int ph = 0; ph < NPH; ph++) emit_phase(tapeP, r, ph);
+  for (int ph = 0; ph < NPH; ph++) for (int r = 0; r < R; r++) emit_phase(tapeP, r, ph);
   { Instr i = mk(0); i.op = OP_SEL; tapeP.push_back(i); }
   int perStep = (int)tapeP.size();
   int ntape = perStep * steps, nctr = steps * SC;
@@ -398,23 +407,23 @@ int main(int argc, char** argv) {
   int grid = prop.multiProcessorCount * occ;
   printf("%s  SMs=%d occ=%d  vm grid=%d\n", prop.name, prop.multiProcessorCount, occ, grid);
 
-  auto set_sh = [&](int k) { SHP sh{E, k, R, CPS, nRB, nDC * nHC, nHC * nOC, steps, NB}; CK(cudaMemcpyToSymbol(g_sh, &sh, sizeof sh)); };
+  auto set_sh = [&](int k) { SHP sh{E, k, R, CPS, nRB, nDC * nHC, nHC * nOC, steps, NB, mode, target, divthr, prune}; CK(cudaMemcpyToSymbol(g_sh, &sh, sizeof sh)); };
   auto reset = [&]() {
     for (int r = 0; r < R; r++) {
       CK(cudaMemcpy(hb[idW1(r)].p, W1.data(), W1.size() * 4, cudaMemcpyHostToDevice));
       CK(cudaMemcpy(hb[idW2(r)].p, W2.data(), W2.size() * 4, cudaMemcpyHostToDevice));
     }
-    int al[64]; for (int r = 0; r < 64; r++) al[r] = 1; CK(cudaMemcpyToSymbol(g_alive, al, sizeof al));
+    int al[64]; for (int r = 0; r < 64; r++) al[r] = 1; CK(cudaMemcpyToSymbol(g_alive, al, sizeof al)); int kz[64] = {0}; CK(cudaMemcpyToSymbol(g_kill, kz, sizeof kz));
     CK(cudaMemset(dhead, 0, 4)); CK(cudaMemset(dsel, 0, 64 * 4)); CK(cudaMemset(dctr, 0, (size_t)nctr * 4)); CK(cudaMemset(dloss, 0, (size_t)R * steps * 4));
     CK(cudaDeviceSynchronize());
   };
   cudaEvent_t e0, e1; cudaEventCreate(&e0); cudaEventCreate(&e1);
   auto timed = [&](int k) { set_sh(k); reset(); cudaEventRecord(e0); vm_kernel<<<grid, NT, DSMEM>>>(dtapeP, ntape, dhead, dctr, dloss, nullptr, dsel); cudaEventRecord(e1); CK(cudaEventSynchronize(e1)); CK(cudaGetLastError()); float ms; cudaEventElapsedTime(&ms, e0, e1); return (double)ms; };
-  struct Out { std::vector<float> L, w; int alive[64]; };
+  struct Out { std::vector<float> L, w; int alive[64], kill[64]; };
   auto fetch = [&]() {
     Out o; o.L.resize((size_t)R * steps);
     CK(cudaMemcpy(o.L.data(), dloss, o.L.size() * 4, cudaMemcpyDeviceToHost));
-    CK(cudaMemcpyFromSymbol(o.alive, g_alive, sizeof o.alive));
+    CK(cudaMemcpyFromSymbol(o.alive, g_alive, sizeof o.alive)); CK(cudaMemcpyFromSymbol(o.kill, g_kill, sizeof o.kill));
     for (int r = 0; r < R; r++) { std::vector<float> a(W1.size()), b(W2.size());
       CK(cudaMemcpy(a.data(), hb[idW1(r)].p, a.size() * 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(b.data(), hb[idW2(r)].p, b.size() * 4, cudaMemcpyDeviceToHost));
       o.w.insert(o.w.end(), a.begin(), a.end()); o.w.insert(o.w.end(), b.begin(), b.end()); }
@@ -432,16 +441,16 @@ int main(int argc, char** argv) {
   printf("\nKVM full population (no halving): best %.3f ms  median %.3f ms\n", best[0], s0[s0.size() / 2]);
   printf("KVM in-kernel successive halving : best %.3f ms  median %.3f ms\n", best[1], s1[s1.size() / 2]);
   printf("halving saves %.2fx (best), %.2fx (median)\n", best[0] / best[1], s0[s0.size() / 2] / s1[s1.size() / 2]);
-  printf("survivors:"); for (int r = 0; r < R; r++) if (o[1].alive[r]) printf(" %d(lr %.4f)", r, lrs[r]); printf("\n");
+  printf("survivors:"); for (int r = 0; r < R; r++) if (o[1].alive[r]) printf(" %d(lr %.4f)", r, lrs[r]); printf("\nkill rung per run:"); for (int r = 0; r < R; r++) printf(" %d", o[1].kill[r]); printf("\n");
   int nl = 0; for (int r = 0; r < R; r++) { float l = o[1].L[(size_t)r * steps]; if (!(l == l)) nl++; }
   if (!out.empty()) {
     std::string cmd = "mkdir -p " + out; if (system(cmd.c_str())) return 1;
     FILE* m = fopen((out + "/meta.txt").c_str(), "w");
-    fprintf(m, "B %d\nD %d\nH %d\nO %d\nNB %d\nR %d\nsteps %d\nE %d\nK %d\nwin %d\nkvm_full_ms %.4f\nkvm_sh_ms %.4f\n", B, D, Hd, O, NB, R, steps, E, K, NB, best[0], best[1]);
+    fprintf(m, "B %d\nD %d\nH %d\nO %d\nNB %d\nR %d\nsteps %d\nE %d\nK %d\nwin %d\nmode %d\ntarget %.9g\ndivthr %.9g\nprune %.9g\nkvm_full_ms %.4f\nkvm_sh_ms %.4f\n", B, D, Hd, O, NB, R, steps, E, K, NB, mode, target, divthr, prune, best[0], best[1]);
     for (int r = 0; r < R; r++) fprintf(m, "lr %.9g\n", lrs[r]); fclose(m);
     for (int k = 0; k < NB; k++) { dump(out, ("X" + std::to_string(k) + ".bin").c_str(), X[k].data(), X[k].size() * 4); dump(out, ("T" + std::to_string(k) + ".bin").c_str(), T[k].data(), T[k].size() * 4); }
     dump(out, "W1.bin", W1.data(), W1.size() * 4); dump(out, "W2.bin", W2.data(), W2.size() * 4);
-    dump(out, "loss_sh.bin", o[1].L.data(), o[1].L.size() * 4); dump(out, "alive_sh.bin", o[1].alive, 64 * 4); dump(out, "w_sh.bin", o[1].w.data(), o[1].w.size() * 4);
+    dump(out, "loss_sh.bin", o[1].L.data(), o[1].L.size() * 4); dump(out, "alive_sh.bin", o[1].alive, 64 * 4); dump(out, "kill_sh.bin", o[1].kill, 64 * 4); dump(out, "w_sh.bin", o[1].w.data(), o[1].w.size() * 4);
     dump(out, "loss_full.bin", o[0].L.data(), o[0].L.size() * 4); dump(out, "w_full.bin", o[0].w.data(), o[0].w.size() * 4);
   }
   (void)nl;

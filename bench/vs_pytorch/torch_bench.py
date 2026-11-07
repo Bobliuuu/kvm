@@ -3,7 +3,10 @@
 weights and token stream, and time each. Everything the executor workload fixes is read from its workload.json:
 
   python3 torch_bench.py WORKLOAD_DIR [--modes eager,graph,compile_mat,compile_ro,compile_graph] [--reps 7] [--out RESULT.json]
-                         [--precision tf32|precise] [--losses-only]
+                         [--precision tf32|precise|bf16] [--losses-only]
+
+--precision bf16 is torch.autocast(bfloat16): fp32 master weights, matmuls / attention in bf16, norms, softmax and the loss in fp32
+(a fp32 residual stream, unlike the executor's 'bf16s' precision mode which stores the stream in bf16 too).
 
 Model (kvmfe.nn.GPT): pre-LayerNorm (eps 1e-5), RoPE (rotate-half, theta 1e4), causal attention scale hd^-0.5, tanh-GELU MLP,
 untied bias-free head, mean cross-entropy. Optimizer: AdamW lr 3e-3, betas (0.9, 0.95), eps 1e-8, weight decay 0.01 on matrices
@@ -74,8 +77,8 @@ def self_check_init():
 
 # ------------------------------------------------------------------ the model
 class TorchGPT:
-    def __init__(self, cfg, specs, dev):
-        self.cfg, self.specs = cfg, specs
+    def __init__(self, cfg, specs, dev, autocast=False):
+        self.cfg, self.specs, self.autocast = cfg, specs, autocast
         hd = cfg.d_model // cfg.heads
         inv = cfg.rope_theta ** (-2.0 * torch.arange(hd // 2, dtype=torch.float64) / hd)
         ang = torch.arange(cfg.seq, dtype=torch.float64)[:, None] * inv[None]
@@ -88,6 +91,10 @@ class TorchGPT:
         return torch.cat([x1 * self.cos - x2 * self.sin, x1 * self.sin + x2 * self.cos], -1)
 
     def loss(self, p, ids, tgt):
+        with torch.autocast('cuda', dtype=torch.bfloat16, enabled=self.autocast):
+            return self._loss(p, ids, tgt)
+
+    def _loss(self, p, ids, tgt):
         c = self.cfg
         B, T, H, d = c.batch, c.seq, c.heads, c.d_model
         hd = d // H
@@ -121,7 +128,7 @@ class Trainer:
         self.params = {n: v.reshape(self.shape[n]).clone().requires_grad_(True) for n, v in self.init.items()}
         stream = lambda n: torch.from_numpy(init_values(bufs[n], wl_dir).astype(np.int64)).to(dev).view(self.steps, -1)
         self.ids, self.tgt = stream('stream_ids'), stream('stream_tgt')
-        self.model = TorchGPT(self.cfg, specs, dev)
+        self.model = TorchGPT(self.cfg, specs, dev, autocast=precision == 'bf16')
         dec = [self.params[n] for n, s in specs.items() if s.decay]
         nod = [self.params[n] for n, s in specs.items() if not s.decay]
         self.opt = torch.optim.AdamW([{'params': dec, 'weight_decay': WD}, {'params': nod, 'weight_decay': 0.0}], fused=True,
@@ -240,7 +247,7 @@ def main():
     ap.add_argument('workload_dir')
     ap.add_argument('--modes', default='eager,graph,compile_mat,compile_ro,compile_graph')
     ap.add_argument('--reps', type=int, default=7)
-    ap.add_argument('--precision', choices=['tf32', 'precise'], default='tf32')
+    ap.add_argument('--precision', choices=['tf32', 'precise', 'bf16'], default='tf32')
     ap.add_argument('--device', default='cuda')
     ap.add_argument('--out')
     a = ap.parse_args()

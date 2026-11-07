@@ -8,7 +8,7 @@ HOST="${KVM_HOST:?set KVM_HOST=user@host (an environment variable, never a commi
 ARCH="${KVM_ARCH:-sm_80}"
 SSH="ssh -o BatchMode=yes -o StrictHostKeyChecking=no ${KVM_KEY:+-i $KVM_KEY}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-. "$ROOT/tests/remote_lib.sh"; kvm_scratch extra; kvm_lock 900
+. "$ROOT/tests/remote_lib.sh"; kvm_scratch extra; kvm_lock "${KVM_LOCK_WAIT:-900}"
 rsync -az -e "$SSH" --exclude .git --exclude results --exclude logs --exclude docs "$ROOT/" "$HOST:$REMOTE/"
 $SSH "$HOST" "cd $REMOTE/tests/gpu_ops && NVCC=\$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc | tail -1) && \$NVCC -O2 -arch=$ARCH -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -lineinfo -I../../include -I. test_extra.cu -o test_extra"
 RUN="./test_extra"

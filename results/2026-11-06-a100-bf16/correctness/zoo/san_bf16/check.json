@@ -1,0 +1,22 @@
+{
+ "mode": "lowp",
+ "buffers": 305,
+ "failures": [],
+ "loss_err": {
+  "loss.0": 8.625187302288062e-10,
+  "loss.1": 6.069770456297423e-08
+ },
+ "loss_gpu": {
+  "loss.0": 4.21316481,
+  "loss.1": 3.89305949
+ },
+ "loss_golden": {
+  "loss.0": 4.213164806365967,
+  "loss.1": 3.893059253692627
+ },
+ "null_buffers": [
+  "version_token"
+ ],
+ "max_rel_step1": 4.97042249656538e-06,
+ "post_opt_rel_l2": 3.031161086927833e-06
+}

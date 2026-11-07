@@ -1,0 +1,4 @@
+f32_s50: 50 steps, persistent 215584 B + pool 144560 B, 159 buffers
+bf16s_s50: 50 steps, persistent 244256 B + pool 158896 B, 170 buffers
+bf16s_s1: 1 steps, persistent 231320 B + pool 324784 B, 159 buffers
+bf16s_s5: 5 steps, persistent 232376 B + pool 1623920 B, 507 buffers

@@ -1,0 +1,101 @@
+# suite=custom tag=admv2-r3 2026-11-07T22:53:26Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 1009 GB, cores: 16
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+-rwxr-xr-x 1 root root 27647168 Nov  7 23:40 /w/ex_fin
+-rwxr-xr-x 1 root root 27943272 Nov  7 23:39 /w/kvm_run
+
+/logs/bin:
+total 54032
+drwxr-xr-x 1 root root       17 Nov  7 22:42 .
+drwxr-xr-x 1 root root      785 Nov  7 22:53 ..
+-rwxr-xr-x 1 root root 27679584 Nov  7 22:42 ex_main_a
+-rwxr-xr-x 1 root root 27647016 Nov  7 22:39 ex_new_a
+rep 1 main b16 | OK: 58634/58634 tasks, 289.420 ms
+rep 1 final b16 | OK: 58634/58634 tasks, 151.491 ms
+rep 1 main f32 | OK: 270914/270914 tasks, 850.483 ms
+rep 1 final f32 | OK: 270914/270914 tasks, 336.029 ms
+rep 2 main b16 | OK: 58634/58634 tasks, 291.761 ms
+rep 2 final b16 | OK: 58634/58634 tasks, 150.360 ms
+rep 2 main f32 | OK: 270914/270914 tasks, 846.565 ms
+rep 2 final f32 | OK: 270914/270914 tasks, 327.859 ms
+rep 3 main b16 | OK: 58634/58634 tasks, 295.392 ms
+rep 3 final b16 | OK: 58634/58634 tasks, 150.968 ms
+rep 3 main f32 | OK: 270914/270914 tasks, 861.509 ms
+rep 3 final f32 | OK: 270914/270914 tasks, 329.909 ms
+rep 4 main b16 | OK: 58634/58634 tasks, 290.212 ms
+rep 4 final b16 | OK: 58634/58634 tasks, 148.964 ms
+rep 4 main f32 | OK: 270914/270914 tasks, 844.620 ms
+rep 4 final f32 | OK: 270914/270914 tasks, 323.886 ms
+rep 5 main b16 | OK: 58634/58634 tasks, 294.436 ms
+rep 5 final b16 | OK: 58634/58634 tasks, 150.629 ms
+rep 5 main f32 | OK: 270914/270914 tasks, 854.131 ms
+rep 5 final f32 | OK: 270914/270914 tasks, 326.521 ms
+OK: 58634/58634 tasks, 150.792 ms
+58634 tasks, span 122.93 ms = 122933 us/step, workers 107: task-run time 9393.5 ms, utilisation 71.4%, mean ready->start wait 293.7 us, mean task 160.2 us
+op                              tasks  sum run ms  mean us   max us % run time
+matmul_mma_bf16                 30910     4028.93    130.3   1901.6      42.9%
+attn_bwd_dkv                     4608      961.26    208.6    413.7      10.2%
+round_bf16                       7214      782.54    108.5   4564.0       8.3%
+attn_bwd_dq                      4608      610.21    132.4    234.5       6.5%
+adamw                             881      549.59    623.8    933.9       5.9%
+attn_fwd                         4608      420.13     91.2    185.3       4.5%
+colsum                            324      308.63    952.5   1024.0       3.3%
+rope_bwd                          768      268.10    349.1    360.4       2.9%
+rope_fwd                          768      258.38    336.4    355.3       2.8%
+gelu_bwd                          384      221.51    576.8    612.4       2.4%
+norm_bwd_params                    75      192.08   2561.0   2649.1       2.0%
+layernorm_bwd_dx                  800      186.81    233.5    265.2       2.0%
+commit: unknown
+INFO bundle train_w0: 58635 tasks, 481521 edges (base {'weights': 0})
+INFO demo: {'train': (58635, 481521)}
+INFO manifest: 1 admissions, 1394 buffers (0 shared) -> /w/num_bf16s/g1/MANIFEST.json
+kvm_run exit 0
+[kvm_exec][I] workload 0: 58635 tasks, 9.453 CTA-s, queue wait p50 79.9 p99 3193.9 max 4517.9 us, 0 deadline misses, 4.96 GB moved (33.2 GB/s over the run)
+[kvm_exec][I] trace: 58635 tasks -> /w/num_bf16s/g1out/trace.csv
+[kvm_exec][I] dumped 590 buffers to /w/num_bf16s/g1out/buffers
+[kvm_exec][I] wrote /w/num_bf16s/g1out/run.json
+OK: 58635/58635 tasks, 254.214 ms, 1 admissions
+torch fp64: loss 10.979000 global grad norm 4.074979
+torch tf32: loss 10.979010 global grad norm 4.074843
+torch fp32: loss 10.979000 global grad norm 4.074980
+torch bf16: loss 10.979324 global grad norm 4.072703
+executor: loss 10.979027 global grad norm 4.075675 clip_coef 0.245358  (fp64 truth coef 0.245400)
+loss vs fp64: executor +2.67e-05  torch-tf32 +9.56e-06  torch-fp32 +2.17e-08  torch-autocast-bf16 +3.24e-04
+  group wte        (  1 tensors) |g| truth 3.8530e-01 exec 3.8528e-01  rel L2 vs fp64: exec 1.18e-02  torch-tf32 9.39e-04  torch-fp32 2.12e-06  torch-autocast-bf16 1.13e-02
+  group norm       ( 48 tensors) |g| truth 4.3011e-02 exec 4.2990e-02  rel L2 vs fp64: exec 1.14e-02  torch-tf32 8.92e-04  torch-fp32 2.06e-06  torch-autocast-bf16 2.30e-02
+  group attn       ( 96 tensors) |g| truth 2.0846e+00 exec 2.0852e+00  rel L2 vs fp64: exec 1.03e-02  torch-tf32 8.76e-04  torch-fp32 1.97e-06  torch-autocast-bf16 2.14e-02
+  group mlp        ( 48 tensors) |g| truth 3.4536e+00 exec 3.4541e+00  rel L2 vs fp64: exec 1.13e-02  torch-tf32 9.20e-04  torch-fp32 2.10e-06  torch-autocast-bf16 1.78e-02
+  group final_norm (  2 tensors) |g| truth 1.9237e-02 exec 1.9235e-02  rel L2 vs fp64: exec 5.00e-03  torch-tf32 4.97e-04  torch-fp32 1.04e-06  torch-autocast-bf16 3.29e-02
+  group head       (  1 tensors) |g| truth 4.2624e-01 exec 4.2625e-01  rel L2 vs fp64: exec 9.74e-03  torch-tf32 7.66e-04  torch-fp32 1.74e-06  torch-autocast-bf16 7.58e-03
+  worst tensor: gpt.h11.attn.k.w exec 1.69e-02 (torch-tf32 on it 1.43e-03, torch-bf16 1.90e-02); all 196 tensors: max exec 1.69e-02, max torch-tf32 1.46e-03, max torch-autocast-bf16 3.36e-02
+  m after step 1 vs fp64 reference (rel L2): {"max": 0.016887285521405872, "median": 0.010951418709734966}
+  w1 - w0 vs fp64 reference: {"rel_l2_max": 0.20400450710189358, "rel_l2_median": 0.09710763159252392, "sign_flip_frac_max": 0.01171875, "sign_flip_frac_median": 0.003801133897569444}
+commit: unknown
+INFO bundle train_w0: 270915 tasks, 2252374 edges (base {'weights': 0})
+INFO demo: {'train': (270915, 2252374)}
+INFO manifest: 1 admissions, 1140 buffers (0 shared) -> /w/num_f32/g1/MANIFEST.json
+kvm_run exit 0
+[kvm_exec][I] workload 0: 270915 tasks, 19.266 CTA-s, queue wait p50 653.3 p99 17401.9 max 18562.0 us, 0 deadline misses, 4.96 GB moved (14.8 GB/s over the run)
+[kvm_exec][I] trace: 270915 tasks -> /w/num_f32/g1out/trace.csv
+[kvm_exec][I] dumped 590 buffers to /w/num_f32/g1out/buffers
+[kvm_exec][I] wrote /w/num_f32/g1out/run.json
+OK: 270915/270915 tasks, 632.964 ms, 1 admissions
+torch fp64: loss 10.979000 global grad norm 4.074979
+torch tf32: loss 10.979010 global grad norm 4.074872
+torch fp32: loss 10.979000 global grad norm 4.074980
+torch bf16: loss 10.979324 global grad norm 4.072994
+executor: loss 10.979010 global grad norm 4.074670 clip_coef 0.245419  (fp64 truth coef 0.245400)
+loss vs fp64: executor +9.56e-06  torch-tf32 +9.56e-06  torch-fp32 +2.17e-08  torch-autocast-bf16 +3.24e-04
+  group wte        (  1 tensors) |g| truth 3.8530e-01 exec 3.8527e-01  rel L2 vs fp64: exec 9.43e-04  torch-tf32 9.41e-04  torch-fp32 2.13e-06  torch-autocast-bf16 1.13e-02
+  group norm       ( 48 tensors) |g| truth 4.3011e-02 exec 4.3005e-02  rel L2 vs fp64: exec 9.33e-04  torch-tf32 9.17e-04  torch-fp32 2.03e-06  torch-autocast-bf16 2.31e-02
+  group attn       ( 96 tensors) |g| truth 2.0846e+00 exec 2.0845e+00  rel L2 vs fp64: exec 8.91e-04  torch-tf32 8.75e-04  torch-fp32 1.98e-06  torch-autocast-bf16 2.15e-02
+  group mlp        ( 48 tensors) |g| truth 3.4536e+00 exec 3.4533e+00  rel L2 vs fp64: exec 9.27e-04  torch-tf32 9.22e-04  torch-fp32 2.11e-06  torch-autocast-bf16 1.79e-02
+  group final_norm (  2 tensors) |g| truth 1.9237e-02 exec 1.9237e-02  rel L2 vs fp64: exec 5.01e-04  torch-tf32 4.97e-04  torch-fp32 1.04e-06  torch-autocast-bf16 3.29e-02
+  group head       (  1 tensors) |g| truth 4.2624e-01 exec 4.2625e-01  rel L2 vs fp64: exec 7.67e-04  torch-tf32 7.66e-04  torch-fp32 1.74e-06  torch-autocast-bf16 7.58e-03
+  worst tensor: gpt.h11.attn.q.w exec 1.46e-03 (torch-tf32 on it 1.46e-03, torch-bf16 1.91e-02); all 196 tensors: max exec 1.46e-03, max torch-tf32 1.46e-03, max torch-autocast-bf16 3.36e-02
+  m after step 1 vs fp64 reference (rel L2): {"max": 0.0014564045439668584, "median": 0.0008973711884784508}
+  w1 - w0 vs fp64 reference: {"rel_l2_max": 0.08641880182623018, "rel_l2_median": 0.007016374780253642, "sign_flip_frac_max": 0.0026041666666666665, "sign_flip_frac_median": 1.1945599919158184e-05}
+done

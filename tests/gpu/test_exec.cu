@@ -742,14 +742,21 @@ static bool suite_admit_chunks() {
 // ================= dispatch cost =================
 static bool suite_bench() {
   printf("  %-34s %8s %10s %12s %10s\n", "case", "blocks", "tasks", "us/task", "tasks/s");
+  double one_worker_us = 0;   // blocks = 2 -> one worker: its whole fetch -> run -> complete cycle, no contention
   auto indep = [&](int blocks, int total, int bundle_sz) {
     KvmConfig c = small_cfg(blocks); c.live_cap = 1 << 14; c.max_tasks = 1 << 17; c.ring_words = 1 << 18; KvmExec ex(c); ex.start();
     for (int done = 0; done < total; done += bundle_sz) { KvmBundleBuilder bb; for (int i = 0; i < bundle_sz; ++i) bb.add("noop", {}); ex.submit(bb.build()); }
     ex.close(); const KvmResult& r = ex.finish();
     unsigned long long t0 = ~0ull, t1 = 0; for (auto& t : r.trace) { t0 = std::min(t0, t.start_ns); t1 = std::max(t1, t.end_ns); }
     double us = (t1 - t0) / 1e3; printf("  %-34s %8d %10d %12.4f %10.3g\n", "independent noop", r.grid, r.done, us / r.done, r.done / (us / 1e6));
+    if (blocks == 2) one_worker_us = us / r.done;
   };
   for (int b : {2, 8, 32, 108, 0}) indep(b, 64 * 1024, 4096);
+  {  // Perf budget (A100 only; the lock-held cycle is stable to +-1%): the completion path costs 3 dependent L2 round trips less than the
+     // original (one fence warp, deferred exec_count check, window credit and slot recycle overlapped, posted done count): 7.0 -> 5.8 us.
+    cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0));
+    if (strstr(pr.name, "A100")) CHECK(one_worker_us < 6.2, "one-worker task cycle %.2f us exceeds the 6.2 us budget (original completion path: 6.3-7.0)", one_worker_us);
+  }
   auto chain = [&](int blocks, int len, const char* op) {
     KvmConfig c = small_cfg(blocks); c.live_cap = 1 << 13; c.ring_words = 1 << 17; KvmExec ex(c); ex.start();
     KvmBundleBuilder bb; int prev = -1; for (int i = 0; i < len; ++i) { int t = bb.add(op, op[0] == 's' ? std::vector<KvmArg>{I(0)} : std::vector<KvmArg>{}); if (prev >= 0) bb.edge(prev, t); prev = t; }
@@ -758,6 +765,38 @@ static bool suite_bench() {
     printf("  %-34s %8d %10d %12.4f %10.3g\n", "dependent chain (hop latency)", r.grid, r.done, us / r.done, r.done / (us / 1e6));
   };
   for (int b : {2, 32, 0}) chain(b, 4000, "noop");
+  // Release-path cases. The whole graph is ONE bundle record, admitted completely before its roots are released, so admission is not in
+  // the measured span: what is left is pop throughput, successor release and the dependent hop.
+  //   fan-out: one root releases N children at once -> children drain at the pop rate (us/task = pop cost, all workers polling one ring)
+  //   fan-in:  N independent roots decrement one join counter (the join waits for the last decrement)
+  //   layered: W-wide layers, every task has K random predecessors in the layer above (K edges/task in and out: the 162M GPT has ~21.7)
+  auto graph = [&](int blocks, const char* name, int n, std::function<KvmBundle()> mk) {
+    KvmConfig c = small_cfg(blocks); c.live_cap = 1 << 14; c.max_tasks = 1 << 15; c.succ_cap = 1 << 20; c.ring_words = 1 << 20; KvmExec ex(c); ex.start();
+    KvmBundle bd = mk(); ex.submit(bd); ex.close(); const KvmResult& r = ex.finish();
+    unsigned long long s0 = ~0ull, s1 = 0, e1 = 0; double wait = 0; int nw = 0;
+    for (auto& t : r.trace) if (t.exec_count) { s0 = std::min(s0, t.start_ns); s1 = std::max(s1, t.start_ns); e1 = std::max(e1, t.end_ns); wait += (double)(t.start_ns - t.ready_ns); ++nw; }
+    double us = (e1 - s0) / 1e3, drain = (s1 - s0) / 1e3;
+    printf("  %-34s %8d %10d %12.4f %10.3g   start-span %.1f us (%.4f us/task), mean ready->start %.2f us, edges %zu\n", name, r.grid, r.done, us / r.done,
+           r.done / (us / 1e6), drain, drain / std::max(1, nw - 1), wait / std::max(1, nw) / 1e3, bd.succ.size());
+    (void)n;
+  };
+  for (int b : {2, 32, 108}) {
+    const int N = 8000;
+    graph(b, "fan-out 1 -> 8000 (pop rate)", N, [&] { KvmBundleBuilder bb; int r0 = bb.add("noop", {}); for (int i = 0; i < N; ++i) bb.edge(r0, bb.add("noop", {})); return bb.build(); });
+    graph(b, "fan-in 8000 -> 1", N, [&] { KvmBundleBuilder bb; std::vector<int> p; for (int i = 0; i < N; ++i) p.push_back(bb.add("noop", {})); int j = bb.add("noop", {}); for (int x : p) bb.edge(x, j); return bb.build(); });
+    for (int K : {1, 20}) {
+      char nm[64]; snprintf(nm, sizeof nm, "layered 1024x15, %d edges/task", K);
+      graph(b, nm, 1024 * 15, [&] {
+        Rng rg(7); KvmBundleBuilder bb; std::vector<int> prev, cur;
+        for (int l = 0; l < 15; ++l) {
+          cur.clear(); for (int i = 0; i < 1024; ++i) cur.push_back(bb.add("noop", {}));
+          if (l) for (int i = 0; i < 1024; ++i) { int base = rg.in(0, 1023); for (int k = 0; k < K; ++k) bb.edge(prev[(base + k * 37) % 1024], cur[i]); }
+          prev = cur;
+        }
+        return bb.build();
+      });
+    }
+  }
   return true;
 }
 

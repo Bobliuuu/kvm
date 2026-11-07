@@ -1,0 +1,138 @@
+##### v3m run 1
+== bench
+  case                                 blocks      tasks      us/task    tasks/s
+  independent noop                          2      65536       5.7977   1.72e+05
+  independent noop                          8      65536       1.7203   5.81e+05
+  independent noop                         32      65536       1.4896   6.71e+05
+  independent noop                        108      65536       1.4260   7.01e+05
+  independent noop                        324      65536       1.6084   6.22e+05
+  dependent chain (hop latency)             2       4000       7.7082    1.3e+05
+  dependent chain (hop latency)            32       4000       6.3552   1.57e+05
+  dependent chain (hop latency)           324       4000       7.8316   1.28e+05
+  fan-out 1 -> 8000 (pop rate)              2       8001       5.2104   1.92e+05   start-span 41687.0 us (5.2109 us/task), mean ready->start 20833.81 us, edges 8000
+  fan-in 8000 -> 1                          2       8001       6.3387   1.58e+05   start-span 50713.6 us (6.3392 us/task), mean ready->start 25243.58 us, edges 8000
+  layered 1024x15, 1 edges/task             2      15360       6.8570   1.46e+05   start-span 105322.5 us (6.8574 us/task), mean ready->start 6846.38 us, edges 14336
+  layered 1024x15, 20 edges/task            2      15360       6.4045   1.56e+05   start-span 98372.6 us (6.4049 us/task), mean ready->start 3557.57 us, edges 286720
+  fan-out 1 -> 8000 (pop rate)             32       8001       1.4745   6.78e+05   start-span 11796.5 us (1.4746 us/task), mean ready->start 5841.19 us, edges 8000
+  fan-in 8000 -> 1                         32       8001       1.4837   6.74e+05   start-span 11870.2 us (1.4838 us/task), mean ready->start 5873.39 us, edges 8000
+  layered 1024x15, 1 edges/task            32      15360       1.4777   6.77e+05   start-span 22695.9 us (1.4777 us/task), mean ready->start 1460.57 us, edges 14336
+  layered 1024x15, 20 edges/task           32      15360       1.4792   6.76e+05   start-span 22719.5 us (1.4792 us/task), mean ready->start 822.33 us, edges 286720
+  fan-out 1 -> 8000 (pop rate)            108       8001       1.4032   7.13e+05   start-span 11226.1 us (1.4033 us/task), mean ready->start 5552.77 us, edges 8000
+  fan-in 8000 -> 1                        108       8001       1.4181   7.05e+05   start-span 11344.9 us (1.4181 us/task), mean ready->start 5602.88 us, edges 8000
+  layered 1024x15, 1 edges/task           108      15360       1.4146   7.07e+05   start-span 21727.2 us (1.4146 us/task), mean ready->start 1397.91 us, edges 14336
+  layered 1024x15, 20 edges/task          108      15360       1.4210   7.04e+05   start-span 21825.5 us (1.4210 us/task), mean ready->start 789.35 us, edges 286720
+##### v4m run 1
+== bench
+  case                                 blocks      tasks      us/task    tasks/s
+  independent noop                          2      65536       5.8477   1.71e+05
+  independent noop                          8      65536       1.7240    5.8e+05
+  independent noop                         32      65536       1.4879   6.72e+05
+  independent noop                        108      65536       1.4240   7.02e+05
+  independent noop                        324      65536       1.6153   6.19e+05
+  dependent chain (hop latency)             2       4000       7.5835   1.32e+05
+  dependent chain (hop latency)            32       4000       6.1745   1.62e+05
+  dependent chain (hop latency)           324       4000       7.7896   1.28e+05
+  fan-out 1 -> 8000 (pop rate)              2       8001       5.2435   1.91e+05   start-span 41951.2 us (5.2439 us/task), mean ready->start 20979.70 us, edges 8000
+  fan-in 8000 -> 1                          2       8001       6.1965   1.61e+05   start-span 49577.0 us (6.1971 us/task), mean ready->start 24683.06 us, edges 8000
+  layered 1024x15, 1 edges/task             2      15360       6.7881   1.47e+05   start-span 104263.7 us (6.7884 us/task), mean ready->start 6780.60 us, edges 14336
+  layered 1024x15, 20 edges/task            2      15360       6.2963   1.59e+05   start-span 96709.6 us (6.2966 us/task), mean ready->start 3498.78 us, edges 286720
+  fan-out 1 -> 8000 (pop rate)             32       8001       1.4659   6.82e+05   start-span 11727.9 us (1.4660 us/task), mean ready->start 5808.02 us, edges 8000
+  fan-in 8000 -> 1                         32       8001       1.4773   6.77e+05   start-span 11819.0 us (1.4774 us/task), mean ready->start 5846.15 us, edges 8000
+  layered 1024x15, 1 edges/task            32      15360       1.4759   6.78e+05   start-span 22669.3 us (1.4760 us/task), mean ready->start 1460.14 us, edges 14336
+  layered 1024x15, 20 edges/task           32      15360       1.4744   6.78e+05   start-span 22646.8 us (1.4745 us/task), mean ready->start 817.60 us, edges 286720
+  fan-out 1 -> 8000 (pop rate)            108       8001       1.4050   7.12e+05   start-span 11240.4 us (1.4051 us/task), mean ready->start 5558.90 us, edges 8000
+  fan-in 8000 -> 1                        108       8001       1.4222   7.03e+05   start-span 11377.7 us (1.4222 us/task), mean ready->start 5625.90 us, edges 8000
+  layered 1024x15, 1 edges/task           108      15360       1.4155   7.06e+05   start-span 21741.6 us (1.4156 us/task), mean ready->start 1400.44 us, edges 14336
+  layered 1024x15, 20 edges/task          108      15360       1.4225   7.03e+05   start-span 21848.1 us (1.4225 us/task), mean ready->start 788.64 us, edges 286720
+##### v3m run 2
+== bench
+  case                                 blocks      tasks      us/task    tasks/s
+  independent noop                          2      65536       5.7960   1.73e+05
+  independent noop                          8      65536       1.7246    5.8e+05
+  independent noop                         32      65536       1.4872   6.72e+05
+  independent noop                        108      65536       1.4228   7.03e+05
+  independent noop                        324      65536       1.6133    6.2e+05
+  dependent chain (hop latency)             2       4000       7.7320   1.29e+05
+  dependent chain (hop latency)            32       4000       6.3529   1.57e+05
+  dependent chain (hop latency)           324       4000       7.8536   1.27e+05
+  fan-out 1 -> 8000 (pop rate)              2       8001       5.2057   1.92e+05   start-span 41650.2 us (5.2063 us/task), mean ready->start 20821.92 us, edges 8000
+  fan-in 8000 -> 1                          2       8001       6.3403   1.58e+05   start-span 50727.9 us (6.3410 us/task), mean ready->start 25248.47 us, edges 8000
+  layered 1024x15, 1 edges/task             2      15360       6.8474   1.46e+05   start-span 105175.0 us (6.8478 us/task), mean ready->start 6845.24 us, edges 14336
+  layered 1024x15, 20 edges/task            2      15360       6.4091   1.56e+05   start-span 98443.3 us (6.4095 us/task), mean ready->start 3562.60 us, edges 286720
+  fan-out 1 -> 8000 (pop rate)             32       8001       1.4721   6.79e+05   start-span 11777.0 us (1.4721 us/task), mean ready->start 5826.79 us, edges 8000
+  fan-in 8000 -> 1                         32       8001       1.4790   6.76e+05   start-span 11832.3 us (1.4790 us/task), mean ready->start 5864.05 us, edges 8000
+  layered 1024x15, 1 edges/task            32      15360       1.4757   6.78e+05   start-span 22666.2 us (1.4758 us/task), mean ready->start 1458.86 us, edges 14336
+  layered 1024x15, 20 edges/task           32      15360       1.4753   6.78e+05   start-span 22659.1 us (1.4753 us/task), mean ready->start 818.89 us, edges 286720
+  fan-out 1 -> 8000 (pop rate)            108       8001       1.4030   7.13e+05   start-span 11224.1 us (1.4030 us/task), mean ready->start 5552.02 us, edges 8000
+  fan-in 8000 -> 1                        108       8001       1.4197   7.04e+05   start-span 11358.2 us (1.4198 us/task), mean ready->start 5621.30 us, edges 8000
+  layered 1024x15, 1 edges/task           108      15360       1.4129   7.08e+05   start-span 21701.6 us (1.4130 us/task), mean ready->start 1396.83 us, edges 14336
+  layered 1024x15, 20 edges/task          108      15360       1.4176   7.05e+05   start-span 21773.3 us (1.4176 us/task), mean ready->start 787.59 us, edges 286720
+##### v4m run 2
+== bench
+  case                                 blocks      tasks      us/task    tasks/s
+  independent noop                          2      65536       5.8494   1.71e+05
+  independent noop                          8      65536       1.7244    5.8e+05
+  independent noop                         32      65536       1.4857   6.73e+05
+  independent noop                        108      65536       1.4225   7.03e+05
+  independent noop                        324      65536       1.6143   6.19e+05
+  dependent chain (hop latency)             2       4000       7.5648   1.32e+05
+  dependent chain (hop latency)            32       4000       6.1606   1.62e+05
+  dependent chain (hop latency)           324       4000       7.7414   1.29e+05
+  fan-out 1 -> 8000 (pop rate)              2       8001       5.2408   1.91e+05   start-span 41929.7 us (5.2412 us/task), mean ready->start 20958.16 us, edges 8000
+  fan-in 8000 -> 1                          2       8001       6.1944   1.61e+05   start-span 49560.6 us (6.1951 us/task), mean ready->start 24676.56 us, edges 8000
+  layered 1024x15, 1 edges/task             2      15360       6.7871   1.47e+05   start-span 104249.3 us (6.7875 us/task), mean ready->start 6780.17 us, edges 14336
+  layered 1024x15, 20 edges/task            2      15360       6.2932   1.59e+05   start-span 96662.5 us (6.2935 us/task), mean ready->start 3495.13 us, edges 286720
+  fan-out 1 -> 8000 (pop rate)             32       8001       1.4672   6.82e+05   start-span 11738.1 us (1.4673 us/task), mean ready->start 5816.83 us, edges 8000
+  fan-in 8000 -> 1                         32       8001       1.4754   6.78e+05   start-span 11803.6 us (1.4755 us/task), mean ready->start 5838.24 us, edges 8000
+  layered 1024x15, 1 edges/task            32      15360       1.4747   6.78e+05   start-span 22649.9 us (1.4747 us/task), mean ready->start 1458.33 us, edges 14336
+  layered 1024x15, 20 edges/task           32      15360       1.4737   6.79e+05   start-span 22634.5 us (1.4737 us/task), mean ready->start 815.70 us, edges 286720
+  fan-out 1 -> 8000 (pop rate)            108       8001       1.4117   7.08e+05   start-span 11293.7 us (1.4117 us/task), mean ready->start 5603.32 us, edges 8000
+  fan-in 8000 -> 1                        108       8001       1.4243   7.02e+05   start-span 11395.1 us (1.4244 us/task), mean ready->start 5638.07 us, edges 8000
+  layered 1024x15, 1 edges/task           108      15360       1.4147   7.07e+05   start-span 21729.3 us (1.4148 us/task), mean ready->start 1398.80 us, edges 14336
+  layered 1024x15, 20 edges/task          108      15360       1.4185   7.05e+05   start-span 21787.6 us (1.4186 us/task), mean ready->start 786.34 us, edges 286720
+##### v3m run 3
+== bench
+  case                                 blocks      tasks      us/task    tasks/s
+  independent noop                          2      65536       5.7978   1.72e+05
+  independent noop                          8      65536       1.7151   5.83e+05
+  independent noop                         32      65536       1.4887   6.72e+05
+  independent noop                        108      65536       1.4240   7.02e+05
+  independent noop                        324      65536       1.6073   6.22e+05
+  dependent chain (hop latency)             2       4000       7.7263   1.29e+05
+  dependent chain (hop latency)            32       4000       6.3585   1.57e+05
+  dependent chain (hop latency)           324       4000       7.8403   1.28e+05
+  fan-out 1 -> 8000 (pop rate)              2       8001       5.2074   1.92e+05   start-span 41662.5 us (5.2078 us/task), mean ready->start 20830.76 us, edges 8000
+  fan-in 8000 -> 1                          2       8001       6.3373   1.58e+05   start-span 50703.4 us (6.3379 us/task), mean ready->start 25235.96 us, edges 8000
+  layered 1024x15, 1 edges/task             2      15360       6.8519   1.46e+05   start-span 105244.7 us (6.8523 us/task), mean ready->start 6847.10 us, edges 14336
+  layered 1024x15, 20 edges/task            2      15360       6.4018   1.56e+05   start-span 98330.6 us (6.4022 us/task), mean ready->start 3556.17 us, edges 286720
+  fan-out 1 -> 8000 (pop rate)             32       8001       1.4680   6.81e+05   start-span 11744.3 us (1.4680 us/task), mean ready->start 5819.87 us, edges 8000
+  fan-in 8000 -> 1                         32       8001       1.4838   6.74e+05   start-span 11871.2 us (1.4839 us/task), mean ready->start 5875.55 us, edges 8000
+  layered 1024x15, 1 edges/task            32      15360       1.4763   6.77e+05   start-span 22674.4 us (1.4763 us/task), mean ready->start 1460.54 us, edges 14336
+  layered 1024x15, 20 edges/task           32      15360       1.4778   6.77e+05   start-span 22698.0 us (1.4778 us/task), mean ready->start 820.54 us, edges 286720
+  fan-out 1 -> 8000 (pop rate)            108       8001       1.4048   7.12e+05   start-span 11238.4 us (1.4048 us/task), mean ready->start 5561.56 us, edges 8000
+  fan-in 8000 -> 1                        108       8001       1.4222   7.03e+05   start-span 11377.7 us (1.4222 us/task), mean ready->start 5625.24 us, edges 8000
+  layered 1024x15, 1 edges/task           108      15360       1.4127   7.08e+05   start-span 21698.6 us (1.4128 us/task), mean ready->start 1395.86 us, edges 14336
+  layered 1024x15, 20 edges/task          108      15360       1.4188   7.05e+05   start-span 21791.7 us (1.4188 us/task), mean ready->start 786.10 us, edges 286720
+##### v4m run 3
+== bench
+  case                                 blocks      tasks      us/task    tasks/s
+  independent noop                          2      65536       5.8454   1.71e+05
+  independent noop                          8      65536       1.7264   5.79e+05
+  independent noop                         32      65536       1.4848   6.73e+05
+  independent noop                        108      65536       1.4247   7.02e+05
+  independent noop                        324      65536       1.6155   6.19e+05
+  dependent chain (hop latency)             2       4000       7.5610   1.32e+05
+  dependent chain (hop latency)            32       4000       6.1627   1.62e+05
+  dependent chain (hop latency)           324       4000       7.7701   1.29e+05
+  fan-out 1 -> 8000 (pop rate)              2       8001       5.2399   1.91e+05   start-span 41923.6 us (5.2404 us/task), mean ready->start 20959.83 us, edges 8000
+  fan-in 8000 -> 1                          2       8001       6.1920   1.61e+05   start-span 49540.1 us (6.1925 us/task), mean ready->start 24665.42 us, edges 8000
+  layered 1024x15, 1 edges/task             2      15360       6.7859   1.47e+05   start-span 104229.9 us (6.7862 us/task), mean ready->start 6780.89 us, edges 14336
+  layered 1024x15, 20 edges/task            2      15360       6.2915   1.59e+05   start-span 96636.9 us (6.2919 us/task), mean ready->start 3491.35 us, edges 286720
+  fan-out 1 -> 8000 (pop rate)             32       8001       1.4695    6.8e+05   start-span 11756.5 us (1.4696 us/task), mean ready->start 5823.10 us, edges 8000
+  fan-in 8000 -> 1                         32       8001       1.4774   6.77e+05   start-span 11820.0 us (1.4775 us/task), mean ready->start 5853.07 us, edges 8000
+  layered 1024x15, 1 edges/task            32      15360       1.4765   6.77e+05   start-span 22678.5 us (1.4766 us/task), mean ready->start 1458.87 us, edges 14336
+  layered 1024x15, 20 edges/task           32      15360       1.4757   6.78e+05   start-span 22665.2 us (1.4757 us/task), mean ready->start 819.27 us, edges 286720
+  fan-out 1 -> 8000 (pop rate)            108       8001       1.4063   7.11e+05   start-span 11250.7 us (1.4063 us/task), mean ready->start 5573.44 us, edges 8000
+  fan-in 8000 -> 1                        108       8001       1.4231   7.03e+05   start-span 11384.8 us (1.4231 us/task), mean ready->start 5615.33 us, edges 8000
+  layered 1024x15, 1 edges/task           108      15360       1.4135   7.07e+05   start-span 21710.8 us (1.4136 us/task), mean ready->start 1397.81 us, edges 14336
+  layered 1024x15, 20 edges/task          108      15360       1.4196   7.04e+05   start-span 21804.0 us (1.4196 us/task), mean ready->start 788.41 us, edges 286720

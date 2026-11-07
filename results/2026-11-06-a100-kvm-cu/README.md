@@ -18,7 +18,7 @@ What changed and why (from the KSTAGE profile in `diag2`: ~35k cycles per step a
 
 Caveats, honest:
 - The VM now uses fp16 operands while the torch variants use TF32. A torch fp16/bf16-autocast variant is NOT yet in the table; it could narrow the gap, so treat the 1.22x at R=32 as provisional until that baseline exists. Numerics: the VM's loss tracks the fp32 CPU reference to 2e-5 relative over the first 20 steps and the 300-step loss curves agree to the printed digits.
-- Floors at R=32 per step-run: 6*128*128*256*... = ~37.7 MFLOP (fwd 2*B*(D*H+H*O)=... total fwd+bwd about 0.0377 GFLOP) per run-step, i.e. 0.24 us at the 156 TFLOP/s TF32 peak (0.12 us at fp16 peak); bytes ~0.2 MB/run-step at 1.5 TB/s = 0.13 us. The VM is at 1.65 us: still ~7-14x above the tensor-core floor, limited by in-block shared-memory traffic and latency, not by hops (the hop is ~1 us once per step and overlaps other runs).
+- Floors at R=32 per step-run: 37.7 MFLOP per run-step (fwd 2*B*(D*H+H*O) = 12.6 MFLOP, bwd twice that), i.e. 0.24 us at the 156 TFLOP/s TF32 peak (0.12 us at fp16 peak); bytes ~0.2 MB/run-step at 1.5 TB/s = 0.13 us. The VM is at 1.65 us: still ~7-14x above the tensor-core floor, limited by in-block shared-memory traffic and latency, not by hops (the hop is ~1 us once per step and overlaps other runs).
 - fused16 only for B=128 D=128 H=256 O=64 (compile-time geometry), 8 slices.
 - Not done: lane-level bank-conflict profile, mma.sync/ldmatrix direct path, larger-k per-run fusion, torch fp16 baseline, an RTX 5070 rerun.
 

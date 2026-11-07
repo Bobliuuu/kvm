@@ -1,0 +1,87 @@
+
+=== 2026-11-07T06:58:34Z  environment
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 40960 MiB
+commit: 7a758c7
+
+=== 2026-11-07T06:58:34Z  Doom engine objects + WAD
+[doom 06:58:34] INFO  fetching doomgeneric e257a09527062bfb986b6e5e0780839b6cbd5b71
+[doom 06:58:35] DEBUG downloading https://github.com/Akbar30Bill/DOOM_wads/raw/master/doom1.wad
+[doom 06:58:36] INFO  WAD fetched and verified
+[doom 06:58:36] INFO  building doom_dev.o for sm_80 with Ubuntu clang version 14.0.0-1ubuntu1.1, Build cuda_12.8.r12.8/compiler.35583870_0
+[doom 06:58:36] DEBUG compiling 80 engine files + glue with 16 jobs
+[doom 06:58:37] DEBUG linking 85 bitcode modules
+widened 15 i1 globals to i8, 171 loads/stores rewritten
+variadic functions: ['I_Error', 'M_StringJoin', 'M_snprintf', 'fprintf', 'fscanf', 'printf', 'snprintf', 'sprintf', 'sscanf']
+[doom 06:58:56] INFO  built /src/doom/build/doom_dev.o (1308552 bytes, sm_80)
+[doom 06:58:56] INFO  building libdoom_cpu.so
+[doom 06:59:04] INFO  built /src/doom/build/libdoom_cpu.so
+-rw-r--r-- 1 root root 1308552 Nov  7 06:58 doom/build/doom_dev.o
+-rw-r--r-- 1 root root 4196020 Nov  7 06:58 doom/third_party/doom1.wad
+
+=== 2026-11-07T06:59:04Z  build kvm_run
+/usr/local/cuda/bin/nvcc -O3 -arch=sm_80 -std=c++17 -rdc=true -DKVM_WITH_GAME -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 demo/kvm_run.cu doom/build/doom_dev.o -o demo/kvm_run
+
+=== 2026-11-07T07:22:21Z  CPU oracle for Doom (700 frames)
+
+=== 2026-11-07T07:22:21Z  generate demo: {"name":"gpt_162m","vocab":50304,"d_model":768,"layers":12,"heads":12,"seq":1024,"batch":4,"precision":"bf16s"}, 6 steps in windows of 1, a request every 2, 700 frames, tiling a100, precise=0
+INFO wrote bundle to ../runs/combined-large/demo/bundles/serve_s6
+INFO bundle serve_s6: 8805 tasks, 49430 edges (base {'weights': 12})
+INFO demo: {'train': (58635, 481521), 'serve_s0': (8805, 49430), 'serve_s2': (8805, 49430), 'serve_s4': (8805, 49430), 'serve_s6': (8805, 49430), 'game': (5600, 16088)}
+INFO manifest: 11 admissions, 2301 buffers (196 shared) -> ../runs/combined-large/demo/MANIFEST.json
+
+=== 2026-11-07T07:22:41Z  CPU-only manifest check (parse, version flow, every bundle loads/remaps/validates)
+[kvm_exec][D] bundle train_w5        58635 tasks (precompiled)
+[kvm_exec][D] bundle serve_s6         8805 tasks (precompiled)
+[kvm_exec][I] check-only: 11 bundles load, remap and validate
+[kvm_exec][I] check-only: manifest, bundles and version flow are consistent
+
+=== 2026-11-07T07:22:41Z  golden skipped (pure-Python CPU VM cannot run this model)
+
+=== 2026-11-07T07:22:41Z  GPU: one lock hold (900 s max wait)
+lock acquired 2026-11-07T07:22:41Z
+kvm_run exit 0
+lock released 2026-11-07T07:22:49Z
+[kvm_exec][I] version check: 22935 version-carrying tasks (22935 exact), 0 violations, 0 at_least readers saw the version advance while they ran; 7645 reads of version 0 carry no tag (ordered by the host barrier only)
+[kvm_exec][I] workload 0: 351810 tasks, 51.360 CTA-s, queue wait p50 144.4 p99 3733.5 max 5588.0 us, 0 deadline misses, 29.75 GB moved (5.8 GB/s over the run)
+[kvm_exec][I] workload 1: 35220 tasks, 1.011 CTA-s, queue wait p50 31.7 p99 1260.5 max 1309.7 us, 35220 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] workload 2: 5600 tasks, 4.430 CTA-s, queue wait p50 13.3 p99 22.5 max 123.9 us, 56 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] trace: 392630 tasks -> runs/combined-large/out/trace.csv
+[kvm_exec][I] dumped 701 buffers to runs/combined-large/out/buffers
+[kvm_exec][I] wrote runs/combined-large/out/run.json
+OK: 392630/392630 tasks, 5157.633 ms, 11 admissions
+
+=== 2026-11-07T07:22:49Z  verify
+PASS  executor: 392630/392630 tasks in 5157.6 ms on NVIDIA A100-SXM4-40GB (108 SMs, grid 108), sched dynamic, err_code 0
+PASS  versions: 22935 version-carrying tasks checked against the device trace (22935 exact), 0 violations; 0 at_least readers saw the version advance while running
+PASS  training: 6 step losses, first 10.9790 -> last 10.9234 (mean of first/last 1: 10.9790 -> 10.9234, falls); no CPU golden at this size
+SKIP  serving: no golden decode (--no-golden); coherence is covered by the version check
+PASS  game: compared 700 frames: raw-identical 700/700, fingerprint-identical 700/700, state-identical 700/700; final cand {'booted': 1, 'tics': 700, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 3, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 2458, 'y': -2679, 'waypoint': 17}
+PASS  cadence: 700 ticks: 164.9 frames/s (35 needed), tick gap p50/p99/max 5.97/13.40/14.48 ms, 0 of 698 gaps over 28.57 ms; tick run p50 5.76 ms, queue wait p99 15 us; boot tick 182855 us; 7 ticks past their absolute deadline (frames before the boot finishes are late by construction)
+INFO  overlap: Doom ran 4.42 s; game: 4900 tasks, 4.428 CTA-s (4.428 while Doom ran, 4894 tasks overlapping); serve: 34652 tasks, 1.009 CTA-s (0.756 while Doom ran, 25989 tasks overlapping); train: 349212 tasks, 51.351 CTA-s (34.252 while Doom ran, 232808 tasks overlapping)
+ALL CHECKS PASSED (SKIPs are listed above)
+remote_demo exit 0
+runs/combined-large:
+total 12
+drwxr-xr-x 1 root root  200 Nov  7 07:22 .
+drwxr-xr-x 1 root root   60 Nov  7 06:58 ..
+-rw-r--r-- 1 root root 1443 Nov  7 07:22 check.log
+-rw-r--r-- 1 root root  931 Nov  7 07:22 check_only.log
+drwxr-xr-x 1 root root  100 Nov  7 07:22 demo
+-rw-r--r-- 1 root root  944 Nov  7 07:22 gpu.sh
+-rw-r--r-- 1 root root 4697 Nov  7 07:22 kvm_run.log
+drwxr-xr-x 1 root root   80 Nov  7 07:22 oracle
+drwxr-xr-x 1 root root  140 Nov  7 07:22 out
+-rw-r--r-- 1 root root 2624 Nov  7 07:22 report.json
+
+runs/combined-large/out:
+total 44362
+drwxr-xr-x 1 root root      140 Nov  7 07:22 .
+drwxr-xr-x 1 root root      200 Nov  7 07:22 ..
+drwxr-xr-x 1 root root    14080 Nov  7 07:22 buffers
+drwxr-xr-x 1 root root       80 Nov  7 07:22 doom_candidate
+-rw-r--r-- 1 root root     1699 Nov  7 07:22 observations.jsonl
+-rw-r--r-- 1 root root     2451 Nov  7 07:22 run.json
+-rw-r--r-- 1 root root 45421235 Nov  7 07:22 trace.csv
+wrote /logs/combined-demo/trace_compact.npz 1467890 bytes, 392630 tasks
+finished

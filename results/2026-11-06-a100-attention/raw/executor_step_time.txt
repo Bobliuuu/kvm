@@ -1,0 +1,30 @@
+== base round 1 00:26:26
+rep 1/3: 1054.6 ms (1054.59 ms/step), wall 2.6 s
+rep 2/3: 1045.8 ms (1045.84 ms/step), wall 2.4 s
+rep 3/3: 1050.7 ms (1050.66 ms/step), wall 2.4 s
+executor: best 1045839 us/step  median 1050662  worst 1054587
+== final round 1 00:26:33
+rep 1/3: 994.1 ms (994.11 ms/step), wall 2.6 s
+rep 2/3: 989.6 ms (989.57 ms/step), wall 2.5 s
+rep 3/3: 921.4 ms (921.43 ms/step), wall 2.3 s
+executor: best 921426 us/step  median 989567  worst 994105
+== base round 2 00:26:41
+rep 1/3: 1052.0 ms (1052.02 ms/step), wall 2.3 s
+rep 2/3: 1046.6 ms (1046.61 ms/step), wall 2.3 s
+rep 3/3: 1047.6 ms (1047.58 ms/step), wall 2.4 s
+executor: best 1046614 us/step  median 1047581  worst 1052024
+== final round 2 00:26:48
+rep 1/3: 917.2 ms (917.19 ms/step), wall 2.2 s
+rep 2/3: 905.7 ms (905.66 ms/step), wall 2.2 s
+rep 3/3: 909.8 ms (909.80 ms/step), wall 2.2 s
+executor: best 905664 us/step  median 909797  worst 917194
+== base round 3 00:26:54
+rep 1/3: 1048.4 ms (1048.35 ms/step), wall 2.4 s
+rep 2/3: 1047.9 ms (1047.90 ms/step), wall 2.3 s
+rep 3/3: 1054.3 ms (1054.29 ms/step), wall 2.4 s
+executor: best 1047905 us/step  median 1048354  worst 1054293
+== final round 3 00:27:01
+rep 1/3: 906.6 ms (906.56 ms/step), wall 2.1 s
+rep 2/3: 910.8 ms (910.85 ms/step), wall 2.2 s
+rep 3/3: 905.3 ms (905.29 ms/step), wall 2.2 s
+executor: best 905288 us/step  median 906557  worst 910849

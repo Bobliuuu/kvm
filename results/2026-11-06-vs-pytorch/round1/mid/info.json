@@ -1,0 +1,28 @@
+{
+ "model": {
+  "name": "gpt_mid",
+  "vocab": 512,
+  "d_model": 256,
+  "layers": 4,
+  "heads": 4,
+  "seq": 128,
+  "batch": 8,
+  "ffn_mult": 4,
+  "norm": "layernorm",
+  "bias": true,
+  "init_std": 0.02,
+  "rope_theta": 10000.0,
+  "seed": 0
+ },
+ "steps": 20,
+ "mode": "tf32",
+ "tiling": "a100",
+ "fuse": false,
+ "params": 3421696,
+ "tasks": 155052,
+ "logical_ops": 4460,
+ "logical_depth": 1642,
+ "flops_per_step": 21072183296.0,
+ "min_bytes_per_step": 283668480,
+ "tokens_per_step": 1024
+}

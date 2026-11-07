@@ -82,10 +82,13 @@ an under-declared region shows up as a result change between program order and r
   field (`rows`, `ew_rows`, `cols`, `vocab`, `opt_elems`); presets `cpu`, `a100`, `b200`.
 * A task declares the rectangles it reads and writes (`lower.py`). `dataflow.py` keeps, per buffer, the last writer and the readers
   since, as disjoint rectangles (partial overwrites split them), so edges are exact for the declared regions and do not grow with
-  history. RAW, WAR and WAW all become edges; there are no hand-written edges. When the same large predecessor set (>= 32
-  tasks) is needed twice (e.g. 50k logits-GEMM tiles that read the LM-head weights, then 590 optimizer chunks that overwrite
-  it) a no-op `join` task is inserted, turning R x W edges into R + W (it costs one dependency hop). Fuzz-tested against the
-  naive all-pairs hazard set.
+  history. RAW, WAR and WAW all become edges; there are no hand-written edges. A predecessor
+  group of at least `Tiling.join_min` tasks (32 by default, 8 in the `a100`/`b200` presets) that a second task needs gets a no-op
+  `join` task (e.g. the 64 logits-GEMM tiles that read one LM-head weight column, then the optimizer chunks that overwrite it),
+  turning R x W edges into R + W at the cost of one dependency hop. Large groups are joined one by one; a predecessor set that is
+  still large and needed twice is joined again as a whole (a join of joins); equal sets share one join; a join that ends with
+  at most one consumer is spliced out. On the 162M step (1 step, `a100`) this takes 318,139 tasks / 6,889,225 edges to 315,170 /
+  4,613,631 (`results/2026-11-06-a100-fusion`). Fuzz-tested against the naive all-pairs hazard set.
 * Fusion is the device ops' own: bias, GELU (with the pre-activation kept for backward) and the residual add run in the
   `matmul_tile` epilogue. A residual connection carries one gradient buffer through the network (`res` forwards the output
   gradient; later contributions accumulate in place with `acc`).

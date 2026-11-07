@@ -228,9 +228,11 @@ static void t_rope() {
 }
 
 // ---- attention --------------------------------------------------------------------------------------------------------
-struct AttnCfg { int B, T, H, Hkv, hd; };
+static const double kT1Abs = 1e-4;   // absolute bound of the T=1 attention backward (dq, dk are 0 mathematically)
+static double g_t1_noise = 0;        // largest |dq|, |dk| seen in T=1 cases (their exact value is 0)
+struct AttnCfg { int B, T, H, Hkv, hd, seed = 0; };   // tasks tile the rows in steps of KVM_GPT_ATTN_ROWS (overlapping tasks would race on the shared output rows)
 static void attn_case(AttnCfg c) {
-    Rng r(61 + c.hd + c.T);
+    Rng r(61 + c.hd + c.T + 7919 * c.seed);
     int B = c.B, T = c.T, H = c.H, Hkv = c.Hkv, hd = c.hd, R = B * T;
     double scale = 1.0 / sqrt((double)hd);
     int smem = kvm_gpt_smem_bytes(hd);
@@ -243,7 +245,7 @@ static void attn_case(AttnCfg c) {
     for (auto& x : hq) x *= 1.5f;
     dv.up(q, hq); dv.up(k, hk); dv.up(v, hv); dv.up(dO, hdo);
     Batch b;
-    for (int bb = 0; bb < B; bb++) for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += 32)
+    for (int bb = 0; bb < B; bb++) for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += KVM_GPT_ATTN_ROWS)
         b.add(OP_attn_fwd, A().b(q).b(k).b(v).b(o).b(lse).i(bb).i(h).i(q0).i(T).i(H).i(Hkv).i(hd).f((float)scale));
     int e = run(dv, b, smem);
     D ro, rl, rdq, rdk, rdv;
@@ -255,13 +257,18 @@ static void attn_case(AttnCfg c) {
     e |= run(dv, b2, smem);
     Batch b3;
     for (int bb = 0; bb < B; bb++) {
-        for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += 32)
+        for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += KVM_GPT_ATTN_ROWS)
             b3.add(OP_attn_bwd_dq, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dq).i(bb).i(h).i(q0).i(T).i(H).i(Hkv).i(hd).f((float)scale));
-        for (int h = 0; h < Hkv; h++) for (int k0 = 0; k0 < T; k0 += 32)
+        for (int h = 0; h < Hkv; h++) for (int k0 = 0; k0 < T; k0 += KVM_GPT_ATTN_ROWS)
             b3.add(OP_attn_bwd_dkv, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dk).b(dvv).i(bb).i(h).i(k0).i(T).i(H).i(hd).f((float)scale));
     }
     e |= run(dv, b3, smem);
-    double fl = T == 1 ? 1.0 : 1e-30;   // T=1: dq, dk are exactly 0 mathematically (dP - delta cancels); only rounding noise remains, so the bound is absolute
+    // T=1: dq and dk are exactly 0 mathematically (p = 1, o = v, so dP - delta = dO.V - dO.O cancels) and only rounding noise remains:
+    // dP comes from a 3xTF32 product (relative error ~2^-22 per term, hd terms) and delta from an fp32 dot, so |dP - delta| is up to
+    // ~hd * 2^-22 * max|dO v| and dk = scale * (dP - delta) * q. That is not relative to anything, hence an absolute bound (kT1Abs).
+    // Measured max over the 64-seed sweep below: see its verdict line. The old 3e-5 left only 2x margin at hd=64.
+    const double fl = T == 1 ? kT1Abs / 3e-5 : 1e-30;   // relerr divides by max(|ref|, fl): fl scales the 3e-5 tolerance to kT1Abs
+    if (T == 1) for (const auto* g : {&dq, &dk}) { auto got = dv.down(*g); for (float x : got) g_t1_noise = std::max(g_t1_noise, (double)fabsf(x)); }
     check(std::string(nm) + " bwd dq", dv.down(dq), rdq, 3e-5, fl);
     check(std::string(nm) + " bwd dk", dv.down(dk), rdk, 3e-5, fl);
     check(std::string(nm) + " bwd dv", dv.down(dvv), rdv, 3e-5);
@@ -270,8 +277,16 @@ static void attn_case(AttnCfg c) {
     check_true(std::string(nm) + " err==0", e == 0);
 }
 static void t_attention() {
-    for (AttnCfg c : {AttnCfg{2, 1, 2, 2, 16}, AttnCfg{1, 2, 2, 2, 16}, AttnCfg{2, 37, 4, 2, 32}, AttnCfg{1, 100, 4, 1, 64}, AttnCfg{1, 70, 2, 2, 128}, AttnCfg{2, 32, 2, 2, 16}, AttnCfg{1, 65, 4, 4, 32}, AttnCfg{2, 70, 16, 4, 64}})
+    for (AttnCfg c : {AttnCfg{2, 1, 2, 2, 16}, AttnCfg{1, 2, 2, 2, 16}, AttnCfg{2, 37, 4, 2, 32}, AttnCfg{1, 100, 4, 1, 64}, AttnCfg{1, 70, 2, 2, 128}, AttnCfg{2, 32, 2, 2, 16}, AttnCfg{1, 65, 4, 4, 32}, AttnCfg{2, 70, 16, 4, 64},
+                      AttnCfg{2, 1, 4, 2, 64}, AttnCfg{1, 1, 2, 1, 128}, AttnCfg{1, 300, 4, 2, 64}, AttnCfg{2, 257, 2, 1, 32}, AttnCfg{1, 129, 2, 2, 128}})   // multi-block, partial last block, GQA 2:1
         attn_case(c);
+    {   // T=1 noise sweep: many draws per head size; every dq/dk element must stay inside kT1Abs
+        g_t1_noise = 0; g_quiet = true; int f0 = g_fail;
+        for (int sd = 1; sd <= 64; sd++) for (int hd : {16, 32, 64, 128}) attn_case(AttnCfg{1, 1, 4, 2, hd, sd});
+        g_quiet = false;
+        char d[96]; snprintf(d, sizeof d, "max |dq|,|dk| %.2e (bound %.0e)", g_t1_noise, kT1Abs);
+        check_true("attn T=1 backward noise sweep (64 seeds x hd 16/32/64/128)", g_fail == f0 && g_t1_noise < kT1Abs, d);
+    }
     for (int T : {2, 3, 15, 31, 33, 63, 95, 97}) attn_case(AttnCfg{1, T, 2, 1, 32});   // prefill with a clipped final partial q block
     {   // reference self-check: analytic CPU backward vs central finite differences of the CPU forward
         int B = 1, T = 5, H = 2, Hkv = 1, hd = 4; Rng r(7); double sc = 0.5;
@@ -525,7 +540,8 @@ int main(int argc, char** argv) {
     if (argc > 2 && !strcmp(argv[1], "--emit-vectors")) g_vec = fopen(argv[2], "w");
     cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0));
     printf("device: %s, %d SMs, cc %d.%d\n", pr.name, pr.multiProcessorCount, pr.major, pr.minor);
-    t_philox(); t_embedding(); t_matmul(); t_norms(); t_elementwise(); t_rope(); t_attention(); t_decode(); t_ce(); t_adamw(); t_sample(); t_batch(); t_errors();
+    if (getenv("TEST_ONLY") && !strcmp(getenv("TEST_ONLY"), "attention")) t_attention();   // TEST_ONLY=attention: the attention cases alone (sanitizer runs)
+    else { t_philox(); t_embedding(); t_matmul(); t_norms(); t_elementwise(); t_rope(); t_attention(); t_decode(); t_ce(); t_adamw(); t_sample(); t_batch(); t_errors(); }
     if (g_vec) fclose(g_vec);
     printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;

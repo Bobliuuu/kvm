@@ -1,0 +1,6 @@
+precise: 85 f32 buffers (1 signal-free skipped: ['version_token']), 3 loss buffers
+  worst: act62 1.27e-06, act52 1.16e-06, act20 1.12e-06, act56 8.87e-07
+  ok   every per-step loss rel err <= 1e-05: worst 4.78e-07
+  ok   all buffers rel L2 <= 0.001: worst act62 1.27e-06
+  ok   no NaN/Inf in any GPU buffer: []
+PASS

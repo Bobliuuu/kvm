@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""Is a weight divergence between a GPU run and its CPU golden a defect, or AdamW amplifying gradient noise?
+"""Is a weight divergence between a GPU run and its CPU golden a defect, or AdamW pushing the gradients' rounding difference through its normalised step?
 
-  adam_amplification.py CASE_DIR [--steps-from-meta] [--seed 0] [--json OUT]
+  adam_amplification.py CASE_DIR [--json OUT]
 
-CASE_DIR holds workload.json, meta.json, bundle/{metadata,golden}.json and dump.txt (kvm_exec --dump-buffers) of a zoo case with `reuse none`, so
-the raw gradient buffer of every step survives in BOTH the golden and the dump. The test replays AdamW in float64 from the common initial weights:
+CASE_DIR: workload.json, meta.json, bundle/{metadata,golden}.json, dump.txt (kvm_exec --dump-buffers) of a zoo case compiled with `reuse none`, so the raw
+gradient buffer of every step survives in BOTH the golden and the dump. The optimizer is replayed in float64 from the common initial weights, with the
+hyper-parameters, learning-rate schedule, loss scale and global-norm clip read from the workload's own tasks:
 
-  1. replay(golden gradients) must reproduce the golden's final weights (validates the replay: AdamW, clip coefficient, loss scale, schedule-free lr);
-  2. replay(GPU gradients)    = what the optimizer does with the GPU's own gradients. If it reproduces the GPU's final weights, the optimizer ran correctly
-     and the whole weight divergence is the gradients' (rounding) difference pushed through AdamW;
-  3. control: replay(golden gradients x (1 + eps * N(0,1))) with eps = the measured per-tensor relative gradient difference between GPU and golden: the same
-     spread appearing from pure synthetic noise at that level shows the divergence is amplification, not a systematic error.
-
-Reports the weight relative L2 (per tensor, worst) for each. Relative L2 of the weights is the metric of examples/models/check.py (`weights rel L2`).
+  replay_golden_vs_golden   replay(golden gradients) against the golden's final weights: validates the replay itself (~1e-7: float32 vs float64)
+  replay_gpu_vs_gpu         replay(GPU gradients)    against the GPU's final weights: the optimizer ran correctly on whatever gradients it was given.
+                            This is a sharp check (check.py gates on it); it does not depend on gradient noise.
+  gpu_vs_golden             what check.py's `weights rel L2` measures
+  grad_diff_by_step         relative L2 difference of the two runs' raw gradients, worst tensor, per step
+  step2_*                   (>= 2 steps) the exact float64 gradient of step 2's batch at the two replayed step-1 weight sets: the part of the step-2 gradient
+                            difference that the step-1 weight difference alone explains, against what was observed.
 """
 import argparse
 import json
@@ -24,94 +25,134 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tests' / 'gptdiff'))
+sys.path.insert(0, str(ROOT / 'examples' / 'models'))
 from golden_check import read_dump  # noqa: E402
-
-LR, B1, B2, EPS, WD = 3e-3, 0.9, 0.95, 1e-8, 0.01
-
-
-def grads_of(spec, steps):
-    """step -> {param: gradient buffer name}; the adamw tasks of that step."""
-    out = [dict() for _ in range(steps)]
-    for t in spec['graphs'][0]['tasks']:
-        if t['op'] in ('adamw', 'adamw_lr') and t['id'].startswith('s'):
-            s = int(t['id'].split('/')[0][1:])
-            out[s][t['args']['p'][2:]] = t['args']['g']
-    return out
-
-
-def replay(w0, g_steps, decay, loss_scale, max_norm):
-    """float64 AdamW with the executor's global-norm clip: gs = min(1, max_norm/(|g|+1e-6)) / loss_scale (max_norm = loss_scale * 1.0)."""
-    w = {n: v.copy() for n, v in w0.items()}
-    m = {n: np.zeros_like(v) for n, v in w0.items()}
-    v = {n: np.zeros_like(x) for n, x in w0.items()}
-    for t, g in enumerate(g_steps, 1):
-        norm = math.sqrt(sum(float((x ** 2).sum()) for x in g.values()))
-        gs = min(1.0, max_norm / (norm + 1e-6)) / loss_scale
-        c1, c2 = 1 - B1 ** t, 1 - B2 ** t
-        for n, x in g.items():
-            x = x * gs
-            m[n] = B1 * m[n] + (1 - B1) * x
-            v[n] = B2 * v[n] + (1 - B2) * x * x
-            w[n] = w[n] - LR * (WD if decay[n] else 0.0) * w[n] - LR * (m[n] / c1) / (np.sqrt(v[n] / c2) + EPS)
-    return w
 
 
 def rel(a, b):
     return float(np.linalg.norm(a - b) / max(np.linalg.norm(b), 1e-300))
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('case')
-    ap.add_argument('--loss-scale', type=float, default=1024.0)
-    ap.add_argument('--seed', type=int, default=0)
-    ap.add_argument('--trials', type=int, default=5)
-    ap.add_argument('--json')
-    a = ap.parse_args()
-    d = Path(a.case)
-    spec = json.loads((d / 'workload.json').read_text())
-    meta = json.loads((d / 'bundle/metadata.json').read_text())
-    info = json.loads((d / 'meta.json').read_text())
-    gold = json.loads((d / 'bundle/golden.json').read_text())['buffers']
-    gpu = read_dump(d / 'dump.txt', [b['name'] for b in meta['buffers']])
-    steps = info['steps']
-    names = grads_of(spec, steps)
-    params = list(names[0])
-    # initial weights: the workload's init is seeded/fill; recover them by replaying nothing: use the kvmfe initializer
+class Optimizer:
+    """AdamW exactly as the executor's tasks declare it (read from the workload)."""
+
+    def __init__(self, spec, steps):
+        tasks = spec['graphs'][0]['tasks']
+        self.grad = [dict() for _ in range(steps)]          # step -> param -> gradient buffer
+        self.hp, self.wd, self.sched, self.lr = None, {}, None, None
+        self.max_norm, self.loss_scale = 0.0, 1.0
+        for t in tasks:
+            a = t.get('args', {})
+            if t['op'] in ('adamw', 'adamw_lr'):
+                self.grad[int(t['id'].split('/')[0][1:])][a['p'][2:]] = a['g']
+                self.hp = dict(b1=a['b1'], b2=a['b2'], eps=a['eps'])
+                self.wd[a['p'][2:]] = a['wd']
+                if 'lr' in a and not isinstance(a['lr'], str):
+                    self.lr = a['lr']
+            elif t['op'] == 'lr_schedule':
+                self.sched = a
+            elif t['op'] == 'gradnorm_finish':
+                self.max_norm = a['max_norm']
+            elif t['op'] == 'scale_flat' and a['out'] == 'clip_coef':
+                self.loss_scale = 1.0 / a['alpha']
+
+    def lr_at(self, t):
+        if self.sched is None:
+            return self.lr
+        s = self.sched
+        warm = t / s['warmup'] if s['warmup'] > 0 and t <= s['warmup'] else 1.0
+        prog = min(max((t - s['warmup']) / max(s['total'] - s['warmup'], 1), 0.0), 1.0)
+        mr = s['min_ratio']
+        f = {0: 1.0, 1: mr + (1 - mr) * 0.5 * (1 + math.cos(math.pi * prog)), 2: 1.0 - (1 - mr) * prog}[s['kind']]
+        return s['base'] * warm * f
+
+    def replay(self, w0, g_steps, upto=None):
+        """float64 AdamW; gs = min(1, max_norm / (|g| + 1e-6)) / loss_scale where the norm is that of the (loss-scaled) gradients, as grad_clip + scale_flat."""
+        b1, b2, eps = self.hp['b1'], self.hp['b2'], self.hp['eps']
+        w = {n: v.copy() for n, v in w0.items()}
+        m = {n: np.zeros_like(v) for n, v in w0.items()}
+        v = {n: np.zeros_like(x) for n, x in w0.items()}
+        for t, g in enumerate(g_steps[:upto], 1):
+            norm = math.sqrt(sum(float((x ** 2).sum()) for x in g.values()))
+            gs = min(1.0, self.max_norm / (norm + 1e-6)) / self.loss_scale if self.max_norm > 0 else 1.0
+            lr, c1, c2 = self.lr_at(t), 1 - b1 ** t, 1 - b2 ** t
+            for n, x in g.items():
+                x = x * gs
+                m[n] = b1 * m[n] + (1 - b1) * x
+                v[n] = b2 * v[n] + (1 - b2) * x * x
+                w[n] = w[n] - lr * self.wd[n] * w[n] - lr * (m[n] / c1) / (np.sqrt(v[n] / c2) + eps)
+        return w
+
+
+def load_model(info):
     sys.path.insert(0, str(ROOT / 'frontend'))
     sys.path.insert(0, str(ROOT / 'tests' / 'frontend'))
-    import oracle_models as om
-    from kvmfe.pipeline import build_model
     import importlib.util
+    from kvmfe.pipeline import build_model
     s = importlib.util.spec_from_file_location('zoo_gen_bundle', ROOT / 'examples/models/gen_bundle.py')
     gb = importlib.util.module_from_spec(s)
     s.loader.exec_module(gb)
     cfg = dict(info['config'])
     if str(cfg.get('precision', '')).startswith('bf16'):
         cfg['precision'] = 'bf16'                         # bf16s differs from bf16 in storage only; parameters and init are identical
-    model = build_model(gb.load_model(json.dumps(cfg)))
+    return build_model(gb.load_model(json.dumps(cfg)))
+
+
+def analyse(workload, bundle, dump, info, feedback=True, name=''):
+    sys.path.insert(0, str(ROOT / 'frontend'))
+    sys.path.insert(0, str(ROOT / 'tests' / 'frontend'))
+    import oracle_models as om
+    spec = json.loads(Path(workload).read_text())
+    meta = json.loads((Path(bundle) / 'metadata.json').read_text())
+    gold = json.loads((Path(bundle) / 'golden.json').read_text())['buffers']
+    gpu = read_dump(dump, [b['name'] for b in meta['buffers']])
+    steps = info['steps']
+    opt = Optimizer(spec, steps)
+    params = list(opt.grad[0])
+    model = load_model(info)
     w0 = {n: np.array(v, dtype=np.float32).astype(np.float64).reshape(-1) for n, v in om.params(model).items() if n in params}
-    decay = {n: model.specs[n].decay for n in params}
-    arr = lambda src, s_: {n: np.array(src[names[s_][n]], dtype=np.float64) for n in params}
-    g_gold = [arr(gold, s_) for s_ in range(steps)]
-    g_gpu = [arr(gpu, s_) for s_ in range(steps)]
+    arr = lambda src, s_: {n: np.array(src[opt.grad[s_][n]], dtype=np.float64) for n in params}
+    g_gold, g_gpu = [arr(gold, s_) for s_ in range(steps)], [arr(gpu, s_) for s_ in range(steps)]
     final = lambda src: {n: np.array(src['w.' + n], dtype=np.float64) for n in params}
     w_gold, w_gpu = final(gold), final(gpu)
-    mx = a.loss_scale
-    r_gold, r_gpu = replay(w0, g_gold, decay, mx, mx), replay(w0, g_gpu, decay, mx, mx)
-    worst = lambda x, y: max(((rel(x[n], y[n]), n) for n in params))
-    res = dict(case=d.name, steps=steps,
-               replay_golden_vs_golden_weights=worst(r_gold, w_gold), replay_gpu_vs_gpu_weights=worst(r_gpu, w_gpu),
-               gpu_vs_golden_weights=worst(w_gpu, w_gold), replay_of_gpu_grads_vs_replay_of_golden_grads=worst(r_gpu, r_gold))
-    # per-step relative gradient difference, and the synthetic-noise control at that level
-    eps = [{n: rel(g_gpu[s_][n], g_gold[s_][n]) for n in params} for s_ in range(steps)]
-    res['grad_rel_diff_worst_by_step'] = [max(e.values()) for e in eps]
-    rng = np.random.default_rng(a.seed)
-    ctl = []
-    for _ in range(a.trials):
-        noisy = [{n: g_gold[s_][n] * (1 + eps[s_][n] * rng.standard_normal(g_gold[s_][n].shape)) for n in params} for s_ in range(steps)]
-        ctl.append(worst(replay(w0, noisy, decay, mx, mx), r_gold)[0])
-    res['control_noise_at_measured_level_weights_rel_l2'] = dict(min=min(ctl), max=max(ctl), trials=a.trials)
+    r_gold, r_gpu = opt.replay(w0, g_gold), opt.replay(w0, g_gpu)
+    worst = lambda x, y: max((rel(x[n], y[n]), n) for n in params)
+    res = dict(case=name, steps=steps, loss_scale=opt.loss_scale, max_norm=opt.max_norm, schedule=opt.sched,
+               replay_golden_vs_golden=worst(r_gold, w_gold), replay_gpu_vs_gpu=worst(r_gpu, w_gpu), gpu_vs_golden=worst(w_gpu, w_gold),
+               grad_diff_by_step=[max(rel(g_gpu[s_][n], g_gold[s_][n]) for n in params) for s_ in range(steps)])
+    if feedback and steps >= 2:
+        res.update(step2_feedback(model, opt, w0, g_gold, g_gpu, params))
+    return res
+
+
+def step2_feedback(model, opt, w0, g_gold, g_gpu, params):
+    """Exact float64 gradient of step 2's batch at the two replayed step-1 weight sets (no bf16 rounding anywhere) vs the observed step-2 gradient difference."""
+    import torch
+    import torch_models as tm
+    model.lp = False
+    ws = {k: opt.replay(w0, g, upto=1) for k, g in (('gold', g_gold), ('gpu', g_gpu))}
+    data = {}
+    for st in model.batch_streams(2):
+        n = st.rows * st.cols
+        a = np.array(st.values[n:2 * n], dtype=np.float64 if st.dtype == 'f32' else np.int64).reshape(st.rows, st.cols)
+        data[st.name] = torch.from_numpy(a if st.dtype == 'f32' else a[:, 0])
+    grads = {}
+    for k, w in ws.items():
+        p = {n: torch.from_numpy(w[n].reshape(model.specs[n].rows, model.specs[n].cols)).requires_grad_(True) for n in params}
+        sum(tm.FORWARDS[type(model).__name__](model, p, data).values()).backward()
+        grads[k] = {n: q.grad.numpy().reshape(-1) for n, q in p.items()}
+    return dict(step2_grad_diff_explained_by_step1_weights=max(rel(grads['gpu'][n], grads['gold'][n]) for n in params),
+                step2_grad_diff_observed=max(rel(g_gpu[1][n], g_gold[1][n]) for n in params),
+                step1_weight_diff_replayed=max(rel(ws['gpu'][n], ws['gold'][n]) for n in params))
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('case')
+    ap.add_argument('--json')
+    a = ap.parse_args()
+    d = Path(a.case)
+    res = analyse(d / 'workload.json', d / 'bundle', d / 'dump.txt', json.loads((d / 'meta.json').read_text()), name=d.name)
     for k, v in res.items():
         print(f'{k}: {v}')
     if a.json:

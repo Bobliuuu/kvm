@@ -94,29 +94,22 @@ class InvariantParameters(unittest.TestCase):
         self.assertIn('1 structurally-zero-gradient parameters', r.stdout)
         self.assertIn('within the optimizer envelope', r.stdout)
 
-    def test_noise_inside_the_envelope_passes_even_with_opposite_signs(self):
-        def edit(b):                                                # the 'GPU' flipped every sign of the optimizer-driven weight and moment
-            b[f'w.{self.name}'] = [-0.9 * self.T if x > 0 else 0.9 * self.T for x in b[f'w.{self.name}']]
-            b[f'm.{self.name}'] = [-x for x in b[f'm.{self.name}']]
-        r = self.run_check(edit)
-        self.assertEqual(r.returncode, 0, r.stdout)
-
     def test_weight_outside_the_envelope_fails(self):
         r = self.run_check(lambda b: b.update({f'w.{self.name}': [1.5 * self.T] * len(b[f'w.{self.name}'])}))
         self.assertEqual(r.returncode, 1)
         self.assertIn('FAIL', r.stdout)
-        self.assertIn('within the optimizer envelope', [ln for ln in r.stdout.splitlines() if 'FAIL' in ln][0])
+        self.assertTrue(any('within the optimizer envelope' in ln for ln in r.stdout.splitlines() if 'FAIL' in ln), r.stdout)
 
     def test_moments_at_gradient_scale_fail(self):
         scale = max(abs(x) for k, v in self.gold.items() if k.startswith('m.') and k != f'm.{self.name}' for x in v)
         r = self.run_check(lambda b: b.update({f'm.{self.name}': [scale] * len(b[f'm.{self.name}'])}))
         self.assertEqual(r.returncode, 1)
-        self.assertIn('moments at the noise level', [ln for ln in r.stdout.splitlines() if 'FAIL' in ln][0])
+        self.assertTrue(any('moments at the noise level' in ln for ln in r.stdout.splitlines() if 'FAIL' in ln), r.stdout)
 
     def test_a_wrong_live_weight_still_fails(self):
         r = self.run_check(lambda b: b.update({'w.vit.head.w': [x * 1.05 + 1e-3 for x in b['w.vit.head.w']]}))
         self.assertEqual(r.returncode, 1)
-        self.assertIn('weights rel L2', r.stdout)
+        self.assertTrue(any('reproduces the GPU weights' in ln for ln in r.stdout.splitlines() if 'FAIL' in ln), r.stdout)       # the optimizer replay catches a weight the gradients do not explain
 
 
 if __name__ == '__main__':

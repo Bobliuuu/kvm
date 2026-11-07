@@ -1,0 +1,9 @@
+PASS  executor: 1942568/1942568 tasks in 11247.7 ms on NVIDIA A100-SXM4-40GB (108 SMs, grid 108), sched dynamic, err_code 0
+PASS  versions: 22935 version-carrying tasks checked against the device trace (22935 exact), 0 violations; 0 at_least readers saw the version advance while running
+PASS  training: 6 step losses, first 10.9790 -> last 10.9237 (mean of first/last 1: 10.9790 -> 10.9237, falls); no CPU golden at this size
+  serving serve_s0 (weights version 0, initial values): tokens [41803, 33285, 42236] vs float64 argmax [41803, 33285, 42236], min top1-top2 margin 0.020, tie tolerance 0.0086
+  serving serve_s6 (weights version 12, dumped final weights): tokens [34196, 34196, 34196] vs float64 argmax [34196, 34196, 34196], min top1-top2 margin 0.042, tie tolerance 0.0030
+PASS  serving: 2 of 4 requests equal the PyTorch float64 decode (2 token-exact on every step, 0 accepted as TF32 near ties); unchecked, no weights snapshot survives: ['serve_s2@v4', 'serve_s4@v8']
+SKIP  game: no game state buffer
+SKIP  cadence: 0 doom_tick rows
+ALL CHECKS PASSED (SKIPs are listed above)

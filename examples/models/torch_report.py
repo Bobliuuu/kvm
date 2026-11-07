@@ -10,9 +10,10 @@ GPU side, per case: `kvm_exec --quiet --dump-buffers OUT_DIR/CASE/bundle > OUT_D
 Bundles use `reuse none`, so the step-0 gradient buffer of every parameter survives the run: it is the `g` of the step-0 adamw tasks.
 
 Tolerances (relative L2 per tensor against torch float64; loss relative; see the table in the results README for the measured values):
-  precise  3xTF32 tiles, fp32-class      loss 1e-5   gradients 1e-4
-  tf32     1xTF32 tiles                  loss 2e-3   gradients 6e-3   (10-bit mantissa operands: the same class as results/2026-11-03-a100-gptops)
-  lowp     bf16 tiles + bf16 storage     loss 1e-3   gradients 3e-2   (torch side emulates the same bf16 roundings; gradients scaled by the loss scale are divided out)
+  precise  3xTF32 tiles, fp32-class      loss 1e-5   gradients 3e-5   (measured on the A100: loss <= 4.8e-7, gradients <= 3.0e-6)
+  tf32     1xTF32 tiles                  loss 5e-4   gradients 3e-3   (measured: loss <= 5.0e-5, gradients <= 8.6e-4; 10-bit mantissa operands, the class of results/2026-11-03-a100-gptops)
+  lowp     bf16 emulation tiles          loss 1e-4   gradients 2e-2   (measured: loss <= 2.8e-8, gradients <= 6.8e-3, a bf16 ulp is 3.9e-3; the torch side emulates the same
+                                                                      bf16 roundings, and gradients scaled by the loss scale are divided out)
 The gradient bound of an exactly-zero-gradient tensor (ViT key bias) is absolute: |g| <= 1e-3 of the largest gradient norm of the model.
 """
 from __future__ import annotations
@@ -32,7 +33,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ROOT / 'tests' / 'gptdiff'))
 sys.path.insert(0, str(ROOT / 'frontend'))
 
-TOL = {'precise': dict(loss=1e-5, grad=1e-4), 'tf32': dict(loss=2e-3, grad=6e-3), 'lowp': dict(loss=1e-3, grad=3e-2)}
+TOL = {'precise': dict(loss=1e-5, grad=3e-5), 'tf32': dict(loss=5e-4, grad=3e-3), 'lowp': dict(loss=1e-4, grad=2e-2)}
 ZERO_GRAD_REL = 1e-3
 
 # name, model (preset / JSON), mode, extra gen_bundle flags
@@ -60,9 +61,12 @@ def rel_l2(a, b):
 
 
 def build_model_of(spec):
-    import gen_bundle
+    import importlib.util
     from kvmfe.pipeline import build_model
-    return build_model(gen_bundle.load_model(spec))
+    s = importlib.util.spec_from_file_location('zoo_gen_bundle', HERE / 'gen_bundle.py')       # by path: tests/gptdiff has a gen_bundle.py too
+    gb = importlib.util.module_from_spec(s)
+    s.loader.exec_module(gb)
+    return build_model(gb.load_model(spec))
 
 
 # ---------------------------------------------------------------------------------------------- cpu
@@ -80,7 +84,6 @@ def cmd_cpu(a):
 
 # ---------------------------------------------------------------------------------------------- build
 def cmd_build(a):
-    import gen_bundle
     out = Path(a.out)
     for name, model, mode, extra in CASES:
         d = out / name

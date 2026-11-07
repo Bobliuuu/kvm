@@ -256,6 +256,222 @@ __global__ void __launch_bounds__(NT) phase_kernel(const Instr* tape, int off, i
   exec_instr(inst_at(tape, off + blockIdx.x, step), sm, loss);
 }
 
+// ======================================================================================================================
+// Fused column-parallel program (--prog fused): the 2-layer MLP step as TWO instructions per (run, hidden slice).
+//
+// Why: in the tile program one step is a chain of 4 dependent phases (H1 -> Y -> dH1 -> dW1 -> next H1), each hop ~5-6 us. Megatron-style
+// tensor parallelism needs ONE cross-block exchange per step: slice W1 by columns and W2 by the same rows, then
+//   FWD[c]: h_c = relu(X W1[:,c]);  yp_c = h_c W2[c,:]  (partial y, to global)
+//   --- the one hop: every slice needs the sum of all slices' partials ---
+//   BWD[c]: y = sum_c' yp_c' (fixed order);  dy = (y - t) 2/(B O);  dh_c = (dy W2[c,:]^T) * (h_c > 0);
+//           W2[c,:] -= lr h_c^T dy;  W1[:,c] -= lr X^T dh_c        (all local to the slice)
+// A slice's weights and h_c can stay in shared memory across steps ("resident") and its instruction queue is static (no claim atomic):
+// the loop opcode (inst_at) re-instantiates the two instructions every step. The baselines run the very same two instructions as one
+// launch per phase (weights and h_c round-trip through global memory, same device functions, same arithmetic), so the weights stay
+// bitwise identical across the four modes. Sum order of the partials differs from the tile program, so tile-vs-fused agree to TF32 noise.
+// ======================================================================================================================
+enum { OP_FWD = 2, OP_BWD = 3 };
+#ifndef KHS
+#define KHS 32
+#endif
+constexpr int FB = 128, FD = 128, FH = 256, FO = 64, HS = KHS, NS = FH / HS, FNT = 256;
+constexpr int LDX = FD + 4, LDH = HS + 4, LDY = FO + 4;
+constexpr int SZ_X = FB * LDX, SZ_W1 = FD * LDH, SZ_H = FB * LDH, SZ_DY = FB * LDY, SZ_W2 = HS * LDY;
+constexpr size_t FSMEM = (size_t)(SZ_X + SZ_W1 + SZ_H + SZ_DY + SZ_W2) * sizeof(float);
+static_assert(HS % 32 == 0 && FH % HS == 0 && FB == 128 && FNT == 256, "fused program geometry");
+
+using FragC = wmma::fragment<wmma::accumulator, 16, 16, 8, float>;
+__shared__ unsigned long long s_tready;
+
+// acc[j] += A(16 x 8k) * B(8k x 16), per k-step of 8; A/B element order given by ACOL/BCOL (smem pointers, strides in floats)
+template <bool ACOL, bool BCOL, int NF>
+__device__ __forceinline__ void warp_mma(FragC (&acc)[NF], const float* pa, int lda, int astep, const float* pb, int ldb, int bstep, int bn, int ksteps) {
+  using AL = typename std::conditional<ACOL, wmma::col_major, wmma::row_major>::type;
+  using BL = typename std::conditional<BCOL, wmma::col_major, wmma::row_major>::type;
+  wmma::fragment<wmma::matrix_a, 16, 16, 8, wmma::precision::tf32, AL> fa;
+  wmma::fragment<wmma::matrix_b, 16, 16, 8, wmma::precision::tf32, BL> fb;
+#pragma unroll 4
+  for (int k = 0; k < ksteps; k++) {
+    wmma::load_matrix_sync(fa, pa + k * astep, lda);
+#pragma unroll
+    for (int e = 0; e < fa.num_elements; e++) fa.x[e] = wmma::__float_to_tf32(fa.x[e]);
+#pragma unroll
+    for (int j = 0; j < NF; j++) {
+      wmma::load_matrix_sync(fb, pb + k * bstep + j * bn, ldb);
+#pragma unroll
+      for (int e = 0; e < fb.num_elements; e++) fb.x[e] = wmma::__float_to_tf32(fb.x[e]);
+      wmma::mma_sync(acc[j], fa, fb, acc[j]);
+    }
+  }
+}
+template <int NF> __device__ __forceinline__ void zero_acc(FragC (&acc)[NF]) {
+#pragma unroll
+  for (int j = 0; j < NF; j++) wmma::fill_fragment(acc[j], 0.f);
+}
+__device__ __forceinline__ float lr_of(const Instr& in) { return __int_as_float(in.pad1); }   // fused instrs carry the learning rate bits in pad1
+
+// async copy of a [rows x vecs*4] global block (row stride gld floats) into smem (row stride sld floats), all FNT threads
+__device__ __forceinline__ void cp_block(float* s, int sld, const float* g, size_t gld, int rows, int vecs) {
+  for (int i = threadIdx.x; i < rows * vecs; i += FNT) { int r = i / vecs, c4 = (i % vecs) * 4; cp16(s + r * sld + c4, g + r * gld + c4); }
+}
+__device__ __forceinline__ void cp_wait_all() { asm volatile("cp.async.wait_all;" ::: "memory"); }
+
+// FWD[c]. res: smem still holds this slice's weights from the previous step and BWD prefetched X, so only step 0 loads them.
+__device__ void fwd_slice(const Instr& in, int stp, bool res, float* sm, int* ctr) {
+  float *sX = sm, *sW1 = sX + SZ_X, *sH = sW1 + SZ_W1, *sDY = sH + SZ_H, *sW2 = sDY + SZ_DY;
+  const Buf X = g_buf[in.a], W1 = g_buf[in.b], W2 = g_buf[in.c], T = g_buf[in.aux], HG = g_buf[in.n0], YP = g_buf[in.K];
+  const int c = in.m0, w = threadIdx.x >> 5;
+  if (!(res && stp > 0)) {
+    cp_block(sX, LDX, X.p, X.ld, FB, FD / 4);
+    cp_block(sW1, LDH, W1.p + c * HS, W1.ld, FD, HS / 4);
+    cp_block(sW2, LDY, W2.p + (size_t)c * HS * W2.ld, W2.ld, HS, FO / 4);
+  }
+  cp_block(sDY, LDY, T.p, T.ld, FB, FO / 4);                  // t lands in sDY; BWD overwrites it with dy
+  cp_commit(); cp_wait_all(); __syncthreads();
+  FragC a1[HS / 16]; zero_acc(a1);
+  warp_mma<false, false, HS / 16>(a1, sX + 16 * w * LDX, LDX, 8, sW1, LDH, 8 * LDH, 16, FD / 8);
+  float* hg = HG.p + (size_t)(16 * w) * HG.ld + c * HS;
+#pragma unroll
+  for (int j = 0; j < HS / 16; j++) {
+#pragma unroll
+    for (int e = 0; e < a1[j].num_elements; e++) a1[j].x[e] = fmaxf(a1[j].x[e], 0.f);
+    wmma::store_matrix_sync(sH + 16 * w * LDH + j * 16, a1[j], LDH, wmma::mem_row_major);
+    wmma::store_matrix_sync(hg + j * 16, a1[j], HG.ld, wmma::mem_row_major);   // a non-resident BWD reads h back from here
+  }
+  __syncwarp();                                               // F2 reads only this warp's own 16 rows of h
+  FragC a2[FO / 16]; zero_acc(a2);
+  warp_mma<false, false, FO / 16>(a2, sH + 16 * w * LDH, LDH, 8, sW2, LDY, 8 * LDY, 16, HS / 8);
+  float* yp = YP.p + (size_t)((stp & 1) * NS + c) * FB * FO + (size_t)(16 * w) * FO;   // double-buffered by step parity
+#pragma unroll
+  for (int j = 0; j < FO / 16; j++) wmma::store_matrix_sync(yp + j * 16, a2[j], FO, wmma::mem_row_major);
+  __syncthreads();
+  if (ctr && threadIdx.x == 0) { __threadfence(); atomicAdd(ctr + in.s0, 1); }
+}
+
+// BWD[c]. ctr == nullptr: launched as an ordinary kernel (launch order is the dependency). next_a: X buffer id of the next step (-1 = none).
+__device__ void bwd_slice(const Instr& in, int stp, bool res, float* sm, float* loss, int* ctr, bool prof, int next_a) {
+  __shared__ float red[FNT / 32];
+  float *sX = sm, *sW1 = sX + SZ_X, *sH = sW1 + SZ_W1, *sDY = sH + SZ_H, *sW2 = sDY + SZ_DY;
+  const Buf X = g_buf[in.a], W1 = g_buf[in.b], W2 = g_buf[in.c], T = g_buf[in.aux], HG = g_buf[in.n0], YP = g_buf[in.K];
+  const int c = in.m0, w = threadIdx.x >> 5, tid = threadIdx.x;
+  if (!res) {   // nothing resident: bring X, h, t and the current W2 slice back (independent of the hop, overlaps the wait)
+    cp_block(sX, LDX, X.p, X.ld, FB, FD / 4); cp_block(sH, LDH, HG.p + c * HS, HG.ld, FB, HS / 4);
+    cp_block(sW2, LDY, W2.p + (size_t)c * HS * W2.ld, W2.ld, HS, FO / 4); cp_block(sDY, LDY, T.p, T.ld, FB, FO / 4);
+    cp_commit();
+  }
+  if (tid == 0) {   // the one hop: all slices' partial y of this step are in global memory
+    if (ctr) { while (ld_acquire(ctr + in.w0c) < in.w0v) __nanosleep(16); __threadfence(); }
+    if (prof) s_tready = gtime();
+  }
+  cp_wait_all(); __syncthreads();
+  // ---- y = sum of the partials in slice order; dy = (y - t) * s; loss
+  const float* ypb = YP.p + (size_t)(stp & 1) * NS * FB * FO;
+  float lsum = 0.f;
+#pragma unroll 1
+  for (int g = 0; g < 4; g++) {
+    float4 v[2][NS];
+#pragma unroll
+    for (int u = 0; u < 2; u++)
+#pragma unroll
+      for (int p = 0; p < NS; p++) v[u][p] = __ldcg(reinterpret_cast<const float4*>(ypb + (size_t)p * FB * FO) + tid + FNT * (2 * g + u));
+#pragma unroll
+    for (int u = 0; u < 2; u++) {
+      int i4 = tid + FNT * (2 * g + u), r = i4 / (FO / 4), cc = (i4 % (FO / 4)) * 4;
+      float4 y = v[u][0];
+#pragma unroll
+      for (int p = 1; p < NS; p++) { y.x += v[u][p].x; y.y += v[u][p].y; y.z += v[u][p].z; y.w += v[u][p].w; }
+      float4 t = *reinterpret_cast<const float4*>(sDY + r * LDY + cc), o;
+      const float* yy = &y.x; const float* tt = &t.x; float* oo = &o.x;
+#pragma unroll
+      for (int j = 0; j < 4; j++) { float d = yy[j] - tt[j]; lsum += d * d * in.scale * 0.5f; oo[j] = d * in.scale; }
+      *reinterpret_cast<float4*>(sDY + r * LDY + cc) = o;
+    }
+  }
+  if (c == 0) {   // slice 0 reports the loss: one writer per (run, step), fixed reduction order
+    for (int o = 16; o; o >>= 1) lsum += __shfl_xor_sync(0xffffffff, lsum, o);
+    if ((tid & 31) == 0) red[w] = lsum;
+  }
+  __syncthreads();   // dy complete (and red[])
+  if (c == 0 && tid == 0) { float t = 0; for (int i = 0; i < FNT / 32; i++) t += red[i]; loss[in.loss_idx] = t; }
+  const float lr = lr_of(in);
+  // ---- gW2 = h^T dy (M = HS, N = FO, K = FB), 16x16 output tiles round-robin over the 8 warps
+  constexpr int NT2 = HS / 32;   // tiles per warp: (HS/16)*(FO/16) / 8 warps
+  FragC g2[NT2];
+#pragma unroll
+  for (int q = 0; q < NT2; q++) {
+    int tile = w + 8 * q, mt = tile / (FO / 16), nt = tile % (FO / 16);
+    FragC one[1]; zero_acc(one);
+    warp_mma<true, false, 1>(one, sH + mt * 16, LDH, 8 * LDH, sDY + nt * 16, LDY, 8 * LDY, 16, FB / 8);
+    g2[q] = one[0];
+  }
+  // ---- dh = (dy W2^T) masked by h > 0, from the OLD W2 slice (the update comes after every warp has read it)
+  FragC dh[HS / 16]; zero_acc(dh);
+  warp_mma<false, true, HS / 16>(dh, sDY + 16 * w * LDY, LDY, 8, sW2, LDY, 8, 16 * LDY, FO / 8);
+  __syncthreads();   // all warps done with h (gW2) and the old W2 slice
+#pragma unroll
+  for (int j = 0; j < HS / 16; j++) {
+    FragC hm; wmma::load_matrix_sync(hm, sH + 16 * w * LDH + j * 16, LDH, wmma::mem_row_major);
+#pragma unroll
+    for (int e = 0; e < dh[j].num_elements; e++) dh[j].x[e] = (hm.x[e] > 0.f) ? dh[j].x[e] : 0.f;
+    wmma::store_matrix_sync(sH + 16 * w * LDH + j * 16, dh[j], LDH, wmma::mem_row_major);   // dh replaces h in place (a lane owns the same elements)
+  }
+#pragma unroll
+  for (int q = 0; q < NT2; q++) {   // W2 slice update, in smem and in global
+    int tile = w + 8 * q, mt = tile / (FO / 16), nt = tile % (FO / 16);
+    FragC cw; wmma::load_matrix_sync(cw, sW2 + mt * 16 * LDY + nt * 16, LDY, wmma::mem_row_major);
+#pragma unroll
+    for (int e = 0; e < cw.num_elements; e++) cw.x[e] = cw.x[e] - lr * g2[q].x[e];
+    wmma::store_matrix_sync(sW2 + mt * 16 * LDY + nt * 16, cw, LDY, wmma::mem_row_major);
+    wmma::store_matrix_sync(W2.p + (size_t)(c * HS + mt * 16) * W2.ld + nt * 16, cw, W2.ld, wmma::mem_row_major);
+  }
+  if (!res) { cp_block(sW1, LDH, W1.p + c * HS, W1.ld, FD, HS / 4); cp_commit(); }   // resident: sW1 already holds the current slice
+  __syncthreads();   // dh complete for all 128 rows
+  // ---- gW1 = X^T dh (M = FD, N = HS, K = FB); W1 slice update
+  FragC g1[HS / 16]; zero_acc(g1);
+  warp_mma<true, false, HS / 16>(g1, sX + 16 * w, LDX, 8 * LDX, sH, LDH, 8 * LDH, 16, FB / 8);
+  cp_wait_all(); __syncthreads();   // (non-resident: the W1 slice has arrived)
+#pragma unroll
+  for (int j = 0; j < HS / 16; j++) {
+    FragC cw; wmma::load_matrix_sync(cw, sW1 + 16 * w * LDH + j * 16, LDH, wmma::mem_row_major);
+#pragma unroll
+    for (int e = 0; e < cw.num_elements; e++) cw.x[e] = cw.x[e] - lr * g1[j].x[e];
+    wmma::store_matrix_sync(sW1 + 16 * w * LDH + j * 16, cw, LDH, wmma::mem_row_major);
+    wmma::store_matrix_sync(W1.p + (size_t)(16 * w) * W1.ld + c * HS + j * 16, cw, W1.ld, wmma::mem_row_major);
+  }
+  __syncthreads();   // sX is dead
+  if (res && next_a >= 0) { const Buf Xn = g_buf[next_a]; cp_block(sX, LDX, Xn.p, Xn.ld, FB, FD / 4); cp_commit(); }   // next step's X streams in during the epilogue
+  if (!res) __threadfence();   // the next launch reads this slice's weights from global
+}
+
+// ---- the static-queue VM: block b owns a fixed list of tape entries and runs it once per step (loop opcode); res = one task per block
+__global__ void __launch_bounds__(FNT) fvm_kernel(const Instr* tape, const int* qoff, const int* qlen, int steps, int* ctr, float* loss, unsigned long long* prof, int perStep, int res) {
+  const int b = blockIdx.x, n = qlen[b], q0 = qoff[b];
+  for (int s = 0; s < steps; s++)
+    for (int i = 0; i < n; i++) {
+      const int t = q0 + i;
+      Instr in = inst_at(tape, t, s);
+      unsigned long long t0 = 0, t1 = 0;
+      if (prof) t0 = gtime();
+      if (in.op == OP_FWD) { fwd_slice(in, s, res, dsm, ctr); t1 = t0; }
+      else {
+        int next_a = (s + 1 < steps) ? inst_at(tape, t, s + 1).a : -1;
+        bwd_slice(in, s, res, dsm, loss, ctr, prof != nullptr, next_a);
+        if (prof) t1 = s_tready;
+      }
+      __syncthreads();
+      if (prof && threadIdx.x == 0) {
+        unsigned smid; asm volatile("mov.u32 %0, %%smid;" : "=r"(smid));
+        unsigned long long* q = prof + ((size_t)s * perStep + t) * 8; unsigned long long te = gtime();
+        q[0] = t0; q[1] = t1; q[2] = te; q[3] = te; q[4] = t1; q[5] = te; q[6] = (unsigned long long)smid | ((unsigned long long)b << 32); q[7] = 0;
+      }
+    }
+}
+// ---- baseline: one launch per phase, block i runs tape[off + i], nothing resident
+__global__ void __launch_bounds__(FNT) fphase_kernel(const Instr* tape, int off, int step, float* loss) {
+  Instr in = inst_at(tape, off + blockIdx.x, step);
+  if (in.op == OP_FWD) fwd_slice(in, step, false, dsm, nullptr); else bwd_slice(in, step, false, dsm, loss, nullptr, false, -1);
+}
+
 // ================= host =================
 struct Rng { uint64_t s; float next() { s = s * 6364136223846793005ULL + 1442695040888963407ULL; return ((s >> 40) & 0xFFFFFF) / 16777216.f * 2.f - 1.f; } };
 
@@ -305,7 +521,7 @@ static int selftest() {
 KVM_ENTRY(int argc, char** argv) {
   if (argc > 1 && std::string(argv[1]) == "--selftest") return selftest() ? 2 : 0;
   int steps = 1000, B = 128, D = 128, Hd = 256, O = 64, NB = 4, ref_steps = 100, R = 1;
-  float lr = 0.05f; int nreps = 5; std::string json_path, dump_dir, tl_path; int tl_s0 = 0, tl_s1 = 4;
+  float lr = 0.05f; int nreps = 5; std::string json_path, dump_dir, tl_path, prog = "tiles"; int tl_s0 = 0, tl_s1 = 4;
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];
     auto nx = [&]() { return atof(argv[++i]); };
@@ -313,8 +529,12 @@ KVM_ENTRY(int argc, char** argv) {
     else if (a == "--H") Hd = nx(); else if (a == "--O") O = nx(); else if (a == "--nb") NB = nx();
     else if (a == "--reps") nreps = nx(); else if (a == "--json") json_path = argv[++i]; else if (a == "--dump-data") dump_dir = argv[++i];
     else if (a == "--timeline") tl_path = argv[++i]; else if (a == "--tl-steps") { tl_s0 = nx(); tl_s1 = nx(); }
+    else if (a == "--prog") prog = argv[++i];
     else if (a == "--runs") R = nx(); else if (a == "--lr") lr = nx(); else if (a == "--ref-steps") ref_steps = nx();
   }
+  const bool fused = prog == "fused";
+  if (!fused && prog != "tiles") { fprintf(stderr, "--prog tiles|fused\n"); return 1; }
+  if (fused && (B != FB || D != FD || Hd != FH || O != FO)) { fprintf(stderr, "--prog fused is compiled for B=%d D=%d H=%d O=%d (KHS=%d)\n", FB, FD, FH, FO, HS); return 1; }
   if (B % TILE || D % TILE || Hd % TILE || O % TILE || B % KC || D % KC || Hd % KC || O % KC) { fprintf(stderr, "dims must be multiples of max(TILE=%d, KC=%d)\n", TILE, KC); return 1; }
   int nRB = B / TILE, nHC = Hd / TILE, nOC = O / TILE, nDC = D / TILE;
   // run r trains the same model from the same init with its own learning rate (an LR sweep)
@@ -382,15 +602,15 @@ KVM_ENTRY(int argc, char** argv) {
   }
   for (int r = 0; r < R; r++) {
     hb[idW1(r)] = {dmalloc(D * Hd), Hd}; hb[idW2(r)] = {dmalloc(Hd * O), O};
-    hb[idH1(r)] = {dmalloc(B * Hd), Hd}; hb[idDY(r)] = {dmalloc(B * O), O}; hb[idDH(r)] = {dmalloc(B * Hd), Hd};
+    hb[idH1(r)] = {dmalloc(B * Hd), Hd}; hb[idDY(r)] = {dmalloc(fused ? (size_t)2 * NS * B * O : (size_t)B * O), O}; hb[idDH(r)] = {dmalloc(B * Hd), Hd};   // fused: DY holds the partial-y ring [parity][slice][B x O]
   }
   CK(cudaMemcpyToSymbol(g_buf, hb.data(), nbuf * sizeof(Buf)));
 
   // ---- tape builder. Per step and run: H1 -> Y -> DH1 -> DW2(+SGD) -> DW1(+SGD); counters give fine-grained deps.
-  constexpr int NPH = 5;
+  const int NPH = fused ? 2 : 5;
   enum { P_H1, P_Y, P_DH1, P_DW2, P_DW1 };
-  int CPS = NPH * (nRB + 1);
-  int SC = R * CPS;   // counters per step
+  int CPS = 5 * (nRB + 1);
+  int SC = fused ? R : R * CPS;   // counters per step (fused: one "all partial y written" counter per run)
   auto ctr = [&](int r, int s, int ph, int rb) { return (s * R + r) * CPS + ph * (nRB + 1) + (rb < 0 ? nRB : rb); };
   auto mk = [&]() { Instr i; memset(&i, 0, sizeof i); i.aux = -1; i.w0c = i.w1c = i.s0 = i.s1 = -1; return i; };
   // Template for step 0 (waits on the previous step are flagged and dropped at s==0 on the device).
@@ -421,29 +641,64 @@ KVM_ENTRY(int argc, char** argv) {
       i.w0c = ctr(r, s, P_DH1, -1); i.w0v = nRB * nHC; i.s1 = ctr(r, s, P_DW1, -1); tape.push_back(i);
     }
   };
+  // fused program: FWD / BWD per (run, hidden slice); counter r counts the slices whose partial y of the step is written
+  auto emit_fused = [&](std::vector<Instr>& tape, int r, int c, int ph) {
+    Instr i = mk(); i.op = ph == 0 ? OP_FWD : OP_BWD; i.a = idX(0); i.b = idW1(r); i.c = idW2(r); i.aux = idT(0); i.m0 = c; i.n0 = idH1(r); i.K = idDY(r);
+    i.scale = 2.f / (B * O); memcpy(&i.pad1, &lrs[r], 4); i.loss_idx = r * steps; i.xflags = 4 | 8;
+    if (ph == 0) i.s0 = r; else { i.w0c = r; i.w0v = NS; }
+    tape.push_back(i);
+  };
   // one-step template, phase-major then run: [ph][r] segments. Batched baseline launches a whole phase (all runs);
   // sequential baseline launches one (run, phase) segment.
-  std::vector<Instr> tapeP; std::vector<int> tmplPhase, tmplRun; std::vector<int> offP(NPH), nP(NPH), nPR(NPH);
+  std::vector<Instr> tapeP; std::vector<int> offP(NPH), nP(NPH), nPR(NPH);
   std::vector<std::vector<int>> offPR(NPH, std::vector<int>(R));
   for (int ph = 0; ph < NPH; ph++) {
     offP[ph] = (int)tapeP.size();
-    for (int r = 0; r < R; r++) { offPR[ph][r] = (int)tapeP.size(); emit_phase(tapeP, r, ph); tmplPhase.resize(tapeP.size(), ph); tmplRun.resize(tapeP.size(), r); }
+    for (int r = 0; r < R; r++) {
+      offPR[ph][r] = (int)tapeP.size();
+      if (fused) for (int c = 0; c < NS; c++) emit_fused(tapeP, r, c, ph); else emit_phase(tapeP, r, ph);
+    }
     nP[ph] = (int)tapeP.size() - offP[ph]; nPR[ph] = nP[ph] / R;
   }
-  int perStep = (int)tapeP.size();
+  int dev; cudaGetDevice(&dev); cudaDeviceProp prop; cudaGetDeviceProperties(&prop, dev);
+  // The VM's own tape. tiles: the phase-major template, entries claimed dynamically. fused: a static queue per block (tasks round-robin over
+  // min(tasks, SMs) blocks, each queue = all its FWDs then all its BWDs), run once per step by the loop opcode; resident iff one task per block.
+  std::vector<Instr> tapeV; std::vector<int> tmplPhase, tmplRun, qoff, qlen; int res = 0, grid = 0, occ = 1;
+  if (!fused) {
+    tapeV = tapeP;
+    for (int ph = 0; ph < NPH; ph++) for (int r = 0; r < R; r++) { tmplPhase.resize(offPR[ph][r] + nPR[ph], ph); tmplRun.resize(offPR[ph][r] + nPR[ph], r); }
+    CK(cudaFuncSetAttribute(vm_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)DSMEM));
+    CK(cudaFuncSetAttribute(phase_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)DSMEM));
+    CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, vm_kernel, NT, DSMEM));
+    grid = prop.multiProcessorCount * occ;
+  } else {
+    CK(cudaFuncSetAttribute(fvm_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)FSMEM));
+    CK(cudaFuncSetAttribute(fphase_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)FSMEM));
+    CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, fvm_kernel, FNT, FSMEM));
+    if (occ < 1) { fprintf(stderr, "fused kernel does not fit (%zu B smem)\n", FSMEM); return 1; }
+    int ntask = R * NS; grid = std::min(ntask, prop.multiProcessorCount * occ); res = ntask <= grid;
+    std::vector<std::vector<int>> tasks(grid);
+    for (int t = 0; t < ntask; t++) tasks[t % grid].push_back(t);
+    for (int b = 0; b < grid; b++) {
+      qoff.push_back((int)tapeV.size());
+      for (int ph = 0; ph < 2; ph++) for (int t : tasks[b]) { emit_fused(tapeV, t / NS, t % NS, ph); tmplPhase.push_back(ph); tmplRun.push_back(t / NS); }
+      qlen.push_back((int)tapeV.size() - qoff.back());
+    }
+  }
+  int perStep = (int)tapeV.size();
   int ntape = perStep * steps, nctr = steps * SC;
-  printf("model B=%d D=%d H=%d O=%d  runs=%d steps=%d  tile=%d kc=%d stg=%d  tape=%d instrs executed, %d-entry step template (%.2f MB)\n", B, D, Hd, O, R, steps, TILE, KC, STG, ntape, perStep, perStep * sizeof(Instr) / 1e6);
+  if (fused) printf("model B=%d D=%d H=%d O=%d  runs=%d steps=%d  prog=fused hs=%d slices=%d  tape=%d instrs executed, %d-entry step template, %d static queues%s\n", B, D, Hd, O, R, steps, HS, NS, ntape, perStep, grid, res ? ", weights resident in smem" : ", multi-task blocks (not resident)");
+  else printf("model B=%d D=%d H=%d O=%d  runs=%d steps=%d  prog=tiles tile=%d kc=%d stg=%d  tape=%d instrs executed, %d-entry step template (%.2f MB)\n", B, D, Hd, O, R, steps, TILE, KC, STG, ntape, perStep, perStep * sizeof(Instr) / 1e6);
 
-  Instr* dtapeP; int *dhead, *dctr; float* dloss;
-  CK(cudaMalloc(&dtapeP, perStep * sizeof(Instr))); CK(cudaMemcpy(dtapeP, tapeP.data(), perStep * sizeof(Instr), cudaMemcpyHostToDevice));
+  Instr *dtapeP, *dtapeV; int *dhead, *dctr, *dqoff = nullptr, *dqlen = nullptr; float* dloss;
+  CK(cudaMalloc(&dtapeP, tapeP.size() * sizeof(Instr))); CK(cudaMemcpy(dtapeP, tapeP.data(), tapeP.size() * sizeof(Instr), cudaMemcpyHostToDevice));
+  CK(cudaMalloc(&dtapeV, tapeV.size() * sizeof(Instr))); CK(cudaMemcpy(dtapeV, tapeV.data(), tapeV.size() * sizeof(Instr), cudaMemcpyHostToDevice));
+  if (fused) {
+    CK(cudaMalloc(&dqoff, grid * 4)); CK(cudaMemcpy(dqoff, qoff.data(), grid * 4, cudaMemcpyHostToDevice));
+    CK(cudaMalloc(&dqlen, grid * 4)); CK(cudaMemcpy(dqlen, qlen.data(), grid * 4, cudaMemcpyHostToDevice));
+  }
   { KP kp{SC, NB, perStep}; CK(cudaMemcpyToSymbol(g_kp, &kp, sizeof kp)); }
   CK(cudaMalloc(&dhead, 4)); CK(cudaMalloc(&dctr, (size_t)nctr * 4)); CK(cudaMalloc(&dloss, (size_t)R * steps * 4));
-
-  CK(cudaFuncSetAttribute(vm_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)DSMEM));
-  CK(cudaFuncSetAttribute(phase_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)DSMEM));
-  int dev; cudaGetDevice(&dev); cudaDeviceProp prop; cudaGetDeviceProperties(&prop, dev);
-  int occ; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, vm_kernel, NT, DSMEM));
-  int grid = prop.multiProcessorCount * occ;
   printf("%s  SMs=%d occ=%d  vm grid=%d\n", prop.name, prop.multiProcessorCount, occ, grid);
 
   auto reset = [&]() {
@@ -455,9 +710,9 @@ KVM_ENTRY(int argc, char** argv) {
     CK(cudaDeviceSynchronize());
   };
   auto launch_seq = [&](cudaStream_t st, int rlo, int rhi) {   // one model at a time: run r, step s, phase ph
-    for (int r = rlo; r < rhi; r++) for (int s = 0; s < steps; s++) for (int ph = 0; ph < NPH; ph++) phase_kernel<<<nPR[ph], NT, DSMEM, st>>>(dtapeP, offPR[ph][r], s, dloss);
+    for (int r = rlo; r < rhi; r++) for (int s = 0; s < steps; s++) for (int ph = 0; ph < NPH; ph++) { if (fused) fphase_kernel<<<nPR[ph], FNT, FSMEM, st>>>(dtapeP, offPR[ph][r], s, dloss); else phase_kernel<<<nPR[ph], NT, DSMEM, st>>>(dtapeP, offPR[ph][r], s, dloss); }
   };
-  auto launch_batched = [&](cudaStream_t st) { for (int s = 0; s < steps; s++) for (int ph = 0; ph < NPH; ph++) phase_kernel<<<nP[ph], NT, DSMEM, st>>>(dtapeP, offP[ph], s, dloss); };
+  auto launch_batched = [&](cudaStream_t st) { for (int s = 0; s < steps; s++) for (int ph = 0; ph < NPH; ph++) { if (fused) fphase_kernel<<<nP[ph], FNT, FSMEM, st>>>(dtapeP, offP[ph], s, dloss); else phase_kernel<<<nP[ph], NT, DSMEM, st>>>(dtapeP, offP[ph], s, dloss); } };
   cudaEvent_t e0, e1; cudaEventCreate(&e0); cudaEventCreate(&e1);
   auto timed = [&](auto fn) { reset(); cudaEventRecord(e0); fn(); cudaEventRecord(e1); CK(cudaEventSynchronize(e1)); CK(cudaGetLastError()); float ms; cudaEventElapsedTime(&ms, e0, e1); return (double)ms; };
   struct Out { std::vector<float> L, w; };
@@ -480,7 +735,11 @@ KVM_ENTRY(int argc, char** argv) {
   { cudaStream_t cs; cudaStreamCreate(&cs);
     for (int r = 0; r < R; r++) { cudaGraph_t g; cudaStreamBeginCapture(cs, cudaStreamCaptureModeGlobal); launch_seq(cs, r, r + 1); CK(cudaStreamEndCapture(cs, &g)); CK(cudaGraphInstantiate(&xRun[r], g, 0)); } }
 
-  auto run_vm = [&]() { vm_kernel<<<grid, NT, DSMEM>>>(dtapeP, ntape, dhead, dctr, dloss, nullptr); };
+  auto vm_launch = [&](unsigned long long* prof) {
+    if (fused) fvm_kernel<<<grid, FNT, FSMEM>>>(dtapeV, dqoff, dqlen, steps, dctr, dloss, prof, perStep, res);
+    else vm_kernel<<<grid, NT, DSMEM>>>(dtapeV, ntape, dhead, dctr, dloss, prof);
+  };
+  auto run_vm = [&]() { vm_launch(nullptr); };
   auto run_seq = [&]() { launch_seq(0, 0, R); };
   auto run_seqgraph = [&]() { for (int r = 0; r < R; r++) CK(cudaGraphLaunch(xRun[r], 0)); };
   auto run_batched = [&]() { CK(cudaGraphLaunch(xB, 0)); };
@@ -525,11 +784,11 @@ KVM_ENTRY(int argc, char** argv) {
   double t_prof = 0;
   if (!tl_path.empty()) {
     unsigned long long* dprof; size_t pbytes = (size_t)ntape * 8 * 8; CK(cudaMalloc(&dprof, pbytes)); CK(cudaMemset(dprof, 0, pbytes));
-    t_prof = timed([&]() { vm_kernel<<<grid, NT, DSMEM>>>(dtapeP, ntape, dhead, dctr, dloss, dprof); });
+    t_prof = timed([&]() { vm_launch(dprof); });
     std::vector<unsigned long long> hp((size_t)ntape * 8); CK(cudaMemcpy(hp.data(), dprof, pbytes, cudaMemcpyDeviceToHost)); cudaFree(dprof);
     unsigned long long tmin = ~0ull; for (int i = 0; i < ntape; i++) tmin = std::min(tmin, hp[(size_t)i * 8]);
     FILE* fp = fopen(tl_path.c_str(), "w"); if (!fp) { fprintf(stderr, "cannot write %s\n", tl_path.c_str()); exit(1); }
-    fprintf(fp, "# idx,step,tmpl,phase,run,smid,block,claim_ns,ready_ns,compute_end_ns,end_ns,mma_start_ns,mma_end_ns (ns since the first claim of the whole run; profiled run %.3f ms)\n", t_prof);
+    fprintf(fp, "# idx,step,tmpl,phase,run,smid,block,claim_ns,ready_ns,compute_end_ns,end_ns,mma_start_ns,mma_end_ns (ns since the first claim of the whole run; prog=%s phases %s; profiled run %.3f ms)\n", prog.c_str(), fused ? "0=FWD 1=BWD" : "0=H1 1=Y 2=DH1 3=DW2 4=DW1", t_prof);
     for (int i = 0; i < ntape; i++) {
       int stp = i / perStep, tm = i % perStep; if (stp < tl_s0 || stp >= tl_s1) continue;
       const unsigned long long* q = &hp[(size_t)i * 8];
@@ -542,7 +801,7 @@ KVM_ENTRY(int argc, char** argv) {
 
   if (!json_path.empty()) {
     FILE* fp = fopen(json_path.c_str(), "w");
-    fprintf(fp, "{\"gpu\":\"%s\",\"sms\":%d,\"occ\":%d,\"grid\":%d,\"B\":%d,\"D\":%d,\"H\":%d,\"O\":%d,\"runs\":%d,\"steps\":%d,\"tile\":%d,\"kc\":%d,\"stg\":%d,\"reps\":%d,\n \"modes\":[", prop.name, prop.multiProcessorCount, occ, grid, B, D, Hd, O, R, steps, TILE, KC, STG, nreps);
+    fprintf(fp, "{\"gpu\":\"%s\",\"sms\":%d,\"occ\":%d,\"grid\":%d,\"B\":%d,\"D\":%d,\"H\":%d,\"O\":%d,\"prog\":\"%s\",\"runs\":%d,\"steps\":%d,\"tile\":%d,\"kc\":%d,\"stg\":%d,\"reps\":%d,\n \"modes\":[", prop.name, prop.multiProcessorCount, occ, grid, B, D, Hd, O, prog.c_str(), R, steps, TILE, KC, STG, nreps);
     for (int i = 0; i < 4; i++) { fprintf(fp, "%s{\"name\":\"%s\",\"best_ms\":%.4f,\"median_ms\":%.4f,\"max_ms\":%.4f,\"us_per_step_run\":%.4f}", i ? "," : "", nm[i], t[i], tmed[i], tmax[i], t[i] * 1000 / tot); }
     fprintf(fp, "],\n \"weights_bitwise_differ\":%zu,\"max_rel_loss_err\":%.3e,\"pass\":%s,\"profiled_ms\":%.4f}\n", n_diff, e_ref, ok ? "true" : "false", t_prof);
     fclose(fp);

@@ -1,0 +1,39 @@
+      5     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+      1     64 bytes stack frame, 96 bytes spill stores, 96 bytes spill loads
+      1     96 bytes stack frame, 92 bytes spill stores, 92 bytes spill loads
+device: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz
+PASS  bench check: attn fwd B=4 T=1024 H=12 Hkv=12 hd=64 (b0,h0 all rows)  relerr 2.11e-06
+PASS  bench check: attn bwd dq B=4 T=1024 H=12 hd=64 (b0,h0)  relerr 1.23e-06
+PASS  bench check: attn bwd dk B=4 T=1024 H=12 hd=64 (b0,h0)  relerr 4.98e-06
+BENCH  attn fwd B=4 T=1024 H=12 Hkv=12 hd=64          full dispatch    0.692 ms [0.692..0.692]     9306.9 GFLOP/s  (47.7% of 19500)
+BENCH  attn fwd B=4 T=1024 H=12 Hkv=12 hd=64          single-op        0.692 ms [0.691..0.693]     9312.4 GFLOP/s  (47.8% of 19500)
+BENCH  attn bwd B=4 T=1024 H=12 Hkv=12 hd=64          full dispatch    2.202 ms [2.201..2.203]     7313.6 GFLOP/s  (37.5% of 19500)
+BENCH  attn bwd B=4 T=1024 H=12 Hkv=12 hd=64          single-op        2.202 ms [1.741..2.203]     7315.6 GFLOP/s  (37.5% of 19500)
+PASS  bench check: attn fwd B=4 T=1024 H=16 Hkv=16 hd=64 (b0,h0 all rows)  relerr 9.34e-07
+PASS  bench check: attn bwd dq B=4 T=1024 H=16 hd=64 (b0,h0)  relerr 3.20e-06
+PASS  bench check: attn bwd dk B=4 T=1024 H=16 hd=64 (b0,h0)  relerr 6.90e-06
+BENCH  attn fwd B=4 T=1024 H=16 Hkv=16 hd=64          full dispatch    0.716 ms [0.715..0.716]    12000.9 GFLOP/s  (61.5% of 19500)
+BENCH  attn fwd B=4 T=1024 H=16 Hkv=16 hd=64          single-op        0.715 ms [0.714..0.715]    12021.5 GFLOP/s  (61.6% of 19500)
+BENCH  attn bwd B=4 T=1024 H=16 Hkv=16 hd=64          full dispatch    2.305 ms [2.303..2.308]     9318.2 GFLOP/s  (47.8% of 19500)
+BENCH  attn bwd B=4 T=1024 H=16 Hkv=16 hd=64          single-op        2.302 ms [2.280..2.304]     9329.0 GFLOP/s  (47.8% of 19500)
+PASS  bench check: attn fwd B=4 T=2048 H=16 Hkv=4 hd=64 (b0,h0 all rows)  relerr 8.40e-07
+BENCH  attn fwd B=4 T=2048 H=16 Hkv=4 hd=64           full dispatch    2.519 ms [2.519..2.520]    13637.8 GFLOP/s  (69.9% of 19500)
+BENCH  attn fwd B=4 T=2048 H=16 Hkv=4 hd=64           single-op        2.525 ms [2.525..2.526]    13605.7 GFLOP/s  (69.8% of 19500)
+BENCH  attn bwd B=4 T=2048 H=16 Hkv=4 hd=64           full dispatch    6.830 ms [6.829..6.832]    12575.9 GFLOP/s  (64.5% of 19500)
+BENCH  attn bwd B=4 T=2048 H=16 Hkv=4 hd=64           single-op        6.838 ms [6.837..6.842]    12561.2 GFLOP/s  (64.4% of 19500)
+PASS  bench check: attn fwd B=2 T=2048 H=8 Hkv=8 hd=128 (b0,h0 all rows)  relerr 1.59e-06
+PASS  bench check: attn bwd dq B=2 T=2048 H=8 hd=128 (b0,h0)  relerr 6.93e-06
+PASS  bench check: attn bwd dk B=2 T=2048 H=8 hd=128 (b0,h0)  relerr 1.56e-05
+BENCH  attn fwd B=2 T=2048 H=8 Hkv=8 hd=128           full dispatch    1.125 ms [1.124..1.125]    15277.0 GFLOP/s  (78.3% of 19500)
+BENCH  attn fwd B=2 T=2048 H=8 Hkv=8 hd=128           single-op        1.118 ms [1.117..1.119]    15366.6 GFLOP/s  (78.8% of 19500)
+BENCH  attn bwd B=2 T=2048 H=8 Hkv=8 hd=128           full dispatch    3.040 ms [3.039..3.041]    14127.9 GFLOP/s  (72.5% of 19500)
+BENCH  attn bwd B=2 T=2048 H=8 Hkv=8 hd=128           single-op        3.095 ms [3.094..3.115]    13878.3 GFLOP/s  (71.2% of 19500)
+
+10 passed, 0 failed
+device: NVIDIA A100-SXM4-40GB 108 SMs, torch 2.7.0
+REF    attn fwd fp32 B=4 T=1024 H=12 Hkv=12 hd=64              0.419 ms [0.415..0.426]    15375.0 GFLOP/s
+REF    attn bwd fp32 B=4 T=1024 H=12 Hkv=12 hd=64              1.357 ms [1.345..1.367]    11872.5 GFLOP/s
+REF    attn fwd tf32 B=4 T=1024 H=12 Hkv=12 hd=64              0.537 ms [0.529..0.543]    11988.3 GFLOP/s
+REF    attn bwd tf32 B=4 T=1024 H=12 Hkv=12 hd=64              1.359 ms [1.350..1.363]    11849.2 GFLOP/s
+REF    attn fwd bf16 B=4 T=1024 H=12 Hkv=12 hd=64              0.092 ms [0.092..0.094]    69750.1 GFLOP/s
+REF    attn bwd bf16 B=4 T=1024 H=12 Hkv=12 hd=64              0.304 ms [0.303..0.307]    53029.8 GFLOP/s

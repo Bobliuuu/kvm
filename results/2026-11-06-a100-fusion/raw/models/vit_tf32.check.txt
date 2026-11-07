@@ -1,0 +1,6 @@
+tf32: 388 f32 buffers (9 signal-free skipped: ['act116', 'act179', 'act242', 'act305', 'act53', 'm.vit.h0.attn.k.b']), 5 loss buffers
+  ok   losses rel L2 <= 0.002: worst 1.99e-05
+  ok   61 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act56 9.39e-04
+  info: post-optimizer weights/moments differ by up to 6.58e-03 (m.vit.h0.n1.b) after the run
+  ok   no NaN/Inf in any GPU buffer: []
+PASS

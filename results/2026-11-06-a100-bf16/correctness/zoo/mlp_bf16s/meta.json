@@ -1,0 +1,51 @@
+{
+ "model": "mlp_bf16s",
+ "config": {
+  "name": "mlp_bf16s",
+  "in_dim": 16,
+  "hidden": [
+   32,
+   32
+  ],
+  "classes": 4,
+  "batch": 32,
+  "act": "relu",
+  "noise": 0.6,
+  "seed": 0,
+  "precision": "bf16s"
+ },
+ "steps": 30,
+ "accum": 1,
+ "tiling": "cpu",
+ "precise": false,
+ "fuse": false,
+ "tasks": 3810,
+ "edges": 10978,
+ "ops": {
+  "round_bf16": 1740,
+  "gradnorm_partial": 300,
+  "adamw": 300,
+  "select_window": 240,
+  "matmul_mma_bf16": 240,
+  "act_fwd": 240,
+  "act_bwd": 240,
+  "softmax_ce_fwd": 120,
+  "softmax_ce_bwd": 120,
+  "colsum": 90,
+  "noop": 60,
+  "softmax_ce_reduce": 30,
+  "gradnorm_finish": 30,
+  "scale_flat": 30,
+  "counter_inc": 30
+ },
+ "plan": {
+  "reuse": "none",
+  "gap": 0,
+  "persistent_bytes": 89648,
+  "pool_bytes": 2064840,
+  "no_reuse_bytes": 2064840,
+  "slots": 990,
+  "transient_tensors": 990,
+  "reuse_factor": 1.0
+ }
+}

@@ -16,8 +16,10 @@ from functools import lru_cache
 from .defs import default_include_dir, read_defs
 from .ir import FrontendError
 
+MMA_TILE = (128, 256)   # matmul_mma_bf16 computes a 128 (m) x 256 (n) output tile (same flags as matmul_tile, minus precise)
 MM_TILE = 64        # matmul_tile computes a 64 x 64 output tile (flags: 1 transA, 2 transB, 4 accumulate, 8 gelu)
-ATTN_Q = 32         # attn_fwd / attn_bwd_dq: 32 query rows per task; attn_bwd_dkv: 32 keys per task
+ATTN_Q = 32         # bidirectional attn_full_*: 32 query rows (or keys) per task; also the sequence-length granularity of the model configs
+ATTN_BLOCK = 128    # causal attn_fwd / attn_bwd_dq: 128 query rows per task; attn_bwd_dkv: 128 keys per task (KVM_GPT_ATTN_ROWS in kvm_ops_gpt.cuh)
 F_TA, F_TB, F_ACC, F_GELU, F_PRECISE = 1, 2, 4, 8, 16
 F_BIG, F_HUGE = 32, 64   # matmul_tile flags: 32 = 128x128 output tile, 64 = 256x128 (rows x cols; two 128x128 passes). Default 64x64.
 F_TRUNC = 256            # matmul_tile flag, big/huge 1xTF32 tiles only: operands are truncated by the tensor core (as cuBLAS TF32 does), not rounded to tf32 first
@@ -29,11 +31,12 @@ def mm_dims(fl):
 
 
 class Buf:
-    """rows x cols dense store; `a` is the flat row-major list. Optionally rounds every write to float32."""
-    __slots__ = ('a', 'rows', 'cols', 'f32')
+    """rows x cols dense store; `a` is the flat row-major list. Optionally rounds every write to float32. bf16: a bf16-STORAGE buffer
+    (ABI dtype 2): every value written through put() or by a storage-aware op is rounded to the nearest bfloat16."""
+    __slots__ = ('a', 'rows', 'cols', 'f32', 'bf16')
 
-    def __init__(self, a, rows, cols, f32=False):
-        self.a, self.rows, self.cols, self.f32 = a, rows, cols, f32
+    def __init__(self, a, rows, cols, f32=False, bf16=False):
+        self.a, self.rows, self.cols, self.f32, self.bf16 = a, rows, cols, f32, bf16
 
     def row(self, r, c0=0, c1=None):
         o = r * self.cols
@@ -41,6 +44,8 @@ class Buf:
 
     def put(self, r, c0, vals):
         o = r * self.cols + c0
+        if self.bf16:
+            vals = [bf16_round(v) for v in vals]
         self.a[o:o + len(vals)] = [ctypes.c_float(v).value for v in vals] if self.f32 else vals
 
 
@@ -171,7 +176,7 @@ def _matmul_tile(b, a):
             if b['bias'] is not None:
                 v += b['bias'].a[n]
             if b['pre'] is not None:
-                b['pre'].a[m * b['pre'].cols + n] = ctypes.c_float(v).value if out.f32 else v
+                b['pre'].a[m * b['pre'].cols + n] = bf16_round(v) if b['pre'].bf16 else ctypes.c_float(v).value if out.f32 else v
             if fl & F_GELU:
                 v = _gelu(v)
             if b['res'] is not None:
@@ -212,13 +217,13 @@ def _gelu_fwd(b, a):
 def _gelu_bwd(b, a):
     e0, e1 = a['e0'], a['e1']
     v = [_gelu_d(x) * g + (d if a['acc'] else 0.0) for x, g, d in zip(b['x'].a[e0:e1], b['dy'].a[e0:e1], b['dx'].a[e0:e1])]
-    b['dx'].a[e0:e1] = v
+    b['dx'].put(0, e0, v)      # flat range; put() rounds when dx is bf16 storage
 
 
 @impl('residual_add', lambda a: a['e1'] - a['e0'])
 def _residual_add(b, a):
     e0, e1 = a['e0'], a['e1']
-    b['out'].a[e0:e1] = [x + y for x, y in zip(b['a'].a[e0:e1], b['b'].a[e0:e1])]
+    b['out'].put(0, e0, [x + y for x, y in zip(b['a'].a[e0:e1], b['b'].a[e0:e1])])
 
 
 @impl('rope_fwd', lambda a: 6.0 * (a['r1'] - a['r0']) * a['H'] * a['hd'])
@@ -302,14 +307,8 @@ def _norm_bwd_params(b, a):
 
 
 # ------------------------------------------------------------------------------------------------ attention (causal, GQA-capable)
-def attn_span(x):
-    """(first row/key, number of 32-row blocks) of an attention task's q0/k0 argument: bits 16.. hold the block count - 1."""
-    return x & 0xFFFF, (x >> 16) + 1
-
-
 def _attn_fl(a):
-    r0, n = attn_span(a.get('q0', a.get('k0', 0)))
-    return 4.0 * ATTN_Q * n * (r0 + ATTN_Q * (n + 1) / 2) * a['hd']
+    return 4.0 * ATTN_BLOCK * (a.get('q0', a.get('k0', 0)) + ATTN_BLOCK) * a['hd']
 
 
 def _head(buf, r, h, hd):
@@ -329,8 +328,7 @@ def _probs(q, K, scale, lse=None):
 def _attn_fwd(b, a):
     T, H, Hkv, hd, bb, h = a['T'], a['H'], a['Hkv'], a['hd'], a['b'], a['h']
     kvh = h // (H // Hkv)
-    q0, n = attn_span(a['q0'])
-    for t in range(q0, min(q0 + n * ATTN_Q, T)):
+    for t in range(a['q0'], min(a['q0'] + ATTN_BLOCK, T)):
         K = [_head(b['k'], bb * T + j, kvh, hd) for j in range(t + 1)]
         p, lse = _probs(_head(b['q'], bb * T + t, h, hd), K, a['scale'])
         o = [0.0] * hd
@@ -366,8 +364,7 @@ def _ds(b, a, bb, h, kvh, t, j_range):
 def _attn_bwd_dq(b, a):
     T, hd, bb, h = a['T'], a['hd'], a['b'], a['h']
     kvh = h // (a['H'] // a['Hkv'])
-    q0, n = attn_span(a['q0'])
-    for t in range(q0, min(q0 + n * ATTN_Q, T)):
+    for t in range(a['q0'], min(a['q0'] + ATTN_BLOCK, T)):
         _, _, terms = _ds(b, a, bb, h, kvh, t, range(t + 1))
         dq = [0.0] * hd
         for j, p, ds in terms:
@@ -380,17 +377,16 @@ def _attn_bwd_dkv(b, a):
     T, H, hd, bb, kvh = a['T'], a['H'], a['hd'], a['b'], a['kvh']
     Hkv = b['k'].cols // hd                       # the op has no Hkv argument (15-word task limit): derived from k
     G = H // Hkv
-    k0, n = attn_span(a['k0'])
-    k1 = min(k0 + n * ATTN_Q, T)
-    dk = {j: [0.0] * hd for j in range(k0, k1)}
-    dv = {j: [0.0] * hd for j in range(k0, k1)}
+    k1 = min(a['k0'] + ATTN_BLOCK, T)
+    dk = {j: [0.0] * hd for j in range(a['k0'], k1)}
+    dv = {j: [0.0] * hd for j in range(a['k0'], k1)}
     for h in range(kvh * G, (kvh + 1) * G):
-        for t in range(k0, T):
-            q, do, terms = _ds(b, a, bb, h, kvh, t, range(k0, min(k1, t + 1)))
+        for t in range(a['k0'], T):
+            q, do, terms = _ds(b, a, bb, h, kvh, t, range(a['k0'], min(k1, t + 1)))
             for j, p, ds in terms:
                 dv[j] = [x + p * y for x, y in zip(dv[j], do)]
                 dk[j] = [x + a['scale'] * ds * y for x, y in zip(dk[j], q)]
-    for j in range(k0, k1):
+    for j in range(a['k0'], k1):
         b['dk'].put(bb * T + j, kvh * hd, dk[j])
         b['dv'].put(bb * T + j, kvh * hd, dv[j])
 
@@ -696,8 +692,7 @@ def _attn_full_fwd(b, a):
 def _attn_full_bwd_dq(b, a):
     T, hd, bb, h = a['T'], a['hd'], a['b'], a['h']
     kvh = h // (a['H'] // a['Hkv'])
-    q0, n = attn_span(a['q0'])
-    for t in range(q0, min(q0 + n * ATTN_Q, T)):
+    for t in range(a['q0'], min(a['q0'] + ATTN_Q, T)):
         _, _, terms = _ds(b, a, bb, h, kvh, t, range(T))
         dq = [0.0] * hd
         for j, p, ds in terms:
@@ -735,7 +730,7 @@ def bf16_round(x):
 
 @impl('round_bf16', lambda a: float(a['e1'] - a['e0']))
 def _round_bf16(b, a):
-    b['out'].a[a['e0']:a['e1']] = [bf16_round(x) for x in b['x'].a[a['e0']:a['e1']]]
+    b['out'].a[a['e0']:a['e1']] = [bf16_round(x) for x in b['x'].a[a['e0']:a['e1']]]   # also the narrow / widen of bf16 storage
 
 
 @impl('matmul_tile_bf16', _mm_flops)
@@ -744,6 +739,19 @@ def _matmul_tile_bf16(b, a):
     for n in ('a', 'b'):
         rb[n] = Buf([bf16_round(x) for x in b[n].a], b[n].rows, b[n].cols)
     _matmul_tile(rb, a)
+
+
+def _mma_flops(a):
+    return 2.0 * max(0, min(MMA_TILE[0], a['M'] - a['m0'])) * max(0, min(MMA_TILE[1], a['N'] - a['n0'])) * a['K']
+
+
+@impl('matmul_mma_bf16', _mma_flops)
+def _matmul_mma_bf16(b, a):
+    """The 128 x 256 tile is the union of the 64 x 64 matmul_tile_bf16 tiles it covers (same operand rounding, same epilogue order)."""
+    for dm in range(0, MMA_TILE[0], MM_TILE):
+        for dn in range(0, MMA_TILE[1], MM_TILE):
+            if a['m0'] + dm < a['M'] and a['n0'] + dn < a['N']:
+                _matmul_tile_bf16(b, {**a, 'm0': a['m0'] + dm, 'n0': a['n0'] + dn})
 
 
 @impl('adamw_lr', lambda a: 12.0 * (a['e1'] - a['e0']))

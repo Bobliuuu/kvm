@@ -6,7 +6,8 @@
 # 1 step, reuse none (every gradient buffer survives), lr 3e-4 with 2 warmup steps (the demo's `large` preset). WORK_DIR needs ~3 GB.
 set -uo pipefail
 WORK="$(realpath -m "${1:?WORK_DIR}")"; OUT="$(realpath -m "${2:?OUT_DIR}")"; mkdir -p "$WORK" "$OUT"
-M='{"name":"gpt_162m","vocab":50304,"d_model":768,"layers":12,"heads":12,"seq":1024,"batch":4}'
+PREC="${PRECISION:-f32}"   # f32 (TF32 matmuls, the default) | bf16 | bf16s (real bf16 storage, bf16 tensor-core tiles)
+M='{"name":"gpt_162m","vocab":50304,"d_model":768,"layers":12,"heads":12,"seq":1024,"batch":4,"precision":"'"$PREC"'"}'
 { date -u +%FT%TZ; nvidia-smi --query-gpu=name,driver_version,clocks.max.sm --format=csv,noheader; nvcc --version | tail -n 1
   python3 -c "import torch;p=torch.cuda.get_device_properties(0);print('torch',torch.__version__,'cuda',torch.version.cuda,p.name,'SMs',p.multi_processor_count)"
   echo "commit: ${KVM_COMMIT:-unknown}"; } | tee "$OUT/env.txt"

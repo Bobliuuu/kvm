@@ -65,6 +65,20 @@ class Planner(unittest.TestCase):
         self.assertEqual(plan_memory(self.ops(10), 'none').stats['slots'], 10)
         self.assertGreater(plan_memory(self.ops(10), 'shape', 4).stats['slots'], plan_memory(self.ops(10), 'shape', 0).stats['slots'])
 
+    def test_step_policy_reuses_only_across_steps(self):
+        def two_steps(n):
+            b = Builder()
+            ts = [b.tensor(f't{i}', 4, 4) for i in range(2 * n)]
+            for st in (0, 1):
+                b.step = st
+                for i in range(n - 1):
+                    b.emit('add2', {'a': ts[st * n + i], 'b': ts[st * n + i]}, {'out': ts[st * n + i + 1]})
+            return b.ops
+        ops = two_steps(6)
+        self.assertEqual(plan_memory(ops, 'step').stats['slots'], 6)             # nothing shared inside a step, step 1 reuses step 0
+        self.assertEqual(plan_memory(ops, 'shape').stats['slots'], 2)
+        self.assertEqual(plan_memory(ops[:5], 'step').stats['slots'], 6)         # one step: no reuse at all
+
     def test_pinned_and_shape_mismatch(self):
         a, b = Tensor('a', 2, 2, buf='w'), Tensor('b', 2, 3, buf='w')
         bld = Builder()
@@ -149,6 +163,31 @@ class Lowering(unittest.TestCase):
         self.assertEqual(ModelConfig.load('{"name": "x", "layers": 3}').layers, 3)
         with self.assertRaisesRegex(FrontendError, 'bad model config'):
             ModelConfig.load({'nope': 1})
+
+
+class OptimizerChunks(unittest.TestCase):
+    class W:
+        def __init__(self, rows, cols):
+            self.rows, self.cols = rows, cols
+
+    def test_multi_row_chunks_are_whole_matmul_tile_rows(self):
+        from kvmfe.lower import _opt_chunks
+        tc = Tiling(opt_elems=262144)
+        ch = _opt_chunks(self.W(768, 3072), tc)                    # 85 rows fit; rounded down to one tile row
+        self.assertEqual(ch, [(a, a + 64) for a in range(0, 768, 64)])
+        ch = _opt_chunks(self.W(768, 768), tc)                     # 341 rows -> 320
+        self.assertEqual([b - a for a, b in ch], [320, 320, 128])
+
+    def test_tile_rows_follow_the_bf16_tensor_core_tile(self):
+        from kvmfe.lower import _opt_chunks
+        ch = _opt_chunks(self.W(768, 768), Tiling(opt_elems=262144), 128)    # 341 rows -> 256 (whole 128-row MMA tiles)
+        self.assertEqual([b - a for a, b in ch], [256, 256, 256])
+
+    def test_wide_matrices_keep_their_short_chunks(self):
+        from kvmfe.lower import _opt_chunks
+        ch = _opt_chunks(self.W(768, 50304), Tiling(opt_elems=262144))      # 5 rows < one tile row
+        self.assertEqual(ch[0], (0, 5))
+        self.assertEqual(ch[-1][1], 768)
 
 
 if __name__ == '__main__':

@@ -33,7 +33,7 @@ static_assert(alignof(KvmTaskDesc) == 4, "KVM ABI alignment mismatch");
 struct KvmBuf {
     void*   p;
     int32_t rows, cols, ld;
-    int32_t dtype;           // 0 = f32, 1 = i32 (index / counter buffers)
+    int32_t dtype;           // 0 = f32, 1 = i32 (index / counter buffers), 2 = bf16 (raw 16-bit storage, 2 bytes/element; only the ops that say so accept it)
     int32_t reserved[2];
 };
 static_assert(sizeof(KvmBuf) == 32, "KvmBuf size mismatch");

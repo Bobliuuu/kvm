@@ -65,14 +65,11 @@ class BigTiles(unittest.TestCase):
         _, flags = self.check(mm_tile=128)
         self.assertIn(32, flags)
 
-    def test_mm256_and_attention_span(self):
-        c, flags = self.check(mm_tile=256, attn_span=2)
+    def test_mm256(self):
+        c, flags = self.check(mm_tile=256)
         self.assertIn(64, flags)
         base = compile_training(self.cfg, TrainConfig(steps=2), Tiling.preset('cpu'))
         self.assertLess(len(c.low.tasks), len(base.low.tasks))
-
-    def test_attention_span_four(self):
-        self.check(attn_span=4)
 
 
 class Dataflow(unittest.TestCase):

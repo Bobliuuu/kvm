@@ -24,3 +24,8 @@ san_vit        | vit_tiny        | 2  | precise | 1e-3 |
 san_mlp        | mlp_tiny        | 3  | precise | 1e-3 | --schedule cosine --warmup 1
 san_bf16       | {"family": "llama", "name": "llama_bf16", "precision": "bf16"} | 2 | lowp | 0 | --loss-scale 1024
 san_remat      | {"family": "llama", "name": "llama_remat", "layers": 2, "remat": true} | 2 | precise | 1e-3 | --accum 2
+# real bf16 STORAGE (precision "bf16s": bf16 tensors, matmul_mma_bf16 tiles, fp32 masters): the same models as the emulation cases above
+llama_bf16s    | {"family": "llama", "name": "llama_bf16s", "precision": "bf16s"} | 10 | lowp | 0 | --loss-scale 1024 --schedule cosine --warmup 2
+mlp_bf16s      | {"family": "mlp", "name": "mlp_bf16s", "precision": "bf16s"} | 30 | lowp | 0 | --loss-scale 128
+vit_bf16s      | {"family": "vit", "name": "vit_bf16s", "precision": "bf16s"} | 10 | lowp | 0 | --loss-scale 128
+san_bf16s      | {"family": "llama", "name": "llama_bf16s", "precision": "bf16s"} | 2 | lowp | 0 | --loss-scale 1024

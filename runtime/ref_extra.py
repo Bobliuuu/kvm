@@ -8,7 +8,7 @@ import math
 import struct
 
 from ref_gpt import GPT_OPS, _R, _flat_ext, _need, _rng, _matmul_tile
-from ref_types import f32
+from ref_types import RefOp, f32
 
 M32 = 0xFFFFFFFF
 
@@ -314,6 +314,21 @@ def _matmul_tile_bf16(b, a):
     rb['a'] = type(b['a'])([bf16_round(x) for x in b['a']], b['a'].rows, b['a'].cols)
     rb['b'] = type(b['b'])([bf16_round(x) for x in b['b']], b['b'].rows, b['b'].cols)
     _matmul_tile(rb, a)
+    # bf16-STORAGE outputs (dtype 'bf16'): one rounding per stored value, after the fp32 epilogue (pre before gelu, as on the device)
+    for name in ('out', 'pre'):
+        t = b.get(name)
+        if t is not None and t.dtype == 'bf16':
+            for m in range(a['m0'], min(a['m0'] + 64, a['M'])):
+                for n in range(a['n0'], min(a['n0'] + 64, a['N'])):
+                    t[m * t.cols + n] = bf16_round(t[m * t.cols + n])
+
+
+def _matmul_mma_bf16(b, a):
+    """The 128 x 256 tile as the eight 64 x 64 matmul_tile_bf16 tiles it equals (same operand rounding, same epilogue order)."""
+    for dm in (0, 64):
+        for dn in (0, 64, 128, 192):
+            if a['m0'] + dm < a['M'] and a['n0'] + dn < a['N']:
+                _matmul_tile_bf16(b, {**a, 'm0': a['m0'] + dm, 'n0': a['n0'] + dn})
 
 
 def _adamw_lr(b, a):
@@ -429,8 +444,9 @@ EXTRA_OPS = {
     'attn_full_fwd': _R(_full_fwd, _full_fwd_ext),
     'attn_full_bwd_dq': _R(_full_dq, _full_dq_ext),
     'attn_full_bwd_dkv': _R(_full_dkv, _full_dkv_ext),
-    'round_bf16': _R(_round_bf16, _flat_ext(bufs=('x', 'out'))),
-    'matmul_tile_bf16': _R(_matmul_tile_bf16, GPT_OPS['matmul_tile'].extents),
+    'round_bf16': _R(_round_bf16, _flat_ext(bufs=('x', 'out')), anydt=('x', 'out')),      # storage conversion: each side f32 or bf16
+    'matmul_tile_bf16': _R(_matmul_tile_bf16, GPT_OPS['matmul_tile'].extents, anydt=('a', 'b', 'out', 'res', 'pre')),
+    'matmul_mma_bf16': _R(_matmul_mma_bf16, GPT_OPS['matmul_tile'].extents, anydt=('a', 'b', 'out', 'res', 'pre')),
     'adamw_lr': _R(_adamw_lr, lambda a: (_rng(a['e0'], a['e1']), {'p': a['e1'], 'g': a['e1'], 'm': a['e1'], 'v': a['e1'], 'gscale': 1, 'step': 1,
                                                                   'lr': 1})[1], ints=('step',)),
     'lr_schedule': _R(_lr_schedule, lambda a: (_need(a['kind'] in (0, 1, 2), 'lr_schedule: kind not in 0..2'), {'step': 1, 'lr': 1})[1],
@@ -442,3 +458,39 @@ EXTRA_OPS = {
     'matmul_tile_silu_mul': _R(_mm_silu_mul, _mm_ext(('out', 'gate', 'up'))),
     'matmul_tile_silu_mul_bwd': _R(_mm_silu_mul_bwd, _mm_ext(('gate', 'up', 'dgate', 'dup'))),
 }
+
+
+# ---- bf16 STORAGE variants of GPT-pack ops --------------------------------------------------------------------------------------
+# These device ops take fp32 or bf16-storage buffers (ld_s / st_s) on the arguments below; the arithmetic is the fp32 op's, and every value stored
+# to a bf16 buffer is rounded once (RNE). The reference runs the fp32 model, then rounds the whole bf16 output buffer: rounding is idempotent,
+# so values the task did not write (already bf16) are unchanged. Cost is O(buffer) per task: this is the small-model golden, not a 162M oracle.
+_BF16_STORAGE = {   # op: (buffers that may be bf16 storage, of which written)
+    'embedding_fwd': (('out',), ('out',)),
+    'layernorm_fwd': (('x', 'out'), ('out',)),
+    'rmsnorm_fwd': (('x', 'out'), ('out',)),
+    'layernorm_bwd_dx': (('x', 'dy', 'dx'), ('dx',)),
+    'rmsnorm_bwd_dx': (('x', 'dy', 'dx'), ('dx',)),
+    'norm_bwd_params': (('x', 'dy'), ()),
+    'colsum': (('x',), ()),
+    'gelu_bwd': (('x', 'dy', 'dx'), ('dx',)),
+    'residual_add': (('a', 'b', 'out'), ('out',)),
+    'rope_fwd': (('x', 'out'), ('out',)),
+    'rope_bwd': (('x', 'out'), ('out',)),
+    'softmax_ce_fwd': (('logits',), ()),
+    'softmax_ce_bwd': (('logits', 'dlogits'), ('dlogits',)),
+}
+
+
+def _bf16_storage(base, written):
+    def run(b, a):
+        base.run(b, a)
+        for n in written:
+            t = b.get(n)
+            if t is not None and t.dtype == 'bf16':
+                t[:] = [bf16_round(x) for x in t]
+    return run
+
+
+for _name, (_any, _written) in _BF16_STORAGE.items():
+    _base = GPT_OPS[_name]
+    EXTRA_OPS[_name] = RefOp(_bf16_storage(_base, _written), _base.extents, _base.mins, _base.ints, _base.anydt | frozenset(_any), _base.opaque)

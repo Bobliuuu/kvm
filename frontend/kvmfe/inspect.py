@@ -29,7 +29,8 @@ def load_any(spec):
 def add_common(p):
     p.add_argument('--model', default='gpt_tiny', help='preset name (gpt_*, llama_*, moe_tiny, mlp_tiny, vit_tiny), JSON file or JSON string')
     p.add_argument('--tiling', default='cpu', help='preset: ' + ', '.join(sorted(Tiling.PRESETS)))
-    p.add_argument('--reuse', default='shape', choices=['none', 'shape'], help='activation memory reuse policy')
+    p.add_argument('--reuse', default='step', choices=['none', 'shape', 'step'],
+                   help='activation memory reuse policy (step: a slot is reused only by a later step, never inside one)')
     p.add_argument('--gap', type=int, default=0, help='do not reuse a buffer within this many logical ops of its last use')
     p.add_argument('-v', '--verbose', action='store_true', help='DEBUG logging')
 

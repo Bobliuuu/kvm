@@ -629,7 +629,7 @@ KVM_GPT_DEVI void matmul_tile_bf16(const KvmCtx& ctx, const int32_t* a) {
     float* pre = k.mat(a[5], M, N, &ldp, true);
     if (k.bad) return;
     float alpha = af(a, 12);
-#define KVM_EX_MM(TA, TB) kvmgpt::mm_tile<TA, TB, false, true>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, gelu, accum, false)
+#define KVM_EX_MM(TA, TB) kvmgpt::mm_tile<TA, TB, false, true>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, gelu, accum)
     if (!ta && !tb) KVM_EX_MM(false, false); else if (ta && !tb) KVM_EX_MM(true, false);
     else if (!ta && tb) KVM_EX_MM(false, true); else KVM_EX_MM(true, true);
 #undef KVM_EX_MM

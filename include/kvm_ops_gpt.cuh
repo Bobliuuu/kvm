@@ -371,9 +371,9 @@ struct TileStream {
 // slab; the two k-halves are summed in the epilogue. Shared tiles keep the global orientation (coalesced loads for all four
 // transpose combinations). K-contiguous operands (A as [m][k], B as [n][k]) are fed by ldmatrix, the others by 32-bit loads.
 // PREC: 3xTF32 split (a_lo*b_hi + a_hi*b_lo + a_hi*b_hi) restores ~fp32 accuracy.
-template <bool TA, bool TB, bool PREC, bool BF = false>   // BF: operands rounded to bf16, m16n8k16 bf16 mma (one k16 step per slab per warp half)
+template <bool TA, bool TB, bool PREC, bool BF = false, bool RZ = false>   // BF: operands rounded to bf16, m16n8k16 bf16 mma (one k16 step per slab per warp half); RZ: big tiles only
 KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, float* out, int ldo, const float* bias, const float* res,
-                          int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, bool gelu, bool accum, bool rz) {
+                          int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, bool gelu, bool accum) {
     constexpr int BK = 32, TM = 64, TN = 64, TILE = 2048, STAGE = 2 * TILE, NST = 3, CLD = TN + 8;
     float* sm = reinterpret_cast<float*>(kvm_gpt_smem);   // [stage][A | B]
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, wmi = (warp >> 1) & 1, wni = warp & 1, kh = warp >> 2;
@@ -535,9 +535,9 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
 // 128x128 output tile (flag 32): the same math as mm_tile with a quarter of the shared-to-L2 traffic per FLOP, which is what bounds
 // the 64x64 tile. BK=16, 3-stage cp.async pipeline (3 x 16 KiB = 48 KiB), 8 warps as 2 (m) x 4 (n), each owning a 64x32 sub-tile
 // = 4 m16 x 4 n8 fragments over the whole K (no split-K); the epilogue runs straight from the accumulator registers.
-template <bool TA, bool TB, bool PREC, int WM, int WN, int WTN, bool BF = false>   // BF: bf16 operands (see below). WM x WN warps, each owning a 64 x WTN sub-tile; tile = 64*WM x WTN*WN
+template <bool TA, bool TB, bool PREC, int WM, int WN, int WTN, bool BF = false, bool RZ = false>   // RZ: operands truncated by the tensor core, not rounded to tf32 (matmul_tile flag 256). BF: bf16 operands (see below). WM x WN warps, each owning a 64 x WTN sub-tile; tile = 64*WM x WTN*WN
 KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, float* out, int ldo, const float* bias, const float* res,
-                              int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, bool gelu, bool accum, bool rz) {
+                              int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, bool gelu, bool accum) {
     constexpr int BK = KVM_GPT_BIG_BK, NST = KVM_GPT_BIG_NST, BM = 64 * WM, BN = WTN * WN, NJ = WTN / 8, ATILE = BM * BK, TILE = ATILE, STAGE = (BM + BN) * BK;
     static_assert(WM * WN == 8, "8 warps");
     float* sm = reinterpret_cast<float*>(kvm_gpt_smem);   // [stage][A | B]
@@ -571,8 +571,8 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
         const float* As = sm + (it % NST) * STAGE; const float* Bs = As + ATILE;
         if constexpr (!PREC && !BF && KVM_GPT_SMEM_CVT) {   // round the operands once per CTA, in shared memory (see tile_cvt)
             float* Aw = sm + (it % NST) * STAGE; float* Bw = Aw + ATILE;
-            if constexpr (KVM_GPT_SMEM_CVT != 3) if (!rz) { if (fa) sa.cvt(Aw); else if (TA) tile_cvt<false, BK, BM>(Aw); else tile_cvt<true, BM, BK>(Aw); }
-            if constexpr (KVM_GPT_SMEM_CVT != 2) if (!rz) { if (fb) sb.cvt(Bw); else if (TB) tile_cvt<true, BN, BK>(Bw); else tile_cvt<false, BK, BN>(Bw); }
+            if constexpr (KVM_GPT_SMEM_CVT != 3 && !RZ) { if (fa) sa.cvt(Aw); else if (TA) tile_cvt<false, BK, BM>(Aw); else tile_cvt<true, BM, BK>(Aw); }
+            if constexpr (KVM_GPT_SMEM_CVT != 2 && !RZ) { if (fb) sb.cvt(Bw); else if (TB) tile_cvt<true, BN, BK>(Bw); else tile_cvt<false, BK, BN>(Bw); }
         }
         __syncthreads();
         if (it + NST - 1 < nk) issue(it + NST - 1);
@@ -636,7 +636,7 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
                 if constexpr (PREC || KVM_GPT_SMEM_CVT == 0 || KVM_GPT_SMEM_CVT == 3) for (int e = 0; e < 4; e++) {
                     float x = __uint_as_float(ah[i][e]);
                     if (PREC) { unsigned h = f2tf32(x); al[i][e] = __float_as_uint(x - __uint_as_float(h)); ah[i][e] = h; }
-                    else if (!rz) ah[i][e] = f2tf32_op(x);
+                    else if constexpr (!RZ) ah[i][e] = f2tf32_op(x);
                 }
             }
 #pragma unroll
@@ -656,7 +656,7 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
                     for (int e = 0; e < 2; e++) {
                     float x = __uint_as_float(bh[2 * jp + jj][e]);
                     if (PREC) { unsigned h = f2tf32(x); bl[2 * jp + jj][e] = __float_as_uint(x - __uint_as_float(h)); bh[2 * jp + jj][e] = h; }
-                    else if (!rz) bh[2 * jp + jj][e] = f2tf32_op(x);
+                    else if constexpr (!RZ) bh[2 * jp + jj][e] = f2tf32_op(x);
                 }
             }
 #pragma unroll
@@ -723,7 +723,7 @@ KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
     if (k.bad) return;
     float alpha = af(a, 12);
 // BFV (true/false) selects bf16 operands (flag 128); it is the last template argument of both tile functions. bf16 has no 3xTF32 form.
-#define KVM_GPT_MM(F, TA, TB, P) F<TA, TB, P KVM_GPT_MM_SHAPE, KVM_GPT_BFV>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, KVM_GPT_MM_M0, n0, M, N, K, alpha, gelu, accum, rz)
+#define KVM_GPT_MM(F, TA, TB, P) F<TA, TB, P KVM_GPT_MM_SHAPE, KVM_GPT_BFV, KVM_GPT_RZV>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, KVM_GPT_MM_M0, n0, M, N, K, alpha, gelu, accum)
 #define KVM_GPT_MM_T(F, P)                                                                                                   \
     if (!ta && !tb) KVM_GPT_MM(F, false, false, P); else if (ta && !tb) KVM_GPT_MM(F, true, false, P);                       \
     else if (!ta && tb) KVM_GPT_MM(F, false, true, P); else KVM_GPT_MM(F, true, true, P)
@@ -732,10 +732,26 @@ KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
 // which cannot coexist with the 128-register budget of two blocks per SM (__launch_bounds__(256, 2)); two passes keep the task shape
 // for the compiler/frontend at the same per-warp work (the second pass re-reads B from L2).
 #define KVM_GPT_BFV false
+#define KVM_GPT_RZV false
 #define KVM_GPT_MM_M0 m0
     if (!bf) {
 #define KVM_GPT_MM_SHAPE , 2, 4, 32
-        if (big) { KVM_GPT_MM_PREC(mm_tile_big) }
+        if (rz) {   // validated above: big or huge, not prec
+#undef KVM_GPT_RZV
+#define KVM_GPT_RZV true
+            KVM_GPT_MM_T(mm_tile_big, false);
+            if (huge && m0 + 128 < M) {
+                __syncthreads();
+#undef KVM_GPT_MM_M0
+#define KVM_GPT_MM_M0 (m0 + 128)
+                KVM_GPT_MM_T(mm_tile_big, false);
+#undef KVM_GPT_MM_M0
+#define KVM_GPT_MM_M0 m0
+            }
+#undef KVM_GPT_RZV
+#define KVM_GPT_RZV false
+        }
+        else if (big) { KVM_GPT_MM_PREC(mm_tile_big) }
         else if (huge) {
             KVM_GPT_MM_PREC(mm_tile_big)
             if (m0 + 128 < M) {
@@ -776,6 +792,7 @@ KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
 #undef KVM_GPT_MM_M0
 #undef KVM_GPT_MM_SHAPE
 #undef KVM_GPT_BFV
+#undef KVM_GPT_RZV
 #undef KVM_GPT_MM_PREC
 #undef KVM_GPT_MM_T
 #undef KVM_GPT_MM

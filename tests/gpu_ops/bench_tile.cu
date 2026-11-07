@@ -33,7 +33,7 @@
 
 __global__ void __launch_bounds__(256, MM_MINB) k_tile(const float* A, int lda, const float* B, int ldb, float* C, int M, int N, int K) {
     const int tn = (N + TILE_BN - 1) / TILE_BN, m0 = (blockIdx.x / tn) * TILE_BM, n0 = (blockIdx.x % tn) * TILE_BN;
-    kvmgpt::mm_tile_big<TILE_TA, TILE_TB, false, TILE_WM, TILE_WN, TILE_WTN>(A, lda, B, ldb, C, N, nullptr, nullptr, 0, nullptr, 0, m0, n0, M, N, K, 1.f, false, false, TILE_RZ);
+    kvmgpt::mm_tile_big<TILE_TA, TILE_TB, false, TILE_WM, TILE_WN, TILE_WTN, false, TILE_RZ>(A, lda, B, ldb, C, N, nullptr, nullptr, 0, nullptr, 0, m0, n0, M, N, K, 1.f, false, false);
 }
 __global__ void fill(float* p, size_t n, unsigned seed) {
     for (size_t i = blockIdx.x * (size_t)blockDim.x + threadIdx.x; i < n; i += (size_t)gridDim.x * blockDim.x) {

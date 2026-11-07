@@ -24,5 +24,7 @@ run() {
       --holdout "$HOLD" --exec-weights "$SCR/out/buffers" --out "$OUT/curve.json" 2>&1 | tee "$OUT/curve.log"
   echo "== done $(date -u +%T)"
 }
-flock -w 7200 ~/.gpu.lock bash -c "$(declare -f run); OUT='$OUT' SCR='$SCR' MODEL='$MODEL' STEPS='$STEPS' LR='$LR' WARMUP='$WARMUP' HOLD='$HOLD' run"
+if [ -n "${KVM_NO_LOCK:-}" ]; then run   # a private GPU (Modal container): no shared-box lock
+else flock -w 7200 ~/.gpu.lock bash -c "$(declare -f run); OUT='$OUT' SCR='$SCR' MODEL='$MODEL' STEPS='$STEPS' LR='$LR' WARMUP='$WARMUP' HOLD='$HOLD' run"
+fi
 rm -rf "$SCR"

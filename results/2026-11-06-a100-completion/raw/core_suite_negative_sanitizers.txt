@@ -1,0 +1,48 @@
+== FULL
+== checker
+== checker: PASS (0.0s, 0 new failures)
+== ops
+== ops: PASS (0.2s, 0 new failures)
+== types
+== types: PASS (0.0s, 0 new failures)
+== init
+== init: PASS (0.1s, 0 new failures)
+== errors
+== errors: PASS (0.4s, 0 new failures)
+== dag
+== dag: PASS (2.5s, 0 new failures)
+== sched
+== sched: PASS (0.1s, 0 new failures)
+== admission
+== admission: PASS (1.6s, 0 new failures)
+== versions
+== versions: PASS (2.2s, 0 new failures)
+== recycle
+== recycle: PASS (13.9s, 0 new failures)
+== litmus
+== litmus: PASS (16.6s, 0 new failures)
+8586 checks, 0 failed, 0 suites failed
+== BENCH
+  independent noop                          2      65536       5.8468   1.71e+05
+== bench: PASS (1.9s, 0 new failures)
+PASS
+== NEG
+  versions: 180 runs (vector 64Ki-float weights and the real predict->mse_grad->sgd graph): 3225 exact + 653 at_least readers checked, 1689 violations
+== versions: FAIL (1.8s, 118 new failures)
+7497 checks, 118 failed, 1 suites failed
+NEGATIVE TEST PASS: the harness detected the injected violation
+== memcheck
+== smoke: PASS (0.5s, 0 new failures)
+63 checks, 0 failed, 0 suites failed
+PASS
+========= ERROR SUMMARY: 0 errors
+== racecheck
+== smoke: PASS (9.6s, 0 new failures)
+63 checks, 0 failed, 0 suites failed
+PASS
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+== synccheck
+== smoke: PASS (0.4s, 0 new failures)
+63 checks, 0 failed, 0 suites failed
+PASS
+========= ERROR SUMMARY: 0 errors

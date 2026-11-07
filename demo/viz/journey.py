@@ -39,7 +39,7 @@ def journey(d, th, out):
     for y, (label, ms, e) in zip(ys, rows):
         if ms is None:
             ax.barh(y, base, color='none', edgecolor=th['fg'], ls='--', lw=1, height=0.62)
-            ax.text(base / 2, y, 'to be measured (perf/combined)', va='center', ha='center', color=th['fg'], fontsize=8)
+            ax.text(base / 2, y, 'to be measured', va='center', ha='center', color=th['fg'], fontsize=8)
             continue
         if e is None:
             ax.barh(y, ms, color=GREY, height=0.62)
@@ -48,7 +48,7 @@ def journey(d, th, out):
         else:
             ax.barh(y, ms, color=ORANGE, hatch='///', edgecolor=th['bg'], lw=0, height=0.62)
         txt = '%.0f ms' % ms if ms >= 100 else '%.1f ms' % ms
-        if e is not None and not e['merged']:
+        if e is not None and e is not d['executor'][0]:
             txt += ('  (%.2fx vs main)' % (base / ms)) if ms < base * 0.98 else '  (no change vs main)'
         ax.text(ms + 12, y, txt, va='center', color=th['fg'], fontsize=8.5)
     ax.set_yticks(ys)
@@ -56,12 +56,12 @@ def journey(d, th, out):
     ax.set_xlim(0, base * 1.4)
     ax.set_xlabel('milliseconds per optimizer step, gpt_162m, %s (lower is better)' % d['gpu'])
     ax.axhline(len(d['pytorch']) - 0.5, color=th['grid'], lw=1)
-    ax.set_title('The 162M GPT step: executor changes (each measured alone, none combined yet) against PyTorch',
+    ax.set_title('The 162M GPT step: executor on main (alone vs combined) and unmerged branches, against PyTorch',
                  color=th['fg'], fontsize=10, loc='left')
-    ax.legend(handles=[Patch(color=BLUE, label='executor, on main'),
-                       Patch(facecolor=ORANGE, hatch='///', edgecolor=th['bg'], label='executor, branch (unmerged), measured alone'),
+    ax.legend(handles=[Patch(color=BLUE, label='executor, merged to main'),
+                       Patch(facecolor=ORANGE, hatch='///', edgecolor=th['bg'], label='executor, branch, unmerged'),
                        Patch(color=GREY, label='PyTorch')], loc='lower right', frameon=False, fontsize=8, labelcolor=th['fg'])
-    fig.text(0.01, 0.01, 'Data: demo/viz/data/step_time_journey.json (copied from each branch\'s results README). Separate lock holds on a shared box: compare roughly, not to the digit.',
+    fig.text(0.01, 0.01, 'Data: demo/viz/data/step_time_journey.json (copied from each branch\'s results README). alone-rows come from separate holds; ratios are exact only inside one container.',
              color=th['fg'], fontsize=6.8)
     fig.tight_layout(rect=(0, 0.03, 1, 1))
     fig.savefig(out, facecolor=th['bg'])

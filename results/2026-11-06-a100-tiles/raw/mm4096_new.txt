@@ -1,8 +1,8 @@
-MM TF32    NN  4096x 4096x 4096 tile 64x64   kvm    39.1 cuBLAS   130.2 TFLOP/s  ratio 0.300  err_vs_fp32 2.6e-04 ok dev_err 0
-MM TF32    TN  4096x 4096x 4096 tile 64x64   kvm    39.5 cuBLAS   129.2 TFLOP/s  ratio 0.306  err_vs_fp32 9.5e-05 ok dev_err 0
-MM TF32    NT  4096x 4096x 4096 tile 64x64   kvm    41.2 cuBLAS   132.3 TFLOP/s  ratio 0.311  err_vs_fp32 1.2e-04 ok dev_err 0
-MM TF32    NN  4096x 4096x 4096 tile 128x128 kvm    67.6 cuBLAS   131.9 TFLOP/s  ratio 0.512  err_vs_fp32 2.6e-04 ok dev_err 0
-MM TF32    TN  4096x 4096x 4096 tile 128x128 kvm    51.5 cuBLAS   133.1 TFLOP/s  ratio 0.387  err_vs_fp32 9.4e-05 ok dev_err 0
-MM TF32    NT  4096x 4096x 4096 tile 128x128 kvm    66.7 cuBLAS   130.6 TFLOP/s  ratio 0.510  err_vs_fp32 1.2e-04 ok dev_err 0
-MM TF32    NN  4096x 3072x  768 tile 64x64   kvm    34.2 cuBLAS   108.8 TFLOP/s  ratio 0.314  err_vs_fp32 2.8e-04 ok dev_err 0
-MM TF32    NN  4096x 3072x  768 tile 128x128 kvm    51.6 cuBLAS   109.3 TFLOP/s  ratio 0.472  err_vs_fp32 2.8e-04 ok dev_err 0
+MM TF32    NN  4096x 4096x 4096 tile 64x64   kvm    39.1 cuBLAS   128.9 TFLOP/s  ratio 0.303  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    TN  4096x 4096x 4096 tile 64x64   kvm    39.5 cuBLAS   127.4 TFLOP/s  ratio 0.310  err_vs_fp32 9.5e-05 ok dev_err 0
+MM TF32    NT  4096x 4096x 4096 tile 64x64   kvm    41.2 cuBLAS   129.0 TFLOP/s  ratio 0.319  err_vs_fp32 1.2e-04 ok dev_err 0
+MM TF32    NN  4096x 4096x 4096 tile 128x128 kvm    68.6 cuBLAS   128.0 TFLOP/s  ratio 0.536  err_vs_fp32 2.6e-04 ok dev_err 0
+MM TF32    TN  4096x 4096x 4096 tile 128x128 kvm    60.1 cuBLAS   127.7 TFLOP/s  ratio 0.471  err_vs_fp32 9.4e-05 ok dev_err 0
+MM TF32    NT  4096x 4096x 4096 tile 128x128 kvm    70.8 cuBLAS   130.6 TFLOP/s  ratio 0.542  err_vs_fp32 1.2e-04 ok dev_err 0
+MM TF32    NN  4096x 3072x  768 tile 64x64   kvm    34.2 cuBLAS   108.8 TFLOP/s  ratio 0.315  err_vs_fp32 2.8e-04 ok dev_err 0
+MM TF32    NN  4096x 3072x  768 tile 128x128 kvm    52.1 cuBLAS   109.0 TFLOP/s  ratio 0.478  err_vs_fp32 2.8e-04 ok dev_err 0

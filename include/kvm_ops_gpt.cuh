@@ -704,6 +704,14 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
     }
 }
 
+// Out-of-line copy of each big-tile variant for the 256x128 task's two passes (see matmul_tile). Inlined into a pass LOOP the tile spilled 28 KB (a third
+// slower), as a function it keeps its own register allocation.
+template <bool TA, bool TB, bool PREC, int WM, int WN, int WTN, bool BF, bool RZ>
+__device__ __noinline__ void mm_tile_big_ni(const float* A, int lda, const float* B, int ldb, float* out, int ldo, const float* bias, const float* res,
+                                            int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, bool gelu, bool accum) {
+    mm_tile_big<TA, TB, PREC, WM, WN, WTN, BF, RZ>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, gelu, accum);
+}
+
 KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
     int m0 = a[6], n0 = a[7], M = a[8], N = a[9], K = a[10], fl = a[11];
@@ -721,80 +729,44 @@ KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
     float* pre = k.mat(a[5], M, N, &ldp, true);
     if (k.bad) return;
     float alpha = af(a, 12);
-// BFV (true/false) selects bf16 operands (flag 128); it is the last template argument of both tile functions. bf16 has no 3xTF32 form.
-#define KVM_GPT_MM(F, TA, TB, P) F<TA, TB, P KVM_GPT_MM_SHAPE, KVM_GPT_BFV, KVM_GPT_RZV>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, KVM_GPT_MM_M0, n0, M, N, K, alpha, gelu, accum)
-#define KVM_GPT_MM_T(F, P)                                                                                                   \
-    if (!ta && !tb) KVM_GPT_MM(F, false, false, P); else if (ta && !tb) KVM_GPT_MM(F, true, false, P);                       \
-    else if (!ta && tb) KVM_GPT_MM(F, false, true, P); else KVM_GPT_MM(F, true, true, P)
-#define KVM_GPT_MM_PREC(F) if (prec) { KVM_GPT_MM_T(F, true); } else { KVM_GPT_MM_T(F, false); }
-// 256x128 task (flag 64) = two 128x128 passes, rows m0 and m0+128. A 4x2-warp 64x64-per-warp tile needs 128 accumulator registers,
-// which cannot coexist with the 128-register budget of two blocks per SM (__launch_bounds__(256, 2)); two passes keep the task shape
-// for the compiler/frontend at the same per-warp work (the second pass re-reads B from L2).
-#define KVM_GPT_BFV false
-#define KVM_GPT_RZV false
-#define KVM_GPT_MM_M0 m0
-    if (!bf) {
-#define KVM_GPT_MM_SHAPE , 2, 4, 32
-        if (rz) {   // validated above: big or huge, not prec
-#undef KVM_GPT_RZV
-#define KVM_GPT_RZV true
-            KVM_GPT_MM_T(mm_tile_big, false);
-            if (huge && m0 + 128 < M) {
-                __syncthreads();
-#undef KVM_GPT_MM_M0
-#define KVM_GPT_MM_M0 (m0 + 128)
-                KVM_GPT_MM_T(mm_tile_big, false);
-#undef KVM_GPT_MM_M0
-#define KVM_GPT_MM_M0 m0
-            }
-#undef KVM_GPT_RZV
-#define KVM_GPT_RZV false
+// Tile variants are template arguments: transposes, 3xTF32 (PREC), bf16 operands (BF, flag 128), truncated operands (RZ, flag 256). bf16 has
+// no 3xTF32 form and RZ only exists for the big tiles (validated above).
+#define KVM_GPT_ARGS A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, mm0, n0, M, N, K, alpha, gelu, accum
+#define KVM_GPT_ONE_BIG(F, TA, TB, P, BF, RZ) F<TA, TB, P, 2, 4, 32, BF, RZ>(KVM_GPT_ARGS)   // 8 warps as 2 (m) x 4 (n), 64 x 32 each
+#define KVM_GPT_ONE_64(F, TA, TB, P, BF, RZ) F<TA, TB, P, BF, RZ>(KVM_GPT_ARGS)
+#define KVM_GPT_MM_T(ONE, F, P, BF, RZ)                                                                                         \
+    if (!ta && !tb) ONE(F, false, false, P, BF, RZ); else if (ta && !tb) ONE(F, true, false, P, BF, RZ);                       \
+    else if (!ta && tb) ONE(F, false, true, P, BF, RZ); else ONE(F, true, true, P, BF, RZ)
+#define KVM_GPT_MM_BIG(F)                                                                                                        \
+    if (bf) { KVM_GPT_MM_T(KVM_GPT_ONE_BIG, F, false, true, false); }                                                          \
+    else if (rz) { KVM_GPT_MM_T(KVM_GPT_ONE_BIG, F, false, false, true); }                                                     \
+    else if (prec) { KVM_GPT_MM_T(KVM_GPT_ONE_BIG, F, true, false, false); }                                                   \
+    else { KVM_GPT_MM_T(KVM_GPT_ONE_BIG, F, false, false, false); }
+    if (big) {
+        const int mm0 = m0;
+        KVM_GPT_MM_BIG(mm_tile_big)
+    } else if (huge) {
+        // 256x128 task (flag 64) = two 128x128 passes, rows m0 and m0+128. A 4x2-warp 64x64-per-warp tile needs 128 accumulator registers,
+        // which cannot coexist with the 128-register budget of two blocks per SM (__launch_bounds__(256, 2)); two passes keep the task shape
+        // for the compiler/frontend at the same per-warp work (the second pass re-reads B from L2). The passes call an out-of-line copy of each
+        // variant (mm_tile_big_ni): inlined twice more, the big tiles tripled the union kernel's code and its ptxas time.
+        for (int pass = 0; pass < 2; pass++) {
+            const int mm0 = m0 + 128 * pass;
+            if (mm0 >= M) break;
+            if (pass) __syncthreads();   // the second pass reuses the shared-memory ring
+            KVM_GPT_MM_BIG(mm_tile_big_ni)
         }
-        else if (big) { KVM_GPT_MM_PREC(mm_tile_big) }
-        else if (huge) {
-            KVM_GPT_MM_PREC(mm_tile_big)
-            if (m0 + 128 < M) {
-                __syncthreads();   // the second pass reuses the shared-memory ring
-#undef KVM_GPT_MM_M0
-#define KVM_GPT_MM_M0 (m0 + 128)
-                KVM_GPT_MM_PREC(mm_tile_big)
-            }
-        }
-#undef KVM_GPT_MM_M0
-#undef KVM_GPT_MM_SHAPE
-#define KVM_GPT_MM_M0 m0
-#define KVM_GPT_MM_SHAPE
-        else { KVM_GPT_MM_PREC(mm_tile) }
-#undef KVM_GPT_MM_M0
-#undef KVM_GPT_MM_SHAPE
     } else {
-#undef KVM_GPT_BFV
-#define KVM_GPT_BFV true
-#define KVM_GPT_MM_M0 m0
-#define KVM_GPT_MM_SHAPE , 2, 4, 32
-        if (big) { KVM_GPT_MM_T(mm_tile_big, false); }
-        else if (huge) {
-            KVM_GPT_MM_T(mm_tile_big, false);
-            if (m0 + 128 < M) {
-                __syncthreads();
-#undef KVM_GPT_MM_M0
-#define KVM_GPT_MM_M0 (m0 + 128)
-                KVM_GPT_MM_T(mm_tile_big, false);
-            }
-        }
-#undef KVM_GPT_MM_M0
-#undef KVM_GPT_MM_SHAPE
-#define KVM_GPT_MM_M0 m0
-#define KVM_GPT_MM_SHAPE
-        else { KVM_GPT_MM_T(mm_tile, false); }
+        const int mm0 = m0;
+        if (bf) { KVM_GPT_MM_T(KVM_GPT_ONE_64, mm_tile, false, true, false); }
+        else if (prec) { KVM_GPT_MM_T(KVM_GPT_ONE_64, mm_tile, true, false, false); }
+        else { KVM_GPT_MM_T(KVM_GPT_ONE_64, mm_tile, false, false, false); }
     }
-#undef KVM_GPT_MM_M0
-#undef KVM_GPT_MM_SHAPE
-#undef KVM_GPT_BFV
-#undef KVM_GPT_RZV
-#undef KVM_GPT_MM_PREC
+#undef KVM_GPT_MM_BIG
 #undef KVM_GPT_MM_T
-#undef KVM_GPT_MM
+#undef KVM_GPT_ONE_64
+#undef KVM_GPT_ONE_BIG
+#undef KVM_GPT_ARGS
 }
 
 // ---- normalization: one warp per row ----------------------------------------------------------------------------------

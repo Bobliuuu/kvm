@@ -251,6 +251,8 @@ def baselines(tag):
     ts3 = timeit(pg.run)
     res["torch_ms"]["B3_host_polled_compaction_cached_graphs" + sfx] = stat(ts3)
     res["correctness"]["B3_kill_rungs_match_ref" + sfx] = pg.kill == ep
+    res["correctness"]["B3_kill_rungs" + sfx] = pg.kill
+    res["correctness"]["B3_max_rel_loss_err_vs_ref" + sfx] = max(float(((pg.Lfull[:(steps if ep[r] == 0 else ep[r] * E), r] - Lr[:(steps if ep[r] == 0 else ep[r] * E), r]).abs() / (Lr[:(steps if ep[r] == 0 else ep[r] * E), r].abs() + 1e-6)).max()) for r in range(R))
     cands = [min(ts1)]
     if pg.kill == ep: cands.append(min(ts3))          # a baseline that makes different retire decisions than the oracle is not counted
     else: res["correctness"]["B3_INVALID_not_counted" + sfx] = True

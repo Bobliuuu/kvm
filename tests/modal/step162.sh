@@ -17,11 +17,11 @@ pip install -q torch numpy > $OUT/pip.log 2>&1 &
 wait
 ls -la /work/exec_base /work/exec_new
 echo "== bundles $(date -u +%T)"
-gen() { # tree dir tiling precision
-  ( cd $1 && python3 bench/vs_pytorch/gen.py /work/$2 --model gpt_162m --steps 1 --mode tf32 --tiling $3 --precision $4 > $OUT/gen_$2.log 2>&1; echo "gen $2 rc=$?; tasks: $(python3 -c "import json;print(json.load(open('/work/$2/info.json'))['tasks'])" 2>/dev/null)" )
+gen() { # tree dir tiling precision (the baseline tree has no precision field: f32 only)
+  P=""; [ "$4" = f32 ] && [ "$1" = "$B" ] || P="--precision $4"
+  ( cd $1 && python3 bench/vs_pytorch/gen.py /work/$2 --model gpt_162m --steps 1 --mode tf32 --tiling $3 $P > $OUT/gen_$2.log 2>&1; echo "gen $2 rc=$?; tasks: $(python3 -c "import json;print(json.load(open('/work/$2/info.json'))['tasks'])" 2>/dev/null)" )
 }
 gen $B base_f32 a100 f32
-gen $B base_bf16s a100 bf16s
 gen /src new_f32 a100 f32
 gen /src new_trunc a100_trunc f32
 gen /src new_bf16s a100 bf16s
@@ -29,7 +29,7 @@ echo "== kvm_run build (merged) in background $(date -u +%T)"
 ( nvcc -O3 -arch=sm_80 -std=c++17 -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 demo/kvm_run.cu -o /work/kvm_run > $OUT/build_kvm_run.log 2>&1; echo "kvm_run rc=$?" ) &
 KR=$!
 echo "== interleaved step times (best of 5, 3 rounds) $(date -u +%T)"
-pairs="base_f32:exec_base new_f32:exec_new new_trunc:exec_new base_bf16s:exec_base new_bf16s:exec_new"
+pairs="base_f32:exec_base new_f32:exec_new new_trunc:exec_new new_bf16s:exec_new"
 for round in 1 2 3; do
   for p in $pairs; do
     b=${p%%:*}; e=${p##*:}
@@ -46,7 +46,7 @@ for p in $pairs; do
   python3 bench/vs_pytorch/trace_summary.py /work/$b.csv 1 > $OUT/trace_$b.txt 2>&1; head -n 3 $OUT/trace_$b.txt
   rm -f /work/$b.csv
 done
-wait $KR
+timeout 2400 tail --pid=$KR -f /dev/null; ls -la /work/kvm_run || exit 4
 echo "== numerics vs float64 $(date -u +%T)"
 cp /work/kvm_run demo/kvm_run
 for cfg in "a100 f32" "a100_trunc f32" "a100 bf16s"; do

@@ -95,46 +95,52 @@ class RectTable:
 JOIN_MIN = 32
 
 
-def build_edges(accesses):
+def build_edges(accesses, join_min=None):
     """accesses: list (program order) of (reads, writes), each a list of (buffer, r0, r1, c0, c1).
     Returns (seq, preds): seq[k] is the original index of the k-th task or -1 for a synthetic join (a no-op that collapses an
     R x W complete bipartite WAR/RAW fan into R + W edges, created when the same large predecessor set is needed twice);
-    preds[k] are the predecessor positions in seq (always < k)."""
+    preds[k] are the predecessor positions in seq (always < k). join_min (default JOIN_MIN): the predecessor-set size from which
+    a set needed twice is joined."""
+    join_min = JOIN_MIN if join_min is None else join_min
     writers, readers = defaultdict(RectTable), defaultdict(RectTable)
     seq, preds, new_of = [], [], {}
-    set_cache, group_cache = {}, {}
+    group_cache, set_cache, join_of = {}, {}, {}
 
-    def make_join(tasks):
-        seq.append(-1)
-        preds.append({new_of[t] for t in tasks})
-        return len(seq) - 1
+    def make_join(members):
+        """A join over exactly this set of positions; equal sets share one join."""
+        members = frozenset(members)
+        j = join_of.get(members)
+        if j is None:
+            seq.append(-1)
+            preds.append(set(members))
+            j = join_of[members] = len(seq) - 1
+        return j
+
+    def group_sources(g):
+        """Predecessors for one large group: its tasks on first use, a join (shared by every later user) from the second on."""
+        ent = group_cache.get((id(g), g.ver))
+        if ent is None:
+            group_cache[(id(g), g.ver)] = [None, g]             # keeps g alive so its id stays unique
+            return {new_of[t] for t in g.tasks}
+        if ent[0] is None:
+            ent[0] = make_join(new_of[t] for t in g.tasks)
+        return {ent[0]}
 
     def sources(groups):
-        if sum(len(g.tasks) for g in groups) < JOIN_MIN:
-            return {new_of[t] for g in groups for t in g.tasks}
-        key = frozenset((id(g), g.ver) for g in groups)
-        ent = set_cache.get(key)
-        if ent is not None:
-            ent[0] += 1
-            if ent[1] is None:
-                ent[1] = make_join({t for g in groups for t in g.tasks})
-            return {ent[1]}
-        set_cache[key] = [1, None, groups]                    # keeps the groups alive so ids stay unique
+        """Large groups are joined one by one (a combination of groups differs per consumer, a group does not). A predecessor set
+        that is still large, and needed a second time, is then joined as a whole (a join of joins)."""
         out = set()
         for g in groups:
-            if len(g.tasks) < JOIN_MIN:
-                out.update(new_of[t] for t in g.tasks)
-                continue
-            ent = group_cache.get((id(g), g.ver))
-            if ent is None:
-                group_cache[(id(g), g.ver)] = [1, None, g]
-                out.update(new_of[t] for t in g.tasks)
-            else:
-                ent[0] += 1
-                if ent[1] is None:
-                    ent[1] = make_join(g.tasks)
-                out.add(ent[1])
-        return out
+            out |= group_sources(g) if len(g.tasks) >= join_min else {new_of[t] for t in g.tasks}
+        if len(out) < join_min:
+            return out
+        key = frozenset(out)
+        if key not in set_cache:
+            set_cache[key] = None
+            return out
+        if set_cache[key] is None:
+            set_cache[key] = make_join(key)
+        return {set_cache[key]}
 
     for i, (reads, writes) in enumerate(accesses):
         gs = {}
@@ -156,5 +162,31 @@ def build_edges(accesses):
             writers[buf].overwrite(rect)
             readers[buf].overwrite(rect)
             writers[buf].add(rect, i)
+    seq, preds = _splice_thin_joins(seq, preds)
     log.info('dataflow: %d tasks + %d joins, %d edges', len(accesses), seq.count(-1), sum(map(len, preds)))
     return seq, preds
+
+
+def _splice_thin_joins(seq, preds):
+    """Remove every join that has at most one consumer: a join is created at the second use of a predecessor set, so a set that
+    turns out to be needed only twice leaves a join with one consumer, which costs a task, an edge and a dependency hop and
+    saves nothing (R + 1 edges through the join against R direct)."""
+    uses = [0] * len(seq)
+    for ps in preds:
+        for p in ps:
+            uses[p] += 1
+    thin = [seq[k] < 0 and uses[k] <= 1 for k in range(len(seq))]
+    if not any(thin):
+        return seq, preds
+    new_of, out_seq, out_preds, inline = {}, [], [], {}
+    for k in range(len(seq)):
+        ps = set()
+        for p in preds[k]:
+            ps |= inline[p] if thin[p] else {new_of[p]}
+        if thin[k]:
+            inline[k] = ps
+            continue
+        new_of[k] = len(out_seq)
+        out_seq.append(seq[k])
+        out_preds.append(ps)
+    return out_seq, out_preds

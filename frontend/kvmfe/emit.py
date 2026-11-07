@@ -65,7 +65,7 @@ def lower_program(ops: list[LogicalOp], tiling: Tiling, reuse='shape', gap=0, pr
             tasks.append(t)
     plan = plan_memory(ops, reuse, gap, prefix)
     rect = lambda r: (plan.buf(r.t), r.r0, r.r1, r.c0, r.c1)
-    seq, preds = build_edges([([rect(r) for r in t.reads], [rect(r) for r in t.writes]) for t in tasks])
+    seq, preds = build_edges(join_min=tiling.join_min, accesses=[([rect(r) for r in t.reads], [rect(r) for r in t.writes]) for t in tasks])
     ordered, nxt = [], None
     for k in range(len(seq) - 1, -1, -1):                      # a join takes the op of the task that first needed it
         if seq[k] >= 0:

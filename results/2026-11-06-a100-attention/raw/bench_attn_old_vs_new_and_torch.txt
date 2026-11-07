@@ -1,0 +1,153 @@
+NVIDIA A100-SXM4-40GB, 580.105.08, 1410 MHz
+Build cuda_12.8.r12.8/compiler.35583870_0
+##### round 1  hd=64  B=4 T=1024 H=12 (the 162M GPT)
+-- old
+BENCH  fwd                     1536 tasks     718.6 us [718.4..719.5]     8.96 TFLOP/s
+BENCH  bwd delta                 32 tasks     237.6 us [237.0..238.4]     0.00 TFLOP/s
+BENCH  bwd dq                  1536 tasks     584.1 us [583.9..585.3]    13.79 TFLOP/s
+BENCH  bwd dkv                 1536 tasks    1053.7 us [1053.1..1055.5]     7.64 TFLOP/s
+BENCH  bwd (delta+dq+dkv)      3104 tasks    1997.8 us [1996.4..2000.9]     8.06 TFLOP/s
+-- new
+BENCH  fwd                      384 tasks     271.2 us [270.5..271.2]    23.76 TFLOP/s
+BENCH  bwd delta                 32 tasks     188.0 us [186.8..188.4]     0.00 TFLOP/s
+BENCH  bwd dq                   384 tasks     369.9 us [369.7..370.3]    21.77 TFLOP/s
+BENCH  bwd dkv                  384 tasks     555.0 us [554.8..556.0]    14.51 TFLOP/s
+BENCH  bwd (delta+dq+dkv)       800 tasks    1221.6 us [1220.6..1222.7]    13.18 TFLOP/s
+##### round 2  hd=64  B=4 T=1024 H=12 (the 162M GPT)
+-- old
+BENCH  fwd                     1536 tasks     559.3 us [558.9..559.7]    11.52 TFLOP/s
+BENCH  bwd delta                 32 tasks     187.8 us [187.4..189.4]     0.00 TFLOP/s
+BENCH  bwd dq                  1536 tasks     454.2 us [454.0..454.7]    17.73 TFLOP/s
+BENCH  bwd dkv                 1536 tasks     822.1 us [821.7..823.3]     9.80 TFLOP/s
+BENCH  bwd (delta+dq+dkv)      3104 tasks    1572.5 us [1571.6..1576.1]    10.24 TFLOP/s
+-- new
+BENCH  fwd                      384 tasks     271.0 us [271.0..271.4]    23.78 TFLOP/s
+BENCH  bwd delta                 32 tasks     188.0 us [187.4..188.8]     0.00 TFLOP/s
+BENCH  bwd dq                   384 tasks     370.1 us [369.7..370.3]    21.76 TFLOP/s
+BENCH  bwd dkv                  384 tasks     555.2 us [554.8..555.8]    14.50 TFLOP/s
+BENCH  bwd (delta+dq+dkv)       800 tasks    1222.2 us [1221.6..1223.1]    13.18 TFLOP/s
+##### round 3  hd=64  B=4 T=1024 H=12 (the 162M GPT)
+-- old
+BENCH  fwd                     1536 tasks     559.1 us [558.7..559.5]    11.52 TFLOP/s
+BENCH  bwd delta                 32 tasks     187.4 us [187.2..189.4]     0.00 TFLOP/s
+BENCH  bwd dq                  1536 tasks     454.2 us [454.0..454.7]    17.73 TFLOP/s
+BENCH  bwd dkv                 1536 tasks     822.1 us [821.7..823.5]     9.80 TFLOP/s
+BENCH  bwd (delta+dq+dkv)      3104 tasks    1572.2 us [1572.0..1574.1]    10.24 TFLOP/s
+-- new
+BENCH  fwd                      384 tasks     271.2 us [271.0..271.4]    23.76 TFLOP/s
+BENCH  bwd delta                 32 tasks     188.0 us [187.4..188.8]     0.00 TFLOP/s
+BENCH  bwd dq                   384 tasks     370.1 us [369.7..370.7]    21.76 TFLOP/s
+BENCH  bwd dkv                  384 tasks     555.0 us [554.6..555.4]    14.51 TFLOP/s
+BENCH  bwd (delta+dq+dkv)       800 tasks    1221.6 us [1221.4..1222.9]    13.18 TFLOP/s
+##### round 4  hd=64  B=4 T=1024 H=12 (the 162M GPT)
+-- old
+BENCH  fwd                     1536 tasks     559.3 us [558.9..560.1]    11.52 TFLOP/s
+BENCH  bwd delta                 32 tasks     188.2 us [187.2..189.0]     0.00 TFLOP/s
+BENCH  bwd dq                  1536 tasks     454.2 us [454.0..454.5]    17.73 TFLOP/s
+BENCH  bwd dkv                 1536 tasks     822.5 us [822.1..823.9]     9.79 TFLOP/s
+BENCH  bwd (delta+dq+dkv)      3104 tasks    1573.3 us [1571.8..1574.7]    10.24 TFLOP/s
+-- new
+BENCH  fwd                      384 tasks     271.2 us [270.7..271.4]    23.76 TFLOP/s
+BENCH  bwd delta                 32 tasks     187.8 us [186.8..189.4]     0.00 TFLOP/s
+BENCH  bwd dq                   384 tasks     369.9 us [369.5..370.1]    21.77 TFLOP/s
+BENCH  bwd dkv                  384 tasks     555.0 us [554.8..555.6]    14.51 TFLOP/s
+BENCH  bwd (delta+dq+dkv)       800 tasks    1222.5 us [1220.8..1223.7]    13.18 TFLOP/s
+##### round 5  hd=64  B=4 T=1024 H=12 (the 162M GPT)
+-- old
+BENCH  fwd                     1536 tasks     559.3 us [558.9..560.9]    11.52 TFLOP/s
+BENCH  bwd delta                 32 tasks     187.8 us [187.4..188.8]     0.00 TFLOP/s
+BENCH  bwd dq                  1536 tasks     454.5 us [454.0..455.3]    17.72 TFLOP/s
+BENCH  bwd dkv                 1536 tasks     822.3 us [821.9..824.7]     9.79 TFLOP/s
+BENCH  bwd (delta+dq+dkv)      3104 tasks    1572.5 us [1571.2..1573.9]    10.24 TFLOP/s
+-- new
+BENCH  fwd                      384 tasks     271.4 us [270.7..271.6]    23.74 TFLOP/s
+BENCH  bwd delta                 32 tasks     187.8 us [186.8..189.8]     0.00 TFLOP/s
+BENCH  bwd dq                   384 tasks     369.9 us [369.7..370.1]    21.77 TFLOP/s
+BENCH  bwd dkv                  384 tasks     556.0 us [555.0..556.4]    14.48 TFLOP/s
+BENCH  bwd (delta+dq+dkv)       800 tasks    1221.8 us [1221.2..1223.1]    13.18 TFLOP/s
+##### round 1  hd=64  B=4 T=2048 H=16 Hkv=4 (GQA)
+-- old
+BENCH  fwd                     4096 tasks    2635.0 us [2634.8..2635.8]    13.04 TFLOP/s
+BENCH  bwd delta                 64 tasks     393.2 us [392.2..394.9]     0.00 TFLOP/s
+BENCH  bwd dq                  4096 tasks    2184.2 us [2183.8..2184.6]    19.66 TFLOP/s
+BENCH  bwd dkv                 1024 tasks    3548.6 us [3548.2..3550.8]    12.10 TFLOP/s
+BENCH  bwd (delta+dq+dkv)      5184 tasks    6128.2 us [6127.2..6130.1]    14.02 TFLOP/s
+-- new
+BENCH  fwd                     1024 tasks    1216.9 us [1216.7..1217.1]    28.23 TFLOP/s
+BENCH  bwd delta                 64 tasks     393.0 us [392.4..394.6]     0.00 TFLOP/s
+BENCH  bwd dq                  1024 tasks    1659.9 us [1659.5..1660.1]    25.87 TFLOP/s
+BENCH  bwd dkv                  256 tasks    2559.4 us [2559.0..2560.6]    16.78 TFLOP/s
+BENCH  bwd (delta+dq+dkv)      1344 tasks    4616.8 us [4615.8..4618.9]    18.61 TFLOP/s
+##### round 1  hd=128  B=2 T=2048 H=8
+-- old
+BENCH  fwd                     1024 tasks    1181.9 us [1118.2..1436.5]    14.54 TFLOP/s
+BENCH  bwd delta                 32 tasks     241.9 us [241.5..242.3]     0.00 TFLOP/s
+BENCH  bwd dq                  1024 tasks    1612.6 us [1611.6..1613.8]    13.32 TFLOP/s
+BENCH  bwd dkv                 1024 tasks    2070.9 us [2067.9..2071.6]    10.37 TFLOP/s
+BENCH  bwd (delta+dq+dkv)      2080 tasks    3105.8 us [3103.7..3794.3]    13.83 TFLOP/s
+-- new
+BENCH  fwd                      256 tasks    1063.5 us [828.2..1065.0]    16.15 TFLOP/s
+BENCH  bwd delta                 32 tasks     242.1 us [241.3..242.9]     0.00 TFLOP/s
+BENCH  bwd dq                   256 tasks    1560.4 us [1557.5..1560.8]    13.76 TFLOP/s
+BENCH  bwd dkv                  256 tasks    3007.7 us [2841.2..3011.8]     7.14 TFLOP/s
+BENCH  bwd (delta+dq+dkv)       544 tasks    4073.7 us [4070.8..4077.6]    10.54 TFLOP/s
+##### round 2  hd=64  B=4 T=2048 H=16 Hkv=4 (GQA)
+-- old
+BENCH  fwd                     4096 tasks    2635.8 us [2635.0..2636.4]    13.04 TFLOP/s
+BENCH  bwd delta                 64 tasks     393.2 us [391.8..394.2]     0.00 TFLOP/s
+BENCH  bwd dq                  4096 tasks    2184.6 us [2183.8..2185.0]    19.66 TFLOP/s
+BENCH  bwd dkv                 1024 tasks    3550.2 us [3549.0..3550.6]    12.10 TFLOP/s
+BENCH  bwd (delta+dq+dkv)      5184 tasks    6130.5 us [6128.4..6132.9]    14.01 TFLOP/s
+-- new
+BENCH  fwd                     1024 tasks    1217.1 us [1216.9..1217.9]    28.23 TFLOP/s
+BENCH  bwd delta                 64 tasks     392.6 us [391.8..393.8]     0.00 TFLOP/s
+BENCH  bwd dq                  1024 tasks    1659.9 us [1659.5..1660.1]    25.87 TFLOP/s
+BENCH  bwd dkv                  256 tasks    2560.0 us [2559.2..2560.8]    16.78 TFLOP/s
+BENCH  bwd (delta+dq+dkv)      1344 tasks    4617.4 us [4616.2..4617.8]    18.60 TFLOP/s
+##### round 2  hd=128  B=2 T=2048 H=8
+-- old
+BENCH  fwd                     1024 tasks    1118.4 us [1117.2..1118.8]    15.36 TFLOP/s
+BENCH  bwd delta                 32 tasks     199.3 us [198.9..200.1]     0.00 TFLOP/s
+BENCH  bwd dq                  1024 tasks    1257.1 us [1255.6..1257.3]    17.08 TFLOP/s
+BENCH  bwd dkv                 1024 tasks    1611.8 us [1610.8..1613.0]    13.32 TFLOP/s
+BENCH  bwd (delta+dq+dkv)      2080 tasks    3096.4 us [3094.9..3101.3]    13.87 TFLOP/s
+-- new
+BENCH  fwd                      256 tasks     829.0 us [828.4..831.5]    20.72 TFLOP/s
+BENCH  bwd delta                 32 tasks     199.5 us [199.3..200.1]     0.00 TFLOP/s
+BENCH  bwd dq                   256 tasks    1238.0 us [1236.8..1240.5]    17.35 TFLOP/s
+BENCH  bwd dkv                  256 tasks    2607.3 us [2605.1..2611.4]     8.24 TFLOP/s
+BENCH  bwd (delta+dq+dkv)       544 tasks    4072.9 us [4070.2..4080.6]    10.55 TFLOP/s
+##### round 3  hd=64  B=4 T=2048 H=16 Hkv=4 (GQA)
+-- old
+BENCH  fwd                     4096 tasks    2635.0 us [2634.5..2635.6]    13.04 TFLOP/s
+BENCH  bwd delta                 64 tasks     393.4 us [391.6..393.4]     0.00 TFLOP/s
+BENCH  bwd dq                  4096 tasks    2184.0 us [2183.8..2184.6]    19.67 TFLOP/s
+BENCH  bwd dkv                 1024 tasks    3548.6 us [3548.0..3549.4]    12.10 TFLOP/s
+BENCH  bwd (delta+dq+dkv)      5184 tasks    6130.1 us [6129.3..6173.5]    14.01 TFLOP/s
+-- new
+BENCH  fwd                     1024 tasks    1216.5 us [1216.5..1217.5]    28.24 TFLOP/s
+BENCH  bwd delta                 64 tasks     393.2 us [392.0..395.5]     0.00 TFLOP/s
+BENCH  bwd dq                  1024 tasks    1658.7 us [1658.3..1659.9]    25.89 TFLOP/s
+BENCH  bwd dkv                  256 tasks    2560.4 us [2559.4..2563.5]    16.77 TFLOP/s
+BENCH  bwd (delta+dq+dkv)      1344 tasks    4616.6 us [4614.1..4618.2]    18.61 TFLOP/s
+##### round 3  hd=128  B=2 T=2048 H=8
+-- old
+BENCH  fwd                     1024 tasks    1436.5 us [1435.6..1438.5]    11.96 TFLOP/s
+BENCH  bwd delta                 32 tasks     242.3 us [242.1..243.5]     0.00 TFLOP/s
+BENCH  bwd dq                  1024 tasks    1618.1 us [1617.5..1618.7]    13.27 TFLOP/s
+BENCH  bwd dkv                 1024 tasks    1618.5 us [1617.1..2073.4]    13.27 TFLOP/s
+BENCH  bwd (delta+dq+dkv)      2080 tasks    3100.5 us [3095.1..3106.8]    13.85 TFLOP/s
+-- new
+BENCH  fwd                      256 tasks     828.6 us [828.2..828.8]    20.73 TFLOP/s
+BENCH  bwd delta                 32 tasks     199.5 us [199.1..199.9]     0.00 TFLOP/s
+BENCH  bwd dq                   256 tasks    1237.2 us [1236.2..1239.7]    17.36 TFLOP/s
+BENCH  bwd dkv                  256 tasks    2605.7 us [2603.0..2607.5]     8.24 TFLOP/s
+BENCH  bwd (delta+dq+dkv)       544 tasks    4071.2 us [4068.6..4074.9]    10.55 TFLOP/s
+##### PyTorch references at the 162M shape
+device: NVIDIA A100-SXM4-40GB 108 SMs, torch 2.7.0
+REF    attn fwd fp32 B=4 T=1024 H=12 Hkv=12 hd=64              0.539 ms [0.530..0.544]    11942.8 GFLOP/s
+REF    attn bwd fp32 B=4 T=1024 H=12 Hkv=12 hd=64              1.365 ms [1.346..1.372]    11799.4 GFLOP/s
+REF    attn fwd tf32 B=4 T=1024 H=12 Hkv=12 hd=64              0.536 ms [0.528..0.539]    12022.7 GFLOP/s
+REF    attn bwd tf32 B=4 T=1024 H=12 Hkv=12 hd=64              1.361 ms [1.343..1.367]    11834.9 GFLOP/s
+REF    attn fwd bf16 B=4 T=1024 H=12 Hkv=12 hd=64              0.093 ms [0.091..0.094]    69518.8 GFLOP/s
+REF    attn bwd bf16 B=4 T=1024 H=12 Hkv=12 hd=64              0.306 ms [0.305..0.309]    52709.9 GFLOP/s

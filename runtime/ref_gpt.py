@@ -10,6 +10,7 @@ import math
 from ref_types import Buf, RefOp, f32
 
 M32 = 0xFFFFFFFF
+ATTN_ROWS = 128   # rows per causal attention task (queries for attn_fwd / attn_bwd_dq, keys for attn_bwd_dkv); KVM_GPT_ATTN_ROWS
 _I = frozenset
 
 
@@ -254,7 +255,7 @@ def _attn_fwd(b, a):
     q, k, v, o, lse = b['q'], b['k'], b['v'], b['o'], b['lse']
     bb, h, T, H, Hkv, hd, sc = a['b'], a['h'], a['T'], a['H'], a['Hkv'], a['hd'], a['scale']
     kvh = h // (H // Hkv)
-    for gq in range(a['q0'], min(a['q0'] + 32, T)):
+    for gq in range(a['q0'], min(a['q0'] + ATTN_ROWS, T)):
         qr = [q.at(bb * T + gq, h * hd + c) for c in range(hd)]
         s = [sum(qr[c] * k.at(bb * T + j, kvh * hd + c) for c in range(hd)) * sc for j in range(gq + 1)]
         m = max(s)
@@ -290,7 +291,7 @@ def _attn_bwd_dq(b, a):
     q, k, v, do, lse, delta, dq = b['q'], b['k'], b['v'], b['do'], b['lse'], b['delta'], b['dq']
     bb, h, T, H, Hkv, hd, sc = a['b'], a['h'], a['T'], a['H'], a['Hkv'], a['hd'], a['scale']
     kvh = h // (H // Hkv)
-    for gq in range(a['q0'], min(a['q0'] + 32, T)):
+    for gq in range(a['q0'], min(a['q0'] + ATTN_ROWS, T)):
         li, di = lse[(bb * H + h) * T + gq], delta[(bb * H + h) * T + gq]
         acc = [0.0] * hd
         for j in range(gq + 1):
@@ -314,7 +315,7 @@ def _attn_bwd_dkv(b, a):
     q, k, v, do, lse, delta, dk, dv = (b[n] for n in ('q', 'k', 'v', 'do', 'lse', 'delta', 'dk', 'dv'))
     bb, kvh, T, H, hd, sc = a['b'], a['kvh'], a['T'], a['H'], a['hd'], a['scale']
     G = H // (k.cols // hd)
-    for gk in range(a['k0'], min(a['k0'] + 32, T)):
+    for gk in range(a['k0'], min(a['k0'] + ATTN_ROWS, T)):
         sk, sv = [0.0] * hd, [0.0] * hd
         for h in range(kvh * G, (kvh + 1) * G):
             for gq in range(gk, T):

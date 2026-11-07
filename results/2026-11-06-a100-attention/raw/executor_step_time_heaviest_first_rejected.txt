@@ -1,0 +1,45 @@
+== new round 1 23:24:33
+rep 1/3: 902.9 ms (902.88 ms/step), wall 2.1 s
+rep 2/3: 903.6 ms (903.58 ms/step), wall 2.1 s
+rep 3/3: 904.2 ms (904.16 ms/step), wall 2.1 s
+executor: best 902885 us/step  median 903580  worst 904162
+== new2 round 1 23:24:40
+rep 1/3: 914.4 ms (914.35 ms/step), wall 2.1 s
+rep 2/3: 911.9 ms (911.88 ms/step), wall 2.1 s
+rep 3/3: 911.0 ms (911.04 ms/step), wall 2.2 s
+executor: best 911043 us/step  median 911884  worst 914354
+== base round 1 23:24:46
+rep 1/3: 1050.6 ms (1050.59 ms/step), wall 2.4 s
+rep 2/3: 1049.1 ms (1049.08 ms/step), wall 2.3 s
+rep 3/3: 1048.9 ms (1048.86 ms/step), wall 2.4 s
+executor: best 1048858 us/step  median 1049079  worst 1050585
+== new round 2 23:24:53
+rep 1/3: 907.1 ms (907.09 ms/step), wall 2.1 s
+rep 2/3: 922.7 ms (922.71 ms/step), wall 2.2 s
+rep 3/3: 919.5 ms (919.46 ms/step), wall 2.2 s
+executor: best 907086 us/step  median 919463  worst 922705
+== new2 round 2 23:25:00
+rep 1/3: 911.6 ms (911.60 ms/step), wall 2.2 s
+rep 2/3: 909.3 ms (909.33 ms/step), wall 2.2 s
+rep 3/3: 911.5 ms (911.49 ms/step), wall 2.2 s
+executor: best 909329 us/step  median 911489  worst 911601
+== base round 2 23:25:06
+rep 1/3: 1060.0 ms (1060.02 ms/step), wall 2.4 s
+rep 2/3: 1048.1 ms (1048.12 ms/step), wall 2.4 s
+rep 3/3: 1046.5 ms (1046.52 ms/step), wall 2.4 s
+executor: best 1046523 us/step  median 1048122  worst 1060020
+== new round 3 23:25:14
+rep 1/3: 906.8 ms (906.75 ms/step), wall 2.2 s
+rep 2/3: 911.7 ms (911.73 ms/step), wall 2.1 s
+rep 3/3: 908.9 ms (908.89 ms/step), wall 2.2 s
+executor: best 906755 us/step  median 908894  worst 911726
+== new2 round 3 23:25:20
+rep 1/3: 910.9 ms (910.91 ms/step), wall 2.2 s
+rep 2/3: 908.6 ms (908.60 ms/step), wall 2.2 s
+rep 3/3: 915.2 ms (915.23 ms/step), wall 2.2 s
+executor: best 908601 us/step  median 910915  worst 915233
+== base round 3 23:25:27
+rep 1/3: 1058.1 ms (1058.13 ms/step), wall 2.4 s
+rep 2/3: 1050.1 ms (1050.10 ms/step), wall 2.4 s
+rep 3/3: 1050.9 ms (1050.92 ms/step), wall 2.3 s
+executor: best 1050103 us/step  median 1050921  worst 1058127

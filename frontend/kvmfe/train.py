@@ -91,6 +91,8 @@ def batch_stream(cfg: ModelConfig, steps: int):
 def batch_tokens(cfg: ModelConfig, step: int):
     """Deterministic host-provided batch: per sequence a chain t -> (5t+3) mod V (a learnable bigram), next-token targets."""
     ids, tgt = [], []
+    if cfg.repeat_batch:
+        step = 0
     for b in range(cfg.batch):
         t = (step * cfg.batch + b) * 7919 % cfg.vocab
         chain = []

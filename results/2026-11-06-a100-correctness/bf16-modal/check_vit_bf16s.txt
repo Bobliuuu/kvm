@@ -1,0 +1,11 @@
+lowp: 663 f32 buffers (4 signal-free skipped: ['m.vit.h0.attn.k.b', 'v.vit.h0.attn.k.b', 'version_token', 'w.vit.h0.attn.k.b']; 1 structurally-zero-gradient parameters judged in absolute terms), 10 loss buffers
+  ok   losses rel L2 <= 0.001: worst 7.14e-04
+  ok   58 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act73 8.28e-06
+  info: post-optimizer weights/moments differ by up to 4.08e-03 (m.vit.h0.attn.o.w) after the run
+  info: weights differ from the golden by 9.00e-01 (vit.h0.attn.k.b); gradients differ per step by up to 1.9e+00, relative L2 of worst tensor, per step [0.0, 0.0412, 0.5506, 1.4724, 1.5578, 1.3426]
+  ok   optimizer replay reproduces the golden weights (validates the replay) <= 1e-05: worst 1.62e-07 (vit.embed.b)
+  ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 1.51e-07 (vit.h0.attn.o.b)
+  ok   vit.h0.attn.k.b weight (structurally zero gradient) within the optimizer envelope: |w_gpu - w_golden| max 1.357e-02, |w_gpu| max 2.018e-02, envelope T = 10 steps * 3.0e-03 = 3.000e-02
+  ok   vit.h0.attn.k.b moments at the noise level of the live gradients: |m_gpu| max 1.572e-07 (golden 1.117e-07) vs 7.765e-04, sqrt|v_gpu| max 3.228e-07 (golden 2.515e-07) vs 1.121e-03
+  ok   no NaN/Inf in any GPU buffer: []
+PASS

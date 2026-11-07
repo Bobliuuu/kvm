@@ -1,0 +1,41 @@
+{
+ "mode": "lowp",
+ "buffers": 221,
+ "failures": [],
+ "loss_err": {
+  "loss.0": 2.1512058372454703e-06,
+  "loss.1": 2.5659277868071362e-05
+ },
+ "loss_gpu": {
+  "loss.0": 4.21317387,
+  "loss.1": 3.89315915
+ },
+ "loss_golden": {
+  "loss.0": 4.213164806365967,
+  "loss.1": 3.893059253692627
+ },
+ "null_buffers": [
+  "version_token"
+ ],
+ "invariant_params": [],
+ "max_rel_step1": 0.004807692307692308,
+ "post_opt_rel_l2": 0.02267823825750366,
+ "optimizer_replay": {
+  "gpu_weights": [
+   5.284333656205666e-08,
+   "llama.h1.mlp.down.w"
+  ],
+  "golden_weights": [
+   5.3465620741564324e-08,
+   "llama.h0.attn.k.w"
+  ],
+  "gpu_vs_golden": [
+   0.01726003530362784,
+   "llama.h0.attn.o.w"
+  ],
+  "grad_diff_by_step": [
+   0.0017360925744227134,
+   0.021232719815366632
+  ]
+ }
+}

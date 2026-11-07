@@ -4,7 +4,8 @@ Tensors with a pinned buffer (weights, optimizer state, corpus, losses) keep it.
 its last logical op; tensors of identical shape whose lifetimes are separated by more than `gap` logical ops share one buffer
 slot. Sharing is always safe: the dataflow analysis turns the reuse into tile-level WAR/WAW edges, it never relies on this module
 for ordering. `gap` trades memory for overlap: reuse right after the last reader serializes consecutive steps, a larger gap keeps
-them parallel.
+them parallel. Policies: 'shape' (reuse as soon as the gap allows), 'step' (a slot is reused only by a tensor of a LATER step: no
+reuse inside a step, so no WAR/WAW edges inside it, at the price of one step's whole activation footprint), 'none'.
 """
 from __future__ import annotations
 
@@ -36,9 +37,15 @@ class Plan:
         return self.of[t.uid]
 
 
+REUSE_POLICIES = ('none', 'shape', 'step')
+
+
 def plan_memory(ops: list[LogicalOp], reuse: str = 'shape', gap: int = 0, prefix: str = 'act') -> Plan:
-    if reuse not in ('none', 'shape'):
-        raise FrontendError(f"reuse must be 'none' or 'shape', got {reuse!r}")
+    if reuse not in REUSE_POLICIES:
+        raise FrontendError(f"reuse must be one of {REUSE_POLICIES}, got {reuse!r}")
+    step_start: dict = {}
+    for i, op in enumerate(ops):
+        step_start.setdefault(op.step, i)
     span: dict = {}
     roots: dict = {}
     for i, op in enumerate(ops):
@@ -67,11 +74,12 @@ def plan_memory(ops: list[LogicalOp], reuse: str = 'shape', gap: int = 0, prefix
     for uid in sorted((u for u, r in roots.items() if r.buf is None), key=lambda u: span[u][0]):
         r, (first, last) = roots[uid], span[uid]
         total += r.numel * 4
-        while active and active[0][0] + gap < first:
+        horizon = step_start[ops[first].step] if reuse == 'step' else first         # 'step': only slots freed in earlier steps
+        while active and active[0][0] + gap < first and active[0][0] < horizon:
             _, _, key, slot = heapq.heappop(active)
             free.setdefault(key, []).append(slot)
         key = (r.shape, r.dtype)
-        slot = free[key].pop() if reuse == 'shape' and free.get(key) else None
+        slot = free[key].pop() if reuse != 'none' and free.get(key) else None
         if slot is None:
             slot = f'{prefix}{n_slots}'
             n_slots += 1

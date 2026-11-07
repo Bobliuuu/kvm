@@ -17,7 +17,8 @@ from .defs import default_include_dir, read_defs
 from .ir import FrontendError
 
 MM_TILE = 64        # matmul_tile computes a 64 x 64 output tile (flags: 1 transA, 2 transB, 4 accumulate, 8 gelu)
-ATTN_Q = 32         # attn_fwd / attn_bwd_dq: 32 query rows per task; attn_bwd_dkv: 32 keys per task
+ATTN_Q = 32         # bidirectional attn_full_*: 32 query rows (or keys) per task; also the sequence-length granularity of the model configs
+ATTN_BLOCK = 128    # causal attn_fwd / attn_bwd_dq: 128 query rows per task; attn_bwd_dkv: 128 keys per task (KVM_GPT_ATTN_ROWS in kvm_ops_gpt.cuh)
 F_TA, F_TB, F_ACC, F_GELU, F_PRECISE = 1, 2, 4, 8, 16
 
 
@@ -294,7 +295,7 @@ def _norm_bwd_params(b, a):
 
 # ------------------------------------------------------------------------------------------------ attention (causal, GQA-capable)
 def _attn_fl(a):
-    return 4.0 * ATTN_Q * (a.get('q0', a.get('k0', 0)) + ATTN_Q) * a['hd']
+    return 4.0 * ATTN_BLOCK * (a.get('q0', a.get('k0', 0)) + ATTN_BLOCK) * a['hd']
 
 
 def _head(buf, r, h, hd):
@@ -314,7 +315,7 @@ def _probs(q, K, scale, lse=None):
 def _attn_fwd(b, a):
     T, H, Hkv, hd, bb, h = a['T'], a['H'], a['Hkv'], a['hd'], a['b'], a['h']
     kvh = h // (H // Hkv)
-    for t in range(a['q0'], min(a['q0'] + ATTN_Q, T)):
+    for t in range(a['q0'], min(a['q0'] + ATTN_BLOCK, T)):
         K = [_head(b['k'], bb * T + j, kvh, hd) for j in range(t + 1)]
         p, lse = _probs(_head(b['q'], bb * T + t, h, hd), K, a['scale'])
         o = [0.0] * hd
@@ -350,7 +351,7 @@ def _ds(b, a, bb, h, kvh, t, j_range):
 def _attn_bwd_dq(b, a):
     T, hd, bb, h = a['T'], a['hd'], a['b'], a['h']
     kvh = h // (a['H'] // a['Hkv'])
-    for t in range(a['q0'], min(a['q0'] + ATTN_Q, T)):
+    for t in range(a['q0'], min(a['q0'] + ATTN_BLOCK, T)):
         _, _, terms = _ds(b, a, bb, h, kvh, t, range(t + 1))
         dq = [0.0] * hd
         for j, p, ds in terms:
@@ -363,7 +364,7 @@ def _attn_bwd_dkv(b, a):
     T, H, hd, bb, kvh = a['T'], a['H'], a['hd'], a['b'], a['kvh']
     Hkv = b['k'].cols // hd                       # the op has no Hkv argument (15-word task limit): derived from k
     G = H // Hkv
-    k1 = min(a['k0'] + ATTN_Q, T)
+    k1 = min(a['k0'] + ATTN_BLOCK, T)
     dk = {j: [0.0] * hd for j in range(a['k0'], k1)}
     dv = {j: [0.0] * hd for j in range(a['k0'], k1)}
     for h in range(kvh * G, (kvh + 1) * G):

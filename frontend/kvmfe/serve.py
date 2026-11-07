@@ -81,6 +81,7 @@ def build_serving(model, req: ServeRequest) -> Builder:
 
 def compile_serving(model, req: ServeRequest, tiling: Tiling, reuse='shape'):
     b = build_serving(model, req)
+    reuse = 'shape' if reuse == 'step' else reuse            # a request is one step: 'step' would mean no reuse at all
     low = lower_program(b.ops, tiling, reuse, 0, prefix=f'{req.name}.act')
     spec = to_workload(low, {req.name: GraphPolicy(req.priority, lambda t: req.deadline_us, (req.policy, req.version))})
     return low, spec

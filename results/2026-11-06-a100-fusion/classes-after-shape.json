@@ -1,0 +1,111 @@
+{
+ "tasks": 315170,
+ "edges": 4613631,
+ "cp_us": 60295.900939682615,
+ "cp_tasks": 428,
+ "makespan_us": 235098.03257777693,
+ "classes": {
+  "select_window": [
+   64,
+   0
+  ],
+  "embedding_fwd": [
+   32,
+   32
+  ],
+  "layernorm_fwd": [
+   800,
+   18464
+  ],
+  "matmul_tile": [
+   247128,
+   1718241
+  ],
+  "rope_fwd": [
+   768,
+   18432
+  ],
+  "attn_fwd": [
+   18432,
+   258048
+  ],
+  "noop": [
+   6571,
+   429795
+  ],
+  "softmax_ce_fwd": [
+   32,
+   50336
+  ],
+  "softmax_ce_reduce": [
+   1,
+   64
+  ],
+  "softmax_ce_bwd": [
+   32,
+   50400
+  ],
+  "layernorm_bwd_dx": [
+   800,
+   105184
+  ],
+  "norm_bwd_params": [
+   75,
+   40128
+  ],
+  "colsum": [
+   324,
+   20580
+  ],
+  "gelu_bwd": [
+   384,
+   109456
+  ],
+  "attn_bwd_delta": [
+   384,
+   120928
+  ],
+  "attn_bwd_dq": [
+   18432,
+   405504
+  ],
+  "attn_bwd_dkv": [
+   18432,
+   772608
+  ],
+  "rope_bwd": [
+   768,
+   70368
+  ],
+  "embedding_bwd": [
+   25,
+   88
+  ],
+  "gradnorm_partial": [
+   842,
+   45101
+  ],
+  "gradnorm_finish": [
+   1,
+   842
+  ],
+  "counter_inc": [
+   1,
+   64
+  ],
+  "adamw": [
+   842,
+   378968
+  ]
+ },
+ "memory": {
+  "reuse": "shape",
+  "gap": 0,
+  "persistent_bytes": 1947908120,
+  "pool_bytes": 4805629928,
+  "no_reuse_bytes": 7487952872,
+  "slots": 390,
+  "transient_tensors": 545,
+  "reuse_factor": 1.5581626101442907
+ }
+}

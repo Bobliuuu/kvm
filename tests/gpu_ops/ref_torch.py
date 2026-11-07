@@ -79,6 +79,13 @@ def mem():
 
 if __name__ == "__main__":
     print("device:", torch.cuda.get_device_name(0), torch.cuda.get_device_properties(0).multi_processor_count, "SMs, torch", torch.__version__, flush=True)
+    import os
+    if os.environ.get("REF_ATTN_ONLY"):   # attention at the 162M shape (B4 T1024 H12 hd64), fp32 and TF32-allowed efficient-attention, bf16 flash
+        for tf32 in (False, True):
+            torch.backends.cuda.matmul.allow_tf32 = tf32
+            attn(4, 1024, 12, 12, 64, torch.float32, "tf32" if tf32 else "fp32")
+        attn(4, 1024, 12, 12, 64, torch.bfloat16, "bf16")
+        raise SystemExit
     for mode in ("tf32", "fp32", "bf16"):
         for (M, N, K, ta, tb) in [(4096, 4096, 4096, 0, 0), (4096, 4096, 4096, 1, 0), (4096, 4096, 4096, 0, 1), (2048, 2048, 2048, 0, 0),
                                   (8192, 768, 768, 0, 0), (1024, 1024, 1024, 0, 0), (4096, 3072, 768, 0, 0), (512, 512, 512, 0, 0)]:

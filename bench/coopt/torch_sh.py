@@ -17,8 +17,9 @@ lrs = []
 for line in open(f"{d}/meta.txt"):
     k, v = line.split()
     if k == "lr": lrs.append(float(v))
-    else: meta[k] = float(v) if "." in v else int(v)
+    else: meta[k] = float(v) if any(c in v for c in ".e") else int(v)
 B, D, H, O, NB, R, steps, E, K, win = (meta[k] for k in "B D H O NB R steps E K win".split())
+MODE, TARGET, DIVTHR, PRUNE = meta["mode"], meta["target"], meta["divthr"], meta["prune"]
 dev = "cuda"
 ld = lambda n, shp: torch.from_numpy(np.fromfile(f"{d}/{n}.bin", dtype=np.float32).reshape(shp)).to(dev)
 X = torch.stack([ld(f"X{k}", (B, D)) for k in range(NB)]); T = torch.stack([ld(f"T{k}", (B, O)) for k in range(NB)])
@@ -38,7 +39,7 @@ def step(W1, W2, lr, s, lossrow):
     dY = torch.bmm(Hh, W2) - T[k]
     lossrow.copy_(torch.einsum("rbo,rbo->r", dY, dY) / (B * O))
     dY.mul_(C)
-    dH = torch.threshold_backward(torch.bmm(dY, W2.transpose(1, 2)), Hh, 0)
+    dH = torch.ops.aten.threshold_backward(torch.bmm(dY, W2.transpose(1, 2)), Hh, 0)
     gW2 = torch.bmm(Hh.transpose(1, 2), dY)
     gW1 = torch.matmul(x.t(), dH)
     W2.addcmul_(lr, gW2, value=-1)
@@ -48,8 +49,11 @@ def metric(L, s):   # L [steps, n]; mean of last win steps ending at s (inclusiv
     m = L[s - win + 1:s + 1].mean(0)
     return torch.where(torch.isnan(m), torch.full_like(m, 3.4e38), m)
 
-def select_mask(m, alive):  # exactly the kernel's rule
+def select_mask(m, alive):  # exactly the kernel's rule (mode 0: keep better half; mode 1: retire diverged / converged / hopeless)
     n = m.numel(); idx = torch.arange(n, device=dev)
+    if MODE == 1:
+        best = torch.where(alive, m, torch.full_like(m, 3.4e38)).min()
+        return alive & (m < DIVTHR) & (m >= TARGET) & (m <= best * torch.tensor(PRUNE, dtype=torch.float32, device=dev))
     mm = torch.where(alive, m, torch.full_like(m, float("inf")))
     lt = (mm[None, :] < mm[:, None]) & alive[None, :]
     eq = (mm[None, :] == mm[:, None]) & (idx[None, :] < idx[:, None]) & alive[None, :]
@@ -127,6 +131,49 @@ class RungGraphs:
                 nb["W1"].copy_(b["W1"][sel]); nb["W2"].copy_(b["W2"][sel]); nb["lr"].copy_(b["lr"][sel]); ids = ids[sel]
         self.final_ids = ids
 
+
+class Polled:
+    """B3: host-polled compaction. After each rung the host reads which runs survive (sync), compacts the weights and replays a graph
+    for exactly that many runs. Graphs are cached per (rung, n alive) and the cache is warmed by an untimed first pass (generous to torch)."""
+    def __init__(self):
+        torch.backends.cuda.matmul.allow_tf32 = True
+        self.segs = [(k * E, (k + 1) * E if k < K else steps) for k in range(K + 1)]
+        self.cache = {}
+    def get(self, k, n):
+        if (k, n) not in self.cache:
+            W1, W2 = fresh(n); lr = torch.zeros(n, 1, 1, device=dev); a, b = self.segs[k]; L = torch.zeros(b - a, n, device=dev)
+            def body():
+                for s in range(a, b): step(W1, W2, lr, s, L[s - a])
+            st = torch.cuda.Stream(); st.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(st): body()
+            torch.cuda.current_stream().wait_stream(st); torch.cuda.synchronize()
+            g = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(g): body()
+            self.cache[(k, n)] = dict(W1=W1, W2=W2, lr=lr, L=L, g=g)
+        return self.cache[(k, n)]
+    def run(self):
+        ids = torch.arange(R, device=dev); cW1, cW2 = fresh(R); lr = lr0.view(R, 1, 1).clone()
+        self.Lfull = torch.zeros(steps, R, device=dev); self.kill = [0] * R
+        for k in range(K + 1):
+            n = ids.numel()
+            if n == 0: break
+            b = self.get(k, n); a, e = self.segs[k]
+            b["W1"].copy_(cW1[ids]); b["W2"].copy_(cW2[ids]); b["lr"].copy_(lr[ids])
+            b["g"].replay()
+            self.Lfull[a:e, ids] = b["L"]
+            cW1[ids] = b["W1"]; cW2[ids] = b["W2"]
+            if k < K:
+                m = metric_seg(b["L"]); keep = select_mask(m, torch.ones(n, dtype=torch.bool, device=dev))
+                kl = keep.tolist()                       # host sync: the host must learn the new population size
+                for i, kp in zip(ids.tolist(), kl):
+                    if not kp: self.kill[i] = k + 1
+                ids = ids[keep]
+        self.final_ids = ids; self.cW1, self.cW2 = cW1, cW2
+
+def metric_seg(Lseg):
+    m = Lseg[-win:].mean(0)
+    return torch.where(torch.isnan(m), torch.full_like(m, 3.4e38), m)
+
 def timeit(fn, n=7, warm=3):
     for _ in range(warm): fn(); torch.cuda.synchronize()
     ts = []
@@ -143,7 +190,7 @@ surv_ref = set(int(i) for i in torch.nonzero(ar).flatten().tolist())
 surv_kvm = set(int(i) for i in np.nonzero(kalive)[0])
 # kill epoch per run from the ref: run alive iff survives all; reconstruct via rerun with record
 def kill_epochs():
-    alive = torch.ones(R, dtype=torch.bool, device=dev); ep = [K + 1] * R
+    alive = torch.ones(R, dtype=torch.bool, device=dev); ep = [0] * R
     for e in range(1, K + 1):
         s = e * E - 1; new = select_mask(metric(Lr, s), alive)
         for r in range(R):
@@ -154,7 +201,7 @@ ep = kill_epochs()
 # compare loss curves while alive (ref vs kvm), KVM-reported loss is the loss of the step in progress
 rel = 0.0; relk = 0.0
 for r in range(R):
-    last = steps if ep[r] == K + 1 else ep[r] * E
+    last = steps if ep[r] == 0 else ep[r] * E
     a = kloss[r, :last]; b = Lr[:last, r]
     rel = max(rel, float(((a - b).abs() / (b.abs() + 1e-6)).max()))
 # full-population loss curves (no halving) vs fp32 ref
@@ -165,9 +212,10 @@ for r in range(R):
     if ok.any(): relf = max(relf, float(((a[ok] - b[ok]).abs() / (b[ok].abs() + 1e-6)).max()))
 # weights of survivors: relative L2 diff kvm vs ref
 wd = 0.0
-for r in surv_ref:
+for r in range(R):
     a = kw[r]; b = torch.cat([W1r[r].flatten(), W2r[r].flatten()])
-    wd = max(wd, float((a - b).norm() / b.norm()))
+    if torch.isfinite(b).all() and torch.isfinite(a).all():
+        wd = max(wd, float((a - b).norm() / b.norm()))
 # loss at end of survivors
 res["correctness"] = dict(survivors_ref=sorted(surv_ref), survivors_kvm=sorted(surv_kvm), same_survivors=surv_ref == surv_kvm,
     max_rel_loss_err_sh_alive_steps=rel, max_rel_loss_err_full_population=relf, max_rel_weight_l2_survivors=wd, kill_epoch_ref=ep,
@@ -176,20 +224,27 @@ nan_runs = [r for r in range(R) if not torch.isfinite(Lf[:, r]).all()]
 res["correctness"]["runs_diverged_in_full_pop_ref"] = nan_runs
 
 # --- baselines, TF32
+kill_kvm = [int(x) for x in np.fromfile(f"{d}/kill_sh.bin", dtype=np.int32)[:R]]
+res["correctness"]["kill_rung_kvm"] = kill_kvm
+res["correctness"]["same_kill_rungs"] = kill_kvm == ep
 L0, _, _, _, ts0 = run_masked(True, False, True)
 L1, a1, W11, W21, ts1 = run_masked(True, True, True)
-rg = RungGraphs()
-ts2 = timeit(rg.run)
 res["correctness"]["B1_survivors_match_ref"] = set(torch.nonzero(a1).flatten().tolist()) == surv_ref
-res["correctness"]["B2_survivors_match_ref"] = set(rg.final_ids.tolist()) == surv_ref
-res["correctness"]["B2_final_ids"] = sorted(rg.final_ids.tolist())
 stat = lambda ts: dict(best_ms=min(ts), median_ms=float(np.median(ts)), all_ms=[round(t, 3) for t in ts])
-res["torch_ms"] = dict(B0_graph_full_population=stat(ts0), B1_graph_masked_halving=stat(ts1), B2_rung_graphs_shrinking=stat(ts2))
-res["kvm_ms"] = dict(full_population=meta["kvm_full_ms"], successive_halving=meta["kvm_sh_ms"])
-best_torch_sh = min(min(ts1), min(ts2))
-res["speedup"] = dict(
-    kvm_sh_vs_best_torch_sh=best_torch_sh / meta["kvm_sh_ms"],
-    kvm_sh_vs_B1=min(ts1) / meta["kvm_sh_ms"], kvm_sh_vs_B2=min(ts2) / meta["kvm_sh_ms"],
-    kvm_full_vs_B0=min(ts0) / meta["kvm_full_ms"])
+res["torch_ms"] = dict(B0_graph_full_population=stat(ts0), B1_graph_masked=stat(ts1))
+pg = Polled(); pg.run(); torch.cuda.synchronize(); pg.run(); torch.cuda.synchronize()   # warm graph cache
+ts3 = timeit(pg.run)
+res["torch_ms"]["B3_host_polled_compaction_cached_graphs"] = stat(ts3)
+res["correctness"]["B3_kill_rungs_match_ref"] = pg.kill == ep
+res["correctness"]["B3_distinct_graphs"] = len(pg.cache)
+cands = [min(ts1), min(ts3)]
+if MODE == 0:
+    rg = RungGraphs(); ts2 = timeit(rg.run)
+    res["torch_ms"]["B2_rung_graphs_static_halving"] = stat(ts2); cands.append(min(ts2))
+    res["correctness"]["B2_survivors_match_ref"] = set(rg.final_ids.tolist()) == surv_ref
+res["kvm_ms"] = dict(full_population=meta["kvm_full_ms"], controlled=meta["kvm_sh_ms"])
+res["speedup"] = dict(kvm_ctrl_vs_best_torch_ctrl=min(cands) / meta["kvm_sh_ms"], kvm_ctrl_vs_B1_masked=min(ts1) / meta["kvm_sh_ms"],
+    kvm_ctrl_vs_B3_polled=min(ts3) / meta["kvm_sh_ms"], kvm_full_vs_B0=min(ts0) / meta["kvm_full_ms"])
+res["torch_per_run_gpu_mem_note"] = "all torch variants use manual fwd/bwd with bmm, TF32, CUDA graphs"
 print(json.dumps(res, indent=1))
 json.dump(res, open(f"{d}/torch_result.json", "w"), indent=1)

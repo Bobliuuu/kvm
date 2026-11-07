@@ -33,28 +33,30 @@ C = 2.0 / (B * O)
 def fresh(n):
     return W1i.unsqueeze(0).repeat(n, 1, 1).contiguous(), W2i.unsqueeze(0).repeat(n, 1, 1).contiguous()
 
-def step_core(W1, W2, lr, x, t, lossrow):
+def post_y(Y, t):
+    dd = Y - t
+    return dd * C, (dd * dd).sum((1, 2)) / (B * O)
+
+_cpost = None
+USE_COMPILED = False
+def post(Y, t):
+    global _cpost
+    if USE_COMPILED:   # compile only the pure elementwise/reduction piece; in-place weight updates stay outside (compiling them gave wrong results)
+        if _cpost is None:
+            import torch._dynamo as _dz; _dz.config.cache_size_limit = 64
+            _cpost = torch.compile(post_y, dynamic=False)
+        return _cpost(Y, t)
+    return post_y(Y, t)
+
+def step(W1, W2, lr, s, lossrow):
+    k = s % NB; x = X[k]; t = T[k]
     Hh = torch.relu(torch.matmul(x, W1))
-    dY = torch.bmm(Hh, W2) - t
-    lossrow.copy_(torch.einsum("rbo,rbo->r", dY, dY) / (B * O))
-    dY = dY * C
+    dY, l = post(torch.bmm(Hh, W2), t); lossrow.copy_(l)
     dH = torch.ops.aten.threshold_backward(torch.bmm(dY, W2.transpose(1, 2)), Hh, 0)
     gW2 = torch.bmm(Hh.transpose(1, 2), dY)
     gW1 = torch.matmul(x.t(), dH)
     W2.addcmul_(lr, gW2, value=-1)
     W1.addcmul_(lr, gW1, value=-1)
-
-_compiled = None
-USE_COMPILED = False
-def step(W1, W2, lr, s, lossrow):
-    global _compiled
-    k = s % NB
-    if USE_COMPILED:
-        if _compiled is None:
-            import torch._dynamo as _dz; _dz.config.cache_size_limit = 512; _dz.config.automatic_dynamic_shapes = False
-            _compiled = torch.compile(step_core, dynamic=False)
-        return _compiled(W1, W2, lr, X[k], T[k], lossrow)
-    return step_core(W1, W2, lr, X[k], T[k], lossrow)
 
 def metric(L, s):   # L [steps, n]; mean of last win steps ending at s (inclusive); NaN -> huge
     m = L[s - win + 1:s + 1].mean(0)

@@ -180,7 +180,9 @@ __device__ __forceinline__ int kvm_claim(const KvmDevState& S, int c, const KvmC
   if (lane == cd.lane) {
     const size_t qi = (size_t)c * KVM_NBUCKETS + lane;
     KvmQCtl* q = S.qctl + qi;
-    if ((long long)atom_add64(&q->avail, ~0ull) > 0) {
+    // Look before reserving: a failed reservation is a decrement plus a restore on the contended line, and with many more pollers than
+    // items that storm starves individual warps (litmus queue, 200 CTAs on 1024 tokens).
+    if ((long long)ld_acq64(&q->avail) > 0 && (long long)atom_add64(&q->avail, ~0ull) > 0) {
       const unsigned long long h = atom_add64(&q->head, 1ull);
       KvmCell* cell = S.cells + qi * S.rcap + (h & (unsigned long long)(S.rcap - 1));
       while (ld_acq64(&cell->seq) != h + 1) { if (*(volatile int*)&S.cnt->err_code) break; __nanosleep(16); }   // its enqueuer publishes within a few instructions

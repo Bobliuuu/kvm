@@ -400,15 +400,22 @@ int main(int argc, char** argv) {
 
   constexpr int NPH = 5;
   enum { P_H1, P_Y, P_DH1, P_DW2, P_DW1 };
-  int CPS = NPH * (nRB + 1);
+  const int PIT = std::max(std::max(nRB, nHC), std::max(nOC, nDC));   // counter slots per phase = PIT + 1 (last = aggregate)
+  int CPS = NPH * (PIT + 1);
   int SC = R * CPS;
-  auto ctr = [&](int r, int s, int ph, int rb) { return (s * R + r) * CPS + ph * (nRB + 1) + (rb < 0 ? nRB : rb); };
+  auto ctr = [&](int r, int s, int ph, int rb) { return (s * R + r) * CPS + ph * (PIT + 1) + (rb < 0 ? PIT : rb); };
   auto mk = [&](int r) { Instr i; memset(&i, 0, sizeof i); i.aux = -1; i.w0c = i.w1c = i.s0 = i.s1 = -1; i.run = r; return i; };
   auto emit_phase = [&](std::vector<Instr>& tape, int r, int ph) {
     const int s = 0; float rlr = lrs[r];
     if (ph == P_H1) for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nHC; cn++) {
       Instr i = mk(r); i.op = OP_GEMM; i.flags = F_RELU; i.a = idX(0); i.b = idW1(r); i.c = idH1(r); i.m0 = rb * TILE; i.n0 = cn * TILE; i.K = D; i.xflags = 4 | 1 | 2;
-      i.w0c = ctr(r, s, P_DW1, -1); i.w0v = nDC * nHC; i.w1c = ctr(r, s, P_DW2, -1); i.w1v = nHC * nOC;
+      
+#ifdef OVERLAP
+      i.w0c = ctr(r, s, P_DW1, cn); i.w0v = nDC;   // W1 column cn of the previous step is enough for this tile: the optimizer overlaps the next forward
+#else
+      i.w0c = ctr(r, s, P_DW1, -1); i.w0v = nDC * nHC;
+#endif
+      i.w1c = ctr(r, s, P_DW2, -1); i.w1v = nHC * nOC;
       i.s0 = ctr(r, s, P_H1, rb); i.s1 = ctr(r, s, P_H1, -1); tape.push_back(i);
     }
     if (ph == P_Y) for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nOC; cn++) {
@@ -428,7 +435,7 @@ int main(int argc, char** argv) {
     }
     if (ph == P_DW1) for (int m = 0; m < nDC; m++) for (int n = 0; n < nHC; n++) {
       Instr i = mk(r); i.op = OP_GEMM; i.flags = F_TA | F_SGD; i.a = idX(0); i.b = idDH(r); i.c = idW1(r); i.m0 = m * TILE; i.n0 = n * TILE; i.K = B; i.scale = rlr; i.xflags = 4;
-      i.w0c = ctr(r, s, P_DH1, -1); i.w0v = nRB * nHC; i.s1 = ctr(r, s, P_DW1, -1); tape.push_back(i);
+      i.w0c = ctr(r, s, P_DH1, -1); i.w0v = nRB * nHC; i.s0 = ctr(r, s, P_DW1, n); i.s1 = ctr(r, s, P_DW1, -1); tape.push_back(i);
     }
   };
   // step template: phase-major (phase p of every run, then phase p+1) then one SEL slot; keeps many runs in flight per phase
@@ -472,7 +479,7 @@ int main(int argc, char** argv) {
   int grid = prop.multiProcessorCount * occ;
   printf("%s  SMs=%d occ=%d  vm grid=%d\n", prop.name, prop.multiProcessorCount, occ, grid);
 
-  auto set_sh = [&](int k) { SHP sh{E, k, R, CPS, nRB, nDC * nHC, nHC * nOC, steps, NB, mode, target, divthr, prune, useEval, evLen, nRB * nOC, evbase, 2 * NB, D * Hd, Hd * O}; CK(cudaMemcpyToSymbol(g_sh, &sh, sizeof sh)); };
+  auto set_sh = [&](int k) { SHP sh{E, k, R, CPS, PIT, nDC * nHC, nHC * nOC, steps, NB, mode, target, divthr, prune, useEval, evLen, nRB * nOC, evbase, 2 * NB, D * Hd, Hd * O}; CK(cudaMemcpyToSymbol(g_sh, &sh, sizeof sh)); };
   auto reset = [&]() {
     for (int r = 0; r < R; r++) {
       CK(cudaMemcpy(hb[idW1(r)].p, W1.data(), W1.size() * 4, cudaMemcpyHostToDevice));

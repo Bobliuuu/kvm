@@ -861,7 +861,8 @@ __global__ void __launch_bounds__(KVM_THREADS) kvm_init_kernel(KvmDevState S) {
 }
 
 __global__ void __launch_bounds__(KVM_THREADS) kvm_exec_kernel(const __grid_constant__ KvmDevState S) {
-  __shared__ union { KvmShared sh; int adm_stage[KVM_ADM_CHUNK * KVM_TASK_WORDS]; } shu;   // the admitter block never runs ops: it borrows the workers' scratch
+  union alignas(16) ShU { KvmShared sh; int adm_stage[KVM_ADM_CHUNK * KVM_TASK_WORDS]; };   // 16 B: the stage is written with int4 stores
+  __shared__ ShU shu;   // the admitter block never runs ops: it borrows the workers' scratch
   KvmShared& sh = shu.sh;
   __shared__ KvmAdmitShared adm;
   KvmWatch t0{kvm_now(), 0, -1, -1};

@@ -10,7 +10,9 @@
 //    tier 1  class is below its reservation (running < min_cta): ranked by running/min_cta, so the emptiest reservation first
 //    tier 2  the class's best head is within urgent_us of its deadline: earliest deadline first (EDF among the bucket heads;
 //            FIFO inside one bucket, so give deadline tasks of different urgency different priorities if exact EDF matters)
-//    tier 3  everything else, by virtual time: min over classes of  sum(run_ns) / weight  (start-time fair queueing, charged
+//    tier 3  the class is STRICT (KVM_CF_STRICT) and has ready work: before every fair-share class (the dynamic equivalent of the global
+//            queue's strict priority; the other classes' reservations, tier 1, still come first, so a strict class cannot starve them below their floor)
+//    tier 4  everything else, by virtual time: min over classes of  sum(run_ns) / weight  (start-time fair queueing, charged
 //            at claim with the op's running-time estimate and corrected when the task ends, so N idle workers do not all pick
 //            the same class). A class that becomes active has its vtime raised to the minimum active vtime: it neither
 //            banks credit while idle (work conservation lends idle time out for free) nor is it starved by the others' debt.
@@ -249,7 +251,8 @@ __device__ __forceinline__ int kvm_pop(const KvmDevState& S, unsigned long long 
       const unsigned long long vt = (unsigned long long)(unsigned)__shfl_sync(0xffffffffu, hw[c], 4) | ((unsigned long long)__shfl_sync(0xffffffffu, hw[c], 5) << 32);
       const int mn = (flags & KVM_SF_GUARANTEE) ? __shfl_sync(0xffffffffu, pw[c], 1) : 0, mx = __shfl_sync(0xffffffffu, pw[c], 2);
       const int bwc = __shfl_sync(0xffffffffu, pw[c], 3), urg_us = __shfl_sync(0xffffffffu, pw[c], 4);
-      int tier = ((boost >> c) & 1) ? 0 : run < mn ? 1 : 3;
+      const bool strict = (__shfl_sync(0xffffffffu, pw[c], 5) & KVM_CF_STRICT) != 0;
+      int tier = ((boost >> c) & 1) ? 0 : run < mn ? 1 : strict ? 3 : 4;
       bool bwb = (bwblk >> c) & 1; bool have = false; KvmCand cd{};
       if (tier >= 2) {  // throttles apply only to unprivileged service
         if (run >= mx) continue;

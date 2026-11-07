@@ -32,7 +32,7 @@ def build_model(cfg):
     return models.build(cfg)
 
 
-def compile_training(model_cfg, tc: TrainConfig, tiling: Tiling, reuse='shape', gap=0, with_spec=True, fuse=False) -> Compiled:
+def compile_training(model_cfg, tc: TrainConfig, tiling: Tiling, reuse='step', gap=0, with_spec=True, fuse=False) -> Compiled:
     """model_cfg: nn.ModelConfig (GPT), a models.* config, or a model object. fuse=True applies fuse.py before lowering."""
     model = build_model(model_cfg)
     n = sum(s.rows * s.cols for s in model.specs.values())

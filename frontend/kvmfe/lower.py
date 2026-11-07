@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from .ir import Builder, FrontendError, LogicalOp, Tensor
-from .opset import ATTN_Q, F_ACC, F_GELU, F_PRECISE, F_TA, F_TB, MM_TILE, op as device_op
+from .opset import ATTN_BLOCK, ATTN_Q, F_ACC, F_GELU, F_PRECISE, F_TA, F_TB, MM_TILE, op as device_op
 
 
 @dataclass(frozen=True)
@@ -22,12 +22,13 @@ class Tiling:
     cols: int = 128          # column block of column reductions (colsum, norm parameter gradients)
     vocab: int = 1024        # key block of the embedding gradient
     opt_elems: int = 16384   # AdamW chunk (rounded down to whole rows)
+    join_min: int = 32       # a predecessor set of at least this many tasks that two tasks need is replaced by a join (dataflow.py)
     precise: bool = False    # GEMM tiles use 3xTF32 (matmul_tile flag 16, fp32 accuracy) instead of the default 1xTF32
 
     PRESETS = {
         'cpu': dict(rows=8, ew_rows=8, cols=32, vocab=16, opt_elems=256),
-        'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=65536),
-        'b200': dict(rows=128, ew_rows=256, cols=512, vocab=4096, opt_elems=131072),
+        'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8),
+        'b200': dict(rows=128, ew_rows=256, cols=512, vocab=4096, opt_elems=524288, join_min=8),
     }
 
     @classmethod
@@ -270,7 +271,7 @@ def _(op, tc):
     for b in range(q.rows // T):
         for h in range(H):
             hc, kc = (h * hd, (h + 1) * hd), (h // G * hd, (h // G + 1) * hd)
-            for q0, q1 in _seq_blocks(T, ATTN_Q):
+            for q0, q1 in _seq_blocks(T, ATTN_BLOCK if causal else ATTN_Q):
                 R, KV = (b * T + q0, b * T + q1), _kv_rows(b, T, q1, causal)
                 yield _task('attn_fwd' if causal else 'attn_full_fwd',
                             [q.region(*R, *hc), k.region(*KV, *kc), v.region(*KV, *kc)],
@@ -292,7 +293,7 @@ def _(op, tc):
     for b in range(B):
         for h in range(H):
             hc, kc, bh = (h * hd, (h + 1) * hd), (h // G * hd, (h // G + 1) * hd), (b * H + h, b * H + h + 1)
-            for q0, q1 in _seq_blocks(T, ATTN_Q):
+            for q0, q1 in _seq_blocks(T, ATTN_BLOCK if causal else ATTN_Q):
                 R, KV = (b * T + q0, b * T + q1), _kv_rows(b, T, q1, causal)
                 yield _task('attn_bwd_dq' if causal else 'attn_full_bwd_dq',
                             [q.region(*R, *hc), k.region(*KV, *kc), v.region(*KV, *kc), do.region(*R, *hc),
@@ -302,7 +303,7 @@ def _(op, tc):
         for kvh in range(Hkv):                                    # dk/dv sum over the whole GQA group of query heads
             qc = (kvh * G * hd, (kvh + 1) * G * hd)
             kc, bh = (kvh * hd, (kvh + 1) * hd), (b * H + kvh * G, b * H + (kvh + 1) * G)
-            for k0, k1 in _seq_blocks(T, ATTN_Q):
+            for k0, k1 in _seq_blocks(T, ATTN_BLOCK if causal else ATTN_Q):
                 lo = k0 if causal else 0
                 Q, K = (b * T + lo, b * T + T), (b * T + k0, b * T + k1)
                 yield _task('attn_bwd_dkv' if causal else 'attn_full_bwd_dkv',
@@ -370,7 +371,13 @@ def _(op, tc):
 
 
 def _opt_chunks(w, tc):
-    return blocks(w.rows, max(1, tc.opt_elems // w.cols))
+    """Row chunks of about opt_elems elements. A chunk that spans several rows is rounded down to whole matmul-tile rows (a
+    weight gradient tile then feeds exactly one chunk: fewer chunks, and no tile-row's fan-in repeated by its neighbours); a chunk
+    shorter than one tile row (wide matrices such as the LM head) keeps its row count."""
+    rows = max(1, tc.opt_elems // w.cols)
+    if rows >= MM_TILE:
+        rows -= rows % MM_TILE
+    return blocks(w.rows, rows)
 
 
 @lowers('grad_clip')

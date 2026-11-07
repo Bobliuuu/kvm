@@ -12,6 +12,8 @@ that edge); `at_least` just waits. A one-cell version token chains post(s-1) -> 
 """
 from __future__ import annotations
 
+import math
+import random
 import zlib
 from dataclasses import dataclass, field
 
@@ -89,19 +91,32 @@ def batch_stream(cfg: ModelConfig, steps: int):
 
 
 def batch_tokens(cfg: ModelConfig, step: int):
-    """Deterministic host-provided batch: per sequence a chain t -> (5t+3) mod V (a learnable bigram), next-token targets."""
+    """Deterministic host-provided batch: per sequence a chain t -> (5t+3) mod V (a learnable bigram), next-token targets.
+
+    With cfg.data_vocab = K the chain lives on the first K ids (V := K) and, with cfg.data_noise = e, each successor is replaced by a
+    uniform draw from the K ids with probability e (seeded by the step, so the stream is reproducible and held-out steps are fresh):
+    the entropy per token is then exactly `stream_entropy(cfg)` nats and ln K is what a model that only learned the support reaches."""
     ids, tgt = [], []
-    if cfg.repeat_batch:
+    if getattr(cfg, 'repeat_batch', False):             # other model configs (Llama, ...) share this stream and lack the stream options
         step = 0
+    v, noise = getattr(cfg, 'data_vocab', 0) or cfg.vocab, getattr(cfg, 'data_noise', 0.0)
+    rng = random.Random(f'{cfg.seed}/{step}')
     for b in range(cfg.batch):
-        t = (step * cfg.batch + b) * 7919 % cfg.vocab
+        t = (step * cfg.batch + b) * 7919 % v
         chain = []
         for _ in range(cfg.seq + 1):
             chain.append(t)
-            t = (5 * t + 3) % cfg.vocab
+            t = rng.randrange(v) if noise and rng.random() < noise else (5 * t + 3) % v
         ids += chain[:-1]
         tgt += chain[1:]
     return ids, tgt
+
+
+def stream_entropy(cfg: ModelConfig):
+    """Bayes-optimal next-token cross-entropy (nats) of the noisy bigram stream; ln(K) when the whole stream is noise, 0 for none."""
+    v, e = cfg.data_vocab or cfg.vocab, cfg.data_noise
+    hit = 1 - e + e / v
+    return -(hit * math.log(hit) + (v - 1) * (e / v) * math.log(e / v) if e else 0.0) if e else 0.0
 
 
 def param_init(spec, seed):

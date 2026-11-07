@@ -52,6 +52,7 @@ def main():
     ap.add_argument('--mode', choices=['tf32', 'precise'], default='tf32')
     ap.add_argument('--tiling', default='a100')
     ap.add_argument('--fuse', action='store_true')
+    ap.add_argument('--precision', default=None, help='f32 | bf16 | bf16s (model config override)')
     ap.add_argument('--reuse', default='step', help="buffer reuse: 'step' (default), 'shape' or 'none' (every tensor keeps its own buffer: needed to read gradients back)")
     a = ap.parse_args()
     from dataclasses import asdict
@@ -60,6 +61,9 @@ def main():
     from kvmfe.pipeline import compile_training
     from kvmfe.train import TrainConfig
     cfg = ModelConfig.load(a.model)
+    if a.precision:
+        from dataclasses import replace
+        cfg = replace(cfg, precision=a.precision)
     c = compile_training(cfg, TrainConfig(steps=a.steps), Tiling.preset(a.tiling), reuse=a.reuse, fuse=a.fuse)
     if a.mode == 'precise':
         for g in c.spec['graphs']:

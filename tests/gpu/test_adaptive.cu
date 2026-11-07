@@ -2,6 +2,7 @@
 // scheduler sees workload_id, priority, deadline_us and the op cost table, so what is measured here is the policy, not a model.
 //   nvcc ... -DKVM_EXEC_NO_MAIN -DKVM_SCHED_NO_BENCH tests/gpu/test_adaptive.cu -o test_adaptive      (tests/gpu/build_adaptive.sh)
 //   ./test_adaptive [suite...]        functional: telemetry loop floor
+//                                     sliced admission (functional, explicit): express
 //                                     measurements (explicit): granularity hol admit_gran
 //   ./test_adaptive --expect-fail floor_neg   # negative control: exit 0 only if the harness DETECTS the injected failure
 #define KVM_SCHED_NO_BENCH
@@ -235,7 +236,8 @@ static bool suite_hol() {
 // admitter is the only cost) and chunked into K/chunk records for the advice on record size.
 static bool suite_admit_gran() {
   int before = g_fail;
-  printf("  latency bundle (1 noop, class 0) submitted right behind a K-task record (K noops, class 1); end-to-end latency of the small bundle\n");
+  for (bool express : {false, true}) {
+  printf("  latency bundle (1 noop, class 0%s) submitted right behind a K-task record (K noops, class 1); end-to-end latency of the small bundle\n", express ? ", express" : "");
   for (int K : {500, 2000, 8000, 32000, 64000}) {
     KvmConfig c = sched_cfg(34, 2); c.max_tasks = 1 << 18; c.live_cap = 1 << 17; c.ring_words = 1 << 22;
     KvmExec ex(c); ex.start();
@@ -246,7 +248,7 @@ static bool suite_admit_gran() {
       const auto t0 = std::chrono::steady_clock::now();
       CHECK(ex.submit(bb, 30000, false, &w1) == KvmSubmit::OK, "submit");
       const double sub = now_us_since(t0);
-      KvmBundleBuilder sm; KvmTaskOpts o0; o0.workload = 0; sm.add("noop", {}, o0);
+      KvmBundleBuilder sm; KvmTaskOpts o0; o0.workload = 0; sm.add("noop", {}, o0); sm.express(express);
       CHECK(ex.submit(sm.build(), 30000, false, &w2) == KvmSubmit::OK, "submit");
       while (!ex.window_done(w2)) std::this_thread::yield();
       lat.push_back(now_us_since(t0) - sub);
@@ -255,14 +257,51 @@ static bool suite_admit_gran() {
     }
     printf("  K=%6d: small bundle p50 %8.0f us  max %8.0f us   (record fully done: %.2f us per task)\n", K, pct(lat, 50), pct(lat, 100), pct(per_task, 50));
     ex.finish();
+    if (express && K >= 8000) CHECK(pct(lat, 50) < 3000, "express bundle behind a %d-task record took %.0f us", K, pct(lat, 50));
   }
+  }
+  return g_fail == before;
+}
+
+// Sliced admission, functional. A big record (chains of dependent adds over their own buffers: its successor words cross slice boundaries)
+// is followed by express bundles. Every task must run exactly once, every chain must have produced its exact sum (a lost edge or a
+// wrong slot would not), and the first express bundle must have been released BEFORE the big record's first root (it jumped the record).
+static bool suite_express() {
+  int before = g_fail;
+  const int CH = 500, L = 12, NE = 24, W = 8;
+  KvmConfig c = sched_cfg(34, 2); c.max_tasks = 1 << 15; c.live_cap = 1 << 13; c.ring_words = 1 << 20;
+  KvmExec ex(c);
+  float* ar = ex.arena((size_t)(CH + NE + 1) * W); upload(ar, [&] { std::vector<float> v((size_t)(CH + NE + 1) * W, 0.f); for (int j = 0; j < W; ++j) v[(size_t)(CH + NE) * W + j] = 1.f; return v; }());
+  std::vector<int> v(CH + NE + 1); for (int i = 0; i <= CH + NE; ++i) v[i] = ex.add_view(ar + (size_t)i * W, 1, W);
+  const int one = v[CH + NE];
+  ex.start();
+  KvmBundleBuilder big; KvmTaskOpts o1; o1.workload = 1;
+  for (int ch = 0; ch < CH; ++ch) { int prev = -1; for (int h = 0; h < L; ++h) { int t = big.add("add", {Bf(v[ch]), Bf(one), Bf(v[ch]), I(W)}, o1); if (prev >= 0) big.edge(prev, t); prev = t; } }
+  KvmSubmit st = ex.submit(big.build(), 30000); CHECK(st == KvmSubmit::OK, "submit big %s", kvm_submit_name(st));
+  for (int e = 0; e < NE; ++e) {
+    KvmBundleBuilder b; KvmTaskOpts o0; o0.workload = 0; int prev = -1;
+    for (int h = 0; h < 3; ++h) { int t = b.add("add", {Bf(v[CH + e]), Bf(one), Bf(v[CH + e]), I(W)}, o0); if (prev >= 0) b.edge(prev, t); prev = t; }
+    b.express();
+    st = ex.submit(b.build(), 30000); CHECK(st == KvmSubmit::OK, "submit express %s", kvm_submit_name(st));
+    if (e % 4 == 0) std::this_thread::sleep_for(std::chrono::microseconds(300));
+  }
+  const KvmResult& r = ex.finish(); CHECK(r.ok(), "device error %s", kvm_err_name(r.err_code));
+  check_once(r, CH * L + NE * 3);
+  int bad = 0; for (int ch = 0; ch < CH; ++ch) { auto x = ex.read_buffer(v[ch]); for (float f : x) bad += f != (float)L; }
+  CHECK(bad == 0, "%d big-record elements with the wrong chain sum", bad);
+  bad = 0; for (int e = 0; e < NE; ++e) { auto x = ex.read_buffer(v[CH + e]); for (float f : x) bad += f != 3.f; }
+  CHECK(bad == 0, "%d express elements with the wrong sum", bad);
+  std::vector<TV> tv = tview(r); double big_first = 1e30, exp_first = 1e30;
+  for (auto& t : tv) { if (t.cls == 1) big_first = std::min(big_first, t.ready); else exp_first = std::min(exp_first, t.ready); }
+  printf("  first express task ready at %.0f us, first root of the big record at %.0f us\n", exp_first, big_first);
+  CHECK(exp_first < big_first, "the express bundle was not admitted ahead of the big record");
   return g_fail == before;
 }
 
 int main(int argc, char** argv) {
   bool expect_fail = false; std::vector<std::string> want;
   for (int i = 1; i < argc; ++i) { std::string a = argv[i]; if (a == "--expect-fail") expect_fail = true; else if (a == "--quiet") g_kvm_log = 0; else want.push_back(a); }
-  if (want.empty()) want = {"telemetry", "loop", "floor"};
+  if (want.empty()) want = {"telemetry", "loop", "floor", "express"};
   int dev; cudaDeviceProp p; CK(cudaGetDevice(&dev)); CK(cudaGetDeviceProperties(&p, dev));
   g_sms = p.multiProcessorCount;
   printf("GPU %s, %d SMs, sm_%d%d\n", p.name, p.multiProcessorCount, p.major, p.minor);
@@ -272,7 +311,7 @@ int main(int argc, char** argv) {
     printf("== %s\n", s.c_str()); fflush(stdout);
     try {
       if (s == "telemetry") ok = suite_telemetry(); else if (s == "loop") ok = suite_loop(); else if (s == "floor") ok = suite_floor();
-      else if (s == "floor_neg") ok = suite_floor_neg(); else if (s == "granularity") ok = suite_granularity(); else if (s == "hol") ok = suite_hol(); else if (s == "admit_gran") ok = suite_admit_gran();
+      else if (s == "floor_neg") ok = suite_floor_neg(); else if (s == "granularity") ok = suite_granularity(); else if (s == "hol") ok = suite_hol(); else if (s == "admit_gran") ok = suite_admit_gran(); else if (s == "express") ok = suite_express();
       else { fprintf(stderr, "unknown suite %s\n", s.c_str()); return 2; }
     } catch (const std::exception& e) { fprintf(stderr, "  EXCEPTION: %s\n", e.what()); ++g_fail; ok = false; }
     ok = ok && g_fail == f0;

@@ -37,7 +37,7 @@ struct Opt {
   int sample_us = 2000, seed = 1, log_level = 2;
   double sweep_gb = 0; int sweep_chunk_k = 256, sweep_inflight = 2;   // co-runner: AdamW over 4 tensors of sweep_gb/4 GB each, chunks of sweep_chunk_k*1024 elements
   long long gate_serve = -1, gate_train = -1;   // admission budgets (tasks in flight per class); -1 = none
-  bool gate_tune = false, arbiter_assist = false, no_doom = false, no_serve = false, no_train = false, dump_frames = true;
+  bool express = false, gate_tune = false, arbiter_assist = false, no_doom = false, no_serve = false, no_train = false, dump_frames = true;
   KvmConfig cfg;
 };
 
@@ -176,7 +176,7 @@ void Run::doom_loop(const DoomInst& d, int frames) {
     sleep_until_us(rel);
     if (stop_.load()) break;
     const bool scene = o_.scene0 >= 0 && rel >= o_.scene0 * 1e6 && rel < o_.scene1 * 1e6;
-    KvmBundle b = doom_frame(d, f, (int)period, scene ? o_.scene_extra_us : 0, o_.doom_instances > 1);
+    KvmBundle b = doom_frame(d, f, (int)period, scene ? o_.scene_extra_us : 0, o_.doom_instances > 1); b.express = o_.express;
     unsigned wid; const double sub = now_us();
     if (!submit(b, &wid)) return;
     const double ret = now_us();
@@ -289,7 +289,7 @@ int Run::go() {
   const int frames = o_.no_doom ? 0 : (int)(o_.duration_s * o_.fps) + 3;
   for (int r = 0; r < runs; ++r) train_b_.push_back(load_bundle(o_.scn + "/train_r" + std::to_string(r), pool, CLS_TRAIN));
   for (int r = 0; r < runs; ++r) train_loss_buf_.push_back(pool.get("t" + std::to_string(r) + ".loss.0"));
-  for (int i = 0; i < pool_n; ++i) serve_b_.push_back(load_bundle(o_.scn + "/serve_" + std::to_string(i), pool, CLS_SERVE));
+  for (int i = 0; i < pool_n; ++i) serve_b_.push_back(load_bundle(o_.scn + "/serve_" + std::to_string(i), pool, CLS_SERVE)); if (o_.express) for (auto& b : serve_b_) b.express = true;
 #ifdef KVM_WITH_GAME
   std::vector<DoomInst> doom;
   if (frames) {
@@ -447,6 +447,7 @@ int main(int argc, char** argv) {
     else if (a == "--log") o.log_level = iv();
     else if (a == "--live-cap") o.cfg.live_cap = iv(); else if (a == "--ring-words") o.cfg.ring_words = iv();
     else if (a == "--gate-tune") o.gate_tune = true;
+    else if (a == "--express") o.express = true;   // Doom frames and serve requests are express records: admitted ahead of the training record being copied
     else if (a == "--arbiter-assist") o.arbiter_assist = true;
     else if (a == "--no-doom") o.no_doom = true; else if (a == "--no-serve") o.no_serve = true; else if (a == "--no-train") o.no_train = true; else if (a == "--no-dump-frames") o.dump_frames = false;
     else if (a == "--sched") {

@@ -31,6 +31,7 @@ enum KvmRes { KVM_RES_COMPUTE = 0, KVM_RES_BW = 1, KVM_RES_LAT = 2, KVM_RES_MIXE
 #define KVM_SF_ARBITER   4   // global concurrent-BW-task limit, adapted online by the policy block
 #define KVM_SF_DEFAULT   (KVM_SF_GUARANTEE | KVM_SF_INHERIT)
 #define KVM_CF_PROTECT 1
+#define KVM_CF_STRICT  4     // strict priority: the class is served before every non-strict class in the fair-share tier (below inheritance, reservations and EDF-urgent); among strict classes, by virtual time
 #define KVM_CF_OPAFF   2     // a ready task is offered first to the block that last ran a task of the same op (warm code/state), for affinity_us
 // Bits the device records in KvmTrace.flags for how a task was started (bit0 is KVM_TRACE_MISSED).
 #define KVM_TRACE_RESV    2    // started while its class was below its reservation

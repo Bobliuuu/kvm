@@ -298,21 +298,27 @@ static bool suite_baselines() {
   int before = g_fail; const int W = 106, N = 5;   // 108 blocks, one per SM, in every mode (a static split by SM id is then a split by worker count)
   LoadSpec L = rebalance_load();
   printf("  scripted load: %zu phases (idle/low/BURST/low/idle/BURST/idle) over %d ms, %d workers (108 blocks: 1 admitter, 1 policy, the rest workers), best-of-%d, median [min,max]\n", L.phases.size(), 1600, W, N);
-  struct Cfg { const char* name; int mode; int serve_prio; double share; bool ctl; bool arb; };
+  struct Cfg { const char* name; int mode; int serve_prio; double share; bool ctl; bool arb; bool strict; int train_floor; };   // strict: serve class is KVM_CF_STRICT; train_floor: train reservation (CTAs)
   std::vector<std::pair<std::string, Rep>> res;
-  for (const Cfg& cf : std::vector<Cfg>{{"global queue, flat", KVM_SCHED_GLOBAL, 0, 0, false, false}, {"global queue, serve prio 20", KVM_SCHED_GLOBAL, 20, 0, false, false},
-                                         {"static split 25% serve", KVM_SCHED_STATIC, 0, 0.25, false, false}, {"static split 50% serve", KVM_SCHED_STATIC, 0, 0.5, false, false},
-                                         {"dynamic + controller", KVM_SCHED_DYNAMIC, 0, 0, true, false}, {"dynamic + ctl + arbiter", KVM_SCHED_DYNAMIC, 0, 0, true, true}}) {
+  for (const Cfg& cf : std::vector<Cfg>{{"global queue, flat", KVM_SCHED_GLOBAL, 0, 0, false, false, false, 0}, {"global queue, serve prio 20", KVM_SCHED_GLOBAL, 20, 0, false, false, false, 0},
+                                         {"static split 25% serve", KVM_SCHED_STATIC, 0, 0.25, false, false, false, 0}, {"static split 50% serve", KVM_SCHED_STATIC, 0, 0.5, false, false, false, 0},
+                                         {"dynamic + controller", KVM_SCHED_DYNAMIC, 0, 0, true, false, false, 0}, {"dynamic + ctl + arbiter", KVM_SCHED_DYNAMIC, 0, 0, true, true, false, 0},
+                                         {"dynamic strict serve", KVM_SCHED_DYNAMIC, 0, 0, false, false, true, 0}, {"dynamic strict, train floor 8", KVM_SCHED_DYNAMIC, 0, 0, false, false, true, 8},
+                                         {"dynamic strict + controller", KVM_SCHED_DYNAMIC, 0, 0, true, false, true, 0}}) {
     KvmConfig c = mode_cfg(cf.mode, 108); LoadSpec l = L; l.serve_prio = cf.serve_prio;
     if (cf.mode == KVM_SCHED_STATIC) { kvm_static_split(c.sched.p, {cf.share, 1 - cf.share}, g_sms); }
     c.sched.p.cls[0].weight = 1; c.sched.p.cls[0].urgent_us = cf.mode == KVM_SCHED_DYNAMIC ? 1500 : 0; c.sched.p.cls[0].protect = 1; c.sched.p.cls[0].target_wait_us = 500;
     if (cf.arb) c.sched.p.flags |= KVM_SF_ARBITER;
+    if (cf.strict) c.sched.p.cls[0].protect |= KVM_CF_STRICT;
+    c.sched.p.cls[1].min_cta = cf.train_floor;
     Rep r = repeat(c, l, N, cf.ctl, ctl_for_serve(W / 2)); CHECK(reps_ok(r), "%s: device error or no requests", cf.name); print_rep(cf.name, r); res.push_back({cf.name, r});
   }
   auto med = [&](int i, auto f) { return sp(res[i].second, f).med; };
   auto p99 = [](const Metrics& m) { return m.req_p99; }; auto kt = [](const Metrics& m) { return m.train_ktasks_s; }; auto ut = [](const Metrics& m) { return m.util; };
   printf("  ratios (dynamic + controller vs): serve p99 / train ktask/s / utilization\n");
   for (int i : {0, 1, 2, 3}) printf("    vs %-28s p99 %.2fx lower, train %.2fx, utilization %.2fx\n", res[i].first.c_str(), med(i, p99) / med(4, p99), med(4, kt) / med(i, kt), med(4, ut) / med(i, ut));
+  printf("  ratios against the global queue with serve priority 20 (>1 = dynamic is better): serve p99 / train ktask/s\n");
+  for (size_t i = 4; i < res.size(); ++i) printf("    %-28s p99 %.2fx, train %.2fx\n", res[i].first.c_str(), med(1, p99) / med((int)i, p99), med((int)i, kt) / med(1, kt));
   return g_fail == before;
 }
 

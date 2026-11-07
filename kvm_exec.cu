@@ -79,6 +79,10 @@ struct KvmTaskOpts { int priority = 0, deadline_us = -1, wait_var = -1, wait_ver
 struct KvmBundle {
   std::vector<KvmTaskDesc> tasks;
   std::vector<int32_t> succ, args;
+  // Express record: while the admitter is copying a big record in slices it may admit this record first (include/kvm_exec.cuh,
+  // "sliced admission"). Only records of at most KVM_ADM_AHEAD_MAX tasks that directly follow the big one pass. Such a bundle must
+  // not depend on any earlier record except through version waits (it may run before it); everything else keeps submission order.
+  bool express = false;
   // "" if well formed, else the first problem. nbufs/nvars < 0 skip those range checks.
   std::string validate(int nbufs, int nvars, int live_cap) const {
     std::ostringstream e;
@@ -166,8 +170,9 @@ class KvmBundleBuilder {
     if (from < 0 || to < 0 || from >= (int)tasks_.size() || to >= (int)tasks_.size() || from == to) throw std::invalid_argument("bad edge");
     out_[from].insert(to);
   }
+  KvmBundleBuilder& express(bool e = true) { express_ = e; return *this; }   // see KvmBundle::express
   KvmBundle build() const {
-    KvmBundle b; b.tasks = tasks_; b.args = args_;
+    KvmBundle b; b.tasks = tasks_; b.args = args_; b.express = express_;
     for (size_t i = 0; i < tasks_.size(); ++i) {
       b.tasks[i].succ_off = (int)b.succ.size();
       b.tasks[i].succ_cnt = (int)out_[i].size();
@@ -176,7 +181,7 @@ class KvmBundleBuilder {
     return b;
   }
  private:
-  std::vector<KvmTaskDesc> tasks_; std::vector<int32_t> args_; std::vector<std::set<int>> out_;
+  std::vector<KvmTaskDesc> tasks_; std::vector<int32_t> args_; std::vector<std::set<int>> out_; bool express_ = false;
 };
 
 // ---------------- executor ----------------
@@ -416,7 +421,7 @@ class KvmExec {
       std::this_thread::sleep_for(std::chrono::microseconds(50));
     }
     int* r = ring_ + wpos_ % cfg_.ring_words;
-    write_header(words, (int)b.tasks.size(), (int)b.succ.size(), (int)b.args.size(), KVM_REC_BUNDLE);
+    write_header(words, (int)b.tasks.size(), (int)b.succ.size(), (int)b.args.size(), KVM_REC_BUNDLE, b.express ? KVM_REC_EXPRESS : 0);
     r += KVM_REC_HDR;
     memcpy(r, b.tasks.data(), b.tasks.size() * sizeof(KvmTaskDesc)); r += b.tasks.size() * KVM_TASK_WORDS;
     if (!b.succ.empty()) memcpy(r, b.succ.data(), b.succ.size() * 4);
@@ -606,9 +611,9 @@ class KvmExec {
       }
     }
   }
-  void write_header(size_t total, int nt, int ne, int na, int kind) {
+  void write_header(size_t total, int nt, int ne, int na, int kind, int rec_flags = 0) {
     int* h = ring_ + wpos_ % cfg_.ring_words;
-    h[0] = KVM_REC_MAGIC; h[1] = (int)total; h[2] = nt; h[3] = ne; h[4] = na; h[5] = stats_.bundles; h[6] = kind; h[7] = 0;
+    h[0] = KVM_REC_MAGIC; h[1] = (int)total; h[2] = nt; h[3] = ne; h[4] = na; h[5] = stats_.bundles; h[6] = kind; h[7] = rec_flags;
   }
   KvmConfig cfg_;
   KvmDevState S_{};
@@ -754,6 +759,7 @@ static int kvm_cli_sched_option(KvmConfig& cfg, int& i, int argc, char** argv) {
   else if (a == "--max") { if (!list([](KvmClassParams& q, int v) { q.max_cta = v; })) return -1; }
   else if (a == "--bw-cta") { if (!list([](KvmClassParams& q, int v) { q.bw_cta = v; })) return -1; }
   else if (a == "--urgent-us") { if (!list([](KvmClassParams& q, int v) { q.urgent_us = v; })) return -1; }
+  else if (a == "--strict") { if (!list([](KvmClassParams& q, int v) { if (v) q.protect |= KVM_CF_STRICT; })) return -1; }   // e.g. 1,0: class 0 is served before every non-strict class
   else if (a == "--op-affinity") { if (!list([](KvmClassParams& q, int v) { if (v) q.protect |= KVM_CF_OPAFF; })) return -1; }   // e.g. 1,0: class 0 prefers the block that last ran the same op
   else if (a == "--shares") {   // STATIC mode: SM share per class, e.g. 1,3
     if (i + 1 >= argc) return -1;
@@ -774,7 +780,7 @@ static void usage() {
     "  bundle_dir: tasks.bin successors.bin args.bin metadata.json (ABI v2)\n"
     "  --blocks N --live-cap N --max-tasks N --ring-words N --aging-us N --timeout-s N (stall timeout) --task-limit-s N\n"
     "  --sched MODE        global|static|dynamic: per-workload scheduling (workload_id = class, up to 8)  --classes N\n"
-    "  --weights a,b,..    --min a,b,.. (reserved CTAs)  --max a,b,.. (CTA caps)  --bw-cta a,b,..  --urgent-us a,b,..\n"
+    "  --weights a,b,..    --min a,b,.. (reserved CTAs)  --max a,b,.. (CTA caps)  --bw-cta a,b,..  --urgent-us a,b,..  --strict 1,0,.. (strict-priority classes)\n"
     "  --op-affinity a,b (1 = class prefers the block that last ran the same op)  --shares a,b (static SM shares)  --arbiter  --bw-limit N   adaptive concurrent bandwidth-bound CTA limit   --affinity-us N   --no-guarantee  --no-inherit\n"
 
     "  --golden [--golden-tol R]  compare with <bundle_dir>/golden.json (single bundle): final buffers, versions, observed versions\n"

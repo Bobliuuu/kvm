@@ -16,6 +16,9 @@ from . import log
 from .ir import FrontendError, LogicalOp, Tensor
 
 
+_ITEM = {'f32': 4, 'i32': 4, 'bf16': 2}      # bytes per element of each tensor dtype
+
+
 @dataclass
 class BufferInfo:
     name: str
@@ -67,13 +70,13 @@ def plan_memory(ops: list[LogicalOp], reuse: str = 'shape', gap: int = 0, prefix
         b.tensors += 1
         if b.init is None or (b.init[0] == 'fill' and r.init and r.init[0] != 'fill'):
             b.init = r.init
-    pinned_bytes = sum(b.rows * b.cols * 4 for b in buffers.values())
+    pinned_bytes = sum(b.rows * b.cols * _ITEM[b.dtype] for b in buffers.values())
     free: dict = {}
     active: list = []                         # heap of (last use, uid, shape, slot)
     n_slots, total, pool = 0, 0, 0
     for uid in sorted((u for u, r in roots.items() if r.buf is None), key=lambda u: span[u][0]):
         r, (first, last) = roots[uid], span[uid]
-        total += r.numel * 4
+        total += r.numel * _ITEM[r.dtype]
         horizon = step_start[ops[first].step] if reuse == 'step' else first         # 'step': only slots freed in earlier steps
         while active and active[0][0] + gap < first and active[0][0] < horizon:
             _, _, key, slot = heapq.heappop(active)
@@ -84,7 +87,7 @@ def plan_memory(ops: list[LogicalOp], reuse: str = 'shape', gap: int = 0, prefix
             slot = f'{prefix}{n_slots}'
             n_slots += 1
             buffers[slot] = BufferInfo(slot, r.rows, r.cols, False, None, 0, r.dtype)
-            pool += r.numel * 4
+            pool += r.numel * _ITEM[r.dtype]
         buffers[slot].tensors += 1
         of[uid] = slot
         heapq.heappush(active, (last, uid, key, slot))

@@ -1,0 +1,13 @@
+torch fp64: loss 10.979000 global grad norm 4.074979
+torch tf32: loss 10.979010 global grad norm 4.074834
+torch fp32: loss 10.979000 global grad norm 4.074980
+torch bf16: loss 10.979324 global grad norm 4.073034
+executor: loss 10.979010 global grad norm 4.074670 clip_coef 0.245419  (fp64 truth coef 0.245400)
+loss vs fp64: executor +9.56e-06  torch-tf32 +9.56e-06  torch-fp32 +2.17e-08  torch-autocast-bf16 +3.24e-04
+  group wte        (  1 tensors) |g| truth 3.8530e-01 exec 3.8527e-01  rel L2 vs fp64: exec 9.43e-04  torch-tf32 9.43e-04  torch-fp32 2.13e-06  torch-autocast-bf16 1.12e-02
+  group norm       ( 48 tensors) |g| truth 4.3011e-02 exec 4.3005e-02  rel L2 vs fp64: exec 9.33e-04  torch-tf32 9.06e-04  torch-fp32 2.11e-06  torch-autocast-bf16 2.26e-02
+  group attn       ( 96 tensors) |g| truth 2.0846e+00 exec 2.0845e+00  rel L2 vs fp64: exec 8.91e-04  torch-tf32 8.84e-04  torch-fp32 1.98e-06  torch-autocast-bf16 2.12e-02
+  group mlp        ( 48 tensors) |g| truth 3.4536e+00 exec 3.4533e+00  rel L2 vs fp64: exec 9.27e-04  torch-tf32 9.24e-04  torch-fp32 2.11e-06  torch-autocast-bf16 1.77e-02
+  group final_norm (  2 tensors) |g| truth 1.9237e-02 exec 1.9237e-02  rel L2 vs fp64: exec 5.01e-04  torch-tf32 4.97e-04  torch-fp32 1.04e-06  torch-autocast-bf16 3.29e-02
+  group head       (  1 tensors) |g| truth 4.2624e-01 exec 4.2625e-01  rel L2 vs fp64: exec 7.67e-04  torch-tf32 7.66e-04  torch-fp32 1.74e-06  torch-autocast-bf16 7.58e-03
+  worst tensor: gpt.h11.attn.q.w exec 1.46e-03 (torch-tf32 on it 1.46e-03, torch-bf16 1.91e-02); all 196 tensors: max exec 1.46e-03, max torch-tf32 1.46e-03, max torch-autocast-bf16 3.36e-02

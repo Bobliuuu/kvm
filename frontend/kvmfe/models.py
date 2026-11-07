@@ -66,8 +66,8 @@ class LlamaConfig:
         _check_hd(self.d_model, self.heads)
         if self.heads % self.kv_heads:
             raise FrontendError(f'heads {self.heads} must be a multiple of kv_heads {self.kv_heads}')
-        if self.precision not in ('f32', 'bf16'):
-            raise FrontendError(f"precision must be 'f32' or 'bf16', got {self.precision!r}")
+        if self.precision not in ('f32', 'bf16', 'bf16s'):
+            raise FrontendError(f"precision must be 'f32', 'bf16' or 'bf16s', got {self.precision!r}")
         if self.experts and not 0 < self.top_k <= self.experts:
             raise FrontendError(f'need 0 < top_k ({self.top_k}) <= experts ({self.experts})')
 
@@ -99,7 +99,7 @@ class SwiGLU(Module):
         self.gate, self.up = (Linear(f'{name}.{n}', cfg.d_model, cfg.ffn, False, std) for n in ('gate', 'up'))
         self.down = Linear(f'{name}.down', cfg.ffn, cfg.d_model, False, std / (2 * cfg.layers) ** 0.5)
         self.absorb(self.gate, self.up, self.down)
-        self.lp = cfg.precision == 'bf16'
+        self.lp = cfg.precision in ('bf16', 'bf16s')
 
     def __call__(self, b, h, w, res, aux=None):
         gate, up = self.gate(b, h, w, bf16=self.lp), self.up(b, h, w, bf16=self.lp)
@@ -111,7 +111,7 @@ class MoEFFN(Module):
     with the router gate as scale, router probabilities get a load-balancing auxiliary loss; autodiff flows through all of it."""
     def __init__(self, name, cfg):
         super().__init__(name)
-        self.cfg, self.lp = cfg, cfg.precision == 'bf16'
+        self.cfg, self.lp = cfg, cfg.precision in ('bf16', 'bf16s')
         self.router = Linear(f'{name}.router', cfg.d_model, cfg.experts, False, cfg.init_std)
         self.experts = [SwiGLU(f'{name}.e{e}', cfg) for e in range(cfg.experts)]
         self.absorb(self.router, *self.experts)
@@ -134,7 +134,7 @@ class MoEFFN(Module):
 class LlamaBlock(Module):
     def __init__(self, name, cfg):
         super().__init__(name)
-        self.cfg, self.lp = cfg, cfg.precision == 'bf16'
+        self.cfg, self.lp = cfg, cfg.precision in ('bf16', 'bf16s')
         d, hd, std = cfg.d_model, cfg.d_model // cfg.heads, cfg.init_std
         self.n1, self.n2 = Norm(f'{name}.n1', d, 'rmsnorm'), Norm(f'{name}.n2', d, 'rmsnorm')
         self.q = Linear(f'{name}.attn.q', d, cfg.heads * hd, False, std)
@@ -170,7 +170,7 @@ class LlamaBlock(Module):
 class Llama(Module):
     def __init__(self, cfg: LlamaConfig):
         super().__init__('llama')
-        self.cfg, self.lp = cfg, cfg.precision == 'bf16'
+        self.cfg, self.lp = cfg, cfg.precision in ('bf16', 'bf16s')
         self.wte = self.add('wte', cfg.vocab, cfg.d_model, ('normal', cfg.init_std))
         self.blocks = [LlamaBlock(f'llama.h{i}', cfg) for i in range(cfg.layers)]
         self.nf = Norm('llama.nf', cfg.d_model, 'rmsnorm')
@@ -238,7 +238,7 @@ MLP_PRESETS = {'mlp_tiny': MLPConfig()}
 class MLPClassifier(Module):
     def __init__(self, cfg: MLPConfig):
         super().__init__('mlp')
-        self.cfg, self.lp = cfg, cfg.precision == 'bf16'
+        self.cfg, self.lp = cfg, cfg.precision in ('bf16', 'bf16s')
         dims = [cfg.in_dim, *cfg.hidden, cfg.classes]
         self.layers = [Linear(f'mlp.fc{i}', a, c, True, math.sqrt(2.0 / a)) for i, (a, c) in enumerate(zip(dims, dims[1:]))]
         self.absorb(*self.layers)
@@ -309,7 +309,7 @@ VIT_PRESETS = {'vit_tiny': ViTConfig()}
 class ViTBlock(Module):
     def __init__(self, name, cfg):
         super().__init__(name)
-        d, std, self.cfg, self.lp = cfg.d_model, cfg.init_std, cfg, cfg.precision == 'bf16'
+        d, std, self.cfg, self.lp = cfg.d_model, cfg.init_std, cfg, cfg.precision in ('bf16', 'bf16s')
         self.n1, self.n2 = Norm(f'{name}.n1', d, 'layernorm'), Norm(f'{name}.n2', d, 'layernorm')
         self.q, self.k, self.v = (Linear(f'{name}.attn.{n}', d, d, True, std) for n in 'qkv')
         self.o = Linear(f'{name}.attn.o', d, d, True, std / (2 * cfg.layers) ** 0.5)
@@ -330,7 +330,7 @@ class ViTBlock(Module):
 class ViT(Module):
     def __init__(self, cfg: ViTConfig):
         super().__init__('vit')
-        self.cfg, self.lp = cfg, cfg.precision == 'bf16'
+        self.cfg, self.lp = cfg, cfg.precision in ('bf16', 'bf16s')
         d = cfg.d_model
         self.embed = Linear('vit.embed', cfg.patch_dim, d, True, cfg.init_std)
         self.pos = self.add('pos', cfg.patches, d, ('normal', cfg.init_std))

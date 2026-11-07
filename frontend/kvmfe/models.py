@@ -311,7 +311,7 @@ class ViTBlock(Module):
         super().__init__(name)
         d, std, self.cfg, self.lp = cfg.d_model, cfg.init_std, cfg, cfg.precision == 'bf16'
         self.n1, self.n2 = Norm(f'{name}.n1', d, 'layernorm'), Norm(f'{name}.n2', d, 'layernorm')
-        self.q, self.k, self.v = (Linear(f'{name}.attn.{n}', d, d, True, std) for n in 'qkv')
+        self.q, self.k, self.v = (Linear(f'{name}.attn.{n}', d, d, True, std, b_invariant=n == 'k') for n in 'qkv')   # no RoPE: key bias is invariant
         self.o = Linear(f'{name}.attn.o', d, d, True, std / (2 * cfg.layers) ** 0.5)
         self.fc1 = Linear(f'{name}.mlp.fc1', d, cfg.ffn_mult * d, True, std)
         self.fc2 = Linear(f'{name}.mlp.fc2', cfg.ffn_mult * d, d, True, std / (2 * cfg.layers) ** 0.5)

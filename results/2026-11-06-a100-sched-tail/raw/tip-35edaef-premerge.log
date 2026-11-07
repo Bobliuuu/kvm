@@ -1,0 +1,98 @@
+# suite=custom tag=sched-tail-tip 2026-11-07T07:21:05Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 1024 GB, cores: 16
+  static std::string env_or(const char* k, const char* d) { const char* v = getenv(k); return v ? v : d; }
+                     ^
+
+
+real	31m30.263s
+user	30m58.610s
+sys	0m7.630s
+      constexpr int BK = 16, NST = 3, BM = 64 * WM, BN = WTN * WN, NJ = WTN / 8, ATILE = BM * BK, TILE = ATILE, STAGE = (BM + BN) * BK;
+                                                                                                  ^
+
+
+real	32m36.872s
+user	32m4.320s
+sys	0m7.700s
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80
+== express
+  first express task ready at 115 us, first root of the big record at 1852 us
+== express: PASS (0.4s, 0 new failures)
+== admit_gran
+  latency bundle (1 noop, class 0) submitted right behind a K-task record (K noops, class 1); end-to-end latency of the small bundle
+  K=   500: small bundle p50      194 us  max     1943 us   (record fully done: 2.55 us per task)
+  K=  2000: small bundle p50      505 us  max     2042 us   (record fully done: 2.47 us per task)
+  K=  8000: small bundle p50     1616 us  max     2811 us   (record fully done: 1.94 us per task)
+  K= 32000: small bundle p50     5546 us  max     6780 us   (record fully done: 1.91 us per task)
+  K= 64000: small bundle p50    11364 us  max    11803 us   (record fully done: 1.92 us per task)
+  latency bundle (1 noop, class 0, express) submitted right behind a K-task record (K noops, class 1); end-to-end latency of the small bundle
+  K=   500: small bundle p50      116 us  max     1825 us   (record fully done: 2.12 us per task)
+  K=  2000: small bundle p50      126 us  max     1696 us   (record fully done: 1.96 us per task)
+  K=  8000: small bundle p50      160 us  max     1327 us   (record fully done: 1.93 us per task)
+  K= 32000: small bundle p50      290 us  max      298 us   (record fully done: 1.91 us per task)
+  K= 64000: small bundle p50      451 us  max      466 us   (record fully done: 1.91 us per task)
+== admit_gran: PASS (5.6s, 0 new failures)
+273 checks, 0 failed, 0 suites failed
+PASS
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.3, runtime 12.8
+== baselines
+  scripted load: 7 phases (idle/low/BURST/low/idle/BURST/idle) over 1600 ms, 106 workers (108 blocks: 1 admitter, 1 policy, the rest workers), best-of-5, median [min,max]
+    [global queue, flat] chain hop run p50 460.8 us, stream CTA gap p50 14.3 us
+  global queue, flat         req p50   27954 [27110,28325] p99    32627 [30933,34142] us | hop-wait p99 31977.5 [30259.2,33469.4] | miss 100.0% [100.0,100.0] | train   81.3 [80.7,81.8] kt/s  264.9 [261.8,266.6] GB/s burst   57.9 [56.6,58.6] kt/s | util 98.0% [98.0,98.0]
+    [global queue, serve prio 20] chain hop run p50 481.3 us, stream CTA gap p50 14.3 us
+  global queue, serve prio 20 req p50    1037 [1033,1047] p99     1660 [1588,1731] us | hop-wait p99  1059.8 [1014.8,1150.0] | miss   0.0% [0.0,0.0] | train   80.6 [78.8,81.3] kt/s  262.2 [256.8,263.8] GB/s burst   52.9 [49.3,54.1] kt/s | util 98.0% [98.0,98.1]
+    [static split 25% serve] chain hop run p50 434.2 us, stream CTA gap p50 14.3 us
+  static split 25% serve     req p50  285937 [285895,286414] p99   375614 [374843,376571] us | hop-wait p99 374467.6 [373858.3,375366.7] | miss  97.6% [96.6,97.9] | train   47.6 [45.5,51.6] kt/s  155.4 [147.4,166.8] GB/s burst   41.9 [39.3,47.5] kt/s | util 61.8% [59.7,64.8]
+    [static split 50% serve] chain hop run p50 531.5 us, stream CTA gap p50 14.3 us
+  static split 50% serve     req p50   40874 [34935,48865] p99    90785 [76412,98585] us | hop-wait p99 89947.1 [75596.8,97771.5] | miss  93.8% [92.0,95.6] | train   60.5 [60.4,60.6] kt/s  195.9 [195.7,196.6] GB/s burst   60.9 [60.8,61.0] kt/s | util 79.9% [78.8,80.2]
+    [dynamic + controller] chain hop run p50 508.9 us, stream CTA gap p50 19.5 us
+  dynamic + controller       req p50    2234 [2223,2244] p99     2900 [2835,3015] us | hop-wait p99  2328.6 [2271.2,2436.1] | miss   0.5% [0.2,1.1] | train   77.9 [77.2,78.3] kt/s  253.4 [250.2,255.3] GB/s burst   48.3 [46.5,49.3] kt/s | util 97.1% [97.1,97.1]
+    [dynamic + ctl + arbiter] chain hop run p50 466.9 us, stream CTA gap p50 20.5 us
+  dynamic + ctl + arbiter    req p50     926 [898,937] p99     2014 [1969,2190] us | hop-wait p99  1432.6 [1327.1,1535.0] | miss   0.0% [0.0,0.0] | train   61.6 [60.8,63.2] kt/s  200.8 [198.8,205.6] GB/s burst   22.2 [21.8,23.1] kt/s | util 81.7% [80.2,82.1]
+    [dynamic strict serve] chain hop run p50 478.2 us, stream CTA gap p50 19.5 us
+  dynamic strict serve       req p50    1054 [1039,1061] p99     1742 [1590,1872] us | hop-wait p99  1169.4 [1036.3,1294.3] | miss   0.0% [0.0,0.0] | train   78.9 [78.7,79.5] kt/s  256.8 [256.1,257.1] GB/s burst   50.1 [49.8,50.4] kt/s | util 97.1% [97.1,97.1]
+    [dynamic strict, train floor 8] chain hop run p50 481.3 us, stream CTA gap p50 18.4 us
+  dynamic strict, train floor 8 req p50    1076 [1044,1115] p99     2047 [1847,2642] us | hop-wait p99  1440.8 [1240.1,2025.5] | miss   0.0% [0.0,0.3] | train   78.6 [78.0,80.6] kt/s  256.2 [253.2,263.3] GB/s burst   50.2 [48.1,53.3] kt/s | util 97.2% [97.2,97.2]
+    [dynamic strict + controller] chain hop run p50 477.2 us, stream CTA gap p50 18.4 us
+  dynamic strict + controller req p50    1053 [1035,1065] p99     1778 [1608,1936] us | hop-wait p99  1176.6 [1035.3,1340.4] | miss   0.0% [0.0,0.0] | train   79.1 [78.7,80.2] kt/s  257.2 [256.2,261.2] GB/s burst   50.2 [49.4,52.8] kt/s | util 97.2% [97.1,97.2]
+  ratios (dynamic + controller vs): serve p99 / train ktask/s / utilization
+    vs global queue, flat           p99 11.25x lower, train 0.96x, utilization 0.99x
+    vs global queue, serve prio 20  p99 0.57x lower, train 0.97x, utilization 0.99x
+    vs static split 25% serve       p99 129.52x lower, train 1.64x, utilization 1.57x
+    vs static split 50% serve       p99 31.31x lower, train 1.29x, utilization 1.21x
+  ratios against the global queue with serve priority 20 (>1 = dynamic is better): serve p99 / train ktask/s
+    dynamic + controller         p99 0.57x, train 0.97x
+    dynamic + ctl + arbiter      p99 0.82x, train 0.76x
+    dynamic strict serve         p99 0.95x, train 0.98x
+    dynamic strict, train floor 8 p99 0.81x, train 0.97x
+    dynamic strict + controller  p99 0.93x, train 0.98x
+== baselines: PASS (80.1s, 0 new failures)
+== overload
+  serve flood: 9000 req/s x 48 matmul tasks (~115 CTAs of demand on 106 workers) for 300 ms, train saturating; train reservation 26 CTAs (25%) in the dynamic row
+    [global queue, serve prio 20] chain hop run p50 421.9 us, stream CTA gap p50 14.3 us
+  global queue, serve prio 20 req p50   62588 [62512,62666] p99    63023 [62999,63114] us | hop-wait p99 62473.2 [62412.8,62549.0] | miss  98.5% [98.0,98.7] | train    0.7 [0.6,0.7] kt/s    2.3 [2.1,2.5] GB/s burst    0.7 [0.7,0.8] kt/s | util 96.8% [96.7,96.8]
+    [dynamic, train min 26 CTAs] chain hop run p50 474.1 us, stream CTA gap p50 553.0 us
+  dynamic, train min 26 CTAs req p50   91904 [91208,92268] p99    97038 [96043,97483] us | hop-wait p99 96364.5 [95336.4,96774.1] | miss  99.3% [99.1,99.4] | train   22.8 [22.4,23.0] kt/s   73.8 [71.8,74.4] GB/s burst   25.0 [24.3,25.2] kt/s | util 96.1% [96.1,96.2]
+  train throughput under the flood: global-prio 0.7 ktask/s, dynamic with reservation 22.8 ktask/s (34.2x); 
+== overload: PASS (7.5s, 0 new failures)
+11 checks, 0 failed, 0 suites failed
+PASS
+== reserve: PASS (0.1s, 0 new failures)
+== edf
+  urgent_us      0: 0 of 6 low-priority deadline tasks overtook the 20 high-priority tasks, EDF order violations among them: 0, started by the deadline tier: 0
+  urgent_us 100000: 6 of 6 low-priority deadline tasks overtook the 20 high-priority tasks, EDF order violations among them: 0, started by the deadline tier: 6
+== edf: PASS (0.0s, 0 new failures)
+== inherit
+  serve <- train publisher, train throttled to 0: serve finished in 1 ms with inheritance, 33 tasks started under a boost
+  serve <- class 1 <- class 2 (transitive), both throttled: serve finished in 1 ms with inheritance, 44 tasks started under a boost
+  waiter parked before the publisher is admitted: serve finished in 1 ms with inheritance, 33 tasks started under a boost
+== inherit: PASS (0.0s, 0 new failures)
+== rand
+  50 runs (GLOBAL / STATIC / DYNAMIC, 2 grid sizes, random weights, reservations, caps, BW caps, deadline windows), 119500 tasks: exactly-once, edges ordered by timestamps, node values bitwise vs CPU
+== rand: PASS (1.3s, 0 new failures)
+499 checks, 0 failed, 0 suites failed
+PASS
+exit: 0

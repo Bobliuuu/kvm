@@ -1,0 +1,6 @@
+precise: 199 f32 buffers (6 signal-free skipped: ['act116', 'act53', 'm.vit.h0.attn.k.b', 'v.vit.h0.attn.k.b', 'version_token', 'w.vit.h0.attn.k.b']), 2 loss buffers
+  worst: act71 1.17e-05, v.vit.h0.attn.q.w 2.01e-06, v.vit.h0.attn.k.w 1.90e-06, act110 1.42e-06
+  ok   every per-step loss rel err <= 1e-05: worst 2.01e-09
+  ok   all buffers rel L2 <= 0.001: worst act71 1.17e-05
+  ok   no NaN/Inf in any GPU buffer: []
+PASS

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from .ir import Builder, FrontendError, LogicalOp, Tensor
-from .opset import ATTN_Q, F_ACC, F_BIG, F_GELU, F_HUGE, F_PRECISE, F_TA, F_TB, F_TRUNC, MM_TILE, mm_dims, op as device_op
+from .opset import ATTN_BLOCK, ATTN_Q, F_ACC, F_BIG, F_GELU, F_HUGE, F_PRECISE, F_TA, F_TB, F_TRUNC, MM_TILE, MMA_TILE, mm_dims, op as device_op
 
 
 @dataclass(frozen=True)
@@ -25,17 +25,17 @@ class Tiling:
     mm_tile: int = 64        # GEMM output tile: 64 (64x64), 128 (128x128, flag 32) or 256 (256x128, flag 64); see mm_choice for fallbacks
     mm_min_tiles: int = 8    # a GEMM that would give fewer tiles than this at mm_tile steps down to a smaller tile (parallelism over hop cost)
     mm_min_eff: float = 0.75 # ... and so does one whose padded tiles would waste more than 1 - this of their area
-    attn_span: int = 1       # causal attention: 32-row blocks per task (attn_fwd / attn_bwd_dq query blocks, attn_bwd_dkv key blocks)
+    join_min: int = 32       # a predecessor set of at least this many tasks that two tasks need is replaced by a join (dataflow.py)
     precise: bool = False    # GEMM tiles use 3xTF32 (matmul_tile flag 16, fp32 accuracy) instead of the default 1xTF32
     tf32_trunc: bool = False # big (128x128 / 256x128) 1xTF32 GEMM tiles skip the operand rounding (flag 256): cuBLAS TF32 numerics, ~25% faster tile
 
     PRESETS = {
         'cpu': dict(rows=8, ew_rows=8, cols=32, vocab=16, opt_elems=256),
-        'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=65536, mm_tile=128, attn_span=4),
-        'a100_trunc': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=65536, mm_tile=128, attn_span=4, tf32_trunc=True),
-        'a100_mm64': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=65536),   # the previous a100 (64x64 GEMM tiles)
-        'a100_mm256': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=65536, mm_tile=256, attn_span=4),
-        'b200': dict(rows=128, ew_rows=256, cols=512, vocab=4096, opt_elems=131072),
+        'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=128),
+        'a100_trunc': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=128, tf32_trunc=True),
+        'a100_mm64': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8),   # the previous a100 (64x64 GEMM tiles)
+        'a100_mm256': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256),
+        'b200': dict(rows=128, ew_rows=256, cols=512, vocab=4096, opt_elems=524288, join_min=8),
     }
 
     @classmethod
@@ -135,26 +135,32 @@ _STEPS = {64: (), 128: (F_BIG,), 256: (F_HUGE, F_BIG)}
 
 
 def _mm_tiles(a, b, out, M, N, K, ta, tb, flags, bias=None, res=None, pre=None, acc=False, dev='matmul_tile', precise=False, tc=None):
-    flags |= F_PRECISE if precise else 0
-    flags |= mm_choice(M, N, tc, allow_big=(dev != 'matmul_tile_bf16')) if tc is not None else 0
+    flags |= F_PRECISE if precise and dev == 'matmul_tile' else 0
+    flags |= mm_choice(M, N, tc, allow_big=(dev == 'matmul_tile')) if tc is not None else 0
     if tc is not None and tc.tf32_trunc and dev == 'matmul_tile' and flags & (F_BIG | F_HUGE) and not flags & F_PRECISE:
         flags |= F_TRUNC
-    TM, TN = mm_dims(flags)
-    for m0 in range(0, M, TM):
-        m1 = min(m0 + TM, M)
-        for n0 in range(0, N, TN):
-            n1 = min(n0 + TN, N)
-            ra = a.region(0, K, m0, m1) if ta else a.region(m0, m1, 0, K)
-            rb = b.region(n0, n1, 0, K) if tb else b.region(0, K, n0, n1)
-            tile = out.region(m0, m1, n0, n1)
-            reads = [ra, rb, bias.region(0, 1, n0, n1) if bias else None, res.region(m0, m1, n0, n1) if res else None,
-                     tile if acc else None]
-            yield _task(dev, reads, [tile, pre.region(m0, m1, n0, n1) if pre else None],
-                        a=a, b=b, out=out, bias=bias, res=res, pre=pre, m0=m0, n0=n0, M=M, N=N, K=K, flags=flags, alpha=1.0)
+    TM, TN = MMA_TILE if dev == 'matmul_mma_bf16' else mm_dims(flags)
+    ms, ns = list(range(0, M, TM)), list(range(0, N, TN))
+    # Admission order is execution order: iterate the dimension with more tiles outermost, so consecutive tiles share the operand block of the
+    # shorter one and the long operand streams through L2 once (4096 x 50304 x 768 logits: 1.5x faster than m-outer on the A100).
+    order = [(m0, n0) for n0 in ns for m0 in ms] if dev == 'matmul_mma_bf16' and len(ns) > len(ms) else [(m0, n0) for m0 in ms for n0 in ns]
+    for m0, n0 in order:
+        m1, n1 = min(m0 + TM, M), min(n0 + TN, N)
+        ra = a.region(0, K, m0, m1) if ta else a.region(m0, m1, 0, K)
+        rb = b.region(n0, n1, 0, K) if tb else b.region(0, K, n0, n1)
+        tile = out.region(m0, m1, n0, n1)
+        reads = [ra, rb, bias.region(0, 1, n0, n1) if bias else None, res.region(m0, m1, n0, n1) if res else None, tile if acc else None]
+        yield _task(dev, reads, [tile, pre.region(m0, m1, n0, n1) if pre else None],
+                    a=a, b=b, out=out, bias=bias, res=res, pre=pre, m0=m0, n0=n0, M=M, N=N, K=K, flags=flags, alpha=1.0)
 
 
 def _mm_dev(op):
-    return 'matmul_tile_bf16' if op.attrs.get('bf16') else 'matmul_tile'
+    """matmul_tile (TF32) or, in a bf16 precision mode, the bf16 tensor-core tile when both operands are real bf16 storage (the 128 x 256
+    matmul_mma_bf16), else the 64 x 64 matmul_tile_bf16 that rounds fp32 operands on load."""
+    if not op.attrs.get('bf16'):
+        return 'matmul_tile'
+    a, b = (op.ins['x'], op.ins['w']) if op.kind == 'linear' else (op.ins['a'], op.ins['b'])
+    return 'matmul_mma_bf16' if a.dtype == 'bf16' and b.dtype == 'bf16' else 'matmul_tile_bf16'
 
 
 @lowers('linear')
@@ -283,13 +289,6 @@ def _seq_blocks(n, size):
     return [(a, min(a + size, n)) for a in range(0, n, size)]
 
 
-def _attn_spans(T, tc, causal):
-    """(start, end, arg) per attention task: `arg` is the device q0/k0 word, start | (blocks - 1) << 16 (see attn_span in opset.py)."""
-    n = tc.attn_span if causal else 1
-    for a in range(0, T, ATTN_Q * n):
-        yield a, min(a + ATTN_Q * n, T), a | ((-(-(min(a + ATTN_Q * n, T) - a) // ATTN_Q) - 1) << 16)
-
-
 def _attn_geom(op):
     q, k = op.ins['q'], op.ins['k']
     T, H, Hkv = op.attrs['seq'], op.attrs['heads'], op.attrs['kv_heads']
@@ -308,12 +307,12 @@ def _(op, tc):
     for b in range(q.rows // T):
         for h in range(H):
             hc, kc = (h * hd, (h + 1) * hd), (h // G * hd, (h // G + 1) * hd)
-            for q0, q1, qa in _attn_spans(T, tc, causal):
+            for q0, q1 in _seq_blocks(T, ATTN_BLOCK if causal else ATTN_Q):
                 R, KV = (b * T + q0, b * T + q1), _kv_rows(b, T, q1, causal)
                 yield _task('attn_fwd' if causal else 'attn_full_fwd',
                             [q.region(*R, *hc), k.region(*KV, *kc), v.region(*KV, *kc)],
                             [out.region(*R, *hc), lse.region(b * H + h, b * H + h + 1, q0, q1)],
-                            q=q, k=k, v=v, o=out, lse=lse, b=b, h=h, q0=qa, T=T, H=H, Hkv=Hkv, hd=hd, scale=hd ** -0.5)
+                            q=q, k=k, v=v, o=out, lse=lse, b=b, h=h, q0=q0, T=T, H=H, Hkv=Hkv, hd=hd, scale=hd ** -0.5)
 
 
 @lowers('attention_bwd')
@@ -330,24 +329,24 @@ def _(op, tc):
     for b in range(B):
         for h in range(H):
             hc, kc, bh = (h * hd, (h + 1) * hd), (h // G * hd, (h // G + 1) * hd), (b * H + h, b * H + h + 1)
-            for q0, q1, qa in _attn_spans(T, tc, causal):
+            for q0, q1 in _seq_blocks(T, ATTN_BLOCK if causal else ATTN_Q):
                 R, KV = (b * T + q0, b * T + q1), _kv_rows(b, T, q1, causal)
                 yield _task('attn_bwd_dq' if causal else 'attn_full_bwd_dq',
                             [q.region(*R, *hc), k.region(*KV, *kc), v.region(*KV, *kc), do.region(*R, *hc),
                              lse.region(*bh, q0, q1), delta.region(*bh, q0, q1)], [dq.region(*R, *hc)],
-                            q=q, k=k, v=v, do=do, lse=lse, delta=delta, dq=dq, b=b, h=h, q0=qa, T=T, H=H, Hkv=Hkv, hd=hd,
+                            q=q, k=k, v=v, do=do, lse=lse, delta=delta, dq=dq, b=b, h=h, q0=q0, T=T, H=H, Hkv=Hkv, hd=hd,
                             scale=hd ** -0.5)
         for kvh in range(Hkv):                                    # dk/dv sum over the whole GQA group of query heads
             qc = (kvh * G * hd, (kvh + 1) * G * hd)
             kc, bh = (kvh * hd, (kvh + 1) * hd), (b * H + kvh * G, b * H + (kvh + 1) * G)
-            for k0, k1, ka in _attn_spans(T, tc, causal):
+            for k0, k1 in _seq_blocks(T, ATTN_BLOCK if causal else ATTN_Q):
                 lo = k0 if causal else 0
                 Q, K = (b * T + lo, b * T + T), (b * T + k0, b * T + k1)
                 yield _task('attn_bwd_dkv' if causal else 'attn_full_bwd_dkv',
                             [q.region(*Q, *qc), k.region(*K, *kc), v.region(*K, *kc), do.region(*Q, *qc),
                              lse.region(*bh, lo, T), delta.region(*bh, lo, T)],
                             [dk.region(*K, *kc), dv.region(*K, *kc)],
-                            q=q, k=k, v=v, do=do, lse=lse, delta=delta, dk=dk, dv=dv, b=b, kvh=kvh, k0=ka, T=T, H=H, hd=hd,
+                            q=q, k=k, v=v, do=do, lse=lse, delta=delta, dk=dk, dv=dv, b=b, kvh=kvh, k0=k0, T=T, H=H, hd=hd,
                             scale=hd ** -0.5)
 
 
@@ -400,15 +399,21 @@ def _(op, tc):
 def _(op, tc):
     w, g, m, v, step = (op.ins[n] for n in ('w', 'g', 'm', 'v', 'step'))
     a, gs, tok, lrb = op.attrs, op.ins.get('gscale'), op.ins.get('tok'), op.ins.get('lr_buf')
-    for r0, r1 in _opt_chunks(w, tc):
+    for r0, r1 in _opt_chunks(w, tc, op.attrs.get('tile_rows', MM_TILE)):
         rw = [_rows(w, r0, r1), _rows(m, r0, r1), _rows(v, r0, r1)]
         reads = rw + [_rows(g, r0, r1), _full(step), _full(tok) if tok else None, _full(gs) if gs else None, _full(lrb) if lrb else None]
         hp = dict(p=w, g=g, m=m, v=v, gscale=gs, step=step, e0=r0 * w.cols, e1=r1 * w.cols, b1=a['b1'], b2=a['b2'], eps=a['eps'], wd=a['wd'])
         yield _task('adamw_lr', reads, rw, lr=lrb, **hp) if lrb else _task('adamw', reads, rw, lr=a['lr'], **hp)
 
 
-def _opt_chunks(w, tc):
-    return blocks(w.rows, max(1, tc.opt_elems // w.cols))
+def _opt_chunks(w, tc, tile=MM_TILE):
+    """Row chunks of about opt_elems elements. A chunk that spans several rows is rounded down to whole matmul-tile rows (a
+    weight gradient tile then feeds exactly one chunk: fewer chunks, and no tile-row's fan-in repeated by its neighbours); a chunk
+    shorter than one tile row (wide matrices such as the LM head) keeps its row count."""
+    rows = max(1, tc.opt_elems // w.cols)       # tile: storage.py raises tile_rows to MMA_TILE[0] under bf16 tiles
+    if rows >= tile:
+        rows -= rows % tile
+    return blocks(w.rows, rows)
 
 
 @lowers('grad_clip')
@@ -417,7 +422,7 @@ def _(op, tc):
     slot = 0
     for k in sorted(op.ins):
         g = op.ins[k]
-        for r0, r1 in _opt_chunks(g, tc):
+        for r0, r1 in _opt_chunks(g, tc, op.attrs.get('tile_rows', MM_TILE)):
             yield _task('gradnorm_partial', [_rows(g, r0, r1)], [partial.region(slot, slot + 1, 0, 1)],
                         g=g, partial=partial, slot=slot, e0=r0 * g.cols, e1=r1 * g.cols)
             slot += 1

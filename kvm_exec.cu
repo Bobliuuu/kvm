@@ -299,12 +299,12 @@ class KvmExec {
   }
   KvmExec(const KvmExec&) = delete; KvmExec& operator=(const KvmExec&) = delete;
 
-  // Allocates a rows x cols buffer of dtype 0 (f32) or 1 (i32) and initialises it on the device.
+  // Allocates a rows x cols buffer of dtype 0 (f32), 1 (i32) or 2 (bf16: raw 16-bit storage, 2 bytes per element) and initialises it on the device.
   int add_buffer(int rows, int cols, const KvmInit& init = {}, int dtype = 0) {
     if (started_ || prepared_) throw std::logic_error("buffers are fixed at start()");
-    if (rows < 1 || cols < 1 || (dtype != 0 && dtype != 1)) throw std::invalid_argument("bad buffer shape or dtype");
+    if (rows < 1 || cols < 1 || (dtype < 0 || dtype > 2)) throw std::invalid_argument("bad buffer shape or dtype");
     const size_t n = (size_t)rows * cols;
-    KvmBuf b{}; CK(cudaMalloc(&b.p, n * 4));
+    KvmBuf b{}; CK(cudaMalloc(&b.p, n * (dtype == 2 ? 2 : 4)));
     b.rows = rows; b.cols = cols; b.ld = cols; b.dtype = dtype;
     init_buffer((float*)b.p, n, init, dtype);
     bufs_.push_back(b);
@@ -545,6 +545,12 @@ class KvmExec {
   std::vector<float> read_buffer(int idx) const {
     if (idx < 0 || idx >= nbufs()) throw std::out_of_range("buffer index");
     std::vector<float> v((size_t)bufs_[idx].rows * bufs_[idx].cols);
+    if (bufs_[idx].dtype == 2) {   // bf16 storage: widened exactly to fp32
+      std::vector<uint16_t> h(v.size());
+      CK(cudaMemcpy(h.data(), bufs_[idx].p, h.size() * 2, cudaMemcpyDeviceToHost));
+      for (size_t i = 0; i < h.size(); ++i) { uint32_t u = (uint32_t)h[i] << 16; memcpy(&v[i], &u, 4); }
+      return v;
+    }
     CK(cudaMemcpy(v.data(), bufs_[idx].p, v.size() * 4, cudaMemcpyDeviceToHost));
     return v;
   }
@@ -576,7 +582,38 @@ class KvmExec {
     CK(cudaMalloc(&S_.sp.pubcls, (size_t)cfg_.num_vars * 4)); CK(cudaMemset(S_.sp.pubcls, 0, (size_t)cfg_.num_vars * 4));
     KvmController::write_params(hp_, sc.p);   // generation 1: the policy block's first tick re-reads the launch parameters
   }
+  static uint16_t bf16_rne(float x) {
+    uint32_t u; memcpy(&u, &x, 4);
+    if ((u & 0x7f800000u) == 0x7f800000u) return (uint16_t)((u >> 16) | ((u & 0x007fffffu) ? 0x40u : 0u));
+    return (uint16_t)((u + 0x7fffu + ((u >> 16) & 1u)) >> 16);
+  }
+  // dtype 2 (bf16): fill / values are rounded to bf16 on the host; a file holds raw little-endian bf16 (n * 2 bytes).
+  void init_buffer_bf16(void* p, size_t n, const KvmInit& in) {
+    switch (in.kind) {
+      case KvmInit::ZERO: CK(cudaMemset(p, 0, n * 2)); break;
+      case KvmInit::FILL: {
+        std::vector<uint16_t> v(std::min<size_t>(n, 1 << 20), bf16_rne(in.value));
+        for (size_t o = 0; o < n; o += v.size()) CK(cudaMemcpy((uint16_t*)p + o, v.data(), std::min(v.size(), n - o) * 2, cudaMemcpyHostToDevice));
+        break;
+      }
+      case KvmInit::VALUES: {
+        if (in.values.size() != n) throw std::invalid_argument("buffer init size");
+        std::vector<uint16_t> v(n); for (size_t i = 0; i < n; ++i) v[i] = bf16_rne(in.values[i]);
+        CK(cudaMemcpy(p, v.data(), n * 2, cudaMemcpyHostToDevice)); break;
+      }
+      case KvmInit::FILE: {
+        FILE* f = fopen(in.path.c_str(), "rb");
+        if (!f) throw std::runtime_error("cannot open init file " + in.path);
+        std::vector<uint16_t> v(n);
+        size_t got = fread(v.data(), 2, n, f); fclose(f);
+        if (got != n) throw std::runtime_error(in.path + ": expected " + std::to_string(n * 2) + " bytes");
+        CK(cudaMemcpy(p, v.data(), n * 2, cudaMemcpyHostToDevice)); break;
+      }
+      case KvmInit::SEEDED: throw std::invalid_argument("seeded init needs an f32 buffer");
+    }
+  }
   void init_buffer(float* p, size_t n, const KvmInit& in, int dtype) {
+    if (dtype == 2) { init_buffer_bf16(p, n, in); return; }
     switch (in.kind) {
       case KvmInit::ZERO: CK(cudaMemset(p, 0, n * 4)); break;
       case KvmInit::FILL: {
@@ -778,11 +815,13 @@ static void usage() {
     "  --op-affinity a,b (1 = class prefers the block that last ran the same op)  --shares a,b (static SM shares)  --arbiter  --bw-limit N   adaptive concurrent bandwidth-bound CTA limit   --affinity-us N   --no-guarantee  --no-inherit\n"
 
     "  --golden [--golden-tol R]  compare with <bundle_dir>/golden.json (single bundle): final buffers, versions, observed versions\n"
-    "  --trace-csv FILE   per-task timeline  --dump-buffers   print buffers   --quiet   errors only   --check-ops   print registry\n");
+    "  --trace-csv FILE   per-task timeline  --dump-buffers   print buffers   --quiet   errors only   --check-ops   print registry\n"
+    "  --dump-bin DIR i,j,..  write the listed buffers (by metadata index, widened to little-endian f32 / raw i32) to DIR/<index>.bin after the run\n");
 }
 
 int main(int argc, char** argv) {
   KvmConfig cfg; std::vector<std::string> dirs; const char* csv = nullptr; bool dump = false, golden = false; float golden_tol = 1e-6f;
+  std::string dump_dir; std::vector<int> dump_idx;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto val = [&](long long lo = 0, long long hi = 1ll << 30) -> long long {   // strict integer in [lo, hi]
@@ -800,6 +839,11 @@ int main(int argc, char** argv) {
     else if (int r = kvm_cli_sched_option(cfg, i, argc, argv)) { if (r < 0) { usage(); return 2; } }
     else if (a == "--trace-csv") { if (i + 1 >= argc) { usage(); return 2; } csv = argv[++i]; }
     else if (a == "--dump-buffers") dump = true;
+    else if (a == "--dump-bin") {
+      if (i + 2 >= argc) { usage(); return 2; }
+      dump_dir = argv[++i];
+      for (char* p = argv[++i]; *p;) { char* e; long v = strtol(p, &e, 10); if (e == p || v < 0) { usage(); return 2; } dump_idx.push_back((int)v); p = *e == ',' ? e + 1 : e; }
+    }
     else if (a == "--golden") golden = true;
     else if (a == "--golden-tol") { if (i + 1 >= argc) { usage(); return 2; } golden_tol = (float)atof(argv[++i]); }
     else if (a == "--quiet") g_kvm_log = 0;
@@ -897,6 +941,14 @@ int main(int argc, char** argv) {
       KLOG(2, "golden: %d reads checked, final versions compared; %d mismatches", nreads, golden_bad);
     }
     if (dump) for (int i = 0; i < ex.nbufs(); ++i) { auto v = ex.read_buffer(i); printf("buffer %d:", i); for (float x : v) printf(" %.9g", x); printf("\n"); }
+    for (int idx : dump_idx) {   // raw dump of selected buffers: the text dump above is ~11 bytes per element, too slow for a 162M-parameter model
+      if (idx >= ex.nbufs()) { fprintf(stderr, "--dump-bin: buffer %d out of range (%d buffers)\n", idx, ex.nbufs()); return 2; }
+      auto v = ex.read_buffer(idx);
+      std::string path = dump_dir + "/" + std::to_string(idx) + ".bin";
+      FILE* f = fopen(path.c_str(), "wb");
+      if (!f || fwrite(v.data(), sizeof(float), v.size(), f) != v.size()) { fprintf(stderr, "--dump-bin: cannot write %s\n", path.c_str()); return 2; }
+      fclose(f);
+    }
     bool pass = r.ok() && golden_bad == 0;
     printf("%s: %d/%d tasks, %.3f ms%s\n", pass ? "OK" : "FAIL", r.done, r.admitted, r.kernel_ms, golden ? (golden_bad ? ", golden MISMATCH" : ", golden match") : "");
     return pass ? 0 : 1;

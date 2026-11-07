@@ -52,6 +52,7 @@ def main():
     ap.add_argument('--mode', choices=['tf32', 'precise'], default='tf32')
     ap.add_argument('--tiling', default='a100')
     ap.add_argument('--fuse', action='store_true')
+    ap.add_argument('--reuse', default='step', help="buffer reuse: 'step' (default), 'shape' or 'none' (every tensor keeps its own buffer: needed to read gradients back)")
     a = ap.parse_args()
     from dataclasses import asdict
     from kvmfe.lower import Tiling
@@ -59,7 +60,7 @@ def main():
     from kvmfe.pipeline import compile_training
     from kvmfe.train import TrainConfig
     cfg = ModelConfig.load(a.model)
-    c = compile_training(cfg, TrainConfig(steps=a.steps), Tiling.preset(a.tiling), fuse=a.fuse)
+    c = compile_training(cfg, TrainConfig(steps=a.steps), Tiling.preset(a.tiling), reuse=a.reuse, fuse=a.fuse)
     if a.mode == 'precise':
         for g in c.spec['graphs']:
             for t in g['tasks']:

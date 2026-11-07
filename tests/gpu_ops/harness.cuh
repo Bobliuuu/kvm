@@ -45,6 +45,19 @@ struct Dev {
     }
     int addf(int rows, int cols, int ld = 0) { return add(rows, cols, ld, 0); }
     int addi(int n) { return add(1, n, 0, 1); }
+    int addb(int rows, int cols, int ld = 0) { return add(rows, cols, ld, 2); }   // raw bf16 storage (KvmBuf.dtype 2)
+    void upb(int i, const std::vector<float>& h) {   // host floats must already be bf16-representable: stores the top 16 bits
+        auto& b = tab[i]; std::vector<uint16_t> t((size_t)b.rows * b.ld, 0);
+        for (int r = 0; r < b.rows; r++) for (int c = 0; c < b.cols; c++) { uint32_t u; memcpy(&u, &h[(size_t)r * b.cols + c], 4); t[(size_t)r * b.ld + c] = (uint16_t)(u >> 16); }
+        CK(cudaMemcpy(b.p, t.data(), t.size() * 2, cudaMemcpyHostToDevice));
+    }
+    std::vector<float> downb(int i, std::vector<uint16_t>* raw = nullptr) {
+        auto& b = tab[i]; std::vector<uint16_t> t((size_t)b.rows * b.ld); std::vector<float> o((size_t)b.rows * b.cols);
+        CK(cudaMemcpy(t.data(), b.p, t.size() * 2, cudaMemcpyDeviceToHost));
+        for (int r = 0; r < b.rows; r++) for (int c = 0; c < b.cols; c++) { uint32_t u = (uint32_t)t[(size_t)r * b.ld + c] << 16; memcpy(&o[(size_t)r * b.cols + c], &u, 4); }
+        if (raw) *raw = t;
+        return o;
+    }
     void up(int i, const std::vector<float>& h) {
         auto& b = tab[i]; std::vector<float> t((size_t)b.rows * b.ld, 0.f);
         for (int r = 0; r < b.rows; r++) for (int c = 0; c < b.cols; c++) t[(size_t)r * b.ld + c] = h[(size_t)r * b.cols + c];
@@ -69,6 +82,7 @@ struct Dev {
     int geterr() { int e; CK(cudaMemcpy(&e, err, 4, cudaMemcpyDeviceToHost)); CK(cudaMemset(err, 0, 4)); return e; }
 };
 
+#ifndef KVM_HARNESS_NO_FULL   // KVM_HARNESS_NO_FULL: skip the all-ops kernel (compiles for minutes); the includer launches its own kernels
 #ifndef BENCH_MINB
 #define BENCH_MINB 1   // -DBENCH_MINB=2 caps the all-ops kernel at 128 registers (two blocks per SM), as an executor could
 #endif
@@ -76,6 +90,7 @@ __global__ void __launch_bounds__(KVM_GPT_THREADS, BENCH_MINB) k_run(KvmCtx c, c
     if (!kvm_gpt_dispatch(c, op[blockIdx.x], w + off[blockIdx.x])) atomicCAS(c.err, 0, 99);
 }
 
+#endif
 struct Batch {   // independent tasks, one block each
     std::vector<int> op, off; std::vector<int32_t> w;
     void add(int id, const A& a) {
@@ -86,6 +101,7 @@ struct Batch {   // independent tasks, one block each
         op.push_back(id); off.push_back((int)w.size()); w.insert(w.end(), a.w.begin(), a.w.end());
     }
 };
+#ifndef KVM_HARNESS_NO_FULL
 static int g_smem_attr = 0;
 // Runs the batch (one block of 256 threads per task) and returns the device error word (0 = ok).
 static int run(Dev& d, const Batch& b, int smem = kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)) {   // what the executor would launch with
@@ -103,11 +119,13 @@ static int run(Dev& d, const Batch& b, int smem = kvm_gpt_smem_bytes(KVM_GPT_MAX
     return d.geterr();
 }
 static int run1(Dev& d, int id, const A& a, int smem = kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)) { Batch b; b.add(id, a); return run(d, b, smem); }
+#endif  // KVM_HARNESS_NO_FULL
 
 // ---- accounting / comparison ------------------------------------------------------------------------------------------
 static int g_pass = 0, g_fail = 0;
+static bool g_quiet = false;   // sweeps: passing checks are counted but not printed (failures always are)
 static void verdict(const std::string& name, bool ok, const char* detail) {
-    printf("%s  %s  %s\n", ok ? "PASS" : "FAIL", name.c_str(), detail);
+    if (!ok || !g_quiet) printf("%s  %s  %s\n", ok ? "PASS" : "FAIL", name.c_str(), detail);
     (ok ? g_pass : g_fail)++;
 }
 // max |got-ref| / (max|ref| + tiny) <= tol (relative to the reference's scale); also fails on NaN/Inf.

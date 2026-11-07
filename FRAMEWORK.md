@@ -14,7 +14,7 @@ workload.json --compile--> tasks.bin  successors.bin  args.bin  metadata.json --
 | What | File | Parsed by |
 |---|---|---|
 | Descriptor layout (`KvmTaskDesc`, 64 B), `KVM_ABI_VERSION`, `KVM_NO_VAR` | `include/kvm_task_abi.h` | `runtime/abi.py` |
-| Operators: name, id, `arg:type` list (`buf`/`buf?`/`i32`/`f32`) | `include/kvm_ops.def`, then `kvm_ops_gpt.def`, `kvm_ops_extra.def` (ids 96-121, generic model-zoo ops), `kvm_ops_game.def`, `kvm_ops_comm.def` when present (executor order) | `runtime/abi.py` |
+| Operators: name, id, `arg:type` list (`buf`/`buf?`/`i32`/`f32`) | `include/kvm_ops.def`, then `kvm_ops_gpt.def`, `kvm_ops_extra.def` (ids 96-122, generic model-zoo ops, `matmul_mma_bf16` = 122), `kvm_ops_game.def`, `kvm_ops_comm.def` when present (executor order) | `runtime/abi.py` |
 | What an op does + buffer extents / dtypes it needs | `runtime/ref_ops.py` (core), `ref_gpt.py` (GPT) | compiler (bounds), CPU VM |
 
 Ids are sparse and unique across registry files. `buf?` marks an optional buffer argument: the workload passes JSON `null`
@@ -37,7 +37,10 @@ Add an op: append an `X(...)` line to a registry (never renumber), add its CUDA 
 
 Buffer args are buffer names or `null` (absent optional); they resolve to `KvmBuf` table indices = declaration order.
 `i32`/`f32` are JSON numbers. A buffer has `dtype` `f32` (default, `KvmBuf.dtype` 0) or `i32` (1, index and counter
-buffers); each op declares which of its buffer args are `i32` (checked at compile time, e.g. `ids`, `tgt`, `step`).
+buffers) or `bf16` (2, raw 16-bit storage, 2 bytes per element; init `fill` / `values` / `file`, values rounded to bf16; a bundle without a bf16 buffer is
+unchanged, so the ABI stays backward compatible). Each op declares which of its buffer args are `i32` (checked at compile time, e.g. `ids`, `tgt`, `step`)
+and which may be `bf16` (`anydt` in `runtime/ref_*.py`: the matmul pair `matmul_tile_bf16` / `matmul_mma_bf16`, `round_bf16`, and the storage-aware norms, rope,
+gelu_bwd, residual adds, embedding, colsum, cross entropy); any other op given a bf16 buffer is a compile error and, on the device, `E_DTYPE`.
 Unknown keys, ops or args, missing/extra/mistyped args, int32/float32 overflow, NaN/inf (unless `--allow-nonfinite`), values
 below an op's minimum, and tasks that touch more elements than their buffer holds are `CompileError`s naming `graph/task`
 and the argument. `rows`/`cols` default to 1 (a scalar buffer).
@@ -63,7 +66,7 @@ the workload's directory) and `write_bundle` copies them into the bundle.
 | `tasks.bin` | `task_count` x 64-byte `KvmTaskDesc` in header field order |
 | `successors.bin` | int32 batch-local task indices, CSR via `succ_off`/`succ_cnt` |
 | `args.bin` | int32 words; `f32` args are bit-cast; a task's words start at `args_off`, count = operator arity |
-| `metadata.json` | `abi_version, task_count, edge_count, args_words, task_names, initial_ready, operator_ids, buffers (name, index, rows, cols, dtype 0/1, init), variables, publishers`, plus `reads` (`task, var, policy, version, observed, gate`) and `final_versions` |
+| `metadata.json` | `abi_version, task_count, edge_count, args_words, task_names, initial_ready, operator_ids, buffers (name, index, rows, cols, dtype 0/1/2, init), variables, publishers`, plus `reads` (`task, var, policy, version, observed, gate`) and `final_versions` |
 
 `workload_id` = index of the graph. Output is byte-identical for identical input.
 
@@ -146,7 +149,7 @@ the cyclic GC is paused during compilation.
 | Known executor failure | `recycle` long-running admission (3M tasks) failed 2 of 3 runs once on the adaptive tree, same flake on its base commit; not root-caused | `results/2026-11-04-a100-adaptive` |
 | Cross-bundle `exact` isolation | not built (documented limit above); the GPU does not check it | this file |
 | Several admissions / `base_versions` from MANIFEST.json in the CLI | not consumed by `kvm_exec`; the CPU runner `kvmfe.run_manifest` is the reference | `results/2026-11-04-a100-exec-recycling` |
-| Registry packs | core 0-31, GPT 32-63 (`ref_gpt.py`), comm 64-95 and Doom/game ops (opaque on the CPU), extra 96-121 (`ref_extra.py`) | `include/kvm_ops_list.inc` |
+| Registry packs | core 0-31, GPT 32-63 (`ref_gpt.py`), comm 64-95 and Doom/game ops (opaque on the CPU), extra 96-122 (`ref_extra.py`) | `include/kvm_ops_list.inc` |
 
 ## Run the tests
 

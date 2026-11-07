@@ -1,0 +1,16 @@
+Main-loop ablation of matmul_mma_bf16 (4096^3, NN and NT, TFLOP/s of the 128x256 tile, A100, one lock hold; kernel revision before the staged bf16 epilogue,
+so the full-kernel figure is 122-124 here and 104-125 in the final bench). Each variant keeps defined values and removes one part of the loop (build flag ABL):
+  ABL 0   full kernel                                  NN 124.3  NT 121.6
+  ABL 2   no global->shared copies (ldmatrix+mma+barrier)  NN 168.2  NT 170.1
+  ABL 10  no copies, no barrier / cp.async wait         NN 191.1  NT 197.3
+  ABL 4   no mma (copies + ldmatrix + barrier)          NN 175.4  NT 168.3
+  ABL 5   no mma, no ldmatrix (copies + barrier)        NN 175.8  NT 168.1
+  ABL 1   no ldmatrix (copies + mma + barrier)          NN 134.5  NT 133.8
+cuBLAS bf16 in the same process: 264 (NN 205).
+Bare mma.sync + 8 ldmatrix per 32 mma, 8 warps, no barrier, no copies (tests/gpu_ops/micro_mma.cu): 243.9.
+Global->shared copies alone (tests/gpu_ops/micro_ldgsts.cu, 108 CTAs, tile loads of a 4096^3 GEMM, B/clk/SM at 1.41 GHz):
+  BK32 NST4 4624 GB/s (30.4)   BK32 NST6 4861 (31.9)   BK64 NST2 3903 (25.6)   BK64 NST3 4453 (29.2)      first run
+  BK32 NST4 3587 GB/s (23.6)   BK32 NST6 3792 (24.9)   BK64 NST2 3044 (20.0)   BK64 NST3 3456 (22.7)   zero-fill form 3606   second run
+Other variants measured (4096^3 NN/TN/NT/TT, before the loader rewrite unless noted): 3 stages 115/117/109/112, 4 stages 124/123/121/122 (current), 6 stages 118/-/118/-;
+copies interleaved between the mma instructions 95/104/106/110; plain cp.async form for interior tiles 98.5/125/120/124 (NN worse); padded leading dimension
+(ld = K + 8 / 64 / 520) 106-122; all CTAs computing tile (0,0) (data L2-resident, no wave quantization) 125-157.

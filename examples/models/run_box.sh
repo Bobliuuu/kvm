@@ -11,7 +11,10 @@ SANITIZE=0; CHECK_ONLY=0; ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; CASES_FIL
 while [ $# -gt 0 ]; do case "$1" in --sanitize) SANITIZE=1;; --check-only) CHECK_ONLY=1;; --cases) CASES_FILE="$2"; shift;; *) echo "unknown $1"; exit 2;; esac; shift; done
 ARCH="${KVM_ARCH:-sm_80}"; mkdir -p "$OUT/bundles"; cd "$ROOT"
 NVCC="$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc | tail -1)"
-[ "$CHECK_ONLY" = 1 ] || "$NVCC" -O3 -arch="$ARCH" -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 kvm_exec.cu -o "$OUT/kvm_exec"
+if [ "$CHECK_ONLY" != 1 ]; then   # KVM_EXEC_BIN=path reuses an executor already built from this tree (the build takes tens of minutes on a busy box)
+  if [ -n "${KVM_EXEC_BIN:-}" ]; then cp "$KVM_EXEC_BIN" "$OUT/kvm_exec"
+  else "$NVCC" -O3 -arch="$ARCH" -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 kvm_exec.cu -o "$OUT/kvm_exec"; fi
+fi
 trim() { sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
 declare -a NAMES MODES TOLS
 while IFS='|' read -r name model steps mode tol flags; do

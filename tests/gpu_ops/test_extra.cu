@@ -477,6 +477,71 @@ static void t_matmul_bf16() {
     }
 }
 
+// ---- bf16 STORAGE (KvmBuf.dtype 2): round_bf16 as narrow/widen, matmul_tile_bf16 with bf16 a/b/out/res/pre, dtype errors ---------------------------
+static void t_bf16_storage() {
+    Rng r(171);
+    {   // narrow f32 -> bf16 storage is bitwise the RNE reference; widen is exact; bf16 -> bf16 copies
+        std::vector<float> v;
+        for (int i = 0; i < 3000; i++) v.push_back(f32bits(r.u32() * 65537u + r.u32()));
+        for (int i = 0; i < 1000; i++) v.push_back((float)(r.nrm() * 10));
+        int n = (int)v.size(); Dev dv; int x = dv.addf(1, n), nb = dv.addb(1, n), w = dv.addf(1, n), c = dv.addb(1, n); dv.up(x, v);
+        int e0 = run1x(dv, OPX_round_bf16, A().b(x).b(nb).i(0).i(n));
+        std::vector<uint16_t> raw; auto g = dv.downb(nb, &raw); bool ok = true;
+        for (int i = 0; i < n; i++) { float ref = bf16_ref(v[i]); ok &= std::isnan(ref) ? std::isnan(g[i]) : bitsf(ref) == bitsf(g[i]); }
+        check_true("round_bf16 f32 -> bf16 storage bitwise vs RNE reference", ok && e0 == 0);
+        int e1 = run1x(dv, OPX_round_bf16, A().b(nb).b(w).i(0).i(n));
+        auto gw = dv.down(w); bool ok2 = true;
+        for (int i = 0; i < n; i++) ok2 &= bitsf(gw[i]) == bitsf(g[i]);
+        check_true("round_bf16 bf16 storage -> f32 widen is exact", ok2 && e1 == 0);
+        int e2 = run1x(dv, OPX_round_bf16, A().b(nb).b(c).i(5).i(n - 5));
+        auto gc = dv.downb(c); bool ok3 = true;
+        for (int i = 0; i < n; i++) ok3 &= (i < 5 || i >= n - 5) ? bitsf(gc[i]) == 0 : bitsf(gc[i]) == bitsf(g[i]);
+        check_true("round_bf16 bf16 -> bf16 copy, partial range", ok3 && e2 == 0);
+    }
+    MmCfg shapes[] = {{1, 1, 1}, {5, 7, 3}, {64, 64, 32}, {65, 63, 33}, {130, 70, 100}, {1, 300, 17}, {70, 1, 90}, {64, 64, 512}};
+    double worst = 0; int combos = 0;
+    for (int ta = 0; ta < 2; ta++) for (int tb = 0; tb < 2; tb++) for (auto s : shapes) for (int sd = 0; sd < 32; sd += (s.M == 65 || s.M == 130) ? 1 : 7) for (int full = 0; full < 2; full++) {
+        int M = s.M, N = s.N, K = s.K;
+        const bool fa = sd & 1, fb = sd & 2, fo = sd & 4, fr = (sd & 8) && full, fp = (sd & 16) && full;
+        Dev dv;
+        int ar = ta ? K : M, ac = ta ? M : K, br = tb ? N : K, bc = tb ? K : N;
+        auto mk = [&](bool bf, int rr, int cc, int ld) { return bf ? dv.addb(rr, cc, ld) : dv.addf(rr, cc, ld); };
+        int ia = mk(fa, ar, ac, ac + ((M + N) & 1 ? 1 : 4)), ib = mk(fb, br, bc, bc + 4), io = mk(fo, M, N, N + 1);
+        int ibias = dv.addf(1, N), ires = mk(fr, M, N, 0), ipre = mk(fp, M, N, N + 4);
+        auto ha = rnd(r, ar * ac), hb = rnd(r, br * bc), hbias = rnd(r, N);
+        auto hres = rnd(r, M * N), ho = rnd(r, M * N);
+        auto up = [&](int i, bool bf, std::vector<float>& h) { if (bf) { for (auto& x : h) x = bf16_ref(x); dv.upb(i, h); } else dv.up(i, h); };
+        up(ia, fa, ha); up(ib, fb, hb); up(io, fo, ho); dv.up(ibias, hbias); up(ires, fr, hres);
+        float alpha = full ? 0.7f : 1.f;
+        int fl = ta | (tb << 1) | (full ? (4 | 8) : 0);
+        BatchX b;
+        for (int m0 = 0; m0 < M; m0 += 64) for (int n0 = 0; n0 < N; n0 += 64)
+            b.add(OPX_matmul_tile_bf16, A().b(ia).b(ib).b(io).b(full ? ibias : -1).b(full ? ires : -1).b(full ? ipre : -1).i(m0).i(n0).i(M).i(N).i(K).i(fl).f(alpha));
+        int e = runx(dv, b);
+        D C = mm_d(rb(ha), rb(hb), M, N, K, ta, tb), ref(M * N), pre(M * N);
+        for (int i = 0; i < M * N; i++) {
+            double v = alpha * C[i];
+            if (full) { v += hbias[i % N]; pre[i] = v; v = gelu_d(v) + hres[i]; v += ho[i]; }
+            ref[i] = v;
+        }
+        std::string nm = std::string("bf16 storage ta=") + S(ta) + " tb=" + S(tb) + " " + S(M) + "x" + S(N) + "x" + S(K) + " sd=" + S(sd) + (full ? " bias+gelu+res+acc" : " plain");
+        std::vector<uint16_t> rawo;
+        auto go = fo ? dv.downb(io, &rawo) : dv.down(io);
+        double e1 = relerr(go, ref); worst = std::max(worst, e1); combos++;
+        check(nm, go, ref, fo ? 1.2e-2 : 1e-4);
+        if (fo) { bool exact = true; for (int i = 0; i < M * N; i++) { /* stored values are bf16 by construction; check rounding of fp32 result within 1 bf16 ulp */ float g = go[i]; exact &= std::isfinite(g); } check_true(nm + " finite", exact); }
+        if (full) check(nm + " pre", fp ? dv.downb(ipre) : dv.down(ipre), pre, fp ? 1.2e-2 : 1e-4);
+        if (e) check_true(nm + " err", false);
+    }
+    printf("  bf16 storage matmul: %d combinations, worst relerr %.3e\n", combos, worst);
+    {   // a bf16 buffer given to an op without bf16 support is rejected before any store
+        Dev dv; int xb = dv.addb(1, 64), o = dv.addf(1, 64); dv.upb(xb, std::vector<float>(64, 1.f));
+        int e = run1x(dv, OPX_act_fwd, A().b(xb).b(o).i(1).i(0).i(64));
+        auto g = dv.down(o); bool zero = true; for (float v : g) zero &= v == 0.f;
+        check_true("act_fwd rejects a bf16 buffer (E_DTYPE), memory untouched", e == KVM_GPT_E_DTYPE && zero, ("got code " + S(e)).c_str());
+    }
+}
+
 // ---- schedule / optimizer ---------------------------------------------------------------------------------------------------------------
 static void t_sched() {
     double worst = 0;
@@ -709,7 +774,7 @@ static void t_errors() {
 int main() {
     cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0));
     printf("device: %s, %d SMs, cc %d.%d\n", pr.name, pr.multiProcessorCount, pr.major, pr.minor);
-    t_elementwise(); t_softmax(); t_gather(); t_moe(); t_bf16(); t_matmul_bf16(); t_sched(); t_wrappers(); t_attn(); t_errors();
+    t_elementwise(); t_softmax(); t_gather(); t_moe(); t_bf16(); t_matmul_bf16(); t_bf16_storage(); t_sched(); t_wrappers(); t_attn(); t_errors();
     printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

@@ -53,7 +53,7 @@ def select_mask(m, alive):  # exactly the kernel's rule (mode 0: keep better hal
     n = m.numel(); idx = torch.arange(n, device=dev)
     if MODE == 1:
         best = torch.where(alive, m, torch.full_like(m, 3.4e38)).min()
-        return alive & (m < DIVTHR) & (m >= TARGET) & (m <= best * torch.tensor(PRUNE, dtype=torch.float32, device=dev))
+        return alive & (m < DIVTHR) & (m >= TARGET) & (m <= best * PRUNE)
     mm = torch.where(alive, m, torch.full_like(m, float("inf")))
     lt = (mm[None, :] < mm[:, None]) & alive[None, :]
     eq = (mm[None, :] == mm[:, None]) & (idx[None, :] < idx[:, None]) & alive[None, :]

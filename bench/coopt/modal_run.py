@@ -17,13 +17,17 @@ def run(tag: str, args: str, flags: str):
     out = f"/logs/{tag}"; os.makedirs(out, exist_ok=True)
     cmd = f"""set -x; export PATH=$PATH:/usr/local/cuda/bin; cd /src
 nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
-nvcc -O3 -arch=sm_80 -std=c++17 {flags} coopt_sh.cu -o coopt_sh 2>&1 | grep -v 'warning\\|Remark\\|^$\\|\\^' 
-./coopt_sh {args} --out {out}/dump 2>&1 | tee {out}/kvm.log
-python3 -I torch_sh.py {out}/dump 2>&1 | tee {out}/torch.log"""
+nvcc -O3 -arch=sm_80 -std=c++17 {flags} coopt_sh.cu -o coopt_sh 2>&1 | grep -v 'warning\\|Remark\\|^$\\|\\^' """
+    for i, a in enumerate(args.split(";")):   # several configs in one container, separated by ';'
+        sub = f"{out}/c{i}" if ";" in args else out
+        cmd += f"""
+mkdir -p {sub}; echo "CONFIG {a}" > {sub}/kvm.log
+./coopt_sh {a} --out {sub}/dump 2>&1 | tee -a {sub}/kvm.log
+python3 -I torch_sh.py {sub}/dump 2>&1 | tee {sub}/torch.log"""
     p = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True)
     open(f"{out}/driver.log", "w").write(p.stdout + "\n" + p.stderr)
     vol.commit()
-    return p.stdout[-6000:] + p.stderr[-3000:]
+    return p.stdout[-3000:] + p.stderr[-1500:]
 
 @app.local_entrypoint()
 def main(tag: str = "t0", args: str = "--runs 32 --steps 300 --E 75 --K 3", flags: str = "-DKTILE=32 -DKKC=64 -DKSTG=4"):

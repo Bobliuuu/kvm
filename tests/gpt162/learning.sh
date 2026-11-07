@@ -15,9 +15,10 @@ run() {
     python3 -c "import torch;p=torch.cuda.get_device_properties(0);print('torch',torch.__version__,'cuda',torch.version.cuda,p.name,'SMs',p.multi_processor_count)"; } | tee "$OUT/nvidia.txt"
   mkdir -p "$SCR/out"
   echo "== executor $(date -u +%T)"
-  /usr/bin/time -v ./demo/kvm_run "$SCR/demo" --out "$SCR/out" --observe '^loss\.' --dump '^w\.' --compile-cmd "python3 runtime/compile_workload.py" \
-      > "$OUT/exec_kvm_run.log" 2> "$OUT/exec_time.log" || echo "kvm_run exit $?"
-  tail -4 "$OUT/exec_kvm_run.log"; grep -E "Elapsed|Maximum resident" "$OUT/exec_time.log" || true
+  t0=$(date +%s)
+  ./demo/kvm_run "$SCR/demo" --out "$SCR/out" --observe '^loss\.' --dump '^w\.' --compile-cmd "python3 runtime/compile_workload.py" \
+      > "$OUT/exec_kvm_run.log" 2>&1 || echo "kvm_run exit $?"
+  echo "executor wall $(( $(date +%s) - t0 )) s" | tee "$OUT/exec_wall.txt"; tail -4 "$OUT/exec_kvm_run.log"
   cp "$SCR/out/observations.jsonl" "$OUT/exec_observations.jsonl"; cp "$SCR/out/run.json" "$OUT/exec_run.json" 2>/dev/null || true
   echo "== torch curves + hold-out $(date -u +%T)"
   python3 tests/gpt162/torch_ref.py "$SCR/demo" --model "$MODEL" --steps "$STEPS" --lr "$LR" --warmup "$WARMUP" --curve --obs "$OUT/exec_observations.jsonl" \

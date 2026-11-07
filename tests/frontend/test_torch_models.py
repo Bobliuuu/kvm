@@ -2,7 +2,7 @@
 for every model family of the zoo: first-step loss(es) and the gradient of EVERY parameter tensor. Skipped without torch.
 
 Tolerances (measured worst in examples/models/torch_report.py output; the bound is far above float64 noise and far below any real bug):
-  f32 families  loss rel 1e-10, every gradient rel L2 1e-9   (both sides are float64: only summation order differs)
+  f32 families  loss rel 1e-10, every gradient rel L2 1e-10  (both sides are float64: only summation order differs; measured worst 2e-15)
   bf16 emulation loss rel 1e-6, every gradient rel L2 1e-2   (one bf16 ulp is 3.9e-3 relative; measured worst 3.0e-3 on Llama's embedding, 1.1e-4 on the
                                                               MLP once gradients are rounded as the frontend does: where torch autograd sums unrounded
                                                               branch gradients before a cast, the frontend rounds per consumer)
@@ -25,14 +25,14 @@ except ImportError:                                            # pragma: no cove
     tm = None
 
 CASES = {
-    'gpt_tiny': ('gpt_tiny', 1e-10, 1e-9),
-    'llama_gqa': ('llama_tiny', 1e-10, 1e-9),
-    'llama_gqa_tied': ('llama_gqa_tied', 1e-10, 1e-9),
-    'llama_small': (SMALL, 1e-10, 1e-9),
-    'moe': ('moe_tiny', 1e-10, 1e-9),
-    'moe_small_k2': (SMALL_MOE, 1e-10, 1e-9),
-    'mlp': ('mlp_tiny', 1e-10, 1e-9),
-    'vit': ('vit_tiny', 1e-10, 1e-9),
+    'gpt_tiny': ('gpt_tiny', 1e-10, 1e-10),
+    'llama_gqa': ('llama_tiny', 1e-10, 1e-10),
+    'llama_gqa_tied': ('llama_gqa_tied', 1e-10, 1e-10),
+    'llama_small': (SMALL, 1e-10, 1e-10),
+    'moe': ('moe_tiny', 1e-10, 1e-10),
+    'moe_small_k2': (SMALL_MOE, 1e-10, 1e-10),
+    'mlp': ('mlp_tiny', 1e-10, 1e-10),
+    'vit': ('vit_tiny', 1e-10, 1e-10),
     'llama_bf16': (models.LlamaConfig('lb', vocab=32, d_model=32, heads=2, kv_heads=1, ffn=48, layers=1, seq=32, precision='bf16'), 1e-6, 1e-2),
     'mlp_bf16': (models.MLPConfig(name='mb', precision='bf16'), 1e-6, 1e-2),
 }

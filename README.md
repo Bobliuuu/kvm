@@ -24,7 +24,7 @@ demo/run_demo.sh tiny  --lock-wait 14400       # gpt_tiny, 200 steps: the quick 
 | ✅ Expected checks | executor: every task done, err 0; weight versions coherent (22,935 of 22,935 exact at 162M); Doom 700/700 frames identical to the CPU engine; 35 Hz cadence held (172.7 frames/s); training loss finite |
 | ⏱ Runtime | about 14 s of kernel at 162M (4 s at tiny); about 1 minute of wall time once built. The very first build on a busy box takes about 15 min (nvcc); later runs reuse the binary |
 | 🧰 Requirements | an sm_80 GPU (tested: A100-SXM4-40GB), nvcc 12.x, python3 with numpy; matplotlib and ffmpeg only for the figures |
-| ⚠️ Honest limits | it is **15-18x slower than PyTorch** on the same 162M step (1042 ms vs 59-70 ms): task admission, not compute, is the bottleneck (workers are busy under a fifth of the time). The 162M loss only drifts in 6-40 steps (no learning claimed). Single GPU only |
+| ⚠️ Honest limits | it is **15-18x slower than PyTorch** on the same 162M step (1042 ms vs 59-70 ms): per-task dispatch cost, not compute, is the bottleneck: 318k tasks per step each pay about 1.5-3 us through the ready-queue pop and bookkeeping, so workers are busy under a fifth of the time. The 162M loss only drifts in 6-40 steps (no learning claimed). Single GPU only |
 
 One persistent kernel takes over the whole GPU and interprets a task graph itself, so GPT training, live inference on the weights being
 trained, and real Doom run at the same time on the same SMs with no kernel boundary between any of their ops. A frontend compiles a model
@@ -71,7 +71,7 @@ frames/s; workers are mostly idle, so it is latency-bound. The axis is split at 
 | ✅ 162M GPT (`gpt_162m`) in the same demo | **passes** (re-run with full trace): 1,948,168/1,948,168 tasks in 13.66 s, err 0, 22,935 version tasks exact, Doom 700/700 identical, 172.7 frames/s, 0/698 gaps over 28.57 ms; 1.8 s/step = 2,260 tokens/s, 30x the 59.97 ms critical-path bound; serving has no golden decode at this size | `results/2026-11-06-demo-large-trace`, `results/2026-11-06-demo-large` |
 | ✅ 162M numerics | step-1 loss and all 196 gradient tensors match float64 as well as PyTorch's own TF32 does (worst 1.44e-3 vs 1.46e-3 relative L2) | `results/2026-11-06-gpt162-vs-torch` |
 | ❌ 162M GPT learns | **not shown**: six steps give 10.979 -> 10.924, and over 40 steps the loss only drifts (10.94 -> 10.89 mean of first/last 10, +-0.3 step noise), there is no golden at this size | `results/2026-11-06-demo-large` |
-| ✅ Why 162M is slow | task throughput, not compute: 318k tasks/step through one admitter (1.9 us/task, 0.52M tasks/s); 9 of 106 workers busy on average (27% inside a step) | `results/2026-11-06-demo-large`, `2026-11-04-a100-adaptive`, `2026-11-06-gpt162-vs-torch` |
+| ✅ Why 162M is slow | task throughput, not compute: 318k tasks/step at about 3.3 us/task end to end (0.3M tasks/s). The admitter alone measures 0.2 us/task; the serialized stage is the worker-side ready-queue pop (about 107 pollers race one head CAS, one wins per L2 round trip), so 9 of 106 workers are busy on average (27% inside a step) | `results/2026-11-06-demo-large`, `2026-11-04-a100-adaptive`, `2026-11-06-gpt162-vs-torch` |
 | ❌ Matmul and attention speed | matmul about 0.5x cuBLAS TF32 (51.0 vs 105.6 TFLOP/s at 4096^3); attention 15-30% below torch fp32 SDPA | `results/2026-11-04-a100-ops-perf` |
 | ❌ Executor vs PyTorch on the same 162M model and AdamW | **15-18x slower**: executor 1042 ms/step (1-step tape) against torch eager 69.6, whole-step CUDA graph 68.2, `torch.compile` 59-60 ms. Why: admission is 604 ms of the 1042 (318k tasks/step at 1.9 us, single FIFO); the workers are only 27% busy; tile work alone would be about 190 ms/step at perfect admission (matmul tiles at 0.5x cuBLAS); the dependency-hop term is 0.5% of the step. At tiny/small sizes it beats eager 1.6-2.3x but never a CUDA graph (3.2-12.6x slower). The demo does not beat PyTorch. | `results/2026-11-06-gpt162-vs-torch`, `results/2026-11-06-vs-pytorch` |
 | 🚧 Admission change (class-aware / sliced) | **PLACEHOLDER: being changed on `perf/admission-bottleneck`; the numbers on this page are the single-FIFO baseline.** | pending |
@@ -150,7 +150,7 @@ flowchart LR
   T --> P["demo/viz/timeline.py"]
 ```
 
-Admission is the single serialized stage; everything else is parallel across SMs. Source: `kvm_exec.cu`, `include/kvm_exec.cuh`, `include/kvm_sched.*`.
+The ready-queue pop is the single serialized stage (admission itself is cheap, 0.2 us/task); everything else is parallel across SMs. Source: `kvm_exec.cu`, `include/kvm_exec.cuh`, `include/kvm_sched.*`.
 
 ### Three workloads, one weight-version flow
 

@@ -25,6 +25,7 @@ class ModelConfig:
     init_std: float = 0.02
     rope_theta: float = 10000.0
     seed: int = 0
+    repeat_batch: bool = False       # every step trains on step 0's batch (an overfitting check: the loss must fall far below ln(vocab))
 
     def __post_init__(self):
         if self.d_model % self.heads or (self.d_model // self.heads) not in (16, 32, 64, 128):

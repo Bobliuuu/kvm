@@ -91,6 +91,7 @@ struct Admission {
   int cls = 0;
 };
 struct BufDecl { std::string name; int rows, cols, dtype; std::string owner; };
+static const char* const kDtypeName[3] = {"f32", "i32", "bf16"};   // by KvmBuf.dtype (bf16: widened to fp32 values in dumps)
 struct Manifest {
   std::string root;
   std::vector<Workload> workloads; std::map<std::string, int> wl_idx;
@@ -168,8 +169,8 @@ static Manifest parse_manifest(const std::string& root) {
     b.rows = (int)as_int(member(kv.second, "rows", where), where + ".rows", 1, INT_MAX);
     b.cols = (int)as_int(member(kv.second, "cols", where), where + ".cols", 1, INT_MAX);
     const std::string& dt = as_str(member(kv.second, "dtype", where), where + ".dtype");
-    if (dt != "f32" && dt != "i32") fail("%s.dtype: '%s' is not f32 or i32", where.c_str(), dt.c_str());
-    b.dtype = dt == "i32";
+    if (dt != "f32" && dt != "i32" && dt != "bf16") fail("%s.dtype: '%s' is not f32, i32 or bf16", where.c_str(), dt.c_str());
+    b.dtype = dt == "i32" ? 1 : dt == "bf16" ? 2 : 0;   // KvmBuf.dtype
     b.owner = as_str(member(kv.second, "owner", where), where + ".owner");
     if (!m.wl_idx.count(b.owner)) fail("%s.owner: unknown workload '%s'", where.c_str(), b.owner.c_str());
     if ((long long)b.rows * b.cols > (1ll << 31) - 1) fail("%s: %d x %d elements overflow", where.c_str(), b.rows, b.cols);
@@ -724,8 +725,8 @@ class Runner {
       const BufDecl& b = m_.buffers[idx];
       if ((size_t)b.rows * b.cols > max_observe_elems_) { KLOG(1, "observe: %s has %d elements, skipped", n.c_str(), b.rows * b.cols); continue; }
       std::vector<float> v = ex.read_buffer(idx);
-      fprintf(f, "%s\"%s\":{\"dtype\":\"%s\",\"values\":[", first ? "" : ",", n.c_str(), b.dtype ? "i32" : "f32"); first = false;
-      for (size_t i = 0; i < v.size(); ++i) { if (b.dtype) { int x; memcpy(&x, &v[i], 4); fprintf(f, "%s%d", i ? "," : "", x); } else fprintf(f, "%s%.9g", i ? "," : "", v[i]); }
+      fprintf(f, "%s\"%s\":{\"dtype\":\"%s\",\"values\":[", first ? "" : ",", n.c_str(), kDtypeName[b.dtype]); first = false;
+      for (size_t i = 0; i < v.size(); ++i) { if (b.dtype == 1) { int x; memcpy(&x, &v[i], 4); fprintf(f, "%s%d", i ? "," : "", x); } else fprintf(f, "%s%.9g", i ? "," : "", v[i]); }
       fprintf(f, "]}");
     }
     fprintf(f, "}}\n"); fclose(f);
@@ -744,7 +745,7 @@ class Runner {
       FILE* f = fopen((dir + "/" + b.name + ".bin").c_str(), "wb");
       if (!f) { KLOG(1, "cannot write %s", b.name.c_str()); continue; }
       fwrite(v.data(), 4, v.size(), f); fclose(f);
-      fprintf(idx, "%s\"%s\":{\"rows\":%d,\"cols\":%d,\"dtype\":\"%s\"}", first ? "" : ",", b.name.c_str(), b.rows, b.cols, b.dtype ? "i32" : "f32"); first = false; ++n;
+      fprintf(idx, "%s\"%s\":{\"rows\":%d,\"cols\":%d,\"dtype\":\"%s\"}", first ? "" : ",", b.name.c_str(), b.rows, b.cols, kDtypeName[b.dtype]); first = false; ++n;
     }
     fprintf(idx, "}\n"); fclose(idx);
     KLOG(2, "dumped %d buffers to %s", n, dir.c_str());

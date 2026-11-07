@@ -1,4 +1,8 @@
-# KVM — a "kittens" GPU virtual machine (version 2 of [open-flapping-airplanes](https://github.com/Bobliuuu/open-flapping-airplanes))
+# 🐱⚡ KVM — a "kittens" GPU virtual machine 🖥️🔥
+
+### 🧠 one kernel · 🎮 real Doom · 🤖 162M GPT training · 🔁 live inference · 🚀 whole GPU
+
+*Version 2 of [open-flapping-airplanes](https://github.com/Bobliuuu/open-flapping-airplanes) 🛩️*
 
 ![GPU](https://img.shields.io/badge/GPU-A100%20(sm__80)-76b900) ![CUDA](https://img.shields.io/badge/CUDA-12.x-76b900) ![demo](https://img.shields.io/badge/demo-all%20checks%20pass-brightgreen) ![Doom](https://img.shields.io/badge/Doom-700%2F700%20frames%20identical-blue) ![vs PyTorch](https://img.shields.io/badge/vs%20PyTorch-15--18x%20slower%20(162M)-red) ![multi-GPU](https://img.shields.io/badge/multi--GPU-not%20run-lightgrey)
 

@@ -199,7 +199,8 @@ curve against the independent float64 oracle (rel. 2e-5) and served tokens again
   at the frontend level. What is data-dependent lives in buffers: `select_window` (batch picked by the step counter), `lens` in decode,
   `moe_route` (expert choice and capacity are computed on the device, but the expert matmuls always run `capacity` rows, padded with
   zero rows), `lr_schedule`. Loops are unrolled or re-admitted as windows; there is no `while`/`if` over tensor values, and no
-  early-exit decoding.
+  early-exit decoding inside a bundle. Across bundles, a guarded admission (manifest_version 2) can skip work on a buffer value; scope, the
+  prototype and what is not built: FRAMEWORK.md "Dynamic shapes and data-dependent control flow".
 * MoE routing ops are single-task over all N tokens of a microbatch (O(N*E*k) serial work, fine up to a few thousand tokens); dropped tokens
   (over capacity) get no expert and keep only the residual, as in Switch Transformer.
 * `precision='bf16'` is *emulated storage*: values are bfloat16-representable but live in fp32 buffers. `precision='bf16s'` stores them as bf16 (ABI dtype 2), see "Real bf16 storage". No fp16, no dynamic

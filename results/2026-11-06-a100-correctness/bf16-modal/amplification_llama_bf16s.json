@@ -1,0 +1,42 @@
+{
+ "case": "llama_bf16s",
+ "steps": 10,
+ "loss_scale": 1024.0,
+ "max_norm": 1024.0,
+ "schedule": {
+  "step": "opt_step",
+  "lr": "lr",
+  "kind": 1,
+  "base": 0.003,
+  "warmup": 2,
+  "total": 10,
+  "min_ratio": 0.1
+ },
+ "replay_golden_vs_golden": [
+  1.1843147224228928e-07,
+  "llama.h0.attn.o.w"
+ ],
+ "replay_gpu_vs_gpu": [
+  1.1690558018656257e-07,
+  "llama.h0.n2.g"
+ ],
+ "gpu_vs_golden": [
+  0.008541561056284813,
+  "llama.h0.attn.o.w"
+ ],
+ "grad_diff_by_step": [
+  0.0017360925744227134,
+  0.013197375575748271,
+  0.01262971074664153,
+  0.010542987559314154,
+  0.019652177505595104,
+  0.012719033615480393,
+  0.015923439102940026,
+  0.02909550729649996,
+  0.022786154173392914,
+  0.015057645077697844
+ ],
+ "step2_grad_diff_explained_by_step1_weights": 0.012015681546451737,
+ "step2_grad_diff_observed": 0.013197375575748271,
+ "step1_weight_diff_replayed": 0.009141998766086703
+}

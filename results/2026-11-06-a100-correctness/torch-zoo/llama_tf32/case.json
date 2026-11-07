@@ -1,0 +1,1 @@
+{"name": "llama_tf32", "model": "llama_tiny", "mode": "tf32", "extra": ""}

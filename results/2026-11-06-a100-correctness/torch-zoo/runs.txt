@@ -1,0 +1,14 @@
+gpt_small_precise exit 0
+gpt_small_tf32 exit 0
+llama_precise exit 0
+llama_tf32 exit 0
+llama_gqa_tied_precise exit 0
+moe_precise exit 0
+moe_tf32 exit 0
+vit_precise exit 0
+vit_tf32 exit 0
+mlp_precise exit 0
+mlp_tf32 exit 0
+llama_bf16 exit 0
+mlp_bf16 exit 0
+vit_bf16 exit 0

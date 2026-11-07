@@ -1,0 +1,1 @@
+{"name": "gpt_small_tf32", "model": "gpt_small", "mode": "tf32", "extra": ""}

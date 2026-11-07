@@ -123,6 +123,65 @@ plus 3 s to parse the JSON, peaking near 1.2 GB (mostly the JSON itself). The ho
 array-based CSR graph, one topological pass for cycle detection and a topological-position bound for reachability queries, and
 the cyclic GC is paused during compilation.
 
+## Dynamic shapes and data-dependent control flow
+
+**Scope.** A bundle is a static DAG: shapes, task counts and edges are fixed when it is compiled. What *is* data-dependent today lives in
+buffers, not in the graph: `lens` (KV-cache length) in decode, `select_window` (batch picked by the step counter), `moe_route` (expert and
+capacity slot computed on the device; the expert matmuls always run `capacity` rows, zero-padded), `lr_schedule`, and the cross-entropy
+`ignore = -1` target. Shapes are dynamic **across** admissions (the host compiles a bundle per admission: a serving request with another
+prompt length is another graph), never within one. Nothing branches on a tensor value, so there is no early exit, no `while` with a
+data-dependent trip count and no skipped work for padded rows.
+
+Three features would change that. Smallest first; only the first is built.
+
+| # | Feature | Where it acts | Cost | Status |
+|---|---|---|---|---|
+| 1 | **Admission guards**: an admission runs only if a scalar of a buffer passes a comparison (`while` = a chain of guarded admissions, early exit = the next chunk's guard reads the previous chunk's `done` flag) | host, between admissions (the point where `observe` already reads buffers after a completion) | one host completion-and-admit round trip per decision (not measured here); no device change | semantics + CPU reference + tests built (`kvmfe/run_manifest.py`, `tests/frontend/test_guard.py`); `kvm_run` rejects it |
+| 2 | **Variable sequence length by masked tiles**: row-tile tasks read a `lens` buffer and return at once when their first row is past it | device op wrappers (every row-tiled op of the packs) | padded tiles cost a read and a branch instead of a tile; needs one ABI argument per op | not built (below) |
+| 3 | **A task that conditionally admits follow-up tasks** (device-side `if`/`while`, no host hop) | the admitter's ingest path and `kvm_claim` | removes the host round trip; adds a producer to the admission ring | not attempted: that path belongs to branch `perf/admission-bottleneck` |
+
+### 1. Admission guards (manifest_version 2)
+
+```json
+{"name": "decode_chunk3", "after_bundles": ["decode_chunk2"], "publishes": {},
+ "guard": {"buffer": "req.done", "index": 0, "cmp": "eq", "value": 0}}
+```
+
+- The guard is read when the admission would otherwise start (`after_bundles` complete, `when` windows hold, `at_us` passed). If
+  `cmp(buffer[index], value)` is false the admission is **skipped**: no task is admitted, nothing is published. Every admission that
+  names a skipped one in `after_bundles` is skipped too (a chain stops at the first failed guard), and its own guard is not read.
+- A guarded admission **cannot publish a variable** (rejected). Whether it runs is decided by data; every other admission was compiled
+  against fixed `base_versions` and `when` windows, so the version flow must stay static. A cascade-skipped admission that publishes is
+  an error, not a gap in the versions.
+- **Race rule, not checked by the compiler:** the guard reads the buffer once, so every admission that writes it must be in the guarded
+  admission's `after_bundles` ancestry. Otherwise the value read depends on timing.
+- A loop with a data-dependent trip count is the static unroll bound `MAX` (the number of guarded admissions in the manifest) and a
+  guard on the loop state; the trip count is whatever the data decides, up to `MAX`. `tests/frontend/test_guard.py` runs
+  `while w > 0.1: w -= 0.25` this way: trip counts 0, 1, 2, 4 and `MAX` for five initial values, with the skipped admissions listed.
+- Granularity is one admission (a bundle, usually a window of steps or a decode chunk): a guard is not a per-task `if`. For early-exit
+  decoding the chunk size trades wasted steps after EOS against the number of host decisions.
+- Fail-safe by version: `demo/kvm_run.cu` accepts only `manifest_version` 1 (`manifest_version must be 1`), so a guarded manifest stops
+  there with a message instead of running every admission unconditionally. Support in `kvm_run` is a small change (evaluate the guard in
+  the same host loop that calls `observe()` after a completion, read one element with `read_buffer`, mark the admission and its
+  dependents skipped); it is not made here because it needs a 15-minute device build and an A100 run to test, and the runner is shared.
+
+### 2. Variable sequence length by masked tiles (not built)
+
+Today a variable-length batch is padded to the static `seq`: with causal attention the tail padding cannot influence earlier positions, and
+`ignore = -1` targets drop the padded rows from the loss and the gradient, so the **result is right and the FLOPs of the padded tiles are
+wasted**. The masked-tile feature recovers that work: give every row-tiled op (`matmul_tile`, norms, activations, attention blocks, softmax-CE)
+an optional `lens` buffer argument (i32, one element per sequence, or one scalar); a task whose first row `r0` is at or past
+`lens[sequence of r0]` returns before loading anything. The DAG and the dependency counts do not change (the skipped task still completes and
+releases its successors), so neither the admitter nor `kvm_claim` is touched; the cost is an ABI argument per op and one test per op that
+a masked tile leaves its output rows untouched (the padded rows must be zero or ignored downstream: `ce` already ignores them). Expected
+gain is the padded fraction of the tile work on a batch of unequal lengths, at the price of the dependency hops, which do not shrink. Not measured.
+
+### 3. Device-side conditional admission (not attempted)
+
+A task that admits follow-up tasks needs a producer on the admission ring that is not the host, and ordering against the admitter's pop
+and `kvm_claim`. That path is being rebuilt on `perf/admission-bottleneck`; designing against it before it lands would only be rework. The
+guard of section 1 is the contract such a feature must keep: same condition, same skip semantics, no publishes.
+
 ## Honest limits
 
 - The CPU GPT reference is pure Python: fine for tiny shapes and per-op diffs, hopeless for the 162M model (use the

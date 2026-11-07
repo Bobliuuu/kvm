@@ -46,6 +46,8 @@ say "generate demo: $MODEL, $STEPS steps in windows of $WINDOW, a request every 
 gen "$RUN/demo" "$MODEL" "$STEPS" "$WINDOW" "$SERVE_EVERY" "$FRAMES"
 OBS='^(loss\.|.*\.cur[0-9]+$)'
 DUMP='^(doom_state|doom_frame\.)'
+# Without the CPU golden, serving is checked against PyTorch (demo/serve_golden.py), which needs the final weights.
+[ "${GOLDEN:-1}" = 1 ] || DUMP='^(doom_state|doom_frame\.|w\.)'
 
 say "CPU-only manifest check (parse, version flow, every bundle loads/remaps/validates)"
 ./demo/kvm_run "$RUN/demo" --check-only --assets "$ASSETS" --compile-cmd "$COMPILE" 2>&1 | tee "$RUN/check_only.log" | tail -4
@@ -64,7 +66,7 @@ import check_demo
 g = check_demo.golden_observations(__import__('pathlib').Path("$RUN/demo"), r'$OBS', __import__('pathlib').Path("$RUN/golden.json"))
 print('golden admissions:', len(g))
 PY
-else GOLDEN_ARGS="--no-golden"; say "golden skipped (pure-Python CPU VM cannot run this model)"; fi
+else GOLDEN_ARGS="--no-golden --model $MODEL $( [ "$PRECISE" = 1 ] && echo --precise )"; say "CPU golden skipped (pure-Python CPU VM cannot run this model): serving is checked against PyTorch"; fi
 
 say "GPU: one lock hold ($LOCK_WAIT s max wait)"
 cat > "$RUN/gpu.sh" <<GPU

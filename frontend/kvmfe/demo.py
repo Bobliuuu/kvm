@@ -121,7 +121,7 @@ def build_manifest(root: Path, workloads: dict[str, Workload], admissions: list[
             compiled += is_train
     kinds = sorted({w.kind for w in workloads.values()}, key=list(CLASS_POLICY).index)
     manifest = dict(
-        manifest_version=MANIFEST_VERSION,
+        manifest_version=2 if any('guard' in a for a in admissions) else MANIFEST_VERSION,     # 2 = guarded admissions (run_manifest.validate_guard)
         semantics=[
             "Allocate every buffer in `buffers` once and initialize it from its owner workload's init; later bundles that name "
             "the same buffer share it (state persists across admissions).",
@@ -132,7 +132,10 @@ def build_manifest(root: Path, workloads: dict[str, Workload], admissions: list[
             "admission does not publish (publishes lacks it) the value is only a minimum: use the live version if it is higher "
             "(a reader of weights >= v compiles against whatever is live). When bundle_dir is null, or the live version differs, compile "
             "`compile.workload` with the live versions (compile_workload.py --base-versions) or add the offset in the executor.",
-            "A bundle's publishes advance the variable by `publishes[var]`; the live version after completion = base + that."],
+            "A bundle's publishes advance the variable by `publishes[var]`; the live version after completion = base + that.",
+            "manifest_version 2 only: an admission with a `guard` {buffer, index, cmp, value} additionally needs the comparison of that buffer "
+            "element (read when it would otherwise start) to hold; otherwise it is skipped, as is every admission naming a skipped one in "
+            "after_bundles. A guarded admission publishes nothing."],
         notes=notes,
         classes={k: CLASS_POLICY[k] for k in kinds},
         workloads={n: dict(file=f'workloads/{n}.json', tasks=w.tasks, edges=w.edges, **{'class': w.kind}, **requirements(w),

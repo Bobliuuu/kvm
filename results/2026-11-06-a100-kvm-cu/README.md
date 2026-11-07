@@ -1,6 +1,36 @@
 # kvm.cu on the A100: timeline, exact weights, torch baselines, fused programs
 
-Latest result: section "Update: fused16 (run f16a)" directly below; the `s1` sections after it are the earlier run and are kept for the record.
+Latest result: section "Fair precision comparison (run f16b)" directly below, which supersedes the headline of the f16a section (torch TF32 only) after it.
+
+## Fair precision comparison (run f16b, Modal, commit 54d85d2)
+
+One container, one process: the VM programs and every torch variant at three precision classes: tf32 (fp32 tensors, TF32 matmul), fp16 and bf16 (autocast: half matmul inputs, fp32 accumulate, fp32 master weights, gradients carried x1024, same SGD update). Variants per class: eager (manual backward), whole-run CUDA graph, compile + graph, hand-batched bmm graph, bmm compile + graph, vmap(grad) graph, compile(vmap(grad)) + graph. All numerically verified against the VM (loss rel err 1e-5 fp16, 2e-4 bf16, 2e-6 tf32 over 20 steps; weights 5e-5 / 2e-3 / 6e-5). GPU this time: A100-SXM4-80GB, 108 SMs (Modal assigned the 80 GB part; f16a was the 40 GB part), driver 610.57.04, torch 2.7.0+cu126, 2 rounds x 3 reps best. Raw: `f16b/`.
+
+us per step per run, best (best torch variant of that class in brackets):
+
+| runs | VM fused16 (fp16 operands) | VM fused (TF32) | torch fp16 | torch bf16 | torch TF32 |
+|---|---|---|---|---|---|
+| 1 | **15.6** | 24.9 | 31.5 (compile + graph) | 34.9 (compile + graph) | 37.3 (compile + graph) |
+| 8 | **2.20** | 3.28 | 4.94 (compile vmap + graph) | 5.48 (compile bmm + graph) | 4.96 (compile bmm + graph) |
+| 32 | **1.71** | 2.90 | 2.14 (compile vmap + graph) | 2.26 (compile bmm + graph) | 2.02 (compile vmap + graph) |
+
+VM speedup over the best torch of each class:
+
+| runs | LIKE-FOR-LIKE half: fused16 vs torch fp16 | fused16 vs torch bf16 | fused16 vs torch TF32 | LIKE-FOR-LIKE TF32: fused vs torch TF32 |
+|---|---|---|---|---|
+| 1 | **2.01x** | 2.23x | 2.39x | **1.50x** |
+| 8 | **2.24x** | 2.49x | 2.25x | **1.51x** |
+| 32 | **1.25x** | 1.32x | 1.18x | **0.70x (VM LOSES)** |
+
+Reading it plainly:
+- Like-for-like fp16 (fp16 operands, fp32 accumulate and master weights on both sides): the VM wins at every size, 2.0x at 1 run, 2.2x at 8, but only 1.25x at 32 runs.
+- Like-for-like TF32 (VM `fused` vs torch TF32): the VM wins 1.5x at 1 and 8 runs and LOSES at 32 runs (0.70x: compiled vmap graph 2.02 vs 2.90 us). The R=32 win exists only with fp16 operands, so it comes from the precision switch (halved shared-memory bytes, two blocks per SM), not from the VM idea itself; torch's compiled graph also gains little from fp16 here (2.14 vs 2.02 us: elementwise and launch overheads dominate at this size, so tensor-core width does not help it).
+- Advantage shrinks from ~2x to 1.2-1.3x between 8 and 32 runs against every torch class, because torch's batched bmm approaches its own floor (2 us per run-step) while the VM is still ~14x above the FLOP floor.
+- Mixed-precision note: the torch fp16 path keeps the same master-weight semantics as fused16, so the half-precision row is a fair comparison; the VM's lack of dynamic loss scaling (fixed x1024) applies equally to the torch variants here.
+
+Proposed README/AGENTS text (not edited): "kvm.cu MLP, A100, vs the best torch variant of the same precision (compile + whole-run CUDA graph, vmap/bmm batching): fp16 operands 2.01x / 2.24x / 1.25x at 1 / 8 / 32 runs; TF32 1.50x / 1.51x / 0.70x (the VM loses at 32 runs in TF32). results/2026-11-06-a100-kvm-cu/f16b."
+
+Earlier: section "Update: fused16 (run f16a)" below (torch TF32 only, 40 GB part); the `s1` sections after it are the first run and are kept for the record.
 
 ## Update: fused16 (run f16a, Modal A100-40GB, commit 888ef2b)
 

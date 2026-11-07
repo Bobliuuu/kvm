@@ -1,32 +1,129 @@
 {
-  "_doc": "gpt_162m, one optimizer step, A100-SXM4-40GB. Every number is copied from the README of the results dir named in 'source'. Edit this file (and the README tables) to add the combined-branch number, then run demo/viz/journey.py. 'merged' = on main when this file was written; unmerged entries are branches, not main.",
-  "gpu": "A100-SXM4-40GB",
-  "executor": [
-    {"label": "main", "ms": 1047.3, "stat": "median of 7", "merged": true, "branch": "main", "source": "results/2026-11-06-a100-fusion (before column); results/2026-11-06-gpt162-vs-torch (1041.8 best)"},
-    {"label": "+ fusion (fewer edges)", "ms": 867.5, "stat": "median of 7", "merged": false, "branch": "perf/fusion-162m", "source": "results/2026-11-06-a100-fusion"},
-    {"label": "+ attention tiles (alone)", "ms": 905.3, "stat": "best of 9, base 1046", "merged": false, "branch": "perf/attention-162m", "source": "results/2026-11-06-a100-attention"},
-    {"label": "+ completion path (alone)", "ms": 1075.7, "stat": "median of 4, noise 1055-1091, no change vs main 1060-1077", "merged": false, "branch": "perf/completion-path", "source": "results/2026-11-06-a100-completion"},
-    {"label": "+ bf16 storage and tile (alone)", "ms": 483.8, "stat": "best of 5, own f32 baseline 1103.6 in the same lock hold", "merged": false, "branch": "perf/bf16-a100", "source": "results/2026-11-06-a100-bf16"},
-    {"label": "combined", "ms": null, "stat": "to be measured", "merged": false, "branch": "perf/combined", "source": "pending"}
-  ],
-  "pytorch": [
-    {"label": "torch eager (tf32)", "ms": 69.6, "source": "results/2026-11-06-gpt162-vs-torch"},
-    {"label": "torch CUDA graph (tf32)", "ms": 68.2, "source": "results/2026-11-06-gpt162-vs-torch"},
-    {"label": "torch.compile (tf32)", "ms": 59.9, "source": "results/2026-11-06-gpt162-vs-torch"},
-    {"label": "torch autocast-bf16 eager", "ms": 47.1, "source": "results/2026-11-06-a100-bf16 (branch perf/bf16-a100)"},
-    {"label": "torch autocast-bf16 CUDA graph", "ms": 44.7, "source": "results/2026-11-06-a100-bf16 (branch perf/bf16-a100)"},
-    {"label": "torch autocast-bf16 compile+graph", "ms": 30.9, "source": "results/2026-11-06-a100-bf16 (branch perf/bf16-a100)"}
-  ],
-  "workers": 107,
-  "breakdown": {
-    "_doc": "Worker-seconds per step = workers x step time. Busy parts are sums of per-task run time from the executor's trace (CTA-seconds); idle = the rest and cannot be split into admission, ready-queue pop and dependency wait from these traces.",
-    "bars": [
-      {"label": "main, TF32 (step 1103.6 ms)", "step_ms": 1103.6, "approx": true,
-       "busy_cta_s": {"matmul tiles": 15.3, "attention": 3.0, "other tasks": 1.7},
-       "source": "results/2026-11-06-a100-bf16 section 3 (matmul 15.3 estimated for all 247k tiles; attention about 3, traced part only) and results/2026-11-06-gpt162-vs-torch (about 20 CTA-s per step in total)"},
-      {"label": "bf16 storage + tile (step 483.8 ms)", "step_ms": 483.8, "approx": false,
-       "busy_cta_s": {"matmul tiles": 3.51, "attention": 2.96, "other tasks": 3.18},
-       "source": "results/2026-11-06-a100-bf16 section 3 (all 103.8k tasks traced, total 9.65 CTA-s; other = round_bf16 0.73 + remainder 2.45)"}
-    ]
+ "_doc": "gpt_162m, one optimizer step, A100-SXM4-40GB. Every number is copied from the README of the results dir named in 'source' (on main unless merged is false). Edit this file, then run demo/viz/journey.py.",
+ "gpu": "A100-SXM4-40GB",
+ "executor": [
+  {
+   "label": "main before the merge",
+   "ms": 1092.9,
+   "stat": "median of 7, one container",
+   "merged": true,
+   "source": "results/2026-11-06-a100-combined"
+  },
+  {
+   "label": "fusion alone",
+   "ms": 867.5,
+   "stat": "median of 7 (own hold)",
+   "merged": true,
+   "source": "results/2026-11-06-a100-fusion"
+  },
+  {
+   "label": "attention alone",
+   "ms": 905.3,
+   "stat": "best of 9 (own hold)",
+   "merged": true,
+   "source": "results/2026-11-06-a100-attention"
+  },
+  {
+   "label": "bf16 alone",
+   "ms": 483.8,
+   "stat": "best of 5 (own hold, own f32 base 1103.6)",
+   "merged": true,
+   "source": "results/2026-11-06-a100-bf16"
+  },
+  {
+   "label": "COMBINED f32 (on main)",
+   "ms": 845.5,
+   "stat": "median of 7, one container",
+   "merged": true,
+   "source": "results/2026-11-06-a100-combined"
+  },
+  {
+   "label": "COMBINED bf16s (on main)",
+   "ms": 293.3,
+   "stat": "median of 7, one container",
+   "merged": true,
+   "source": "results/2026-11-06-a100-combined"
+  },
+  {
+   "label": "completion path (branch, no change)",
+   "ms": 1075.7,
+   "stat": "median of 4 (own hold)",
+   "merged": false,
+   "source": "perf/completion-path: results/2026-11-06-a100-completion"
+  },
+  {
+   "label": "bigger tiles, f32 (branch)",
+   "ms": 358.0,
+   "stat": "see its README",
+   "merged": false,
+   "source": "perf/combined2: results/2026-11-06-a100-tiles"
+  },
+  {
+   "label": "bigger tiles, bf16s (branch)",
+   "ms": 290.0,
+   "stat": "see its README",
+   "merged": false,
+   "source": "perf/combined2: results/2026-11-06-a100-tiles"
   }
+ ],
+ "pytorch": [
+  {
+   "label": "torch eager (tf32)",
+   "ms": 69.6,
+   "source": "results/2026-11-06-gpt162-vs-torch"
+  },
+  {
+   "label": "torch CUDA graph (tf32)",
+   "ms": 68.2,
+   "source": "results/2026-11-06-gpt162-vs-torch"
+  },
+  {
+   "label": "torch.compile (tf32)",
+   "ms": 59.9,
+   "source": "results/2026-11-06-gpt162-vs-torch"
+  },
+  {
+   "label": "torch autocast-bf16 eager",
+   "ms": 47.1,
+   "source": "results/2026-11-06-a100-bf16 (branch perf/bf16-a100)"
+  },
+  {
+   "label": "torch autocast-bf16 CUDA graph",
+   "ms": 44.7,
+   "source": "results/2026-11-06-a100-bf16 (branch perf/bf16-a100)"
+  },
+  {
+   "label": "torch autocast-bf16 compile+graph",
+   "ms": 30.9,
+   "source": "results/2026-11-06-a100-bf16 (branch perf/bf16-a100)"
+  }
+ ],
+ "workers": 107,
+ "breakdown": {
+  "_doc": "Worker-seconds per step = workers x step time. Busy parts are sums of per-task run time from the executor's trace (CTA-seconds); idle = the rest and cannot be split into admission, ready-queue pop and dependency wait from these traces.",
+  "bars": [
+   {
+    "label": "main, TF32 (step 1103.6 ms)",
+    "step_ms": 1103.6,
+    "approx": true,
+    "busy_cta_s": {
+     "matmul tiles": 15.3,
+     "attention": 3.0,
+     "other tasks": 1.7
+    },
+    "source": "results/2026-11-06-a100-bf16 section 3 (matmul 15.3 estimated for all 247k tiles; attention about 3, traced part only) and results/2026-11-06-gpt162-vs-torch (about 20 CTA-s per step in total)"
+   },
+   {
+    "label": "bf16 storage + tile alone (step 483.8 ms)",
+    "step_ms": 483.8,
+    "approx": false,
+    "busy_cta_s": {
+     "matmul tiles": 3.51,
+     "attention": 2.96,
+     "other tasks": 3.18
+    },
+    "source": "results/2026-11-06-a100-bf16 section 3 (all 103.8k tasks traced, total 9.65 CTA-s; other = round_bf16 0.73 + remainder 2.45)"
+   }
+  ]
+ }
 }

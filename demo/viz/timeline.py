@@ -50,7 +50,7 @@ def classify(op, workload):
         return 4
     if workload == 2:
         return 5 if op == 'doom_tick' else 6
-    if op == 'matmul_tile':
+    if op.startswith('matmul'):   # matmul_tile, matmul_mma_bf16 (op 122), ...
         return 0
     if op.startswith(ATTN):
         return 1
@@ -119,6 +119,7 @@ THEMES = {'light': dict(bg='#ffffff', fg='#1f2328', grid='#d0d7de'), 'dark': dic
 
 
 def draw(theme, busy, sm_ids, end_us, meta, out):
+    classes = meta.get('classes', CLASSES)
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
@@ -143,7 +144,7 @@ def draw(theme, busy, sm_ids, end_us, meta, out):
     for sp in ax.spines.values():
         sp.set_color(th['grid'])
     ax.set_title(meta['title'], color=th['fg'], fontsize=11, loc='left', pad=22)
-    handles = [Patch(color=c, label='%s  (%s)' % (n, meta['counts'][i])) for i, (n, c) in enumerate(zip(CLASSES, COLORS))]
+    handles = [Patch(color=c, label='%s  (%s)' % (n, meta['counts'][i])) for i, (n, c) in enumerate(zip(classes, COLORS))]
     leg = ax.legend(handles=handles, loc='upper center', bbox_to_anchor=(0.5, -0.13), ncol=2, fontsize=8, frameon=False)
     for t in leg.get_texts():
         t.set_color(th['fg'])
@@ -162,6 +163,7 @@ def main():
     ap.add_argument('--cols', type=int, default=1300)
     ap.add_argument('--prefix', default='timeline', help='output file prefix: <prefix>-light.png / <prefix>-dark.png')
     ap.add_argument('--subtitle', default='(gpt_tiny: 200 AdamW steps in 20 windows; 5 serve requests; 700 Doom frames; the long bar is Doom boot tick)')
+    ap.add_argument('--class2-label', default=None, help='override the legend text of class 2 (when a compact trace predates a classifier fix)')
     ap.add_argument('--source', default='results/2026-11-06-demo-tiny/trace.csv.gz')
     a = ap.parse_args()
     start, end, smid, cls = load_trace(a.trace)
@@ -171,7 +173,10 @@ def main():
     sm_ids = sorted(set(smid.tolist()))
     busy = rasterize(start, end, smid, cls, sm_ids, end_us, a.cols)
     counts = ['%d tasks' % int((cls == i).sum()) for i in range(len(CLASSES))]
-    meta = dict(counts=counts,
+    classes = list(CLASSES)
+    if a.class2_label:
+        classes[2] = a.class2_label
+    meta = dict(counts=counts, classes=classes,
                 title=('One persistent kernel, three concurrent workloads: %s, %d SMs, %d tasks in %.2f s\n'
                        % (run['device'].replace('NVIDIA ', ''), run['sms'], run['tasks_done'], run['kernel_ms'] / 1000)) + a.subtitle,
                 foot='Source: ' + a.source + ' (executor per-task timestamps; every task drawn). Opacity = busy fraction of the pixel column (floor 65%). Comm ops: none in this single-GPU run.')

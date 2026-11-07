@@ -77,13 +77,13 @@ Order of the blocks in the lowering was tried both ways (heaviest first: 909-911
 (`raw/executor_step_time_heaviest_first_rejected.txt`, earlier build).
 
 `demo/run_demo.sh large` (162M GPT, 6 steps + serving + 700 Doom frames, one launch; `demo-large/`): see the table; all checks pass, Doom 700/700 frames identical, version check exact.
-The six step losses are 10.9790, 10.9369, 10.8757, 10.8827, 10.8925, 10.9237, the same as the previous run (`2026-11-06-demo-large`: 10.979, 10.937, 10.876, 10.883, 10.892, 10.924); steps 2-6 depend on the
+ALL CHECKS PASSED, 172.0 Doom frames/s. The six step losses are 10.9790, 10.9369, 10.8757, 10.8827, 10.8925, 10.9237, the same as the previous run (`2026-11-06-demo-large`: 10.979, 10.937, 10.876, 10.883, 10.892, 10.924); steps 2-6 depend on the
 new backward through AdamW, so a gradient error at the 1e-3 level would show.
 
 | | tasks | run time |
 |---|---|---|
 | `2026-11-06-demo-large` (before) | 1,948,168 | 13.66 s |
-| this branch | 1,699,336 | 12.07 s (first build; the final-code rerun is in `demo-large/`) |
+| this branch (final code, `demo-large/`) | 1,699,336 | **12.05 s** (12.07 s with the first version of the kernels) |
 
 Not rerun: the step-1 gradient comparison against fp64 (`grads162.sh`; needs ~3 GB of box disk, 2-4 GB were free) and the 3-step torch loss comparison (`executor162.sh`; needs a 14-minute 3-step bundle).
 The six-loss agreement stands in for them.

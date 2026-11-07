@@ -3,7 +3,7 @@
   {
    "name": "executor",
    "status": "PASS",
-   "detail": "1699336/1699336 tasks in 12070.5 ms on NVIDIA A100-SXM4-40GB (108 SMs, grid 108), sched dynamic, err_code 0"
+   "detail": "1699336/1699336 tasks in 12045.2 ms on NVIDIA A100-SXM4-40GB (108 SMs, grid 108), sched dynamic, err_code 0"
   },
   {
    "name": "versions",
@@ -28,48 +28,48 @@
   {
    "name": "cadence",
    "status": "PASS",
-   "detail": "700 ticks: 171.8 frames/s (35 needed), tick gap p50/p99/max 5.65/12.18/13.27 ms, 0 of 698 gaps over 28.57 ms; tick run p50 5.40 ms, queue wait p99 15 us; boot tick 175071 us; 7 ticks past their absolute deadline (frames before the boot finishes are late by construction)"
+   "detail": "700 ticks: 172.0 frames/s (35 needed), tick gap p50/p99/max 5.54/12.13/13.79 ms, 0 of 698 gaps over 28.57 ms; tick run p50 5.34 ms, queue wait p99 14 us; boot tick 174368 us; 7 ticks past their absolute deadline (frames before the boot finishes are late by construction)"
   },
   {
    "name": "overlap",
    "status": "INFO",
-   "detail": "Doom ran 4.24 s; game: 4900 tasks, 4.251 CTA-s (4.251 while Doom ran, 4894 tasks overlapping); serve: 33488 tasks, 1.051 CTA-s (0.262 while Doom ran, 8372 tasks overlapping); train: 1626864 tasks, 90.759 CTA-s (11.168 while Doom ran, 209624 tasks overlapping)"
+   "detail": "Doom ran 4.23 s; game: 4900 tasks, 4.245 CTA-s (4.245 while Doom ran, 4894 tasks overlapping); serve: 33488 tasks, 1.047 CTA-s (0.261 while Doom ran, 8372 tasks overlapping); train: 1626864 tasks, 91.475 CTA-s (11.218 while Doom ran, 209624 tasks overlapping)"
   }
  ],
  "cadence": {
   "ticks": 700,
-  "fps": 171.78750552240223,
-  "gap_p50_us": 5646.336000000127,
-  "gap_p99_us": 12179.456000000006,
-  "gap_max_us": 13266.944000000134,
+  "fps": 172.01661945912883,
+  "gap_p50_us": 5537.791999999899,
+  "gap_p99_us": 12128.255999999936,
+  "gap_max_us": 13790.2080000001,
   "gaps_over_period": 0,
-  "tick_wait_p99_us": 15.36,
+  "tick_wait_p99_us": 14.336,
   "per_class": {
    "game": {
     "tasks": 4900,
-    "busy_us": 4250924.032,
+    "busy_us": 4245241.8560000155,
     "in_span_tasks": 4894,
-    "in_span_busy": 4250750.975999999,
-    "first": 2849.792,
-    "last": 4243621.888
+    "in_span_busy": 4245067.776000015,
+    "first": 2728.96,
+    "last": 4237364.224
    },
    "serve": {
     "tasks": 33488,
-    "busy_us": 1051426.8160000562,
+    "busy_us": 1046936.5760000544,
     "in_span_tasks": 8372,
-    "in_span_busy": 261812.22399999923,
-    "first": 52930.56,
-    "last": 12058342.4
+    "in_span_busy": 260705.27999999753,
+    "first": 51392.512,
+    "last": 12032655.36
    },
    "train": {
     "tasks": 1626864,
-    "busy_us": 90759445.50422958,
+    "busy_us": 91475386.36819005,
     "in_span_tasks": 209624,
-    "in_span_busy": 11167506.43202143,
-    "first": 903106.56,
-    "last": 11966101.504
+    "in_span_busy": 11218013.184022306,
+    "first": 925434.88,
+    "last": 11942071.296
    }
   },
-  "doom_span_s": 4.2406256639999995
+  "doom_span_s": 4.234492928
  }
 }

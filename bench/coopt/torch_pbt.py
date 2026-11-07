@@ -74,7 +74,7 @@ def decide(m, lr):
 def apply(W1, W2, lr, src, newlr):
     W1.copy_(W1[src]); W2.copy_(W2[src]); lr.copy_(newlr.view(R, 1, 1))
 
-def run_pbt(graph, tf32, pbt=True):
+def run_pbt(graph, tf32, pbt=True, force=None):
     torch.backends.cuda.matmul.allow_tf32 = tf32
     W1, W2 = fresh(R); lr = lr0.clone().view(R, 1, 1); L = torch.zeros(steps, R, device=dev)
     EVL = torch.zeros(K + 1, R, device=dev); SRC = torch.full((K + 1, R), -1, dtype=torch.long, device=dev)
@@ -84,7 +84,9 @@ def run_pbt(graph, tf32, pbt=True):
             if pbt and (s + 1) % E == 0 and (s + 1) // E <= K:
                 e = (s + 1) // E
                 EVL[e - 1] = eval_loss(W1, W2)
-                src, nl = decide(metric_of(W1, W2, L, s), lr); SRC[e] = src
+                if force is None: src, nl = decide(metric_of(W1, W2, L, s), lr)
+                else: src = force[e]; nl = torch.where(src != idx, lr.view(R)[src] * fac, lr.view(R))
+                SRC[e] = src
                 apply(W1, W2, lr, src, nl)
     def reset():
         W1.copy_(W1i.unsqueeze(0).expand(R, -1, -1)); W2.copy_(W2i.unsqueeze(0).expand(R, -1, -1)); lr.copy_(lr0.view(R, 1, 1)); L.zero_()
@@ -144,9 +146,15 @@ stat = lambda ts: dict(best_ms=min(ts), median_ms=float(np.median(ts)), all_ms=[
 res = {"gpu": torch.cuda.get_device_name(), "torch": torch.__version__, "cfg": dict(B=B, D=D, H=H, O=O, NB=NB, R=R, steps=steps, E=E, K=K, eval=EVAL)}
 Lr, EVr, SRCr, W1r, W2r, lrr = run_pbt(False, False)
 Lnp, _, _, _, _, _ = run_pbt(False, False, pbt=False)
-same_src = all(torch.equal(SRCr[e].cpu(), torch.from_numpy(ksrc[e]).long()) for e in range(1, K + 1))
+kforce = torch.where(torch.from_numpy(ksrc.astype(np.int64)).to(dev) < 0, idx[None, :].expand(64, R), torch.from_numpy(ksrc.astype(np.int64)).to(dev))
+Lf_, EVf_, SRCf_, W1f_, W2f_, lrf_ = run_pbt(False, False, True, force=kforce)
 rel = lambda a, b: float(((a - b).abs() / (b.abs() + 1e-6)).max())
-c = dict(same_pbt_decisions_all_rungs=same_src,
+agree = [bool((torch.where(torch.from_numpy(ksrc[e].astype(np.int64)).to(dev) < 0, idx, torch.from_numpy(ksrc[e].astype(np.int64)).to(dev)) == SRCr[e]).all()) for e in range(1, K + 1)]
+same_src = all(agree)
+c = dict(same_pbt_decisions_all_rungs=same_src, rungs_where_kvm_decision_equals_fp32_oracle=sum(agree), rungs_total=K,
+         forced_replay_max_rel_train_loss_err=rel(kloss.T, Lf_), forced_replay_max_rel_eval_loss_err=(rel(kev[:K], EVf_[:K]) if EVAL else None),
+         forced_replay_max_rel_final_lr_err=float(((torch.from_numpy(klr).to(dev) - lrf_.view(R)).abs() / lrf_.view(R).abs()).max()),
+         forced_replay_max_rel_weight_l2=max(float((kw[r] - torch.cat([W1f_[r].flatten(), W2f_[r].flatten()])).norm() / torch.cat([W1f_[r].flatten(), W2f_[r].flatten()]).norm()) for r in range(R)),
          max_rel_train_loss_err=rel(kloss.T, Lr), max_rel_eval_loss_err=(rel(kev[:K], EVr[:K]) if EVAL else None),
          max_rel_final_lr_err=float(((torch.from_numpy(klr).to(dev) - lrr.view(R)).abs() / lrr.view(R).abs()).max()),
          max_rel_weight_l2=max(float((kw[r] - torch.cat([W1r[r].flatten(), W2r[r].flatten()])).norm() / torch.cat([W1r[r].flatten(), W2r[r].flatten()]).norm()) for r in range(R)),

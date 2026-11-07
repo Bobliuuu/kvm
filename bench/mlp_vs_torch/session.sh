@@ -20,13 +20,15 @@ mkdir -p "$OUT"
 ./kvm --selftest > "$OUT/selftest.txt" 2>&1; echo "selftest rc=$?" | tee -a "$OUT/selftest.txt"
 PROGS=tiles
 if [ "${NOFUSED:-0}" != 1 ]; then
-  ok=1
-  for r in 1 8 32; do
-    timeout 120 ./kvm --prog fused --runs $r --steps 40 --reps 2 --ref-steps 10 > "$OUT/smoke_fused_R$r.txt" 2>&1; rc=$?
-    echo "fused smoke R=$r rc=$rc: $(tail -1 "$OUT/smoke_fused_R$r.txt")"
-    [ $rc -eq 0 ] || ok=0
+  for prog in fused fused16; do   # smoke test each fused program (hang-guarded); only passing ones join the comparison
+    ok=1
+    for r in 1 8 32; do
+      timeout 120 ./kvm --prog $prog --runs $r --steps 40 --reps 2 --ref-steps 10 > "$OUT/smoke_${prog}_R$r.txt" 2>&1; rc=$?
+      echo "$prog smoke R=$r rc=$rc: $(tail -1 "$OUT/smoke_${prog}_R$r.txt")"
+      [ $rc -eq 0 ] || ok=0
+    done
+    [ $ok -eq 1 ] && PROGS=$PROGS,$prog
   done
-  [ $ok -eq 1 ] && PROGS=tiles,fused
 fi
 echo "progs: $PROGS"
 for R in $RUNS; do

@@ -9,7 +9,8 @@ import pathlib
 
 import modal
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+_p = pathlib.Path(__file__).resolve().parents
+ROOT = _p[2] if len(_p) > 2 else pathlib.Path('/')
 image = (modal.Image.from_registry("nvidia/cuda:12.8.1-devel-ubuntu22.04", add_python="3.11")
          .apt_install("rsync", "git")
          .pip_install("numpy", "torch==2.7.0")

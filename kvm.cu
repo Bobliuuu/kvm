@@ -22,6 +22,7 @@
 #include <type_traits>
 #include <chrono>
 #include <cuda_runtime.h>
+#include <cuda_fp16.h>
 #include <mma.h>
 using namespace nvcuda;
 
@@ -285,7 +286,7 @@ __shared__ unsigned long long s_tready;
 #ifdef KSTAGE
 __device__ unsigned long long g_stage[24];
 __shared__ long long s_last;
-#define STAGE(i) do { if (blockIdx.x == 0 && threadIdx.x == 0) { long long n_ = clock64(); if ((i) > 0) atomicAdd(&g_stage[i], (unsigned long long)(n_ - s_last)); s_last = n_; } } while (0)
+#define STAGE(i) do { if (ctr && blockIdx.x == 0 && threadIdx.x == 0) { long long n_ = clock64(); if ((i) > 0) atomicAdd(&g_stage[i], (unsigned long long)(n_ - s_last)); s_last = n_; } } while (0)
 #else
 #define STAGE(i) do {} while (0)
 #endif
@@ -487,6 +488,205 @@ __global__ void __launch_bounds__(FNT) fphase_kernel(const Instr* tape, int off,
   if (in.op == OP_FWD) fwd_slice(in, step, false, dsm, nullptr); else bwd_slice(in, step, false, dsm, loss, nullptr, false, -1);
 }
 
+// ======================================================================================================================
+// fused16: the same two-instruction program on fp16 tensor-core inputs (fp32 accumulate, fp32 master weights).
+//
+// Why: the TF32 fused kernel measured ~35k cycles/step at 1 run, 15x over the tensor-core bound and bound by shared-memory traffic
+// (4-byte operands, 16 KB slice re-read by every warp) and by 148 KB of smem (one block per SM, 8 warps to hide latency). fp16 operands
+// halve every byte (10-bit mantissa like TF32, so the loss tracks the fp32 reference equally well), double the k per mma, and shrink a
+// block to 78 KB: two blocks per SM, and up to 27 runs (216 slice-tasks) stay resident. Gradients (dy, dh) are carried x1024 so they do
+// not fall into fp16's subnormal range; the weight update multiplies by lr/1024 (power of two: exact). Weights stay fp32 in global
+// memory (master); an fp16 shadow of the slice lives in smem and is refreshed after every update. X is pre-converted to fp16 once.
+// Accumulator tiles go through a small fp32 scratch (aliasing the dy buffer) for relu / masking / the shadow refresh.
+// ======================================================================================================================
+constexpr int GS = 1024, LXH = FD + 8, LHH = HS + 8, LYH = FO + 8, LSF = HS + 4, LS2 = FO + 4;
+constexpr int OFF_X = 0, OFF_W1 = OFF_X + FB * LXH, OFF_H = OFF_W1 + FD * LHH, OFF_DY = OFF_H + FB * LHH, OFF_W2 = OFF_DY + FB * LYH;
+constexpr size_t FSMEM16 = (size_t)(OFF_W2 + HS * LYH) * sizeof(__half);
+static_assert(HS == 32 && FB * LYH * 2 == FB * LSF * 4 && HS * LS2 * 4 <= FB * LHH * 2, "fused16 scratch aliasing assumes HS == 32");
+using FragH = wmma::fragment<wmma::accumulator, 16, 16, 16, float>;
+
+template <bool ACOL, bool BCOL, int NF>
+__device__ __forceinline__ void warp_mma16(FragH (&acc)[NF], const __half* pa, int lda, int astep, const __half* pb, int ldb, int bstep, int bn, int ksteps) {
+  using AL = typename std::conditional<ACOL, wmma::col_major, wmma::row_major>::type;
+  using BL = typename std::conditional<BCOL, wmma::col_major, wmma::row_major>::type;
+  wmma::fragment<wmma::matrix_a, 16, 16, 16, __half, AL> fa;
+  wmma::fragment<wmma::matrix_b, 16, 16, 16, __half, BL> fb;
+#pragma unroll 4
+  for (int k = 0; k < ksteps; k++) {
+    wmma::load_matrix_sync(fa, pa + k * astep, lda);
+#pragma unroll
+    for (int j = 0; j < NF; j++) {
+      wmma::load_matrix_sync(fb, pb + k * bstep + j * bn, ldb);
+      wmma::mma_sync(acc[j], fa, fb, acc[j]);
+    }
+  }
+}
+template <int NF> __device__ __forceinline__ void zero_acc16(FragH (&acc)[NF]) {
+#pragma unroll
+  for (int j = 0; j < NF; j++) wmma::fill_fragment(acc[j], 0.f);
+}
+__device__ __forceinline__ void cp_block16(__half* s, int sld, const __half* g, size_t gld, int rows, int vecs8) {
+  for (int i = threadIdx.x; i < rows * vecs8; i += FNT) { int r = i / vecs8, c8 = (i % vecs8) * 8; cp16(reinterpret_cast<float*>(s + r * sld + c8), reinterpret_cast<const float*>(g + r * gld + c8)); }
+}
+// fp16 shadow of this slice's fp32 master weights (W1 slice [FD x HS], W2 slice [HS x FO])
+__device__ __forceinline__ void load_shadow(const Buf& W1, const Buf& W2, int c, __half* sW1, __half* sW2, bool w1) {
+  if (w1) for (int i = threadIdx.x; i < FD * HS / 4; i += FNT) {
+    int r = i / (HS / 4), c4 = (i % (HS / 4)) * 4; float4 v = __ldcg(reinterpret_cast<const float4*>(W1.p + (size_t)r * W1.ld + c * HS + c4));
+    *reinterpret_cast<__half2*>(sW1 + r * LHH + c4) = __floats2half2_rn(v.x, v.y); *reinterpret_cast<__half2*>(sW1 + r * LHH + c4 + 2) = __floats2half2_rn(v.z, v.w);
+  }
+  for (int i = threadIdx.x; i < HS * FO / 4; i += FNT) {
+    int r = i / (FO / 4), c4 = (i % (FO / 4)) * 4; float4 v = __ldcg(reinterpret_cast<const float4*>(W2.p + (size_t)(c * HS + r) * W2.ld + c4));
+    *reinterpret_cast<__half2*>(sW2 + r * LYH + c4) = __floats2half2_rn(v.x, v.y); *reinterpret_cast<__half2*>(sW2 + r * LYH + c4 + 2) = __floats2half2_rn(v.z, v.w);
+  }
+}
+
+__device__ void fwd16_slice(const Instr& in, int stp, bool res, __half* sm, int* ctr) {
+  __half *sX = sm + OFF_X, *sW1 = sm + OFF_W1, *sH = sm + OFF_H, *sW2 = sm + OFF_W2;
+  float* Sf = reinterpret_cast<float*>(sm + OFF_DY);
+  const Buf X = g_buf[in.a], W1 = g_buf[in.b], W2 = g_buf[in.c], HG = g_buf[in.n0], YP = g_buf[in.K];
+  const int c = in.m0, w = threadIdx.x >> 5, lane = threadIdx.x & 31;
+  if (!(res && stp > 0)) { cp_block16(sX, LXH, reinterpret_cast<const __half*>(X.p), X.ld, FB, FD / 8); cp_commit(); load_shadow(W1, W2, c, sW1, sW2, true); }
+  cp_wait_all(); __syncthreads();
+  FragH a1[HS / 16]; zero_acc16(a1);
+  warp_mma16<false, false, HS / 16>(a1, sX + 16 * w * LXH, LXH, 16, sW1, LHH, 16 * LHH, 16, FD / 16);
+#pragma unroll
+  for (int j = 0; j < HS / 16; j++) wmma::store_matrix_sync(Sf + 16 * w * LSF + j * 16, a1[j], LSF, wmma::mem_row_major);
+  __syncwarp();
+  __half* hgp = reinterpret_cast<__half*>(HG.p);
+  for (int e = lane; e < 16 * HS; e += 32) {   // relu, to fp16; this warp's rows only
+    int r = 16 * w + e / HS, col = e % HS; __half hv = __float2half(fmaxf(Sf[r * LSF + col], 0.f));
+    sH[r * LHH + col] = hv; if (!res) hgp[(size_t)r * HG.ld + c * HS + col] = hv;   // a non-resident BWD reads h back from here
+  }
+  __syncwarp();
+  FragH a2[FO / 16]; zero_acc16(a2);
+  warp_mma16<false, false, FO / 16>(a2, sH + 16 * w * LHH, LHH, 16, sW2, LYH, 16 * LYH, 16, HS / 16);
+  float* yp = YP.p + (size_t)((stp & 1) * NS + c) * FB * FO + (size_t)(16 * w) * FO;
+#pragma unroll
+  for (int j = 0; j < FO / 16; j++) wmma::store_matrix_sync(yp + j * 16, a2[j], FO, wmma::mem_row_major);
+  __syncthreads();
+  if (ctr && threadIdx.x == 0) { __threadfence(); atomicAdd(ctr + in.s0, 1); }
+}
+
+__device__ void bwd16_slice(const Instr& in, int stp, bool res, __half* sm, float* loss, int* ctr, bool prof, int next_a) {
+  __shared__ float red[FNT / 32];
+  __half *sX = sm + OFF_X, *sW1 = sm + OFF_W1, *sH = sm + OFF_H, *sDY = sm + OFF_DY, *sW2 = sm + OFF_W2;
+  float* Sf = reinterpret_cast<float*>(sDY);
+  const Buf X = g_buf[in.a], W1 = g_buf[in.b], W2 = g_buf[in.c], T = g_buf[in.aux], HG = g_buf[in.n0], YP = g_buf[in.K];
+  const int c = in.m0, w = threadIdx.x >> 5, lane = threadIdx.x & 31, tid = threadIdx.x, mt = w >> 2, nt = w & 3;
+  if (!res) {
+    cp_block16(sX, LXH, reinterpret_cast<const __half*>(X.p), X.ld, FB, FD / 8);
+    cp_block16(sH, LHH, reinterpret_cast<const __half*>(HG.p) + c * HS, HG.ld, FB, HS / 8); cp_commit();
+    load_shadow(W1, W2, c, sW1, sW2, false);
+  }
+  // fp32 master weights for the update: issue the loads now, they land while the hop and the GEMMs run
+  FragH cw1[HS / 16], cw2;
+#pragma unroll
+  for (int j = 0; j < HS / 16; j++) wmma::load_matrix_sync(cw1[j], W1.p + (size_t)(16 * w) * W1.ld + c * HS + j * 16, W1.ld, wmma::mem_row_major);
+  wmma::load_matrix_sync(cw2, W2.p + (size_t)(c * HS + mt * 16) * W2.ld + nt * 16, W2.ld, wmma::mem_row_major);
+  if (tid == 0) {
+    if (ctr) { while (ld_acquire(ctr + in.w0c) < in.w0v) __nanosleep(16); __threadfence(); }
+    if (prof) s_tready = gtime();
+  }
+  cp_wait_all(); __syncthreads();
+  // ---- y = sum of the partials in slice order; dy = (y - t) * s * GS (fp16); loss
+  const float* ypb = YP.p + (size_t)(stp & 1) * NS * FB * FO;
+  const float s2 = in.scale * (float)GS;
+  float lsum = 0.f;
+#pragma unroll 1
+  for (int g = 0; g < 4; g++) {
+    float4 v[2][NS], tv[2];
+#pragma unroll
+    for (int u = 0; u < 2; u++)
+#pragma unroll
+      for (int p = 0; p < NS; p++) v[u][p] = __ldcg(reinterpret_cast<const float4*>(ypb + (size_t)p * FB * FO) + tid + FNT * (2 * g + u));
+#pragma unroll
+    for (int u = 0; u < 2; u++) tv[u] = __ldcg(reinterpret_cast<const float4*>(T.p) + tid + FNT * (2 * g + u));
+#pragma unroll
+    for (int u = 0; u < 2; u++) {
+      int i4 = tid + FNT * (2 * g + u), r = i4 / (FO / 4), cc = (i4 % (FO / 4)) * 4;
+      float4 y = v[u][0];
+#pragma unroll
+      for (int p = 1; p < NS; p++) { y.x += v[u][p].x; y.y += v[u][p].y; y.z += v[u][p].z; y.w += v[u][p].w; }
+      float d0 = y.x - tv[u].x, d1 = y.y - tv[u].y, d2 = y.z - tv[u].z, d3 = y.w - tv[u].w;
+      lsum += d0 * d0 * in.scale * 0.5f + d1 * d1 * in.scale * 0.5f + d2 * d2 * in.scale * 0.5f + d3 * d3 * in.scale * 0.5f;
+      *reinterpret_cast<__half2*>(sDY + r * LYH + cc) = __floats2half2_rn(d0 * s2, d1 * s2);
+      *reinterpret_cast<__half2*>(sDY + r * LYH + cc + 2) = __floats2half2_rn(d2 * s2, d3 * s2);
+    }
+  }
+  if (c == 0) {
+    for (int o = 16; o; o >>= 1) lsum += __shfl_xor_sync(0xffffffff, lsum, o);
+    if (lane == 0) red[w] = lsum;
+  }
+  __syncthreads();
+  if (c == 0 && tid == 0) { float t = 0; for (int i = 0; i < FNT / 32; i++) t += red[i]; loss[in.loss_idx] = t; }
+  const float lrs = lr_of(in) * (1.f / GS);
+  // gW2 (x GS) = h^T dy: one 16x16 tile per warp; dh (x GS) = dy W2^T from the OLD W2 shadow
+  FragH g2[1]; zero_acc16(g2);
+  warp_mma16<true, false, 1>(g2, sH + mt * 16, LHH, 16 * LHH, sDY + nt * 16, LYH, 16 * LYH, 16, FB / 16);
+  FragH dh[HS / 16]; zero_acc16(dh);
+  warp_mma16<false, true, HS / 16>(dh, sDY + 16 * w * LYH, LYH, 16, sW2, LYH, 16, 16 * LYH, FO / 16);
+  __syncthreads();   // h, dy, old W2 shadow no longer needed by any warp (dy's smem becomes scratch)
+#pragma unroll
+  for (int j = 0; j < HS / 16; j++) wmma::store_matrix_sync(Sf + 16 * w * LSF + j * 16, dh[j], LSF, wmma::mem_row_major);
+  __syncwarp();
+  for (int e = lane; e < 16 * HS; e += 32) {   // mask by h > 0, dh replaces h (this warp's rows)
+    int r = 16 * w + e / HS, col = e % HS;
+    sH[r * LHH + col] = (__half2float(sH[r * LHH + col]) > 0.f) ? __float2half(Sf[r * LSF + col]) : __float2half(0.f);
+  }
+  __syncthreads();
+  FragH g1[HS / 16]; zero_acc16(g1);
+  warp_mma16<true, false, HS / 16>(g1, sX + 16 * w, LXH, 16 * LXH, sH, LHH, 16 * LHH, 16, FB / 16);
+  __syncthreads();   // sX, sH dead
+  if (res && next_a >= 0) { const Buf Xn = g_buf[next_a]; cp_block16(sX, LXH, reinterpret_cast<const __half*>(Xn.p), Xn.ld, FB, FD / 8); cp_commit(); }   // next step's X streams in during the updates
+  float* sW2f = reinterpret_cast<float*>(sH);
+#pragma unroll
+  for (int j = 0; j < HS / 16; j++) {
+#pragma unroll
+    for (int e = 0; e < cw1[j].num_elements; e++) cw1[j].x[e] = cw1[j].x[e] - lrs * g1[j].x[e];
+    wmma::store_matrix_sync(W1.p + (size_t)(16 * w) * W1.ld + c * HS + j * 16, cw1[j], W1.ld, wmma::mem_row_major);
+    wmma::store_matrix_sync(Sf + 16 * w * LSF + j * 16, cw1[j], LSF, wmma::mem_row_major);
+  }
+#pragma unroll
+  for (int e = 0; e < cw2.num_elements; e++) cw2.x[e] = cw2.x[e] - lrs * g2[0].x[e];
+  wmma::store_matrix_sync(W2.p + (size_t)(c * HS + mt * 16) * W2.ld + nt * 16, cw2, W2.ld, wmma::mem_row_major);
+  wmma::store_matrix_sync(sW2f + mt * 16 * LS2 + nt * 16, cw2, LS2, wmma::mem_row_major);
+  __syncwarp();
+  for (int e = lane; e < 16 * HS; e += 32) { int r = 16 * w + e / HS, col = e % HS; sW1[r * LHH + col] = __float2half(Sf[r * LSF + col]); }   // refresh the shadows
+  __syncthreads();
+  for (int i = tid; i < HS * FO; i += FNT) { int r = i / FO, col = i % FO; sW2[r * LYH + col] = __float2half(sW2f[r * LS2 + col]); }
+  if (!res) __threadfence();
+}
+
+__global__ void __launch_bounds__(FNT, 2) fvm16_kernel(const Instr* tape, const int* qoff, const int* qlen, int steps, int* ctr, float* loss, unsigned long long* prof, int perStep) {
+  const int b = blockIdx.x, n = qlen[b], q0 = qoff[b];
+  const bool res = n == 2;   // one task: its slice stays resident in this block's smem; more tasks share the block and reload
+  __half* sm = reinterpret_cast<__half*>(dsm);
+  for (int s = 0; s < steps; s++)
+    for (int i = 0; i < n; i++) {
+      const int t = q0 + i;
+      Instr in = inst_at(tape, t, s);
+      unsigned long long t0 = 0, t1 = 0;
+      if (prof) t0 = gtime();
+      if (in.op == OP_FWD) { fwd16_slice(in, s, res, sm, ctr); t1 = t0; }
+      else {
+        int next_a = (s + 1 < steps) ? inst_at(tape, t, s + 1).a : -1;
+        bwd16_slice(in, s, res, sm, loss, ctr, prof != nullptr, next_a);
+        if (prof) t1 = s_tready;
+      }
+      __syncthreads();
+      if (prof && threadIdx.x == 0) {
+        unsigned smid; asm volatile("mov.u32 %0, %%smid;" : "=r"(smid));
+        unsigned long long* q = prof + ((size_t)s * perStep + t) * 8; unsigned long long te = gtime();
+        q[0] = t0; q[1] = t1; q[2] = te; q[3] = te; q[4] = t1; q[5] = te; q[6] = (unsigned long long)smid | ((unsigned long long)b << 32); q[7] = 0;
+      }
+    }
+}
+__global__ void __launch_bounds__(FNT, 2) fphase16_kernel(const Instr* tape, int off, int step, float* loss) {
+  Instr in = inst_at(tape, off + blockIdx.x, step);
+  __half* sm = reinterpret_cast<__half*>(dsm);
+  if (in.op == OP_FWD) fwd16_slice(in, step, false, sm, nullptr); else bwd16_slice(in, step, false, sm, loss, nullptr, false, -1);
+}
+
 // ================= host =================
 struct Rng { uint64_t s; float next() { s = s * 6364136223846793005ULL + 1442695040888963407ULL; return ((s >> 40) & 0xFFFFFF) / 16777216.f * 2.f - 1.f; } };
 
@@ -547,8 +747,9 @@ KVM_ENTRY(int argc, char** argv) {
     else if (a == "--prog") prog = argv[++i];
     else if (a == "--runs") R = nx(); else if (a == "--lr") lr = nx(); else if (a == "--ref-steps") ref_steps = nx();
   }
-  const bool fused = prog == "fused";
-  if (!fused && prog != "tiles") { fprintf(stderr, "--prog tiles|fused\n"); return 1; }
+  const bool fp16 = prog == "fused16", fused = prog == "fused" || fp16;
+  if (!fused && prog != "tiles") { fprintf(stderr, "--prog tiles|fused|fused16\n"); return 1; }
+  const size_t fsm = fp16 ? FSMEM16 : FSMEM;   // dynamic smem of the fused kernels
   if (fused && (B != FB || D != FD || Hd != FH || O != FO)) { fprintf(stderr, "--prog fused is compiled for B=%d D=%d H=%d O=%d (KHS=%d)\n", FB, FD, FH, FO, HS); return 1; }
   if (B % TILE || D % TILE || Hd % TILE || O % TILE || B % KC || D % KC || Hd % KC || O % KC) { fprintf(stderr, "dims must be multiples of max(TILE=%d, KC=%d)\n", TILE, KC); return 1; }
   int nRB = B / TILE, nHC = Hd / TILE, nOC = O / TILE, nDC = D / TILE;
@@ -607,13 +808,18 @@ KVM_ENTRY(int argc, char** argv) {
   auto idH1 = [&](int r) { return 2 * NB + 5 * r + 2; };
   auto idDY = [&](int r) { return 2 * NB + 5 * r + 3; };
   auto idDH = [&](int r) { return 2 * NB + 5 * r + 4; };
-  int nbuf = 2 * NB + 5 * R;
+  auto idXh = [&](int k) { return 2 * NB + 5 * R + k; };   // fp16 copies of X (fused16 only)
+  int nbuf = 2 * NB + 5 * R + (fp16 ? NB : 0);
   if (nbuf > 256) { fprintf(stderr, "too many buffers\n"); return 1; }
   std::vector<Buf> hb(nbuf);
   auto dmalloc = [&](size_t n) { float* p; CK(cudaMalloc(&p, n * 4)); CK(cudaMemset(p, 0, n * 4)); return p; };
   for (int k = 0; k < NB; k++) {
     hb[idX(k)] = {dmalloc(B * D), D}; CK(cudaMemcpy(hb[idX(k)].p, X[k].data(), B * D * 4, cudaMemcpyHostToDevice));
     hb[idT(k)] = {dmalloc(B * O), O}; CK(cudaMemcpy(hb[idT(k)].p, T[k].data(), B * O * 4, cudaMemcpyHostToDevice));
+  }
+  if (fp16) for (int k = 0; k < NB; k++) {
+    std::vector<__half> xh(X[k].size()); for (size_t i = 0; i < xh.size(); i++) xh[i] = __float2half(X[k][i]);
+    __half* d; CK(cudaMalloc(&d, xh.size() * 2)); CK(cudaMemcpy(d, xh.data(), xh.size() * 2, cudaMemcpyHostToDevice)); hb[idXh(k)] = {reinterpret_cast<float*>(d), D};
   }
   for (int r = 0; r < R; r++) {
     hb[idW1(r)] = {dmalloc(D * Hd), Hd}; hb[idW2(r)] = {dmalloc(Hd * O), O};
@@ -658,7 +864,7 @@ KVM_ENTRY(int argc, char** argv) {
   };
   // fused program: FWD / BWD per (run, hidden slice); counter r counts the slices whose partial y of the step is written
   auto emit_fused = [&](std::vector<Instr>& tape, int r, int c, int ph) {
-    Instr i = mk(); i.op = ph == 0 ? OP_FWD : OP_BWD; i.a = idX(0); i.b = idW1(r); i.c = idW2(r); i.aux = idT(0); i.m0 = c; i.n0 = idH1(r); i.K = idDY(r);
+    Instr i = mk(); i.op = ph == 0 ? OP_FWD : OP_BWD; i.a = fp16 ? idXh(0) : idX(0); i.b = idW1(r); i.c = idW2(r); i.aux = idT(0); i.m0 = c; i.n0 = idH1(r); i.K = idDY(r);
     i.scale = 2.f / (B * O); memcpy(&i.pad1, &lrs[r], 4); i.loss_idx = r * steps; i.xflags = 4 | 8;
     if (ph == 0) i.s0 = r; else { i.w0c = r; i.w0v = NS; }
     tape.push_back(i);
@@ -689,8 +895,11 @@ KVM_ENTRY(int argc, char** argv) {
   } else {
     CK(cudaFuncSetAttribute(fvm_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)FSMEM));
     CK(cudaFuncSetAttribute(fphase_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)FSMEM));
-    CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, fvm_kernel, FNT, FSMEM));
-    if (occ < 1) { fprintf(stderr, "fused kernel does not fit (%zu B smem)\n", FSMEM); return 1; }
+    CK(cudaFuncSetAttribute(fvm16_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)FSMEM16));
+    CK(cudaFuncSetAttribute(fphase16_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)FSMEM16));
+    if (fp16) CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, fvm16_kernel, FNT, FSMEM16));
+    else CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, fvm_kernel, FNT, FSMEM));
+    if (occ < 1) { fprintf(stderr, "fused kernel does not fit (%zu B smem)\n", fsm); return 1; }
     int ntask = R * NS; grid = std::min(ntask, prop.multiProcessorCount * occ); res = ntask <= grid;
     std::vector<std::vector<int>> tasks(grid);
     for (int t = 0; t < ntask; t++) tasks[t % grid].push_back(t);
@@ -725,9 +934,9 @@ KVM_ENTRY(int argc, char** argv) {
     CK(cudaDeviceSynchronize());
   };
   auto launch_seq = [&](cudaStream_t st, int rlo, int rhi) {   // one model at a time: run r, step s, phase ph
-    for (int r = rlo; r < rhi; r++) for (int s = 0; s < steps; s++) for (int ph = 0; ph < NPH; ph++) { if (fused) fphase_kernel<<<nPR[ph], FNT, FSMEM, st>>>(dtapeP, offPR[ph][r], s, dloss); else phase_kernel<<<nPR[ph], NT, DSMEM, st>>>(dtapeP, offPR[ph][r], s, dloss); }
+    for (int r = rlo; r < rhi; r++) for (int s = 0; s < steps; s++) for (int ph = 0; ph < NPH; ph++) { if (fp16) fphase16_kernel<<<nPR[ph], FNT, FSMEM16, st>>>(dtapeP, offPR[ph][r], s, dloss); else if (fused) fphase_kernel<<<nPR[ph], FNT, FSMEM, st>>>(dtapeP, offPR[ph][r], s, dloss); else phase_kernel<<<nPR[ph], NT, DSMEM, st>>>(dtapeP, offPR[ph][r], s, dloss); }
   };
-  auto launch_batched = [&](cudaStream_t st) { for (int s = 0; s < steps; s++) for (int ph = 0; ph < NPH; ph++) { if (fused) fphase_kernel<<<nP[ph], FNT, FSMEM, st>>>(dtapeP, offP[ph], s, dloss); else phase_kernel<<<nP[ph], NT, DSMEM, st>>>(dtapeP, offP[ph], s, dloss); } };
+  auto launch_batched = [&](cudaStream_t st) { for (int s = 0; s < steps; s++) for (int ph = 0; ph < NPH; ph++) { if (fp16) fphase16_kernel<<<nP[ph], FNT, FSMEM16, st>>>(dtapeP, offP[ph], s, dloss); else if (fused) fphase_kernel<<<nP[ph], FNT, FSMEM, st>>>(dtapeP, offP[ph], s, dloss); else phase_kernel<<<nP[ph], NT, DSMEM, st>>>(dtapeP, offP[ph], s, dloss); } };
   cudaEvent_t e0, e1; cudaEventCreate(&e0); cudaEventCreate(&e1);
   auto timed = [&](auto fn) { reset(); cudaEventRecord(e0); fn(); cudaEventRecord(e1); CK(cudaEventSynchronize(e1)); CK(cudaGetLastError()); float ms; cudaEventElapsedTime(&ms, e0, e1); return (double)ms; };
   struct Out { std::vector<float> L, w; };
@@ -751,7 +960,8 @@ KVM_ENTRY(int argc, char** argv) {
     for (int r = 0; r < R; r++) { cudaGraph_t g; cudaStreamBeginCapture(cs, cudaStreamCaptureModeGlobal); launch_seq(cs, r, r + 1); CK(cudaStreamEndCapture(cs, &g)); CK(cudaGraphInstantiate(&xRun[r], g, 0)); } }
 
   auto vm_launch = [&](unsigned long long* prof) {
-    if (fused) fvm_kernel<<<grid, FNT, FSMEM>>>(dtapeV, dqoff, dqlen, steps, dctr, dloss, prof, perStep, res);
+    if (fp16) fvm16_kernel<<<grid, FNT, FSMEM16>>>(dtapeV, dqoff, dqlen, steps, dctr, dloss, prof, perStep);
+    else if (fused) fvm_kernel<<<grid, FNT, FSMEM>>>(dtapeV, dqoff, dqlen, steps, dctr, dloss, prof, perStep, res);
     else vm_kernel<<<grid, NT, DSMEM>>>(dtapeV, ntape, dhead, dctr, dloss, prof);
   };
   auto run_vm = [&]() { vm_launch(nullptr); };
@@ -798,6 +1008,9 @@ KVM_ENTRY(int argc, char** argv) {
   // ---- optional timeline: one extra VM run with per-instruction timestamps (prof pointer set), CSV for the step window [tl_s0, tl_s1)
   double t_prof = 0;
   if (!tl_path.empty()) {
+#ifdef KSTAGE
+    { unsigned long long z[24] = {0}; CK(cudaMemcpyToSymbol(g_stage, z, sizeof z)); }
+#endif
     unsigned long long* dprof; size_t pbytes = (size_t)ntape * 8 * 8; CK(cudaMalloc(&dprof, pbytes)); CK(cudaMemset(dprof, 0, pbytes));
     t_prof = timed([&]() { vm_launch(dprof); });
     std::vector<unsigned long long> hp((size_t)ntape * 8); CK(cudaMemcpy(hp.data(), dprof, pbytes, cudaMemcpyDeviceToHost)); cudaFree(dprof);

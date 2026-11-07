@@ -1,0 +1,7 @@
+PASS  attn B=1 T=97 H=2 Hkv=1 hd=32 bwd bitwise deterministic  
+PASS  attn B=1 T=97 H=2 Hkv=1 hd=32 err==0  
+PASS  attention reference backward vs finite differences (GQA)  max abs diff 1.79e-09
+
+1941 passed, 0 failed
+========= ERROR SUMMARY: 0 errors
+exit 0

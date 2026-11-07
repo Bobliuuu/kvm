@@ -1,0 +1,58 @@
+# suite=custom tag=tiles162-a 2026-11-07T07:57:50Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 1009 GB, cores: 16
+== build exec (base, merged) 07:57:50
+base rc=0
+new rc=0
+-rwxr-xr-x 1 root root 22707168 Nov  7 08:27 /work/exec_base
+-rwxr-xr-x 1 root root 25930584 Nov  7 11:02 /work/exec_new
+== bundles 11:02:24
+gen base_f32 rc=1; tasks: 
+gen base_bf16s rc=1; tasks: 
+gen new_f32 rc=0; tasks: 83861
+gen new_trunc rc=0; tasks: 83861
+gen new_bf16s rc=0; tasks: 58634
+== kvm_run build (merged) in background 11:02:57
+== interleaved step times (best of 5, 3 rounds) 11:02:57
+-- round 1 new_f32 exec_new
+rep 5/5: 363.1 ms (363.08 ms/step), wall 2.4 s
+executor: best 357838 us/step  median 364863  worst 381109
+-- round 1 new_trunc exec_new
+rep 5/5: 348.5 ms (348.47 ms/step), wall 2.8 s
+executor: best 343444 us/step  median 350135  worst 358236
+-- round 1 new_bf16s exec_new
+rep 5/5: 294.7 ms (294.67 ms/step), wall 2.9 s
+executor: best 290835 us/step  median 292038  worst 296623
+-- round 2 new_f32 exec_new
+rep 5/5: 360.1 ms (360.08 ms/step), wall 3.0 s
+executor: best 360077 us/step  median 363795  worst 366822
+-- round 2 new_trunc exec_new
+rep 5/5: 348.8 ms (348.82 ms/step), wall 2.9 s
+executor: best 344344 us/step  median 345096  worst 348819
+-- round 2 new_bf16s exec_new
+rep 5/5: 292.6 ms (292.59 ms/step), wall 3.3 s
+executor: best 289282 us/step  median 291852  worst 292592
+-- round 3 new_f32 exec_new
+rep 5/5: 368.6 ms (368.63 ms/step), wall 2.6 s
+executor: best 359711 us/step  median 362875  worst 370092
+-- round 3 new_trunc exec_new
+rep 5/5: 347.6 ms (347.63 ms/step), wall 3.2 s
+executor: best 347626 us/step  median 349857  worst 355010
+-- round 3 new_bf16s exec_new
+rep 5/5: 291.0 ms (291.04 ms/step), wall 2.7 s
+executor: best 290516 us/step  median 291183  worst 295396
+== traces (workers busy) 11:05:07
+OK: 83861/83861 tasks, 362.511 ms
+83861 tasks, span 335.78 ms = 335776 us/step, workers 107: task-run time 12518.8 ms, utilisation 34.8%, mean ready->start wait 1347.0 us, mean task 149.3 us
+op                              tasks  sum run ms  mean us   max us % run time
+matmul_tile                     61782     8240.37    133.4   4075.5      65.8%
+OK: 83861/83861 tasks, 353.775 ms
+83861 tasks, span 325.85 ms = 325852 us/step, workers 107: task-run time 10389.4 ms, utilisation 29.8%, mean ready->start wait 1310.7 us, mean task 123.9 us
+op                              tasks  sum run ms  mean us   max us % run time
+matmul_tile                     61782     6106.98     98.8   3398.7      58.8%
+OK: 58634/58634 tasks, 289.072 ms
+58634 tasks, span 270.13 ms = 270128 us/step, workers 107: task-run time 8857.2 ms, utilisation 30.6%, mean ready->start wait 512.7 us, mean task 151.1 us
+op                              tasks  sum run ms  mean us   max us % run time
+matmul_mma_bf16                 30910     3512.77    113.6   2064.4      39.7%

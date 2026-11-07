@@ -1,0 +1,44 @@
+# suite=custom tag=sched-tail-base 2026-11-07T07:03:13Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 1024 GB, cores: 16
+      constexpr int BK = 16, NST = 3, BM = 64 * WM, BN = WTN * WN, NJ = WTN / 8, ATILE = BM * BK, TILE = ATILE, STAGE = (BM + BN) * BK;
+                                                                                                  ^
+
+
+real	23m49.599s
+user	23m24.420s
+sys	0m6.560s
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.3, runtime 12.8
+== baselines
+  scripted load: 7 phases (idle/low/BURST/low/idle/BURST/idle) over 1600 ms, 106 workers (108 blocks: 1 admitter, 1 policy, the rest workers), best-of-5, median [min,max]
+    [global queue, flat] chain hop run p50 400.4 us, stream CTA gap p50 14.3 us
+  global queue, flat         req p50   23596 [22590,23945] p99    27261 [25984,27962] us | hop-wait p99 26681.3 [25444.4,27288.6] | miss 100.0% [100.0,100.0] | train   90.1 [89.4,90.8] kt/s  292.4 [291.6,296.0] GB/s burst   67.8 [66.4,68.9] kt/s | util 97.8% [97.7,97.8]
+    [global queue, serve prio 20] chain hop run p50 410.6 us, stream CTA gap p50 14.3 us
+  global queue, serve prio 20 req p50     887 [881,909] p99     1402 [1361,1449] us | hop-wait p99   922.6 [854.0,951.3] | miss   0.0% [0.0,0.0] | train   89.5 [88.2,91.0] kt/s  292.2 [286.3,296.1] GB/s burst   63.3 [61.0,66.3] kt/s | util 97.8% [97.7,97.8]
+    [static split 25% serve] chain hop run p50 429.1 us, stream CTA gap p50 14.3 us
+  static split 25% serve     req p50  178727 [174206,189721] p99   293235 [293175,293513] us | hop-wait p99 292290.6 [292260.9,292498.4] | miss  97.1% [96.5,97.7] | train   77.4 [76.4,80.2] kt/s  251.2 [249.4,260.4] GB/s burst   74.7 [73.0,79.5] kt/s | util 82.8% [82.2,84.9]
+    [static split 50% serve] chain hop run p50 427.0 us, stream CTA gap p50 13.3 us
+  static split 50% serve     req p50    7378 [5577,13665] p99    20613 [14168,39914] us | hop-wait p99 19998.7 [13484.0,39233.5] | miss  82.1% [65.7,86.6] | train   63.9 [63.8,64.0] kt/s  207.3 [206.8,208.0] GB/s burst   63.9 [63.8,64.0] kt/s | util 75.2% [74.7,76.4]
+    [dynamic + controller] chain hop run p50 420.9 us, stream CTA gap p50 19.5 us
+  dynamic + controller       req p50    1632 [1510,1691] p99     2559 [2514,2569] us | hop-wait p99  2061.3 [1999.9,2078.7] | miss   0.0% [0.0,0.0] | train   88.9 [88.3,89.6] kt/s  289.0 [286.3,291.9] GB/s burst   61.9 [61.7,64.0] kt/s | util 96.9% [96.9,97.0]
+    [dynamic + ctl + arbiter] chain hop run p50 399.4 us, stream CTA gap p50 20.5 us
+  dynamic + ctl + arbiter    req p50     745 [734,755] p99     1567 [1500,1734] us | hop-wait p99  1032.2 [990.2,1177.6] | miss   0.0% [0.0,0.0] | train   69.1 [68.3,69.5] kt/s  224.3 [221.6,226.6] GB/s burst   26.7 [26.2,27.7] kt/s | util 80.2% [79.7,81.0]
+  ratios (dynamic + controller vs): serve p99 / train ktask/s / utilization
+    vs global queue, flat           p99 10.65x lower, train 0.99x, utilization 0.99x
+    vs global queue, serve prio 20  p99 0.55x lower, train 0.99x, utilization 0.99x
+    vs static split 25% serve       p99 114.59x lower, train 1.15x, utilization 1.17x
+    vs static split 50% serve       p99 8.06x lower, train 1.39x, utilization 1.29x
+== baselines: PASS (53.1s, 0 new failures)
+== overload
+  serve flood: 9000 req/s x 48 matmul tasks (~115 CTAs of demand on 106 workers) for 300 ms, train saturating; train reservation 26 CTAs (25%) in the dynamic row
+    [global queue, serve prio 20] chain hop run p50 358.4 us, stream CTA gap p50 14.3 us
+  global queue, serve prio 20 req p50   53306 [53203,53619] p99    53829 [53578,54495] us | hop-wait p99 53362.7 [53109.8,54000.6] | miss  97.2% [96.5,98.2] | train    0.8 [0.7,1.0] kt/s    2.8 [2.7,3.4] GB/s burst    0.9 [0.8,1.1] kt/s | util 95.9% [95.9,96.0]
+    [dynamic, train min 26 CTAs] chain hop run p50 401.4 us, stream CTA gap p50 502.8 us
+  dynamic, train min 26 CTAs req p50   80398 [78514,80999] p99    83512 [82696,84231] us | hop-wait p99 82915.3 [82102.3,83650.6] | miss  99.0% [98.8,99.1] | train   25.3 [24.7,26.0] kt/s   82.4 [79.6,84.3] GB/s burst   27.6 [26.9,28.5] kt/s | util 95.2% [95.2,95.2]
+  train throughput under the flood: global-prio 0.8 ktask/s, dynamic with reservation 25.3 ktask/s (32.0x); 
+== overload: PASS (6.5s, 0 new failures)
+8 checks, 0 failed, 0 suites failed
+PASS
+exit: 0

@@ -1,0 +1,90 @@
+# tag=kvmcu-diag1 2026-11-07T07:39:44Z
+selftest rc=0
+fused smoke R=1 rc=0: PASS
+fused smoke R=8 rc=0: PASS
+fused smoke R=32 rc=0: PASS
+progs: tiles,fused
+=== runs=1 07:40:13
+rc=0
+mode                                        best ms    us/step/run run-steps/s    vs seq  max/min
+sequential, launch-per-op                      9.79          32.62       30655     1.00x    1.00x
+sequential, CUDA graph/run                     9.06          30.21       33096     1.08x    1.00x
+batched across runs (vmap-like graph)          9.05          30.16       33156     1.08x    1.00x
+KVM: all runs, ONE kernel                      7.92          26.39       37895     1.24x    1.00x
+KVM vs best baseline: 1.14x   (3 reps per mode)
+
+loss run0: 0.31605 -> 0.17337 (lr 0.0500)
+max rel loss err vs cpu fp32 (runs 0 and 0, first 20 steps, all modes): 2.82e-05
+weights VM vs each baseline, all runs: 0 of 147456 elements differ bitwise (max |dW| 0.00e+00)
+PASS
+[round 0] VM prog=fused 7.917 ms  pass=True
+
+variant                                                              best ms  us/step/run  max/min    VM(fused) speedup
+KVM: all runs, ONE kernel [fused]                                      7.917       26.388    1.00x       1.00x
+KVM: all runs, ONE kernel [tiles]                                      8.482       28.273    1.01x       1.07x
+batched across runs (vmap-like graph) [fused]                          9.048       30.160    1.00x       1.14x
+sequential, CUDA graph/run [fused]                                     9.064       30.215    1.00x       1.15x
+sequential, CUDA graph/run [tiles]                                     9.551       31.836    1.00x       1.21x
+batched across runs (vmap-like graph) [tiles]                          9.551       31.836    1.01x       1.21x
+sequential, launch-per-op [fused]                                      9.786       32.621    1.00x       1.24x
+sequential, launch-per-op [tiles]                                     11.682       38.939    1.00x       1.48x
+torch.compile bmm step + whole CUDA graph                             13.790       45.967    1.01x       1.74x
+torch.compile step + whole-run CUDA graph                             13.848       46.159    1.00x       1.75x
+
+R=1 S=300: best VM = fused 7.917 ms; vs best torch (torch.compile bmm step + whole CUDA graph) = 1.74x ; pass={'tiles': True, 'fused': True}
+=== runs=8 07:40:31
+rc=0
+mode                                        best ms    us/step/run run-steps/s    vs seq  max/min
+sequential, launch-per-op                     76.01          31.67       31576     1.00x    1.00x
+sequential, CUDA graph/run                    70.31          29.29       34136     1.08x    1.00x
+batched across runs (vmap-like graph)         11.04           4.60      217296     6.88x    1.00x
+KVM: all runs, ONE kernel                      8.19           3.41      293079     9.28x    1.01x
+KVM vs best baseline: 1.35x   (3 reps per mode)
+
+loss run0: 0.31605 -> 0.21904 (lr 0.0125)   run7: 0.31605 -> 0.14475 (lr 0.0875)
+max rel loss err vs cpu fp32 (runs 0 and 7, first 20 steps, all modes): 2.29e-05
+weights VM vs each baseline, all runs: 0 of 1179648 elements differ bitwise (max |dW| 0.00e+00)
+PASS
+[round 0] VM prog=fused 8.189 ms  pass=True
+
+variant                                                              best ms  us/step/run  max/min    VM(fused) speedup
+KVM: all runs, ONE kernel [fused]                                      8.189        3.412    1.01x       1.00x
+KVM: all runs, ONE kernel [tiles]                                     10.175        4.239    1.00x       1.24x
+batched across runs (vmap-like graph) [fused]                         11.045        4.602    1.00x       1.35x
+torch.compile bmm step + whole CUDA graph                             11.890        4.954    1.01x       1.45x
+batched across runs (vmap-like graph) [tiles]                         15.539        6.475    1.00x       1.90x
+sequential, CUDA graph/run [tiles]                                    69.034       28.764    1.00x       8.43x
+sequential, CUDA graph/run [fused]                                    70.308       29.295    1.00x       8.59x
+sequential, launch-per-op [fused]                                     76.007       31.670    1.00x       9.28x
+sequential, launch-per-op [tiles]                                     83.720       34.883    1.00x      10.22x
+torch.compile step + whole-run CUDA graph                             92.506       38.544    1.23x      11.30x
+
+R=8 S=300: best VM = fused 8.189 ms; vs best torch (torch.compile bmm step + whole CUDA graph) = 1.45x ; pass={'tiles': True, 'fused': True}
+=== runs=32 07:40:53
+rc=0
+mode                                        best ms    us/step/run run-steps/s    vs seq  max/min
+sequential, launch-per-op                    303.64          31.63       31617     1.00x    1.00x
+sequential, CUDA graph/run                   281.13          29.28       34148     1.08x    1.00x
+batched across runs (vmap-like graph)         34.11           3.55      281439     8.90x    1.00x
+KVM: all runs, ONE kernel                     27.54           2.87      348643    11.03x    1.02x
+KVM vs best baseline: 1.24x   (3 reps per mode)
+
+loss run0: 0.31605 -> 0.21904 (lr 0.0125)   run31: 0.31605 -> 0.14475 (lr 0.0875)
+max rel loss err vs cpu fp32 (runs 0 and 31, first 20 steps, all modes): 2.29e-05
+weights VM vs each baseline, all runs: 0 of 4718592 elements differ bitwise (max |dW| 0.00e+00)
+PASS
+[round 0] VM prog=fused 27.535 ms  pass=True
+
+variant                                                              best ms  us/step/run  max/min    VM(fused) speedup
+torch.compile bmm step + whole CUDA graph                             19.412        2.022    1.00x       0.70x
+KVM: all runs, ONE kernel [fused]                                     27.535        2.868    1.02x       1.00x
+KVM: all runs, ONE kernel [tiles]                                     33.304        3.469    1.00x       1.21x
+batched across runs (vmap-like graph) [fused]                         34.111        3.553    1.00x       1.24x
+batched across runs (vmap-like graph) [tiles]                         35.169        3.663    1.00x       1.28x
+sequential, CUDA graph/run [tiles]                                   276.692       28.822    1.00x      10.05x
+sequential, CUDA graph/run [fused]                                   281.133       29.285    1.00x      10.21x
+sequential, launch-per-op [fused]                                    303.637       31.629    1.00x      11.03x
+sequential, launch-per-op [tiles]                                    335.010       34.897    1.00x      12.17x
+torch.compile step + whole-run CUDA graph                            369.219       38.460    1.03x      13.41x
+
+R=32 S=300: best VM = fused 27.535 ms; vs best torch (torch.compile bmm step + whole CUDA graph) = 0.70x ; pass={'tiles': True, 'fused': True}

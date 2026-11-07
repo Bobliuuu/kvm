@@ -1,0 +1,38 @@
+llama_bf16 exit 0
+mlp_bf16 exit 0
+vit_bf16 exit 0
+san_bf16 exit 0
+== compute-sanitizer memcheck san_bf16
+========= COMPUTE-SANITIZER
+OK: 1918/1918 tasks, 289.290 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_bf16
+========= COMPUTE-SANITIZER
+OK: 1918/1918 tasks, 7195.385 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_bf16
+========= COMPUTE-SANITIZER
+OK: 1918/1918 tasks, 139.415 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+llama_bf16s exit 0
+mlp_bf16s exit 0
+vit_bf16s exit 0
+san_bf16s exit 0
+== compute-sanitizer memcheck san_bf16s
+========= COMPUTE-SANITIZER
+OK: 2294/2294 tasks, 333.866 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_bf16s
+========= COMPUTE-SANITIZER
+OK: 2294/2294 tasks, 8370.989 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_bf16s
+========= COMPUTE-SANITIZER
+OK: 2294/2294 tasks, 150.422 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0

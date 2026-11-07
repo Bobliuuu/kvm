@@ -1,0 +1,35 @@
+# suite=custom tag=combined-steps 2026-11-07T07:10:23Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 1009 GB, cores: 16
+main 0
+comb 0
+rep 1 main OK: 318139/318139 tasks, 1113.106 ms
+rep 1 comb_f32 OK: 270914/270914 tasks, 847.851 ms
+rep 1 comb_bf16s OK: 58634/58634 tasks, 295.861 ms
+rep 1 combexec_on_main_bundle OK: 318139/318139 tasks, 1157.705 ms
+rep 2 main OK: 318139/318139 tasks, 1092.743 ms
+rep 2 comb_f32 OK: 270914/270914 tasks, 845.540 ms
+rep 2 comb_bf16s OK: 58634/58634 tasks, 294.011 ms
+rep 2 combexec_on_main_bundle OK: 318139/318139 tasks, 1149.383 ms
+rep 3 main OK: 318139/318139 tasks, 1092.889 ms
+rep 3 comb_f32 OK: 270914/270914 tasks, 844.645 ms
+rep 3 comb_bf16s OK: 58634/58634 tasks, 288.305 ms
+rep 3 combexec_on_main_bundle OK: 318139/318139 tasks, 1163.614 ms
+rep 4 main OK: 318139/318139 tasks, 1097.887 ms
+rep 4 comb_f32 OK: 270914/270914 tasks, 843.568 ms
+rep 4 comb_bf16s OK: 58634/58634 tasks, 290.300 ms
+rep 4 combexec_on_main_bundle OK: 318139/318139 tasks, 1165.112 ms
+rep 5 main OK: 318139/318139 tasks, 1109.741 ms
+rep 5 comb_f32 OK: 270914/270914 tasks, 848.266 ms
+rep 5 comb_bf16s OK: 58634/58634 tasks, 299.370 ms
+rep 5 combexec_on_main_bundle OK: 318139/318139 tasks, 1160.239 ms
+rep 6 main OK: 318139/318139 tasks, 1090.378 ms
+rep 6 comb_f32 OK: 270914/270914 tasks, 844.665 ms
+rep 6 comb_bf16s OK: 58634/58634 tasks, 293.287 ms
+rep 6 combexec_on_main_bundle OK: 318139/318139 tasks, 1154.180 ms
+rep 7 main OK: 318139/318139 tasks, 1088.983 ms
+rep 7 comb_f32 OK: 270914/270914 tasks, 850.636 ms
+rep 7 comb_bf16s OK: 58634/58634 tasks, 292.112 ms
+rep 7 combexec_on_main_bundle OK: 318139/318139 tasks, 1162.240 ms

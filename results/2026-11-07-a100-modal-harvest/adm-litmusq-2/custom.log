@@ -1,0 +1,55 @@
+# suite=custom tag=adm-litmusq-2 2026-11-07T06:31:35Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 1009 GB, cores: 16
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+== queue rounds_k=1
+GPU NVIDIA A100-SXM4-40GB sm_80, 108 SMs  [build: production header]
+LITMUS queue[cap=2,ctas=7]                rounds=20002  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=20002 (wraps/bucket ~10001) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=2,ctas=200]              rounds=20004  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=20004 (wraps/bucket ~10002) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=4,ctas=7]                rounds=20004  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=20004 (wraps/bucket ~5001) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=4,ctas=200]              rounds=20006  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=20006 (wraps/bucket ~5001) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=8,ctas=7]                rounds=20004  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=20004 (wraps/bucket ~2500) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=8,ctas=200]              rounds=20009  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=20009 (wraps/bucket ~2501) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=64,ctas=7]               rounds=20006  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=20006 (wraps/bucket ~312) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=64,ctas=200]             rounds=20022  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=20022 (wraps/bucket ~312) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=1024,ctas=7]             rounds=20004  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=20004 (wraps/bucket ~19) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=1024,ctas=200]           rounds=20007  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=20007 (wraps/bucket ~19) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+TOTAL rounds=200068 violations=0
+exit: 0
+== queue rounds_k=5
+GPU NVIDIA A100-SXM4-40GB sm_80, 108 SMs  [build: production header]
+LITMUS queue[cap=2,ctas=7]                rounds=100002  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100002 (wraps/bucket ~50001) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=2,ctas=200]              rounds=100004  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100004 (wraps/bucket ~50002) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=4,ctas=7]                rounds=100006  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100006 (wraps/bucket ~25001) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=4,ctas=200]              rounds=100007  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100007 (wraps/bucket ~25001) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=8,ctas=7]                rounds=100005  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100005 (wraps/bucket ~12500) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=8,ctas=200]              rounds=100011  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100011 (wraps/bucket ~12501) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=64,ctas=7]               rounds=100006  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100006 (wraps/bucket ~1562) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=64,ctas=200]             rounds=100010  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100010 (wraps/bucket ~1562) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=1024,ctas=7]             rounds=100005  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100005 (wraps/bucket ~97) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=1024,ctas=200]           rounds=100010  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100010 (wraps/bucket ~97) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+TOTAL rounds=1000066 violations=0
+exit: 0

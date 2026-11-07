@@ -1,0 +1,52 @@
+# suite=custom tag=bf16zoo 2026-11-07T07:23:33Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 1024 GB, cores: 16
+
+real	36m29.281s
+user	35m52.290s
+sys	0m8.770s
+/tmp/vit_bf16: vit_bf16 10 steps, 6530 tasks, 37029 edges, 1xTF32
+vit_bf16 exit 0
+/tmp/llama_bf16s: llama_bf16s 10 steps, 11480 tasks, 64936 edges, 1xTF32
+llama_bf16s exit 0
+/tmp/vit_bf16s: vit_bf16s 10 steps, 8820 tasks, 35400 edges, 1xTF32
+vit_bf16s exit 0
+/tmp/san_bf16s: llama_bf16s 2 steps, 2294 tasks, 10189 edges, 1xTF32
+san_bf16s exit 0
+/logs/bf16zoo/zoo/llama_bf16s:
+total 40833
+drwxr-xr-x 1 root root       36 Nov  7 08:01 .
+drwxr-xr-x 1 root root       37 Nov  7 08:02 ..
+drwxr-xr-x 1 root root       24 Nov  7 08:01 bundle
+-rw-r--r-- 1 root root 38030602 Nov  7 08:01 dump.txt
+-rw-r--r-- 1 root root     1300 Nov  7 08:01 meta.json
+-rw-r--r-- 1 root root  3778922 Nov  7 08:01 workload.json
+
+/logs/bf16zoo/zoo/san_bf16s:
+total 11242
+drwxr-xr-x 1 root root       36 Nov  7 08:02 .
+drwxr-xr-x 1 root root       37 Nov  7 08:02 ..
+drwxr-xr-x 1 root root       24 Nov  7 08:02 bundle
+-rw-r--r-- 1 root root 10822156 Nov  7 08:02 dump.txt
+-rw-r--r-- 1 root root     1253 Nov  7 08:02 meta.json
+-rw-r--r-- 1 root root   685702 Nov  7 08:02 workload.json
+
+/logs/bf16zoo/zoo/vit_bf16:
+total 33775
+drwxr-xr-x 1 root root       36 Nov  7 08:00 .
+drwxr-xr-x 1 root root       37 Nov  7 08:02 ..
+drwxr-xr-x 1 root root       24 Nov  7 08:00 bundle
+-rw-r--r-- 1 root root 32582571 Nov  7 08:00 dump.txt
+-rw-r--r-- 1 root root     1182 Nov  7 08:00 meta.json
+-rw-r--r-- 1 root root  1998889 Nov  7 08:00 workload.json
+
+/logs/bf16zoo/zoo/vit_bf16s:
+total 39307
+drwxr-xr-x 1 root root       36 Nov  7 08:01 .
+drwxr-xr-x 1 root root       37 Nov  7 08:02 ..
+drwxr-xr-x 1 root root       24 Nov  7 08:01 bundle
+-rw-r--r-- 1 root root 37876725 Nov  7 08:01 dump.txt
+-rw-r--r-- 1 root root     1184 Nov  7 08:01 meta.json
+-rw-r--r-- 1 root root  2370445 Nov  7 08:01 workload.json

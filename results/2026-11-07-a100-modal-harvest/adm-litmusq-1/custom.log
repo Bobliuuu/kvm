@@ -1,0 +1,13 @@
+# suite=custom tag=adm-litmusq-1 2026-11-07T05:55:03Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 1009 GB, cores: 16
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+== queue rounds_k=1
+GPU NVIDIA A100-SXM4-40GB sm_80, 108 SMs  [build: production header]
+exit: 124
+== queue rounds_k=5
+GPU NVIDIA A100-SXM4-40GB sm_80, 108 SMs  [build: production header]
+exit: 124

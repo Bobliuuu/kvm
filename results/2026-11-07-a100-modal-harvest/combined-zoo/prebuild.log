@@ -1,0 +1,36 @@
+/tmp/zoo/mlp_tf32: mlp_tiny 5 steps, 340 tasks, 1324 edges, 1xTF32
+/tmp/zoo/mlp_f32: mlp_tiny 40 steps, 2760 tasks, 11962 edges, 3xTF32
+/tmp/zoo/mlp_bf16: mlp_bf16 30 steps, 2790 tasks, 9024 edges, 1xTF32
+/tmp/zoo/gpt_fused: gpt_tiny 5 steps, 1340 tasks, 8277 edges, 3xTF32, fused
+/tmp/zoo/vit_tf32: vit_tiny 5 steps, 2120 tasks, 15564 edges, 1xTF32
+/tmp/zoo/san_llama: llama_tiny 2 steps, 1660 tasks, 10687 edges, 3xTF32
+/tmp/zoo/san_gqa_fused: llama_gqa_tied 2 steps, 1564 tasks, 10173 edges, 3xTF32, fused
+/tmp/zoo/llama_tf32: llama_tiny 5 steps, 4150 tasks, 29800 edges, 1xTF32
+/tmp/zoo/san_mlp: mlp_tiny 3 steps, 207 tasks, 825 edges, 3xTF32
+/tmp/zoo/san_vit: vit_tiny 2 steps, 848 tasks, 5799 edges, 3xTF32
+/tmp/zoo/san_moe: moe_tiny 2 steps, 1998 tasks, 12179 edges, 3xTF32
+/tmp/zoo/san_moe_fused: moe_tiny 2 steps, 1918 tasks, 11811 edges, 3xTF32, fused
+/tmp/zoo/moe_tf32: moe_tiny 5 steps, 4995 tasks, 33311 edges, 1xTF32
+/tmp/zoo/san_bf16: llama_bf16 2 steps, 1918 tasks, 11131 edges, 1xTF32
+/tmp/zoo/mlp_bf16s: mlp_bf16s 30 steps, 3810 tasks, 10978 edges, 1xTF32
+/tmp/zoo/llama_accum: llama_tiny 5 steps, 5190 tasks, 42494 edges, 3xTF32
+/tmp/zoo/llama_remat: llama_remat 5 steps, 6450 tasks, 50242 edges, 3xTF32
+/tmp/zoo/llama_f32: llama_tiny 10 steps, 8300 tasks, 61655 edges, 3xTF32
+/tmp/zoo/gqa_tied: llama_gqa_tied 10 steps, 7980 tasks, 59989 edges, 3xTF32
+/tmp/zoo/llama_fused: llama_tiny 10 steps, 8140 tasks, 60495 edges, 3xTF32, fused
+/tmp/zoo/san_bf16s: llama_bf16s 2 steps, 2294 tasks, 10189 edges, 1xTF32
+/tmp/zoo/llama_bf16: llama_bf16 10 steps, 9600 tasks, 69774 edges, 1xTF32
+/tmp/zoo/san_remat: llama_remat 2 steps, 2340 tasks, 18631 edges, 3xTF32
+/tmp/zoo/vit_f32: vit_tiny 20 steps, 8480 tasks, 64389 edges, 3xTF32
+/tmp/zoo/moe_fused: moe_tiny 10 steps, 9590 tasks, 66691 edges, 3xTF32, fused
+/tmp/zoo/moe_f32: moe_tiny 10 steps, 9990 tasks, 68531 edges, 3xTF32
+/tmp/zoo/vit_bf16s: vit_bf16s 10 steps, 8820 tasks, 35400 edges, 1xTF32
+/tmp/zoo/llama_bf16s: llama_bf16s 10 steps, 11480 tasks, 64936 edges, 1xTF32
+llama_bf16: exists
+mlp_bf16: exists
+san_bf16: exists
+llama_bf16s: exists
+mlp_bf16s: exists
+vit_bf16s: exists
+san_bf16s: exists
+/tmp/zoo/vit_bf16: vit_bf16 10 steps, 6510 tasks, 37009 edges, 1xTF32

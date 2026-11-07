@@ -1,0 +1,14 @@
+model B=128 D=128 H=256 O=64  runs=32 steps=40  prog=fused hs=32 slices=8  tape=20480 instrs executed, 512-entry step template, 108 static queues, multi-task blocks (not resident)
+NVIDIA A100-SXM4-80GB  SMs=108 occ=1  vm grid=108
+
+mode                                        best ms    us/step/run run-steps/s    vs seq  max/min
+sequential, launch-per-op                     47.67          37.24       26851     1.00x    1.03x
+sequential, CUDA graph/run                    41.77          32.63       30643     1.14x    1.06x
+batched across runs (vmap-like graph)          4.58           3.58      279330    10.40x    1.00x
+KVM: all runs, ONE kernel                      3.80           2.97      336927    12.55x    1.01x
+KVM vs best baseline: 1.21x   (2 reps per mode)
+
+loss run0: 0.31605 -> 0.29488 (lr 0.0125)   run31: 0.31605 -> 0.22191 (lr 0.0875)
+max rel loss err vs cpu fp32 (runs 0 and 31, first 10 steps, all modes): 1.97e-05
+weights VM vs each baseline, all runs: 0 of 4718592 elements differ bitwise (max |dW| 0.00e+00)
+PASS

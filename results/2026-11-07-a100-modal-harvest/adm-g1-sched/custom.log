@@ -1,0 +1,6 @@
+# suite=custom tag=adm-g1-sched 2026-11-07T08:16:01Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 1024 GB, cores: 16
+bash: line 7: ./tests/modal/sched_suite.sh: Permission denied

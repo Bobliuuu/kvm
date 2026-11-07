@@ -1,0 +1,16 @@
+device: NVIDIA A100-SXM4-40GB, 108 SMs
+PASS  e2e CPU double analytic gradients vs finite differences (all 36 tensors)  216 coordinates, max abs diff 4.03e-09
+PASS  e2e step 0 loss GPU vs CPU  relerr 2.255e-08 (tol 1e-05)
+PASS  e2e step 0 gradients, all 36 tensors, GPU(3xTF32+fp32) vs CPU double  worst relerr 2.29e-06 (tensor 1), floor 1e-3
+  step   0  loss gpu 5.526664 cpu 5.526664  |grad| 3.857 clip 0.259
+  step  40  loss gpu 3.585572 cpu 3.585498  |grad| 1.749 clip 0.572
+  step  80  loss gpu 2.665919 cpu 2.665808  |grad| 1.985 clip 0.504
+  step 120  loss gpu 2.688972 cpu 2.688996  |grad| 2.195 clip 0.456
+  step 160  loss gpu 2.989928 cpu 2.989752  |grad| 2.674 clip 0.374
+  step 199  loss gpu 2.270840 cpu 2.270737  |grad| 2.099 clip 0.477
+PASS  e2e loss trajectory GPU ops vs CPU double, step for step  max |loss_gpu - loss_cpu| over 200 steps = 3.572e-04 (tol 2e-3)
+PASS  e2e loss falls (final < 0.5 * initial)  loss 5.5267 -> 2.2707
+PASS  e2e parameters after training GPU vs CPU  max abs param diff after 200 steps = 2.321e-03 (tol 5e-3)
+PASS  e2e two independent 200-step GPU runs are bitwise identical  
+
+7 passed, 0 failed

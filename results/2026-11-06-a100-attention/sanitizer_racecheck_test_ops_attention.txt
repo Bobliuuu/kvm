@@ -1,0 +1,154 @@
+========= COMPUTE-SANITIZER
+device: NVIDIA A100-SXM4-40GB, 108 SMs, cc 8.0
+PASS  attn B=2 T=1 H=2 Hkv=2 hd=16 fwd o  relerr 1.216e-07 (tol 2e-05)
+PASS  attn B=2 T=1 H=2 Hkv=2 hd=16 fwd lse  relerr 8.394e-07 (tol 2e-05)
+PASS  attn B=2 T=1 H=2 Hkv=2 hd=16 bwd dq  relerr 2.590e-07 (tol 3e-05)
+PASS  attn B=2 T=1 H=2 Hkv=2 hd=16 bwd dk  relerr 6.908e-07 (tol 3e-05)
+PASS  attn B=2 T=1 H=2 Hkv=2 hd=16 bwd dv  relerr 1.789e-07 (tol 3e-05)
+PASS  attn B=2 T=1 H=2 Hkv=2 hd=16 bwd bitwise deterministic  
+PASS  attn B=2 T=1 H=2 Hkv=2 hd=16 err==0  
+PASS  attn B=1 T=2 H=2 Hkv=2 hd=16 fwd o  relerr 3.648e-07 (tol 2e-05)
+PASS  attn B=1 T=2 H=2 Hkv=2 hd=16 fwd lse  relerr 1.074e-06 (tol 2e-05)
+PASS  attn B=1 T=2 H=2 Hkv=2 hd=16 bwd dq  relerr 1.315e-06 (tol 3e-05)
+PASS  attn B=1 T=2 H=2 Hkv=2 hd=16 bwd dk  relerr 1.268e-06 (tol 3e-05)
+PASS  attn B=1 T=2 H=2 Hkv=2 hd=16 bwd dv  relerr 5.647e-07 (tol 3e-05)
+PASS  attn B=1 T=2 H=2 Hkv=2 hd=16 bwd bitwise deterministic  
+PASS  attn B=1 T=2 H=2 Hkv=2 hd=16 err==0  
+PASS  attn B=2 T=37 H=4 Hkv=2 hd=32 fwd o  relerr 9.860e-07 (tol 2e-05)
+PASS  attn B=2 T=37 H=4 Hkv=2 hd=32 fwd lse  relerr 5.966e-07 (tol 2e-05)
+PASS  attn B=2 T=37 H=4 Hkv=2 hd=32 bwd dq  relerr 1.383e-06 (tol 3e-05)
+PASS  attn B=2 T=37 H=4 Hkv=2 hd=32 bwd dk  relerr 1.646e-06 (tol 3e-05)
+PASS  attn B=2 T=37 H=4 Hkv=2 hd=32 bwd dv  relerr 8.697e-07 (tol 3e-05)
+PASS  attn B=2 T=37 H=4 Hkv=2 hd=32 bwd bitwise deterministic  
+PASS  attn B=2 T=37 H=4 Hkv=2 hd=32 err==0  
+PASS  attn B=1 T=100 H=4 Hkv=1 hd=64 fwd o  relerr 2.352e-06 (tol 2e-05)
+PASS  attn B=1 T=100 H=4 Hkv=1 hd=64 fwd lse  relerr 1.353e-06 (tol 2e-05)
+PASS  attn B=1 T=100 H=4 Hkv=1 hd=64 bwd dq  relerr 2.280e-06 (tol 3e-05)
+PASS  attn B=1 T=100 H=4 Hkv=1 hd=64 bwd dk  relerr 3.280e-06 (tol 3e-05)
+PASS  attn B=1 T=100 H=4 Hkv=1 hd=64 bwd dv  relerr 2.544e-06 (tol 3e-05)
+PASS  attn B=1 T=100 H=4 Hkv=1 hd=64 bwd bitwise deterministic  
+PASS  attn B=1 T=100 H=4 Hkv=1 hd=64 err==0  
+PASS  attn B=1 T=70 H=2 Hkv=2 hd=128 fwd o  relerr 1.317e-06 (tol 2e-05)
+PASS  attn B=1 T=70 H=2 Hkv=2 hd=128 fwd lse  relerr 2.113e-06 (tol 2e-05)
+PASS  attn B=1 T=70 H=2 Hkv=2 hd=128 bwd dq  relerr 3.169e-06 (tol 3e-05)
+PASS  attn B=1 T=70 H=2 Hkv=2 hd=128 bwd dk  relerr 3.617e-06 (tol 3e-05)
+PASS  attn B=1 T=70 H=2 Hkv=2 hd=128 bwd dv  relerr 1.512e-06 (tol 3e-05)
+PASS  attn B=1 T=70 H=2 Hkv=2 hd=128 bwd bitwise deterministic  
+PASS  attn B=1 T=70 H=2 Hkv=2 hd=128 err==0  
+PASS  attn B=2 T=32 H=2 Hkv=2 hd=16 fwd o  relerr 7.441e-07 (tol 2e-05)
+PASS  attn B=2 T=32 H=2 Hkv=2 hd=16 fwd lse  relerr 5.529e-07 (tol 2e-05)
+PASS  attn B=2 T=32 H=2 Hkv=2 hd=16 bwd dq  relerr 1.127e-06 (tol 3e-05)
+PASS  attn B=2 T=32 H=2 Hkv=2 hd=16 bwd dk  relerr 9.790e-07 (tol 3e-05)
+PASS  attn B=2 T=32 H=2 Hkv=2 hd=16 bwd dv  relerr 6.615e-07 (tol 3e-05)
+PASS  attn B=2 T=32 H=2 Hkv=2 hd=16 bwd bitwise deterministic  
+PASS  attn B=2 T=32 H=2 Hkv=2 hd=16 err==0  
+PASS  attn B=1 T=65 H=4 Hkv=4 hd=32 fwd o  relerr 1.336e-06 (tol 2e-05)
+PASS  attn B=1 T=65 H=4 Hkv=4 hd=32 fwd lse  relerr 5.284e-07 (tol 2e-05)
+PASS  attn B=1 T=65 H=4 Hkv=4 hd=32 bwd dq  relerr 1.868e-06 (tol 3e-05)
+PASS  attn B=1 T=65 H=4 Hkv=4 hd=32 bwd dk  relerr 1.397e-06 (tol 3e-05)
+PASS  attn B=1 T=65 H=4 Hkv=4 hd=32 bwd dv  relerr 9.883e-07 (tol 3e-05)
+PASS  attn B=1 T=65 H=4 Hkv=4 hd=32 bwd bitwise deterministic  
+PASS  attn B=1 T=65 H=4 Hkv=4 hd=32 err==0  
+PASS  attn B=2 T=70 H=16 Hkv=4 hd=64 fwd o  relerr 1.366e-06 (tol 2e-05)
+PASS  attn B=2 T=70 H=16 Hkv=4 hd=64 fwd lse  relerr 1.080e-06 (tol 2e-05)
+PASS  attn B=2 T=70 H=16 Hkv=4 hd=64 bwd dq  relerr 2.517e-06 (tol 3e-05)
+PASS  attn B=2 T=70 H=16 Hkv=4 hd=64 bwd dk  relerr 2.935e-06 (tol 3e-05)
+PASS  attn B=2 T=70 H=16 Hkv=4 hd=64 bwd dv  relerr 2.392e-06 (tol 3e-05)
+PASS  attn B=2 T=70 H=16 Hkv=4 hd=64 bwd bitwise deterministic  
+PASS  attn B=2 T=70 H=16 Hkv=4 hd=64 err==0  
+PASS  attn B=2 T=1 H=4 Hkv=2 hd=64 fwd o  relerr 1.744e-07 (tol 2e-05)
+PASS  attn B=2 T=1 H=4 Hkv=2 hd=64 fwd lse  relerr 7.606e-07 (tol 2e-05)
+PASS  attn B=2 T=1 H=4 Hkv=2 hd=64 bwd dq  relerr 2.689e-06 (tol 3e-05)
+PASS  attn B=2 T=1 H=4 Hkv=2 hd=64 bwd dk  relerr 4.449e-06 (tol 3e-05)
+PASS  attn B=2 T=1 H=4 Hkv=2 hd=64 bwd dv  relerr 2.160e-07 (tol 3e-05)
+PASS  attn B=2 T=1 H=4 Hkv=2 hd=64 bwd bitwise deterministic  
+PASS  attn B=2 T=1 H=4 Hkv=2 hd=64 err==0  
+PASS  attn B=1 T=1 H=2 Hkv=1 hd=128 fwd o  relerr 1.351e-07 (tol 2e-05)
+PASS  attn B=1 T=1 H=2 Hkv=1 hd=128 fwd lse  relerr 1.024e-06 (tol 2e-05)
+PASS  attn B=1 T=1 H=2 Hkv=1 hd=128 bwd dq  relerr 5.852e-07 (tol 3e-05)
+PASS  attn B=1 T=1 H=2 Hkv=1 hd=128 bwd dk  relerr 1.230e-06 (tol 3e-05)
+PASS  attn B=1 T=1 H=2 Hkv=1 hd=128 bwd dv  relerr 2.013e-07 (tol 3e-05)
+PASS  attn B=1 T=1 H=2 Hkv=1 hd=128 bwd bitwise deterministic  
+PASS  attn B=1 T=1 H=2 Hkv=1 hd=128 err==0  
+PASS  attn B=1 T=300 H=4 Hkv=2 hd=64 fwd o  relerr 2.247e-06 (tol 2e-05)
+PASS  attn B=1 T=300 H=4 Hkv=2 hd=64 fwd lse  relerr 1.100e-06 (tol 2e-05)
+PASS  attn B=1 T=300 H=4 Hkv=2 hd=64 bwd dq  relerr 2.173e-06 (tol 3e-05)
+PASS  attn B=1 T=300 H=4 Hkv=2 hd=64 bwd dk  relerr 4.011e-06 (tol 3e-05)
+PASS  attn B=1 T=300 H=4 Hkv=2 hd=64 bwd dv  relerr 3.620e-06 (tol 3e-05)
+PASS  attn B=1 T=300 H=4 Hkv=2 hd=64 bwd bitwise deterministic  
+PASS  attn B=1 T=300 H=4 Hkv=2 hd=64 err==0  
+PASS  attn B=2 T=257 H=2 Hkv=1 hd=32 fwd o  relerr 1.677e-06 (tol 2e-05)
+PASS  attn B=2 T=257 H=2 Hkv=1 hd=32 fwd lse  relerr 6.717e-07 (tol 2e-05)
+PASS  attn B=2 T=257 H=2 Hkv=1 hd=32 bwd dq  relerr 1.673e-06 (tol 3e-05)
+PASS  attn B=2 T=257 H=2 Hkv=1 hd=32 bwd dk  relerr 3.301e-06 (tol 3e-05)
+PASS  attn B=2 T=257 H=2 Hkv=1 hd=32 bwd dv  relerr 3.049e-06 (tol 3e-05)
+PASS  attn B=2 T=257 H=2 Hkv=1 hd=32 bwd bitwise deterministic  
+PASS  attn B=2 T=257 H=2 Hkv=1 hd=32 err==0  
+PASS  attn B=1 T=129 H=2 Hkv=2 hd=128 fwd o  relerr 1.968e-06 (tol 2e-05)
+PASS  attn B=1 T=129 H=2 Hkv=2 hd=128 fwd lse  relerr 1.131e-06 (tol 2e-05)
+PASS  attn B=1 T=129 H=2 Hkv=2 hd=128 bwd dq  relerr 2.603e-06 (tol 3e-05)
+PASS  attn B=1 T=129 H=2 Hkv=2 hd=128 bwd dk  relerr 3.686e-06 (tol 3e-05)
+PASS  attn B=1 T=129 H=2 Hkv=2 hd=128 bwd dv  relerr 2.003e-06 (tol 3e-05)
+PASS  attn B=1 T=129 H=2 Hkv=2 hd=128 bwd bitwise deterministic  
+PASS  attn B=1 T=129 H=2 Hkv=2 hd=128 err==0  
+PASS  attn T=1 backward noise sweep (64 seeds x hd 16/32/64/128)  max |dq|,|dk| 2.77e-05 (bound 1e-04)
+PASS  attn B=1 T=2 H=2 Hkv=1 hd=32 fwd o  relerr 3.153e-07 (tol 2e-05)
+PASS  attn B=1 T=2 H=2 Hkv=1 hd=32 fwd lse  relerr 6.983e-07 (tol 2e-05)
+PASS  attn B=1 T=2 H=2 Hkv=1 hd=32 bwd dq  relerr 1.491e-06 (tol 3e-05)
+PASS  attn B=1 T=2 H=2 Hkv=1 hd=32 bwd dk  relerr 1.726e-06 (tol 3e-05)
+PASS  attn B=1 T=2 H=2 Hkv=1 hd=32 bwd dv  relerr 3.619e-07 (tol 3e-05)
+PASS  attn B=1 T=2 H=2 Hkv=1 hd=32 bwd bitwise deterministic  
+PASS  attn B=1 T=2 H=2 Hkv=1 hd=32 err==0  
+PASS  attn B=1 T=3 H=2 Hkv=1 hd=32 fwd o  relerr 3.555e-07 (tol 2e-05)
+PASS  attn B=1 T=3 H=2 Hkv=1 hd=32 fwd lse  relerr 5.161e-07 (tol 2e-05)
+PASS  attn B=1 T=3 H=2 Hkv=1 hd=32 bwd dq  relerr 1.811e-06 (tol 3e-05)
+PASS  attn B=1 T=3 H=2 Hkv=1 hd=32 bwd dk  relerr 1.887e-06 (tol 3e-05)
+PASS  attn B=1 T=3 H=2 Hkv=1 hd=32 bwd dv  relerr 3.648e-07 (tol 3e-05)
+PASS  attn B=1 T=3 H=2 Hkv=1 hd=32 bwd bitwise deterministic  
+PASS  attn B=1 T=3 H=2 Hkv=1 hd=32 err==0  
+PASS  attn B=1 T=15 H=2 Hkv=1 hd=32 fwd o  relerr 9.055e-07 (tol 2e-05)
+PASS  attn B=1 T=15 H=2 Hkv=1 hd=32 fwd lse  relerr 7.343e-07 (tol 2e-05)
+PASS  attn B=1 T=15 H=2 Hkv=1 hd=32 bwd dq  relerr 1.098e-06 (tol 3e-05)
+PASS  attn B=1 T=15 H=2 Hkv=1 hd=32 bwd dk  relerr 1.116e-06 (tol 3e-05)
+PASS  attn B=1 T=15 H=2 Hkv=1 hd=32 bwd dv  relerr 5.184e-07 (tol 3e-05)
+PASS  attn B=1 T=15 H=2 Hkv=1 hd=32 bwd bitwise deterministic  
+PASS  attn B=1 T=15 H=2 Hkv=1 hd=32 err==0  
+PASS  attn B=1 T=31 H=2 Hkv=1 hd=32 fwd o  relerr 4.871e-07 (tol 2e-05)
+PASS  attn B=1 T=31 H=2 Hkv=1 hd=32 fwd lse  relerr 4.383e-07 (tol 2e-05)
+PASS  attn B=1 T=31 H=2 Hkv=1 hd=32 bwd dq  relerr 1.474e-06 (tol 3e-05)
+PASS  attn B=1 T=31 H=2 Hkv=1 hd=32 bwd dk  relerr 1.511e-06 (tol 3e-05)
+PASS  attn B=1 T=31 H=2 Hkv=1 hd=32 bwd dv  relerr 8.019e-07 (tol 3e-05)
+PASS  attn B=1 T=31 H=2 Hkv=1 hd=32 bwd bitwise deterministic  
+PASS  attn B=1 T=31 H=2 Hkv=1 hd=32 err==0  
+PASS  attn B=1 T=33 H=2 Hkv=1 hd=32 fwd o  relerr 7.588e-07 (tol 2e-05)
+PASS  attn B=1 T=33 H=2 Hkv=1 hd=32 fwd lse  relerr 5.573e-07 (tol 2e-05)
+PASS  attn B=1 T=33 H=2 Hkv=1 hd=32 bwd dq  relerr 1.867e-06 (tol 3e-05)
+PASS  attn B=1 T=33 H=2 Hkv=1 hd=32 bwd dk  relerr 1.798e-06 (tol 3e-05)
+PASS  attn B=1 T=33 H=2 Hkv=1 hd=32 bwd dv  relerr 6.754e-07 (tol 3e-05)
+PASS  attn B=1 T=33 H=2 Hkv=1 hd=32 bwd bitwise deterministic  
+PASS  attn B=1 T=33 H=2 Hkv=1 hd=32 err==0  
+PASS  attn B=1 T=63 H=2 Hkv=1 hd=32 fwd o  relerr 8.156e-07 (tol 2e-05)
+PASS  attn B=1 T=63 H=2 Hkv=1 hd=32 fwd lse  relerr 5.980e-07 (tol 2e-05)
+PASS  attn B=1 T=63 H=2 Hkv=1 hd=32 bwd dq  relerr 1.443e-06 (tol 3e-05)
+PASS  attn B=1 T=63 H=2 Hkv=1 hd=32 bwd dk  relerr 1.684e-06 (tol 3e-05)
+PASS  attn B=1 T=63 H=2 Hkv=1 hd=32 bwd dv  relerr 1.257e-06 (tol 3e-05)
+PASS  attn B=1 T=63 H=2 Hkv=1 hd=32 bwd bitwise deterministic  
+PASS  attn B=1 T=63 H=2 Hkv=1 hd=32 err==0  
+PASS  attn B=1 T=95 H=2 Hkv=1 hd=32 fwd o  relerr 1.232e-06 (tol 2e-05)
+PASS  attn B=1 T=95 H=2 Hkv=1 hd=32 fwd lse  relerr 5.662e-07 (tol 2e-05)
+PASS  attn B=1 T=95 H=2 Hkv=1 hd=32 bwd dq  relerr 2.038e-06 (tol 3e-05)
+PASS  attn B=1 T=95 H=2 Hkv=1 hd=32 bwd dk  relerr 2.941e-06 (tol 3e-05)
+PASS  attn B=1 T=95 H=2 Hkv=1 hd=32 bwd dv  relerr 1.495e-06 (tol 3e-05)
+PASS  attn B=1 T=95 H=2 Hkv=1 hd=32 bwd bitwise deterministic  
+PASS  attn B=1 T=95 H=2 Hkv=1 hd=32 err==0  
+PASS  attn B=1 T=97 H=2 Hkv=1 hd=32 fwd o  relerr 9.399e-07 (tol 2e-05)
+PASS  attn B=1 T=97 H=2 Hkv=1 hd=32 fwd lse  relerr 6.072e-07 (tol 2e-05)
+PASS  attn B=1 T=97 H=2 Hkv=1 hd=32 bwd dq  relerr 1.744e-06 (tol 3e-05)
+PASS  attn B=1 T=97 H=2 Hkv=1 hd=32 bwd dk  relerr 1.948e-06 (tol 3e-05)
+PASS  attn B=1 T=97 H=2 Hkv=1 hd=32 bwd dv  relerr 2.118e-06 (tol 3e-05)
+PASS  attn B=1 T=97 H=2 Hkv=1 hd=32 bwd bitwise deterministic  
+PASS  attn B=1 T=97 H=2 Hkv=1 hd=32 err==0  
+PASS  attention reference backward vs finite differences (GQA)  max abs diff 1.79e-09
+
+1941 passed, 0 failed
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)

@@ -13,6 +13,8 @@ warmup lr_t = lr * t/W for t <= W (t 1-based) then constant (lr_schedule op, inc
   --grads DIR   compare step 1 with a kvm_run --dump of the one-step run (reuse none): loss, per-parameter gradient rel L2 and
                 global norm against torch fp64 (truth), torch 1xTF32 (same arithmetic class as the executor) and torch fp32-highest;
                 m after step 1 (= (1-b1) * coef * g, linear in g so no sign-flip noise) and the weight update w1 - w0.
+  --holdout N   with --curve: also the mean loss on N fresh batches (steps 10^6+i of the same stream, never trained on) at init, after the
+                torch runs and, with --exec-weights DIR (a kvm_run --dump '^w\\.' of the N-step run), for the executor's final weights
   --curve       train N steps in torch (1xTF32 and fp32-highest) and print/record the loss curves; --obs FILE adds the executor's.
 """
 import argparse
@@ -179,8 +181,27 @@ def grads_mode(ref, a, out):
     out['grads'] = res
 
 
+HOLDOUT_BASE = 10 ** 6
+
+
+def holdout_loss(ref, p, n, dtype=torch.float32):
+    """Mean loss of weights `p` on n fresh batches of the stream (steps HOLDOUT_BASE+i; the noise and starts differ from every training step)."""
+    from kvmfe.train import batch_tokens
+    tot = 0.0
+    with torch.no_grad():
+        for i in range(n):
+            ids, tgt = batch_tokens(ref.cfg, HOLDOUT_BASE + i)
+            tot += float(ref.tm.loss(p, torch.tensor(ids, device=ref.dev), torch.tensor(tgt, device=ref.dev)))
+    return tot / n
+
+
 def curve_mode(ref, a, out):
     cur = {}
+    hold = {}
+    if a.holdout:
+        set_precision('tf32')
+        hold['init'] = holdout_loss(ref, ref.params(torch.float32), a.holdout)
+        print(f'holdout init: {hold["init"]:.4f}', flush=True)
     for label, prec in (('tf32', 'tf32'), ('fp32', 'precise')):
         set_precision(prec)
         p = ref.params(torch.float32)
@@ -196,10 +217,21 @@ def curve_mode(ref, a, out):
             opt.step()
             losses.append(float(loss))
         cur[label] = losses
+        if a.holdout:
+            hold[label] = holdout_loss(ref, p, a.holdout)
+            print(f'torch {label}: holdout {hold[label]:.4f}', flush=True)
         print(f'torch {label}: ' + ' '.join(f'{x:.4f}' for x in losses), flush=True)
         del p, opt
         torch.cuda.empty_cache()
     out['curve'] = cur
+    if a.holdout and a.exec_weights:
+        set_precision('tf32')
+        pe = {n: read_dump(a.exec_weights, 'w.' + n, ref.init[n].shape, a.device).reshape(ref.shape[n]).clone() for n in ref.specs}
+        hold['executor'] = holdout_loss(ref, pe, a.holdout)
+        print(f'executor weights: holdout {hold["executor"]:.4f}', flush=True)
+    if hold:
+        out['holdout'] = hold
+        out['holdout_batches'] = a.holdout
     if a.obs:
         ex = {}
         for line in Path(a.obs).read_text().splitlines():
@@ -233,6 +265,8 @@ def main():
     ap.add_argument('--grads')
     ap.add_argument('--curve', action='store_true')
     ap.add_argument('--obs', help='kvm_run observations.jsonl of the same N-step window-1 run (adds executor losses and the comparison)')
+    ap.add_argument('--holdout', type=int, default=0, help='with --curve: evaluate on this many fresh held-out batches')
+    ap.add_argument('--exec-weights', help='directory of a kvm_run --dump of the executor weights (w.<param>.bin) for the hold-out evaluation')
     ap.add_argument('--device', default='cuda')
     ap.add_argument('--out')
     a = ap.parse_args()

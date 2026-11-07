@@ -1,0 +1,162 @@
+[
+ {
+  "bundle": "gpt_162m f32 (1xTF32 tiles)",
+  "buffers": 984,
+  "bytes_total": 6753538048,
+  "bytes_by_dtype": {
+   "i32": 65540,
+   "f32": 6753472508
+  },
+  "largest": [
+   {
+    "bytes": 824180736,
+    "name": "act189",
+    "dtype": "f32",
+    "rows": 4096,
+    "cols": 50304
+   },
+   {
+    "bytes": 824180736,
+    "name": "act186",
+    "dtype": "f32",
+    "rows": 4096,
+    "cols": 50304
+   },
+   {
+    "bytes": 154533888,
+    "name": "w.gpt.wte",
+    "dtype": "f32",
+    "rows": 50304,
+    "cols": 768
+   },
+   {
+    "bytes": 154533888,
+    "name": "w.gpt.head.w",
+    "dtype": "f32",
+    "rows": 768,
+    "cols": 50304
+   },
+   {
+    "bytes": 154533888,
+    "name": "v.gpt.wte",
+    "dtype": "f32",
+    "rows": 50304,
+    "cols": 768
+   },
+   {
+    "bytes": 154533888,
+    "name": "v.gpt.head.w",
+    "dtype": "f32",
+    "rows": 768,
+    "cols": 50304
+   }
+  ]
+ },
+ {
+  "bundle": "gpt_162m bf16 emulation (fp32 containers)",
+  "buffers": 984,
+  "bytes_total": 6753538048,
+  "bytes_by_dtype": {
+   "i32": 65540,
+   "f32": 6753472508
+  },
+  "largest": [
+   {
+    "bytes": 824180736,
+    "name": "act188",
+    "dtype": "f32",
+    "rows": 4096,
+    "cols": 50304
+   },
+   {
+    "bytes": 824180736,
+    "name": "act187",
+    "dtype": "f32",
+    "rows": 4096,
+    "cols": 50304
+   },
+   {
+    "bytes": 154533888,
+    "name": "w.gpt.wte",
+    "dtype": "f32",
+    "rows": 50304,
+    "cols": 768
+   },
+   {
+    "bytes": 154533888,
+    "name": "w.gpt.head.w",
+    "dtype": "f32",
+    "rows": 768,
+    "cols": 50304
+   },
+   {
+    "bytes": 154533888,
+    "name": "v.gpt.wte",
+    "dtype": "f32",
+    "rows": 50304,
+    "cols": 768
+   },
+   {
+    "bytes": 154533888,
+    "name": "v.gpt.head.w",
+    "dtype": "f32",
+    "rows": 768,
+    "cols": 50304
+   }
+  ]
+ },
+ {
+  "bundle": "gpt_162m bf16s (real bf16 storage)",
+  "buffers": 1074,
+  "bytes_total": 5339729920,
+  "bytes_by_dtype": {
+   "f32": 3179925500,
+   "bf16": 2159738880,
+   "i32": 65540
+  },
+  "largest": [
+   {
+    "bytes": 412090368,
+    "name": "act203",
+    "dtype": "bf16",
+    "rows": 4096,
+    "cols": 50304
+   },
+   {
+    "bytes": 412090368,
+    "name": "act200",
+    "dtype": "bf16",
+    "rows": 4096,
+    "cols": 50304
+   },
+   {
+    "bytes": 154533888,
+    "name": "w.gpt.wte",
+    "dtype": "f32",
+    "rows": 50304,
+    "cols": 768
+   },
+   {
+    "bytes": 154533888,
+    "name": "w.gpt.head.w",
+    "dtype": "f32",
+    "rows": 768,
+    "cols": 50304
+   },
+   {
+    "bytes": 154533888,
+    "name": "v.gpt.wte",
+    "dtype": "f32",
+    "rows": 50304,
+    "cols": 768
+   },
+   {
+    "bytes": 154533888,
+    "name": "v.gpt.head.w",
+    "dtype": "f32",
+    "rows": 768,
+    "cols": 50304
+   }
+  ]
+ }
+]

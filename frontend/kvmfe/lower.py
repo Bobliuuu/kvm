@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from .ir import Builder, FrontendError, LogicalOp, Tensor
-from .opset import ATTN_BLOCK, ATTN_Q, F_ACC, F_GELU, F_PRECISE, F_TA, F_TB, MM_TILE, op as device_op
+from .opset import ATTN_BLOCK, ATTN_Q, F_ACC, F_GELU, F_PRECISE, F_TA, F_TB, MM_TILE, MMA_TILE, op as device_op
 
 
 @dataclass(frozen=True)
@@ -109,22 +109,29 @@ def _task(dev, reads, writes, **args):
 
 # ------------------------------------------------------------------------------------------------ matmul family
 def _mm_tiles(a, b, out, M, N, K, ta, tb, flags, bias=None, res=None, pre=None, acc=False, dev='matmul_tile', precise=False):
-    flags |= F_PRECISE if precise else 0
-    for m0 in range(0, M, MM_TILE):
-        m1 = min(m0 + MM_TILE, M)
-        for n0 in range(0, N, MM_TILE):
-            n1 = min(n0 + MM_TILE, N)
-            ra = a.region(0, K, m0, m1) if ta else a.region(m0, m1, 0, K)
-            rb = b.region(n0, n1, 0, K) if tb else b.region(0, K, n0, n1)
-            tile = out.region(m0, m1, n0, n1)
-            reads = [ra, rb, bias.region(0, 1, n0, n1) if bias else None, res.region(m0, m1, n0, n1) if res else None,
-                     tile if acc else None]
-            yield _task(dev, reads, [tile, pre.region(m0, m1, n0, n1) if pre else None],
-                        a=a, b=b, out=out, bias=bias, res=res, pre=pre, m0=m0, n0=n0, M=M, N=N, K=K, flags=flags, alpha=1.0)
+    flags |= F_PRECISE if precise and dev == 'matmul_tile' else 0
+    tm, tn = MMA_TILE if dev == 'matmul_mma_bf16' else (MM_TILE, MM_TILE)
+    ms, ns = list(range(0, M, tm)), list(range(0, N, tn))
+    # Admission order is execution order: iterate the dimension with more tiles outermost, so consecutive tiles share the operand block of the
+    # shorter one and the long operand streams through L2 once (4096 x 50304 x 768 logits: 1.5x faster than m-outer on the A100).
+    order = [(m0, n0) for n0 in ns for m0 in ms] if dev == 'matmul_mma_bf16' and len(ns) > len(ms) else [(m0, n0) for m0 in ms for n0 in ns]
+    for m0, n0 in order:
+        m1, n1 = min(m0 + tm, M), min(n0 + tn, N)
+        ra = a.region(0, K, m0, m1) if ta else a.region(m0, m1, 0, K)
+        rb = b.region(n0, n1, 0, K) if tb else b.region(0, K, n0, n1)
+        tile = out.region(m0, m1, n0, n1)
+        reads = [ra, rb, bias.region(0, 1, n0, n1) if bias else None, res.region(m0, m1, n0, n1) if res else None, tile if acc else None]
+        yield _task(dev, reads, [tile, pre.region(m0, m1, n0, n1) if pre else None],
+                    a=a, b=b, out=out, bias=bias, res=res, pre=pre, m0=m0, n0=n0, M=M, N=N, K=K, flags=flags, alpha=1.0)
 
 
 def _mm_dev(op):
-    return 'matmul_tile_bf16' if op.attrs.get('bf16') else 'matmul_tile'
+    """matmul_tile (TF32) or, in a bf16 precision mode, the bf16 tensor-core tile when both operands are real bf16 storage (the 128 x 256
+    matmul_mma_bf16), else the 64 x 64 matmul_tile_bf16 that rounds fp32 operands on load."""
+    if not op.attrs.get('bf16'):
+        return 'matmul_tile'
+    a, b = (op.ins['x'], op.ins['w']) if op.kind == 'linear' else (op.ins['a'], op.ins['b'])
+    return 'matmul_mma_bf16' if a.dtype == 'bf16' and b.dtype == 'bf16' else 'matmul_tile_bf16'
 
 
 @lowers('linear')
@@ -363,20 +370,20 @@ def _(op, tc):
 def _(op, tc):
     w, g, m, v, step = (op.ins[n] for n in ('w', 'g', 'm', 'v', 'step'))
     a, gs, tok, lrb = op.attrs, op.ins.get('gscale'), op.ins.get('tok'), op.ins.get('lr_buf')
-    for r0, r1 in _opt_chunks(w, tc):
+    for r0, r1 in _opt_chunks(w, tc, op.attrs.get('tile_rows', MM_TILE)):
         rw = [_rows(w, r0, r1), _rows(m, r0, r1), _rows(v, r0, r1)]
         reads = rw + [_rows(g, r0, r1), _full(step), _full(tok) if tok else None, _full(gs) if gs else None, _full(lrb) if lrb else None]
         hp = dict(p=w, g=g, m=m, v=v, gscale=gs, step=step, e0=r0 * w.cols, e1=r1 * w.cols, b1=a['b1'], b2=a['b2'], eps=a['eps'], wd=a['wd'])
         yield _task('adamw_lr', reads, rw, lr=lrb, **hp) if lrb else _task('adamw', reads, rw, lr=a['lr'], **hp)
 
 
-def _opt_chunks(w, tc):
+def _opt_chunks(w, tc, tile=MM_TILE):
     """Row chunks of about opt_elems elements. A chunk that spans several rows is rounded down to whole matmul-tile rows (a
     weight gradient tile then feeds exactly one chunk: fewer chunks, and no tile-row's fan-in repeated by its neighbours); a chunk
     shorter than one tile row (wide matrices such as the LM head) keeps its row count."""
-    rows = max(1, tc.opt_elems // w.cols)
-    if rows >= MM_TILE:
-        rows -= rows % MM_TILE
+    rows = max(1, tc.opt_elems // w.cols)       # tile: storage.py raises tile_rows to MMA_TILE[0] under bf16 tiles
+    if rows >= tile:
+        rows -= rows % tile
     return blocks(w.rows, rows)
 
 
@@ -386,7 +393,7 @@ def _(op, tc):
     slot = 0
     for k in sorted(op.ins):
         g = op.ins[k]
-        for r0, r1 in _opt_chunks(g, tc):
+        for r0, r1 in _opt_chunks(g, tc, op.attrs.get('tile_rows', MM_TILE)):
             yield _task('gradnorm_partial', [_rows(g, r0, r1)], [partial.region(slot, slot + 1, 0, 1)],
                         g=g, partial=partial, slot=slot, e0=r0 * g.cols, e1=r1 * g.cols)
             slot += 1

@@ -11,7 +11,7 @@ import struct
 
 from . import log
 from .ir import FrontendError
-from .opset import Buf, op as device_op
+from .opset import Buf, bf16_round, op as device_op
 
 
 def initial_values(init, n, dtype, data_files):
@@ -26,6 +26,8 @@ def initial_values(init, n, dtype, data_files):
         return _runtime.initgen.seeded_values(init['seed'], n, draws, bias, coef)
     if k == 'file':
         raw = data_files[init['path']]
+        if dtype == 'bf16':
+            return [struct.unpack('<f', struct.pack('<I', h << 16))[0] for h in struct.unpack(f'<{n}H', raw)]
         return list(struct.unpack(f'<{n}{"i" if dtype == "i32" else "f"}', raw))
     raise FrontendError(f'unknown init kind {k!r}')
 
@@ -36,7 +38,10 @@ class Memory:
         for b in spec['buffers']:
             init, n = b['init'], b['rows'] * b['cols']
             vals = initial_values(init, n, b.get('dtype', 'f32'), data_files or {})
-            self.bufs[b['name']] = Buf(vals, b['rows'], b['cols'], f32)
+            bf = b.get('dtype', 'f32') == 'bf16'
+            if bf:
+                vals = [bf16_round(v) for v in vals]
+            self.bufs[b['name']] = Buf(vals, b['rows'], b['cols'], f32, bf)
         self.f32 = f32
 
     def matrix(self, name):

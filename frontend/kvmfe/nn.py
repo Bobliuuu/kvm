@@ -73,15 +73,16 @@ class ParamSpec:
     cols: int
     init: tuple          # ('normal', std) | ('fill', v)
     decay: bool = False  # AdamW weight decay on matrices only
+    invariant: bool = False  # the loss is exactly invariant to this parameter (true gradient identically 0); see Linear(b_invariant)
 
 
 class Module:
     def __init__(self, name):
         self.name, self.specs = name, {}
 
-    def add(self, name, rows, cols, init, decay=False):
+    def add(self, name, rows, cols, init, decay=False, invariant=False):
         full = f'{self.name}.{name}'
-        self.specs[full] = ParamSpec(full, rows, cols, init, decay)
+        self.specs[full] = ParamSpec(full, rows, cols, init, decay, invariant)
         return full
 
     def absorb(self, *mods):
@@ -90,10 +91,13 @@ class Module:
 
 
 class Linear(Module):
-    def __init__(self, name, din, dout, bias, std):
+    def __init__(self, name, din, dout, bias, std, b_invariant=False):
+        """b_invariant: the bias is the key projection of attention without positions (ViT): softmax over keys is unchanged when every key
+        moves by the same vector (q . (k + c) = q . k + q . c, constant per query), so d loss / d b is zero for the exact computation.
+        Whatever rounding noise the executor or the golden holds there is then driven through AdamW's normalised step."""
         super().__init__(name)
         self.w = self.add('w', din, dout, ('normal', std), decay=True)
-        self.b = self.add('b', 1, dout, ('fill', 0.0)) if bias else None
+        self.b = self.add('b', 1, dout, ('fill', 0.0), invariant=b_invariant) if bias else None
 
     def __call__(self, b, x, w, res=None, gelu=False, bf16=False):
         out = b.linear(x, w[self.w], w[self.b] if self.b else None, res, gelu, bf16=bf16)

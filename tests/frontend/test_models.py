@@ -55,6 +55,9 @@ class OracleChecks(unittest.TestCase):
         worst = 0.0
         for name in model.specs:
             g = grad_of(c, mem, name)
+            # the model's own declaration of structurally zero gradients (ParamSpec.invariant) is complete and true: the examples/models
+            # check applies its absolute (not relative) rule to exactly these parameters
+            self.assertEqual(model.specs[name].invariant, bool(np.abs(g).max() < 1e-9), f'{preset} {name}: invariant flag vs autodiff gradient')
             picks = {np.unravel_index(np.abs(g).argmax(), g.shape), tuple(int(rng.integers(0, d)) for d in g.shape)}
             for idx in picks:
                 fd = om.fd_grad(model, p, data, name, idx)

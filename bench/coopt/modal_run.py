@@ -12,23 +12,23 @@ app = modal.App("kvm-coopt", image=image)
 vol = modal.Volume.from_name("kvm-coopt", create_if_missing=True)
 
 @app.function(gpu="A100-40GB", cpu=8, memory=32768, timeout=3600, volumes={"/logs": vol})
-def run(tag: str, args: str, flags: str):
+def run(tag: str, args: str, flags: str, src: str = 'coopt_sh', py: str = 'torch_sh.py'):
     import subprocess
     out = f"/logs/{tag}"; os.makedirs(out, exist_ok=True)
     cmd = f"""set -x; export PATH=$PATH:/usr/local/cuda/bin; cd /src
 nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
-nvcc -O3 -arch=sm_80 -std=c++17 {flags} coopt_sh.cu -o coopt_sh 2>&1 | grep -v 'warning\\|Remark\\|^$\\|\\^' """
+nvcc -O3 -arch=sm_80 -std=c++17 {flags} {src}.cu -o coopt_sh 2>&1 | grep -v 'warning\\|Remark\\|^$\\|\\^' """
     for i, a in enumerate(args.split(";")):   # several configs in one container, separated by ';'
         sub = f"{out}/c{i}" if ";" in args else out
         cmd += f"""
 mkdir -p {sub}; echo "CONFIG {a}" > {sub}/kvm.log
 ./coopt_sh {a} --out {sub}/dump 2>&1 | tee -a {sub}/kvm.log
-python3 -I torch_sh.py {sub}/dump 2>&1 | tee {sub}/torch.log"""
+python3 -I {py} {sub}/dump 2>&1 | tee {sub}/torch.log"""
     p = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True)
     open(f"{out}/driver.log", "w").write(p.stdout + "\n" + p.stderr)
     vol.commit()
     return p.stdout[-3000:] + p.stderr[-1500:]
 
 @app.local_entrypoint()
-def main(tag: str = "t0", args: str = "--runs 32 --steps 300 --E 75 --K 3", flags: str = "-DKTILE=32 -DKKC=64 -DKSTG=4"):
-    print(run.remote(tag, args, flags))
+def main(src: str = 'coopt_sh', py: str = 'torch_sh.py', tag: str = "t0", args: str = "--runs 32 --steps 300 --E 75 --K 3", flags: str = "-DKTILE=32 -DKKC=64 -DKSTG=4"):
+    print(run.remote(tag, args, flags, src, py))

@@ -50,7 +50,8 @@ def step(W1, W2, lr, s, lossrow):
     global _compiled
     k = s % NB
     if USE_COMPILED:
-        if _compiled is None: import torch._dynamo as _dz; _dz.config.cache_size_limit = 512; _dz.config.automatic_dynamic_shapes = False
+        if _compiled is None:
+            import torch._dynamo as _dz; _dz.config.cache_size_limit = 512; _dz.config.automatic_dynamic_shapes = False
             _compiled = torch.compile(step_core, dynamic=False)
         return _compiled(W1, W2, lr, X[k], T[k], lossrow)
     return step_core(W1, W2, lr, X[k], T[k], lossrow)

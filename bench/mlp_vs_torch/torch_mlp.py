@@ -89,11 +89,13 @@ def step_manual(W1, W2, x, t, lr, Lslot):
     """one SGD step for one run, hand-written backward (what the VM's tape does); in-place weight update, loss into Lslot"""
     h = torch.relu(x @ W1)
     d = h @ W2 - t
-    Lslot.copy_((d * d).mean())
+    loss = (d * d).mean()
+    Lslot.copy_(loss)
     dy = d * SC
     dh = (dy @ W2.t()) * (h > 0)
     W2.sub_(h.t() @ dy * lr)
     W1.sub_(x.t() @ dh * lr)
+    return loss
 
 
 class EagerAutograd(Variant):
@@ -122,6 +124,17 @@ class EagerManual(Variant):
             for s in range(S):
                 k = s % NB
                 step_manual(self.W1[r], self.W2[r], X[k], T[k], LRS[r], self.L[r, s])
+
+
+def compiled(fn):
+    """torch.compile(fn) with the per-step loss delivered by return value (an in-place write to a view argument is not reliable under compile)"""
+    def nolast(*args):
+        return fn(*args, torch.empty_like(args[0][..., 0, 0]) if args[0].dim() == 3 else torch.empty((), device=dev))
+    cf = torch.compile(nolast, dynamic=False)
+
+    def run(*args):
+        args[-1].copy_(cf(*args[:-1]))
+    return run
 
 
 def capture(fn):
@@ -163,7 +176,7 @@ class CompileGraph(GraphManual):
     name = 'torch.compile step + whole-run CUDA graph'
 
     def __init__(self):
-        type(self).step = staticmethod(torch.compile(step_manual, dynamic=False))
+        type(self).step = staticmethod(compiled(step_manual))
         super().__init__()
 
 
@@ -172,7 +185,7 @@ class CompileLoop(Variant):
 
     def __init__(self):
         super().__init__()
-        self.f = torch.compile(step_manual, dynamic=False)
+        self.f = compiled(step_manual)
         self.f(self.W1[0], self.W2[0], X[0], T[0], LRS[0], self.L[0, 0])
         torch.cuda.synchronize()
 
@@ -187,11 +200,13 @@ def step_bmm(W1, W2, x, t, lr, Ls):
     """one SGD step for ALL runs at once on stacked weights: W1 [R,D,H], W2 [R,H,O], lr [R,1,1], Ls [R]"""
     h = torch.relu(torch.matmul(x, W1))                  # [R,B,H]
     d = torch.bmm(h, W2) - t                             # [R,B,O]
-    Ls.copy_((d * d).mean(dim=(1, 2)))
+    loss = (d * d).mean(dim=(1, 2))
+    Ls.copy_(loss)
     dy = d * SC
     dh = torch.bmm(dy, W2.transpose(1, 2)) * (h > 0)
     W2.sub_(torch.bmm(h.transpose(1, 2), dy) * lr)
     W1.sub_(torch.matmul(x.t(), dh) * lr)
+    return loss
 
 
 class BmmEager(Variant):
@@ -233,7 +248,7 @@ class BmmCompileGraph(BmmGraph):
     name = 'torch.compile bmm step + whole CUDA graph'
 
     def __init__(self):
-        type(self).step = staticmethod(torch.compile(step_bmm, dynamic=False))
+        type(self).step = staticmethod(compiled(step_bmm))
         super().__init__()
 
 
@@ -258,6 +273,7 @@ _vstep = torch.func.vmap(step_vmap_one, in_dims=(0, 0, None, None, 0))
 def step_vmap(W1, W2, x, t, lr, Ls):
     n1, n2, l = _vstep(W1, W2, x, t, lr)
     W1.copy_(n1); W2.copy_(n2); Ls.copy_(l)
+    return l
 
 
 class VmapEager(BmmEager):
@@ -282,7 +298,7 @@ class VmapCompileGraph(VmapGraph):
     name = 'torch.compile(vmap(grad)) + whole CUDA graph'
 
     def __init__(self):
-        type(self).step = staticmethod(torch.compile(step_vmap, dynamic=False))
+        type(self).step = staticmethod(compiled(step_vmap))
         super().__init__()
 
 

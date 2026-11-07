@@ -1,0 +1,1 @@
+{"name": "vit_bf16", "model": "{\"family\": \"vit\", \"name\": \"vit_bf16\", \"precision\": \"bf16\"}", "mode": "lowp", "extra": "--loss-scale 128"}

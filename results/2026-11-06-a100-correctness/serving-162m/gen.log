@@ -1,0 +1,61 @@
+INFO model gpt_162m: 162.32M parameters, 196 tensors
+INFO memory plan: persistent 1857.8 MiB, activation pool 4583.0 MiB in 390 slots (545 tensors; 7141.1 MiB without reuse)
+INFO dataflow: 312618 tasks + 5522 joins, 6890790 edges
+INFO lowered 632 logical ops -> 312618 tile tasks (+5522 joins), 6890790 edges
+INFO serve serve_s0: prompt 3 tokens, 3 new, weights exact version 0
+INFO memory plan: persistent 619.6 MiB, activation pool 0.3 MiB in 20 slots (796 tensors; 3.8 MiB without reuse)
+INFO dataflow: 8372 tasks + 60 joins, 96222 edges
+INFO lowered 593 logical ops -> 8372 tile tasks (+60 joins), 96222 edges
+INFO serve serve_s2: prompt 3 tokens, 3 new, weights exact version 4
+INFO memory plan: persistent 619.6 MiB, activation pool 0.3 MiB in 20 slots (796 tensors; 3.8 MiB without reuse)
+INFO dataflow: 8372 tasks + 60 joins, 96222 edges
+INFO lowered 593 logical ops -> 8372 tile tasks (+60 joins), 96222 edges
+INFO serve serve_s4: prompt 3 tokens, 3 new, weights exact version 8
+INFO memory plan: persistent 619.6 MiB, activation pool 0.3 MiB in 20 slots (796 tensors; 3.8 MiB without reuse)
+INFO dataflow: 8372 tasks + 60 joins, 96222 edges
+INFO lowered 593 logical ops -> 8372 tile tasks (+60 joins), 96222 edges
+INFO serve serve_s6: prompt 3 tokens, 3 new, weights exact version 12
+INFO memory plan: persistent 619.6 MiB, activation pool 0.3 MiB in 20 slots (796 tensors; 3.8 MiB without reuse)
+INFO dataflow: 8372 tasks + 60 joins, 96222 edges
+INFO lowered 593 logical ops -> 8372 tile tasks (+60 joins), 96222 edges
+INFO wrote ../../serve162/demo/workloads/train.json (233.76 MiB, 2 data files)
+INFO wrote ../../serve162/demo/workloads/serve_s0.json (4.99 MiB, 0 data files)
+INFO wrote ../../serve162/demo/workloads/serve_s2.json (4.99 MiB, 0 data files)
+INFO wrote ../../serve162/demo/workloads/serve_s4.json (4.99 MiB, 0 data files)
+INFO wrote ../../serve162/demo/workloads/serve_s6.json (5.00 MiB, 0 data files)
+INFO compiled 8432 tasks (0 gates), 96222 edges, 246 buffers, 1 variables in 0.45s (parse 0.29s, graph+versions 0.10s, pack 0.06s)
+INFO wrote bundle to ../../serve162/demo/bundles/serve_s0
+INFO bundle serve_s0: 8432 tasks, 96222 edges (base {'weights': 0})
+INFO compiled 318140 tasks (0 gates), 6890790 edges, 985 buffers, 1 variables in 13.83s (parse 7.62s, graph+versions 4.27s, pack 1.94s)
+INFO wrote bundle to ../../serve162/demo/bundles/train_w0
+INFO bundle train_w0: 318140 tasks, 6890790 edges (base {'weights': 0})
+INFO compiled 318140 tasks (0 gates), 6890790 edges, 985 buffers, 1 variables in 13.82s (parse 7.64s, graph+versions 4.24s, pack 1.94s)
+INFO wrote bundle to ../../serve162/demo/bundles/train_w1
+INFO bundle train_w1: 318140 tasks, 6890790 edges (base {'weights': 2})
+INFO compiled 8432 tasks (0 gates), 96222 edges, 246 buffers, 1 variables in 0.44s (parse 0.27s, graph+versions 0.11s, pack 0.06s)
+INFO wrote bundle to ../../serve162/demo/bundles/serve_s2
+INFO bundle serve_s2: 8432 tasks, 96222 edges (base {'weights': 4})
+INFO compiled 318140 tasks (0 gates), 6890790 edges, 985 buffers, 1 variables in 13.70s (parse 7.60s, graph+versions 4.18s, pack 1.92s)
+INFO wrote bundle to ../../serve162/demo/bundles/train_w2
+INFO bundle train_w2: 318140 tasks, 6890790 edges (base {'weights': 4})
+INFO compiled 318140 tasks (0 gates), 6890790 edges, 985 buffers, 1 variables in 13.55s (parse 7.47s, graph+versions 4.17s, pack 1.92s)
+INFO wrote bundle to ../../serve162/demo/bundles/train_w3
+INFO bundle train_w3: 318140 tasks, 6890790 edges (base {'weights': 6})
+INFO compiled 8432 tasks (0 gates), 96222 edges, 246 buffers, 1 variables in 0.45s (parse 0.28s, graph+versions 0.11s, pack 0.06s)
+INFO wrote bundle to ../../serve162/demo/bundles/serve_s4
+INFO bundle serve_s4: 8432 tasks, 96222 edges (base {'weights': 8})
+INFO compiled 318140 tasks (0 gates), 6890790 edges, 985 buffers, 1 variables in 13.61s (parse 7.48s, graph+versions 4.21s, pack 1.92s)
+INFO wrote bundle to ../../serve162/demo/bundles/train_w4
+INFO bundle train_w4: 318140 tasks, 6890790 edges (base {'weights': 8})
+INFO compiled 318140 tasks (0 gates), 6890790 edges, 985 buffers, 1 variables in 13.61s (parse 7.48s, graph+versions 4.20s, pack 1.93s)
+INFO wrote bundle to ../../serve162/demo/bundles/train_w5
+INFO bundle train_w5: 318140 tasks, 6890790 edges (base {'weights': 10})
+INFO compiled 8432 tasks (0 gates), 96222 edges, 246 buffers, 1 variables in 0.44s (parse 0.27s, graph+versions 0.11s, pack 0.06s)
+INFO wrote bundle to ../../serve162/demo/bundles/serve_s6
+INFO bundle serve_s6: 8432 tasks, 96222 edges (base {'weights': 12})
+INFO demo: {'train': (318140, 6890790), 'serve_s0': (8432, 96222), 'serve_s2': (8432, 96222), 'serve_s4': (8432, 96222), 'serve_s6': (8432, 96222)}
+INFO manifest: 10 admissions, 1185 buffers (196 shared) -> ../../serve162/demo/MANIFEST.json
+
+real	3m32.566s
+user	3m30.063s
+sys	0m2.467s

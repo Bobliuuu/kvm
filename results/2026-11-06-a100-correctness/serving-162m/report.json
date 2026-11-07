@@ -1,0 +1,35 @@
+{
+ "checks": [
+  {
+   "name": "executor",
+   "status": "PASS",
+   "detail": "1942568/1942568 tasks in 11247.7 ms on NVIDIA A100-SXM4-40GB (108 SMs, grid 108), sched dynamic, err_code 0"
+  },
+  {
+   "name": "versions",
+   "status": "PASS",
+   "detail": "22935 version-carrying tasks checked against the device trace (22935 exact), 0 violations; 0 at_least readers saw the version advance while running"
+  },
+  {
+   "name": "training",
+   "status": "PASS",
+   "detail": "6 step losses, first 10.9790 -> last 10.9237 (mean of first/last 1: 10.9790 -> 10.9237, falls); no CPU golden at this size"
+  },
+  {
+   "name": "serving",
+   "status": "PASS",
+   "detail": "2 of 4 requests equal the PyTorch float64 decode (2 token-exact on every step, 0 accepted as TF32 near ties); unchecked, no weights snapshot survives: ['serve_s2@v4', 'serve_s4@v8']"
+  },
+  {
+   "name": "game",
+   "status": "SKIP",
+   "detail": "no game state buffer"
+  },
+  {
+   "name": "cadence",
+   "status": "SKIP",
+   "detail": "0 doom_tick rows"
+  }
+ ],
+ "cadence": null
+}

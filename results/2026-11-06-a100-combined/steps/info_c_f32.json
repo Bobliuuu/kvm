@@ -1,0 +1,30 @@
+{
+ "model": {
+  "name": "gpt_162m",
+  "vocab": 50304,
+  "d_model": 768,
+  "layers": 12,
+  "heads": 12,
+  "seq": 1024,
+  "batch": 4,
+  "ffn_mult": 4,
+  "norm": "layernorm",
+  "bias": true,
+  "init_std": 0.02,
+  "rope_theta": 10000.0,
+  "seed": 0,
+  "repeat_batch": false,
+  "precision": "f32"
+ },
+ "steps": 1,
+ "mode": "tf32",
+ "tiling": "a100",
+ "fuse": false,
+ "params": 162322944,
+ "tasks": 270914,
+ "logical_ops": 631,
+ "logical_depth": 228,
+ "flops_per_step": 3307393253376.0,
+ "min_bytes_per_step": 14671810560,
+ "tokens_per_step": 4096
+}

@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/src/basetree/bench/vs_pytorch/gen.py", line 89, in <module>
+    main()
+  File "/src/basetree/bench/vs_pytorch/gen.py", line 66, in main
+    cfg = replace(cfg, precision=a.precision)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/dataclasses.py", line 1503, in replace
+    return obj.__class__(**changes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: ModelConfig.__init__() got an unexpected keyword argument 'precision'

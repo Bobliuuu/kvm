@@ -1,0 +1,10 @@
+../../include/kvm_ops_gpt.cuh(572): warning #177-D: variable "TILE" was declared but never referenced
+      constexpr int BK = 16, NST = 3, BM = 64 * WM, BN = WTN * WN, NJ = WTN / 8, ATILE = BM * BK, TILE = ATILE, STAGE = (BM + BN) * BK;
+                                                                                                  ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+test_bf16.cu(16): warning #177-D: variable "OPSX" was declared but never referenced
+  static const OpInfoX OPSX[] = {
+                       ^
+

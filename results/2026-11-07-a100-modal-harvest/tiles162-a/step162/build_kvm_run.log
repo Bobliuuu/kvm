@@ -1,0 +1,19 @@
+include/kvm_ops_gpt.cuh(726): warning #20058-D: the #pragma unroll must precede a loop
+  #pragma unroll
+          ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+include/kvm_ops_gpt.cuh(744): warning #20058-D: the #pragma unroll must precede a loop
+  #pragma unroll
+          ^
+
+include/kvm_ops_gpt.cuh(532): warning #20058-D: the #pragma unroll must precede a loop
+  #pragma unroll
+          ^
+
+include/kvm_ops_gpt.cuh(550): warning #20058-D: the #pragma unroll must precede a loop
+  #pragma unroll
+          ^
+
+nvcc: 

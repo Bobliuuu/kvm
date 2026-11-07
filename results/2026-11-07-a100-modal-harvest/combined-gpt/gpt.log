@@ -1,0 +1,23 @@
+# suite=gpt tag=combined-gpt 2026-11-07T05:33:45Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 1024 GB, cores: 16
+BUILD: tests/gpu/build.sh 
+
+real	36m7.616s
+user	35m31.910s
+sys	0m7.900s
+-rwxr-xr-x 1 root root 27876472 Nov  7 06:09 test_exec
+INFO demo: {'train': (544, 3855), 'serve_s0': (73, 231), 'serve_s2': (73, 231), 'game': (64, 232)}
+scheduler off, 16 blocks: OK: 544/544 tasks, 4.866 ms  buffers md5 c1b81ab60871
+scheduler off, auto grid: OK: 544/544 tasks, 6.998 ms  buffers md5 c1b81ab60871
+global, 2 classes: OK: 544/544 tasks, 5.236 ms  buffers md5 c1b81ab60871
+static, 1 class: OK: 544/544 tasks, 5.352 ms  buffers md5 c1b81ab60871
+dynamic, 2 classes: OK: 544/544 tasks, 5.587 ms  buffers md5 c1b81ab60871
+dynamic, arbiter, affinity: OK: 544/544 tasks, 9.371 ms  buffers md5 c1b81ab60871
+sanitizer memcheck: ========= COMPUTE-SANITIZER OK: 544/544 tasks, 187.979 ms ========= ERROR SUMMARY: 0 errors 
+sanitizer racecheck: ========= COMPUTE-SANITIZER OK: 544/544 tasks, 3256.662 ms ========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings) 
+sanitizer synccheck: ========= COMPUTE-SANITIZER OK: 544/544 tasks, 58.923 ms ========= ERROR SUMMARY: 0 errors 
+GPT PASS
+exit: 0

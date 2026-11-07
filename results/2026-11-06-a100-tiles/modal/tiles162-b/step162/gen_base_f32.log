@@ -1,0 +1,15 @@
+Traceback (most recent call last):
+  File "/src/basetree/bench/vs_pytorch/gen.py", line 89, in <module>
+    main()
+  File "/src/basetree/bench/vs_pytorch/gen.py", line 67, in main
+    c = compile_training(cfg, TrainConfig(steps=a.steps), Tiling.preset(a.tiling), reuse=a.reuse, fuse=a.fuse)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/src/basetree/frontend/kvmfe/pipeline.py", line 45, in compile_training
+    low = lower_program(ops, tiling, reuse, gap, prefix='act')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/src/basetree/frontend/kvmfe/emit.py", line 66, in lower_program
+    plan = plan_memory(ops, reuse, gap, prefix)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/src/basetree/frontend/kvmfe/plan.py", line 41, in plan_memory
+    raise FrontendError(f"reuse must be 'none' or 'shape', got {reuse!r}")
+kvmfe.ir.FrontendError: reuse must be 'none' or 'shape', got 'step'

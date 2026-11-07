@@ -18,8 +18,9 @@ wait
 ls -la /work/exec_base /work/exec_new
 echo "== bundles $(date -u +%T)"
 gen() { # tree dir tiling precision (the baseline tree has no precision field: f32 only)
+  R=""; [ "$1" = "$B" ] && R="--reuse shape"
   P=""; [ "$4" = f32 ] && [ "$1" = "$B" ] || P="--precision $4"
-  ( cd $1 && python3 bench/vs_pytorch/gen.py /work/$2 --model gpt_162m --steps 1 --mode tf32 --tiling $3 $P > $OUT/gen_$2.log 2>&1; echo "gen $2 rc=$?; tasks: $(python3 -c "import json;print(json.load(open('/work/$2/info.json'))['tasks'])" 2>/dev/null)" )
+  ( cd $1 && python3 bench/vs_pytorch/gen.py /work/$2 --model gpt_162m --steps 1 --mode tf32 --tiling $3 $P $R > $OUT/gen_$2.log 2>&1; echo "gen $2 rc=$?; tasks: $(python3 -c "import json;print(json.load(open('/work/$2/info.json'))['tasks'])" 2>/dev/null)" )
 }
 gen $B base_f32 a100 f32
 gen /src new_f32 a100 f32
@@ -46,7 +47,7 @@ for p in $pairs; do
   python3 bench/vs_pytorch/trace_summary.py /work/$b.csv 1 > $OUT/trace_$b.txt 2>&1; head -n 3 $OUT/trace_$b.txt
   rm -f /work/$b.csv
 done
-timeout 2400 tail --pid=$KR -f /dev/null; ls -la /work/kvm_run || exit 4
+timeout 7200 tail --pid=$KR -f /dev/null; ls -la /work/kvm_run || exit 4
 echo "== numerics vs float64 $(date -u +%T)"
 cp /work/kvm_run demo/kvm_run
 for cfg in "a100 f32" "a100_trunc f32" "a100 bf16s"; do

@@ -1,0 +1,58 @@
+# suite=custom tag=tiles162-b 2026-11-07T16:02:50Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 1024 GB, cores: 16
+== build exec (base, merged) 16:02:50
+base rc=0
+new rc=0
+-rwxr-xr-x 1 root root 22707168 Nov  7 16:30 /work/exec_base
+-rwxr-xr-x 1 root root 25930584 Nov  7 19:17 /work/exec_new
+== bundles 19:17:34
+gen base_f32 rc=1; tasks: 
+gen new_f32 rc=0; tasks: 83861
+gen new_trunc rc=0; tasks: 83861
+gen new_bf16s rc=0; tasks: 58634
+== kvm_run build (merged) in background 19:18:18
+== interleaved step times (best of 5, 3 rounds) 19:18:18
+-- round 1 new_f32 exec_new
+rep 5/5: 362.0 ms (362.01 ms/step), wall 2.0 s
+executor: best 362010 us/step  median 364152  worst 366753
+-- round 1 new_trunc exec_new
+rep 5/5: 351.2 ms (351.16 ms/step), wall 1.8 s
+executor: best 348171 us/step  median 348815  worst 354082
+-- round 1 new_bf16s exec_new
+rep 5/5: 290.0 ms (290.02 ms/step), wall 2.0 s
+executor: best 288355 us/step  median 289539  worst 290018
+-- round 2 new_f32 exec_new
+rep 5/5: 359.3 ms (359.26 ms/step), wall 1.7 s
+executor: best 356940 us/step  median 357923  worst 362710
+-- round 2 new_trunc exec_new
+rep 5/5: 350.6 ms (350.64 ms/step), wall 1.9 s
+executor: best 347824 us/step  median 351486  worst 356703
+-- round 2 new_bf16s exec_new
+rep 5/5: 290.6 ms (290.56 ms/step), wall 1.9 s
+executor: best 285059 us/step  median 287975  worst 290558
+-- round 3 new_f32 exec_new
+rep 5/5: 362.1 ms (362.10 ms/step), wall 1.9 s
+executor: best 361029 us/step  median 362104  worst 366652
+-- round 3 new_trunc exec_new
+rep 5/5: 356.1 ms (356.07 ms/step), wall 1.8 s
+executor: best 348153 us/step  median 353954  worst 356310
+-- round 3 new_bf16s exec_new
+rep 5/5: 290.7 ms (290.74 ms/step), wall 1.9 s
+executor: best 288468 us/step  median 290742  worst 292901
+== traces (workers busy) 19:19:44
+OK: 83861/83861 tasks, 362.720 ms
+83861 tasks, span 337.02 ms = 337016 us/step, workers 107: task-run time 12536.8 ms, utilisation 34.8%, mean ready->start wait 1282.7 us, mean task 149.5 us
+op                              tasks  sum run ms  mean us   max us % run time
+matmul_tile                     61782     8260.96    133.7   4088.8      65.9%
+OK: 83861/83861 tasks, 352.971 ms
+83861 tasks, span 326.38 ms = 326377 us/step, workers 107: task-run time 10397.2 ms, utilisation 29.8%, mean ready->start wait 1250.8 us, mean task 124.0 us
+op                              tasks  sum run ms  mean us   max us % run time
+matmul_tile                     61782     6110.98     98.9   3445.8      58.8%
+OK: 58634/58634 tasks, 289.133 ms
+58634 tasks, span 271.63 ms = 271634 us/step, workers 107: task-run time 8875.1 ms, utilisation 30.5%, mean ready->start wait 466.5 us, mean task 151.4 us
+op                              tasks  sum run ms  mean us   max us % run time
+matmul_mma_bf16                 30910     3527.60    114.1   2056.2      39.7%
+ls: cannot access '/work/kvm_run': No such file or directory

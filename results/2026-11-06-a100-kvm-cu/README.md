@@ -1,4 +1,30 @@
-# kvm.cu on the A100: timeline, exact weights, torch baselines, fused program (work in progress)
+# kvm.cu on the A100: timeline, exact weights, torch baselines, fused programs
+
+Latest result: section "Update: fused16 (run f16a)" directly below; the `s1` sections after it are the earlier run and are kept for the record.
+
+## Update: fused16 (run f16a, Modal A100-40GB, commit 888ef2b)
+
+One Modal container: kvm.cu (3 VM programs, each with its 3 launch-style baselines) and the torch variants timed in ONE process (`bench/mlp_vs_torch/modal_run.py`, 2 rounds x 3 reps, best). GPU A100-SXM4-40GB 108 SMs, driver 610.57.04, nvcc 12.8, torch 2.7.0+cu126 (TF32), flags `-O3 -arch=sm_80 -DKTILE=32 -DKKC=64 -DKSTG=4`. Raw: `f16a/` (logs, JSON, timelines, `timeline_R1.png` fused vs fused16, `timeline_R32.png`). Weights are bitwise identical across the four modes in every program and run (0 elements differ); loss vs CPU fp32 2e-5 over 20 steps; torch compile baselines now have correct loss curves.
+
+| runs | VM tiles (original) | VM fused (TF32) | **VM fused16 (new)** | best torch (TF32) | fused16 vs best torch |
+|---|---|---|---|---|---|
+| 1 | 25.2 | 25.0 | **15.7** | 37.4 (compile(vmap(grad)) + graph) | 2.38x |
+| 8 | 4.25 | 3.25 | **2.19** | 4.94 (compile bmm + graph) | 2.26x |
+| 32 | 3.45 | 2.85 | **1.65** | 2.01 (compile bmm + graph) | 1.22x |
+
+(us per step per run.) fused16 vs the best launch-style baseline of the SAME program: 1.33x at 1 run, 1.55x at 8, 1.40x at 32 (batched graph). So the VM's own contribution is now clear at all three sizes, and the R=32 loss to compiled bmm is reversed.
+
+What changed and why (from the KSTAGE profile in `diag2`: ~35k cycles per step at R=1, 15x over the tensor-core bound, spread evenly over the 4 GEMM groups, i.e. shared-memory-traffic bound, not hop bound, not FLOP bound): `--prog fused16` runs the same two instructions with fp16 tensor-core inputs, fp32 accumulate and fp32 master weights. Halving operand bytes and doubling k per mma cut per-step time 1.6x; the block shrinks from 148 KB to 78 KB of smem so two blocks fit per SM (up to 27 runs resident). Gradients are carried x1024 (exact power of two) so they stay out of fp16's subnormal range; the lr/1024 is folded into the update. Weights stay fp32 in global memory; the fp16 shadow in smem is refreshed after each update.
+
+Caveats, honest:
+- The VM now uses fp16 operands while the torch variants use TF32. A torch fp16/bf16-autocast variant is NOT yet in the table; it could narrow the gap, so treat the 1.22x at R=32 as provisional until that baseline exists. Numerics: the VM's loss tracks the fp32 CPU reference to 2e-5 relative over the first 20 steps and the 300-step loss curves agree to the printed digits.
+- Floors at R=32 per step-run: 6*128*128*256*... = ~37.7 MFLOP (fwd 2*B*(D*H+H*O)=... total fwd+bwd about 0.0377 GFLOP) per run-step, i.e. 0.24 us at the 156 TFLOP/s TF32 peak (0.12 us at fp16 peak); bytes ~0.2 MB/run-step at 1.5 TB/s = 0.13 us. The VM is at 1.65 us: still ~7-14x above the tensor-core floor, limited by in-block shared-memory traffic and latency, not by hops (the hop is ~1 us once per step and overlaps other runs).
+- fused16 only for B=128 D=128 H=256 O=64 (compile-time geometry), 8 slices.
+- Not done: lane-level bank-conflict profile, mma.sync/ldmatrix direct path, larger-k per-run fusion, torch fp16 baseline, an RTX 5070 rerun.
+
+Proposed README/AGENTS text (not edited): "kvm.cu MLP, A100: fused16 program 15.7 / 2.19 / 1.65 us per step-run at 1 / 8 / 32 runs, 2.38x / 2.26x / 1.22x over the best torch TF32 baseline (compiled graph); fp16 operands vs torch TF32, see results/2026-11-06-a100-kvm-cu."
+
+## Earlier run s1 (lab box, commit b829c4f)
 
 Run `s1/` (the only complete measurement so far; later work was blocked by the GPU lock queue, see "Not done").
 

@@ -50,7 +50,8 @@ def step(W1, W2, lr, s, lossrow):
     global _compiled
     k = s % NB
     if USE_COMPILED:
-        if _compiled is None: _compiled = torch.compile(step_core)
+        if _compiled is None: import torch._dynamo as _dz; _dz.config.cache_size_limit = 512; _dz.config.automatic_dynamic_shapes = False
+            _compiled = torch.compile(step_core, dynamic=False)
         return _compiled(W1, W2, lr, X[k], T[k], lossrow)
     return step_core(W1, W2, lr, X[k], T[k], lossrow)
 
@@ -249,11 +250,14 @@ def baselines(tag):
     ts3 = timeit(pg.run)
     res["torch_ms"]["B3_host_polled_compaction_cached_graphs" + sfx] = stat(ts3)
     res["correctness"]["B3_kill_rungs_match_ref" + sfx] = pg.kill == ep
-    cands = [min(ts1), min(ts3)]
+    cands = [min(ts1)]
+    if pg.kill == ep: cands.append(min(ts3))          # a baseline that makes different retire decisions than the oracle is not counted
+    else: res["correctness"]["B3_INVALID_not_counted" + sfx] = True
     if MODE == 0:
         rg = RungGraphs(); ts2 = timeit(rg.run)
-        res["torch_ms"]["B2_rung_graphs_static_halving" + sfx] = stat(ts2); cands.append(min(ts2))
+        res["torch_ms"]["B2_rung_graphs_static_halving" + sfx] = stat(ts2)
         res["correctness"]["B2_survivors_match_ref" + sfx] = set(rg.final_ids.tolist()) == surv_ref
+        if set(rg.final_ids.tolist()) == surv_ref: cands.append(min(ts2))
     return cands, min(ts0), min(ts1), min(ts3)
 stat = lambda ts: dict(best_ms=min(ts), median_ms=float(np.median(ts)), all_ms=[round(t, 3) for t in ts])
 res["torch_ms"] = {}

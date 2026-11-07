@@ -734,6 +734,12 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
     // wait_ver, pub_var, pub_ver, workload, flags, r0, r1
     const int slot = S.adm_slots[i];
     int op = w[0], so = w[1], sc = w[2], ind = w[3], pr = w[4], ao = w[6], aw = w[7], wv = w[8], pv = w[10];
+    // All argument words are read before the checks, in one batch (they are independent PCIe reads): a load inside the validation loop
+    // made every buffer argument a separate round trip. The range guard keeps a malformed descriptor from reading outside the record.
+    int av[KVM_ARG_STRIDE];
+    const bool args_in_record = ao >= 0 && aw >= 0 && aw <= KVM_ARG_STRIDE && (long long)ao + aw <= na;
+#pragma unroll
+    for (int j = 0; j < KVM_ARG_STRIDE; ++j) av[j] = (args_in_record && j < aw) ? ld_sys(ra + ao + j) : 0;
     int code = 0;
     if (kvm_dev_arity(op) < 0) code = KVM_ERR_BAD_OP;
     else if (aw != kvm_dev_arity(op)) code = KVM_ERR_BAD_ARITY;
@@ -742,17 +748,19 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
     else if (wv < -1 || wv >= S.num_vars || pv < -1 || pv >= S.num_vars) code = KVM_ERR_BAD_VAR;
     else {
       uint64_t ty = kvm_dev_types(op);
-      for (int j = 0; j < aw && !code; ++j) {
+#pragma unroll
+      for (int j = 0; j < KVM_ARG_STRIDE; ++j) if (j < aw && !code) {
         int t = (int)((ty >> (3 * j)) & 7u);
         if (t == KVM_A_BUF || t == KVM_A_BUF_OPT) {
-          int bi = ld_sys(ra + ao + j);
+          int bi = av[j];
           if (bi == -1 && t == KVM_A_BUF) code = KVM_ERR_BAD_BUF;
           else if (bi < -1 || bi >= S.nbufs) code = KVM_ERR_BAD_BUF_INDEX;
         }
       }
     }
     if (!code) {
-    for (int j = 0; j < aw; ++j) S.args[(size_t)slot * KVM_ARG_STRIDE + j] = ld_sys(ra + ao + j);
+#pragma unroll
+    for (int j = 0; j < KVM_ARG_STRIDE; ++j) if (j < aw) S.args[(size_t)slot * KVM_ARG_STRIDE + j] = av[j];
     w[1] = (int)(sbase + (unsigned)so);       // CSR offset into the successor ring (word sequence number)
     w[6] = slot * KVM_ARG_STRIDE;             // arguments live inline in the slot
     w[14] = (int)wid;                         // reserved0 = window id (task completion returns the window credit)
@@ -829,7 +837,11 @@ __device__ void kvm_admitter(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared&
     __syncthreads();
     if (action == KVM_ADM_EXIT) return;
     if (action == KVM_ADM_FINAL) { if (threadIdx.x == 0) st_rel(&S.cnt->admit_final, 1); kvm_dist_pump(S, t0); return; }  // KVM_DIST_HOOK
+#ifdef KVM_ADMIT_PROF   // time with no record in the ring (the host is the bottleneck) vs time busy admitting
+    if (action == KVM_ADM_IDLE) { const unsigned long long a_ = kvm_now(); kvm_dist_poll(S); __nanosleep(256); if (threadIdx.x == 0) g_adm_prof[8] += kvm_now() - a_; continue; }
+#else
     if (action == KVM_ADM_IDLE) { kvm_dist_poll(S); __nanosleep(256); continue; }  // KVM_DIST_HOOK
+#endif
     if (A.hdr[6] == KVM_REC_BUNDLE) kvm_admit_record(S, t0, A, stage, pos);
     __syncthreads();
     if (A.action == KVM_ADM_EXIT) return;

@@ -121,18 +121,29 @@ struct KvmBundle {
     // Version waits decidable inside one bundle: a task that waits for version n of v needs every in-bundle publication of v up to n
     // first. Edges publisher -> waiter added to the dependency graph must stay acyclic, otherwise nothing can ever run.
     {
-      std::vector<std::vector<int>> pubs;   // per variable: tasks that publish it
-      std::map<int, std::vector<int>> by_var;
+      std::map<int, std::vector<int>> by_var;   // per variable: tasks that publish it
       for (int i = 0; i < nt; ++i) if (tasks[i].pub_var >= 0) by_var[tasks[i].pub_var].push_back(i);
-      std::vector<std::vector<int>> out(nt); std::vector<int> deg(nt, 0);
-      for (int i = 0; i < nt; ++i) for (int k = 0; k < tasks[i].succ_cnt; ++k) { out[i].push_back(succ[tasks[i].succ_off + k]); ++deg[succ[tasks[i].succ_off + k]]; }
+      std::vector<std::pair<int, int>> extra;   // publisher -> waiter edges (few); the successor lists are walked in place, not copied
       for (int i = 0; i < nt; ++i) if (tasks[i].wait_var >= 0) {
         auto it = by_var.find(tasks[i].wait_var); if (it == by_var.end()) continue;
-        for (int p : it->second) if (p != i && tasks[p].pub_ver <= tasks[i].wait_ver) { out[p].push_back(i); ++deg[i]; }
+        for (int p : it->second) if (p != i && tasks[p].pub_ver <= tasks[i].wait_ver) extra.push_back({p, i});
         for (int p : it->second) if (p == i && tasks[p].pub_ver <= tasks[i].wait_ver) { e << "task " << i << ": waits for version " << tasks[i].wait_ver << " of variable " << tasks[i].wait_var << " that it publishes itself"; return e.str(); }
       }
-      std::vector<int> st; int seen = 0; for (int i = 0; i < nt; ++i) if (!deg[i]) st.push_back(i);
-      while (!st.empty()) { int u = st.back(); st.pop_back(); ++seen; for (int v : out[u]) if (--deg[v] == 0) st.push_back(v); }
+      int seen = 0;
+      if (extra.empty()) seen = nt;             // the dependency graph was just shown acyclic and nothing is added to it
+      else {
+        std::sort(extra.begin(), extra.end());
+        std::vector<int> deg(nt, 0), xs(nt + 1, 0);
+        for (int i = 0; i < nt; ++i) for (int k = 0; k < tasks[i].succ_cnt; ++k) ++deg[succ[tasks[i].succ_off + k]];
+        for (auto& pe : extra) { ++deg[pe.second]; ++xs[pe.first + 1]; }
+        for (int i = 0; i < nt; ++i) xs[i + 1] += xs[i];
+        std::vector<int> st; for (int i = 0; i < nt; ++i) if (!deg[i]) st.push_back(i);
+        while (!st.empty()) {
+          int u = st.back(); st.pop_back(); ++seen;
+          for (int k = 0; k < tasks[u].succ_cnt; ++k) { int v = succ[tasks[u].succ_off + k]; if (--deg[v] == 0) st.push_back(v); }
+          for (int x = xs[u]; x < xs[u + 1]; ++x) { int v = extra[x].second; if (--deg[v] == 0) st.push_back(v); }
+        }
+      }
       if (seen != nt) return "version-wait cycle: a task waits for a version that only a task depending on it can publish";
     }
     return "";
@@ -452,6 +463,7 @@ class KvmExec {
   // host reads the per-window completion marks the device mirrors into pinned memory). Windows of other producers interleave
   // freely. Cost: a window with a cross-window dependency starts after its producers drain, so choose big windows.
   KvmSubmit submit_stream(const KvmBundle& big, int max_window_tasks = 0, int timeout_ms = 60000, std::vector<unsigned>* wids_out = nullptr) {
+    const auto tp0 = std::chrono::steady_clock::now();   // host prep time (validate + plan) is time the device idles: logged below
     std::string why = big.validate(nbufs(), cfg_.num_vars, 0);
     if (!why.empty()) { KLOG(0, "stream rejected: %s", why.c_str()); last_error_ = why; return KvmSubmit::INVALID; }
     const int nt = (int)big.tasks.size();
@@ -470,8 +482,15 @@ class KvmExec {
     const int nw = (int)lo.size() - 1;
     std::vector<int> win_of(nt);
     for (int k = 0; k < nw; ++k) for (int i = lo[k]; i < lo[k + 1]; ++i) win_of[i] = k;
-    std::vector<std::set<int>> needs(nw);
-    for (int i = 0; i < nt; ++i) for (int k = 0; k < big.tasks[i].succ_cnt; ++k) { int t = big.succ[big.tasks[i].succ_off + k]; if (win_of[t] != win_of[i]) needs[win_of[t]].insert(win_of[i]); }
+    // Windows each window must wait for. Sources are visited in task (= window) order, so the producers of one window arrive in
+    // non-decreasing order and a "last producer added" stamp de-duplicates exactly (a set insert per edge cost 350 ms on 6.9M edges).
+    std::vector<std::vector<int>> needs(nw);
+    { std::vector<int> last(nw, -1);
+      for (int i = 0; i < nt; ++i) for (int k = 0; k < big.tasks[i].succ_cnt; ++k) {
+        const int t = big.succ[big.tasks[i].succ_off + k], wt = win_of[t], wi = win_of[i];
+        if (wt != wi && last[wt] != wi) { last[wt] = wi; needs[wt].push_back(wi); }
+      } }
+    KLOG(2, "stream: host prep (validate, order check, %d windows, cross-window needs) %.1f ms", nw, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tp0).count());
     std::vector<unsigned> wid(nw, 0);
     for (int k = 0; k < nw; ++k) {
       for (int j : needs[k]) {                                  // cross-window predecessors must have completed
@@ -893,6 +912,11 @@ int main(int argc, char** argv) {
     }
     const KvmResult& r = ex.finish();
     if (r.ok()) kvm_print_class_report(r);
+#ifdef KVM_ADMIT_PROF
+    { unsigned long long p[16]; CK(cudaMemcpyFromSymbol(p, g_adm_prof, sizeof p)); const char* nm[6] = {"room", "slot pop", "copy+decode", "edges", "sched+commit", "release"};
+      printf("admitter: %llu tasks, %llu records, idle (no record) %.1f ms; busy ns/task:", p[6], p[7], p[8] / 1e6);
+      for (int i = 0; i < 6; ++i) printf(" %s %.0f", nm[i], p[6] ? (double)p[i] / p[6] : 0.0); printf("\n"); }
+#endif
     if (csv) kvm_write_trace_csv(r, csv);
     int golden_bad = 0;
     if (golden) {

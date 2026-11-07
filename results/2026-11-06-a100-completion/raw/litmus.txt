@@ -1,5 +1,5 @@
 BUILD: tests/litmus/build.sh (prod + 6 mutants), e2e, e2e -DKVM_BREAK_FENCE, kvm_exec
-built in /home/ubuntu/kvm-completion-lit/out
+built in ~/kvm-completion-lit/out
 == properties on the production headers (must be 0 violations)
 property sb(controls included): TOTAL rounds=2500000 violations=0 (exit 0)
 property dekker1: TOTAL rounds=500000 violations=0 (exit 0)

@@ -1,18 +1,18 @@
-## /home/ubuntu/kvm-completion-base/kvm_exec
+## ~/kvm-completion-base/kvm_exec
 OK: 318139/318139 tasks, 1062.719 ms
-## /home/ubuntu/kvm-completion-final/kvm_exec
+## ~/kvm-completion-final/kvm_exec
 OK: 318139/318139 tasks, 1091.449 ms
-## /home/ubuntu/kvm-completion-base/kvm_exec
+## ~/kvm-completion-base/kvm_exec
 OK: 318139/318139 tasks, 1065.018 ms
-## /home/ubuntu/kvm-completion-final/kvm_exec
+## ~/kvm-completion-final/kvm_exec
 OK: 318139/318139 tasks, 1064.814 ms
-## /home/ubuntu/kvm-completion-base/kvm_exec
+## ~/kvm-completion-base/kvm_exec
 OK: 318139/318139 tasks, 1060.511 ms
-## /home/ubuntu/kvm-completion-final/kvm_exec
+## ~/kvm-completion-final/kvm_exec
 OK: 318139/318139 tasks, 1086.500 ms
-## /home/ubuntu/kvm-completion-base/kvm_exec
+## ~/kvm-completion-base/kvm_exec
 OK: 318139/318139 tasks, 1076.776 ms
-## /home/ubuntu/kvm-completion-final/kvm_exec
+## ~/kvm-completion-final/kvm_exec
 OK: 318139/318139 tasks, 1055.422 ms
 OK: 318139/318139 tasks, 1056.888 ms
 OK: 318139/318139 tasks, 1081.704 ms

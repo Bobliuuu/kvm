@@ -1,0 +1,368 @@
+mlp_f32 exit 0
+mlp_tf32 exit 0
+vit_f32 exit 0
+vit_tf32 exit 0
+llama_f32 exit 0
+llama_tf32 exit 0
+llama_fused exit 0
+gqa_tied exit 0
+moe_f32 exit 0
+moe_tf32 exit 0
+moe_fused exit 0
+llama_accum exit 0
+llama_remat exit 0
+llama_bf16 exit 0
+mlp_bf16 exit 0
+gpt_fused exit 0
+san_llama exit 0
+== compute-sanitizer memcheck san_llama
+========= COMPUTE-SANITIZER
+OK: 1660/1660 tasks, 274.419 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_llama
+========= COMPUTE-SANITIZER
+OK: 1660/1660 tasks, 6663.799 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_llama
+========= COMPUTE-SANITIZER
+OK: 1660/1660 tasks, 121.502 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+san_gqa_fused exit 0
+== compute-sanitizer memcheck san_gqa_fused
+========= COMPUTE-SANITIZER
+OK: 1564/1564 tasks, 236.779 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_gqa_fused
+========= COMPUTE-SANITIZER
+OK: 1564/1564 tasks, 6412.419 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_gqa_fused
+========= COMPUTE-SANITIZER
+OK: 1564/1564 tasks, 115.469 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+san_moe exit 0
+== compute-sanitizer memcheck san_moe
+========= COMPUTE-SANITIZER
+OK: 1998/1998 tasks, 311.620 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_moe
+========= COMPUTE-SANITIZER
+OK: 1998/1998 tasks, 7255.916 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_moe
+========= COMPUTE-SANITIZER
+OK: 1998/1998 tasks, 133.550 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+san_moe_fused exit 0
+== compute-sanitizer memcheck san_moe_fused
+========= COMPUTE-SANITIZER
+OK: 1918/1918 tasks, 283.997 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_moe_fused
+========= COMPUTE-SANITIZER
+OK: 1918/1918 tasks, 7016.456 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_moe_fused
+========= COMPUTE-SANITIZER
+OK: 1918/1918 tasks, 129.070 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+san_vit exit 0
+== compute-sanitizer memcheck san_vit
+========= COMPUTE-SANITIZER
+OK: 848/848 tasks, 139.142 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_vit
+========= COMPUTE-SANITIZER
+OK: 848/848 tasks, 4176.550 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_vit
+========= COMPUTE-SANITIZER
+OK: 848/848 tasks, 54.969 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+san_mlp exit 0
+== compute-sanitizer memcheck san_mlp
+========= COMPUTE-SANITIZER
+OK: 207/207 tasks, 38.789 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_mlp
+========= COMPUTE-SANITIZER
+OK: 207/207 tasks, 964.346 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_mlp
+========= COMPUTE-SANITIZER
+OK: 207/207 tasks, 18.130 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+san_bf16 exit 0
+== compute-sanitizer memcheck san_bf16
+========= COMPUTE-SANITIZER
+OK: 1918/1918 tasks, 285.707 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_bf16
+========= COMPUTE-SANITIZER
+OK: 1918/1918 tasks, 7453.519 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_bf16
+========= COMPUTE-SANITIZER
+OK: 1918/1918 tasks, 133.032 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+san_remat exit 0
+== compute-sanitizer memcheck san_remat
+========= COMPUTE-SANITIZER
+OK: 2340/2340 tasks, 333.547 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_remat
+========= COMPUTE-SANITIZER
+OK: 2340/2340 tasks, 10005.220 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_remat
+========= COMPUTE-SANITIZER
+OK: 2340/2340 tasks, 157.275 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+llama_bf16s exit 0
+mlp_bf16s exit 0
+vit_bf16s exit 0
+san_bf16s exit 0
+== compute-sanitizer memcheck san_bf16s
+========= COMPUTE-SANITIZER
+OK: 2294/2294 tasks, 348.403 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_bf16s
+========= COMPUTE-SANITIZER
+OK: 2294/2294 tasks, 8291.601 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_bf16s
+========= COMPUTE-SANITIZER
+OK: 2294/2294 tasks, 151.009 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+mlp_f32 kvm_exec: OK: 2760/2760 tasks, 29.831 ms
+precise: 862 f32 buffers (1 signal-free skipped: ['version_token']), 40 loss buffers
+  worst: act745 6.38e-06, act682 6.34e-06, act598 5.67e-06, act602 3.71e-06
+  ok   every per-step loss rel err <= 1e-05: worst 9.37e-07
+  ok   all buffers rel L2 <= 0.001: worst act745 6.38e-06
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+mlp_tf32 kvm_exec: OK: 340/340 tasks, 4.024 ms
+tf32: 126 f32 buffers (1 signal-free skipped: ['version_token']), 5 loss buffers
+  ok   losses rel L2 <= 0.002: worst 4.26e-04
+  ok   20 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act6 8.80e-04
+  info: post-optimizer weights/moments differ by up to 9.93e-03 (v.mlp.fc0.b) after the run
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+vit_f32 kvm_exec: OK: 8480/8480 tasks, 50.763 ms
+precise: 1333 f32 buffers (24 signal-free skipped: ['act1061', 'act1124', 'act116', 'act1187', 'act1250', 'act179']), 20 loss buffers
+  worst: act1205 5.93e-05, act1142 5.59e-05, act1079 5.26e-05, act827 4.94e-05
+  ok   every per-step loss rel err <= 1e-05: worst 5.40e-07
+  ok   all buffers rel L2 <= 0.001: worst act1205 5.93e-05
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+vit_tf32 kvm_exec: OK: 2120/2120 tasks, 13.747 ms
+tf32: 388 f32 buffers (9 signal-free skipped: ['act116', 'act179', 'act242', 'act305', 'act53', 'm.vit.h0.attn.k.b']), 5 loss buffers
+  ok   losses rel L2 <= 0.002: worst 1.99e-05
+  ok   61 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act56 9.39e-04
+  info: post-optimizer weights/moments differ by up to 6.58e-03 (m.vit.h0.n1.b) after the run
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+llama_f32 kvm_exec: OK: 8300/8300 tasks, 41.865 ms
+precise: 945 f32 buffers (1 signal-free skipped: ['version_token']), 10 loss buffers
+  worst: act874 5.24e-04, act853 5.10e-04, act854 5.01e-04, act875 4.66e-04
+  ok   every per-step loss rel err <= 1e-05: worst 4.05e-06
+  ok   all buffers rel L2 <= 0.001: worst act874 5.24e-04
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+llama_tf32 kvm_exec: OK: 4150/4150 tasks, 23.220 ms
+tf32: 505 f32 buffers (1 signal-free skipped: ['version_token']), 5 loss buffers
+  ok   losses rel L2 <= 0.002: worst 1.04e-04
+  ok   87 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act85 1.12e-03
+  info: post-optimizer weights/moments differ by up to 1.35e-02 (m.llama.h0.n1.g) after the run
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+llama_fused kvm_exec: OK: 8140/8140 tasks, 46.404 ms
+precise: 925 f32 buffers (1 signal-free skipped: ['version_token']), 10 loss buffers
+  worst: act854 5.24e-04, act834 5.10e-04, act835 5.01e-04, act855 4.66e-04
+  ok   every per-step loss rel err <= 1e-05: worst 4.05e-06
+  ok   all buffers rel L2 <= 0.001: worst act854 5.24e-04
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+gqa_tied kvm_exec: OK: 7980/7980 tasks, 42.610 ms
+precise: 932 f32 buffers (1 signal-free skipped: ['version_token']), 10 loss buffers
+  worst: act401 1.88e-05, act864 1.43e-05, act403 1.42e-05, act136 1.41e-05
+  ok   every per-step loss rel err <= 1e-05: worst 1.40e-07
+  ok   all buffers rel L2 <= 0.001: worst act401 1.88e-05
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+moe_f32 kvm_exec: OK: 9990/9990 tasks, 48.167 ms
+precise: 1098 f32 buffers (1 signal-free skipped: ['version_token']), 20 loss buffers
+  worst: v.llama.h0.moe.e2.down.w 7.72e-05, act1018 6.25e-05, act672 5.54e-05, act700 5.41e-05
+  ok   every per-step loss rel err <= 1e-05: worst 9.79e-08
+  ok   all buffers rel L2 <= 0.001: worst v.llama.h0.moe.e2.down.w 7.72e-05
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+moe_tf32 kvm_exec: OK: 4995/4995 tasks, 28.929 ms
+tf32: 583 f32 buffers (1 signal-free skipped: ['version_token']), 10 loss buffers
+  ok   losses rel L2 <= 0.002: worst 3.57e-05
+  ok   101 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act80 8.51e-04
+  info: post-optimizer weights/moments differ by up to 1.35e-02 (v.llama.h0.moe.e3.gate.w) after the run
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+moe_fused kvm_exec: OK: 9590/9590 tasks, 44.409 ms
+precise: 1058 f32 buffers (1 signal-free skipped: ['version_token']), 20 loss buffers
+  worst: v.llama.h0.moe.e2.down.w 7.72e-05, act981 6.25e-05, act648 5.54e-05, act675 5.41e-05
+  ok   every per-step loss rel err <= 1e-05: worst 9.79e-08
+  ok   all buffers rel L2 <= 0.001: worst v.llama.h0.moe.e2.down.w 7.72e-05
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+llama_accum kvm_exec: OK: 5190/5190 tasks, 25.992 ms
+precise: 835 f32 buffers (1 signal-free skipped: ['version_token']), 10 loss buffers
+  worst: act691 1.19e-04, act767 1.13e-04, act455 1.07e-04, act692 1.03e-04
+  ok   every per-step loss rel err <= 1e-05: worst 3.48e-07
+  ok   all buffers rel L2 <= 0.001: worst act691 1.19e-04
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+llama_remat kvm_exec: OK: 6450/6450 tasks, 35.594 ms
+precise: 957 f32 buffers (1 signal-free skipped: ['version_token']), 5 loss buffers
+  worst: act612 3.03e-04, act580 2.37e-04, act611 2.29e-04, act686 2.10e-04
+  ok   every per-step loss rel err <= 1e-05: worst 1.04e-06
+  ok   all buffers rel L2 <= 0.001: worst act612 3.03e-04
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+llama_bf16 kvm_exec: OK: 9600/9600 tasks, 53.084 ms
+lowp: 1266 f32 buffers (1 signal-free skipped: ['version_token']), 10 loss buffers
+  ok   losses rel L2 <= 0.001: worst 3.18e-04
+  ok   119 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act62 4.97e-06
+  info: post-optimizer weights/moments differ by up to 9.68e-03 (v.llama.h0.mlp.down.w) after the run
+  ok   weights rel L2 <= 0.01: worst 1.75e-03
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+mlp_bf16 kvm_exec: OK: 2790/2790 tasks, 23.586 ms
+lowp: 831 f32 buffers (1 signal-free skipped: ['version_token']), 30 loss buffers
+  ok   losses rel L2 <= 0.001: worst 8.26e-07
+  ok   26 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act25 1.31e-07
+  info: post-optimizer weights/moments differ by up to 4.20e-07 (m.mlp.fc2.w) after the run
+  ok   weights rel L2 <= 0.01: worst 3.87e-08
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+gpt_fused kvm_exec: OK: 1340/1340 tasks, 9.978 ms
+precise: 357 f32 buffers (3 signal-free skipped: ['v.gpt.h0.attn.k.b', 'v.gpt.h0.attn.q.b', 'version_token']), 5 loss buffers
+  worst: w.gpt.h0.attn.k.b 1.17e-04, act249 5.87e-06, act248 5.87e-06, act189 4.88e-06
+  ok   every per-step loss rel err <= 1e-05: worst 6.68e-08
+  ok   all buffers rel L2 <= 0.001: worst w.gpt.h0.attn.k.b 1.17e-04
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+san_llama kvm_exec: OK: 1660/1660 tasks, 9.717 ms
+precise: 241 f32 buffers (1 signal-free skipped: ['version_token']), 2 loss buffers
+  worst: act154 1.64e-04, act170 1.29e-04, w.llama.head.w 1.27e-04, act148 1.25e-04
+  ok   every per-step loss rel err <= 1e-05: worst 1.10e-09
+  ok   all buffers rel L2 <= 0.001: worst act154 1.64e-04
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+san_gqa_fused kvm_exec: OK: 1564/1564 tasks, 7.934 ms
+precise: 232 f32 buffers (1 signal-free skipped: ['version_token']), 2 loss buffers
+  worst: act133 1.41e-05, act134 1.39e-05, act117 1.31e-05, act135 1.28e-05
+  ok   every per-step loss rel err <= 1e-05: worst 7.42e-10
+  ok   all buffers rel L2 <= 0.001: worst act133 1.41e-05
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+san_moe kvm_exec: OK: 1998/1998 tasks, 9.848 ms
+precise: 274 f32 buffers (1 signal-free skipped: ['version_token']), 4 loss buffers
+  worst: act170 4.62e-05, act141 4.36e-05, act142 3.85e-05, act172 3.62e-05
+  ok   every per-step loss rel err <= 1e-05: worst 1.95e-09
+  ok   all buffers rel L2 <= 0.001: worst act170 4.62e-05
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+san_moe_fused kvm_exec: OK: 1918/1918 tasks, 10.167 ms
+precise: 266 f32 buffers (1 signal-free skipped: ['version_token']), 4 loss buffers
+  worst: act165 4.62e-05, act136 4.36e-05, act138 3.85e-05, act166 3.62e-05
+  ok   every per-step loss rel err <= 1e-05: worst 1.95e-09
+  ok   all buffers rel L2 <= 0.001: worst act165 4.62e-05
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+san_vit kvm_exec: OK: 848/848 tasks, 5.307 ms
+precise: 199 f32 buffers (6 signal-free skipped: ['act116', 'act53', 'm.vit.h0.attn.k.b', 'v.vit.h0.attn.k.b', 'version_token', 'w.vit.h0.attn.k.b']), 2 loss buffers
+  worst: act71 1.17e-05, v.vit.h0.attn.q.w 2.01e-06, v.vit.h0.attn.k.w 1.90e-06, act110 1.42e-06
+  ok   every per-step loss rel err <= 1e-05: worst 2.01e-09
+  ok   all buffers rel L2 <= 0.001: worst act71 1.17e-05
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+san_mlp kvm_exec: OK: 207/207 tasks, 2.759 ms
+precise: 85 f32 buffers (1 signal-free skipped: ['version_token']), 3 loss buffers
+  worst: act62 1.27e-06, act52 1.16e-06, act20 1.12e-06, act56 8.87e-07
+  ok   every per-step loss rel err <= 1e-05: worst 4.78e-07
+  ok   all buffers rel L2 <= 0.001: worst act62 1.27e-06
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+san_bf16 kvm_exec: OK: 1918/1918 tasks, 10.972 ms
+lowp: 305 f32 buffers (1 signal-free skipped: ['version_token']), 2 loss buffers
+  ok   losses rel L2 <= 0.001: worst 6.07e-08
+  ok   119 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act62 4.97e-06
+  info: post-optimizer weights/moments differ by up to 2.64e-05 (m.llama.h1.attn.k.w) after the run
+  ok   weights rel L2 <= 0.01: worst 5.47e-06
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+san_remat kvm_exec: OK: 2340/2340 tasks, 11.220 ms
+precise: 501 f32 buffers (1 signal-free skipped: ['version_token']), 4 loss buffers
+  worst: w.llama.h0.mlp.down.w 1.11e-04, act427 9.98e-05, act319 9.29e-05, act429 8.59e-05
+  ok   every per-step loss rel err <= 1e-05: worst 9.52e-10
+  ok   all buffers rel L2 <= 0.001: worst w.llama.h0.mlp.down.w 1.11e-04
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+llama_bf16s kvm_exec: OK: 11480/11480 tasks, 59.816 ms
+lowp: 846 f32 buffers (1 signal-free skipped: ['version_token']), 10 loss buffers
+  ok   losses rel L2 <= 0.001: worst 3.30e-04
+  ok   77 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act133 4.81e-03
+  info: post-optimizer weights/moments differ by up to 1.17e-02 (m.llama.h0.attn.q.w) after the run
+  ok   weights rel L2 <= 0.01: worst 8.54e-03
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+mlp_bf16s kvm_exec: OK: 3810/3810 tasks, 28.421 ms
+lowp: 651 f32 buffers (1 signal-free skipped: ['version_token']), 30 loss buffers
+  ok   losses rel L2 <= 0.001: worst 8.26e-07
+  ok   20 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act31 1.31e-07
+  info: post-optimizer weights/moments differ by up to 4.20e-07 (m.mlp.fc2.w) after the run
+  ok   weights rel L2 <= 0.01: worst 3.87e-08
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+vit_bf16s kvm_exec: OK: 8820/8820 tasks, 48.664 ms
+lowp: 663 f32 buffers (2 signal-free skipped: ['v.vit.h0.attn.k.b', 'version_token']), 10 loss buffers
+  ok   losses rel L2 <= 0.001: worst 7.14e-04
+  ok   58 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act73 8.28e-06
+  info: post-optimizer weights/moments differ by up to 1.80e+00 (m.vit.h0.attn.k.b) after the run
+  FAIL weights rel L2 <= 0.01: worst 9.00e-01
+  ok   no NaN/Inf in any GPU buffer: []
+FAIL: weights rel L2 <= 0.01
+san_bf16s kvm_exec: OK: 2294/2294 tasks, 14.404 ms
+lowp: 221 f32 buffers (1 signal-free skipped: ['version_token']), 2 loss buffers
+  ok   losses rel L2 <= 0.001: worst 2.57e-05
+  ok   77 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act133 4.81e-03
+  info: post-optimizer weights/moments differ by up to 2.27e-02 (v.llama.h0.attn.o.w) after the run
+  FAIL weights rel L2 <= 0.01: worst 1.73e-02
+  ok   no NaN/Inf in any GPU buffer: []
+FAIL: weights rel L2 <= 0.01
+out: /tmp/zooout
+exit 1

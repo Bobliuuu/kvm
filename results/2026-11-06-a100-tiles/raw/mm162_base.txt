@@ -1,0 +1,30 @@
+MM TF32    NN  4096x 2304x  768 tile 128x128 kvm    39.7 cuBLAS    83.1 TFLOP/s  ratio 0.477  err_vs_fp32 2.5e-04 ok dev_err 0
+MM TF32    NT  4096x  768x 2304 tile 128x128 kvm    45.7 cuBLAS    92.6 TFLOP/s  ratio 0.493  err_vs_fp32 1.5e-04 ok dev_err 0
+MM TF32    TN   768x 2304x 4096 tile 128x128 kvm    33.7 cuBLAS    84.9 TFLOP/s  ratio 0.397  err_vs_fp32 2.9e-04 ok dev_err 0
+MM TF32    NN  4096x 2304x  768 tile 256x128 kvm    34.2 cuBLAS   103.2 TFLOP/s  ratio 0.332  err_vs_fp32 2.5e-04 ok dev_err 0
+MM TF32    NT  4096x  768x 2304 tile 256x128 kvm    36.4 cuBLAS   115.6 TFLOP/s  ratio 0.315  err_vs_fp32 1.5e-04 ok dev_err 0
+MM TF32    TN   768x 2304x 4096 tile 256x128 kvm    21.4 cuBLAS   108.8 TFLOP/s  ratio 0.197  err_vs_fp32 2.9e-04 ok dev_err 0
+MM TF32    NN  4096x  768x  768 tile 128x128 kvm    49.3 cuBLAS    96.9 TFLOP/s  ratio 0.508  err_vs_fp32 2.7e-04 ok dev_err 0
+MM TF32    NT  4096x  768x  768 tile 128x128 kvm    48.9 cuBLAS    98.9 TFLOP/s  ratio 0.494  err_vs_fp32 2.1e-04 ok dev_err 0
+MM TF32    TN   768x  768x 4096 tile 128x128 kvm    14.3 cuBLAS    84.3 TFLOP/s  ratio 0.170  err_vs_fp32 7.8e-05 ok dev_err 0
+MM TF32    NN  4096x  768x  768 tile 256x128 kvm    25.7 cuBLAS    96.9 TFLOP/s  ratio 0.265  err_vs_fp32 2.7e-04 ok dev_err 0
+MM TF32    NT  4096x  768x  768 tile 256x128 kvm    25.5 cuBLAS    98.1 TFLOP/s  ratio 0.260  err_vs_fp32 2.1e-04 ok dev_err 0
+MM TF32    TN   768x  768x 4096 tile 256x128 kvm     7.4 cuBLAS    84.1 TFLOP/s  ratio 0.087  err_vs_fp32 7.8e-05 ok dev_err 0
+MM TF32    NN  4096x 3072x  768 tile 128x128 kvm    51.7 cuBLAS   109.2 TFLOP/s  ratio 0.473  err_vs_fp32 2.8e-04 ok dev_err 0
+MM TF32    NT  4096x  768x 3072 tile 128x128 kvm    60.1 cuBLAS   122.6 TFLOP/s  ratio 0.490  err_vs_fp32 1.4e-04 ok dev_err 0
+MM TF32    TN   768x 3072x 4096 tile 128x128 kvm    40.8 cuBLAS   117.2 TFLOP/s  ratio 0.348  err_vs_fp32 2.3e-04 ok dev_err 0
+MM TF32    NN  4096x 3072x  768 tile 256x128 kvm    46.2 cuBLAS   109.0 TFLOP/s  ratio 0.424  err_vs_fp32 2.8e-04 ok dev_err 0
+MM TF32    NT  4096x  768x 3072 tile 256x128 kvm    39.7 cuBLAS   122.7 TFLOP/s  ratio 0.324  err_vs_fp32 1.4e-04 ok dev_err 0
+MM TF32    TN   768x 3072x 4096 tile 256x128 kvm    29.4 cuBLAS   115.7 TFLOP/s  ratio 0.254  err_vs_fp32 2.3e-04 ok dev_err 0
+MM TF32    NN  4096x  768x 3072 tile 128x128 kvm    59.4 cuBLAS   122.3 TFLOP/s  ratio 0.486  err_vs_fp32 2.7e-04 ok dev_err 0
+MM TF32    NT  4096x 3072x  768 tile 128x128 kvm    51.8 cuBLAS   109.0 TFLOP/s  ratio 0.475  err_vs_fp32 2.1e-04 ok dev_err 0
+MM TF32    TN  3072x  768x 4096 tile 128x128 kvm    40.8 cuBLAS   116.2 TFLOP/s  ratio 0.351  err_vs_fp32 2.7e-04 ok dev_err 0
+MM TF32    NN  4096x  768x 3072 tile 256x128 kvm    38.8 cuBLAS   122.7 TFLOP/s  ratio 0.316  err_vs_fp32 2.7e-04 ok dev_err 0
+MM TF32    NT  4096x 3072x  768 tile 256x128 kvm    46.3 cuBLAS   109.4 TFLOP/s  ratio 0.424  err_vs_fp32 2.1e-04 ok dev_err 0
+MM TF32    TN  3072x  768x 4096 tile 256x128 kvm    29.4 cuBLAS   116.3 TFLOP/s  ratio 0.253  err_vs_fp32 2.7e-04 ok dev_err 0
+MM TF32    NN  4096x50304x  768 tile 128x128 kvm    49.6 cuBLAS   118.3 TFLOP/s  ratio 0.419  err_vs_fp32 2.5e-04 ok dev_err 0
+MM TF32    NT  4096x  768x50304 tile 128x128 kvm    47.4 cuBLAS   111.2 TFLOP/s  ratio 0.426  err_vs_fp32 1.9e-04 ok dev_err 0
+MM TF32    TN   768x50304x 4096 tile 128x128 kvm    62.6 cuBLAS   128.9 TFLOP/s  ratio 0.486  err_vs_fp32 2.3e-04 ok dev_err 0
+MM TF32    NN  4096x50304x  768 tile 256x128 kvm    45.7 cuBLAS   118.6 TFLOP/s  ratio 0.385  err_vs_fp32 2.5e-04 ok dev_err 0
+MM TF32    NT  4096x  768x50304 tile 256x128 kvm    42.0 cuBLAS   109.9 TFLOP/s  ratio 0.382  err_vs_fp32 1.9e-04 ok dev_err 0
+MM TF32    TN   768x50304x 4096 tile 256x128 kvm    62.4 cuBLAS   126.9 TFLOP/s  ratio 0.492  err_vs_fp32 2.3e-04 ok dev_err 0

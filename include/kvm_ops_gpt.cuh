@@ -263,9 +263,8 @@ KVM_GPT_DEVI unsigned f2tf32(float x) {
 }
 // Operand for a single (1x) TF32 mma: the tensor core ignores the low 13 bits, so the mask is free and adding the rounding bias is
 // round-to-nearest in ONE op. (Round-toward-zero would save that op for ~8% speed but triples the error: measured 7.6e-4 vs 2.7e-4.)
-// Two ops (IADD, IMNMX) instead of a NaN select chain: the add only wraps (r < u) for NaNs whose mantissa bits 12..22 are all ones, where
-// max(r, u) restores u; Inf and the finite overflow case carry into the exponent as rna rounding does.
-KVM_GPT_DEVI unsigned f2tf32_op(float x) { const unsigned u = __float_as_uint(x); return max(u + 0x1000u, u); }
+// (A 2-op max(u + 0x1000, u) was tried and is WRONG: the canonical NaN 0x7fffffff carries into the sign bit and the unsigned max keeps the sum.)
+KVM_GPT_DEVI unsigned f2tf32_op(float x) { const unsigned u = __float_as_uint(x); return ((u & 0x7fffffffu) > 0x7f800000u) ? u : u + 0x1000u; }
 KVM_GPT_DEVI void ldmatrix_x4(unsigned (&r)[4], const float* p) {   // four 8x8 b16 matrices == four 8x4 tf32 matrices
     asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0,%1,%2,%3}, [%4];\n" : "=r"(r[0]), "=r"(r[1]), "=r"(r[2]), "=r"(r[3]) : "r"(smem_u32(p)));
 }
@@ -320,7 +319,7 @@ KVM_GPT_DEVI void tile_async(float* dst, const float* src, int ld, int gr0, int 
 // the conversion ALU ops, not the tensor pipe, bound the 128x128 tile). The thread reads only its own cp.async/plain writes, which
 // cp_wait makes visible to it; other warps see the result after the next __syncthreads. Same rounding as f2tf32_op, so results are
 // bitwise those of converting at fragment-load time.
-KVM_GPT_DEVI unsigned tf32_rnd(unsigned u) { return max(u + 0x1000u, u); }   // two ops; see f2tf32_op for why max() keeps NaN a NaN
+KVM_GPT_DEVI unsigned tf32_rnd(unsigned u) { return ((u << 1) > 0xff000000u) ? u : u + 0x1000u; }
 template <bool KC, int ROWS, int COLS>
 KVM_GPT_DEVI void tile_cvt(float* dst) {
     constexpr int CPR = COLS / 4;

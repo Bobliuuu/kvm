@@ -282,6 +282,13 @@ static_assert(HS % 32 == 0 && FH % HS == 0 && FB == 128 && FNT == 256, "fused pr
 
 using FragC = wmma::fragment<wmma::accumulator, 16, 16, 8, float>;
 __shared__ unsigned long long s_tready;
+#ifdef KSTAGE
+__device__ unsigned long long g_stage[24];
+__shared__ long long s_last;
+#define STAGE(i) do { if (blockIdx.x == 0 && threadIdx.x == 0) { long long n_ = clock64(); if ((i) > 0) atomicAdd(&g_stage[i], (unsigned long long)(n_ - s_last)); s_last = n_; } } while (0)
+#else
+#define STAGE(i) do {} while (0)
+#endif
 
 // acc[j] += A(16 x 8k) * B(8k x 16), per k-step of 8; A/B element order given by ACOL/BCOL (smem pointers, strides in floats)
 template <bool ACOL, bool BCOL, int NF>
@@ -326,8 +333,9 @@ __device__ void fwd_slice(const Instr& in, int stp, bool res, float* sm, int* ct
     cp_block(sW1, LDH, W1.p + c * HS, W1.ld, FD, HS / 4);
     cp_block(sW2, LDY, W2.p + (size_t)c * HS * W2.ld, W2.ld, HS, FO / 4);
   }
-  cp_block(sDY, LDY, T.p, T.ld, FB, FO / 4);                  // t lands in sDY; BWD overwrites it with dy
+  STAGE(0);
   cp_commit(); cp_wait_all(); __syncthreads();
+  STAGE(1);
   FragC a1[HS / 16]; zero_acc(a1);
   warp_mma<false, false, HS / 16>(a1, sX + 16 * w * LDX, LDX, 8, sW1, LDH, 8 * LDH, 16, FD / 8);
   float* hg = HG.p + (size_t)(16 * w) * HG.ld + c * HS;
@@ -336,16 +344,18 @@ __device__ void fwd_slice(const Instr& in, int stp, bool res, float* sm, int* ct
 #pragma unroll
     for (int e = 0; e < a1[j].num_elements; e++) a1[j].x[e] = fmaxf(a1[j].x[e], 0.f);
     wmma::store_matrix_sync(sH + 16 * w * LDH + j * 16, a1[j], LDH, wmma::mem_row_major);
-    wmma::store_matrix_sync(hg + j * 16, a1[j], HG.ld, wmma::mem_row_major);   // a non-resident BWD reads h back from here
+    if (!res) wmma::store_matrix_sync(hg + j * 16, a1[j], HG.ld, wmma::mem_row_major);   // a non-resident BWD reads h back from here
   }
+  __syncthreads(); STAGE(2);
   __syncwarp();                                               // F2 reads only this warp's own 16 rows of h
   FragC a2[FO / 16]; zero_acc(a2);
   warp_mma<false, false, FO / 16>(a2, sH + 16 * w * LDH, LDH, 8, sW2, LDY, 8 * LDY, 16, HS / 8);
   float* yp = YP.p + (size_t)((stp & 1) * NS + c) * FB * FO + (size_t)(16 * w) * FO;   // double-buffered by step parity
 #pragma unroll
   for (int j = 0; j < FO / 16; j++) wmma::store_matrix_sync(yp + j * 16, a2[j], FO, wmma::mem_row_major);
-  __syncthreads();
+  __syncthreads(); STAGE(3);
   if (ctr && threadIdx.x == 0) { __threadfence(); atomicAdd(ctr + in.s0, 1); }
+  STAGE(4);
 }
 
 // BWD[c]. ctr == nullptr: launched as an ordinary kernel (launch order is the dependency). next_a: X buffer id of the next step (-1 = none).
@@ -356,31 +366,34 @@ __device__ void bwd_slice(const Instr& in, int stp, bool res, float* sm, float* 
   const int c = in.m0, w = threadIdx.x >> 5, tid = threadIdx.x;
   if (!res) {   // nothing resident: bring X, h, t and the current W2 slice back (independent of the hop, overlaps the wait)
     cp_block(sX, LDX, X.p, X.ld, FB, FD / 4); cp_block(sH, LDH, HG.p + c * HS, HG.ld, FB, HS / 4);
-    cp_block(sW2, LDY, W2.p + (size_t)c * HS * W2.ld, W2.ld, HS, FO / 4); cp_block(sDY, LDY, T.p, T.ld, FB, FO / 4);
+    cp_block(sW2, LDY, W2.p + (size_t)c * HS * W2.ld, W2.ld, HS, FO / 4);
     cp_commit();
   }
+  STAGE(5);
   if (tid == 0) {   // the one hop: all slices' partial y of this step are in global memory
     if (ctr) { while (ld_acquire(ctr + in.w0c) < in.w0v) __nanosleep(16); __threadfence(); }
     if (prof) s_tready = gtime();
   }
-  cp_wait_all(); __syncthreads();
+  cp_wait_all(); __syncthreads(); STAGE(6);
   // ---- y = sum of the partials in slice order; dy = (y - t) * s; loss
   const float* ypb = YP.p + (size_t)(stp & 1) * NS * FB * FO;
   float lsum = 0.f;
 #pragma unroll 1
   for (int g = 0; g < 4; g++) {
-    float4 v[2][NS];
+    float4 v[2][NS], tv[2];
 #pragma unroll
     for (int u = 0; u < 2; u++)
 #pragma unroll
       for (int p = 0; p < NS; p++) v[u][p] = __ldcg(reinterpret_cast<const float4*>(ypb + (size_t)p * FB * FO) + tid + FNT * (2 * g + u));
+#pragma unroll
+    for (int u = 0; u < 2; u++) tv[u] = __ldcg(reinterpret_cast<const float4*>(T.p) + tid + FNT * (2 * g + u));
 #pragma unroll
     for (int u = 0; u < 2; u++) {
       int i4 = tid + FNT * (2 * g + u), r = i4 / (FO / 4), cc = (i4 % (FO / 4)) * 4;
       float4 y = v[u][0];
 #pragma unroll
       for (int p = 1; p < NS; p++) { y.x += v[u][p].x; y.y += v[u][p].y; y.z += v[u][p].z; y.w += v[u][p].w; }
-      float4 t = *reinterpret_cast<const float4*>(sDY + r * LDY + cc), o;
+      float4 t = tv[u], o;
       const float* yy = &y.x; const float* tt = &t.x; float* oo = &o.x;
 #pragma unroll
       for (int j = 0; j < 4; j++) { float d = yy[j] - tt[j]; lsum += d * d * in.scale * 0.5f; oo[j] = d * in.scale; }
@@ -391,7 +404,7 @@ __device__ void bwd_slice(const Instr& in, int stp, bool res, float* sm, float* 
     for (int o = 16; o; o >>= 1) lsum += __shfl_xor_sync(0xffffffff, lsum, o);
     if ((tid & 31) == 0) red[w] = lsum;
   }
-  __syncthreads();   // dy complete (and red[])
+  __syncthreads(); STAGE(7);   // dy complete (and red[])
   if (c == 0 && tid == 0) { float t = 0; for (int i = 0; i < FNT / 32; i++) t += red[i]; loss[in.loss_idx] = t; }
   const float lr = lr_of(in);
   // ---- gW2 = h^T dy (M = HS, N = FO, K = FB), 16x16 output tiles round-robin over the 8 warps
@@ -407,6 +420,7 @@ __device__ void bwd_slice(const Instr& in, int stp, bool res, float* sm, float* 
   // ---- dh = (dy W2^T) masked by h > 0, from the OLD W2 slice (the update comes after every warp has read it)
   FragC dh[HS / 16]; zero_acc(dh);
   warp_mma<false, true, HS / 16>(dh, sDY + 16 * w * LDY, LDY, 8, sW2, LDY, 8, 16 * LDY, FO / 8);
+  STAGE(8);
   __syncthreads();   // all warps done with h (gW2) and the old W2 slice
 #pragma unroll
   for (int j = 0; j < HS / 16; j++) {
@@ -425,11 +439,11 @@ __device__ void bwd_slice(const Instr& in, int stp, bool res, float* sm, float* 
     wmma::store_matrix_sync(W2.p + (size_t)(c * HS + mt * 16) * W2.ld + nt * 16, cw, W2.ld, wmma::mem_row_major);
   }
   if (!res) { cp_block(sW1, LDH, W1.p + c * HS, W1.ld, FD, HS / 4); cp_commit(); }   // resident: sW1 already holds the current slice
-  __syncthreads();   // dh complete for all 128 rows
+  __syncthreads(); STAGE(9);   // dh complete for all 128 rows
   // ---- gW1 = X^T dh (M = FD, N = HS, K = FB); W1 slice update
   FragC g1[HS / 16]; zero_acc(g1);
   warp_mma<true, false, HS / 16>(g1, sX + 16 * w, LDX, 8 * LDX, sH, LDH, 8 * LDH, 16, FB / 8);
-  cp_wait_all(); __syncthreads();   // (non-resident: the W1 slice has arrived)
+  cp_wait_all(); __syncthreads(); STAGE(10);   // (non-resident: the W1 slice has arrived)
 #pragma unroll
   for (int j = 0; j < HS / 16; j++) {
     FragC cw; wmma::load_matrix_sync(cw, sW1 + 16 * w * LDH + j * 16, LDH, wmma::mem_row_major);
@@ -438,8 +452,9 @@ __device__ void bwd_slice(const Instr& in, int stp, bool res, float* sm, float* 
     wmma::store_matrix_sync(sW1 + 16 * w * LDH + j * 16, cw, LDH, wmma::mem_row_major);
     wmma::store_matrix_sync(W1.p + (size_t)(16 * w) * W1.ld + c * HS + j * 16, cw, W1.ld, wmma::mem_row_major);
   }
-  __syncthreads();   // sX is dead
+  __syncthreads(); STAGE(11);   // sX is dead
   if (res && next_a >= 0) { const Buf Xn = g_buf[next_a]; cp_block(sX, LDX, Xn.p, Xn.ld, FB, FD / 4); cp_commit(); }   // next step's X streams in during the epilogue
+  STAGE(12);
   if (!res) __threadfence();   // the next launch reads this slice's weights from global
 }
 
@@ -796,6 +811,12 @@ KVM_ENTRY(int argc, char** argv) {
               (long long)(q[0] - tmin), (long long)(q[1] - tmin), (long long)(q[2] - tmin), (long long)(q[3] - tmin), (long long)(q[4] - tmin), (long long)(q[5] - tmin));
     }
     fclose(fp);
+#ifdef KSTAGE
+    { unsigned long long st[24]; CK(cudaMemcpyFromSymbol(st, g_stage, sizeof st)); int clk; cudaDeviceGetAttribute(&clk, cudaDevAttrClockRate, dev);
+      printf("stage cycles per step (block 0, summed over instrs; %d kHz): FWD load/wait %.0f  F1 %.0f  F2+store %.0f  signal %.0f | BWD pre-wait %.0f  hop+load %.0f  reduce+dy %.0f  loss %.0f  gW2+dh %.0f  mask+W2upd %.0f  gW1 %.0f  W1upd %.0f  tail %.0f\n", clk,
+             st[1] / (double)steps, st[2] / (double)steps, st[3] / (double)steps, st[4] / (double)steps, st[5] / (double)steps, st[6] / (double)steps, st[7] / (double)steps,
+             (double)0, st[8] / (double)steps, st[9] / (double)steps, st[10] / (double)steps, st[11] / (double)steps, st[12] / (double)steps); }
+#endif
     printf("timeline: profiled VM run %.3f ms (%.2fx the unprofiled best), steps [%d,%d) -> %s\n", t_prof, t_prof / t[3], tl_s0, tl_s1, tl_path.c_str());
   }
 

@@ -840,7 +840,7 @@ static void usage() {
 
 int main(int argc, char** argv) {
   KvmConfig cfg; std::vector<std::string> dirs; const char* csv = nullptr; bool dump = false, golden = false; float golden_tol = 1e-6f;
-  std::string dump_dir; std::vector<int> dump_idx;
+  std::string dump_dir; std::vector<int> dump_idx; bool sized = false;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto val = [&](long long lo = 0, long long hi = 1ll << 30) -> long long {   // strict integer in [lo, hi]
@@ -849,9 +849,9 @@ int main(int argc, char** argv) {
       if (e == argv[i] || *e || errno || v < lo || v > hi) { fprintf(stderr, "%s: integer in [%lld,%lld] expected, got '%s'\n", a.c_str(), lo, hi, argv[i]); exit(2); }
       return v; };
     if (a == "--blocks") cfg.blocks = (int)val(0, 1 << 20);
-    else if (a == "--live-cap") cfg.live_cap = (int)val(2, 1 << 24);
-    else if (a == "--max-tasks") cfg.max_tasks = (int)val(2, 1 << 26);
-    else if (a == "--ring-words") cfg.ring_words = (int)val(64, 1 << 28);
+    else if (a == "--live-cap") { cfg.live_cap = (int)val(2, 1 << 24); sized = true; }
+    else if (a == "--max-tasks") { cfg.max_tasks = (int)val(2, 1 << 26); sized = true; }
+    else if (a == "--ring-words") { cfg.ring_words = (int)val(64, 1 << 28); sized = true; }
     else if (a == "--task-limit-s") cfg.task_limit_us = (unsigned long long)val(0, 86400) * 1000000ull;
     else if (a == "--aging-us") cfg.aging_us = (int)val(0, 1000000000);
     else if (a == "--timeout-s") cfg.timeout_us = (unsigned long long)val(1, 86400) * 1000000ull;
@@ -872,6 +872,20 @@ int main(int argc, char** argv) {
   }
   if (dirs.empty()) { usage(); return 2; }
   try {
+    // Window sizing (admission v2): the default live_cap / ring cut a large bundle into windows, and the host submits a window only
+    // after the windows holding its producers COMPLETED (a drain per window: gpt_162m bf16s 217 ms with windows, 152 ms as one record).
+    // When no sizing flag was given and a single bundle fits the slots, size the ring and live_cap so the bundle is one record.
+    if (!sized && dirs.size() == 1) {
+      Json m = JsonParser(read_file(dirs[0] + "/metadata.json")).parse();
+      const long long nt = (long long)m.num("task_count", -1), ne = (long long)m.num("edge_count", -1), nw = (long long)m.num("args_words", -1);
+      const long long words = KVM_REC_HDR + nt * KVM_TASK_WORDS + ne + nw;
+      auto p2 = [](long long v) { long long r = 2; while (r < v) r <<= 1; return r; };
+      if (nt > cfg.live_cap && nt <= (1 << 20) && ne >= 0 && nw >= 0 && words < (1ll << 26)) {
+        cfg.live_cap = (int)p2(nt); cfg.max_tasks = std::max(cfg.max_tasks, cfg.live_cap); cfg.ring_words = (int)std::max<long long>(cfg.ring_words, p2(2 * words + 128));
+        cfg.succ_cap = std::max<unsigned>(cfg.succ_cap, (unsigned)p2(ne + 2));
+        KLOG(2, "window sizing: %lld tasks as one record (live_cap %d, ring %d words)", nt, cfg.live_cap, cfg.ring_words);
+      }
+    }
     KvmExec ex(cfg);
     std::vector<KvmBundle> bundles;
     std::vector<std::pair<int, int>> shapes;

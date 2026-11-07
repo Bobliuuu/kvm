@@ -1,0 +1,30 @@
+new b16 default | OK: 58634/58634 tasks, 216.419 ms
+new b16 live64k ring4M | OK: 58634/58634 tasks, 159.932 ms
+new b16 live64k ring16M | OK: 58634/58634 tasks, 149.621 ms
+main b16 default | OK: 58634/58634 tasks, 286.660 ms
+main b16 live64k ring16M | OK: 58634/58634 tasks, 306.770 ms
+new f32 default | OK: 270914/270914 tasks, 461.413 ms
+new f32 live256k ring32M maxtasks512k | OK: 270914/270914 tasks, 358.250 ms
+main f32 live256k ring32M maxtasks512k | OK: 270914/270914 tasks, 876.964 ms
+new b16 default | OK: 58634/58634 tasks, 217.275 ms
+new b16 live64k ring4M | OK: 58634/58634 tasks, 158.453 ms
+new b16 live64k ring16M | OK: 58634/58634 tasks, 151.822 ms
+main b16 default | OK: 58634/58634 tasks, 286.665 ms
+main b16 live64k ring16M | OK: 58634/58634 tasks, 307.326 ms
+new f32 default | OK: 270914/270914 tasks, 475.507 ms
+new f32 live256k ring32M maxtasks512k | OK: 270914/270914 tasks, 353.867 ms
+main f32 live256k ring32M maxtasks512k | OK: 270914/270914 tasks, 878.932 ms
+new b16 default | OK: 58634/58634 tasks, 217.571 ms
+new b16 live64k ring4M | OK: 58634/58634 tasks, 158.914 ms
+new b16 live64k ring16M | OK: 58634/58634 tasks, 149.518 ms
+main b16 default | OK: 58634/58634 tasks, 294.599 ms
+main b16 live64k ring16M | OK: 58634/58634 tasks, 301.235 ms
+new f32 default | OK: 270914/270914 tasks, 471.866 ms
+new f32 live256k ring32M maxtasks512k | OK: 270914/270914 tasks, 358.759 ms
+main f32 live256k ring32M maxtasks512k | OK: 270914/270914 tasks, 881.479 ms
+58634 tasks, span 121.83 ms = 121829 us/step, workers 107: task-run time 9377.6 ms, utilisation 71.9%, mean ready->start wait 261.8 us, mean task 159.9 us
+op                              tasks  sum run ms  mean us   max us % run time
+matmul_mma_bf16                 30910     4031.86    130.4   1888.3      43.0%
+58634 tasks, span 209.14 ms = 209140 us/step, workers 107: task-run time 9282.4 ms, utilisation 41.5%, mean ready->start wait 256.2 us, mean task 158.3 us
+op                              tasks  sum run ms  mean us   max us % run time
+matmul_mma_bf16                 30910     4002.47    129.5   1908.7      43.1%

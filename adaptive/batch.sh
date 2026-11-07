@@ -19,6 +19,15 @@ CFG[adaptive_gated]="${CFG[adaptive]} $GATE"
 CFG[fixed_prio_gated]="${CFG[fixed_prio]} $GATE"
 CFG[global_gated]="${CFG[global]} $GATE"
 CFG[adaptive_tuned]="${CFG[adaptive]} $GATE --gate-tune"
+# tail-latency configurations (results/2026-11-06-a100-sched-tail): admission order (--express), strict class tier, global queue with task priorities
+CFG[g_flat]="--sched global"
+CFG[g_prio]="--sched global --prio 20,10,0"
+CFG[fp]="${CFG[fixed_prio]}"
+CFG[fp_x]="${CFG[fixed_prio]} --express"
+CFG[strict]="${CFG[fixed_prio]} --strict 1,1,0"
+CFG[strict_x]="${CFG[fixed_prio]} --strict 1,1,0 --express"
+CFG[adaptive_x]="${CFG[adaptive]} --express"
+CFG[adaptive_sx]="${CFG[adaptive]} --strict 1,1,0 --express"
 CFG[alone]="--sched dynamic --weights 2,1,1 --no-train --no-serve"
 # the phased load: serve burst, training pause, Doom scene change (extra work in every frame)
 PHASES="--serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000"
@@ -57,6 +66,9 @@ case "$GROUP" in
       one bw_sweep_adaptive $rep ${CFG[adaptive]} --serve-rate 40 --sweep-gb 1.6 --sweep-inflight 6
       one bw_sweep_cap $rep $W4 --bw-cta 1000000,1000000,1000000,24
     done;;
+  tail_big) export SCN=scn_big LIVE_CAP=131072 RING_WORDS=8388608   # the 47k-task training record (6 layers, d512) beside Doom and serving
+    for rep in $(seq 1 "$REPS"); do for c in g_flat g_prio fp fp_x strict strict_x adaptive adaptive_x adaptive_sx; do one big_$c $rep ${CFG[$c]} $PHASES; done; done;;
+  tail) for rep in $(seq 1 "$REPS"); do for c in g_flat g_prio fp fp_x strict strict_x adaptive adaptive_x adaptive_sx; do one $c $rep ${CFG[$c]} $PHASES; done; done;;
   all_a) mkdir -p "$OUT"; "$0" suites; "$0" main; "$0" main_big;;
   tuned) for rep in $(seq 1 "$REPS"); do for c in alone adaptive_gated adaptive_tuned fixed_prio_gated; do one $c $rep ${CFG[$c]} $PHASES; done; done;;
   all_b) mkdir -p "$OUT"; "$0" tuned; DUR=16 "$0" multi; DUR=16 REPS=4 "$0" bw;;

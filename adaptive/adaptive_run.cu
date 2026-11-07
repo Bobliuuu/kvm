@@ -27,6 +27,7 @@ namespace adp {
 using Clock = std::chrono::steady_clock;
 static double us_since(Clock::time_point a, Clock::time_point b) { return std::chrono::duration<double, std::micro>(b - a).count(); }
 enum Cls { CLS_DOOM = 0, CLS_SERVE = 1, CLS_TRAIN = 2, CLS_SWEEP = 3 };
+static int g_prio[4] = {0, 0, 0, 0};   // --prio D,S,T,W: task priority bucket per class (what a GLOBAL queue can use to favour a class)
 
 struct Opt {
   std::string scn, out, wad, sched = "dynamic", ctl = "none", tag;
@@ -78,7 +79,7 @@ static KvmBundle load_bundle(const std::string& dir, Pool& pool, int cls) {
   for (int i = 0; i < nt; ++i) {
     KvmTaskDesc& t = b.tasks[i]; const KvmOpInfo* op = kvm_op(t.op_id);
     if (!op) throw std::runtime_error(dir + ": unknown op");
-    t.workload_id = cls;
+    t.workload_id = cls; t.priority = g_prio[cls];
     for (int j = 0; j < op->arity; ++j) {
       const int ty = (int)((op->types >> (3 * j)) & 7u); int32_t& w = b.args[t.args_off + j];
       if ((ty == KVM_A_BUF || ty == KVM_A_BUF_OPT) && w >= 0) { auto it = g.find(w); if (it == g.end()) throw std::runtime_error(dir + ": argument names a buffer missing from metadata"); w = it->second; }
@@ -91,7 +92,7 @@ static KvmBundle load_bundle(const std::string& dir, Pool& pool, int cls) {
 #ifdef KVM_WITH_GAME
 struct DoomInst { int inst, input, state; std::vector<int> fb; };
 static KvmBundle doom_frame(const DoomInst& d, int f, int deadline_us, int extra_us, bool indexed) {
-  KvmBundleBuilder bb; KvmTaskOpts o; o.workload = CLS_DOOM; o.deadline_us = deadline_us;
+  KvmBundleBuilder bb; KvmTaskOpts o; o.workload = CLS_DOOM; o.priority = g_prio[CLS_DOOM]; o.deadline_us = deadline_us;
   auto A = [&](std::vector<KvmArg> a) { if (indexed) a.push_back(KvmArg::i32(d.inst)); return a; };
   const char* sfx = indexed ? "_n" : "";
   const int tick = bb.add((std::string("doom_tick") + sfx).c_str(), A({KvmArg::i32(f), KvmArg::buf(d.input), KvmArg::buf(d.state)}), o);
@@ -447,6 +448,7 @@ int main(int argc, char** argv) {
     else if (a == "--log") o.log_level = iv();
     else if (a == "--live-cap") o.cfg.live_cap = iv(); else if (a == "--ring-words") o.cfg.ring_words = iv();
     else if (a == "--gate-tune") o.gate_tune = true;
+    else if (a == "--prio") { std::stringstream ss(sv()); std::string tok; for (int k = 0; k < 4 && std::getline(ss, tok, ','); ++k) adp::g_prio[k] = atoi(tok.c_str()); }
     else if (a == "--express") o.express = true;   // Doom frames and serve requests are express records: admitted ahead of the training record being copied
     else if (a == "--no-doom") o.no_doom = true; else if (a == "--no-serve") o.no_serve = true; else if (a == "--no-train") o.no_train = true; else if (a == "--no-dump-frames") o.dump_frames = false;
     else if (a == "--sched") {

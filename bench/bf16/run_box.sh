@@ -13,7 +13,7 @@
 # independent, a failing stage does not stop the next, and every stage logs to OUT_DIR/<stage>.log. DATA_DIR holds the gen.py bundles:
 #   f32_1 b16_1 (1 step, buffer reuse 'shape': timing), f32_n1 bf16s_n1 (1 step, reuse none: gradients survive), bf16s_3 (3 steps: losses, PyTorch).
 set -uo pipefail
-ROOT="$(pwd)"; DUMP_EXEC="${KVM_EXEC_DUMP:-./kvm_exec}"   # the executor build that has --dump-bin
+ROOT="$(pwd)"; EXEC="${KVM_EXEC:-./kvm_exec}"; DUMP_EXEC="$EXEC"   # KVM_EXEC: the executor build to measure (needs --dump-bin)
 MODE="${1:?correctness|perf}"; OUT="$(realpath -m "${2:?OUT_DIR}")"; DATA="$(realpath -m "${3:?DATA_DIR}")"
 mkdir -p "$OUT"
 # ONE lock hold for the whole mode (re-exec under flock); every command below runs while it is held
@@ -44,24 +44,25 @@ correctness)
   stage test_bf16_memcheck 2400 bash -c "cd tests/gpu_ops && TEST_BF16_SMALL=1 compute-sanitizer --tool memcheck --error-exitcode 9 ./test_bf16 | tail -6"
   stage test_bf16_racecheck 2400 bash -c "cd tests/gpu_ops && TEST_BF16_SMALL=1 compute-sanitizer --tool racecheck --error-exitcode 9 ./test_bf16 | tail -6"
   stage test_bf16_synccheck 2400 bash -c "cd tests/gpu_ops && TEST_BF16_SMALL=1 compute-sanitizer --tool synccheck --error-exitcode 9 ./test_bf16 | tail -6"
-  stage model_zoo_bf16s 3400 env KVM_NO_LOCK=1 KVM_EXEC_BIN="$ROOT/kvm_exec" bash examples/models/run_box.sh "$DATA/zoo" "$OUT/zoo" --cases examples/models/cases_bf16s.txt
+  stage model_zoo_bf16s 3400 env KVM_NO_LOCK=1 KVM_EXEC_BIN="$EXEC" bash examples/models/run_box.sh "$DATA/zoo" "$OUT/zoo" --cases examples/models/cases_bf16s.txt
   stage grads_f32 1500 python3 bench/bf16/exec_grads.py "$DATA/f32_n1" "$DUMP_EXEC" --out "$OUT/grads_f32"
   stage grads_bf16s 1500 python3 bench/bf16/exec_grads.py "$DATA/bf16s_n1" "$DUMP_EXEC" --out "$OUT/grads_bf16s"
   ;;
 perf)
   stage bench_mma_bf16 1500 bash -c "cd tests/gpu_ops && BENCH_REPS=7 ./bench_mma_bf16"
+  stage bench_mma_bf16_nouter 1500 bash -c "cd tests/gpu_ops && MMA_NOUTER=1 BENCH_REPS=7 MMA_SET=gpt ./bench_mma_bf16"   # n-outer tile order (what the frontend emits for wide GEMMs)
   stage bench_mma_bf16_f32out 1500 bash -c "cd tests/gpu_ops && MMA_OUT=f32 BENCH_REPS=7 MMA_SET=gpt ./bench_mma_bf16"
-  stage exec_f32 2400 python3 bench/vs_pytorch/exec_bench.py "$DATA/f32_1" ./kvm_exec --reps 5 --out "$OUT/exec_f32.json"
-  stage exec_bf16s 2400 python3 bench/vs_pytorch/exec_bench.py "$DATA/b16_1" ./kvm_exec --reps 5 --out "$OUT/exec_bf16s.json"
+  stage exec_f32 2400 python3 bench/vs_pytorch/exec_bench.py "$DATA/f32_1" "$EXEC" --reps 5 --out "$OUT/exec_f32.json"
+  stage exec_bf16s 2400 python3 bench/vs_pytorch/exec_bench.py "$DATA/b16_1" "$EXEC" --reps 5 --out "$OUT/exec_bf16s.json"
   stage torch_tf32 3600 python3 bench/vs_pytorch/torch_bench.py "$DATA/bf16s_3" --modes eager,graph,compile_graph --precision tf32 --reps 5 --out "$OUT/torch_tf32.json"
   stage torch_bf16 3600 python3 bench/vs_pytorch/torch_bench.py "$DATA/bf16s_3" --modes eager,graph,compile_graph --precision bf16 --reps 5 --out "$OUT/torch_bf16.json"
-  stage exec_bf16s_3step 2400 python3 bench/vs_pytorch/exec_bench.py "$DATA/bf16s_3" ./kvm_exec --reps 3 --out "$OUT/exec_bf16s_3step.json"
+  stage exec_bf16s_3step 2400 python3 bench/vs_pytorch/exec_bench.py "$DATA/bf16s_3" "$EXEC" --reps 3 --out "$OUT/exec_bf16s_3step.json"
   stage losses_vs_bf16 1500 python3 bench/bf16/exec_losses_bin.py "$DATA/bf16s_3" "$DUMP_EXEC" --torch "$OUT/torch_bf16.json" --mode eager --out "$OUT/losses_vs_torch_bf16.json"
   stage losses_vs_tf32 1500 python3 bench/bf16/exec_losses_bin.py "$DATA/bf16s_3" "$DUMP_EXEC" --torch "$OUT/torch_tf32.json" --mode eager --out "$OUT/losses_vs_torch_tf32.json"
   ;;
 profile)   # what the executor's step is made of: per-op task counts and run time from a traced launch (f32 and bf16s)
   for v in f32:f32_1 bf16s:b16_1; do
-    stage "trace_${v%%:*}" 1500 bash -c "./kvm_exec --quiet --trace-csv /tmp/kvm_bf16_trace.csv '$DATA/${v##*:}/bundle' && python3 bench/vs_pytorch/trace_summary.py /tmp/kvm_bf16_trace.csv 1; rm -f /tmp/kvm_bf16_trace.csv"
+    stage "trace_${v%%:*}" 1500 bash -c "$EXEC --quiet --trace-csv /tmp/kvm_bf16_trace.csv '$DATA/${v##*:}/bundle' && python3 bench/vs_pytorch/trace_summary.py /tmp/kvm_bf16_trace.csv 1; rm -f /tmp/kvm_bf16_trace.csv"
   done
   ;;
 *) echo "unknown mode $MODE" >&2; exit 2;;

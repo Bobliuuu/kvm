@@ -1,52 +1,52 @@
-# demo attn-large  host=<KVM_HOST>  commit=e5c1afd+dirty  preset=large model=gpt_162m steps=6 window=1 serve_every=2 frames=700 tiling=a100 precise=0 lr=3e-4 warmup=2 sanitize=0
+# demo attn-large2  host=<KVM_HOST>  commit=3089f9e  preset=large model=gpt_162m steps=6 window=1 serve_every=2 frames=700 tiling=a100 precise=0 lr=3e-4 warmup=2 sanitize=0
 
-=== 2026-11-06T22:57:51Z  environment
+=== 2026-11-07T00:11:17Z  environment
 Build cuda_12.8.r12.8/compiler.35583870_0
 NVIDIA A100-SXM4-40GB, 580.105.08, 40960 MiB
-commit: e5c1afd
+commit: 3089f9e
 
-=== 2026-11-06T22:57:51Z  Doom engine objects + WAD
+=== 2026-11-07T00:11:17Z  Doom engine objects + WAD
 -rw-rw-r-- 1 user user 1308688 Nov  3 23:37 doom/build/doom_dev.o
 -rw-rw-r-- 1 user user 4196020 Nov  3 23:17 doom/third_party/doom1.wad
 
-=== 2026-11-06T22:57:51Z  build kvm_run
+=== 2026-11-07T00:11:17Z  build kvm_run
 /usr/bin/nvcc -O3 -arch=sm_80 -std=c++17 -rdc=true -DKVM_WITH_GAME -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 demo/kvm_run.cu doom/build/doom_dev.o -o demo/kvm_run
 
-=== 2026-11-06T23:15:42Z  CPU oracle for Doom (700 frames)
+=== 2026-11-07T00:29:53Z  CPU oracle for Doom (700 frames)
 
-=== 2026-11-06T23:15:42Z  generate demo: gpt_162m, 6 steps in windows of 1, a request every 2, 700 frames, tiling a100, precise=0
-INFO wrote bundle to ../runs/attn-large/demo/bundles/serve_s6
+=== 2026-11-07T00:29:54Z  generate demo: gpt_162m, 6 steps in windows of 1, a request every 2, 700 frames, tiling a100, precise=0
+INFO wrote bundle to ../runs/attn-large2/demo/bundles/serve_s6
 INFO bundle serve_s6: 8432 tasks, 96222 edges (base {'weights': 12})
 INFO demo: {'train': (276668, 5280486), 'serve_s0': (8432, 96222), 'serve_s2': (8432, 96222), 'serve_s4': (8432, 96222), 'serve_s6': (8432, 96222), 'game': (5600, 16088)}
-INFO manifest: 11 admissions, 1888 buffers (196 shared) -> ../runs/attn-large/demo/MANIFEST.json
+INFO manifest: 11 admissions, 1888 buffers (196 shared) -> ../runs/attn-large2/demo/MANIFEST.json
 
-=== 2026-11-06T23:18:25Z  CPU-only manifest check (parse, version flow, every bundle loads/remaps/validates)
+=== 2026-11-07T00:32:36Z  CPU-only manifest check (parse, version flow, every bundle loads/remaps/validates)
 [kvm_exec][D] bundle train_w5       276668 tasks (precompiled)
 [kvm_exec][D] bundle serve_s6         8432 tasks (precompiled)
 [kvm_exec][I] check-only: 11 bundles load, remap and validate
 [kvm_exec][I] check-only: manifest, bundles and version flow are consistent
 
-=== 2026-11-06T23:18:28Z  golden skipped (pure-Python CPU VM cannot run this model)
+=== 2026-11-07T00:32:39Z  golden skipped (pure-Python CPU VM cannot run this model)
 
-=== 2026-11-06T23:18:28Z  GPU: one lock hold (7200 s max wait)
-lock acquired 2026-11-06T23:25:50Z
+=== 2026-11-07T00:32:39Z  GPU: one lock hold (7200 s max wait)
+lock acquired 2026-11-07T00:32:39Z
 kvm_run exit 0
-lock released 2026-11-06T23:26:09Z
+lock released 2026-11-07T00:32:57Z
 [kvm_exec][I] version check: 22935 version-carrying tasks (22935 exact), 0 violations, 0 at_least readers saw the version advance while they ran; 7645 reads of version 0 carry no tag (ordered by the host barrier only)
-[kvm_exec][I] workload 0: 1660008 tasks, 90.873 CTA-s, queue wait p50 1216.5 p99 34165.8 max 37632.0 us, 0 deadline misses, 29.75 GB moved (2.5 GB/s over the run)
-[kvm_exec][I] workload 1: 33728 tasks, 1.052 CTA-s, queue wait p50 32.8 p99 1269.8 max 1317.9 us, 33728 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
-[kvm_exec][I] workload 2: 5600 tasks, 4.253 CTA-s, queue wait p50 13.3 p99 22.5 max 114.7 us, 56 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
-[kvm_exec][I] trace: 1699336 tasks -> runs/attn-large/out/trace.csv
-[kvm_exec][I] dumped 701 buffers to runs/attn-large/out/buffers
-[kvm_exec][I] wrote runs/attn-large/out/run.json
-OK: 1699336/1699336 tasks, 12070.535 ms, 11 admissions
+[kvm_exec][I] workload 0: 1660008 tasks, 91.589 CTA-s, queue wait p50 1204.2 p99 34364.4 max 39310.3 us, 0 deadline misses, 29.75 GB moved (2.5 GB/s over the run)
+[kvm_exec][I] workload 1: 33728 tasks, 1.048 CTA-s, queue wait p50 32.8 p99 1269.8 max 1319.9 us, 33728 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] workload 2: 5600 tasks, 4.248 CTA-s, queue wait p50 13.3 p99 21.5 max 31.7 us, 56 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] trace: 1699336 tasks -> runs/attn-large2/out/trace.csv
+[kvm_exec][I] dumped 701 buffers to runs/attn-large2/out/buffers
+[kvm_exec][I] wrote runs/attn-large2/out/run.json
+OK: 1699336/1699336 tasks, 12045.158 ms, 11 admissions
 
-=== 2026-11-06T23:26:09Z  verify
-PASS  executor: 1699336/1699336 tasks in 12070.5 ms on NVIDIA A100-SXM4-40GB (108 SMs, grid 108), sched dynamic, err_code 0
+=== 2026-11-07T00:32:57Z  verify
+PASS  executor: 1699336/1699336 tasks in 12045.2 ms on NVIDIA A100-SXM4-40GB (108 SMs, grid 108), sched dynamic, err_code 0
 PASS  versions: 22935 version-carrying tasks checked against the device trace (22935 exact), 0 violations; 0 at_least readers saw the version advance while running
 PASS  training: 6 step losses, first 10.9790 -> last 10.9237 (mean of first/last 1: 10.9790 -> 10.9237, falls); no CPU golden at this size
 SKIP  serving: no golden decode (--no-golden); coherence is covered by the version check
 PASS  game: compared 700 frames: raw-identical 700/700, fingerprint-identical 700/700, state-identical 700/700; final cand {'booted': 1, 'tics': 700, 'gamestate': 0, 'health': 100, 'armor': 100, 'kills': 3, 'monsters': 6, 'items': 2, 'secrets': 0, 'deaths': 0, 'level_finished_tic': -1, 'x': 2458, 'y': -2679, 'waypoint': 17}
-PASS  cadence: 700 ticks: 171.8 frames/s (35 needed), tick gap p50/p99/max 5.65/12.18/13.27 ms, 0 of 698 gaps over 28.57 ms; tick run p50 5.40 ms, queue wait p99 15 us; boot tick 175071 us; 7 ticks past their absolute deadline (frames before the boot finishes are late by construction)
-INFO  overlap: Doom ran 4.24 s; game: 4900 tasks, 4.251 CTA-s (4.251 while Doom ran, 4894 tasks overlapping); serve: 33488 tasks, 1.051 CTA-s (0.262 while Doom ran, 8372 tasks overlapping); train: 1626864 tasks, 90.759 CTA-s (11.168 while Doom ran, 209624 tasks overlapping)
+PASS  cadence: 700 ticks: 172.0 frames/s (35 needed), tick gap p50/p99/max 5.54/12.13/13.79 ms, 0 of 698 gaps over 28.57 ms; tick run p50 5.34 ms, queue wait p99 14 us; boot tick 174368 us; 7 ticks past their absolute deadline (frames before the boot finishes are late by construction)
+INFO  overlap: Doom ran 4.23 s; game: 4900 tasks, 4.245 CTA-s (4.245 while Doom ran, 4894 tasks overlapping); serve: 33488 tasks, 1.047 CTA-s (0.261 while Doom ran, 8372 tasks overlapping); train: 1626864 tasks, 91.475 CTA-s (11.218 while Doom ran, 209624 tasks overlapping)
 ALL CHECKS PASSED (SKIPs are listed above)

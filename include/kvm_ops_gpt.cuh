@@ -24,7 +24,7 @@
 // Numerics (fp32 storage everywhere). Tolerances are relative to the max abs of the reference output unless stated:
 //   matmul_tile 1xTF32: 4e-3 (10-bit mantissa inputs, fp32 accumulate); precise (3xTF32): 2e-6 * sqrt(K)
 //   norms / gelu / rope / residual / embeddings / adamw / ce: 1e-5 (fp32 reductions, 32-lane tree; tanhf/expf full precision)
-//   attention fwd/bwd: 2e-5 (3xTF32 tensor-core products with fp32 accumulate and online softmax; measured 1e-6..2e-5)   decode: 2e-5   sample: exact index vs a double reference (up to
+//   attention fwd/bwd: 2e-5 (3xTF32 tensor-core products with fp32 accumulate and online softmax; measured 1e-6..1.2e-5 for T <= 2048; dK/dV grow with T, the tensor core truncating its accumulator once per mma)   decode: 2e-5   sample: exact index vs a double reference (up to
 //   measure-zero CDF boundary cases)
 #include <cstdint>
 #include <cuda_runtime.h>

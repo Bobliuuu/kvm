@@ -33,17 +33,26 @@ C = 2.0 / (B * O)
 def fresh(n):
     return W1i.unsqueeze(0).repeat(n, 1, 1).contiguous(), W2i.unsqueeze(0).repeat(n, 1, 1).contiguous()
 
-def step(W1, W2, lr, s, lossrow):
-    k = s % NB; x = X[k]
+def step_core(W1, W2, lr, x, t, lossrow):
     Hh = torch.relu(torch.matmul(x, W1))
-    dY = torch.bmm(Hh, W2) - T[k]
+    dY = torch.bmm(Hh, W2) - t
     lossrow.copy_(torch.einsum("rbo,rbo->r", dY, dY) / (B * O))
-    dY.mul_(C)
+    dY = dY * C
     dH = torch.ops.aten.threshold_backward(torch.bmm(dY, W2.transpose(1, 2)), Hh, 0)
     gW2 = torch.bmm(Hh.transpose(1, 2), dY)
     gW1 = torch.matmul(x.t(), dH)
     W2.addcmul_(lr, gW2, value=-1)
     W1.addcmul_(lr, gW1, value=-1)
+
+_compiled = None
+USE_COMPILED = False
+def step(W1, W2, lr, s, lossrow):
+    global _compiled
+    k = s % NB
+    if USE_COMPILED:
+        if _compiled is None: _compiled = torch.compile(step_core)
+        return _compiled(W1, W2, lr, X[k], T[k], lossrow)
+    return step_core(W1, W2, lr, X[k], T[k], lossrow)
 
 def metric(L, s):   # L [steps, n]; mean of last win steps ending at s (inclusive); NaN -> huge
     m = L[s - win + 1:s + 1].mean(0)
@@ -227,24 +236,35 @@ res["correctness"]["runs_diverged_in_full_pop_ref"] = nan_runs
 kill_kvm = [int(x) for x in np.fromfile(f"{d}/kill_sh.bin", dtype=np.int32)[:R]]
 res["correctness"]["kill_rung_kvm"] = kill_kvm
 res["correctness"]["same_kill_rungs"] = kill_kvm == ep
-L0, _, _, _, ts0 = run_masked(True, False, True)
-L1, a1, W11, W21, ts1 = run_masked(True, True, True)
-res["correctness"]["B1_survivors_match_ref"] = set(torch.nonzero(a1).flatten().tolist()) == surv_ref
+def baselines(tag):
+    global USE_COMPILED
+    USE_COMPILED = (tag == "compiled")
+    sfx = "_compiled" if USE_COMPILED else ""
+    L0, _, _, _, ts0 = run_masked(True, False, True)
+    L1, a1, W11, W21, ts1 = run_masked(True, True, True)
+    res["correctness"]["B1_survivors_match_ref" + sfx] = set(torch.nonzero(a1).flatten().tolist()) == surv_ref
+    res["torch_ms"]["B0_graph_full_population" + sfx] = stat(ts0)
+    res["torch_ms"]["B1_graph_masked" + sfx] = stat(ts1)
+    pg = Polled(); pg.run(); torch.cuda.synchronize(); pg.run(); torch.cuda.synchronize()   # warm graph cache
+    ts3 = timeit(pg.run)
+    res["torch_ms"]["B3_host_polled_compaction_cached_graphs" + sfx] = stat(ts3)
+    res["correctness"]["B3_kill_rungs_match_ref" + sfx] = pg.kill == ep
+    cands = [min(ts1), min(ts3)]
+    if MODE == 0:
+        rg = RungGraphs(); ts2 = timeit(rg.run)
+        res["torch_ms"]["B2_rung_graphs_static_halving" + sfx] = stat(ts2); cands.append(min(ts2))
+        res["correctness"]["B2_survivors_match_ref" + sfx] = set(rg.final_ids.tolist()) == surv_ref
+    return cands, min(ts0), min(ts1), min(ts3)
 stat = lambda ts: dict(best_ms=min(ts), median_ms=float(np.median(ts)), all_ms=[round(t, 3) for t in ts])
-res["torch_ms"] = dict(B0_graph_full_population=stat(ts0), B1_graph_masked=stat(ts1))
-pg = Polled(); pg.run(); torch.cuda.synchronize(); pg.run(); torch.cuda.synchronize()   # warm graph cache
-ts3 = timeit(pg.run)
-res["torch_ms"]["B3_host_polled_compaction_cached_graphs"] = stat(ts3)
-res["correctness"]["B3_kill_rungs_match_ref"] = pg.kill == ep
-res["correctness"]["B3_distinct_graphs"] = len(pg.cache)
-cands = [min(ts1), min(ts3)]
-if MODE == 0:
-    rg = RungGraphs(); ts2 = timeit(rg.run)
-    res["torch_ms"]["B2_rung_graphs_static_halving"] = stat(ts2); cands.append(min(ts2))
-    res["correctness"]["B2_survivors_match_ref"] = set(rg.final_ids.tolist()) == surv_ref
+res["torch_ms"] = {}
+cE, b0E, b1E, b3E = baselines("eager")
+try:
+    cC, b0C, b1C, b3C = baselines("compiled")
+except Exception as ex:
+    res["compiled_error"] = repr(ex)[:300]; cC, b0C, b1C, b3C = cE, b0E, b1E, b3E
 res["kvm_ms"] = dict(full_population=meta["kvm_full_ms"], controlled=meta["kvm_sh_ms"])
-res["speedup"] = dict(kvm_ctrl_vs_best_torch_ctrl=min(cands) / meta["kvm_sh_ms"], kvm_ctrl_vs_B1_masked=min(ts1) / meta["kvm_sh_ms"],
-    kvm_ctrl_vs_B3_polled=min(ts3) / meta["kvm_sh_ms"], kvm_full_vs_B0=min(ts0) / meta["kvm_full_ms"])
+res["speedup"] = dict(kvm_ctrl_vs_best_torch_ctrl_eager=min(cE) / meta["kvm_sh_ms"], kvm_ctrl_vs_best_torch_ctrl_compiled=min(cC) / meta["kvm_sh_ms"],
+    kvm_ctrl_vs_best_torch_any=min(cE + cC) / meta["kvm_sh_ms"], kvm_full_vs_B0_eager=b0E / meta["kvm_full_ms"], kvm_full_vs_B0_compiled=b0C / meta["kvm_full_ms"])
 res["torch_per_run_gpu_mem_note"] = "all torch variants use manual fwd/bwd with bmm, TF32, CUDA graphs"
 print(json.dumps(res, indent=1))
 json.dump(res, open(f"{d}/torch_result.json", "w"), indent=1)

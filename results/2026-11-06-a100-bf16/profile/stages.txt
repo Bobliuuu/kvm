@@ -1,0 +1,5 @@
+== trace_f32 01:41:33
+   trace_f32 exit 0 01:41:38
+== trace_bf16s 01:41:38
+   trace_bf16s exit 0 01:41:41
+== done 01:41:41

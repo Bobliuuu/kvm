@@ -169,8 +169,8 @@ def check_serving_torch(serve, obs, demo, run_dir, run, model, precise):
         return verdict('serving', 'FAIL', '; '.join(bad[:3]))
     if not checked:
         return verdict('serving', 'SKIP', f'no request reads a known weights version (unchecked: {skipped})')
-    return verdict('serving', 'PASS', f'{checked} of {len(serve)} requests equal the PyTorch float64 decode ({exact_reqs} token-exact on every step, the rest within the '
-                   f'TF32 near-tie tolerance); unchecked, no weights snapshot survives: {skipped or "none"}')
+    return verdict('serving', 'PASS', f'{checked} of {len(serve)} requests equal the PyTorch float64 decode ({exact_reqs} token-exact on every step, '
+                   f'{checked - exact_reqs} accepted as TF32 near ties); unchecked, no weights snapshot survives: {skipped or "none"}')
 
 
 def check_serving(manifest, obs, golden, torch_ctx=None):

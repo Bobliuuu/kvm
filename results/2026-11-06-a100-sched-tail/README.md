@@ -49,6 +49,30 @@ the evidence supports deleting it (not done here, see gaps).
 bundles, exact sums; first express task ready at 49 us, the big record's first root at 1182 us): PASS. `test_sched` cost/share/reserve/edf/inherit/rand: 499 checks, 0 failed;
 starve_neg and inherit_neg detected; arbiter suite 12 checks pass.
 
+## Update 2026-11-07 (tip 86b82c2: arbiter deleted, merged with admission 400eeec; Modal A100-40GB, driver 610.57, CUDA 12.8)
+- The bandwidth arbiter is deleted (`KVM_SF_ARBITER`, `bw_limit_*`, `sat_pct`, `window_us`, `bw_total`/`bw_bytes`, the arbiter suite, `--arbiter`, `--arbiter-assist`, controller assist). The per-class `bw_cta` cap stays.
+  After the deletion: `test_exec` 8613 checks 0 failed (`raw/m3-exec.log`); `test_sched` cost/share/reserve/edf/inherit/rand 499 checks, negatives detected; baselines: dynamic+controller 0.56x of the priority queue, strict serve 0.98x, strict+controller 0.96x (`raw/m3-sched.log`);
+  express 53 us vs 1373 us, admit_gran 64k-task record: 8149 us ordinary vs 402 us express. Litmus on this tree: container had not finished when this was written.
+- `test_adaptive loop` ("reservation must follow a burst within 10 ms, took -1.0") fails 3/3 on origin/main's executor AND on this tip: pre-existing, not caused by this work (`raw/diag-main.log`, `raw/diag-tip.log`); `telemetry` and `floor` pass.
+- **Real Doom + big training record + serve** (`tests/modal/sched_tail_real.sh`, scenario 6 layers d512 = 39.7k-task training windows, 2 train runs, serve 25 req/s with a 400 req/s burst 8-12 s, Doom 35 Hz real engine, every Doom frame oracle-exact in all 27 + 27 runs):
+  Doom frames late of 840 / Doom frame p99 ms / serve p99 ms, per rep (ERR = run died, see below). Raw: `raw/m3-real-mix.log`.
+| config | rep1 | rep2 | rep3 |
+|---|---|---|---|
+| global flat | ERR | ERR | ERR |
+| global, task priorities 20/10/0 | ERR | ERR | ERR |
+| fixed priority, no express | ERR | ERR | 141 / 67.6 / 81.7 |
+| fixed priority + express | 14 / 54.8 / 65.1 | 11 / 39.8 / 58.1 | 38 / 52.3 / 73.1 |
+| strict, no express | 128 / 63.3 / 78.7 | ERR | ERR |
+| strict + express | 11 / 51.4 / 73.8 | 13 / 50.0 / 64.1 | 36 / 55.2 / 71.5 |
+| adaptive, no express | ERR | ERR | ERR |
+| adaptive + express | 9 / 49.4 / 70.9 | ERR | 15 / 44.4 / 86.8 |
+| adaptive + strict + express | 12 / 53.4 / 73.3 | ERR | 14 / 42.7 / 73.9 |
+  (the third number is serve p99; the 2nd is Doom frame-time p99; the first column of each cell is frames late). Train throughput 24.5-24.9 steps/s in every surviving run.
+  Reading: with express admission 9-15 late frames (rep 1-2; 36-38 in rep 3) where the runs without it that survived had 128-141: about a 10x cut, Doom frame p99 40-55 ms against 63-68 ms.
+  Strict vs plain fixed priority, and controller on vs off, are not separable here (within the 9-15 spread); the controller does not beat fixed priority + express, so there is no evidence to keep it.
+- **Unresolved: 10 of 12 non-express big runs and every small-scenario run (27/27, at about 14.3M tasks done) ended with `DEVICE ERROR UNKNOWN` (an error code outside the error table), with oracle-exact frames up to the failure.** Express runs failed 2 of 12.
+  It occurs for configs that do not use my code paths (global flat, fixed priority), so it may come from the merged admission branch rather than from sliced admission, but this was not isolated: an older admission-tree binary was queued on the lab box for comparison and had not returned. Treat the failure-count columns, not only the successful runs, as the result. Small-scenario results are therefore absent.
+
 ## Not done / honest gaps
 - Real Doom + big training record + serve (`adaptive_run --express`) is NOT measured: the adaptive_run build needed the Doom object and was not ready. Doom lateness before/after is unmeasured; only the synthetic numbers above exist.
 - The adaptive controller: with strict serve, controller on/off is 1.03x against 1.00x on serve p99 (noise). No evidence it helps, but the real-mix comparison is missing, so it was not removed.

@@ -1,0 +1,74 @@
+# suite=custom tag=diag-tip 2026-11-07T16:12:09Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-80GB, 610.57.04, 1410 MHz
+host RAM: 1024 GB, cores: 16
+                     ^
+
+##### telemetry run 1
+GPU NVIDIA A100-SXM4-80GB, 108 SMs, sm_80
+== telemetry
+  trace: 300 deadline tasks, 296 near miss, 296 missed, 400 waited over target; device: dl_n 300 near 296 missed 296 wait_over(cls1) 400; mapped telemetry at exit: near 295
+== telemetry: PASS (0.3s, 0 new failures)
+8 checks, 0 failed, 0 suites failed
+PASS
+##### telemetry run 2
+GPU NVIDIA A100-SXM4-80GB, 108 SMs, sm_80
+== telemetry
+  trace: 300 deadline tasks, 296 near miss, 296 missed, 400 waited over target; device: dl_n 300 near 296 missed 296 wait_over(cls1) 400; mapped telemetry at exit: near 295
+== telemetry: PASS (0.3s, 0 new failures)
+8 checks, 0 failed, 0 suites failed
+PASS
+##### telemetry run 3
+GPU NVIDIA A100-SXM4-80GB, 108 SMs, sm_80
+== telemetry
+  trace: 300 deadline tasks, 296 near miss, 296 missed, 400 waited over target; device: dl_n 300 near 296 missed 296 wait_over(cls1) 400; mapped telemetry at exit: near 295
+== telemetry: PASS (0.3s, 0 new failures)
+8 checks, 0 failed, 0 suites failed
+PASS
+##### loop run 1
+GPU NVIDIA A100-SXM4-80GB, 108 SMs, sm_80
+== loop
+  burst of serve demand beside saturating batch (62 workers): reservation reached 0 CTAs (10 CTAs reached after -1.0 ms), released to 0 after 0 ms; batch got 86% of the SM time during the burst; 1 parameter writes
+  FAIL tests/gpu/test_adaptive.cu:111: a.peak_min >= 10 && a.attack_ms >= 0 && a.attack_ms < 10 -- reservation must follow a burst within 10 ms, took -1.0
+== loop: FAIL (1.0s, 1 new failures)
+5 checks, 1 failed, 1 suites failed
+FAIL
+##### loop run 2
+GPU NVIDIA A100-SXM4-80GB, 108 SMs, sm_80
+== loop
+  burst of serve demand beside saturating batch (62 workers): reservation reached 8 CTAs (10 CTAs reached after -1.0 ms), released to 0 after 0 ms; batch got 86% of the SM time during the burst; 6 parameter writes
+  FAIL tests/gpu/test_adaptive.cu:111: a.peak_min >= 10 && a.attack_ms >= 0 && a.attack_ms < 10 -- reservation must follow a burst within 10 ms, took -1.0
+== loop: FAIL (0.9s, 1 new failures)
+5 checks, 1 failed, 1 suites failed
+FAIL
+##### loop run 3
+GPU NVIDIA A100-SXM4-80GB, 108 SMs, sm_80
+== loop
+  burst of serve demand beside saturating batch (62 workers): reservation reached 0 CTAs (10 CTAs reached after -1.0 ms), released to 0 after 0 ms; batch got 87% of the SM time during the burst; 1 parameter writes
+  FAIL tests/gpu/test_adaptive.cu:111: a.peak_min >= 10 && a.attack_ms >= 0 && a.attack_ms < 10 -- reservation must follow a burst within 10 ms, took -1.0
+== loop: FAIL (0.9s, 1 new failures)
+5 checks, 1 failed, 1 suites failed
+FAIL
+##### floor run 1
+GPU NVIDIA A100-SXM4-80GB, 108 SMs, sm_80
+== floor
+  sustained overload by a weight-100 class against a weight-1 batch class: batch SM-time share 0.226 with the controller's 20% floor
+== floor: PASS (0.7s, 0 new failures)
+2 checks, 0 failed, 0 suites failed
+PASS
+##### floor run 2
+GPU NVIDIA A100-SXM4-80GB, 108 SMs, sm_80
+== floor
+  sustained overload by a weight-100 class against a weight-1 batch class: batch SM-time share 0.225 with the controller's 20% floor
+== floor: PASS (0.7s, 0 new failures)
+2 checks, 0 failed, 0 suites failed
+PASS
+##### floor run 3
+GPU NVIDIA A100-SXM4-80GB, 108 SMs, sm_80
+== floor
+  sustained overload by a weight-100 class against a weight-1 batch class: batch SM-time share 0.222 with the controller's 20% floor
+== floor: PASS (0.6s, 0 new failures)
+2 checks, 0 failed, 0 suites failed
+PASS
+done

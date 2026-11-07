@@ -1,0 +1,273 @@
+# suite=custom tag=sched-tail-m3-real 2026-11-07T17:43:50Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 601 GB, cores: 16
+== deps
+Ubuntu clang version 14.0.0-1ubuntu1.1
+== doom
+[doom 17:44:17] INFO  fetching doomgeneric e257a09527062bfb986b6e5e0780839b6cbd5b71
+[doom 17:44:18] DEBUG downloading https://github.com/Akbar30Bill/DOOM_wads/raw/master/doom1.wad
+[doom 17:44:19] INFO  WAD fetched and verified
+[doom 17:44:20] INFO  building doom_dev.o for sm_80 with Ubuntu clang version 14.0.0-1ubuntu1.1, Build cuda_12.8.r12.8/compiler.35583870_0
+[doom 17:44:20] DEBUG compiling 80 engine files + glue with 16 jobs
+[doom 17:44:21] DEBUG linking 85 bitcode modules
+widened 15 i1 globals to i8, 171 loads/stores rewritten
+variadic functions: ['I_Error', 'M_StringJoin', 'M_snprintf', 'fprintf', 'fscanf', 'printf', 'snprintf', 'sprintf', 'sscanf']
+[doom 17:44:47] INFO  built /src/doom/build/doom_dev.o (1308600 bytes, sm_80)
+[doom 17:44:47] INFO  building libdoom_cpu.so
+[doom 17:44:58] INFO  built /src/doom/build/libdoom_cpu.so
+== scenarios
+INFO scenario -> scn/scenario.json
+INFO scenario -> scn_big/scenario.json
+== build adaptive_run
+
+real	31m13.842s
+user	30m35.340s
+sys	0m8.370s
+-rwxr-xr-x 1 root root 46874032 Nov  7 18:16 adaptive_run
+=== 18:16:43 big_g_flat rep1: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_g_flat/rep1 --sched global --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 10955787, a=0, b=0; done 27731987/27773120
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:17:10 big_g_prio rep1: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_g_prio/rep1 --sched global --prio 20,10,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 13015378, a=0, b=0; done 29762522/29802205
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:17:37 big_fp rep1: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_fp/rep1 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 13110336, a=0, b=0; done 29871885/29911568
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:18:04 big_fp_x rep1: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_fp_x/rep1 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 14 past their deadline, frame time p50/p99/max 10.9/30.0/54.8 ms | serve: 2096 done, p50/p99 26.6/65.1 ms, 5 dropped | train: 592 steps (24.63/s)
+  exit 0, oracle PASS
+=== 18:18:34 big_strict rep1: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_strict/rep1 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --strict 1,1,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 128 past their deadline, frame time p50/p99/max 13.5/45.2/63.3 ms | serve: 2085 done, p50/p99 34.1/78.7 ms, 16 dropped | train: 597 steps (24.82/s)
+  exit 0, oracle PASS
+=== 18:19:04 big_strict_x rep1: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_strict_x/rep1 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --strict 1,1,0 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 11 past their deadline, frame time p50/p99/max 10.7/25.4/51.4 ms | serve: 2097 done, p50/p99 26.8/73.8 ms, 4 dropped | train: 589 steps (24.50/s)
+  exit 0, oracle PASS
+=== 18:19:34 big_adaptive rep1: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_adaptive/rep1 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 13047188, a=0, b=0; done 29788703/29833421
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:20:01 big_adaptive_x rep1: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_adaptive_x/rep1 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 9 past their deadline, frame time p50/p99/max 10.9/25.6/49.4 ms | serve: 2088 done, p50/p99 30.0/70.9 ms, 13 dropped | train: 593 steps (24.66/s)
+  exit 0, oracle PASS
+=== 18:20:31 big_adaptive_sx rep1: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_adaptive_sx/rep1 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --strict 1,1,0 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 12 past their deadline, frame time p50/p99/max 10.3/25.0/53.4 ms | serve: 2095 done, p50/p99 30.6/73.3 ms, 6 dropped | train: 592 steps (24.62/s)
+  exit 0, oracle PASS
+=== 18:21:01 big_g_flat rep2: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_g_flat/rep2 --sched global --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 10899558, a=0, b=0; done 27678477/27718160
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:21:29 big_g_prio rep2: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_g_prio/rep2 --sched global --prio 20,10,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 12850126, a=0, b=0; done 29622761/29677776
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:21:56 big_fp rep2: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_fp/rep2 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 12976050, a=0, b=0; done 29730215/29775585
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:22:23 big_fp_x rep2: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_fp_x/rep2 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 11 past their deadline, frame time p50/p99/max 10.9/27.8/39.8 ms | serve: 2055 done, p50/p99 26.4/58.1 ms, 0 dropped | train: 594 steps (24.70/s)
+  exit 0, oracle PASS
+=== 18:22:52 big_strict rep2: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_strict/rep2 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --strict 1,1,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 13021151, a=0, b=0; done 29759046/29798729
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:23:19 big_strict_x rep2: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_strict_x/rep2 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --strict 1,1,0 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 13 past their deadline, frame time p50/p99/max 10.8/28.9/50.0 ms | serve: 2055 done, p50/p99 26.8/64.1 ms, 0 dropped | train: 598 steps (24.86/s)
+  exit 0, oracle PASS
+=== 18:23:49 big_adaptive rep2: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_adaptive/rep2 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 12935024, a=0, b=0; done 29709859/29749542
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:24:16 big_adaptive_x rep2: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_adaptive_x/rep2 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 12985142, a=0, b=0; done 29721062/29766930
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:24:43 big_adaptive_sx rep2: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_adaptive_sx/rep2 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --strict 1,1,0 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 12889421, a=0, b=0; done 29703671/29761913
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:25:10 big_g_flat rep3: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_g_flat/rep3 --sched global --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 11023363, a=0, b=0; done 27795089/27854075
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:25:37 big_g_prio rep3: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_g_prio/rep3 --sched global --prio 20,10,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 13165528, a=0, b=0; done 29933245/29972928
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:26:03 big_fp rep3: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_fp/rep3 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 141 past their deadline, frame time p50/p99/max 14.6/45.4/67.6 ms | serve: 2133 done, p50/p99 37.2/81.7 ms, 39 dropped | train: 597 steps (24.84/s)
+  exit 0, oracle PASS
+=== 18:26:33 big_fp_x rep3: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_fp_x/rep3 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 38 past their deadline, frame time p50/p99/max 10.8/41.2/52.3 ms | serve: 2145 done, p50/p99 28.4/73.1 ms, 27 dropped | train: 590 steps (24.54/s)
+  exit 0, oracle PASS
+=== 18:27:03 big_strict rep3: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_strict/rep3 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --strict 1,1,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 13239956, a=0, b=0; done 29992213/30044658
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:29:30 big_strict_x rep3: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_strict_x/rep3 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --strict 1,1,0 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 36 past their deadline, frame time p50/p99/max 11.0/39.9/55.2 ms | serve: 2146 done, p50/p99 27.6/71.5 ms, 26 dropped | train: 591 steps (24.58/s)
+  exit 0, oracle PASS
+=== 18:30:00 big_adaptive rep3: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_adaptive/rep3 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 13072560, a=0, b=0; done 29834629/29891311
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:32:27 big_adaptive_x rep3: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_adaptive_x/rep3 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 15 past their deadline, frame time p50/p99/max 10.9/32.2/44.4 ms | serve: 2135 done, p50/p99 30.1/86.8 ms, 37 dropped | train: 591 steps (24.61/s)
+  exit 0, oracle PASS
+=== 18:32:57 big_adaptive_sx rep3: adaptive_run scn --out /logs/sched-tail-m3-real/runs-big/big_adaptive_sx/rep3 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --strict 1,1,0 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+[kvm_exec][I] doom: 840 frames, 14 past their deadline, frame time p50/p99/max 10.2/33.7/42.7 ms | serve: 2145 done, p50/p99 30.2/73.9 ms, 27 dropped | train: 593 steps (24.65/s)
+  exit 0, oracle PASS
+=== 18:33:27 g_flat rep1: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/g_flat/rep1 --sched global --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14001772, a=0, b=0; done 13992497/14009346
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:33:53 g_prio rep1: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/g_prio/rep1 --sched global --prio 20,10,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 13985598, a=0, b=0; done 13982010/13993176
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:34:19 fp rep1: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/fp/rep1 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14224776, a=0, b=0; done 14220209/14232351
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:34:46 fp_x rep1: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/fp_x/rep1 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14234014, a=0, b=0; done 14228528/14241597
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:35:12 strict rep1: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/strict/rep1 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --strict 1,1,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14230542, a=0, b=0; done 14224517/14238126
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:35:38 strict_x rep1: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/strict_x/rep1 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --strict 1,1,0 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14284869, a=0, b=0; done 14278842/14293602
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:36:04 adaptive rep1: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/adaptive/rep1 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14236330, a=0, b=0; done 14231392/14243907
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:36:31 adaptive_x rep1: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/adaptive_x/rep1 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14238637, a=0, b=0; done 14235765/14246223
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:36:57 adaptive_sx rep1: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/adaptive_sx/rep1 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --strict 1,1,0 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14299894, a=0, b=0; done 14293105/14307468
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:37:23 g_flat rep2: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/g_flat/rep2 --sched global --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 13982123, a=0, b=0; done 13972320/13989705
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:37:49 g_prio rep2: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/g_prio/rep2 --sched global --prio 20,10,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 13985592, a=0, b=0; done 13981026/13993176
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:38:16 fp rep2: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/fp/rep2 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14386569, a=0, b=0; done 14383769/14394153
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:38:42 fp_x rep2: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/fp_x/rep2 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14332254, a=0, b=0; done 14322099/14339838
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:39:08 strict rep2: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/strict/rep2 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --strict 1,1,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14376177, a=0, b=0; done 14369887/14383752
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:39:35 strict_x rep2: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/strict_x/rep2 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --strict 1,1,0 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14368089, a=0, b=0; done 14365992/14375667
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:40:01 adaptive rep2: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/adaptive/rep2 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14341500, a=0, b=0; done 14335173/14349084
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:40:27 adaptive_x rep2: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/adaptive_x/rep2 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14341500, a=0, b=0; done 14336027/14350239
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:40:54 adaptive_sx rep2: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/adaptive_sx/rep2 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --strict 1,1,0 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14353057, a=0, b=0; done 14346631/14360640
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:41:20 g_flat rep3: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/g_flat/rep3 --sched global --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14222462, a=0, b=0; done 14217176/14230041
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:41:46 g_prio rep3: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/g_prio/rep3 --sched global --prio 20,10,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14201661, a=0, b=0; done 14196128/14209245
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:42:13 fp rep3: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/fp/rep3 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14377299, a=0, b=0; done 14369784/14384883
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:42:39 fp_x rep3: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/fp_x/rep3 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14418897, a=0, b=0; done 14414687/14427636
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:43:06 strict rep3: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/strict/rep3 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --strict 1,1,0 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14439699, a=0, b=0; done 14435531/14447283
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:43:32 strict_x rep3: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/strict_x/rep3 --sched dynamic --weights 8,4,1 --min 1,0,0 --urgent-us 28571,0,0 --strict 1,1,0 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14467431, a=0, b=0; done 14466279/14476170
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:43:58 adaptive rep3: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/adaptive/rep3 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14400420, a=0, b=0; done 14394847/14407989
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:44:25 adaptive_x rep3: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/adaptive_x/rep3 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14410812, a=0, b=0; done 14406118/14418390
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+=== 18:44:51 adaptive_sx rep3: adaptive_run scn --out /logs/sched-tail-m3-real/runs-small/adaptive_sx/rep3 --sched dynamic --weights 2,1,1 --ctl adaptive --target-wait-us 1000 --floor-pct 10 --doom-min-hi 8 --strict 1,1,0 --express --serve-rate 25 --burst 8 12 400 --pause-train 14 17 --scene 18 22 12000
+submit: DEVICE_ERROR (device error UNKNOWN)
+[kvm_exec][E] DEVICE ERROR UNKNOWN (unknown error code): slot 14422369, a=0, b=0; done 14418979/14429952
+[kvm_exec][E] run failed (device error UNKNOWN)
+  exit 1, oracle PASS
+== done

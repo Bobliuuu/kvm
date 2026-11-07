@@ -1,0 +1,98 @@
+# suite=custom tag=sched-tail-m3-sched 2026-11-07T16:56:59Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 1024 GB, cores: 16
+ok   gate tuner
+ok   config errors
+ALL PASS
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80
+== express
+  first express task ready at 53 us, first root of the big record at 1373 us
+== express: PASS (0.3s, 0 new failures)
+== admit_gran
+  latency bundle (1 noop, class 0) submitted right behind a K-task record (K noops, class 1); end-to-end latency of the small bundle
+  K=   500: small bundle p50      160 us  max     1878 us   (record fully done: 0.92 us per task)
+  K=  2000: small bundle p50      398 us  max     2058 us   (record fully done: 0.84 us per task)
+  K=  8000: small bundle p50     1337 us  max     2514 us   (record fully done: 0.83 us per task)
+  K= 32000: small bundle p50     4163 us  max     4918 us   (record fully done: 0.66 us per task)
+  K= 64000: small bundle p50     8149 us  max     8243 us   (record fully done: 0.65 us per task)
+  latency bundle (1 noop, class 0, express) submitted right behind a K-task record (K noops, class 1); end-to-end latency of the small bundle
+  K=   500: small bundle p50       65 us  max     1744 us   (record fully done: 0.75 us per task)
+  K=  2000: small bundle p50       73 us  max     1653 us   (record fully done: 0.67 us per task)
+  K=  8000: small bundle p50      106 us  max     1155 us   (record fully done: 0.64 us per task)
+  K= 32000: small bundle p50      234 us  max      241 us   (record fully done: 0.63 us per task)
+  K= 64000: small bundle p50      402 us  max      421 us   (record fully done: 0.64 us per task)
+== admit_gran: PASS (2.4s, 0 new failures)
+273 checks, 0 failed, 0 suites failed
+PASS
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.3, runtime 12.8
+== baselines
+  scripted load: 7 phases (idle/low/BURST/low/idle/BURST/idle) over 1600 ms, 106 workers (108 blocks: 1 admitter, 1 policy, the rest workers), best-of-5, median [min,max]
+    [global queue, flat] chain hop run p50 427.0 us, stream CTA gap p50 15.4 us
+  global queue, flat         req p50   25089 [24876,25530] p99    28531 [27825,30514] us | hop-wait p99 27928.6 [27235.3,29964.3] | miss 100.0% [100.0,100.0] | train   86.4 [85.7,87.3] kt/s  281.9 [279.4,283.2] GB/s burst   63.2 [61.8,64.8] kt/s | util 97.9% [97.9,97.9]
+    [global queue, serve prio 20] chain hop run p50 439.3 us, stream CTA gap p50 15.4 us
+  global queue, serve prio 20 req p50     920 [915,927] p99     1489 [1465,1615] us | hop-wait p99  1000.4 [974.8,1109.0] | miss   0.0% [0.0,0.0] | train   86.1 [84.2,86.7] kt/s  279.5 [274.7,281.3] GB/s burst   59.1 [55.8,60.9] kt/s | util 97.9% [97.9,97.9]
+    [static split 25% serve] chain hop run p50 472.1 us, stream CTA gap p50 15.4 us
+  static split 25% serve     req p50  214010 [198028,227075] p99   324404 [323792,325410] us | hop-wait p99 323343.4 [322884.6,324423.7] | miss  97.5% [96.7,97.8] | train   68.9 [64.2,77.2] kt/s  224.7 [208.4,250.3] GB/s burst   67.6 [60.4,78.2] kt/s | util 77.2% [73.4,83.7]
+    [static split 50% serve] chain hop run p50 465.9 us, stream CTA gap p50 14.3 us
+  static split 50% serve     req p50   17187 [13446,19709] p99    42390 [33610,46819] us | hop-wait p99 41636.9 [32932.9,46066.7] | miss  88.3% [84.9,91.7] | train   62.7 [62.4,62.7] kt/s  203.2 [203.1,204.0] GB/s burst   63.1 [62.9,63.3] kt/s | util 76.9% [76.4,77.2]
+    [dynamic + controller] chain hop run p50 458.8 us, stream CTA gap p50 18.4 us
+  dynamic + controller       req p50    1889 [1815,1911] p99     2660 [2608,2707] us | hop-wait p99  2157.6 [2101.2,2181.1] | miss   0.0% [0.0,0.1] | train   85.3 [84.0,85.8] kt/s  276.6 [274.3,278.4] GB/s burst   58.0 [56.4,58.8] kt/s | util 97.3% [97.3,97.4]
+    [dynamic strict serve] chain hop run p50 439.3 us, stream CTA gap p50 18.4 us
+  dynamic strict serve       req p50     919 [915,934] p99     1525 [1474,1625] us | hop-wait p99  1034.2 [969.7,1145.9] | miss   0.0% [0.0,0.0] | train   85.1 [84.3,85.7] kt/s  277.6 [274.0,278.1] GB/s burst   57.6 [56.8,58.7] kt/s | util 97.4% [97.4,97.4]
+    [dynamic strict, train floor 8] chain hop run p50 439.3 us, stream CTA gap p50 18.4 us
+  dynamic strict, train floor 8 req p50     942 [927,957] p99     1722 [1611,1841] us | hop-wait p99  1189.9 [1076.2,1317.9] | miss   0.0% [0.0,0.0] | train   84.8 [83.8,86.1] kt/s  275.1 [272.4,279.8] GB/s burst   57.3 [54.7,59.6] kt/s | util 97.4% [97.4,97.4]
+    [dynamic strict + controller] chain hop run p50 439.3 us, stream CTA gap p50 19.5 us
+  dynamic strict + controller req p50     925 [921,937] p99     1556 [1549,1625] us | hop-wait p99  1055.7 [1049.6,1111.0] | miss   0.0% [0.0,0.0] | train   84.8 [84.0,85.4] kt/s  275.6 [273.1,278.5] GB/s burst   57.2 [56.5,58.3] kt/s | util 97.4% [97.4,97.4]
+  ratios (dynamic + controller vs): serve p99 / train ktask/s / utilization
+    vs global queue, flat           p99 10.72x lower, train 0.99x, utilization 0.99x
+    vs global queue, serve prio 20  p99 0.56x lower, train 0.99x, utilization 0.99x
+    vs static split 25% serve       p99 121.94x lower, train 1.24x, utilization 1.26x
+    vs static split 50% serve       p99 15.93x lower, train 1.36x, utilization 1.27x
+  ratios against the global queue with serve priority 20 (>1 = dynamic is better): serve p99 / train ktask/s
+    dynamic + controller         p99 0.56x, train 0.99x
+    dynamic strict serve         p99 0.98x, train 0.99x
+    dynamic strict, train floor 8 p99 0.86x, train 0.99x
+    dynamic strict + controller  p99 0.96x, train 0.99x
+== baselines: PASS (70.9s, 0 new failures)
+== overload
+  serve flood: 9000 req/s x 48 matmul tasks (~115 CTAs of demand on 106 workers) for 300 ms, train saturating; train reservation 26 CTAs (25%) in the dynamic row
+    [global queue, serve prio 20] chain hop run p50 392.2 us, stream CTA gap p50 14.3 us
+  global queue, serve prio 20 req p50   57264 [57090,57369] p99    57599 [57495,57644] us | hop-wait p99 57126.9 [57027.6,57172.0] | miss  98.1% [97.2,98.3] | train    0.5 [0.5,0.6] kt/s    1.9 [1.7,2.2] GB/s burst    0.6 [0.5,0.7] kt/s | util 96.7% [96.7,96.7]
+    [dynamic, train min 26 CTAs] chain hop run p50 431.1 us, stream CTA gap p50 21.5 us
+  dynamic, train min 26 CTAs req p50   81286 [73175,84392] p99    87808 [84883,88559] us | hop-wait p99 87191.6 [84355.1,87971.8] | miss  99.1% [98.7,99.2] | train   22.8 [17.4,24.6] kt/s   73.7 [55.9,79.1] GB/s burst   24.9 [19.3,27.0] kt/s | util 96.2% [96.1,96.2]
+  train throughput under the flood: global-prio 0.5 ktask/s, dynamic with reservation 22.8 ktask/s (41.5x); 
+== overload: PASS (6.8s, 0 new failures)
+10 checks, 0 failed, 0 suites failed
+PASS
+  50 runs (GLOBAL / STATIC / DYNAMIC, 2 grid sizes, random weights, reservations, caps, BW caps, deadline windows), 119500 tasks: exactly-once, edges ordered by timestamps, node values bitwise vs CPU
+== rand: PASS (1.2s, 0 new failures)
+499 checks, 0 failed, 0 suites failed
+PASS
+== inherit_neg: FAIL (0.4s, 1 new failures)
+62 checks, 3 failed, 2 suites failed
+NEGATIVE TEST PASS: the harness detected the injected violation
+##### telemetry
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80
+== telemetry
+  trace: 300 deadline tasks, 296 near miss, 296 missed, 400 waited over target; device: dl_n 300 near 296 missed 296 wait_over(cls1) 400; mapped telemetry at exit: near 295
+== telemetry: PASS (0.2s, 0 new failures)
+8 checks, 0 failed, 0 suites failed
+PASS
+##### loop
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80
+== loop
+  burst of serve demand beside saturating batch (62 workers): reservation reached 0 CTAs (10 CTAs reached after -1.0 ms), released to 0 after 0 ms; batch got 87% of the SM time during the burst; 1 parameter writes
+  FAIL tests/gpu/test_adaptive.cu:111: a.peak_min >= 10 && a.attack_ms >= 0 && a.attack_ms < 10 -- reservation must follow a burst within 10 ms, took -1.0
+== loop: FAIL (0.9s, 1 new failures)
+5 checks, 1 failed, 1 suites failed
+FAIL
+##### floor
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80
+== floor
+  sustained overload by a weight-100 class against a weight-1 batch class: batch SM-time share 0.217 with the controller's 20% floor
+== floor: PASS (0.7s, 0 new failures)
+2 checks, 0 failed, 0 suites failed
+PASS
+done

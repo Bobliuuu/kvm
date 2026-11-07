@@ -1,0 +1,19 @@
+== test_bf16 01:41:43
+   test_bf16 exit 0 01:41:46
+== test_ops 01:41:46
+   test_ops exit 0 01:41:48
+== test_extra 01:41:48
+   test_extra exit 0 01:41:52
+== test_bf16_memcheck 01:41:52
+   test_bf16_memcheck exit 0 01:41:53
+== test_bf16_racecheck 01:41:53
+   test_bf16_racecheck exit 0 01:42:03
+== test_bf16_synccheck 01:42:03
+   test_bf16_synccheck exit 0 01:42:03
+== model_zoo_bf16s 01:42:03
+   model_zoo_bf16s exit 1 01:42:42
+== grads_f32 01:42:42
+   grads_f32 exit 0 01:43:46
+== grads_bf16s 01:43:46
+   grads_bf16s exit 0 01:44:42
+== done 01:44:42

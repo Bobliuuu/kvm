@@ -182,13 +182,21 @@ __device__ __forceinline__ int kvm_claim(const KvmDevState& S, int c, const KvmC
     KvmQCtl* q = S.qctl + qi;
     // Look before reserving: a failed reservation is a decrement plus a restore on the contended line, and with many more pollers than
     // items that storm starves individual warps (litmus queue, 200 CTAs on 1024 tokens).
-    if ((long long)ld_acq64(&q->avail) > 0 && (long long)atom_add64(&q->avail, ~0ull) > 0) {
-      const unsigned long long h = atom_add64(&q->head, 1ull);
-      KvmCell* cell = S.cells + qi * S.rcap + (h & (unsigned long long)(S.rcap - 1));
-      while (ld_acq64(&cell->seq) != h + 1) { if (*(volatile int*)&S.cnt->err_code) break; __nanosleep(16); }   // its enqueuer publishes within a few instructions
-      got = cell->slot;
-      st_rel64(&cell->seq, h + (unsigned long long)S.rcap);  // recycle before running
-    } else atom_add64(&q->avail, 1ull);
+    if ((long long)ld_acq64(&q->avail) > 0) {
+      if ((long long)atom_add64(&q->avail, ~0ull) > 0) {
+        const unsigned long long h = atom_add64(&q->head, 1ull);
+        KvmCell* cell = S.cells + qi * S.rcap + (h & (unsigned long long)(S.rcap - 1));
+        int spin = 0;
+        while (ld_acq64(&cell->seq) != h + 1) {   // its enqueuer publishes within a few instructions
+          if (++spin > (1 << 22) || *(volatile int*)&S.cnt->err_code) { kvm_fail(S, KVM_ERR_QUEUE_OVERFLOW, -1, 99, (int)h); break; }
+          __nanosleep(16);
+        }
+        if (spin <= (1 << 22) && !*(volatile int*)&S.cnt->err_code) {
+          got = cell->slot;
+          st_rel64(&cell->seq, h + (unsigned long long)S.rcap);  // recycle before running
+        }
+      } else atom_add64(&q->avail, 1ull);   // lost the race for the last item: give the reservation back
+    }
   }
   return __shfl_sync(0xffffffffu, got, cd.lane);
 }

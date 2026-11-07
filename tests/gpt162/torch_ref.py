@@ -105,8 +105,10 @@ def read_dump(d, name, shape, dev):
 def grads_mode(ref, a, out):
     """Executor step-1 gradients vs torch."""
     runs = {}
-    for label, dtype, prec in (('fp64', torch.float64, 'precise'), ('tf32', torch.float32, 'tf32'), ('fp32', torch.float32, 'precise')):
+    for label, dtype, prec in (('fp64', torch.float64, 'precise'), ('tf32', torch.float32, 'tf32'), ('fp32', torch.float32, 'precise'),
+                               ('bf16', torch.float32, 'precise')):
         set_precision(prec)
+        ref.tm.autocast = label == 'bf16'          # torch.autocast(bfloat16): the arithmetic class of the executor's bf16 precision modes
         p = ref.params(dtype)
         loss, g = ref.loss_grads(p, 0, dtype)
         runs[label] = (float(loss), {n: x.cpu() for n, x in g.items()}, gnorm(g))
@@ -131,12 +133,13 @@ def grads_mode(ref, a, out):
     res['truth_clip_coef'] = coef_t
     print(f'executor: loss {el:.6f} global grad norm {en:.6f} clip_coef {coef_e:.6f}  (fp64 truth coef {coef_t:.6f})')
     print(f'loss vs fp64: executor {el - runs["fp64"][0]:+.2e}  torch-tf32 {runs["tf32"][0] - runs["fp64"][0]:+.2e}  '
-          f'torch-fp32 {runs["fp32"][0] - runs["fp64"][0]:+.2e}')
+          f'torch-fp32 {runs["fp32"][0] - runs["fp64"][0]:+.2e}  torch-autocast-bf16 {runs["bf16"][0] - runs["fp64"][0]:+.2e}')
     rows = []
     for n, s in ref.specs.items():
         r = {'shape': [s.rows, s.cols], 'norm_truth': float(truth[n].double().norm()),
              'exec_vs_fp64': rel(eg[n], truth[n]), 'tf32_vs_fp64': rel(runs['tf32'][1][n], truth[n]),
-             'fp32_vs_fp64': rel(runs['fp32'][1][n], truth[n]), 'exec_vs_tf32': rel(eg[n], runs['tf32'][1][n])}
+             'fp32_vs_fp64': rel(runs['fp32'][1][n], truth[n]), 'bf16_vs_fp64': rel(runs['bf16'][1][n], truth[n]),
+             'exec_vs_tf32': rel(eg[n], runs['tf32'][1][n]), 'exec_vs_bf16': rel(eg[n], runs['bf16'][1][n])}
         res['params'][n] = r
         rows.append((n, r))
     # per-group aggregation (embedding, attention, mlp, norms, head)
@@ -150,12 +153,15 @@ def grads_mode(ref, a, out):
         tn = math.sqrt(sum(float(truth[n].double().pow(2).sum()) for n in names))
         e = lambda src: math.sqrt(sum(float((src(n).double() - truth[n].double()).pow(2).sum()) for n in names)) / tn
         res['groups'][k] = {'n_tensors': len(names), 'grad_norm_truth': tn, 'grad_norm_exec': math.sqrt(sum(float(eg[n].double().pow(2).sum()) for n in names)),
-                            'exec_vs_fp64': e(lambda n: eg[n]), 'tf32_vs_fp64': e(lambda n: runs['tf32'][1][n]), 'fp32_vs_fp64': e(lambda n: runs['fp32'][1][n])}
+                            'exec_vs_fp64': e(lambda n: eg[n]), 'tf32_vs_fp64': e(lambda n: runs['tf32'][1][n]), 'fp32_vs_fp64': e(lambda n: runs['fp32'][1][n]),
+                            'bf16_vs_fp64': e(lambda n: runs['bf16'][1][n])}
         print(f'  group {k:10s} ({len(names):3d} tensors) |g| truth {tn:.4e} exec {res["groups"][k]["grad_norm_exec"]:.4e}  rel L2 vs fp64: '
-              f'exec {res["groups"][k]["exec_vs_fp64"]:.2e}  torch-tf32 {res["groups"][k]["tf32_vs_fp64"]:.2e}  torch-fp32 {res["groups"][k]["fp32_vs_fp64"]:.2e}')
+              f'exec {res["groups"][k]["exec_vs_fp64"]:.2e}  torch-tf32 {res["groups"][k]["tf32_vs_fp64"]:.2e}  torch-fp32 {res["groups"][k]["fp32_vs_fp64"]:.2e}  '
+              f'torch-autocast-bf16 {res["groups"][k]["bf16_vs_fp64"]:.2e}')
     worst = max(rows, key=lambda x: x[1]['exec_vs_fp64'])
-    print(f'  worst tensor: {worst[0]} exec {worst[1]["exec_vs_fp64"]:.2e} (torch-tf32 on it {worst[1]["tf32_vs_fp64"]:.2e}); '
-          f'all {len(rows)} tensors: max exec {worst[1]["exec_vs_fp64"]:.2e}, max torch-tf32 {max(r["tf32_vs_fp64"] for _, r in rows):.2e}')
+    print(f'  worst tensor: {worst[0]} exec {worst[1]["exec_vs_fp64"]:.2e} (torch-tf32 on it {worst[1]["tf32_vs_fp64"]:.2e}, torch-bf16 {worst[1]["bf16_vs_fp64"]:.2e}); '
+          f'all {len(rows)} tensors: max exec {worst[1]["exec_vs_fp64"]:.2e}, max torch-tf32 {max(r["tf32_vs_fp64"] for _, r in rows):.2e}, '
+          f'max torch-autocast-bf16 {max(r["bf16_vs_fp64"] for _, r in rows):.2e}')
     # after the update: m (linear in g) and the weight delta
     lr1 = lr_at(1, a.lr, a.warmup)
     mm = {'m': [], 'dw': []}

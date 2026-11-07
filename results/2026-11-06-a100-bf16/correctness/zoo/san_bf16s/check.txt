@@ -1,0 +1,7 @@
+lowp: 221 f32 buffers (1 signal-free skipped: ['version_token']), 2 loss buffers
+  ok   losses rel L2 <= 0.001: worst 2.57e-05
+  ok   77 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act133 4.81e-03
+  info: post-optimizer weights/moments differ by up to 2.27e-02 (v.llama.h0.attn.o.w) after the run
+  FAIL weights rel L2 <= 0.01: worst 1.73e-02
+  ok   no NaN/Inf in any GPU buffer: []
+FAIL: weights rel L2 <= 0.01

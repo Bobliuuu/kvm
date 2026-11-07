@@ -45,6 +45,19 @@ struct Dev {
     }
     int addf(int rows, int cols, int ld = 0) { return add(rows, cols, ld, 0); }
     int addi(int n) { return add(1, n, 0, 1); }
+    int addb(int rows, int cols, int ld = 0) { return add(rows, cols, ld, 2); }   // raw bf16 storage (KvmBuf.dtype 2)
+    void upb(int i, const std::vector<float>& h) {   // host floats must already be bf16-representable: stores the top 16 bits
+        auto& b = tab[i]; std::vector<uint16_t> t((size_t)b.rows * b.ld, 0);
+        for (int r = 0; r < b.rows; r++) for (int c = 0; c < b.cols; c++) { uint32_t u; memcpy(&u, &h[(size_t)r * b.cols + c], 4); t[(size_t)r * b.ld + c] = (uint16_t)(u >> 16); }
+        CK(cudaMemcpy(b.p, t.data(), t.size() * 2, cudaMemcpyHostToDevice));
+    }
+    std::vector<float> downb(int i, std::vector<uint16_t>* raw = nullptr) {
+        auto& b = tab[i]; std::vector<uint16_t> t((size_t)b.rows * b.ld); std::vector<float> o((size_t)b.rows * b.cols);
+        CK(cudaMemcpy(t.data(), b.p, t.size() * 2, cudaMemcpyDeviceToHost));
+        for (int r = 0; r < b.rows; r++) for (int c = 0; c < b.cols; c++) { uint32_t u = (uint32_t)t[(size_t)r * b.ld + c] << 16; memcpy(&o[(size_t)r * b.cols + c], &u, 4); }
+        if (raw) *raw = t;
+        return o;
+    }
     void up(int i, const std::vector<float>& h) {
         auto& b = tab[i]; std::vector<float> t((size_t)b.rows * b.ld, 0.f);
         for (int r = 0; r < b.rows; r++) for (int c = 0; c < b.cols; c++) t[(size_t)r * b.ld + c] = h[(size_t)r * b.cols + c];
@@ -106,8 +119,7 @@ static int run(Dev& d, const Batch& b, int smem = kvm_gpt_smem_bytes(KVM_GPT_MAX
     return d.geterr();
 }
 static int run1(Dev& d, int id, const A& a, int smem = kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)) { Batch b; b.add(id, a); return run(d, b, smem); }
-
-#endif
+#endif  // KVM_HARNESS_NO_FULL
 
 // ---- accounting / comparison ------------------------------------------------------------------------------------------
 static int g_pass = 0, g_fail = 0;

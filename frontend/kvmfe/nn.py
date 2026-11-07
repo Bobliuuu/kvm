@@ -26,8 +26,11 @@ class ModelConfig:
     rope_theta: float = 10000.0
     seed: int = 0
     repeat_batch: bool = False       # every step trains on step 0's batch (an overfitting check: the loss must fall far below ln(vocab))
+    precision: str = 'f32'          # f32 | bf16 (matmuls on bf16 operands, activations rounded, fp32 containers) | bf16s (bf16 values in real bf16 storage)
 
     def __post_init__(self):
+        if self.precision not in ('f32', 'bf16', 'bf16s'):
+            raise FrontendError(f"precision must be 'f32', 'bf16' or 'bf16s', got {self.precision!r}")
         if self.d_model % self.heads or (self.d_model // self.heads) not in (16, 32, 64, 128):
             raise FrontendError(f'head dim d_model/heads = {self.d_model}/{self.heads} must be 16, 32, 64 or 128 (attention ops)')
         if self.seq % ATTN_Q:
@@ -52,6 +55,10 @@ class ModelConfig:
     @property
     def tokens(self):
         return self.batch * self.seq
+
+    @property
+    def lp(self):
+        return self.precision != 'f32'
 
     @property
     def params(self):
@@ -122,13 +129,13 @@ class CausalSelfAttention(Module):
 
     def qkv(self, b, h, w, seq, pos=None):
         c = self.cfg
-        return (b.rope(self.q(b, h, w), c.heads, seq, c.rope_theta, pos), b.rope(self.k(b, h, w), c.heads, seq, c.rope_theta, pos),
-                self.v(b, h, w))
+        return (b.rope(self.q(b, h, w, bf16=c.lp), c.heads, seq, c.rope_theta, pos), b.rope(self.k(b, h, w, bf16=c.lp), c.heads, seq, c.rope_theta, pos),
+                self.v(b, h, w, bf16=c.lp))
 
     def __call__(self, b, h, w, res):
         c = self.cfg
         q, k, v = self.qkv(b, h, w, c.seq)
-        return self.proj(b, b.attention(q, k, v, c.heads, c.seq), w, res=res)
+        return self.proj(b, b.attention(q, k, v, c.heads, c.seq), w, res=res, bf16=c.lp)
 
 
 class MLP(Module):
@@ -136,10 +143,11 @@ class MLP(Module):
         super().__init__(name)
         self.fc1 = Linear(f'{name}.fc1', cfg.d_model, cfg.ffn_mult * cfg.d_model, cfg.bias, cfg.init_std)
         self.fc2 = Linear(f'{name}.fc2', cfg.ffn_mult * cfg.d_model, cfg.d_model, cfg.bias, cfg.init_std / (2 * cfg.layers) ** 0.5)
+        self.cfg = cfg
         self.absorb(self.fc1, self.fc2)
 
     def __call__(self, b, h, w, res):
-        return self.fc2(b, self.fc1(b, h, w, gelu=True), w, res=res)
+        return self.fc2(b, self.fc1(b, h, w, gelu=True, bf16=self.cfg.lp), w, res=res, bf16=self.cfg.lp)
 
 
 class TransformerBlock(Module):
@@ -154,7 +162,7 @@ class TransformerBlock(Module):
         return self.attn.qkv(b, self.n1(b, x, w), w, seq, pos)
 
     def attn_out(self, b, a, w, res):
-        return self.attn.proj(b, a, w, res=res)
+        return self.attn.proj(b, a, w, res=res, bf16=self.attn.cfg.lp)
 
     def ffn_block(self, b, x, w):
         return self.mlp(b, self.n2(b, x, w), w, res=x)
@@ -182,7 +190,7 @@ class GPT(Module):
         return b.embedding(ids, w[self.wte], seq)
 
     def logits(self, b, x, w):
-        return self.head(b, self.nf(b, x, w), w)
+        return self.head(b, self.nf(b, x, w), w, bf16=self.cfg.lp)
 
     def __call__(self, b, ids, w):
         x = self.embed(b, ids, w, self.cfg.seq)

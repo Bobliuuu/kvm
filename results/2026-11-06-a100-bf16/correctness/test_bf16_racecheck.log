@@ -1,0 +1,6 @@
+PASS  softmax_ce_fwd V=130 [in bf16, out bf16] loss  got 8.757259 ref 8.757259
+PASS  softmax_ce_bwd V=130 [in bf16, out bf16]  relerr 2.040e-03 (tol 8e-03)
+PASS  softmax_ce_bwd err==0 [in bf16, out bf16]  
+
+429 passed, 0 failed
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)

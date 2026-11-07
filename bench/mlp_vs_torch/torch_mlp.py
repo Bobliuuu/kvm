@@ -28,6 +28,7 @@ p.add_argument('--tl-steps', default='100,103')
 p.add_argument('--variants', default='all', help='comma list of class names, or all')
 p.add_argument('--out', required=True)
 p.add_argument('--precision', default='tf32', choices=['tf32', 'fp32'])
+p.add_argument('--precs', default='tf32,fp16,bf16', help='torch precision classes: tf32 = fp32 tensors + TF32 matmul; fp16/bf16 = autocast (half matmul inputs, fp32 accumulate, fp32 master weights, gradients carried x1024, same SGD semantics)')
 a = p.parse_args()
 R, S = a.runs, a.steps
 torch.backends.cuda.matmul.allow_tf32 = a.precision == 'tf32'
@@ -73,8 +74,24 @@ SC = 2.0 / (B * O)
 # Every variant owns W1 [R,D,H], W2 [R,H,O], L [R,S]; reset() restores them; run() trains all R runs for S steps.
 
 
+import contextlib
+DT, GSC = None, 1.0     # current autocast dtype and gradient scale; set per variant (read at trace/run time)
+GS_HALF = 1024.0
+
+
+def ac():
+    return torch.autocast('cuda', dtype=DT, cache_enabled=False) if DT is not None else contextlib.nullcontext()
+
+
+def set_prec(prec):
+    global DT, GSC
+    DT = {'tf32': None, 'fp16': torch.float16, 'bf16': torch.bfloat16}[prec]
+    GSC = 1.0 if prec == 'tf32' else GS_HALF
+
+
 class Variant:
     name = '?'
+    prec = 'tf32'
 
     def __init__(self):
         self.W1 = W1_0.expand(R, D, H).clone()
@@ -87,14 +104,15 @@ class Variant:
 
 def step_manual(W1, W2, x, t, lr, Lslot):
     """one SGD step for one run, hand-written backward (what the VM's tape does); in-place weight update, loss into Lslot"""
-    h = torch.relu(x @ W1)
-    d = h @ W2 - t
-    loss = (d * d).mean()
-    Lslot.copy_(loss)
-    dy = d * SC
-    dh = (dy @ W2.t()) * (h > 0)
-    W2.sub_(h.t() @ dy * lr)
-    W1.sub_(x.t() @ dh * lr)
+    with ac():
+        h = torch.relu(x @ W1)
+        d = h @ W2 - t
+        loss = (d * d).mean()
+        Lslot.copy_(loss)
+        dy = d * (SC * GSC)
+        dh = (dy @ W2.t()) * (h > 0)
+        W2.sub_((h.t() @ dy).float() * (lr / GSC))
+        W1.sub_((x.t() @ dh).float() * (lr / GSC))
     return loss
 
 
@@ -198,14 +216,15 @@ class CompileLoop(Variant):
 
 def step_bmm(W1, W2, x, t, lr, Ls):
     """one SGD step for ALL runs at once on stacked weights: W1 [R,D,H], W2 [R,H,O], lr [R,1,1], Ls [R]"""
-    h = torch.relu(torch.matmul(x, W1))                  # [R,B,H]
-    d = torch.bmm(h, W2) - t                             # [R,B,O]
-    loss = (d * d).mean(dim=(1, 2))
-    Ls.copy_(loss)
-    dy = d * SC
-    dh = torch.bmm(dy, W2.transpose(1, 2)) * (h > 0)
-    W2.sub_(torch.bmm(h.transpose(1, 2), dy) * lr)
-    W1.sub_(torch.matmul(x.t(), dh) * lr)
+    with ac():
+        h = torch.relu(torch.matmul(x, W1))                  # [R,B,H]
+        d = torch.bmm(h, W2) - t                             # [R,B,O]
+        loss = (d * d).mean(dim=(1, 2))
+        Ls.copy_(loss)
+        dy = d * (SC * GSC)
+        dh = torch.bmm(dy, W2.transpose(1, 2)) * (h > 0)
+        W2.sub_(torch.bmm(h.transpose(1, 2), dy).float() * (lr / GSC))
+        W1.sub_(torch.matmul(x.t(), dh).float() * (lr / GSC))
     return loss
 
 
@@ -254,9 +273,10 @@ class BmmCompileGraph(BmmGraph):
 
 # torch.func: vmap over runs of a per-run functional step whose gradient comes from autograd (torch.func.grad)
 def _loss_fn(W1, W2, x, t):
-    d = torch.relu(x @ W1) @ W2 - t
-    l = (d * d).mean()
-    return l, l
+    with ac():
+        d = torch.relu(x @ W1) @ W2 - t
+        l = (d * d).mean()
+    return l * GSC, l
 
 
 _grad = torch.func.grad(_loss_fn, argnums=(0, 1), has_aux=True)
@@ -264,7 +284,7 @@ _grad = torch.func.grad(_loss_fn, argnums=(0, 1), has_aux=True)
 
 def step_vmap_one(W1, W2, x, t, lr):
     (g1, g2), l = _grad(W1, W2, x, t)
-    return W1 - lr * g1, W2 - lr * g2, l
+    return W1 - (lr / GSC) * g1.float(), W2 - (lr / GSC) * g2.float(), l
 
 
 _vstep = torch.func.vmap(step_vmap_one, in_dims=(0, 0, None, None, 0))
@@ -310,6 +330,7 @@ ev0, ev1 = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=
 
 
 def timed(v):
+    set_prec(v.prec)
     v.reset(); torch.cuda.synchronize()
     ev0.record(); v.run(); ev1.record(); ev1.synchronize()
     return ev0.elapsed_time(ev1)
@@ -317,6 +338,7 @@ def timed(v):
 
 def check(v):
     """loss curve vs the VM's (relative, first 20 steps, before TF32 rounding decorrelates), final weights vs the VM's, loss decreasing"""
+    set_prec(v.prec)
     v.reset(); v.run(); torch.cuda.synchronize()
     L = v.L.cpu().numpy()
     n = min(20, S)
@@ -328,19 +350,26 @@ def check(v):
 
 
 sel = None if a.variants == 'all' else set(a.variants.split(','))
+HALF_SKIP = {'EagerAutograd', 'CompileLoop', 'VmapEager'}   # half precision: autograd / python-loop eager variants add nothing beyond EagerManual
 vs = []
-for C in VARIANTS:
-    if sel and C.__name__ not in sel:
-        continue
-    t0 = time.time()
-    try:
-        v = C()
-        le, we, dec = check(v)
-        ok = le < 2e-2 and dec and we < 5e-2
-        print(f'[build] {v.name:55s} build+check {time.time()-t0:5.1f}s  loss relerr(20 steps) {le:.1e}  weights relerr {we:.1e}  decreasing {dec}  {"ok" if ok else "MISMATCH"}', flush=True)
-        vs.append((v, le, we, ok))
-    except Exception as e:  # keep going: a baseline that fails to build is reported, not hidden
-        print(f'[build] {C.name:55s} FAILED: {type(e).__name__}: {str(e)[:300]}', flush=True)
+for prec in a.precs.split(','):
+    for C in VARIANTS:
+        if sel and C.__name__ not in sel:
+            continue
+        if prec != 'tf32' and C.__name__ in HALF_SKIP:
+            continue
+        t0 = time.time()
+        try:
+            set_prec(prec)
+            v = C()
+            v.prec = prec
+            v.name = f'{C.name} [{prec}]'
+            le, we, dec = check(v)
+            ok = le < (2e-2 if prec == 'tf32' else 5e-2) and dec and we < 5e-2
+            print(f'[build] {v.name:62s} build+check {time.time()-t0:5.1f}s  loss relerr(20 steps) {le:.1e}  weights relerr {we:.1e}  decreasing {dec}  {"ok" if ok else "MISMATCH"}', flush=True)
+            vs.append((v, le, we, ok))
+        except Exception as e:  # keep going: a baseline that fails to build is reported, not hidden
+            print(f'[build] {C.name} [{prec}] FAILED: {type(e).__name__}: {str(e)[:300]}', flush=True)
 
 res = {v.name: [] for v, *_ in vs}
 vmres = {prog: [] for prog in PROGS}
@@ -358,7 +387,7 @@ rows = []
 for v, le, we, ok in vs:
     allr = [x for rr in res[v.name] for x in rr]
     rows.append(dict(name=v.name, best_ms=min(allr), median_ms=statistics.median(allr), max_ms=max(allr), round_best=[min(rr) for rr in res[v.name]],
-                     us_per_step_run=min(allr) * 1000 / tot, loss_relerr=le, weights_relerr=we, matches_vm=ok))
+                     us_per_step_run=min(allr) * 1000 / tot, loss_relerr=le, weights_relerr=we, matches_vm=ok, prec=v.prec))
 vm_modes = {}
 for prog in PROGS:
     vm_modes[prog] = []
@@ -368,12 +397,13 @@ for prog in PROGS:
                                    max_ms=max(j['modes'][i]['max_ms'] for j in vmres[prog])))
 good = [r for r in rows if r['matches_vm']]
 best_torch = min(good, key=lambda r: r['best_ms'])
+best_by_prec = {q: min([r for r in good if r['prec'] == q], key=lambda r: r['best_ms']) for q in sorted({r['prec'] for r in good})}
 best_prog = min(PROGS, key=lambda q: vm_modes[q][3]['best_ms'])
 vmb = vm_modes[best_prog][3]['best_ms']
 out = dict(runs=R, steps=S, reps=a.reps, rounds=a.rounds, precision=a.precision, torch=torch.__version__, cuda=torch.version.cuda,
            gpu=torch.cuda.get_device_name(), sms=torch.cuda.get_device_properties(0).multi_processor_count,
            vm_json={q: vmres[q][0] for q in PROGS}, torch_variants=rows, vm_modes=vm_modes, vm_pass={q: all(j['pass'] for j in vmres[q]) for q in PROGS},
-           best_torch=best_torch['name'], best_vm_prog=best_prog, vm_vs_best_torch=best_torch['best_ms'] / vmb,
+           best_torch=best_torch['name'], best_torch_by_prec={q: dict(name=r['name'], best_ms=r['best_ms'], us_per_step_run=r['us_per_step_run']) for q, r in best_by_prec.items()}, best_vm_prog=best_prog, vm_vs_best_torch=best_torch['best_ms'] / vmb,
            vm_vs_best_hand_baseline={q: min(m['best_ms'] for m in vm_modes[q][:3]) / vm_modes[q][3]['best_ms'] for q in PROGS})
 json.dump(out, open(a.out, 'w'), indent=1)
 hdr = f'VM({best_prog}) speedup'
@@ -384,3 +414,8 @@ for q in PROGS:
 for n, b, u, spread, note in sorted(allrows, key=lambda r: r[1]):
     print(f'{n:66s} {b:9.3f} {u:12.3f} {spread:7.2f}x {b / vmb:10.2f}x{note}')
 print(f'\nR={R} S={S}: best VM = {best_prog} {vmb:.3f} ms; vs best torch ({best_torch["name"]}) = {out["vm_vs_best_torch"]:.2f}x ; pass={out["vm_pass"]}')
+print('\nbest torch per precision class vs VM programs (VM speedup = torch ms / VM ms):')
+for q, r in best_by_prec.items():
+    print(f'  torch {q:5s} best {r["us_per_step_run"]:7.3f} us/step/run ({r["name"]})')
+    for g in PROGS:
+        print(f'      vs VM {g:8s} {vm_modes[g][3]["us_per_step_run"]:7.3f} us -> {r["best_ms"] / vm_modes[g][3]["best_ms"]:.2f}x')

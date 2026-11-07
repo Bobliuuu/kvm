@@ -36,7 +36,7 @@
 
 
 #ifndef KVM_GPT_SMEM_CVT
-#define KVM_GPT_SMEM_CVT 2   // 2 (default; 128x128 tile): A rounded in shared memory, B per fragment: +3% over 1 (results/2026-11-06-a100-tiles). 1: matmul operands are rounded to tf32 once per CTA in shared memory (tile_cvt); 0: per fragment, per warp; 2 / 3: only A / only B in shared memory (128x128 tile; the other per fragment)
+#define KVM_GPT_SMEM_CVT 1   // 1: matmul operands are rounded to tf32 once per CTA in shared memory (tile_cvt); 0: per fragment, per warp
 #endif
 #ifndef KVM_GPT_BIG_BK
 #define KVM_GPT_BIG_BK 16    // k per pipeline stage of the 128x128 tile (16 or 32)
@@ -570,8 +570,8 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
         const float* As = sm + (it % NST) * STAGE; const float* Bs = As + ATILE;
         if constexpr (!PREC && !BF && KVM_GPT_SMEM_CVT) {   // round the operands once per CTA, in shared memory (see tile_cvt)
             float* Aw = sm + (it % NST) * STAGE; float* Bw = Aw + ATILE;
-            if constexpr (KVM_GPT_SMEM_CVT != 3 && !RZ) { if (fa) sa.cvt(Aw); else if (TA) tile_cvt<false, BK, BM>(Aw); else tile_cvt<true, BM, BK>(Aw); }
-            if constexpr (KVM_GPT_SMEM_CVT != 2 && !RZ) { if (fb) sb.cvt(Bw); else if (TB) tile_cvt<true, BN, BK>(Bw); else tile_cvt<false, BK, BN>(Bw); }
+            if constexpr (!RZ) { if (fa) sa.cvt(Aw); else if (TA) tile_cvt<false, BK, BM>(Aw); else tile_cvt<true, BM, BK>(Aw); }
+            if constexpr (!RZ) { if (fb) sb.cvt(Bw); else if (TB) tile_cvt<true, BN, BK>(Bw); else tile_cvt<false, BK, BN>(Bw); }
         }
         __syncthreads();
         if (it + NST - 1 < nk) issue(it + NST - 1);
@@ -632,7 +632,7 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
                     ah[i][2] = __float_as_uint(As[sw_mc<BM>(kk + t + 4, mb + g)]); ah[i][3] = __float_as_uint(As[sw_mc<BM>(kk + t + 4, mb + g + 8)]);
                 }
 #pragma unroll
-                if constexpr (PREC || KVM_GPT_SMEM_CVT == 0 || KVM_GPT_SMEM_CVT == 3) for (int e = 0; e < 4; e++) {
+                if constexpr (PREC || !KVM_GPT_SMEM_CVT) for (int e = 0; e < 4; e++) {
                     float x = __uint_as_float(ah[i][e]);
                     if (PREC) { unsigned h = f2tf32(x); al[i][e] = __float_as_uint(x - __uint_as_float(h)); ah[i][e] = h; }
                     else if constexpr (!RZ) ah[i][e] = f2tf32_op(x);
@@ -650,7 +650,7 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
                     bh[2 * jp + 1][0] = __float_as_uint(Bs[sw_mc<BN>(kk + t, nb + 8 + g)]);  bh[2 * jp + 1][1] = __float_as_uint(Bs[sw_mc<BN>(kk + t + 4, nb + 8 + g)]);
                 }
 #pragma unroll
-                if constexpr (PREC || KVM_GPT_SMEM_CVT == 0 || KVM_GPT_SMEM_CVT == 2) for (int jj = 0; jj < 2; jj++)
+                if constexpr (PREC || !KVM_GPT_SMEM_CVT) for (int jj = 0; jj < 2; jj++)
 #pragma unroll
                     for (int e = 0; e < 2; e++) {
                     float x = __uint_as_float(bh[2 * jp + jj][e]);

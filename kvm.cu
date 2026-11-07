@@ -18,6 +18,8 @@
 #include <cmath>
 #include <vector>
 #include <string>
+#include <algorithm>
+#include <type_traits>
 #include <chrono>
 #include <cuda_runtime.h>
 #include <mma.h>
@@ -239,7 +241,11 @@ __global__ void __launch_bounds__(NT) vm_kernel(const Instr* tape, int n, int* h
       __threadfence();   // cumulative over the block's writes via the bar.sync above
       if (in.s0 >= 0) atomicAdd(ctr + in.s0, 1);
       if (in.s1 >= 0) atomicAdd(ctr + in.s1, 1);
-      if (prof) { prof[idx * 6] = t0; prof[idx * 6 + 1] = t1; prof[idx * 6 + 2] = t2; prof[idx * 6 + 3] = gtime(); prof[idx * 6 + 4] = g_stamp[0]; prof[idx * 6 + 5] = g_stamp[1]; }
+      if (prof) {   // 8 u64 per instruction: claim, deps ready, compute done, end, mma start, mma end, smid | block<<32, unused
+        unsigned smid; asm volatile("mov.u32 %0, %%smid;" : "=r"(smid));
+        unsigned long long* q = prof + (size_t)idx * 8;
+        q[0] = t0; q[1] = t1; q[2] = t2; q[3] = gtime(); q[4] = g_stamp[0]; q[5] = g_stamp[1]; q[6] = (unsigned long long)smid | ((unsigned long long)blockIdx.x << 32); q[7] = 0;
+      }
     }
   }
 }
@@ -291,15 +297,22 @@ static int selftest() {
   return bad;
 }
 
-int main(int argc, char** argv) {
+#ifdef KVM_LIB
+#define KVM_ENTRY extern "C" int kvm_main
+#else
+#define KVM_ENTRY static int kvm_main
+#endif
+KVM_ENTRY(int argc, char** argv) {
   if (argc > 1 && std::string(argv[1]) == "--selftest") return selftest() ? 2 : 0;
   int steps = 1000, B = 128, D = 128, Hd = 256, O = 64, NB = 4, ref_steps = 100, R = 1;
-  float lr = 0.05f;
+  float lr = 0.05f; int nreps = 5; std::string json_path, dump_dir, tl_path; int tl_s0 = 0, tl_s1 = 4;
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];
     auto nx = [&]() { return atof(argv[++i]); };
     if (a == "--steps") steps = nx(); else if (a == "--B") B = nx(); else if (a == "--D") D = nx();
     else if (a == "--H") Hd = nx(); else if (a == "--O") O = nx(); else if (a == "--nb") NB = nx();
+    else if (a == "--reps") nreps = nx(); else if (a == "--json") json_path = argv[++i]; else if (a == "--dump-data") dump_dir = argv[++i];
+    else if (a == "--timeline") tl_path = argv[++i]; else if (a == "--tl-steps") { tl_s0 = nx(); tl_s1 = nx(); }
     else if (a == "--runs") R = nx(); else if (a == "--lr") lr = nx(); else if (a == "--ref-steps") ref_steps = nx();
   }
   if (B % TILE || D % TILE || Hd % TILE || O % TILE || B % KC || D % KC || Hd % KC || O % KC) { fprintf(stderr, "dims must be multiples of max(TILE=%d, KC=%d)\n", TILE, KC); return 1; }
@@ -410,11 +423,11 @@ int main(int argc, char** argv) {
   };
   // one-step template, phase-major then run: [ph][r] segments. Batched baseline launches a whole phase (all runs);
   // sequential baseline launches one (run, phase) segment.
-  std::vector<Instr> tapeP; std::vector<int> offP(NPH), nP(NPH), nPR(NPH);
+  std::vector<Instr> tapeP; std::vector<int> tmplPhase, tmplRun; std::vector<int> offP(NPH), nP(NPH), nPR(NPH);
   std::vector<std::vector<int>> offPR(NPH, std::vector<int>(R));
   for (int ph = 0; ph < NPH; ph++) {
     offP[ph] = (int)tapeP.size();
-    for (int r = 0; r < R; r++) { offPR[ph][r] = (int)tapeP.size(); emit_phase(tapeP, r, ph); }
+    for (int r = 0; r < R; r++) { offPR[ph][r] = (int)tapeP.size(); emit_phase(tapeP, r, ph); tmplPhase.resize(tapeP.size(), ph); tmplRun.resize(tapeP.size(), r); }
     nP[ph] = (int)tapeP.size() - offP[ph]; nPR[ph] = nP[ph] / R;
   }
   int perStep = (int)tapeP.size();
@@ -471,26 +484,73 @@ int main(int argc, char** argv) {
   auto run_seq = [&]() { launch_seq(0, 0, R); };
   auto run_seqgraph = [&]() { for (int r = 0; r < R; r++) CK(cudaGraphLaunch(xRun[r], 0)); };
   auto run_batched = [&]() { CK(cudaGraphLaunch(xB, 0)); };
-  double t[4]; Out o[4];
-  auto best = [&](auto fn, int idx) { timed(fn); double b = 1e30; for (int q = 0; q < 3; q++) b = std::min(b, timed(fn)); t[idx] = b; o[idx] = fetch(); };
-  best(run_seq, 0); best(run_seqgraph, 1); best(run_batched, 2); best(run_vm, 3);
+  // each mode: 1 warm-up, then `reps` timed repetitions; best = min, spread = max/min (ratios below use the best)
+  std::vector<double> ts[4]; Out o[4];
+  auto measure = [&](auto fn, int idx) { timed(fn); for (int q = 0; q < nreps; q++) ts[idx].push_back(timed(fn)); o[idx] = fetch(); };
+  measure(run_seq, 0); measure(run_seqgraph, 1); measure(run_batched, 2); measure(run_vm, 3);
+  double t[4], tmax[4], tmed[4];
+  for (int i = 0; i < 4; i++) { auto v = ts[i]; std::sort(v.begin(), v.end()); t[i] = v[0]; tmax[i] = v.back(); tmed[i] = v[v.size() / 2]; }
 
   double tot = (double)R * steps;
   const char* nm[4] = {"sequential, launch-per-op", "sequential, CUDA graph/run", "batched across runs (vmap-like graph)", "KVM: all runs, ONE kernel"};
-  printf("\n%-40s %10s %14s %10s %9s\n", "mode", "total ms", "us/step/run", "run-steps/s", "vs seq");
-  for (int i = 0; i < 4; i++) printf("%-40s %10.2f %14.2f %11.0f %8.2fx\n", nm[i], t[i], t[i] * 1000 / tot, tot / (t[i] / 1000), t[0] / t[i]);
-  printf("KVM vs best baseline: %.2fx\n", std::min(std::min(t[0], t[1]), t[2]) / t[3]);
+  printf("\n%-40s %10s %14s %11s %9s %8s\n", "mode", "best ms", "us/step/run", "run-steps/s", "vs seq", "max/min");
+  for (int i = 0; i < 4; i++) printf("%-40s %10.2f %14.2f %11.0f %8.2fx %7.2fx\n", nm[i], t[i], t[i] * 1000 / tot, tot / (t[i] / 1000), t[0] / t[i], tmax[i] / t[i]);
+  printf("KVM vs best baseline: %.2fx   (%d reps per mode)\n", std::min(std::min(t[0], t[1]), t[2]) / t[3], nreps);
 
   // ---- correctness
   auto relerr = [&](const float* a, const std::vector<float>& ref) { double m = 0; for (int i = 0; i < rs; i++) m = std::max(m, (double)fabs(a[i] - ref[i]) / (fabs(ref[i]) + 1e-6)); return m; };
   double e_ref = 0; for (int i = 0; i < 4; i++) { e_ref = std::max(e_ref, relerr(&o[i].L[0], ref0)); e_ref = std::max(e_ref, relerr(&o[i].L[(size_t)(R - 1) * steps], refN)); }
-  double e_mode = 0; for (int i = 0; i < 3; i++) for (size_t j = 0; j < o[3].w.size(); j++) e_mode = std::max(e_mode, (double)fabs(o[3].w[j] - o[i].w[j]));
+  // weights must be BITWISE identical in all four modes (same tape, same per-tile reduction order): exact equality, not a tolerance
+  size_t n_diff = 0; double e_mode = 0;
+  for (int i = 0; i < 3; i++) for (size_t j = 0; j < o[3].w.size(); j++)
+    if (memcmp(&o[3].w[j], &o[i].w[j], 4) != 0) { n_diff++; e_mode = std::max(e_mode, (double)fabs(o[3].w[j] - o[i].w[j])); }
   bool dec = true; for (int r = 0; r < R; r++) dec = dec && o[3].L[(size_t)r * steps + steps - 1] < o[3].L[(size_t)r * steps];
   printf("\nloss run0: %.5f -> %.5f (lr %.4f)", o[3].L[0], o[3].L[steps - 1], lrs[0]);
   if (R > 1) printf("   run%d: %.5f -> %.5f (lr %.4f)", R - 1, o[3].L[(size_t)(R - 1) * steps], o[3].L[(size_t)(R - 1) * steps + steps - 1], lrs[R - 1]);
   printf("\nmax rel loss err vs cpu fp32 (runs 0 and %d, first %d steps, all modes): %.2e\n", R - 1, rs, e_ref);
-  printf("max |dW| of VM vs each baseline, all runs: %.2e\n", e_mode);
-  bool ok = e_ref < 2e-2 && e_mode < 1e-3 && dec;
+  printf("weights VM vs each baseline, all runs: %zu of %zu elements differ bitwise (max |dW| %.2e)\n", n_diff, 3 * o[3].w.size(), e_mode);
+  bool ok = e_ref < 2e-2 && n_diff == 0 && dec;
+
+  // ---- optional: raw data for external baselines (PyTorch), so every framework trains from the very same bits
+  if (!dump_dir.empty()) {
+    auto wr = [&](const char* name, const void* p, size_t bytes) { std::string f = dump_dir + "/" + name; FILE* fp = fopen(f.c_str(), "wb"); if (!fp) { fprintf(stderr, "cannot write %s\n", f.c_str()); exit(1); } fwrite(p, 1, bytes, fp); fclose(fp); };
+    for (int k = 0; k < NB; k++) { wr(("X" + std::to_string(k) + ".f32").c_str(), X[k].data(), B * D * 4); wr(("T" + std::to_string(k) + ".f32").c_str(), T[k].data(), B * O * 4); }
+    wr("W1.f32", W1.data(), W1.size() * 4); wr("W2.f32", W2.data(), W2.size() * 4); wr("lrs.f32", lrs.data(), R * 4);
+    wr("vm_loss.f32", o[3].L.data(), o[3].L.size() * 4); wr("vm_weights.f32", o[3].w.data(), o[3].w.size() * 4);
+    std::string f = dump_dir + "/meta.json"; FILE* fp = fopen(f.c_str(), "w");
+    fprintf(fp, "{\"B\":%d,\"D\":%d,\"H\":%d,\"O\":%d,\"NB\":%d,\"R\":%d,\"steps\":%d}\n", B, D, Hd, O, NB, R, steps); fclose(fp);
+  }
+
+  // ---- optional timeline: one extra VM run with per-instruction timestamps (prof pointer set), CSV for the step window [tl_s0, tl_s1)
+  double t_prof = 0;
+  if (!tl_path.empty()) {
+    unsigned long long* dprof; size_t pbytes = (size_t)ntape * 8 * 8; CK(cudaMalloc(&dprof, pbytes)); CK(cudaMemset(dprof, 0, pbytes));
+    t_prof = timed([&]() { vm_kernel<<<grid, NT, DSMEM>>>(dtapeP, ntape, dhead, dctr, dloss, dprof); });
+    std::vector<unsigned long long> hp((size_t)ntape * 8); CK(cudaMemcpy(hp.data(), dprof, pbytes, cudaMemcpyDeviceToHost)); cudaFree(dprof);
+    unsigned long long tmin = ~0ull; for (int i = 0; i < ntape; i++) tmin = std::min(tmin, hp[(size_t)i * 8]);
+    FILE* fp = fopen(tl_path.c_str(), "w"); if (!fp) { fprintf(stderr, "cannot write %s\n", tl_path.c_str()); exit(1); }
+    fprintf(fp, "# idx,step,tmpl,phase,run,smid,block,claim_ns,ready_ns,compute_end_ns,end_ns,mma_start_ns,mma_end_ns (ns since the first claim of the whole run; profiled run %.3f ms)\n", t_prof);
+    for (int i = 0; i < ntape; i++) {
+      int stp = i / perStep, tm = i % perStep; if (stp < tl_s0 || stp >= tl_s1) continue;
+      const unsigned long long* q = &hp[(size_t)i * 8];
+      fprintf(fp, "%d,%d,%d,%d,%d,%u,%u,%lld,%lld,%lld,%lld,%lld,%lld\n", i, stp, tm, tmplPhase[tm], tmplRun[tm], (unsigned)(q[6] & 0xffffffffu), (unsigned)(q[6] >> 32),
+              (long long)(q[0] - tmin), (long long)(q[1] - tmin), (long long)(q[2] - tmin), (long long)(q[3] - tmin), (long long)(q[4] - tmin), (long long)(q[5] - tmin));
+    }
+    fclose(fp);
+    printf("timeline: profiled VM run %.3f ms (%.2fx the unprofiled best), steps [%d,%d) -> %s\n", t_prof, t_prof / t[3], tl_s0, tl_s1, tl_path.c_str());
+  }
+
+  if (!json_path.empty()) {
+    FILE* fp = fopen(json_path.c_str(), "w");
+    fprintf(fp, "{\"gpu\":\"%s\",\"sms\":%d,\"occ\":%d,\"grid\":%d,\"B\":%d,\"D\":%d,\"H\":%d,\"O\":%d,\"runs\":%d,\"steps\":%d,\"tile\":%d,\"kc\":%d,\"stg\":%d,\"reps\":%d,\n \"modes\":[", prop.name, prop.multiProcessorCount, occ, grid, B, D, Hd, O, R, steps, TILE, KC, STG, nreps);
+    for (int i = 0; i < 4; i++) { fprintf(fp, "%s{\"name\":\"%s\",\"best_ms\":%.4f,\"median_ms\":%.4f,\"max_ms\":%.4f,\"us_per_step_run\":%.4f}", i ? "," : "", nm[i], t[i], tmed[i], tmax[i], t[i] * 1000 / tot); }
+    fprintf(fp, "],\n \"weights_bitwise_differ\":%zu,\"max_rel_loss_err\":%.3e,\"pass\":%s,\"profiled_ms\":%.4f}\n", n_diff, e_ref, ok ? "true" : "false", t_prof);
+    fclose(fp);
+  }
   printf("%s\n", ok ? "PASS" : "FAIL");
   return ok ? 0 : 2;
 }
+
+#ifndef KVM_LIB
+int main(int argc, char** argv) { return kvm_main(argc, argv); }
+#endif

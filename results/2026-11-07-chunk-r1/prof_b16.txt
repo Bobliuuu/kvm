@@ -1,0 +1,8 @@
+[kvm_exec][I] window sizing: 58634 tasks as one record (live_cap 65536, ring 8388608 words)
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 98304 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] /w/b16/bundle: 58634 tasks, 480777 edges, 684175 arg words
+[kvm_exec][I] kernel launched: grid 108 x 256 threads, live_cap 65536, slots 262144, succ ring 2097152 words, ring 8388608 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 58634/58634 tasks in 135.736 ms, 1 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] workload 0: 58634 tasks, 9.513 CTA-s, queue wait p50 55.3 p99 3169.3 max 4242.4 us, 0 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+admitter: 58634 tasks, 1 records, idle (no record) 1.4 ms; busy ns/task: room 0 slot pop 5 copy+decode 147 edges 67 sched+commit 0 release 0
+OK: 58634/58634 tasks, 135.736 ms

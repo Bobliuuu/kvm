@@ -31,6 +31,7 @@ HEAD = r'''
 set -u
 export PATH=$PATH:/usr/local/cuda/bin KVM_ARCH=sm_80 NVCC_ARCH=sm_80 KVM_NO_LOCK=1
 touch ~/.gpu.lock
+trap 'mkdir -p /logs/$TAG/$JOB.d; cp /tmp/*.txt /logs/$TAG/$JOB.d/ 2>/dev/null; gzip -f /logs/$TAG/$JOB.d/*.txt 2>/dev/null' EXIT
 B=/logs/bin/$KEY; BZ=/logs/bin/$KEYZ
 echo "# job=$JOB tag=$TAG key=$KEY $(date -u +%FT%TZ)"; nvcc --version | tail -1
 nvidia-smi --query-gpu=name,driver_version,clocks.max.sm --format=csv,noheader 2>/dev/null || echo "(no GPU in this container)"
@@ -46,9 +47,9 @@ BUILDS = {
     "test_exec_bp": ('bash tests/gpu/build.sh -DKVM_BREAK_PARK_RECHECK && mv test_exec test_exec_bp', ["test_exec_bp"]),
     "kvm_exec": (NV + ' kvm_exec.cu -o kvm_exec', ["kvm_exec"]),
     "test_sched": ('bash tests/gpu/build_sched.sh', ["test_sched"]),
-    "test_ops": (OPS % ("test_ops", "test_ops") + ' && ' + OPS % ("test_e2e", "test_e2e") + ' && mv test_ops test_e2e ../..', ["test_ops", "test_e2e"]),
-    "test_extra": (OPSF % ("test_extra", "test_extra") + ' && mv test_extra ../..', ["test_extra"]),
-    "test_bf16": (OPSF % ("test_bf16", "test_bf16") + ' && mv test_bf16 ../..', ["test_bf16"]),
+    "test_ops": ('(' + OPS % ("test_ops", "test_ops") + ' && nvcc -O2 -arch=sm_80 -std=c++17 -lineinfo -I../../include -I. test_e2e.cu -o test_e2e && mv test_ops test_e2e ../..)', ["test_ops", "test_e2e"]),
+    "test_extra": ('(' + OPSF % ("test_extra", "test_extra") + ' && mv test_extra ../..)', ["test_extra"]),
+    "test_bf16": ('(' + OPSF % ("test_bf16", "test_bf16") + ' && mv test_bf16 ../..)', ["test_bf16"]),
     "litmus": ('mkdir -p out && bash tests/litmus/build.sh "$PWD/out" && '
                'nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -lineinfo -DKVM_EXEC_NO_MAIN -DKVM_NEW tests/litmus/e2e.cu -o out/e2e && '
                'nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -lineinfo -DKVM_EXEC_NO_MAIN -DKVM_NEW -DKVM_BREAK_FENCE tests/litmus/e2e.cu -o out/e2e_breakfence && '
@@ -198,6 +199,9 @@ DEMO_TAG=big MODEL="$M" TILING=a100 STEPS=6 WINDOW=1 SERVE_EVERY=2 FRAMES=700 PR
   bash demo/remote_demo.sh > /tmp/demo.txt 2>&1; rc=$?; mkdir -p /logs/$TAG/demo; cp runs/big/check.log runs/big/report.json runs/big/kvm_run.log /logs/$TAG/demo/ 2>/dev/null; grep -E "^(PASS|FAIL|SKIP|INFO|ALL)" runs/big/check.log | cut -c1-240
 grep -E "window sizing|windows|records" runs/big/kvm_run.log | head -n 5
 if [ $rc -eq 0 ] && grep -q "ALL CHECKS PASSED" runs/big/check.log && grep -q "raw-identical 700/700" runs/big/check.log; then echo "RESULT: PASS demo (162M bf16s training + serving + Doom): $(grep -h 'game: compared' runs/big/check.log | cut -c1-120); $(grep -h 'cadence' runs/big/check.log | cut -c1-120)"; else echo "RESULT: FAIL demo rc $rc"; fi''', "A100-80GB")
+JOBS["multigpu"] = (r'''nvidia-smi -L; KVM_STAGE_TIMEOUT=900 bash dist/run_multigpu_tests.sh > /tmp/mg.txt 2>&1; rc=$?; grep -E "^(PASS|FAIL|SKIP) |^RESULT|passed" /tmp/mg.txt | cut -c1-200; mkdir -p /logs/$TAG/multigpu; cp /tmp/mg.txt /logs/$TAG/multigpu/run.txt; cp -r logs/*-dist /logs/$TAG/multigpu/ 2>/dev/null
+nsk=$(grep -c "^SKIP " /tmp/mg.txt); nsk_ok=$(grep "^SKIP " /tmp/mg.txt | grep -c "multinode")
+if [ $rc -eq 0 ] && grep -q "^RESULT: PASS" /tmp/mg.txt && [ "$nsk" -le "$nsk_ok" ] && grep -q "PASS multigpu-p2p-pingpong" /tmp/mg.txt; then echo "RESULT: PASS distributed suite on 2 physical A100s: $(grep -E '[0-9]+ passed' /tmp/mg.txt | tail -1) (only the multi-node stage skipped)"; else echo "RESULT: FAIL multigpu rc $rc, $(grep -E '^(FAIL|SKIP)' /tmp/mg.txt | tr '\n' ';' | cut -c1-300)"; fi''', "A100-40GB:2")
 JOBS["unit"] = (r'''fail=0
 python3 -I -m unittest discover -s tests > /tmp/u1.txt 2>&1 || fail=$((fail+1)); tail -n 3 /tmp/u1.txt
 python3 -I -m unittest discover -s tests/frontend > /tmp/u2.txt 2>&1 || fail=$((fail+1)); tail -n 3 /tmp/u2.txt
@@ -210,7 +214,7 @@ for f in $(find . -name '*.sh' -not -path './doom/third_party/*'); do bash -n "$
 NEEDS = {  # job -> builds it needs
     "exec": ["test_exec"], "recycle5": ["test_exec"], "negative": ["test_exec_bf", "test_exec_bp", "test_exec_bw"], "sanitize": ["test_exec"], "litmus": ["litmus"],
     "gpt_modes": ["kvm_exec"], "ops": ["test_ops"], "extra": ["test_extra"], "bf16_ops": ["test_bf16"], "sched": ["test_sched"], "zoo": ["zoo", "kvm_exec"],
-    "gptdiff": ["kvm_exec"], "bf16_bundles": ["kvm_exec"], "grads162": ["kvm_run_nogame"], "learn300": ["kvm_run_nogame"], "demo": ["kvm_run_game"], "unit": [],
+    "gptdiff": ["kvm_exec"], "multigpu": [], "bf16_bundles": ["kvm_exec"], "grads162": ["kvm_run_nogame"], "learn300": ["kvm_run_nogame"], "demo": ["kvm_run_game"], "unit": [],
 }
 
 
@@ -222,6 +226,11 @@ def _job(name, tag, key, keyz):
 
 @app.function(gpu="A100-40GB", cpu=8, memory=65536, timeout=4 * 3600, volumes={"/logs": vol})
 def job40(name: str, tag: str, key: str, keyz: str):
+    return _job(name, tag, key, keyz)
+
+
+@app.function(gpu="A100-40GB:2", cpu=8, memory=98304, timeout=4 * 3600, volumes={"/logs": vol})
+def job40x2(name: str, tag: str, key: str, keyz: str):
     return _job(name, tag, key, keyz)
 
 
@@ -264,7 +273,7 @@ def orchestrate(tag: str, only: str, rebuild: bool):
                     done[n] = "RESULT: FAIL build failed: " + ", ".join(f"{b}:{bres[b][2]}" for b in NEEDS[n] if not bres[b][1])
                     continue
                 gpu = JOBS[n][1]
-                fn = job_cpu if gpu is None else (job80 if gpu == "A100-80GB" else job40)
+                fn = job_cpu if gpu is None else (job80 if gpu == "A100-80GB" else job40x2 if gpu.endswith(":2") else job40)
                 calls[n] = fn.spawn(n, tag, key, keyz); print("started", n, f"+{time.time() - t0:.0f}s", flush=True)
         for n, c in list(calls.items()):
             try:

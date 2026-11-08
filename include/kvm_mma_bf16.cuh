@@ -20,7 +20,13 @@
 #endif
 #define KVM_MMA_BM 128
 #define KVM_MMA_BN 256
-#define KVM_MMA_BK 32
+#ifndef KVM_MMA_BK
+#define KVM_MMA_BK 32          // k per stage: 32 (64 B K-major rows) or 64 (128 B rows; 3 stages = 144 KiB, needs KVM_GPT_MMA_SMEM >= that: A100/H100 only)
+#endif
+#ifndef KVM_MMA_SPREAD
+#define KVM_MMA_SPREAD 0       // 1: issue a stage's cp.async chunks spread over its k16 steps instead of all at the first
+#endif
+static_assert(KVM_MMA_BK == 32 || KVM_MMA_BK == 64, "BK is 32 or 64");
 #define KVM_MMA_SMEM (KVM_MMA_NST * (KVM_MMA_BM + KVM_MMA_BN) * KVM_MMA_BK * 2)
 static_assert(KVM_MMA_SMEM <= kvm_gpt_smem_bytes(0), "matmul_mma_bf16's stage buffers must fit the dynamic shared memory the executor launches with");
 
@@ -36,7 +42,10 @@ KVM_GPT_DEVI void ldsm_x4_t(unsigned (&r)[4], unsigned addr) {
     asm volatile("ldmatrix.sync.aligned.m8n8.x4.trans.shared.b16 {%0,%1,%2,%3}, [%4];\n" : "=r"(r[0]), "=r"(r[1]), "=r"(r[2]), "=r"(r[3]) : "r"(addr));
 }
 // byte offsets inside a stage tile
-KVM_GPT_DEVI unsigned mma_off_k(int row, int kc) { return (unsigned)(row * 64 + ((kc ^ ((row >> 1) & 3)) << 4)); }   // K-major, kc = 16-byte chunk (0..3)
+KVM_GPT_DEVI unsigned mma_off_k(int row, int kc) {   // K-major, kc = 16-byte chunk (0..BK/8-1)
+    if (KVM_MMA_BK == 64) return (unsigned)(row * 128 + ((kc ^ (row & 7)) << 4));
+    return (unsigned)(row * 64 + ((kc ^ ((row >> 1) & 3)) << 4));
+}
 KVM_GPT_DEVI unsigned mma_off_mn(int row, int c) { return (unsigned)(row * 256 + ((c ^ (row & 7)) << 4)); }          // MN-major, c = 16-byte chunk (0..15)
 
 // Global -> shared copy of one operand tile (ROWS rows of K-major data, or ROWS columns of MN-major data) of one k slab, as ROWS*4 16-byte
@@ -46,9 +55,10 @@ KVM_GPT_DEVI unsigned mma_off_mn(int row, int c) { return (unsigned)(row * 256 +
 // interior tiles, were both measured and were not faster: results/2026-11-06-a100-bf16.)
 template <bool KMAJ, int ROWS>
 struct MmaLoader {
-    static constexpr int NS = ROWS * 4 / KVM_GPT_THREADS;                          // chunks per thread
+    static constexpr int CPK = KVM_MMA_BK / 8;
+    static constexpr int NS = ROWS * CPK / KVM_GPT_THREADS;                          // chunks per thread
     static constexpr int CPR = ROWS / 8;                                           // MN-major chunks per k row
-    static constexpr int RSTEP = KMAJ ? KVM_GPT_THREADS / 4 : KVM_GPT_THREADS / CPR;   // rows between a thread's consecutive chunks
+    static constexpr int RSTEP = KMAJ ? KVM_GPT_THREADS / CPK : KVM_GPT_THREADS / CPR;   // rows between a thread's consecutive chunks
     const uint16_t* base;   // chunk 0, k slab 0 (a valid address even when the chunk is out of range: zero-filled copies read nothing)
     size_t sstride, kstep;  // elements between consecutive chunks of a thread / between k slabs
     unsigned dst;           // byte offset of chunk 0 inside the tile (consecutive chunks are 4096 bytes apart for both layouts)
@@ -57,7 +67,7 @@ struct MmaLoader {
         const int tid = threadIdx.x;
         MN = MN_; K = K_;
         if (KMAJ) {
-            const int row = tid >> 2, kc = tid & 3;
+            const int row = tid / CPK, kc = tid % CPK;
             mn = mn0 + row; k = kc * 8;
             base = src + (mn < MN ? (size_t)mn * ld + k : 0);
             kstep = KVM_MMA_BK; dst = mma_off_k(row, kc);
@@ -82,7 +92,7 @@ KVM_GPT_DEVI void mma_bf16_tile(const uint16_t* A, int lda, const uint16_t* B, i
                                 float alpha, bool gelu, bool accum) {
     constexpr int BM = KVM_MMA_BM, BN = KVM_MMA_BN, BK = KVM_MMA_BK, NST = KVM_MMA_NST, STAGE = (BM + BN) * BK * 2, ATILE = BM * BK * 2;
     constexpr int NJ = 8;   // n8 fragments per warp (warp tile 64 x 64; 8 warps as 2 (m) x 4 (n))
-    static_assert(BK == 32 && BM == 128 && BN == 256 && NST >= 3, "tile geometry is fixed");
+    static_assert((BK == 32 || BK == 64) && BM == 128 && BN == 256 && NST >= 3, "tile geometry is fixed");
     const unsigned sm = smem_u32(kvm_gpt_smem);
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, wm = warp >> 2, wn = warp & 3, g = lane >> 2, t = lane & 3;
     float acc[4][NJ][4];
@@ -131,24 +141,30 @@ KVM_GPT_DEVI void mma_bf16_tile(const uint16_t* A, int lda, const uint16_t* B, i
     cp_wait<NST - 2>();
     __syncthreads();
     load_frags(0, 0, 0);
+    constexpr int KS = BK / 16;
     for (int it = 0; it < nk; it++) {
-        load_frags(1, it, 16);
+        const int nxt = it + NST - 1;          // slab to fetch into the stage that was read one iteration ago
 #pragma unroll
-        for (int i = 0; i < 4; i++)
+        for (int ks = 0; ks < KS; ks++) {
+            const int cur = ks & 1;
+            if (ks == KS - 1) {
+                cp_wait<NST - 3>();            // stage it+1 landed (this thread's copies) ...
+                __syncthreads();               // ... for every thread, and nobody still reads the stage refilled below
+                if (it + 1 < nk) load_frags(cur ^ 1, it + 1, 0);
+            } else {
+                load_frags(cur ^ 1, it, (ks + 1) * 16);
+            }
+            if (nxt < nk) {
+                constexpr int SP = KVM_MMA_SPREAD;
 #pragma unroll
-            for (int j = 0; j < NJ; j++) mma_bf16(acc[i][j], af[0][i], bf[0][j][0], bf[0][j][1]);
-        cp_wait<NST - 3>();                    // stage it+1 landed (this thread's copies) ...
-        __syncthreads();                       // ... for every thread, and nobody still reads the stage refilled below
-        const int nxt = it + NST - 1;          // slab to fetch into the stage that was read two k steps ago
-        if (nxt < nk) {
+                for (int c = 0; c < NCH; c++)
+                    if (SP ? (c * KS / NCH == ks) : (ks == 0)) issue_chunk(nxt, c);
+            }
 #pragma unroll
-            for (int c = 0; c < NCH; c++) issue_chunk(nxt, c);
+            for (int i = 0; i < 4; i++)
+#pragma unroll
+                for (int j = 0; j < NJ; j++) mma_bf16(acc[i][j], af[cur][i], bf[cur][j][0], bf[cur][j][1]);
         }
-        if (it + 1 < nk) load_frags(0, it + 1, 0);
-#pragma unroll
-        for (int i = 0; i < 4; i++)
-#pragma unroll
-            for (int j = 0; j < NJ; j++) mma_bf16(acc[i][j], af[1][i], bf[1][j][0], bf[1][j][1]);
         cp_commit();
     }
     cp_wait<0>();

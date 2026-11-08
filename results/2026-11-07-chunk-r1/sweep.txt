@@ -1,0 +1,15 @@
+rep 1 b16 | OK: 58634/58634 tasks, 135.940 ms
+rep 1 b16big | OK: 49505/49505 tasks, 218.471 ms
+rep 1 b16mid | OK: 51766/51766 tasks, 191.613 ms
+rep 1 f32 | OK: 270914/270914 tasks, 258.967 ms
+rep 1 f32big | OK: 266932/266932 tasks, 271.954 ms
+rep 2 b16 | OK: 58634/58634 tasks, 135.784 ms
+rep 2 b16big | OK: 49505/49505 tasks, 217.813 ms
+rep 2 b16mid | OK: 51766/51766 tasks, 189.894 ms
+rep 2 f32 | OK: 270914/270914 tasks, 258.243 ms
+rep 2 f32big | OK: 266932/266932 tasks, 272.494 ms
+rep 3 b16 | OK: 58634/58634 tasks, 132.948 ms
+rep 3 b16big | OK: 49505/49505 tasks, 216.559 ms
+rep 3 b16mid | OK: 51766/51766 tasks, 190.395 ms
+rep 3 f32 | OK: 270914/270914 tasks, 256.446 ms
+rep 3 f32big | OK: 266932/266932 tasks, 271.546 ms

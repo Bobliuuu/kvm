@@ -1,0 +1,30 @@
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring wrap: 64 pad words
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring wrap: 64 pad words
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][I] kernel done: 156000/156000 tasks in 1407.952 ms, 6000 records, 82 ring wraps, 794 backpressure waits
+  litmus: 12 runs, 1872000 tasks; each iteration races a waiter's park against the publish of its version; no lost wakeup, early run or double run
+== litmus: PASS (23.1s, 0 new failures)
+8586 checks, 0 failed, 0 suites failed
+PASS
+exit: 0

@@ -44,5 +44,5 @@ def run(tag: str, variants: str, prog: str, env: str, extra: str):
 
 
 @app.local_entrypoint()
-def main(tag: str, variants: str, prog: str = "bench_mma_bf16", env: str = "true", extra: str = ""):
+def main(tag: str, variants: str, prog: str = "bench_mma_bf16", env: str = "MMA_SET=gpt", extra: str = ""):
     run.spawn(tag, variants, prog, env, extra)

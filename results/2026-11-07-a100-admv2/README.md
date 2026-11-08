@@ -38,7 +38,7 @@ Still 3.2x slower than torch autocast eager (47 ms) and 4.8x slower than its CUD
 | check | result |
 |---|---|
 | executor suite (`suites/exec.log`) | 8613 checks, 0 failed, PASS |
-| litmus | NOT completed: the container was still compiling the 9 litmus executors after ~100 min and was stopped (`suites/litmus.log` has only the build header); merged branches passed litmus on their own |
+| litmus | inside the exec suite: "litmus: PASS (24.0s, 0 new failures)" (`suites/exec.log`). The separate litmus suite (mutants) did not finish within ~2 h (build of 9 executors, then no output) and was stopped; not counted |
 | 162M step-1 gradients vs PyTorch float64, bf16s (`r3/num_bf16s`) | loss +2.67e-05, worst tensor 1.69e-02 (gpt.h11.attn.k.w), identical to main's 1.69e-02 |
 | same, f32 (`r3/num_f32`) | worst tensor 1.46e-03 = torch-tf32's own 1.46e-03 |
 | not re-run | sanitizers, zoo, demo (Doom + serve), 300-step learning curve vs torch |

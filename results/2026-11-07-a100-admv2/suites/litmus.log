@@ -1,0 +1,8 @@
+# suite=litmus tag=admv2-litmus 2026-11-07T22:54:59Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 601 GB, cores: 16
+BUILD: tests/litmus/build.sh (prod + 6 mutants), e2e, e2e -DKVM_BREAK_FENCE, kvm_exec
+
+built in /src/out

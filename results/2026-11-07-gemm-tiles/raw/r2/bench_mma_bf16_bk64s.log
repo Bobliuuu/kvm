@@ -1,0 +1,17 @@
+device NVIDIA A100-SXM4-40GB SMs 108  out=bf16
+qkvo      mma   NN  4096x  768x  768 tile 128x256 kvm   65.0 [  64.9..  65.0] cuBLAS  160.0 [ 159.4.. 160.5] TFLOP/s ratio 0.406 err 2.8e-03 ok dev_err 0
+qkvo      mma   NT  4096x  768x  768 tile 128x256 kvm   65.8 [  65.7..  65.9] cuBLAS  161.0 [ 158.3.. 161.6] TFLOP/s ratio 0.409 err 2.0e-03 ok dev_err 0
+qkvo      mma   TN   768x  768x 4096 tile 128x256 kvm   25.1 [  25.1..  25.1] cuBLAS  151.2 [ 150.8.. 151.7] TFLOP/s ratio 0.166 err 2.9e-03 ok dev_err 0
+fc1       mma   NN  4096x 3072x  768 tile 128x256 kvm   67.3 [  67.3..  67.4] cuBLAS  198.7 [ 197.6.. 199.5] TFLOP/s ratio 0.339 err 2.5e-03 ok dev_err 0
+fc1       mma   NT  4096x  768x 3072 tile 128x256 kvm   97.4 [  97.2..  97.5] cuBLAS  226.9 [ 226.3.. 227.1] TFLOP/s ratio 0.429 err 2.8e-03 ok dev_err 0
+fc1       mma   TN   768x 3072x 4096 tile 128x256 kvm   80.1 [  80.1..  80.2] cuBLAS  200.4 [ 199.7.. 200.6] TFLOP/s ratio 0.400 err 2.1e-03 ok dev_err 0
+fc2       mma   NN  4096x  768x 3072 tile 128x256 kvm   94.6 [  94.5..  94.6] cuBLAS  227.7 [ 225.8.. 228.5] TFLOP/s ratio 0.415 err 2.7e-03 ok dev_err 0
+fc2       mma   NT  4096x 3072x  768 tile 128x256 kvm   68.5 [  68.5..  68.6] cuBLAS  172.2 [ 171.9.. 172.7] TFLOP/s ratio 0.398 err 2.0e-03 ok dev_err 0
+fc2       mma   TN  3072x  768x 4096 tile 128x256 kvm   80.1 [  80.0..  80.1] cuBLAS  201.4 [ 201.2.. 202.3] TFLOP/s ratio 0.398 err 2.2e-03 ok dev_err 0
+head      mma   NN  4096x50304x  768 tile 128x256 kvm   45.0 [  44.9..  45.0] cuBLAS  219.2 [ 214.6.. 238.0] TFLOP/s ratio 0.205 err 2.1e-03 ok dev_err 0
+head      mma   NT  4096x  768x50304 tile 128x256 kvm  170.5 [ 168.9.. 174.4] cuBLAS  250.7 [ 247.2.. 272.5] TFLOP/s ratio 0.680 err 3.6e-03 ok dev_err 0
+head      mma   TN   768x50304x 4096 tile 128x256 kvm  117.1 [ 117.1.. 117.2] cuBLAS  273.8 [ 244.0.. 274.2] TFLOP/s ratio 0.428 err 2.0e-03 ok dev_err 0
+qkvo      old64 NN  4096x  768x  768 tile  64x64  kvm   11.8 [  10.9..  12.0] cuBLAS  155.7 [ 155.2.. 156.2] TFLOP/s ratio 0.076 err 2.8e-03 ok dev_err 0
+OK (0 failed)
+
+exit 0

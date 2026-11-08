@@ -12,7 +12,8 @@ import time
 
 import modal
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+_p = pathlib.Path(__file__).resolve().parents
+ROOT = _p[2] if len(_p) > 2 else pathlib.Path('/')
 PRE = os.environ.get("PRE_TREE", "/tmp/pre_tree")
 IGN = [".tmp", "results", "logs", ".git", ".claude", "docs", "assets", "**/__pycache__", "doom/third_party", "doom/build", "out"]
 image = (modal.Image.from_registry("nvidia/cuda:12.8.1-devel-ubuntu22.04", add_python="3.11")

@@ -42,6 +42,7 @@ OPSF = ('cd tests/gpu_ops && nvcc -O2 -arch=sm_80 -std=c++17 --fmad=false -Xcomp
 BUILDS = {
     "test_exec": ('bash tests/gpu/build.sh', ["test_exec"]),
     "test_exec_bf": ('bash tests/gpu/build.sh -DKVM_BREAK_FENCE && mv test_exec test_exec_bf', ["test_exec_bf"]),
+    "test_exec_bw": ('bash tests/gpu/build.sh -DKVM_BREAK_WINDOW_DONE && mv test_exec test_exec_bw', ["test_exec_bw"]),
     "test_exec_bp": ('bash tests/gpu/build.sh -DKVM_BREAK_PARK_RECHECK && mv test_exec test_exec_bp', ["test_exec_bp"]),
     "kvm_exec": (NV + ' kvm_exec.cu -o kvm_exec', ["kvm_exec"]),
     "test_sched": ('bash tests/gpu/build_sched.sh', ["test_sched"]),
@@ -126,9 +127,10 @@ JOBS["exec"] = ('cp $B/test_exec .; python3 tests/gpu/make_initgen_vectors.py --
 JOBS["recycle5"] = ('cp $B/test_exec .\nok=0; for i in 1 2 3 4 5; do timeout -k 10 900 ./test_exec recycle > /tmp/r$i.txt 2>&1; rc=$?; tail -n 2 /tmp/r$i.txt; '
                     'grep -qE "^[0-9]+ checks, 0 failed" /tmp/r$i.txt && [ $rc -eq 0 ] && ok=$((ok+1)); done\n'
                     '[ $ok -eq 5 ] && echo "RESULT: PASS recycle suite (3M tasks via 4096 slots + window wrap) 5/5 runs" || echo "RESULT: FAIL recycle $ok/5 runs passed"', "A100-40GB")
-JOBS["negative"] = ('cp $B/test_exec_bf $B/test_exec_bp .\ntimeout -k 10 2400 ./test_exec_bf --expect-fail versions > /tmp/n1.txt 2>&1; r1=$?; tail -n 3 /tmp/n1.txt\n'
+JOBS["negative"] = ('cp $B/test_exec_bf $B/test_exec_bp $B/test_exec_bw .\ntimeout -k 10 2400 ./test_exec_bf --expect-fail versions > /tmp/n1.txt 2>&1; r1=$?; tail -n 3 /tmp/n1.txt\n'
                     'timeout -k 10 2400 ./test_exec_bp --expect-fail litmus > /tmp/n2.txt 2>&1; r2=$?; tail -n 3 /tmp/n2.txt\n'
-                    '[ $r1 -eq 0 ] && [ $r2 -eq 0 ] && echo "RESULT: PASS both broken builds (KVM_BREAK_FENCE, KVM_BREAK_PARK_RECHECK) are detected" || echo "RESULT: FAIL negatives rc $r1 $r2"', "A100-40GB")
+                    'timeout -k 10 900 ./test_exec_bw recycle > /tmp/n3.txt 2>&1; r3=$?; grep -E "window_done false|checks," /tmp/n3.txt | tail -n 3\n'
+                    '[ $r1 -eq 0 ] && [ $r2 -eq 0 ] && [ $r3 -ne 0 ] && grep -q "window_done false" /tmp/n3.txt && echo "RESULT: PASS all 3 broken builds are detected (KVM_BREAK_FENCE, KVM_BREAK_PARK_RECHECK, KVM_BREAK_WINDOW_DONE = the recycle flake)" || echo "RESULT: FAIL negatives rc $r1 $r2 $r3"', "A100-40GB")
 JOBS["sanitize"] = ('cp $B/test_exec .\nbad=0; for t in memcheck racecheck synccheck; do echo "== $t"; timeout -k 10 3000 compute-sanitizer --tool $t --error-exitcode 9 ./test_exec smoke > /tmp/s_$t.txt 2>&1; rc=$?; tail -n 6 /tmp/s_$t.txt; echo "sanitizer exit $rc"; [ $rc -eq 0 ] || bad=$((bad+1)); done\n'
                     '[ $bad -eq 0 ] && echo "RESULT: PASS test_exec smoke under memcheck, racecheck, synccheck: 0 errors" || echo "RESULT: FAIL $bad sanitizer(s) reported errors"', "A100-40GB")
 JOBS["litmus"] = ('KVM_LITMUS_PREBUILT=$B/litmus_bins bash tests/litmus/run_litmus.sh > /tmp/l.txt 2>&1; rc=$?; cat /tmp/l.txt | cut -c1-200\n'
@@ -206,7 +208,7 @@ for f in $(find . -name '*.sh' -not -path './doom/third_party/*'); do bash -n "$
 [ $fail -eq 0 ] && echo "RESULT: PASS CPU unit tests ($(grep -h '^Ran' /tmp/u1.txt /tmp/u2.txt /tmp/u3.txt /tmp/u4.txt | tr '\n' ' ')), host adaptive test, shell syntax" || echo "RESULT: FAIL unit $fail"''', None)
 
 NEEDS = {  # job -> builds it needs
-    "exec": ["test_exec"], "recycle5": ["test_exec"], "negative": ["test_exec_bf", "test_exec_bp"], "sanitize": ["test_exec"], "litmus": ["litmus"],
+    "exec": ["test_exec"], "recycle5": ["test_exec"], "negative": ["test_exec_bf", "test_exec_bp", "test_exec_bw"], "sanitize": ["test_exec"], "litmus": ["litmus"],
     "gpt_modes": ["kvm_exec"], "ops": ["test_ops"], "extra": ["test_extra"], "bf16_ops": ["test_bf16"], "sched": ["test_sched"], "zoo": ["zoo", "kvm_exec"],
     "gptdiff": ["kvm_exec"], "bf16_bundles": ["kvm_exec"], "grads162": ["kvm_run_nogame"], "learn300": ["kvm_run_nogame"], "demo": ["kvm_run_game"], "unit": [],
 }

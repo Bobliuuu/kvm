@@ -219,6 +219,7 @@ NEEDS = {  # job -> builds it needs
 
 
 def _job(name, tag, key, keyz):
+    vol.reload()   # builds finished in other containers after this one's mount snapshot
     script, _ = JOBS[name]
     rc, last = _drive(PASSFN + script, tag, name, key, f"{name}.log", timeout=3.4 * 3600, keyz=keyz)
     return name, last

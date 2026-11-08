@@ -50,7 +50,7 @@ def build(which: str):
 
 AB = r'''export PATH=$PATH:/usr/local/cuda/bin; O=/logs/TAG; mkdir -p $O /w
 nvidia-smi --query-gpu=name,driver_version,clocks.max.sm --format=csv,noheader | tee $O/env.txt
-cd /pre && python3 bench/vs_pytorch/gen.py /w/m_f32 --model 'MODEL' --steps 1 --mode tf32 --tiling a100 > $O/gen.log 2>&1; ls /w/m_f32/bundle | head -3
+mkdir -p /pre/bench/vs_pytorch && cp /src/bench/vs_pytorch/*.py /pre/bench/vs_pytorch/ && cd /pre && python3 bench/vs_pytorch/gen.py /w/m_f32 --model 'MODEL' --steps 1 --mode tf32 --tiling a100 > $O/gen.log 2>&1; ls /w/m_f32/bundle | head -3
 for r in $(seq 1 REPS); do
   echo "rep $r pre $(timeout 900 DPRE/kvm_exec --quiet /w/m_f32/bundle 2>&1 | grep -E '^(OK|FAIL)' | tail -1)" | tee -a $O/ab.txt
   for v in VARIANTS; do

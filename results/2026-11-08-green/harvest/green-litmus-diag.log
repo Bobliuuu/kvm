@@ -1,0 +1,86 @@
+# suite=custom tag=green-litmus-diag 2026-11-08T01:30:42Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 1024 GB, cores: 16
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+== sb 100 5
+02:05:01
+GPU NVIDIA A100-SXM4-40GB sm_80, 108 SMs  [build: production header]
+LITMUS sb[relaxed,no-fence]               rounds=500000  both_miss(0,0)=2609  CONTROL: failure detected (harness is sensitive)
+LITMUS sb[relaxed+fence.sc]               rounds=500000  both_miss(0,0)=0  none
+LITMUS sb[relaxed+fence.acq_rel]          rounds=500000  both_miss(0,0)=0  none
+LITMUS sb[atom.exch.acq_rel+ld.acq,no-fence] rounds=500000  both_miss(0,0)=0  none
+LITMUS sb[atom.exch.acq_rel+fence.sc+ld.acq (PROD)] rounds=500000  both_miss(0,0)=0  none
+TOTAL rounds=2500000 violations=0
+exit: 0
+02:05:01
+== dekker1 100 5
+02:05:01
+GPU NVIDIA A100-SXM4-40GB sm_80, 108 SMs  [build: production header]
+LITMUS dekker1 (real release/park/publish) rounds=500000  lost+dup+abort+err=0  none
+       detail: lost_wakeups=0 double_enqueue=0 rendezvous_aborts=0 device_errors=0  waiters=500000
+TOTAL rounds=500000 violations=0
+exit: 0
+02:05:03
+== dekker3 100 5
+02:05:03
+GPU NVIDIA A100-SXM4-40GB sm_80, 108 SMs  [build: production header]
+LITMUS dekker3 (real release/park/publish) rounds=250000  lost+dup+abort+err=0  none
+       detail: lost_wakeups=0 double_enqueue=0 rendezvous_aborts=0 device_errors=0  waiters=750000
+TOTAL rounds=250000 violations=0
+exit: 0
+02:05:07
+== mp 100 5
+02:05:07
+GPU NVIDIA A100-SXM4-40GB sm_80, 108 SMs  [build: production header]
+LITMUS mp[PROD kvm_publish + acquire]     rounds=500000  stale_rounds+aborts=0  none
+       detail: stale_words=0 stale_rounds=0 aborts=0 (grid 648 CTAs x 256 thr, 1024 words/round)
+LITMUS mp[MUTANT reader relaxed version]  rounds=500000  stale_rounds+aborts=10420  CONTROL: failure detected (harness is sensitive)
+       detail: stale_words=6721920 stale_rounds=10420 aborts=0 (grid 648 CTAs x 256 thr, 1024 words/round)
+LITMUS mp[MUTANT relaxed CAS no fence]    rounds=500000  stale_rounds+aborts=32  CONTROL: failure detected (harness is sensitive)
+       detail: stale_words=4256 stale_rounds=32 aborts=0 (grid 648 CTAs x 256 thr, 1024 words/round)
+LITMUS mp[NEGATIVE publish-before-stores] rounds=500000  stale_rounds+aborts=488504  CONTROL: failure detected (harness is sensitive)
+       detail: stale_words=11808048 stale_rounds=488504 aborts=0 (grid 648 CTAs x 256 thr, 1024 words/round)
+TOTAL rounds=2000000 violations=0
+exit: 0
+02:05:07
+== queue 1
+02:05:07
+LITMUS queue[cap=4,ctas=200]              rounds=20006  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=20006 (wraps/bucket ~5001) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=8,ctas=7]                rounds=20006  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=20006 (wraps/bucket ~2500) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=8,ctas=200]              rounds=20014  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=20014 (wraps/bucket ~2501) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=64,ctas=7]               rounds=20006  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=20006 (wraps/bucket ~312) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=64,ctas=200]             rounds=20008  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=20008 (wraps/bucket ~312) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=1024,ctas=7]             rounds=20007  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=20007 (wraps/bucket ~19) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=1024,ctas=200]           rounds=20010  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=20010 (wraps/bucket ~19) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+TOTAL rounds=200068 violations=0
+exit: 0
+02:05:08
+== queue 5
+02:05:08
+LITMUS queue[cap=4,ctas=200]              rounds=100011  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100011 (wraps/bucket ~25002) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=8,ctas=7]                rounds=100005  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100005 (wraps/bucket ~12500) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=8,ctas=200]              rounds=100010  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100010 (wraps/bucket ~12501) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=64,ctas=7]               rounds=100004  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100004 (wraps/bucket ~1562) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=64,ctas=200]             rounds=100008  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100008 (wraps/bucket ~1562) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=1024,ctas=7]             rounds=100006  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100006 (wraps/bucket ~97) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+LITMUS queue[cap=1024,ctas=200]           rounds=100018  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100018 (wraps/bucket ~97) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0
+TOTAL rounds=1000073 violations=0
+exit: 0
+02:05:10

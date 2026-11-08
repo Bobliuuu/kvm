@@ -1,0 +1,76 @@
+# suite=custom tag=chunk-r2 2026-11-08T02:11:19Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 1024 GB, cores: 16
+gen b16big "tasks": 49505
+gen b16mid "tasks": 51766
+gen b16 "tasks": 58634
+gen f32 "tasks": 270914
+gen f32big "tasks": 266932
+rep 1 b16 | OK: 58634/58634 tasks, 135.940 ms
+rep 1 b16big | OK: 49505/49505 tasks, 218.471 ms
+rep 1 b16mid | OK: 51766/51766 tasks, 191.613 ms
+rep 1 f32 | OK: 270914/270914 tasks, 258.967 ms
+rep 1 f32big | OK: 266932/266932 tasks, 271.954 ms
+rep 2 b16 | OK: 58634/58634 tasks, 135.784 ms
+rep 2 b16big | OK: 49505/49505 tasks, 217.813 ms
+rep 2 b16mid | OK: 51766/51766 tasks, 189.894 ms
+rep 2 f32 | OK: 270914/270914 tasks, 258.243 ms
+rep 2 f32big | OK: 266932/266932 tasks, 272.494 ms
+rep 3 b16 | OK: 58634/58634 tasks, 132.948 ms
+rep 3 b16big | OK: 49505/49505 tasks, 216.559 ms
+rep 3 b16mid | OK: 51766/51766 tasks, 190.395 ms
+rep 3 f32 | OK: 270914/270914 tasks, 256.446 ms
+rep 3 f32big | OK: 266932/266932 tasks, 271.546 ms
+commit: chunked-release
+INFO bundle train_w0: 58635 tasks, 481521 edges (base {'weights': 0})
+INFO demo: {'train': (58635, 481521)}
+INFO manifest: 1 admissions, 1394 buffers (0 shared) -> /w/num_bf16s/g1/MANIFEST.json
+kvm_run exit 0
+[kvm_exec][I] workload 0: 58635 tasks, 9.534 CTA-s, queue wait p50 71.7 p99 3160.1 max 4573.2 us, 0 deadline misses, 4.96 GB moved (36.7 GB/s over the run)
+[kvm_exec][I] trace: 58635 tasks -> /w/num_bf16s/g1out/trace.csv
+[kvm_exec][I] dumped 590 buffers to /w/num_bf16s/g1out/buffers
+[kvm_exec][I] wrote /w/num_bf16s/g1out/run.json
+OK: 58635/58635 tasks, 246.929 ms, 1 admissions
+torch fp64: loss 10.979000 global grad norm 4.074979
+torch tf32: loss 10.979010 global grad norm 4.074853
+torch fp32: loss 10.979000 global grad norm 4.074980
+torch bf16: loss 10.979324 global grad norm 4.072655
+executor: loss 10.979027 global grad norm 4.075675 clip_coef 0.245358  (fp64 truth coef 0.245400)
+loss vs fp64: executor +2.67e-05  torch-tf32 +9.56e-06  torch-fp32 +2.17e-08  torch-autocast-bf16 +3.24e-04
+  group wte        (  1 tensors) |g| truth 3.8530e-01 exec 3.8528e-01  rel L2 vs fp64: exec 1.18e-02  torch-tf32 9.45e-04  torch-fp32 2.12e-06  torch-autocast-bf16 1.13e-02
+  group norm       ( 48 tensors) |g| truth 4.3011e-02 exec 4.2990e-02  rel L2 vs fp64: exec 1.14e-02  torch-tf32 9.36e-04  torch-fp32 2.10e-06  torch-autocast-bf16 2.24e-02
+  group attn       ( 96 tensors) |g| truth 2.0846e+00 exec 2.0852e+00  rel L2 vs fp64: exec 1.03e-02  torch-tf32 8.87e-04  torch-fp32 1.99e-06  torch-autocast-bf16 2.13e-02
+  group mlp        ( 48 tensors) |g| truth 3.4536e+00 exec 3.4541e+00  rel L2 vs fp64: exec 1.13e-02  torch-tf32 9.25e-04  torch-fp32 2.11e-06  torch-autocast-bf16 1.77e-02
+  group final_norm (  2 tensors) |g| truth 1.9237e-02 exec 1.9235e-02  rel L2 vs fp64: exec 5.00e-03  torch-tf32 4.97e-04  torch-fp32 1.04e-06  torch-autocast-bf16 3.29e-02
+  group head       (  1 tensors) |g| truth 4.2624e-01 exec 4.2625e-01  rel L2 vs fp64: exec 9.74e-03  torch-tf32 7.66e-04  torch-fp32 1.74e-06  torch-autocast-bf16 7.58e-03
+  worst tensor: gpt.h11.attn.k.w exec 1.69e-02 (torch-tf32 on it 1.43e-03, torch-bf16 1.90e-02); all 196 tensors: max exec 1.69e-02, max torch-tf32 1.46e-03, max torch-autocast-bf16 3.36e-02
+  m after step 1 vs fp64 reference (rel L2): {"max": 0.016887285521405847, "median": 0.010951418709734925}
+  w1 - w0 vs fp64 reference: {"rel_l2_max": 0.20400450710189355, "rel_l2_median": 0.09710763159251644, "sign_flip_frac_max": 0.01171875, "sign_flip_frac_median": 0.003801133897569444}
+commit: chunked-release
+INFO bundle train_w0: 270915 tasks, 2252374 edges (base {'weights': 0})
+INFO demo: {'train': (270915, 2252374)}
+INFO manifest: 1 admissions, 1140 buffers (0 shared) -> /w/num_f32/g1/MANIFEST.json
+kvm_run exit 0
+[kvm_exec][I] workload 0: 270915 tasks, 19.926 CTA-s, queue wait p50 631.8 p99 13994.0 max 17511.4 us, 0 deadline misses, 4.96 GB moved (17.7 GB/s over the run)
+[kvm_exec][I] trace: 270915 tasks -> /w/num_f32/g1out/trace.csv
+[kvm_exec][I] dumped 590 buffers to /w/num_f32/g1out/buffers
+[kvm_exec][I] wrote /w/num_f32/g1out/run.json
+OK: 270915/270915 tasks, 543.451 ms, 1 admissions
+torch fp64: loss 10.979000 global grad norm 4.074979
+torch tf32: loss 10.979010 global grad norm 4.074865
+torch fp32: loss 10.979000 global grad norm 4.074980
+torch bf16: loss 10.979324 global grad norm 4.072797
+executor: loss 10.979010 global grad norm 4.074670 clip_coef 0.245419  (fp64 truth coef 0.245400)
+loss vs fp64: executor +9.56e-06  torch-tf32 +9.56e-06  torch-fp32 +2.17e-08  torch-autocast-bf16 +3.24e-04
+  group wte        (  1 tensors) |g| truth 3.8530e-01 exec 3.8527e-01  rel L2 vs fp64: exec 9.43e-04  torch-tf32 9.41e-04  torch-fp32 2.12e-06  torch-autocast-bf16 1.13e-02
+  group norm       ( 48 tensors) |g| truth 4.3011e-02 exec 4.3005e-02  rel L2 vs fp64: exec 9.33e-04  torch-tf32 9.06e-04  torch-fp32 2.05e-06  torch-autocast-bf16 2.29e-02
+  group attn       ( 96 tensors) |g| truth 2.0846e+00 exec 2.0845e+00  rel L2 vs fp64: exec 8.91e-04  torch-tf32 8.75e-04  torch-fp32 1.97e-06  torch-autocast-bf16 2.14e-02
+  group mlp        ( 48 tensors) |g| truth 3.4536e+00 exec 3.4533e+00  rel L2 vs fp64: exec 9.27e-04  torch-tf32 9.20e-04  torch-fp32 2.11e-06  torch-autocast-bf16 1.78e-02
+  group final_norm (  2 tensors) |g| truth 1.9237e-02 exec 1.9237e-02  rel L2 vs fp64: exec 5.01e-04  torch-tf32 4.97e-04  torch-fp32 1.04e-06  torch-autocast-bf16 3.29e-02
+  group head       (  1 tensors) |g| truth 4.2624e-01 exec 4.2625e-01  rel L2 vs fp64: exec 7.67e-04  torch-tf32 7.66e-04  torch-fp32 1.74e-06  torch-autocast-bf16 7.58e-03
+  worst tensor: gpt.h11.attn.q.w exec 1.46e-03 (torch-tf32 on it 1.46e-03, torch-bf16 1.91e-02); all 196 tensors: max exec 1.46e-03, max torch-tf32 1.46e-03, max torch-autocast-bf16 3.36e-02
+  m after step 1 vs fp64 reference (rel L2): {"max": 0.0014564045439668346, "median": 0.0008973711884783871}
+  w1 - w0 vs fp64 reference: {"rel_l2_max": 0.08641880182625715, "rel_l2_median": 0.007016374780252166, "sign_flip_frac_max": 0.0026041666666666665, "sign_flip_frac_median": 1.1945599919158184e-05}
+done

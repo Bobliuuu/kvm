@@ -20,6 +20,9 @@ for rep in 1 2 3 4 5; do for b in b16 f32; do
   r $rep crit_chunked ${b}c /logs/bin/ex_chunk_a ""
   for c in 0 1 2; do r $rep crit_chain$c ${b}c /w/ex_chain "--chain $c"; done
 done; done
+# torch in THIS container (bf16 autocast, same workload), then one more executor rep right after, for the Phase B ratio
+wait; python3 bench/vs_pytorch/torch_bench.py /w/b16 --reps 7 --precision bf16 --modes eager,graph --out $O/torch_b16.json 2>&1 | grep -v Warn | tail -4 | tee $O/torch_b16.txt
+for c in 1 2; do r 9 final$c b16c /w/ex_chain "--chain $c"; done
 /w/ex_chain --quiet --chain 1 --trace-csv /w/t.csv /w/b16c/bundle | tail -1; python3 bench/vs_pytorch/trace_summary.py /w/t.csv 1 2>&1 | head -n 8 | tee $O/trace_b16c_chain1.txt
 cp /w/kvm_run demo/kvm_run
 for P in bf16s f32; do PRECISION=$P KVM_COMMIT=chain3 bash bench/vs_pytorch/grads162.sh /w/num_$P $O/num_$P 2>&1 | grep -E "loss vs|worst tensor|kvm_run exit|^OK|FAIL"; rm -rf /w/num_$P; done

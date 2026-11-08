@@ -181,6 +181,7 @@ struct KvmDevState {
   int nslots, live_cap, nbufs, ring_words, num_vars, win_cap, rcap, pad1;   // rcap = ready-ring depth = 4 * live_cap (see KvmCounters::parked)
   unsigned succ_cap;
   long long aging_ns;
+  int chain;   // worker continues into one ready successor without a queue round trip: 0 off, 1 only when no queued task outranks it, 2 also on ties
   unsigned long long timeout_ns, task_limit_ns;   // stall timeout; per-task running-time limit (0 = off, checked when the task ends)
   const KvmBuf* bufs;
   KvmTaskDesc* tasks;                               // [nslots]
@@ -516,6 +517,8 @@ __device__ __forceinline__ void kvm_publish(const KvmDevState& S, int slot, int 
 // ---------------- worker ----------------
 struct KvmShared {
   KvmTaskDesc d;
+  unsigned long long chain64;   // best chain candidate of the finishing task: (priority+1) << 32 | slot
+  int next;                     // slot the worker runs next without popping (-1: none)
   int cmd, skip, how, part, dup;   // how: KVM_TRACE_* start reason from kvm_pop; part: STATIC-mode class of this worker's SM
   float smem[KVM_SMEM_FLOATS];
 };
@@ -566,6 +569,7 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
     if (d.pub_var >= 0) kvm_publish(S, slot, d.pub_var, d.pub_ver);
 #endif
     sh.skip = bad || *(volatile int*)&S.cnt->err_code;
+    sh.chain64 = 0; sh.next = -1;
   }
   __syncthreads();
   // Prefetch this thread's first successor id: the list is immutable once admitted, and the load's round trip hides behind the op instead
@@ -592,12 +596,38 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   __syncthreads();
   if (!sh.skip) {
     if (threadIdx.x < d.succ_cnt) __threadfence();   // only the warps that release anything fence (the barrier made the op's stores of all threads precede it)
+    int cand = -1;
     for (int e = threadIdx.x; e < d.succ_cnt; e += blockDim.x) {
       int s = e < blockDim.x ? sid0 : S.succ[(unsigned)(d.succ_off + e) & (S.succ_cap - 1)];
-      if (atom_add(S.indeg + s, -1) == 1) { kvm_sched_pref(S, s); kvm_release_task(S, s); }  // SCHED: affinity = this block
+      if (atom_add(S.indeg + s, -1) == 1) {
+        // Chaining (S.chain, scheduler off): the unique releaser of a plain successor may run it next on this CTA instead of
+        // enqueue + pop (about half of a dependent hop). Decided below against the best queued priority; otherwise it is released as usual.
+        if (S.chain && cand < 0 && e < blockDim.x && !S.sp.on) {
+          const KvmTaskDesc* sd = S.tasks + s;
+          if (sd->wait_var < 0 && sd->deadline_us < 0) { cand = s; atomicMax(&sh.chain64, ((unsigned long long)(sd->priority + 1) << 32) | (unsigned)s); continue; }
+        }
+        kvm_sched_pref(S, s); kvm_release_task(S, s);   // SCHED: affinity = this block
+      }
+    }
+    if (S.chain && !S.sp.on) {
+      __syncthreads();   // sh.chain64 complete
+      if (threadIdx.x < 32 && sh.chain64) {
+        const int hi_lane = threadIdx.x;   // highest non-empty ready bucket of class 0 (one coalesced round trip)
+        const bool ne = (long long)ld_acq64(&S.qctl[hi_lane].avail) > 0;
+        const unsigned m = __ballot_sync(0xffffffffu, ne);
+        if (threadIdx.x == 0) {
+          const int hi = m ? 31 - __clz(m) : -1, pr = (int)(sh.chain64 >> 32) - 1;
+          if (hi < 0 || pr > hi || (S.chain >= 2 && pr == hi)) sh.next = (int)(unsigned)sh.chain64;
+        }
+      }
+      __syncthreads();
+      if (cand >= 0) {
+        if (cand == sh.next) S.trace[cand].ready_ns = kvm_now();
+        else { kvm_sched_pref(S, cand); kvm_release_task(S, cand); }
+      }
     }
   }
-  __syncthreads();
+  if (S.sp.on) __syncthreads();
   if (threadIdx.x == 0) kvm_sched_done(S, slot, tr->start_ns, tr->end_ns, tr->flags & KVM_TRACE_MISSED);  // SCHED: frees the class's running/BW slot once the CTA is really free (reads the slot's metadata: before it is recycled)
   __syncthreads();
   // Nothing of this task is read again (sh.d is a copy; successors were decremented). Three independent bookkeeping steps, each an L2
@@ -633,6 +663,11 @@ __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
     }
     backoff = 0;
     kvm_run_task(S, cmd, sh);
+    while (sh.next >= 0) {   // chained successor: no pop. (sh.next was written before kvm_run_task's final barrier)
+      int nx = sh.next; __syncthreads();   // everyone has read it before the next task rewrites it
+      if (threadIdx.x == 0) sh.how = 0;
+      kvm_run_task(S, nx, sh);
+    }
   }
 }
 

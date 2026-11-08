@@ -9,7 +9,7 @@ bash tests/litmus/build.sh "$PWD/out" 2>&1 | tail -2
 $NV $B -DKVM_EXEC_NO_MAIN -DKVM_NEW tests/litmus/e2e.cu -o out/e2e 2>&1 | grep -i " error"
 $NV $B -DKVM_EXEC_NO_MAIN -DKVM_NEW -DKVM_BREAK_FENCE tests/litmus/e2e.cu -o out/e2e_breakfence 2>&1 | grep -i " error"
 $NV $B kvm_exec.cu -o out/kvm_exec 2>&1 | grep -i " error"
-L="timeout"; [ -n "${KVM_NO_LOCK:-}" ] || L="flock -w 7200 $HOME/.gpu.lock timeout"; cd out; fail=0; ok_props=0; ok_mut=0
+L="timeout -k 10"; [ -n "${KVM_NO_LOCK:-}" ] || L="flock -w 7200 $HOME/.gpu.lock timeout -k 10"; cd out; fail=0; ok_props=0; ok_mut=0
 prop() {  # name, timeout, command...
   local n="$1" t="$2"; shift 2; local o; o="$($L "$t" "$@" 2>&1)"; local rc=$?; local last; last="$(echo "$o" | grep -E "^TOTAL" | tail -1)"
   echo "property $n: $last (exit $rc)"; if [ $rc -eq 0 ]; then ok_props=$((ok_props+1)); else fail=$((fail+1)); echo "$o" | tail -5; fi; }

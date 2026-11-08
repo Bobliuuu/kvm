@@ -47,3 +47,13 @@ doom/build/
 
 # demo: per-run scratch on the GPU box (rsync mirror) and local runs
 runs/
+
+# --- secrets / infrastructure identifiers: never commit (see skill github-workflow) ---
+*.pem
+*.key
+known_hosts
+.env
+.env.*
+vast_api_key
+sw.sh
+*.local.sh

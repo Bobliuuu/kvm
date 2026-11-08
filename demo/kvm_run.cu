@@ -509,13 +509,17 @@ class Runner {
 
   KvmConfig make_config() {
     KvmConfig cfg;
-    long long maxw = 1, maxwords = 0, total = 0;
-    for (auto& w : m_.workloads) { maxw = std::max(maxw, w.tasks); maxwords = std::max(maxwords, 28 * w.tasks + w.edges + 64); }
+    long long maxw = 1, maxwords = 0, maxedges = 0, total = 0;
+    for (auto& w : m_.workloads) { maxw = std::max(maxw, w.tasks); maxedges = std::max(maxedges, w.edges); maxwords = std::max(maxwords, 28 * w.tasks + w.edges + 64); }
     for (auto& a : m_.adms) total += wl(a).tasks;
     auto pow2 = [](long long v, long long lo, long long hi) { long long p = lo; while (p < v && p < hi) p <<= 1; return p; };
-    cfg.live_cap = o_.live_cap ? o_.live_cap : (int)pow2(maxw, 1 << 12, 1 << 16);
-    cfg.ring_words = (int)std::min<long long>(pow2(2 * maxwords, 1 << 16, 1 << 22), 1 << 22);
-    cfg.max_tasks = o_.max_tasks ? o_.max_tasks : (int)std::max<long long>(pow2(total + cfg.live_cap, 1 << 15, 1 << 21), 2 * cfg.live_cap);
+    // Window sizing (admission v2, as in kvm_exec main): a bundle larger than live_cap or ring/2 is cut into windows and the host submits a
+    // window only after the windows holding its producers COMPLETED (a drain per window). Size live_cap / ring / succ ring so the largest
+    // workload (one training step) is ONE record whenever it fits (up to 2^19 tasks: the ready rings cost live_cap * 128 buckets * 32 B per class).
+    cfg.live_cap = o_.live_cap ? o_.live_cap : (int)pow2(maxw, 1 << 12, 1 << 19);
+    cfg.ring_words = (int)std::min<long long>(pow2(2 * maxwords, 1 << 16, 1 << 26), 1 << 26);
+    cfg.succ_cap = std::max<unsigned>(cfg.succ_cap, (unsigned)pow2(maxedges + 2, 2, 1 << 26));
+    cfg.max_tasks = o_.max_tasks ? o_.max_tasks : (int)std::max<long long>(pow2(total + cfg.live_cap, 1 << 15, 1 << 22), 2 * cfg.live_cap);
     cfg.stack_bytes = stack_bytes();
     cfg.blocks = o_.blocks;
     cfg.timeout_us = (unsigned long long)o_.timeout_s * 1000000ull;
@@ -530,7 +534,7 @@ class Runner {
         cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0)); kvm_static_split(cfg.sched.p, o_.shares, pr.multiProcessorCount);
       }
     }
-    KLOG(2, "config: live_cap %d, slots %d, ring %d words, stack %zu B, sched %s, classes [%s]", cfg.live_cap, cfg.max_tasks, cfg.ring_words, cfg.stack_bytes, o_.sched.c_str(), join(m_.classes).c_str());
+    KLOG(2, "config: live_cap %d, slots %d, ring %d words, succ ring %u, stack %zu B, sched %s, classes [%s]", cfg.live_cap, cfg.max_tasks, cfg.ring_words, cfg.succ_cap, cfg.stack_bytes, o_.sched.c_str(), join(m_.classes).c_str());
     for (size_t c = 0; c < m_.classes.size(); ++c) { const auto& p = m_.class_params[c]; KLOG(2, "  class %zu %-8s weight %d min_cta %d max_cta %d urgent_us %d", c, m_.classes[c].c_str(), p.weight, p.min_cta, p.max_cta, p.urgent_us); }
     return cfg;
   }

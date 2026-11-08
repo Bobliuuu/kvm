@@ -252,6 +252,8 @@ class KvmExec {
     sms_ = p.multiProcessorCount; name_ = p.name;
     if (cfg_.stack_bytes) CK(cudaDeviceSetLimit(cudaLimitStackSize, cfg_.stack_bytes));
     dyn_smem_ = KVM_DYN_SMEM_BYTES;
+    // Experiment hook (merge-regression bisect): launch with less dynamic smem than the largest op needs. ONLY safe for a bundle whose ops all fit.
+    if (const char* e = getenv("KVM_DYN_SMEM")) { dyn_smem_ = (size_t)atol(e); KLOG(1, "KVM_DYN_SMEM override: %zu B dynamic smem", dyn_smem_); }
     if (dyn_smem_ > 0) CK(cudaFuncSetAttribute(kvm_exec_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)dyn_smem_));
     int occ = 0; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, kvm_exec_kernel, KVM_THREADS, dyn_smem_));
     if (occ < 1) throw std::runtime_error("kernel does not fit on an SM with " + std::to_string(dyn_smem_) + " bytes of dynamic shared memory");

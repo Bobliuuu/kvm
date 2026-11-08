@@ -645,7 +645,7 @@ struct KvmAdmitShared {
   unsigned long long fhead;                      // next free-ring position to pop
   unsigned win_next, win_oldest, succ_scan, succ_used, succ_free;
 };
-#define KVM_ADM_CHUNK 128   // descriptors staged per round (KVM_ADM_CHUNK * KVM_TASK_WORDS ints of shared memory)
+#define KVM_ADM_CHUNK 256   // descriptors staged per round (KVM_ADM_CHUNK * KVM_TASK_WORDS ints of shared memory)
 #define KVM_ADM_IDLE 0
 #define KVM_ADM_REC  1
 #define KVM_ADM_FINAL 2
@@ -725,14 +725,52 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
   KVM_PROF(1);
   const unsigned long long now = kvm_now();
   const unsigned wid = A.win_next;
+  // Chunked release (admission v3): the whole successor list is copied first (a fast parallel pass), the window / admitted accounting is
+  // committed, and then the descriptors are decoded KVM_ADM_CHUNK at a time; each chunk's tasks are released as soon as the chunk is
+  // written, so workers start ~one chunk after the first PCIe round trip instead of after the whole record. A predecessor from an earlier
+  // chunk can finish before a successor's descriptor is written: its decrement drives S.indeg[slot] negative (it is 0 whenever a slot is
+  // free: a task is released exactly when its count reaches 0), and the admitter ADDS the true indegree after the descriptor is visible:
+  // old + ind == 0 means every predecessor already finished -> the admitter releases it; otherwise the last predecessor's
+  // decrement (old == 1) does. Exactly one of them sees the zero.
+  for (int e = threadIdx.x; e < ne; e += blockDim.x) {
+    int v = ld_sys(re + e);
+    if (v < 0 || v >= nt) { kvm_fail(S, KVM_ERR_BAD_TASK, S.adm_slots[0], v, e); v = 0; }
+    S.succ[(sbase + (unsigned)e) & (S.succ_cap - 1)] = S.adm_slots[v];
+  }
+  if (threadIdx.x == 0) {
+    if (!*(volatile int*)&S.cnt->err_code) {
+      S.wins[wid & (S.win_cap - 1)].remaining = nt;
+      S.wins[wid & (S.win_cap - 1)].succ_end = sbase + (unsigned)ne;
+      S.wins[wid & (S.win_cap - 1)].ne = ne;
+      __threadfence();
+      A.fhead += nt; A.succ_used += ne; A.win_next++;
+      atom_add(&S.cnt->admitted, nt);  // before any task of this bundle can be enqueued (done <= admitted always)
+    }
+  }
+  __syncthreads();
+  KVM_PROF(3);
+  if (*(volatile int*)&S.cnt->err_code) return;
   // The record lives in pinned host memory: every load is a PCIe read. One thread per descriptor reading its 16 words strides 64 B
   // between lanes (a warp's load = 32 separate PCIe requests, 16 times), so the descriptors are first copied with coalesced 16-byte
-  // loads into shared memory, KVM_ADM_CHUNK at a time, and decoded from there. (rt is 32 B aligned: records start on 8-word multiples.)
+  // loads into shared memory, KVM_ADM_CHUNK at a time, and decoded from there. The next chunk's loads are issued (into registers)
+  // before the current chunk is decoded, so their round trip overlaps the argument loads. (rt is 32 B aligned: records start on 8-word multiples.)
+  constexpr int QPT = (KVM_ADM_CHUNK * (KVM_TASK_WORDS / 4) + KVM_THREADS - 1) / KVM_THREADS;
+  int4 nxt[QPT];
+  {
+    const int cn0 = min(nt, KVM_ADM_CHUNK);
+#pragma unroll
+    for (int k = 0; k < QPT; ++k) { int q = threadIdx.x + k * KVM_THREADS; if (q < cn0 * (KVM_TASK_WORDS / 4)) nxt[k] = ld_sys4((const int4*)rt + q); }
+  }
   for (int base = 0; base < nt; base += KVM_ADM_CHUNK) {
   const int cn = min(nt - base, KVM_ADM_CHUNK);
-  for (int q = threadIdx.x; q < cn * (KVM_TASK_WORDS / 4); q += blockDim.x)
-    ((int4*)stage)[q] = ld_sys4((const int4*)(rt + (size_t)base * KVM_TASK_WORDS) + q);
+#pragma unroll
+  for (int k = 0; k < QPT; ++k) { int q = threadIdx.x + k * KVM_THREADS; if (q < cn * (KVM_TASK_WORDS / 4)) ((int4*)stage)[q] = nxt[k]; }
   __syncthreads();
+  {
+    const int nb = base + KVM_ADM_CHUNK, cn1 = min(nt - nb, KVM_ADM_CHUNK);
+#pragma unroll
+    for (int k = 0; k < QPT; ++k) { int q = threadIdx.x + k * KVM_THREADS; if (nb < nt && q < cn1 * (KVM_TASK_WORDS / 4)) nxt[k] = ld_sys4((const int4*)(rt + (size_t)nb * KVM_TASK_WORDS) + q); }
+  }
   if (threadIdx.x < cn) {
     const int i = base + threadIdx.x;
     int w[KVM_TASK_WORDS];
@@ -775,41 +813,17 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
     int* dst = (int*)(S.tasks + slot);
 #pragma unroll
     for (int j = 0; j < KVM_TASK_WORDS; ++j) dst[j] = w[j];
-    S.indeg[slot] = ind; S.state[slot] = 0; S.park_next[slot] = -1;
+    S.state[slot] = 0; S.park_next[slot] = -1;
     KvmTrace& t = S.trace[slot];
     t.admit_ns = now; t.ready_ns = t.start_ns = t.end_ns = 0; t.flags = 0; t.exec_count = 0; t.ver0 = t.ver1 = -1;
+    kvm_sched_admit_task(S, slot);  // SCHED: cost metadata, publisher classes (reads the args / descriptor just written by this thread)
+    __threadfence();                // descriptor + args + sched metadata visible before the indegree add that can make it releasable
+    if (atom_add(S.indeg + slot, ind) + ind == 0) kvm_release_task(S, slot);
     } else kvm_fail(S, code, slot, op, i);
   }
   __syncthreads();   // stage is reused by the next chunk
   }
   KVM_PROF(2);
-  for (int e = threadIdx.x; e < ne; e += blockDim.x) {
-    int v = ld_sys(re + e);
-    if (v < 0 || v >= nt) { kvm_fail(S, KVM_ERR_BAD_TASK, S.adm_slots[0], v, e); v = 0; }
-    S.succ[(sbase + (unsigned)e) & (S.succ_cap - 1)] = S.adm_slots[v];
-  }
-  __syncthreads();
-  KVM_PROF(3);
-  for (int i = threadIdx.x; i < nt; i += blockDim.x) kvm_sched_admit_task(S, S.adm_slots[i]);  // SCHED: cost metadata, publisher classes
-  if (threadIdx.x == 0) {
-    if (!*(volatile int*)&S.cnt->err_code) {
-      S.wins[wid & (S.win_cap - 1)].remaining = nt;
-      S.wins[wid & (S.win_cap - 1)].succ_end = sbase + (unsigned)ne;
-      S.wins[wid & (S.win_cap - 1)].ne = ne;
-      __threadfence();
-      A.fhead += nt; A.succ_used += ne; A.win_next++;
-      atom_add(&S.cnt->admitted, nt);  // before any task of this bundle can be enqueued (done <= admitted always)
-    }
-  }
-  __syncthreads();
-  KVM_PROF(4);
-  if (*(volatile int*)&S.cnt->err_code) return;
-  for (int i = threadIdx.x; i < nt; i += blockDim.x) {
-    int slot = S.adm_slots[i];
-    if (S.tasks[slot].indegree == 0) kvm_release_task(S, slot);  // the descriptor is immutable; S.indeg is live and may already be 0 for a non-root
-  }
-  __syncthreads();
-  KVM_PROF(5);
 #ifdef KVM_ADMIT_PROF
   if (threadIdx.x == 0) { g_adm_prof[6] += nt; g_adm_prof[7] += 1; }
 #endif

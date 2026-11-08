@@ -264,7 +264,7 @@ class KvmExec {
     KLOG(2, "device %s, %d SMs, %d resident blocks/SM with %zu B dynamic smem -> grid %d (1 admitter%s + %d workers)", name_.c_str(), sms_, occ, dyn_smem_, grid_, sc.on ? " + 1 policy" : "", grid_ - nsys);
     const size_t T = cfg_.max_tasks;
     CK(cudaMalloc(&S_.tasks, T * sizeof(KvmTaskDesc)));
-    CK(cudaMalloc(&S_.indeg, T * 4)); CK(cudaMalloc(&S_.state, T * 4)); CK(cudaMalloc(&S_.park_next, T * 4));
+    CK(cudaMalloc(&S_.indeg, T * 4)); CK(cudaMalloc(&S_.state, T * 4)); CK(cudaMalloc(&S_.park_next, T * 4)); CK(cudaMemset(S_.indeg, 0, T * 4));
     CK(cudaMalloc(&S_.trace, T * sizeof(KvmTrace)));
     CK(cudaMalloc(&S_.args, T * KVM_ARG_STRIDE * 4)); CK(cudaMalloc(&S_.adm_slots, (size_t)cfg_.live_cap * 4));
     CK(cudaMalloc(&S_.succ, (size_t)cfg_.succ_cap * 4));

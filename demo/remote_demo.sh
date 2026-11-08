@@ -66,7 +66,7 @@ import check_demo
 g = check_demo.golden_observations(__import__('pathlib').Path("$RUN/demo"), r'$OBS', __import__('pathlib').Path("$RUN/golden.json"))
 print('golden admissions:', len(g))
 PY
-else GOLDEN_ARGS="--no-golden --model $MODEL $( [ "$PRECISE" = 1 ] && echo --precise )"; say "CPU golden skipped (pure-Python CPU VM cannot run this model): serving is checked against PyTorch"; fi
+else GOLDEN_ARGS="--no-golden --model $MODEL $( [ "$PRECISE" = 1 ] && echo --precise || true )"; say "CPU golden skipped (pure-Python CPU VM cannot run this model): serving is checked against PyTorch"; fi
 
 say "GPU: one lock hold ($LOCK_WAIT s max wait)"
 cat > "$RUN/gpu.sh" <<GPU

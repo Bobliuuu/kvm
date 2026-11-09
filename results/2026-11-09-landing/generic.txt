@@ -1,0 +1,38 @@
+reg_mlp_cpu kvm_exec: OK: 93/93 tasks, 2.558 ms
+== reg_mlp_cpu
+  worst: act53 1.21e-06, act32 7.91e-07, act57 7.55e-07, act62 5.74e-07
+PASS
+reg_mlp_a100 kvm_exec: OK: 93/93 tasks, 2.556 ms
+== reg_mlp_a100
+  worst: act53 1.21e-06, act32 7.91e-07, act57 7.55e-07, act62 5.74e-07
+PASS
+res_rms_mlp_cpu kvm_exec: OK: 210/210 tasks, 3.634 ms
+== res_rms_mlp_cpu
+  worst: v.rm.n0.g 7.80e-07, v.rm.fc1.w 6.93e-07, act112 6.61e-07, act31 6.21e-07
+PASS
+res_rms_mlp_a100 kvm_exec: OK: 180/180 tasks, 3.456 ms
+== res_rms_mlp_a100
+  worst: v.rm.n0.g 7.80e-07, v.rm.fc1.w 6.93e-07, act112 6.61e-07, act31 6.21e-07
+PASS
+cnn1d_cpu kvm_exec: OK: 426/426 tasks, 4.601 ms
+== cnn1d_cpu
+  worst: act40 6.76e-07, act43 6.53e-07, act131 5.01e-07, act29 4.84e-07
+PASS
+cnn1d_a100 kvm_exec: OK: 186/186 tasks, 3.669 ms
+== cnn1d_a100
+  worst: act40 6.76e-07, act43 6.53e-07, act131 5.01e-07, act29 4.84e-07
+PASS
+encoder_reg_cpu kvm_exec: OK: 470/470 tasks, 4.565 ms
+== encoder_reg_cpu
+  worst: v.enc.k.b 1.05e+01, act53 4.18e+00, w.enc.k.b 3.43e+00, m.enc.k.b 2.65e+00
+  FAIL all buffers rel L2 <= 0.0002: worst v.enc.k.b 1.05e+01
+FAIL: all buffers rel L2 <= 0.0002
+encoder_reg_a100 kvm_exec: OK: 226/226 tasks, 3.526 ms
+== encoder_reg_a100
+  worst: v.enc.k.b 1.05e+01, act53 4.18e+00, w.enc.k.b 3.43e+00, m.enc.k.b 2.65e+00
+  FAIL all buffers rel L2 <= 0.0002: worst v.enc.k.b 1.05e+01
+FAIL: all buffers rel L2 <= 0.0002
+== man_reg_mlp
+PASS  executor: 186/186 tasks in 6.9 ms on NVIDIA A100-SXM4-40GB (108 SMs, grid 108), sched dynamic, err_code 0
+PASS  training: 6 step losses, first 1.2409 -> last 0.2956 (mean of first/last 1: 1.2409 -> 0.2956, falls); max relative deviation from the CPU golden 3.87e-07 (tolerance 2e-03)
+ALL CHECKS PASSED (SKIPs are listed above)

@@ -162,9 +162,12 @@ struct KvmTrace {  // one per slot, 64 B
 #endif
 };
 #define KVM_TRACE_MISSED 1
+#define KVM_TRACE_CONT   16   // started as the continuation of the task that released it (no enqueue, no pop)
 
+#define KVM_POP_EXIT (-2)   // kvm_pop / kvm_fifo_pop: this block should leave its loop
+#define KVM_FIFO_SHIFT 26   // FIFO mode (KvmDevState::fifo_only): a ready-ring cell's seq word holds (pos + 1) << KVM_FIFO_SHIFT | slot, published in one store
 struct KvmCell { unsigned long long seq, ready_ns, deadline_ns; int slot, res; };   // 32 B; deadline_ns 0 = none, res = KvmRes (SCHED)
-struct alignas(128) KvmQCtl { unsigned long long head, tail; };                    // own cache line
+struct alignas(128) KvmQCtl { unsigned long long head, tail, avail; };             // own cache line; avail = published minus reserved tickets (kvm_claim)
 
 struct KvmWin { int remaining; unsigned succ_end; int ne; int pad; };                              // per admitted bundle record ("window")
 
@@ -187,6 +190,13 @@ struct KvmDevState {
   int nslots, live_cap, nbufs, ring_words, num_vars, win_cap, rcap, pad1;   // rcap = ready-ring depth = 4 * live_cap (see KvmCounters::parked)
   unsigned succ_cap;
   long long aging_ns;
+  int cont_on;     // 1: a worker runs one released successor directly (continuation), when the ready queue is empty
+  int fifo_only;   // 1: every task is priority 0 with no deadline and the scheduler is off: one FIFO ring, each idle worker waits on the cell of its own ticket
+  int no_recycle;  // 1: one record holds the whole run and slots are not reused: a finished task only counts done (no window credit, no free-ring push)
+  int no_waits;    // 1: no task of the run waits on a version: releasing a task needs no look at its descriptor
+  int trace_on;    // 1: per-task timeline and witness in trace[] (needed by --trace-csv, tests and the scheduler); 0: a run that only times keeps none of it off the task path
+  int prestaged;   // 1: the host wrote the (single, one-record) run's record into device memory before the kernel started: the admitter skips its staging pass
+  int warm_only;   // 1: a launch that returns at once: the kernel's code is uploaded and started before the timed launch
   unsigned long long timeout_ns, task_limit_ns;   // stall timeout; per-task running-time limit (0 = off, checked when the task ends)
   const KvmBuf* bufs;
   KvmTaskDesc* tasks;                               // [nslots]
@@ -216,6 +226,7 @@ __device__ __forceinline__ int ld_acq(const int* p) { int v; asm volatile("ld.ac
 __device__ __forceinline__ unsigned long long ld_acq64(const unsigned long long* p) { unsigned long long v; asm volatile("ld.acquire.gpu.global.b64 %0,[%1];" : "=l"(v) : "l"(p) : "memory"); return v; }
 __device__ __forceinline__ void st_rel(int* p, int v) { asm volatile("st.release.gpu.global.b32 [%0],%1;" ::"l"(p), "r"(v) : "memory"); }
 __device__ __forceinline__ void st_rel64(unsigned long long* p, unsigned long long v) { asm volatile("st.release.gpu.global.b64 [%0],%1;" ::"l"(p), "l"(v) : "memory"); }
+__device__ __forceinline__ void red_add64(unsigned long long* p, unsigned long long v) { asm volatile("red.relaxed.gpu.global.add.u64 [%0],%1;" ::"l"(p), "l"(v) : "memory"); }   // posted: the issuing thread does not wait for the L2 round trip
 __device__ __forceinline__ int atom_add(int* p, int v) { int r; asm volatile("atom.acq_rel.gpu.global.add.u32 %0,[%1],%2;" : "=r"(r) : "l"(p), "r"(v) : "memory"); return r; }
 __device__ __forceinline__ unsigned long long atom_add64(unsigned long long* p, unsigned long long v) { unsigned long long r; asm volatile("atom.acq_rel.gpu.global.add.u64 %0,[%1],%2;" : "=l"(r) : "l"(p), "l"(v) : "memory"); return r; }
 __device__ __forceinline__ int atom_cas(int* p, int c, int v) { int r; asm volatile("atom.acq_rel.gpu.global.cas.b32 %0,[%1],%2,%3;" : "=r"(r) : "l"(p), "r"(c), "r"(v) : "memory"); return r; }
@@ -450,19 +461,9 @@ __device__ __forceinline__ uint64_t kvm_dev_types(int op) {
 #include "kvm_sched.cuh"
 
 // ---------------- free-slot ring (slot recycling) ----------------
-// A bounded MPSC ring of free slot ids: workers push when a task completes, the admitter (block 0) pops. Cell for position
+// A bounded MPSC ring of free slot ids: workers push when a task completes (kvm_post_task), the admitter (block 0) pops. Cell for position
 // pos holds a slot when seq == pos+1; the consumer resets it to pos+nslots, which is what the producer of pos+nslots waits for.
 // At most nslots ids exist, so a producer never finds its cell occupied for longer than the consumer's pop takes.
-__device__ __forceinline__ void kvm_free_slot(const KvmDevState& S, int slot) {
-  unsigned long long pos = atom_add64(&S.cnt->ftail, 1ull);
-  KvmCell* cell = S.fcells + (pos & (unsigned long long)(S.nslots - 1));
-  for (int spin = 0; ld_acq64(&cell->seq) != pos; ++spin) {
-    if (spin > (1 << 22)) { kvm_fail(S, KVM_ERR_QUEUE_OVERFLOW, slot, -1, (int)pos); return; }
-    __nanosleep(32);
-  }
-  cell->slot = slot;
-  st_rel64(&cell->seq, pos + 1);
-}
 
 // ---------------- release: indegree reached 0 ----------------
 // Enqueue now if the version wait is satisfied, else park the task on its variable's list.
@@ -494,10 +495,8 @@ __device__ __forceinline__ void kvm_scan_parked(const KvmDevState& S, int var) {
     }
   } while (again);
 }
-__device__ __forceinline__ void kvm_release_task(const KvmDevState& S, int slot) {
-  const KvmTaskDesc* d = S.tasks + slot;
-  int var = d->wait_var;
-  if (var < 0 || ld_acq(S.version + var) >= d->wait_ver) { kvm_enqueue(S, slot); return; }
+__device__ __forceinline__ void kvm_release_task(const KvmDevState& S, int slot, int var, int need) {   // var, need: the task's wait_var and wait_ver (the caller read them with the rest of its descriptor)
+  if (var < 0 || ld_acq(S.version + var) >= need) { kvm_enqueue(S, slot); return; }
   S.state[slot] = 1;
   atom_add(&S.cnt->parked, 1);
   kvm_sched_park(S, slot);   // SCHED: count the parked waiter (priority inheritance input) before it is reachable from the list
@@ -505,9 +504,10 @@ __device__ __forceinline__ void kvm_release_task(const KvmDevState& S, int slot)
   do { old = *(volatile int*)head; S.park_next[slot] = old; } while (atom_cas(head, old, slot) != old);
 #ifndef KVM_BREAK_PARK_RECHECK  // negative control for the litmus test: a waiter that never re-checks loses wakeups
   __threadfence();  // seq_cst fence: push -> fence -> load version
-  if (ld_acq(S.version + var) >= d->wait_ver) kvm_scan_parked(S, var);
+  if (ld_acq(S.version + var) >= need) kvm_scan_parked(S, var);
 #endif
 }
+__device__ __forceinline__ void kvm_release_task(const KvmDevState& S, int slot) { const KvmTaskDesc* d = S.tasks + slot; kvm_release_task(S, slot, d->wait_var, d->wait_ver); }
 
 // version[pub_var]: N-1 -> N. Caller has passed a block barrier after the op's stores.
 __device__ __forceinline__ void kvm_publish(const KvmDevState& S, int slot, int var, int ver) {
@@ -521,7 +521,8 @@ __device__ __forceinline__ void kvm_publish(const KvmDevState& S, int slot, int 
 // ---------------- worker ----------------
 struct KvmShared {
   KvmTaskDesc d;
-  int cmd, skip, how, part;   // how: KVM_TRACE_* start reason from kvm_pop (| KVM_HOW_BW); part: STATIC-mode class of this worker's SM
+  int cmd, skip, how, part, cont, qbusy, err;   // how: KVM_TRACE_* start reason from kvm_pop (| KVM_HOW_BW); part: STATIC-mode class of this worker's SM; cont: slot this block runs next without a pop; qbusy: the ready queue had work when this task started; err: the error code as of the last dispatch (read overlapped with the descriptor)
+  unsigned long long start_ns;   // this task's start time: the task-limit check needs it after the op (from a register, not the trace in global memory)
 #ifdef KVM_PROF_GAP
   long long pg[16]; int pg_valid;
 #endif
@@ -535,7 +536,6 @@ struct KvmShared {
 #else
 #define KVM_PG(k) do { } while (0)
 #endif
-#define KVM_POP_EXIT (-2)
 
 // Stall detector (one per thread 0 of a block): `timeout` is the longest the executor may go without a single task finishing or
 // being admitted while work is pending. Waiting idle for the host is never a stall, and a long-lived service is never killed for
@@ -568,26 +568,40 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   KvmTrace* tr = S.trace + slot;
   if (threadIdx.x == 0) {
     bool bad = false;
-    tr->start_ns = kvm_now(); tr->smid = kvm_smid(); tr->block = blockIdx.x; tr->ver0 = tr->ver1 = -1;
-    tr->flags |= sh.how & ~KVM_HOW_BW;
-    kvm_sched_start(S, slot, d.workload_id, sh.how, tr->start_ns);
-    red_add(&tr->exec_count, 1);   // witness: a posted add; kvm_post_task checks it is exactly 1 (a second run of the slot is reported there)
+    if (S.trace_on) {
+      sh.start_ns = kvm_now(); tr->start_ns = sh.start_ns; tr->smid = kvm_smid(); tr->block = blockIdx.x; tr->ver0 = tr->ver1 = -1;
+      tr->flags = sh.how & ~KVM_HOW_BW;                                 // a plain store: admission zeroed the trace, and a read-modify-write here is an L2 round trip before the op
+      red_add(&tr->exec_count, 1);   // witness: a posted add; kvm_post_task checks it is exactly 1 (a second run of the slot is reported there)
+    }
+    kvm_sched_start(S, slot, d.workload_id, sh.how, sh.start_ns);
     if (d.wait_var >= 0) {
       int v = ld_acq(S.version + d.wait_var);  // acquire: pairs with the publisher's release (header comment)
-      tr->ver0 = v;
+      if (S.trace_on) tr->ver0 = v;
       if (v < d.wait_ver) { kvm_fail(S, KVM_ERR_WAIT_VIOLATION, slot, v, d.wait_ver); bad = true; }
     }
 #ifdef KVM_BREAK_FENCE  // negative test: publish BEFORE the op's stores (no happens-before) so version tests must fail
     if (d.pub_var >= 0) kvm_publish(S, slot, d.pub_var, d.pub_ver);
 #endif
-    sh.skip = bad || *(volatile int*)&S.cnt->err_code;
+    sh.skip = bad || sh.err;      // sh.err was read during the pop (or the continuation's descriptor load), so no load sits on the path to the op
+    sh.cont = -1;
   }
   __syncthreads();
   KVM_PG(9);
+  // Prefetch this thread's first successor id: the list is immutable once admitted, so the round trip hides behind the op instead of sitting
+  // on the dependent-hop critical path. It is only consumed after the op.
+  int sid0 = -1;
+  if ((int)threadIdx.x < d.succ_cnt) sid0 = S.succ[(unsigned)(d.succ_off + threadIdx.x) & (S.succ_cap - 1)];
+  // Continuation only while the ready queue is empty (looked at before the op, one coalesced load by warp 0): a chain must not starve queued
+  // tasks of other priorities. Idle workers take anything that arrives during the op.
+  if (threadIdx.x < 32) {
+    const unsigned b = __ballot_sync(0xffffffffu, S.cont_on && !S.sp.on && !S.fifo_only && (long long)*(volatile unsigned long long*)&S.qctl[threadIdx.x].avail > 0);
+    if (threadIdx.x == 0) sh.qbusy = b != 0;
+  }
 #ifdef KVM_PROF_GAP
   if (threadIdx.x == 0) {   // gp[k] = phase k -> k+1 (markers 0..6 were stamped by the previous task of this block)
     for (int k = 0; k < 16; ++k) tr->gp[k] = 0;
     if (sh.pg_valid) { for (int k = 0; k < 9; ++k) tr->gp[k] = (int)(sh.pg[k + 1] - sh.pg[k]); tr->gp[15] = 1; }
+    tr->gp[14] = (int)sh.pg[9];   // the SM's cycle counter beside this task's start_ns: two tasks of one block give the clock the phases are counted at
     sh.pg_valid = 1;
   }
 #endif
@@ -605,12 +619,15 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   __syncthreads();  // all op stores of the block are visible before thread 0 publishes / the successors are released
   KVM_PG(0);
   if (threadIdx.x == 0) {
-    unsigned long long end = kvm_now();
-    tr->end_ns = end;
-    if (d.wait_var >= 0) tr->ver1 = ld_acq(S.version + d.wait_var);
-    const bool missed = d.deadline_us >= 0 && end - tr->admit_ns > (unsigned long long)d.deadline_us * 1000ull;
-    if (missed) tr->flags |= KVM_TRACE_MISSED;
-    if (S.task_limit_ns && end - tr->start_ns > S.task_limit_ns) kvm_fail(S, KVM_ERR_TASK_LIMIT, slot, (int)((end - tr->start_ns) / 1000), (int)(S.task_limit_ns / 1000));
+    unsigned long long end = 0;
+    if (S.trace_on) {
+      end = kvm_now();
+      tr->end_ns = end;
+      if (d.wait_var >= 0) tr->ver1 = ld_acq(S.version + d.wait_var);
+      const bool missed = d.deadline_us >= 0 && end - tr->admit_ns > (unsigned long long)d.deadline_us * 1000ull;
+      if (missed) tr->flags |= KVM_TRACE_MISSED;
+    }
+    if (S.trace_on && S.task_limit_ns && end - sh.start_ns > S.task_limit_ns) kvm_fail(S, KVM_ERR_TASK_LIMIT, slot, (int)((end - sh.start_ns) / 1000), (int)(S.task_limit_ns / 1000));
 #ifndef KVM_BREAK_FENCE
     if (d.pub_var >= 0 && !sh.skip) kvm_publish(S, slot, d.pub_var, d.pub_ver);  // publish THEN wake successors
 #endif
@@ -619,8 +636,19 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   KVM_PG(1);
   if (!sh.skip && (int)threadIdx.x < d.succ_cnt) {
     for (int e = threadIdx.x; e < d.succ_cnt; e += blockDim.x) {
-      int s = S.succ[(unsigned)(d.succ_off + e) & (S.succ_cap - 1)];
-      if (atom_add(S.indeg + s, -1) == 1) { kvm_sched_pref(S, s); kvm_release_task(S, s); }  // SCHED: affinity = this block
+      int s = e < blockDim.x ? sid0 : S.succ[(unsigned)(d.succ_off + e) & (S.succ_cap - 1)];
+      if (atom_add(S.indeg + s, -1) == 1) {
+        // Continuation: one released successor of the same priority bucket whose version wait is met is run by this block directly: no enqueue,
+        // no pop. Only without the scheduler (it accounts ready/running per class at enqueue and pop), and only when the queue was empty at the
+        // start of this task (a chain must not starve queued tasks).
+        const KvmTaskDesc* sd = S.tasks + s;
+        int s_pri = 0, s_wv = -1, s_wn = 0;
+        if (!(S.fifo_only && S.no_waits)) { s_pri = sd->priority; s_wv = sd->wait_var; s_wn = sd->wait_ver; }   // read together, one round trip; a run with no version waits and no priorities needs no look at the successor
+        if (S.cont_on && !S.sp.on && !sh.qbusy && s_pri == d.priority && (s_wv < 0 || ld_acq(S.version + s_wv) >= s_wn) &&
+            atomicCAS(&sh.cont, -1, s) == -1) {
+          if (S.trace_on) S.trace[s].ready_ns = kvm_now();
+        } else { kvm_sched_pref(S, s); kvm_release_task(S, s, s_wv, s_wn); }   // SCHED: affinity = this block
+      }
     }
   }
   __syncthreads();
@@ -633,51 +661,80 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   }
 }
 
-// Completion bookkeeping of task `slot` (one thread, overlapped with the next pop; the slot is not recycled before kvm_free_slot below, so its
-// trace and descriptor in S.tasks are intact). Order matters: statistics read the slot's info, which is recycled by kvm_free_slot; the window credit
-// returns the successor storage; `done` is counted last. The worker cannot exit before this ran (the barrier after the pop).
-__device__ void kvm_post_task(const KvmDevState& S, int slot) {
-  const KvmTaskDesc& d = S.tasks[slot];   // sh.d may already hold the next task (the pop fills it concurrently)
+// Completion bookkeeping of task `slot` (one thread, overlapped with the next pop or the continuation's descriptor load; the slot is not recycled before the
+// free-ring store below, so its trace and descriptor are intact). Everything is issued first, in one go, so the round trips overlap: the window credit (`wid` comes
+// from a register, so no descriptor load precedes it), the free-ring ticket and the witness load. Their results are consumed after all of them are in flight. `done`
+// is a posted add: nobody reads an old value, and a worker exits only after its own bookkeeping ran (the barrier after the pop).
+__device__ void kvm_post_task(const KvmDevState& S, int slot, unsigned wid) {
   const KvmTrace* tr = S.trace + slot;
-  if (kvm_vol(&tr->exec_count) != 1) kvm_fail(S, KVM_ERR_DOUBLE_EXEC, slot, kvm_vol(&tr->exec_count));
-  kvm_sched_account(S, slot, tr->start_ns, tr->end_ns, tr->flags & KVM_TRACE_MISSED);   // SCHED: statistics and estimates (before the slot is recycled)
-  // Nothing of this task is read again (sh.d is a copy; successors were decremented): return its window credit, which also
-  // lets the admitter reclaim the window's successor storage, then recycle the slot, then count the task done.
-  const unsigned wid = (unsigned)d.reserved0;
-  if (atom_add(&S.wins[wid & (S.win_cap - 1)].remaining, -1) == 1) st_rel_sys((volatile int*)&S.win_done[wid & (S.win_cap - 1)], (int)(wid + 1));
-  kvm_free_slot(S, slot);
-  atom_add(&S.cnt->done, 1);
+  if (S.sp.on) kvm_sched_account(S, slot, tr->start_ns, tr->end_ns, tr->flags & KVM_TRACE_MISSED);   // SCHED: statistics and estimates (before the slot is recycled)
+  if (S.no_recycle) { red_add(&S.cnt->done, 1); return; }                                // the whole run is one record: no window to return, no slot to recycle (nothing reads the old done value)
+  const int witness = S.trace_on ? kvm_vol(&tr->exec_count) : 1;
+  const int window_left = atom_add(&S.wins[wid & (S.win_cap - 1)].remaining, -1);       // returns the window credit, which also lets the admitter reclaim the window's successor storage
+  const unsigned long long pos = atom_add64(&S.cnt->ftail, 1ull);                       // the slot's place in the free ring
+  if (witness != 1) kvm_fail(S, KVM_ERR_DOUBLE_EXEC, slot, witness);
+  if (window_left == 1) st_rel_sys((volatile int*)&S.win_done[wid & (S.win_cap - 1)], (int)(wid + 1));
+  KvmCell* cell = S.fcells + (pos & (unsigned long long)(S.nslots - 1));
+  for (int spin = 0; ld_acq64(&cell->seq) != pos; ++spin) {
+    if (spin > (1 << 22)) { kvm_fail(S, KVM_ERR_QUEUE_OVERFLOW, slot, -1, (int)pos); return; }
+    __nanosleep(32);
+  }
+  cell->slot = slot;
+  st_rel64(&cell->seq, pos + 1);
+  red_add(&S.cnt->done, 1);                                                              // counted last; posted
 }
 
 __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
   unsigned backoff = 0;
   if (threadIdx.x == 0) sh.part = kvm_sched_part(S);
-  int owed = -1;   // the task whose completion bookkeeping (kvm_post_task) this block still owes; every thread tracks it, thread 32 pays it during the pop
+  int owed = -1;   // the task whose completion bookkeeping (kvm_post_task) this block still owes; every thread tracks it, thread 32 pays it during the pop (or, for a continuation, while the next descriptor loads)
+  unsigned owed_wid = 0;   // its window id, from the descriptor the block already holds
+  long long ticket = -1;  // FIFO mode: lane 0's ticket on the ready ring (-1: none held); a ticket taken while idle stays valid until its cell fills
+  int next = -1;   // continuation chosen by the task that just ran (kvm_run_task): run it without a pop
   __syncthreads();
   const int part = sh.part;
 #ifdef KVM_PROF_GAP
   if (threadIdx.x == 0) sh.pg_valid = 0;
 #endif
   for (;;) {
-    if (threadIdx.x < 32) {
-      int how, dw, r = kvm_pop(S, kvm_now(), part, how, dw);
-      if (r < 0 && threadIdx.x == 0 && kvm_should_exit(S, t0)) r = KVM_POP_EXIT;
-      if (threadIdx.x == 0) { sh.cmd = r; sh.how = how; }
-      if (r >= 0 && threadIdx.x < KVM_TASK_WORDS) ((int*)&sh.d)[threadIdx.x] = dw;
-    } else if (threadIdx.x == 32 && owed >= 0) kvm_post_task(S, owed);   // overlapped with the pop above
-    owed = -1;
-    __syncthreads();
-    int cmd = sh.cmd;
-    __syncthreads();  // sh.cmd is rewritten next iteration
-    if (cmd == KVM_POP_EXIT) return;
-    if (cmd < 0) {
-      if (threadIdx.x < 32) __nanosleep(backoff);
-      backoff = backoff ? min(backoff * 2, 512u) : 32u;
-      continue;
+    int cmd;
+    int errv = (threadIdx.x == 16) ? *(volatile int*)&S.cnt->err_code : 0;   // read overlapped with the pop / descriptor load (no separate round trip)
+    if (next >= 0) {
+      cmd = next;
+      if (threadIdx.x == 0) sh.how = KVM_TRACE_CONT;
+      if (threadIdx.x < KVM_TASK_WORDS) ((int*)&sh.d)[threadIdx.x] = ((const int*)(S.tasks + cmd))[threadIdx.x];
+      else if (threadIdx.x == 32 && owed >= 0) kvm_post_task(S, owed, owed_wid);
+      owed = -1;
+      if (threadIdx.x == 16) sh.err = errv;
+      __syncthreads();   // the descriptor and the previous task's bookkeeping are complete before the op
+    } else {
+      if (threadIdx.x < 32) {
+        int how = 0, dw, r;
+        if (S.fifo_only) r = kvm_fifo_pop(S, t0, ticket, dw);
+        else {
+          r = kvm_pop(S, kvm_now(), part, how, dw);
+          if (r < 0 && threadIdx.x == 0 && kvm_should_exit(S, t0)) r = KVM_POP_EXIT;
+        }
+        if (threadIdx.x == 0) { sh.cmd = r; sh.how = how; }
+        if (r >= 0 && threadIdx.x < KVM_TASK_WORDS) ((int*)&sh.d)[threadIdx.x] = dw;
+      } else if (threadIdx.x == 32 && owed >= 0) kvm_post_task(S, owed, owed_wid);   // overlapped with the pop above
+      owed = -1;
+      if (threadIdx.x == 16) sh.err = errv;
+      __syncthreads();
+      cmd = sh.cmd;
+      __syncthreads();  // sh.cmd is rewritten next iteration
+      if (cmd == KVM_POP_EXIT) return;
+      if (cmd < 0) {
+        if (threadIdx.x < 32) __nanosleep(backoff);
+        backoff = backoff ? min(backoff * 2, 512u) : 32u;
+        continue;
+      }
     }
     backoff = 0;
     kvm_run_task(S, cmd, sh);
-    owed = cmd;
+    owed = cmd; owed_wid = (unsigned)sh.d.reserved0;   // the descriptor still in shared memory describes the task that just ran
+    next = sh.cont;
+    __syncthreads();   // every thread has read sh.cont before the next task's thread 0 resets it
   }
 }
 
@@ -711,9 +768,9 @@ __device__ void kvm_reclaim_windows(const KvmDevState& S, KvmAdmitShared& A) {  
 }
 
 // Admission of one bundle record. The record is first bulk-copied from the host-mapped ring into device memory (`S.stage`, wide
-// coalesced loads: PCIe reads are latency-bound, so one thread chasing one word at a time cost ~1.5 us per word); every later pass
-// reads the staged copy from L2. Each per-task loop handles four tasks per thread at once so their loads overlap, and the roots are
-// enqueued a warp at a time (kvm_enqueue_warp).
+// coalesced loads: PCIe reads are latency-bound, so one thread chasing one word at a time cost ~1.5 us per word), unless the host already wrote it there (S.prestaged);
+// every later pass reads the staged copy from L2. The successor words are written first, then the accounting, then the descriptors four per thread per round, each task
+// released as soon as its descriptor is visible, so workers run while the rest of the record is still being decoded.
 __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared& A, unsigned long long pos) {
   const size_t roff = (size_t)(pos % (unsigned long long)S.ring_words);
   const int nt = A.hdr[2], ne = A.hdr[3], na = A.hdr[4];
@@ -751,8 +808,8 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
   if (A.action == KVM_ADM_EXIT) return;
   const unsigned long long fbase = A.fhead;
   const unsigned sbase = A.succ_used;
-  // stage the record: 16-byte uncached loads (the host owns these words until ring_head passes them), several in flight per thread
-  {
+  // stage the record: 16-byte uncached loads (the host owns these words until ring_head passes them), several in flight per thread. A prestaged record is already in device memory.
+  if (!S.prestaged) {
     const int4* src = reinterpret_cast<const int4*>(S.ring + roff);
     int4* dst = reinterpret_cast<int4*>(S.stage + roff);
     const int nv = A.hdr[1] / 4;
@@ -764,86 +821,48 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
       for (int u = 0; u < 8; ++u) { const int k = q + u * blockDim.x; if (k < nv) dst[k] = v[u]; }
     }
   }
-  // pop nt slots from the free ring (each producer finishes its cell write within a few instructions); four cells per thread in flight
-  for (int base = threadIdx.x; base < nt; base += 4 * blockDim.x) {
-    unsigned long long sq[4];
+  // pop nt slots from the free ring (each producer finishes its cell write within a few instructions); four cells per thread in flight. A run that never recycles uses the slots in
+  // record order, so a task's slot is simply fbase + its index.
+  if (!S.no_recycle) {
+    for (int base = threadIdx.x; base < nt; base += 4 * blockDim.x) {
+      unsigned long long sq[4];
 #pragma unroll
-    for (int u = 0; u < 4; ++u) { const int i = base + u * blockDim.x; if (i < nt) sq[u] = kvm_voll(&S.fcells[(fbase + i) & (unsigned long long)(S.nslots - 1)].seq); }
+      for (int u = 0; u < 4; ++u) { const int i = base + u * blockDim.x; if (i < nt) sq[u] = kvm_voll(&S.fcells[(fbase + i) & (unsigned long long)(S.nslots - 1)].seq); }
 #pragma unroll
-    for (int u = 0; u < 4; ++u) {
-      const int i = base + u * blockDim.x; if (i >= nt) break;
-      const unsigned long long fp = fbase + i;
-      KvmCell* cell = S.fcells + (fp & (unsigned long long)(S.nslots - 1));
-      while (sq[u] != fp + 1) { if (*(volatile int*)&S.cnt->err_code) break; __nanosleep(32); sq[u] = kvm_voll(&cell->seq); }   // a worker that failed in kvm_free_slot never publishes
-      asm volatile("fence.acq_rel.gpu;" ::: "memory");   // acquire: the producer's slot write (before its release of seq) is visible
-      S.adm_slots[i] = cell->slot;
-      st_rel64(&cell->seq, fp + (unsigned long long)S.nslots);
+      for (int u = 0; u < 4; ++u) {
+        const int i = base + u * blockDim.x; if (i >= nt) break;
+        const unsigned long long fp = fbase + i;
+        KvmCell* cell = S.fcells + (fp & (unsigned long long)(S.nslots - 1));
+        while (sq[u] != fp + 1) { if (*(volatile int*)&S.cnt->err_code) break; __nanosleep(32); sq[u] = kvm_voll(&cell->seq); }   // a worker that failed in kvm_post_task never publishes
+        asm volatile("fence.acq_rel.gpu;" ::: "memory");   // acquire: the producer's slot write (before its release of seq) is visible
+        S.adm_slots[i] = cell->slot;
+        st_rel64(&cell->seq, fp + (unsigned long long)S.nslots);
+      }
     }
+    __syncthreads();
   }
-  __syncthreads();
-  const unsigned long long now = kvm_now();
+  const unsigned long long now = S.trace_on ? kvm_now() : 0ull;
   const unsigned wid = A.win_next;
-  for (int base = threadIdx.x; base < nt; base += 4 * blockDim.x) {
-    int w[4][KVM_TASK_WORDS];
+  // Successor words first, then the window and admitted accounting: a task released below can finish before its own record has been read, and every successor list it decrements through
+  // must already be in place. Eight words per thread in flight; a stage load, then (with recycling) the map from record index to slot.
+  for (int base = threadIdx.x; base < ne; base += 8 * blockDim.x) {
+    int v[8], sl[8];
 #pragma unroll
-    for (int u = 0; u < 4; ++u) {
-      const int i = base + u * blockDim.x;
-      if (i < nt) {
-        const int4* p = reinterpret_cast<const int4*>(rt + (size_t)i * KVM_TASK_WORDS);
+    for (int u = 0; u < 8; ++u) { const int e = base + u * blockDim.x; v[u] = e < ne ? __ldcg(re + e) : 0; }
+    if (!S.no_recycle) {
 #pragma unroll
-        for (int k = 0; k < KVM_TASK_WORDS / 4; ++k) { const int4 v = __ldcg(p + k); w[u][4 * k] = v.x; w[u][4 * k + 1] = v.y; w[u][4 * k + 2] = v.z; w[u][4 * k + 3] = v.w; }
-      }
+      for (int u = 0; u < 8; ++u) { const int e = base + u * blockDim.x; sl[u] = (e < ne && v[u] >= 0 && v[u] < nt) ? __ldcg(S.adm_slots + v[u]) : -1; }
     }
 #pragma unroll
-    for (int u = 0; u < 4; ++u) {
-      const int i = base + u * blockDim.x; if (i >= nt) break;
-      // KvmTaskDesc word order: op, succ_off, succ_cnt, indegree, priority, deadline, args_off, args_words, wait_var,
-      // wait_ver, pub_var, pub_ver, workload, flags, r0, r1
-      int* wu = w[u];
-      const int slot = S.adm_slots[i];
-      const int op = wu[0], so = wu[1], sc = wu[2], ind = wu[3], pr = wu[4], ao = wu[6], aw = wu[7], wv = wu[8], pv = wu[10];
-      int a[KVM_MAX_ARGS];   // the argument words, fetched in one go when the range is sane (checked again below)
-      const bool arg_range = ao >= 0 && aw >= 0 && aw <= KVM_MAX_ARGS && (long long)ao + aw <= na;
-#pragma unroll
-      for (int j = 0; j < KVM_MAX_ARGS; ++j) a[j] = (arg_range && j < aw) ? __ldcg(ra + ao + j) : 0;
-      int code = 0;
-      if (kvm_dev_arity(op) < 0) code = KVM_ERR_BAD_OP;
-      else if (aw != kvm_dev_arity(op)) code = KVM_ERR_BAD_ARITY;
-      else if (!kvm_sched_class_ok(S, wu[12])) code = KVM_ERR_BAD_TASK;
-      else if (so < 0 || sc < 0 || (long long)so + sc > ne || !arg_range || ind < 0 || ind > nt || pr < 0 || pr >= KVM_NBUCKETS || wu[5] < -1) code = KVM_ERR_BAD_TASK;
-      else if (wv < -1 || wv >= S.num_vars || pv < -1 || pv >= S.num_vars) code = KVM_ERR_BAD_VAR;
-      else {
-        const uint64_t ty = kvm_dev_types(op);
-        for (int j = 0; j < aw && !code; ++j) {
-          const int t = (int)((ty >> (3 * j)) & 7u);
-          if (t == KVM_A_BUF || t == KVM_A_BUF_OPT) {
-            const int bi = a[j];
-            if (bi == -1 && t == KVM_A_BUF) code = KVM_ERR_BAD_BUF;
-            else if (bi < -1 || bi >= S.nbufs) code = KVM_ERR_BAD_BUF_INDEX;
-          }
-        }
-      }
-      if (code) { kvm_fail(S, code, slot, op, i); continue; }
-      for (int j = 0; j < aw; ++j) S.args[(size_t)slot * KVM_ARG_STRIDE + j] = a[j];
-      wu[1] = (int)(sbase + (unsigned)so);       // CSR offset into the successor ring (word sequence number)
-      wu[6] = slot * KVM_ARG_STRIDE;             // arguments live inline in the slot
-      wu[14] = (int)wid;                         // reserved0 = window id (task completion returns the window credit)
-      int4* dst = reinterpret_cast<int4*>(S.tasks + slot);
-#pragma unroll
-      for (int k = 0; k < KVM_TASK_WORDS / 4; ++k) dst[k] = make_int4(wu[4 * k], wu[4 * k + 1], wu[4 * k + 2], wu[4 * k + 3]);
-      S.indeg[slot] = ind; S.state[slot] = 0; S.park_next[slot] = -1;
-      KvmTrace& t = S.trace[slot];
-      t.admit_ns = now; t.ready_ns = t.start_ns = t.end_ns = 0; t.flags = 0; t.exec_count = 0; t.ver0 = t.ver1 = -1;
+    for (int u = 0; u < 8; ++u) {
+      const int e = base + u * blockDim.x; if (e >= ne) break;
+      const int t = v[u];
+      if (t < 0 || t >= nt) { kvm_fail(S, KVM_ERR_BAD_TASK, S.no_recycle ? (int)fbase : S.adm_slots[0], t, e); S.succ[(sbase + (unsigned)e) & (S.succ_cap - 1)] = S.no_recycle ? (int)fbase : S.adm_slots[0]; continue; }
+      S.succ[(sbase + (unsigned)e) & (S.succ_cap - 1)] = S.no_recycle ? (int)(fbase + (unsigned long long)t) : sl[u];
     }
   }
-#pragma unroll 4
-  for (int e = threadIdx.x; e < ne; e += blockDim.x) {
-    int v = __ldcg(re + e);
-    if (v < 0 || v >= nt) { kvm_fail(S, KVM_ERR_BAD_TASK, S.adm_slots[0], v, e); v = 0; }
-    S.succ[(sbase + (unsigned)e) & (S.succ_cap - 1)] = S.adm_slots[v];
-  }
+  __threadfence();   // every thread's successor words are visible GPU-wide before the barrier
   __syncthreads();
-  for (int i = threadIdx.x; i < nt; i += blockDim.x) kvm_sched_admit_task(S, S.adm_slots[i]);  // SCHED: cost metadata, publisher classes
   if (threadIdx.x == 0) {
     if (!*(volatile int*)&S.cnt->err_code) {
       S.wins[wid & (S.win_cap - 1)].remaining = nt;
@@ -856,19 +875,73 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
   }
   __syncthreads();
   if (*(volatile int*)&S.cnt->err_code) return;
-  // release the roots (the descriptor is immutable; S.indeg is live and may already be 0 for a non-root). A root whose version wait is not
-  // yet satisfied parks (kvm_release_task); every other root is enqueued by its warp together.
-  for (int base = 0; base < nt; base += blockDim.x) {
-    const int i = base + threadIdx.x;
-    int slot = i < nt ? S.adm_slots[i] : -1;
-    if (slot >= 0) {
-      const KvmTaskDesc* d = S.tasks + slot;
-      if (d->indegree != 0) slot = -1;
-      else if (d->wait_var >= 0 && ld_acq(S.version + d->wait_var) < d->wait_ver) { kvm_release_task(S, slot); slot = -1; }
+  // Decode descriptors, four per thread per round, each task released as soon as its own descriptor is written: workers start one round after the first load instead of after the whole record.
+  // A predecessor from an earlier round can finish before a successor's descriptor is written: its decrement drives S.indeg[slot] negative (it is 0 whenever a slot is free, a task being
+  // released exactly when its count reaches 0), and the admitter ADDS the true indegree after the descriptor is visible (a fence, then the add): old + ind == 0 means every predecessor has
+  // already finished and this thread releases it; otherwise the last predecessor's decrement (old == 1) does. Exactly one of the two sees zero.
+  for (int base = threadIdx.x; base < nt; base += 4 * blockDim.x) {
+    int w[4][KVM_TASK_WORDS], slot[4], ind[4], olds[4]; bool valid[4];
+#pragma unroll
+    for (int u = 0; u < 4; ++u) {
+      const int i = base + u * blockDim.x;
+      valid[u] = i < nt;
+      if (valid[u]) {
+        const int4* p = reinterpret_cast<const int4*>(rt + (size_t)i * KVM_TASK_WORDS);
+#pragma unroll
+        for (int k = 0; k < KVM_TASK_WORDS / 4; ++k) { const int4 v = __ldcg(p + k); w[u][4 * k] = v.x; w[u][4 * k + 1] = v.y; w[u][4 * k + 2] = v.z; w[u][4 * k + 3] = v.w; }
+        slot[u] = S.no_recycle ? (int)(fbase + (unsigned long long)i) : __ldcg(S.adm_slots + i);
+      }
     }
-    __syncwarp();
-    kvm_enqueue_warp(S, slot);
+#pragma unroll
+    for (int u = 0; u < 4; ++u) {
+      if (!valid[u]) continue;
+      const int i = base + u * blockDim.x;
+      // KvmTaskDesc word order: op, succ_off, succ_cnt, indegree, priority, deadline, args_off, args_words, wait_var,
+      // wait_ver, pub_var, pub_ver, workload, flags, r0, r1
+      int* wu = w[u];
+      const int sl = slot[u];
+      const int op = wu[0], so = wu[1], sc = wu[2], pr = wu[4], ao = wu[6], aw = wu[7], wv = wu[8], pv = wu[10];
+      ind[u] = wu[3];
+      int a[KVM_MAX_ARGS];   // the argument words, fetched in one go when the range is sane (checked again below)
+      const bool arg_range = ao >= 0 && aw >= 0 && aw <= KVM_MAX_ARGS && (long long)ao + aw <= na;
+#pragma unroll
+      for (int j = 0; j < KVM_MAX_ARGS; ++j) a[j] = (arg_range && j < aw) ? __ldcg(ra + ao + j) : 0;
+      int code = 0;
+      if (kvm_dev_arity(op) < 0) code = KVM_ERR_BAD_OP;
+      else if (aw != kvm_dev_arity(op)) code = KVM_ERR_BAD_ARITY;
+      else if (!kvm_sched_class_ok(S, wu[12])) code = KVM_ERR_BAD_TASK;
+      else if (so < 0 || sc < 0 || (long long)so + sc > ne || !arg_range || ind[u] < 0 || ind[u] > nt || pr < 0 || pr >= KVM_NBUCKETS || wu[5] < -1) code = KVM_ERR_BAD_TASK;
+      else if (wv < -1 || wv >= S.num_vars || pv < -1 || pv >= S.num_vars) code = KVM_ERR_BAD_VAR;
+      else {
+        const uint64_t ty = kvm_dev_types(op);
+        for (int j = 0; j < aw && !code; ++j) {
+          const int t = (int)((ty >> (3 * j)) & 7u);
+          if (t == KVM_A_BUF || t == KVM_A_BUF_OPT) {
+            const int bi = a[j];
+            if (bi == -1 && t == KVM_A_BUF) code = KVM_ERR_BAD_BUF;
+            else if (bi < -1 || bi >= S.nbufs) code = KVM_ERR_BAD_BUF_INDEX;
+          }
+        }
+      }
+      if (code) { kvm_fail(S, code, sl, op, i); valid[u] = false; continue; }
+      for (int j = 0; j < aw; ++j) S.args[(size_t)sl * KVM_ARG_STRIDE + j] = a[j];
+      wu[1] = (int)(sbase + (unsigned)so);       // CSR offset into the successor ring (word sequence number)
+      wu[6] = sl * KVM_ARG_STRIDE;               // arguments live inline in the slot
+      wu[14] = (int)wid;                         // reserved0 = window id (task completion returns the window credit)
+      int4* dst = reinterpret_cast<int4*>(S.tasks + sl);
+#pragma unroll
+      for (int k = 0; k < KVM_TASK_WORDS / 4; ++k) dst[k] = make_int4(wu[4 * k], wu[4 * k + 1], wu[4 * k + 2], wu[4 * k + 3]);
+      S.state[sl] = 0; S.park_next[sl] = -1;
+      if (S.trace_on) { KvmTrace& t = S.trace[sl]; t.admit_ns = now; t.ready_ns = t.start_ns = t.end_ns = 0; t.flags = 0; t.exec_count = 0; t.ver0 = t.ver1 = -1; }
+      kvm_sched_admit_task(S, sl);                // SCHED: cost metadata, publisher classes (reads the args and descriptor this thread just wrote)
+    }
+    __threadfence();                              // the descriptors, arguments and metadata this thread wrote are visible before the indegree adds that can make a task runnable
+#pragma unroll
+    for (int u = 0; u < 4; ++u) if (valid[u]) olds[u] = atom_add(S.indeg + slot[u], ind[u]);
+#pragma unroll
+    for (int u = 0; u < 4; ++u) if (valid[u] && olds[u] + ind[u] == 0) kvm_release_task(S, slot[u], w[u][8], w[u][9]);   // wait_var, wait_ver
   }
+  __syncthreads();
 }
 
 __device__ void kvm_admitter(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared& A) {
@@ -912,7 +985,7 @@ __device__ void kvm_admitter(const KvmDevState& S, KvmWatch& t0, KvmAdmitShared&
 }
 
 __global__ void __launch_bounds__(KVM_THREADS) kvm_init_kernel(KvmDevState S) {
-  size_t nq = (size_t)S.sp.nc * KVM_NBUCKETS, n = nq * S.rcap;   // SCHED: one ring set per class
+  size_t nq = S.fifo_only ? 1 : (size_t)S.sp.nc * KVM_NBUCKETS, n = nq * S.rcap;   // SCHED: one ring set per class; FIFO mode: one ring
   size_t tid = (size_t)blockIdx.x * blockDim.x + threadIdx.x, stride = (size_t)gridDim.x * blockDim.x;
   for (size_t i = tid; i < n; i += stride) { S.cells[i].seq = i % (size_t)S.rcap; S.cells[i].slot = -1; }
   for (size_t i = tid; i < (size_t)S.nslots; i += stride) { S.fcells[i].seq = i + 1; S.fcells[i].slot = (int)i; }
@@ -921,6 +994,7 @@ __global__ void __launch_bounds__(KVM_THREADS) kvm_init_kernel(KvmDevState S) {
 }
 
 __global__ void __launch_bounds__(KVM_THREADS, KVM_MIN_BLOCKS) kvm_exec_kernel(const __grid_constant__ KvmDevState S) {
+  if (S.warm_only) return;
   __shared__ KvmShared sh;
   __shared__ KvmAdmitShared adm;
   KvmWatch t0{kvm_now(), 0, -1, -1};

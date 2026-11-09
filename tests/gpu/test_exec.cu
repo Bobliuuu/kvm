@@ -43,7 +43,8 @@ static void cpu_op(const KvmBundle& bd, int ti, Bufs& B) {
 
 // ---------------- helpers ----------------
 struct Rng { std::mt19937 g; explicit Rng(unsigned s) : g(s) {} int in(int lo, int hi) { return lo + (int)(g() % (unsigned)(hi - lo + 1)); } bool p(int pct) { return in(0, 99) < pct; } };
-static KvmConfig small_cfg(int blocks = 4) { KvmConfig c; c.blocks = blocks; c.max_tasks = 1 << 15; c.live_cap = 1 << 12; c.ring_words = 1 << 14; c.timeout_us = 20ull * 1000000; return c; }
+static bool fifo_test() { static const bool on = getenv("KVM_TEST_FIFO") != nullptr; return on; }   // the FIFO ring takes only priority 0
+static KvmConfig small_cfg(int blocks = 4) { KvmConfig c; c.blocks = blocks; c.max_tasks = 1 << 15; c.live_cap = 1 << 12; c.ring_words = 1 << 14; c.timeout_us = 20ull * 1000000; if (getenv("KVM_TEST_FIFO")) c.fifo_only = 1; return c; }   // KVM_TEST_FIFO=1: every suite that does not depend on priorities also runs on the FIFO ring
 static void upload(float* d, const std::vector<float>& v) { CK(cudaMemcpy(d, v.data(), v.size() * 4, cudaMemcpyHostToDevice)); }
 static std::vector<float> download(const float* d, size_t n) { std::vector<float> v(n); CK(cudaMemcpy(v.data(), d, n * 4, cudaMemcpyDeviceToHost)); return v; }
 static std::vector<float> rand_ints(Rng& r, size_t n, int lo = -8, int hi = 8) { std::vector<float> v(n); for (auto& x : v) x = (float)r.in(lo, hi); return v; }
@@ -240,6 +241,7 @@ static KvmBundle gen_dag(Rng& r, const DagSpec& sp, int workload, int buf_base, 
 }
 
 static bool dag_run(unsigned seed, int nbundles, int n_each, int layers, KvmConfig cfg, int prio_hi, long long* total_tasks, int* dupes) {
+  if (cfg.fifo_only) prio_hi = 0;   // the FIFO ring takes priority 0 only
   Rng r(seed);
   KvmExec ex(cfg);
   size_t N = (size_t)nbundles * n_each;
@@ -514,7 +516,7 @@ static bool versions_vector(unsigned seed, int steps, int NW, int blocks, bool s
   // train bundle: fill(g) -> sgd(w,g) pub W; sgd_s waits for the readers of snapshot s (if any); sgd_s -> fill_{s+1}
   KvmBundleBuilder tb; int prev = -1;
   for (int s = 0; s < steps; ++s) {
-    KvmTaskOpts to; to.workload = 0; to.priority = 3;
+    KvmTaskOpts to; to.workload = 0; to.priority = fifo_test() ? 0 : 3;
     int sp = -1; if (spins && r.p(30)) sp = tb.add("spin", {I(r.in(1, 100))}, to);
     int f = tb.add("fill", {Bf(Gb), F(step_g(s)), I(NW)}, to);
     KvmTaskOpts so = to; so.pub_var = 0; so.pub_ver = s + 1;
@@ -590,7 +592,7 @@ static bool versions_scalar(unsigned seed, int steps, int blocks, bool spins, in
   auto mkreq = [&](int ver, bool exact, KvmBundleBuilder& bb, std::vector<int>* joins) {
     float* o = ex.arena(N); outp.push_back(o); int ob = ex.add_view(o, 1, N);
     std::vector<float> xr = rand_ints(r, N, -6, 6); float* xp = ex.arena(N); upload(xp, xr); xs.push_back(xr); int bxr = ex.add_view(xp, 1, N);
-    KvmTaskOpts to; to.wait_var = 0; to.wait_ver = ver; to.workload = 1 + (int)serve.size(); to.priority = 20;
+    KvmTaskOpts to; to.wait_var = 0; to.wait_ver = ver; to.workload = 1 + (int)serve.size(); to.priority = fifo_test() ? 0 : 20;
     int prev = -1; if (spins && r.p(50)) { KvmTaskOpts so; so.workload = to.workload; prev = bb.add("spin", {I(r.in(1, 120))}, so); }
     int p = bb.add("predict", {Bf(bxr), Bf(bw), Bf(ob), I(N)}, to); if (prev >= 0) bb.edge(prev, p);
     if (joins) joins->push_back(p);
@@ -604,7 +606,7 @@ static bool versions_scalar(unsigned seed, int steps, int blocks, bool spins, in
   for (int i = 0; i < r.in(2, 5); ++i) { KvmBundleBuilder bb; mkreq(r.in(0, steps), false, bb, nullptr); serve.push_back(bb.build()); }
   KvmBundleBuilder tb; int prev = -1;
   for (int s = 0; s < steps; ++s) {
-    KvmTaskOpts to; to.workload = 0; to.priority = 3;
+    KvmTaskOpts to; to.workload = 0; to.priority = fifo_test() ? 0 : 3;
     int sp = -1; if (spins && r.p(30)) sp = tb.add("spin", {I(r.in(1, 80))}, to);
     int f = tb.add("predict", {Bf(bx), Bf(bw), Bf(bp), I(N)}, to), m = tb.add("mse_grad", {Bf(bp), Bf(bt), Bf(bx), Bf(bl), Bf(bg), I(N)}, to);
     KvmTaskOpts so = to; so.pub_var = 0; so.pub_ver = s + 1;
@@ -961,12 +963,11 @@ static bool suite_front() {
   int before = g_fail;
   const int CH = 100, LEN = 50;   // 100 independent chains of 50 dependent adds, each on its own counter
   KvmConfig c = small_cfg(8); c.max_tasks = 1 << 14; c.live_cap = 1 << 13; c.succ_cap = 1 << 14; c.ring_words = 1 << 17;
-  KvmExec ex(c); int one = ex.add_buffer(1, 1, std::vector<float>{1.f}); std::vector<int> xs;
-  for (int i = 0; i < CH; ++i) xs.push_back(ex.add_buffer(1, 1, std::vector<float>{0.f}));
+  KvmExec ex(c); int one = ex.add_buffer(1, 1, std::vector<float>{1.f}); std::vector<int> xs, ys;   // two bundles, one set of counters each: the bundles are unordered, so on shared counters they would race
+  for (int i = 0; i < CH; ++i) { xs.push_back(ex.add_buffer(1, 1, std::vector<float>{0.f})); ys.push_back(ex.add_buffer(1, 1, std::vector<float>{0.f})); }
   ex.start();
-  KvmBundleBuilder bb;
-  for (int ch = 0; ch < CH; ++ch) { int prev = -1; for (int k = 0; k < LEN; ++k) { int t = bb.add("add", {Bf(xs[ch]), Bf(one), Bf(xs[ch]), I(1)}); if (prev >= 0) bb.edge(prev, t); prev = t; } }
-  KvmBundle whole = bb.build();
+  auto make = [&](const std::vector<int>& v) { KvmBundleBuilder bb; for (int ch = 0; ch < CH; ++ch) { int prev = -1; for (int k = 0; k < LEN; ++k) { int t = bb.add("add", {Bf(v[ch]), Bf(one), Bf(v[ch]), I(1)}); if (prev >= 0) bb.edge(prev, t); prev = t; } } return bb.build(); };
+  KvmBundle whole = make(xs), whole2 = make(ys);
   std::vector<KvmBundle> parts = KvmFront::split(whole, 700);
   size_t nt = 0, ne = 0; bool inside = true;
   for (auto& p : parts) {
@@ -979,13 +980,13 @@ static bool suite_front() {
   CHECK(KvmFront::split(whole, 10000).size() == 1, "a bundle under the limit must stay one record");
   CHECK(KvmFront::split(whole, 30).size() == (size_t)CH, "a component over the limit is its own chunk (one chain per chunk)");
   KvmFront::Cfg fc; fc.chunk_tasks = 700; fc.ring_budget_tasks = 1400; fc.classes = 2; KvmFront fr(ex, fc);
-  KvmFront::Ticket t0 = fr.submit(whole, 1), t1 = fr.submit(whole, 0);
+  KvmFront::Ticket t0 = fr.submit(whole, 1), t1 = fr.submit(whole2, 0);
   CHECK(fr.wait(t0, 30000) && fr.wait(t1, 30000), "front tickets did not complete");
   CHECK(fr.flush(10000), "front flush");
   ex.close(); const KvmResult& r = ex.finish();
   CHECK(r.ok() && r.done == 2 * (int)nt && r.admitted == 2 * (int)nt, "done %d admitted %d (want %zu)", r.done, r.admitted, 2 * nt);
-  int bad = 0; for (int ch = 0; ch < CH; ++ch) bad += ex.read_buffer(xs[ch])[0] != (float)(2 * LEN);
-  CHECK(bad == 0, "%d chain counters != %d (every task must run exactly once, in chain order)", bad, 2 * LEN);
+  int bad = 0; for (int ch = 0; ch < CH; ++ch) bad += (ex.read_buffer(xs[ch])[0] != (float)LEN) + (ex.read_buffer(ys[ch])[0] != (float)LEN);
+  CHECK(bad == 0, "%d chain counters != %d (every task must run exactly once, in chain order)", bad, LEN);
   printf("  front: %zu tasks in %zu chunks x2 bundles, %d ring submissions, every chain counter exact\n", nt, parts.size(), fr.chunks_submitted());
   return g_fail == before;
 }
@@ -1003,7 +1004,7 @@ static bool litmus_run(int blocks, int iters, int W, unsigned seed, const char* 
     KvmTaskOpts po; po.pub_var = 0; po.pub_ver = k; if (k > 1) { po.wait_var = 0; po.wait_ver = k - 1; }
     KvmTaskOpts wo; if (k > 1) { wo.wait_var = 0; wo.wait_ver = k - 1; }
     bb.add("noop", {}, po); int rw = bb.add("noop", {}, wo);
-    for (int j = 0; j < W; ++j) { KvmTaskOpts o; o.wait_var = 0; o.wait_ver = k; o.priority = r.in(0, 31); int t = bb.add("noop", {}, o); bb.edge(rw, t); }
+    for (int j = 0; j < W; ++j) { KvmTaskOpts o; o.wait_var = 0; o.wait_ver = k; o.priority = fifo_test() ? 0 : r.in(0, 31); int t = bb.add("noop", {}, o); bb.edge(rw, t); }
     if (ex.submit(bb.build(), 20000) != KvmSubmit::OK) { CHECK(false, "%s: submit %d", tag, k); break; }
   }
   ex.close(); const KvmResult& res = ex.finish();

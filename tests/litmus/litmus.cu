@@ -113,7 +113,7 @@ __global__ void k_init_tasks(KvmDevState S, int nw, int R) {
 struct Dev {  // minimal executor state for the lock-free primitives
   KvmDevState S{}; int live_cap = 0, nvars = 0, ntasks = 0;
   void alloc(int cap, int nv, int nt) {
-    live_cap = cap; nvars = nv; ntasks = nt; S.live_cap = cap; S.rcap = 4 * cap; S.sp.nc = 1; S.sp.on = 0; S.num_vars = nv; NSLOTS_SET(nt); S.aging_ns = 1ll << 50; S.timeout_ns = ~0ull;
+    live_cap = cap; nvars = nv; ntasks = nt; S.live_cap = cap; S.rcap = 4 * cap; S.sp.nc = 1; S.sp.on = 0; S.num_vars = nv; NSLOTS_SET(nt); S.aging_ns = 1ll << 50; S.timeout_ns = ~0ull; S.trace_on = 1;
     CK(cudaMalloc(&S.tasks, (size_t)nt * sizeof(KvmTaskDesc))); CK(cudaMalloc(&S.state, nt * 4)); CK(cudaMalloc(&S.park_next, nt * 4));
     CK(cudaMalloc(&S.version, nv * 4)); CK(cudaMalloc(&S.park_head, nv * 4));
     CK(cudaMalloc(&S.cells, (size_t)KVM_NBUCKETS * 4 * cap * sizeof(KvmCell))); CK(cudaMalloc(&S.qctl, KVM_NBUCKETS * sizeof(KvmQCtl)));

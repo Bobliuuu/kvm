@@ -285,7 +285,7 @@ Tests and how to run them: [RUNNING_TESTS.md](RUNNING_TESTS.md). Quick check wit
 
 ## 🐱 The `kvm.cu` prototype
 
-Timeline: run `./kvm --timeline FILE --tl-steps A B`, render with `bench/mlp_vs_torch/plot_timeline.py` (figures: `results/2026-11-06-a100-kvm-cu`). An earlier build-flag implementation (`-DKVM_TIMELINE`, `tools/kvm_timeline.py`, 73-row-style figures with overhead 0-1.5%) is recorded in `results/2026-11-09-a100-timeline`; its code was dropped in favor of the one `--timeline` path.
+Timeline: run `./kvm --timeline FILE --tl-steps A B`, render with `bench/mlp_vs_torch/plot_timeline.py` (figures: `results/2026-11-06-a100-kvm-cu`). An earlier build-flag implementation (`-DKVM_TIMELINE`, 73-row-style figures with overhead 0-1.5%) is recorded in `results/2026-11-09-a100-timeline`; its code was dropped in favor of the one `--timeline` path.
 
 `kvm.cu` is a self-contained prototype (CUDA, sm_80, one file). The numbers below predate its loop opcode: rerun before quoting.
 

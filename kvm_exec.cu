@@ -445,6 +445,13 @@ class KvmExec {
   // win_done_[slot] holds the id+1 of the newest finished window in that slot. A slot is reused only after its old window finished, so
   // a value at or past wid+1 (wrap-safe signed distance) means wid finished, even after the table wrapped over it.
   bool window_done(unsigned wid) const { return (int)(__atomic_load_n(&win_done_[wid & (cfg_.win_cap - 1)], __ATOMIC_ACQUIRE) - (wid + 1)) >= 0; }
+  // Diagnostics for a window that never reads as done: the raw mark in wid's table slot (id+1 of the newest finished window there, 0 =
+  // none yet). A mark past wid+1 means the table wrapped over wid, which window_done counts as finished; below wid+1 means it really has not.
+  unsigned window_mark(unsigned wid) const { return __atomic_load_n(&win_done_[wid & (cfg_.win_cap - 1)], __ATOMIC_ACQUIRE); }
+  std::string window_why_not_done(unsigned wid) const {
+    char b[200]; snprintf(b, sizeof b, "window %u (slot %u of %d): mark %u, needs >= %u (%d windows behind)", wid, wid & (cfg_.win_cap - 1), cfg_.win_cap, window_mark(wid), wid + 1, (int)(wid + 1 - window_mark(wid)));
+    return b;
+  }
 
   // One huge bundle through bounded slots: the bundle is cut into windows of consecutive tasks (task order must be
   // topological: every edge points to a higher index). Edges inside a window go to the device as usual; an edge that crosses
@@ -478,7 +485,7 @@ class KvmExec {
         auto t0 = std::chrono::steady_clock::now(); bool waited = false;
         while (!window_done(wid[j])) {
           if (herr_->code) { last_error_ = "device error"; return KvmSubmit::DEVICE_ERROR; }
-          if (std::chrono::steady_clock::now() - t0 > std::chrono::milliseconds(timeout_ms)) { last_error_ = "window " + std::to_string(j) + " did not complete"; KLOG(1, "%s", last_error_.c_str()); return KvmSubmit::BACKPRESSURE_TIMEOUT; }
+          if (std::chrono::steady_clock::now() - t0 > std::chrono::milliseconds(timeout_ms)) { last_error_ = "window " + std::to_string(j) + " did not complete: " + window_why_not_done(wid[j]); KLOG(1, "%s", last_error_.c_str()); return KvmSubmit::BACKPRESSURE_TIMEOUT; }
           if (!waited) { waited = true; ++stats_.window_waits; }
           std::this_thread::sleep_for(std::chrono::microseconds(20));
         }

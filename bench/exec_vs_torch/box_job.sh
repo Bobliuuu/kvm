@@ -19,7 +19,7 @@ for s in $STAGES; do case "$s" in
   mlp_steps)  for n in 10 200 1000; do
                 run mlp_steps_$n $M "$OUT/work_h72" --exe ./kvm_exec --hidden 72 --depth 2 --steps $n --runs 1,8 --reps "$REPS" --out "$OUT/mlp_steps_$n.json"; done ;;
   mlp_size)   for h in 256 1024; do
-                run mlp_size_$h $M "$OUT/work_h$h" --exe ./kvm_exec --hidden $h --depth 4 --steps 50 --runs 1,8 --reps "$REPS" --out "$OUT/mlp_size_$h.json"; done ;;
+                run mlp_size_$h $M "$OUT/work_h$h" --exe ./kvm_exec --hidden $h --depth 4 --no-golden --steps 50 --runs 1,8 --reps "$REPS" --out "$OUT/mlp_size_$h.json"; done ;;
   diag)       W="$OUT/work_h72"; F="--max-tasks 262144 --live-cap 131072 --ring-words 8388608"
               run diag_r1 bash -c "./kvm_exec $F --trace-csv $OUT/trace_r1.csv $W/steps50/bundle; python3 -I bench/vs_pytorch/trace_summary.py $OUT/trace_r1.csv 50"
               run diag_r32 bash -c "./kvm_exec $F --trace-csv $OUT/trace_r32.csv $W/time_n50_r32; python3 -I bench/vs_pytorch/trace_summary.py $OUT/trace_r32.csv 50" ;;

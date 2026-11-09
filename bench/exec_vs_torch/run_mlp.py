@@ -61,10 +61,11 @@ def named_buffers(bundle):
     return {b['name']: b['index'] for b in json.loads((Path(bundle) / 'metadata.json').read_text())['buffers']}
 
 
-def gates(work, exe, flags4):
+def gates(work, exe, flags4, golden=True):
     gate = Path(work) / 'gate' / 'bundle'
     _, one = run_exec(exe, gate, [], dump=True)
-    run_exec(exe, gate, [], golden=True)
+    if golden:
+        run_exec(exe, gate, [], golden=True)
     rep = Path(work) / 'gate_rep'
     replicate(gate, rep, 4)
     _, d = run_exec(exe, rep, flags4, dump=True)
@@ -73,7 +74,7 @@ def gates(work, exe, flags4):
     for k in range(4):
         for i in range(nb):
             assert d[k * nb + i] == one[i], f'copy {k} buffer {i} differs from the single run'
-    print(f'GATE 1+2 ok: 3-step run within 1e-3 of the CPU golden; 4 replicated copies bitwise equal to the single run ({nb} buffers)', flush=True)
+    print(f'GATE 1+2 ok: {"3-step run within 1e-3 of the CPU golden; " if golden else "(no CPU golden at this size) "}4 replicated copies bitwise equal to the single run ({nb} buffers)', flush=True)
 
 
 def fp64_losses(wl, steps):
@@ -105,6 +106,7 @@ def main():
     ap.add_argument('--runs', default='1,2,4,8,16,32')
     ap.add_argument('--reps', type=int, default=7)
     ap.add_argument('--tiling', default='a100')
+    ap.add_argument('--no-golden', action='store_true', help='the pure-Python CPU golden hangs on the larger models: gate 1 is skipped (gates 2-4 stay)')
     ap.add_argument('--skip', default='', help='comma list of torch variants to leave out')
     ap.add_argument('--out')
     a = ap.parse_args()
@@ -112,7 +114,7 @@ def main():
     gen = [sys.executable, '-I', str(ROOT / 'bench/exec_vs_torch/gen_mlp.py')]
     shape = ['--tiling', a.tiling, '--hidden', str(a.hidden), '--depth', str(a.depth)]
     if not (work / 'gate' / 'bundle').exists():
-        subprocess.run([*gen, str(work / 'gate'), '--steps', '3', *shape], check=True, capture_output=True)
+        subprocess.run([*gen, str(work / 'gate'), '--steps', '3', *shape, *(['--no-golden'] if a.no_golden else [])], check=True, capture_output=True)
     wdir = work / f'steps{a.steps}'
     if not (wdir / 'bundle').exists():
         subprocess.run([*gen, str(wdir), '--steps', str(a.steps), '--no-golden', *shape], check=True, capture_output=True)
@@ -120,7 +122,7 @@ def main():
                                      capture_output=True, text=True, check=True).stdout)
     tasks_step = info['tasks'] // a.steps
     runs = [int(x) for x in a.runs.split(',')]
-    gates(work, a.exe, exec_flags(tasks_step * 3 * 4))
+    gates(work, a.exe, exec_flags(tasks_step * 3 * 4), golden=not a.no_golden)
 
     import torch
     from mlp_torch import Workload, build, default_variants, self_check_init

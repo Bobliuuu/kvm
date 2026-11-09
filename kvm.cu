@@ -213,7 +213,7 @@ struct TRec { unsigned long long t_claim, t_ready, t_done; unsigned sm, blk; }; 
 __device__ __forceinline__ unsigned long long gtime() { unsigned long long t; asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(t)); return t; }
 __device__ __forceinline__ unsigned smid() { unsigned v; asm volatile("mov.u32 %0, %%smid;" : "=r"(v)); return v; }
 #define TL_ARG , TRec* tl
-#define TL_STAMP(x) unsigned long long x = threadIdx.x == 0 ? gtime() : 0
+#define TL_STAMP(v) unsigned long long v = (threadIdx.x == 0) ? gtime() : 0
 #else
 #define TL_ARG
 #define TL_STAMP(x)

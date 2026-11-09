@@ -5,7 +5,7 @@ or many runs, 10 to 1000 steps) the executor is correct and **beats only PyTorch
 It **loses to a whole-step CUDA graph by 1.9x (R=32) to 4.8x (R=1), to R graphs on R streams by 5.7x to 7.2x, and to a batched graph by 5.5x to 33x and a compiled
 batched graph by 9x to 69x**; at hidden 256-1024 it loses to eager too. At 162M it is 17.7x slower than eager and 21x slower than `torch.compile` + graph.
 The one VM result that stands is `kvm.cu`'s MLP (README). Where the time goes (measured, "Why"): the executor admits the whole tape before the first task can
-run (2.4-3.1 us per task), runs one resident block per SM (98,304 B dynamic smem) and pays about 28 us per dependency level; a graph runs the same step at about 8 us per level.
+run (2.4-3.1 us per task), runs one resident block per SM and pays about 28 us per dependency level; a graph runs the same step at about 8 us per level.
 
 ## Setup
 
@@ -122,9 +122,11 @@ As the GEMMs grow the executor loses even to eager (h256 R=1 0.91x, h1024 0.27x)
 3. **The dependency hop is about 25 us per level, not 5.** R=1: 2550 tasks, chain of 15 tasks per step; `trace_r1`: mean task 13.8 us, mean ready-to-start wait 12.5 us, workers busy 1.5%, span 21.6 ms = 432 us per step
    (+8.0 ms admission, +2 ms other = 31.8 ms kernel time) = 15 levels x 29 us. A graph runs the same step in 109-121 us (about 8 us per chain level).
    The README's 5 us hop (`kvm.cu`) is for one tiny dependent op on a persistent block; here the wait includes the ready-queue pickup, and the 1-CTA matmul tiles alone are 15.3 us each (69% of task time).
-4. **Fewer workers than the hardware allows.** `kvm_exec` reports `1 resident blocks/SM with 98304 B dynamic smem -> grid 108 (1 admitter + 107 workers)`. The 96 KiB is `KVM_GPT_MMA_SMEM` (the bf16
-   matmul's stage buffers, merged since the 2026-11-06 vm-wins measurement, whose kernel had 72 KiB and 2 blocks/SM); the f32 bundles measured here never run that op. At R=32 the utilisation is 6.9%
-   with a mean ready-to-start wait of 217 us: tasks are admission-limited and queue behind each other. A/B below ("Occupancy A/B").
+4. **One resident block per SM (hypothesis tested, NOT the cause).** `kvm_exec` reports `1 resident blocks/SM with 98304 B dynamic smem -> grid 108 (1 admitter + 107 workers)`; the 96 KiB is
+   `KVM_GPT_MMA_SMEM` (bf16 matmul stage buffers, merged after the 2026-11-06 vm-wins run, which had 72 KiB). A/B on the same bundles (`ab_occupancy.sh`, `raw/stage_logs/ab_occupancy.txt`): a build with
+   `-DKVM_GPT_MMA_SMEM=0` (73,728 B, `include/kvm_mma_bf16.cuh`'s static_assert removed; the bf16 op is never run here; final buffers bitwise equal) STILL reports 1 block/SM and times the same:
+   R=1 27.1 vs 27.2 ms, R=8 94.2 vs 94.0 ms, R=32 331.8 vs 332.3 ms (best of 5). Some other per-block limit (registers or the static smem of the union) caps residency; 6.9% utilisation at R=32 with a 217 us
+   ready-to-start wait says the workers wait for admission, not for each other. The 2.3x gap to the older `bench/vm-wins` executor (R=32: 2896 vs 6615 us/step) is therefore unexplained here (different tree, different box load; not re-run).
 5. **Big GEMMs.** From h256 up the 1-CTA tiles at 0.5x cuBLAS decide it (section 3), as for the 162M GPT: 276k tasks/step, 21.2 ms floor in `2026-11-06-gpt162-vs-torch`, 1.25 s measured.
 6. **Why the graphs win R runs so cheaply.** A batched graph issues the same kernels for any R (kernel cost grows with the grid, 61 -> 96 us for R=1 -> 32); R graphs on R streams overlap their
    nodes (33 us marginal per run); the executor pays per task. The README's "where a VM can win" list (small dependent steps, many runs) is exactly the region where a CUDA graph is already nearly free of the costs the VM removes.

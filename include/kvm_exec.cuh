@@ -156,6 +156,7 @@ struct KvmTrace {  // one per slot, 64 B
   int flags, exec_count, pad0, pad1;                        // flags bit0 = deadline missed
 };
 #define KVM_TRACE_MISSED 1
+#define KVM_TRACE_CONT   16   // started as the continuation of the task that released it (no enqueue, no pop)
 
 struct KvmCell { unsigned long long seq, ready_ns, deadline_ns; int slot, res; };   // 32 B; deadline_ns 0 = none, res = KvmRes (SCHED)
 struct alignas(128) KvmQCtl { unsigned long long head, tail, avail; };                // own cache line; avail = published - reserved (see kvm_claim)
@@ -181,6 +182,7 @@ struct KvmDevState {
   int nslots, live_cap, nbufs, ring_words, num_vars, win_cap, rcap, pad1;   // rcap = ready-ring depth = 4 * live_cap (see KvmCounters::parked)
   unsigned succ_cap;
   long long aging_ns;
+  int cont_on;   // 1: a worker runs one released successor directly (continuation)
   unsigned long long timeout_ns, task_limit_ns;   // stall timeout; per-task running-time limit (0 = off, checked when the task ends)
   const KvmBuf* bufs;
   KvmTaskDesc* tasks;                               // [nslots]
@@ -391,13 +393,13 @@ KVM_OP(spin) {
 
 // Optional operator packs: each defines KVM_OP(name) for every X line of its .def.
 #include "kvm_dist.cuh"  // KVM_DIST_HOOK: phase 1 (types, primitives); phase 2 (inbox pump) follows kvm_publish
-#if __has_include("kvm_ops_comm.cuh")
+#if __has_include("kvm_ops_comm.cuh") && !defined(KVM_LEAN)
 #include "kvm_ops_comm.cuh"  // KVM_DIST_HOOK
 #endif
 #if __has_include("kvm_ops_gpt.cuh")
 #include "kvm_ops_gpt.cuh"
 #endif
-#if __has_include("kvm_ops_extra.cuh")      // KVM_MODELS_HOOK: extra generic pack (needs the gpt pack's helpers and dynamic smem)
+#if __has_include("kvm_ops_extra.cuh") && !defined(KVM_LEAN)      // KVM_MODELS_HOOK: extra generic pack (needs the gpt pack's helpers and dynamic smem)
 #include "kvm_ops_extra.cuh"
 #endif
 #if defined(KVM_WITH_GAME) && __has_include("kvm_ops_game.cuh")
@@ -516,7 +518,7 @@ __device__ __forceinline__ void kvm_publish(const KvmDevState& S, int slot, int 
 // ---------------- worker ----------------
 struct KvmShared {
   KvmTaskDesc d;
-  int cmd, skip, how, part, dup;   // how: KVM_TRACE_* start reason from kvm_pop; part: STATIC-mode class of this worker's SM
+  int cmd, skip, how, part, dup, cont;   // how: KVM_TRACE_* start reason from kvm_pop; part: STATIC-mode class of this worker's SM
   float smem[KVM_SMEM_FLOATS];
 };
 #define KVM_POP_EXIT (-2)
@@ -566,6 +568,7 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
     if (d.pub_var >= 0) kvm_publish(S, slot, d.pub_var, d.pub_ver);
 #endif
     sh.skip = bad || *(volatile int*)&S.cnt->err_code;
+    sh.cont = -1;
   }
   __syncthreads();
   // Prefetch this thread's first successor id: the list is immutable once admitted, and the load's round trip hides behind the op instead
@@ -594,7 +597,17 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
     if (threadIdx.x < d.succ_cnt) __threadfence();   // only the warps that release anything fence (the barrier made the op's stores of all threads precede it)
     for (int e = threadIdx.x; e < d.succ_cnt; e += blockDim.x) {
       int s = e < blockDim.x ? sid0 : S.succ[(unsigned)(d.succ_off + e) & (S.succ_cap - 1)];
-      if (atom_add(S.indeg + s, -1) == 1) { kvm_sched_pref(S, s); kvm_release_task(S, s); }  // SCHED: affinity = this block
+      if (atom_add(S.indeg + s, -1) == 1) {
+        // Continuation: one released successor of the same priority bucket whose version wait is met is run by this worker directly
+        // (no enqueue, no pop: both are several L2 round trips on the dependent-hop critical path). Only without the scheduler (it
+        // accounts ready/running per class at enqueue and pop); the CTA is not free for other work while it runs, but every other
+        // released successor still goes through the queue.
+        const KvmTaskDesc* sd = S.tasks + s;
+        if (S.cont_on && !S.sp.on && sd->priority == d.priority && (sd->wait_var < 0 || ld_acq(S.version + sd->wait_var) >= sd->wait_ver) &&
+            atomicCAS(&sh.cont, -1, s) == -1) {
+          S.trace[s].ready_ns = kvm_now();
+        } else { kvm_sched_pref(S, s); kvm_release_task(S, s); }  // SCHED: affinity = this block
+      }
     }
   }
   __syncthreads();
@@ -616,23 +629,32 @@ __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
   if (threadIdx.x == 0) sh.part = kvm_sched_part(S);
   __syncthreads();
   const int part = sh.part;
+  int next = -1;   // continuation chosen by the previous task (kvm_run_task): run it without a pop
   for (;;) {
-    if (threadIdx.x < 32) {
-      int how, r = kvm_pop(S, kvm_now(), part, how);
-      if (r < 0 && threadIdx.x == 0 && kvm_should_exit(S, t0)) r = KVM_POP_EXIT;
-      if (threadIdx.x == 0) { sh.cmd = r; sh.how = how; }
-    }
-    __syncthreads();
-    int cmd = sh.cmd;
-    __syncthreads();  // sh.cmd is rewritten next iteration
-    if (cmd == KVM_POP_EXIT) return;
-    if (cmd < 0) {
-      if (threadIdx.x < 32) __nanosleep(backoff);
-      backoff = backoff ? min(backoff * 2, 512u) : 32u;
-      continue;
+    int cmd;
+    if (next >= 0) {
+      cmd = next;
+      if (threadIdx.x == 0) sh.how = KVM_TRACE_CONT;
+    } else {
+      if (threadIdx.x < 32) {
+        int how, r = kvm_pop(S, kvm_now(), part, how);
+        if (r < 0 && threadIdx.x == 0 && kvm_should_exit(S, t0)) r = KVM_POP_EXIT;
+        if (threadIdx.x == 0) { sh.cmd = r; sh.how = how; }
+      }
+      __syncthreads();
+      cmd = sh.cmd;
+      __syncthreads();  // sh.cmd is rewritten next iteration
+      if (cmd == KVM_POP_EXIT) return;
+      if (cmd < 0) {
+        if (threadIdx.x < 32) __nanosleep(backoff);
+        backoff = backoff ? min(backoff * 2, 512u) : 32u;
+        continue;
+      }
     }
     backoff = 0;
     kvm_run_task(S, cmd, sh);
+    next = sh.cont;
+    __syncthreads();   // every thread has read sh.cont before the next task's thread 0 resets it
   }
 }
 

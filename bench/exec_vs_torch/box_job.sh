@@ -25,6 +25,6 @@ for s in $STAGES; do case "$s" in
               run diag_r32 bash -c "./kvm_exec $F --trace-csv $OUT/trace_r32.csv $W/time_n50_r32; python3 -I bench/vs_pytorch/trace_summary.py $OUT/trace_r32.csv 50" ;;
   gpt)        for w in tiny small; do
                 run gpt_$w python3 -I bench/exec_vs_torch/run_gpt.py w_$w --exe ./kvm_exec --reps "$REPS" --tol 2e-3 --out "$OUT/gpt_$w.json"; done
-              run gpt_162m python3 -I bench/exec_vs_torch/run_gpt.py w_162m_1 --exe ./kvm_exec --modes eager,graph,compile_graph --reps 5 --tol 1e-3 --out "$OUT/gpt_162m.json" ;;
+              run gpt_162m python3 -I bench/exec_vs_torch/run_gpt.py w_162m_3 --exe ./kvm_exec --modes eager,graph,compile_graph --reps 5 --tol 1e-3 --out "$OUT/gpt_162m.json" ;;
 esac; done
 echo done >> "$OUT/logs/status.txt"

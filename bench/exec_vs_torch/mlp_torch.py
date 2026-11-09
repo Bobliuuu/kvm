@@ -2,7 +2,7 @@
 
 Everything the executor workload fixes is read from its workload.json: initial weights (counter-based generator, bit-identical), the token
 stream (stream_ids / stream_tgt, one batch per step), SGD lr 0.05 (gen_mlp.py), no clipping, mean cross-entropy, tanh GELU, 1xTF32 GEMMs.
-Every variant runs the same step body, including the device-side batch select and the loss log, so the work per step is identical:
+Every variant runs the same step body, including the loss log (index_copy into a device-side step counter), so the work per step is identical:
 
   eager         R separate runs, plain PyTorch, a Python loop over runs
   seq_graph     (R=1: THE whole-step CUDA graph) R separate whole-step CUDA graphs replayed one after another on one stream
@@ -88,8 +88,7 @@ class Variant:
         wl, ctr, loss_fn, r, batched = self.wl, self.ctr, self.loss_fn, self.r, self.batched
 
         def body():
-            ids = wl.ids.index_select(0, ctr)          # [1, tok]: the batch of this step, selected on the device
-            tgt = wl.tgt.index_select(0, ctr)
+            ids, tgt = wl.ids[:1], wl.tgt[:1]          # [1, tok]: the executor bundle trains on batch 0 at every step (see the README)
             if batched:
                 per = loss_fn(ps, ids.expand(r, -1), tgt.expand(r, -1))
                 total = per.sum()

@@ -132,6 +132,7 @@ def main():
     print('GATE 3: executor vs eager, loss max rel %.2e, weights max rel L2 %.2e, loss %.4f -> %.4f' %
           (check['exec_vs_eager_loss_max_rel'], check['exec_vs_eager_weight_rel_l2_max'], *check['loss_first_last']), flush=True)
     if check['exec_vs_eager_loss_max_rel'] > LOSS_TOL or check['exec_vs_eager_weight_rel_l2_max'] > WEIGHT_TOL:
+        print('executor loss', ex_loss, '\neager loss   ', ref_loss.tolist())
         raise SystemExit('GATE 3 FAILED: executor does not match PyTorch within tolerance; no timing is reported')
     del ref
 

@@ -8,7 +8,7 @@ OUT="${1:?OUT_DIR}"; REPS="${REPS:-7}"; mkdir -p "$OUT"
 for cfg in ${CONFIGS:-tiny small}; do
   W="w_$cfg"; D="$OUT/$cfg"; mkdir -p "$D"; cp "$W/info.json" "$D/"
   echo "=== $cfg $(date -u +%T)"
-  python3 bench/vs_pytorch/torch_bench.py "$W" --reps "$REPS" --precision tf32 --modes ${MODES:-graph compile_graph} --out "$D/torch.json" 2>&1 | grep -v Warning | tee "$D/torch.log"
+  python3 bench/vs_pytorch/torch_bench.py "$W" --reps "$REPS" --precision tf32 --modes ${MODES:-graph,compile_graph} --out "$D/torch.json" 2>&1 | grep -v Warning | tee "$D/torch.log"
   for e in ${EXES:-base=./kvm_exec}; do
     n="${e%%=*}"; x="${e#*=}"
     python3 bench/vs_pytorch/exec_bench.py "$W" "$x" --reps "$REPS" --out "$D/kvm_$n.json" 2>&1 | tee "$D/kvm_$n.log"

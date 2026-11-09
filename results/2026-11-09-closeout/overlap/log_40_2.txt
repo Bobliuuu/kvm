@@ -1,0 +1,6 @@
+[kvm_exec][I] version check: 0 version-carrying tasks (0 exact), 0 violations, 0 at_least readers saw the version advance while they ran; 46 reads of version 0 carry no tag (ordered by the host barrier only)
+[kvm_exec][I] workload 0: 4120 tasks, 0.038 CTA-s, queue wait p50 11.3 p99 42.0 max 51.2 us, 0 deadline misses, 0.02 GB moved (0.4 GB/s over the run)
+[kvm_exec][I] workload 1: 73 tasks, 0.001 CTA-s, queue wait p50 10.2 p99 13.3 max 13.3 us, 0 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] trace: 4193 tasks -> out_40_2/trace.csv
+[kvm_exec][I] wrote out_40_2/run.json
+OK: 4193/4193 tasks, 60.709 ms, 2 admissions

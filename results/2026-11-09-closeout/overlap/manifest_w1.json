@@ -1,0 +1,2116 @@
+{
+ "manifest_version": 1,
+ "semantics": [
+  "Allocate every buffer in `buffers` once and initialize it from its owner workload's init; later bundles that name the same buffer share it (state persists across admissions).",
+  "An admission may start (list order breaks ties) when: time since start >= at_us (if set), every bundle in after_bundles has completed, and for each entry of `when` the live version of that variable is in [min, max] (max omitted = unbounded). Several admissions may be in flight at once; priority and deadline_us are inside the tasks.",
+  "base_versions are the live versions of the variables at admission and bundle_dir was compiled with them. For a variable the admission does not publish (publishes lacks it) the value is only a minimum: use the live version if it is higher (a reader of weights >= v compiles against whatever is live). When bundle_dir is null, or the live version differs, compile `compile.workload` with the live versions (compile_workload.py --base-versions) or add the offset in the executor.",
+  "A bundle's publishes advance the variable by `publishes[var]`; the live version after completion = base + that.",
+  "manifest_version 2 only: an admission with a `guard` {buffer, index, cmp, value} additionally needs the comparison of that buffer element (read when it would otherwise start) to hold; otherwise it is skipped, as is every admission naming a skipped one in after_bundles. A guarded admission publishes nothing."
+ ],
+ "notes": [
+  "model gpt_tiny: 0.0M parameters; tiling a100; training 40 steps in 40 window(s) of 1"
+ ],
+ "classes": {
+  "train": {
+   "weight": 1
+  },
+  "serve": {
+   "weight": 1
+  }
+ },
+ "workloads": {
+  "train": {
+   "file": "workloads/train.json",
+   "tasks": 103,
+   "edges": 334,
+   "class": "train",
+   "priority": 0,
+   "deadline_us": null,
+   "variables": [
+    "weights"
+   ],
+   "graphs": [
+    "train"
+   ]
+  },
+  "serve_s0": {
+   "file": "workloads/serve_s0.json",
+   "tasks": 73,
+   "edges": 231,
+   "class": "serve",
+   "priority": 10,
+   "deadline_us": [
+    2000,
+    2000
+   ],
+   "variables": [
+    "weights"
+   ],
+   "graphs": [
+    "serve_s0"
+   ]
+  }
+ },
+ "buffers": {
+  "stream_ids": {
+   "rows": 1280,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "train"
+  },
+  "opt_step": {
+   "rows": 1,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "train"
+  },
+  "stream_tgt": {
+   "rows": 1280,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "train"
+  },
+  "w.gpt.wte": {
+   "rows": 64,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.n1.g": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.n1.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.attn.q.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.attn.q.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.attn.k.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.attn.k.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.attn.v.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.attn.v.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.attn.proj.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.attn.proj.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.n2.g": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.n2.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.mlp.fc1.w": {
+   "rows": 32,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.mlp.fc1.b": {
+   "rows": 1,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.mlp.fc2.w": {
+   "rows": 128,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.mlp.fc2.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.nf.g": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.nf.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.head.w": {
+   "rows": 32,
+   "cols": 64,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.0": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "clip_coef": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "version_token": {
+   "rows": 1,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.wte": {
+   "rows": 64,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.wte": {
+   "rows": 64,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.n1.g": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.n1.g": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.n1.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.n1.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.attn.q.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.attn.q.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.attn.q.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.attn.q.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.attn.k.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.attn.k.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.attn.k.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.attn.k.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.attn.v.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.attn.v.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.attn.v.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.attn.v.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.attn.proj.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.attn.proj.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.attn.proj.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.attn.proj.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.n2.g": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.n2.g": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.n2.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.n2.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.mlp.fc1.w": {
+   "rows": 32,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.mlp.fc1.w": {
+   "rows": 32,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.mlp.fc1.b": {
+   "rows": 1,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.mlp.fc1.b": {
+   "rows": 1,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.mlp.fc2.w": {
+   "rows": 128,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.mlp.fc2.w": {
+   "rows": 128,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.mlp.fc2.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.mlp.fc2.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.nf.g": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.nf.g": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.nf.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.nf.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.head.w": {
+   "rows": 32,
+   "cols": 64,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.head.w": {
+   "rows": 32,
+   "cols": 64,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act0": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "train"
+  },
+  "act1": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "train"
+  },
+  "act2": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act3": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act4": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act5": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act6": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act7": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act8": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act9": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act10": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act11": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act12": {
+   "rows": 2,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act13": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act14": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act15": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act16": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act17": {
+   "rows": 32,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act18": {
+   "rows": 32,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act19": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act20": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act21": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act22": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act23": {
+   "rows": 32,
+   "cols": 64,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act24": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act25": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act26": {
+   "rows": 32,
+   "cols": 64,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act27": {
+   "rows": 32,
+   "cols": 64,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act28": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act29": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act30": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act31": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act32": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act33": {
+   "rows": 128,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act34": {
+   "rows": 32,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act35": {
+   "rows": 32,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act36": {
+   "rows": 1,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act37": {
+   "rows": 32,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act38": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act39": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act40": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act41": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act42": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act43": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act44": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act45": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act46": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act47": {
+   "rows": 2,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act48": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act49": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act50": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act51": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act52": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act53": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act54": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act55": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act56": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act57": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act58": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act59": {
+   "rows": 64,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act60": {
+   "rows": 396,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "serve_s0.prompt": {
+   "rows": 2,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.kc0": {
+   "rows": 10,
+   "cols": 16,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.vc0": {
+   "rows": 10,
+   "cols": 16,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.lens": {
+   "rows": 1,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.cur0": {
+   "rows": 1,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.cur1": {
+   "rows": 1,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.cur2": {
+   "rows": 1,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.cur3": {
+   "rows": 1,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act0": {
+   "rows": 2,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act1": {
+   "rows": 2,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act2": {
+   "rows": 2,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act3": {
+   "rows": 2,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act4": {
+   "rows": 2,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act5": {
+   "rows": 2,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act6": {
+   "rows": 2,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act7": {
+   "rows": 2,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act8": {
+   "rows": 2,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act9": {
+   "rows": 2,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act10": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act11": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act12": {
+   "rows": 1,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act13": {
+   "rows": 1,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act14": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act15": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act16": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act17": {
+   "rows": 1,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act18": {
+   "rows": 1,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act19": {
+   "rows": 1,
+   "cols": 64,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  }
+ },
+ "shared_buffers": [
+  "w.gpt.h0.attn.k.b",
+  "w.gpt.h0.attn.k.w",
+  "w.gpt.h0.attn.proj.b",
+  "w.gpt.h0.attn.proj.w",
+  "w.gpt.h0.attn.q.b",
+  "w.gpt.h0.attn.q.w",
+  "w.gpt.h0.attn.v.b",
+  "w.gpt.h0.attn.v.w",
+  "w.gpt.h0.mlp.fc1.b",
+  "w.gpt.h0.mlp.fc1.w",
+  "w.gpt.h0.mlp.fc2.b",
+  "w.gpt.h0.mlp.fc2.w",
+  "w.gpt.h0.n1.b",
+  "w.gpt.h0.n1.g",
+  "w.gpt.h0.n2.b",
+  "w.gpt.h0.n2.g",
+  "w.gpt.head.w",
+  "w.gpt.nf.b",
+  "w.gpt.nf.g",
+  "w.gpt.wte"
+ ],
+ "admissions": [
+  {
+   "name": "serve_s0",
+   "workload": "serve_s0",
+   "steps": null,
+   "after_bundles": [],
+   "when": [
+    {
+     "var": "weights",
+     "min": 0,
+     "max": 0
+    }
+   ],
+   "at_us": null,
+   "base_versions": {
+    "weights": 0
+   },
+   "publishes": {},
+   "compile": {
+    "workload": "workloads/serve_s0.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 0
+    }
+   },
+   "bundle_dir": "bundles/serve_s0"
+  },
+  {
+   "name": "train_w0",
+   "workload": "train",
+   "steps": [
+    0,
+    1
+   ],
+   "after_bundles": [
+    "serve_s0"
+   ],
+   "when": [],
+   "at_us": 0,
+   "base_versions": {
+    "weights": 0
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 0
+    }
+   },
+   "bundle_dir": "bundles/train_w0"
+  },
+  {
+   "name": "train_w1",
+   "workload": "train",
+   "steps": [
+    1,
+    2
+   ],
+   "after_bundles": [
+    "train_w0"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 2
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 2
+    }
+   },
+   "bundle_dir": "bundles/train_w1"
+  },
+  {
+   "name": "train_w2",
+   "workload": "train",
+   "steps": [
+    2,
+    3
+   ],
+   "after_bundles": [
+    "train_w1"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 4
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 4
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w3",
+   "workload": "train",
+   "steps": [
+    3,
+    4
+   ],
+   "after_bundles": [
+    "train_w2"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 6
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 6
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w4",
+   "workload": "train",
+   "steps": [
+    4,
+    5
+   ],
+   "after_bundles": [
+    "train_w3"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 8
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 8
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w5",
+   "workload": "train",
+   "steps": [
+    5,
+    6
+   ],
+   "after_bundles": [
+    "train_w4"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 10
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 10
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w6",
+   "workload": "train",
+   "steps": [
+    6,
+    7
+   ],
+   "after_bundles": [
+    "train_w5"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 12
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 12
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w7",
+   "workload": "train",
+   "steps": [
+    7,
+    8
+   ],
+   "after_bundles": [
+    "train_w6"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 14
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 14
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w8",
+   "workload": "train",
+   "steps": [
+    8,
+    9
+   ],
+   "after_bundles": [
+    "train_w7"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 16
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 16
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w9",
+   "workload": "train",
+   "steps": [
+    9,
+    10
+   ],
+   "after_bundles": [
+    "train_w8"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 18
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 18
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w10",
+   "workload": "train",
+   "steps": [
+    10,
+    11
+   ],
+   "after_bundles": [
+    "train_w9"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 20
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 20
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w11",
+   "workload": "train",
+   "steps": [
+    11,
+    12
+   ],
+   "after_bundles": [
+    "train_w10"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 22
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 22
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w12",
+   "workload": "train",
+   "steps": [
+    12,
+    13
+   ],
+   "after_bundles": [
+    "train_w11"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 24
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 24
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w13",
+   "workload": "train",
+   "steps": [
+    13,
+    14
+   ],
+   "after_bundles": [
+    "train_w12"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 26
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 26
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w14",
+   "workload": "train",
+   "steps": [
+    14,
+    15
+   ],
+   "after_bundles": [
+    "train_w13"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 28
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 28
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w15",
+   "workload": "train",
+   "steps": [
+    15,
+    16
+   ],
+   "after_bundles": [
+    "train_w14"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 30
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 30
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w16",
+   "workload": "train",
+   "steps": [
+    16,
+    17
+   ],
+   "after_bundles": [
+    "train_w15"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 32
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 32
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w17",
+   "workload": "train",
+   "steps": [
+    17,
+    18
+   ],
+   "after_bundles": [
+    "train_w16"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 34
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 34
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w18",
+   "workload": "train",
+   "steps": [
+    18,
+    19
+   ],
+   "after_bundles": [
+    "train_w17"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 36
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 36
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w19",
+   "workload": "train",
+   "steps": [
+    19,
+    20
+   ],
+   "after_bundles": [
+    "train_w18"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 38
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 38
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w20",
+   "workload": "train",
+   "steps": [
+    20,
+    21
+   ],
+   "after_bundles": [
+    "train_w19"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 40
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 40
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w21",
+   "workload": "train",
+   "steps": [
+    21,
+    22
+   ],
+   "after_bundles": [
+    "train_w20"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 42
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 42
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w22",
+   "workload": "train",
+   "steps": [
+    22,
+    23
+   ],
+   "after_bundles": [
+    "train_w21"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 44
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 44
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w23",
+   "workload": "train",
+   "steps": [
+    23,
+    24
+   ],
+   "after_bundles": [
+    "train_w22"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 46
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 46
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w24",
+   "workload": "train",
+   "steps": [
+    24,
+    25
+   ],
+   "after_bundles": [
+    "train_w23"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 48
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 48
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w25",
+   "workload": "train",
+   "steps": [
+    25,
+    26
+   ],
+   "after_bundles": [
+    "train_w24"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 50
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 50
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w26",
+   "workload": "train",
+   "steps": [
+    26,
+    27
+   ],
+   "after_bundles": [
+    "train_w25"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 52
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 52
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w27",
+   "workload": "train",
+   "steps": [
+    27,
+    28
+   ],
+   "after_bundles": [
+    "train_w26"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 54
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 54
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w28",
+   "workload": "train",
+   "steps": [
+    28,
+    29
+   ],
+   "after_bundles": [
+    "train_w27"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 56
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 56
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w29",
+   "workload": "train",
+   "steps": [
+    29,
+    30
+   ],
+   "after_bundles": [
+    "train_w28"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 58
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 58
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w30",
+   "workload": "train",
+   "steps": [
+    30,
+    31
+   ],
+   "after_bundles": [
+    "train_w29"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 60
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 60
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w31",
+   "workload": "train",
+   "steps": [
+    31,
+    32
+   ],
+   "after_bundles": [
+    "train_w30"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 62
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 62
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w32",
+   "workload": "train",
+   "steps": [
+    32,
+    33
+   ],
+   "after_bundles": [
+    "train_w31"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 64
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 64
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w33",
+   "workload": "train",
+   "steps": [
+    33,
+    34
+   ],
+   "after_bundles": [
+    "train_w32"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 66
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 66
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w34",
+   "workload": "train",
+   "steps": [
+    34,
+    35
+   ],
+   "after_bundles": [
+    "train_w33"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 68
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 68
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w35",
+   "workload": "train",
+   "steps": [
+    35,
+    36
+   ],
+   "after_bundles": [
+    "train_w34"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 70
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 70
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w36",
+   "workload": "train",
+   "steps": [
+    36,
+    37
+   ],
+   "after_bundles": [
+    "train_w35"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 72
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 72
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w37",
+   "workload": "train",
+   "steps": [
+    37,
+    38
+   ],
+   "after_bundles": [
+    "train_w36"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 74
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 74
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w38",
+   "workload": "train",
+   "steps": [
+    38,
+    39
+   ],
+   "after_bundles": [
+    "train_w37"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 76
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 76
+    }
+   },
+   "bundle_dir": null
+  },
+  {
+   "name": "train_w39",
+   "workload": "train",
+   "steps": [
+    39,
+    40
+   ],
+   "after_bundles": [
+    "train_w38"
+   ],
+   "when": [],
+   "at_us": null,
+   "base_versions": {
+    "weights": 78
+   },
+   "publishes": {
+    "weights": 2
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 78
+    }
+   },
+   "bundle_dir": null
+  }
+ ]
+}

@@ -1,0 +1,1297 @@
+{
+ "manifest_version": 1,
+ "semantics": [
+  "Allocate every buffer in `buffers` once and initialize it from its owner workload's init; later bundles that name the same buffer share it (state persists across admissions).",
+  "An admission may start (list order breaks ties) when: time since start >= at_us (if set), every bundle in after_bundles has completed, and for each entry of `when` the live version of that variable is in [min, max] (max omitted = unbounded). Several admissions may be in flight at once; priority and deadline_us are inside the tasks.",
+  "base_versions are the live versions of the variables at admission and bundle_dir was compiled with them. For a variable the admission does not publish (publishes lacks it) the value is only a minimum: use the live version if it is higher (a reader of weights >= v compiles against whatever is live). When bundle_dir is null, or the live version differs, compile `compile.workload` with the live versions (compile_workload.py --base-versions) or add the offset in the executor.",
+  "A bundle's publishes advance the variable by `publishes[var]`; the live version after completion = base + that.",
+  "manifest_version 2 only: an admission with a `guard` {buffer, index, cmp, value} additionally needs the comparison of that buffer element (read when it would otherwise start) to hold; otherwise it is skipped, as is every admission naming a skipped one in after_bundles. A guarded admission publishes nothing."
+ ],
+ "notes": [
+  "model gpt_tiny: 0.0M parameters; tiling a100; training 40 steps in 1 window(s) of 40"
+ ],
+ "classes": {
+  "train": {
+   "weight": 1
+  },
+  "serve": {
+   "weight": 1
+  }
+ },
+ "workloads": {
+  "train": {
+   "file": "workloads/train.json",
+   "tasks": 4120,
+   "edges": 28843,
+   "class": "train",
+   "priority": 0,
+   "deadline_us": null,
+   "variables": [
+    "weights"
+   ],
+   "graphs": [
+    "train"
+   ]
+  },
+  "serve_s0": {
+   "file": "workloads/serve_s0.json",
+   "tasks": 73,
+   "edges": 231,
+   "class": "serve",
+   "priority": 10,
+   "deadline_us": [
+    2000,
+    2000
+   ],
+   "variables": [
+    "weights"
+   ],
+   "graphs": [
+    "serve_s0"
+   ]
+  }
+ },
+ "buffers": {
+  "stream_ids": {
+   "rows": 1280,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "train"
+  },
+  "opt_step": {
+   "rows": 1,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "train"
+  },
+  "stream_tgt": {
+   "rows": 1280,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "train"
+  },
+  "w.gpt.wte": {
+   "rows": 64,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.n1.g": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.n1.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.attn.q.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.attn.q.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.attn.k.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.attn.k.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.attn.v.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.attn.v.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.attn.proj.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.attn.proj.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.n2.g": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.n2.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.mlp.fc1.w": {
+   "rows": 32,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.mlp.fc1.b": {
+   "rows": 1,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.mlp.fc2.w": {
+   "rows": 128,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.h0.mlp.fc2.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.nf.g": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.nf.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "w.gpt.head.w": {
+   "rows": 32,
+   "cols": 64,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.0": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "clip_coef": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "version_token": {
+   "rows": 1,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.wte": {
+   "rows": 64,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.wte": {
+   "rows": 64,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.n1.g": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.n1.g": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.n1.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.n1.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.attn.q.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.attn.q.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.attn.q.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.attn.q.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.attn.k.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.attn.k.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.attn.k.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.attn.k.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.attn.v.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.attn.v.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.attn.v.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.attn.v.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.attn.proj.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.attn.proj.w": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.attn.proj.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.attn.proj.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.n2.g": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.n2.g": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.n2.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.n2.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.mlp.fc1.w": {
+   "rows": 32,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.mlp.fc1.w": {
+   "rows": 32,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.mlp.fc1.b": {
+   "rows": 1,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.mlp.fc1.b": {
+   "rows": 1,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.mlp.fc2.w": {
+   "rows": 128,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.mlp.fc2.w": {
+   "rows": 128,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.h0.mlp.fc2.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.h0.mlp.fc2.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.nf.g": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.nf.g": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.nf.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.nf.b": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "m.gpt.head.w": {
+   "rows": 32,
+   "cols": 64,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "v.gpt.head.w": {
+   "rows": 32,
+   "cols": 64,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.1": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.2": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.3": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.4": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.5": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.6": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.7": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.8": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.9": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.10": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.11": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.12": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.13": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.14": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.15": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.16": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.17": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.18": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.19": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.20": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.21": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.22": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.23": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.24": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.25": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.26": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.27": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.28": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.29": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.30": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.31": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.32": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.33": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.34": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.35": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.36": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.37": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.38": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "loss.39": {
+   "rows": 1,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act0": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "train"
+  },
+  "act1": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "train"
+  },
+  "act2": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act3": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act4": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act5": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act6": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act7": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act8": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act9": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act10": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act11": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act12": {
+   "rows": 2,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act13": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act14": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act15": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act16": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act17": {
+   "rows": 32,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act18": {
+   "rows": 32,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act19": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act20": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act21": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act22": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act23": {
+   "rows": 32,
+   "cols": 64,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act24": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act25": {
+   "rows": 32,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act26": {
+   "rows": 32,
+   "cols": 64,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act27": {
+   "rows": 32,
+   "cols": 64,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act28": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act29": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act30": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act31": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act32": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act33": {
+   "rows": 128,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act34": {
+   "rows": 32,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act35": {
+   "rows": 32,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act36": {
+   "rows": 1,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act37": {
+   "rows": 32,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act38": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act39": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act40": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act41": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act42": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act43": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act44": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act45": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act46": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act47": {
+   "rows": 2,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act48": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act49": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act50": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act51": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act52": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act53": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act54": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act55": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act56": {
+   "rows": 32,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act57": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act58": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act59": {
+   "rows": 64,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "act60": {
+   "rows": 396,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "train"
+  },
+  "serve_s0.prompt": {
+   "rows": 2,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.kc0": {
+   "rows": 10,
+   "cols": 16,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.vc0": {
+   "rows": 10,
+   "cols": 16,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.lens": {
+   "rows": 1,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.cur0": {
+   "rows": 1,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.cur1": {
+   "rows": 1,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.cur2": {
+   "rows": 1,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.cur3": {
+   "rows": 1,
+   "cols": 1,
+   "dtype": "i32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act0": {
+   "rows": 2,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act1": {
+   "rows": 2,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act2": {
+   "rows": 2,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act3": {
+   "rows": 2,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act4": {
+   "rows": 2,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act5": {
+   "rows": 2,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act6": {
+   "rows": 2,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act7": {
+   "rows": 2,
+   "cols": 2,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act8": {
+   "rows": 2,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act9": {
+   "rows": 2,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act10": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act11": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act12": {
+   "rows": 1,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act13": {
+   "rows": 1,
+   "cols": 1,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act14": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act15": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act16": {
+   "rows": 1,
+   "cols": 32,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act17": {
+   "rows": 1,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act18": {
+   "rows": 1,
+   "cols": 128,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  },
+  "serve_s0.act19": {
+   "rows": 1,
+   "cols": 64,
+   "dtype": "f32",
+   "owner": "serve_s0"
+  }
+ },
+ "shared_buffers": [
+  "w.gpt.h0.attn.k.b",
+  "w.gpt.h0.attn.k.w",
+  "w.gpt.h0.attn.proj.b",
+  "w.gpt.h0.attn.proj.w",
+  "w.gpt.h0.attn.q.b",
+  "w.gpt.h0.attn.q.w",
+  "w.gpt.h0.attn.v.b",
+  "w.gpt.h0.attn.v.w",
+  "w.gpt.h0.mlp.fc1.b",
+  "w.gpt.h0.mlp.fc1.w",
+  "w.gpt.h0.mlp.fc2.b",
+  "w.gpt.h0.mlp.fc2.w",
+  "w.gpt.h0.n1.b",
+  "w.gpt.h0.n1.g",
+  "w.gpt.h0.n2.b",
+  "w.gpt.h0.n2.g",
+  "w.gpt.head.w",
+  "w.gpt.nf.b",
+  "w.gpt.nf.g",
+  "w.gpt.wte"
+ ],
+ "admissions": [
+  {
+   "name": "serve_s0",
+   "workload": "serve_s0",
+   "steps": null,
+   "after_bundles": [],
+   "when": [
+    {
+     "var": "weights",
+     "min": 0,
+     "max": 0
+    }
+   ],
+   "at_us": null,
+   "base_versions": {
+    "weights": 0
+   },
+   "publishes": {},
+   "compile": {
+    "workload": "workloads/serve_s0.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 0
+    }
+   },
+   "bundle_dir": "bundles/serve_s0"
+  },
+  {
+   "name": "train_w0",
+   "workload": "train",
+   "steps": [
+    0,
+    40
+   ],
+   "after_bundles": [
+    "serve_s0"
+   ],
+   "when": [],
+   "at_us": 0,
+   "base_versions": {
+    "weights": 0
+   },
+   "publishes": {
+    "weights": 80
+   },
+   "compile": {
+    "workload": "workloads/train.json",
+    "data_dir": "workloads",
+    "base_versions": {
+     "weights": 0
+    }
+   },
+   "bundle_dir": "bundles/train_w0"
+  }
+ ]
+}

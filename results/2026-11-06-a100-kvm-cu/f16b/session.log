@@ -1,0 +1,93 @@
+# tag=kvmcu-f16b 2026-11-07T16:45:55Z
+selftest rc=0
+fused smoke R=1 rc=0: PASS
+fused smoke R=8 rc=0: PASS
+fused smoke R=32 rc=0: PASS
+fused16 smoke R=1 rc=0: PASS
+fused16 smoke R=8 rc=0: PASS
+fused16 smoke R=32 rc=0: PASS
+progs: tiles,fused,fused16
+=== runs=1 16:46:29
+rc=0
+torch.func.vmap(grad) + whole CUDA graph [fp16]                       22.951       76.503    1.00x       4.89x
+torch CUDA graph, whole run (manual backward) [fp16]                  23.079       76.930    1.01x       4.92x
+torch hand-batched bmm + whole CUDA graph [fp16]                      23.111       77.036    1.00x       4.93x
+torch.func.vmap(grad) + whole CUDA graph [bf16]                       24.476       81.585    1.00x       5.22x
+torch.compile(vmap(grad)) + whole CUDA graph [bf16]                   24.953       83.176    1.00x       5.32x
+torch CUDA graph, whole run (manual backward) [bf16]                  25.341       84.470    1.00x       5.40x
+torch hand-batched bmm + whole CUDA graph [bf16]                      25.354       84.514    1.00x       5.40x
+torch eager (manual backward) [tf32]                                 110.356      367.855    1.12x      23.53x
+torch eager (manual backward) [fp16]                                 167.921      559.735    1.04x      35.80x
+torch eager (manual backward) [bf16]                                 170.012      566.705    1.02x      36.24x
+
+R=1 S=300: best VM = fused16 4.691 ms; vs best torch (torch.compile step + whole-run CUDA graph [fp16]) = 2.01x ; pass={'tiles': True, 'fused': True, 'fused16': True}
+
+best torch per precision class vs VM programs (VM speedup = torch ms / VM ms):
+  torch bf16  best  34.881 us/step/run (torch.compile step + whole-run CUDA graph [bf16])
+      vs VM tiles     25.190 us -> 1.38x
+      vs VM fused     24.934 us -> 1.40x
+      vs VM fused16   15.636 us -> 2.23x
+  torch fp16  best  31.498 us/step/run (torch.compile step + whole-run CUDA graph [fp16])
+      vs VM tiles     25.190 us -> 1.25x
+      vs VM fused     24.934 us -> 1.26x
+      vs VM fused16   15.636 us -> 2.01x
+  torch tf32  best  37.325 us/step/run (torch.compile step + whole-run CUDA graph [tf32])
+      vs VM tiles     25.190 us -> 1.48x
+      vs VM fused     24.934 us -> 1.50x
+      vs VM fused16   15.636 us -> 2.39x
+=== runs=8 16:47:24
+rc=0
+torch.compile step + whole-run CUDA graph [fp16]                      78.615       32.756    1.00x      14.89x
+sequential, launch-per-op [tiles]                                     83.671       34.863    1.00x      15.84x
+torch.compile step + whole-run CUDA graph [bf16]                      86.325       35.969    1.00x      16.35x
+torch.compile step + whole-run CUDA graph [tf32]                      92.934       38.723    1.00x      17.60x
+torch CUDA graph, whole run (manual backward) [tf32]                 136.375       56.823    1.22x      25.82x
+torch CUDA graph, whole run (manual backward) [fp16]                 183.936       76.640    1.18x      34.83x
+torch CUDA graph, whole run (manual backward) [bf16]                 201.509       83.962    1.14x      38.16x
+torch eager (manual backward) [tf32]                                 908.994      378.747    1.03x     172.13x
+torch eager (manual backward) [bf16]                                1378.309      574.295    1.04x     261.00x
+torch eager (manual backward) [fp16]                                1382.663      576.110    1.05x     261.83x
+
+R=8 S=300: best VM = fused16 5.281 ms; vs best torch (torch.compile(vmap(grad)) + whole CUDA graph [fp16]) = 2.24x ; pass={'tiles': True, 'fused': True, 'fused16': True}
+
+best torch per precision class vs VM programs (VM speedup = torch ms / VM ms):
+  torch bf16  best   5.483 us/step/run (torch.compile bmm step + whole CUDA graph [bf16])
+      vs VM tiles      4.264 us -> 1.29x
+      vs VM fused      3.281 us -> 1.67x
+      vs VM fused16    2.200 us -> 2.49x
+  torch fp16  best   4.940 us/step/run (torch.compile(vmap(grad)) + whole CUDA graph [fp16])
+      vs VM tiles      4.264 us -> 1.16x
+      vs VM fused      3.281 us -> 1.51x
+      vs VM fused16    2.200 us -> 2.24x
+  torch tf32  best   4.956 us/step/run (torch.compile bmm step + whole CUDA graph [tf32])
+      vs VM tiles      4.264 us -> 1.16x
+      vs VM fused      3.281 us -> 1.51x
+      vs VM fused16    2.200 us -> 2.25x
+=== runs=32 16:49:19
+rc=0
+torch.compile step + whole-run CUDA graph [fp16]                     314.489       32.759    1.00x      19.13x
+sequential, launch-per-op [tiles]                                    335.549       34.953    1.00x      20.41x
+torch.compile step + whole-run CUDA graph [bf16]                     345.360       35.975    1.00x      21.00x
+torch.compile step + whole-run CUDA graph [tf32]                     370.928       38.638    1.00x      22.56x
+torch CUDA graph, whole run (manual backward) [tf32]                 545.327       56.805    1.04x      33.17x
+torch CUDA graph, whole run (manual backward) [fp16]                 735.543       76.619    1.04x      44.73x
+torch CUDA graph, whole run (manual backward) [bf16]                 806.435       84.004    1.04x      49.05x
+torch eager (manual backward) [tf32]                                3631.290      378.259    1.27x     220.85x
+torch eager (manual backward) [bf16]                                5607.707      584.136    1.04x     341.05x
+torch eager (manual backward) [fp16]                                5628.218      586.273    1.08x     342.30x
+
+R=32 S=300: best VM = fused16 16.442 ms; vs best torch (torch.compile(vmap(grad)) + whole CUDA graph [tf32]) = 1.18x ; pass={'tiles': True, 'fused': True, 'fused16': True}
+
+best torch per precision class vs VM programs (VM speedup = torch ms / VM ms):
+  torch bf16  best   2.256 us/step/run (torch.compile bmm step + whole CUDA graph [bf16])
+      vs VM tiles      3.462 us -> 0.65x
+      vs VM fused      2.903 us -> 0.78x
+      vs VM fused16    1.713 us -> 1.32x
+  torch fp16  best   2.138 us/step/run (torch.compile(vmap(grad)) + whole CUDA graph [fp16])
+      vs VM tiles      3.462 us -> 0.62x
+      vs VM fused      2.903 us -> 0.74x
+      vs VM fused16    1.713 us -> 1.25x
+  torch tf32  best   2.021 us/step/run (torch.compile(vmap(grad)) + whole CUDA graph [tf32])
+      vs VM tiles      3.462 us -> 0.58x
+      vs VM fused      2.903 us -> 0.70x
+      vs VM fused16    1.713 us -> 1.18x

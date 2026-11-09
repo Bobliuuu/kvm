@@ -359,6 +359,28 @@ def _(op, tc):
                     logits=lg, tgt=tgt, lse=lse, loss=loss, dlogits=out, r0=r0, r1=r1, V=lg.cols, ignore=-1, scale=op.attrs['grad_scale'])
 
 
+@lowers('mse_loss')
+def _(op, tc):
+    pred, tgt, loss, diff, neg, rowsq = (op.ins['pred'], op.ins['tgt'], *(op.outs[n] for n in ('loss', 'diff', 'neg', 'rowsq')))
+    for r0, r1, e0, e1 in _flat_blocks(pred, tc):          # diff = pred + (-1) * tgt
+        yield _task('scale_flat', [_rows(tgt, r0, r1)], [_rows(neg, r0, r1)], x=tgt, out=neg, alpha=-1.0, e0=e0, e1=e1)
+        yield _task('residual_add', [_rows(pred, r0, r1), _rows(neg, r0, r1)], [_rows(diff, r0, r1)], a=pred, b=neg, out=diff,
+                    e0=e0, e1=e1)
+    for r0, r1 in blocks(pred.rows, tc.rows):               # per-row sum of squares (idx absent: row r against row r)
+        yield _task('row_dot', [_rows(diff, r0, r1)], [_rows(rowsq, r0, r1)], a=diff, b=diff, idx=None, out=rowsq, r0=r0, r1=r1,
+                    d=pred.cols, acc=0, idx0=0)
+    yield _task('colsum', [_full(rowsq)], [_full(loss)], x=rowsq, out=loss, R=pred.rows, c0=0, c1=1, acc=0)
+    yield _task('scale_flat', [_full(loss)], [_full(loss)], x=loss, out=loss, alpha=1.0 / (pred.rows * pred.cols), e0=0, e1=1)
+
+
+@lowers('mse_bwd')
+def _(op, tc):
+    diff, out = op.ins['diff'], op.outs['out']
+    alpha = 2.0 * op.attrs['grad_scale'] / (diff.rows * diff.cols)
+    for r0, r1, e0, e1 in _flat_blocks(diff, tc):
+        yield _task('scale_flat', [_rows(diff, r0, r1)], [_rows(out, r0, r1)], x=diff, out=out, alpha=alpha, e0=e0, e1=e1)
+
+
 @lowers('argmax')
 def _(op, tc):
     lg, out = op.ins['logits'], op.outs['out']

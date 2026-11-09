@@ -195,6 +195,22 @@ class Builder:
         self.emit('ce_loss', {'logits': logits, 'tgt': tgt}, outs, grad_scale=grad_scale)
         return outs['loss']
 
+    def mse_loss(self, pred, tgt, grad_scale=1.0):
+        """Mean squared error over all elements (loss[0,0], a 1x1 tensor); tgt is an f32 tensor shaped like pred. Built only from
+        existing device ops (scale_flat, residual_add, row_dot, colsum). grad_scale multiplies the backward only, as for ce_loss."""
+        self._check(tgt.shape == pred.shape and tgt.dtype == 'f32' and pred.dtype == 'f32', 'mse_loss',
+                    'tgt must be an f32 tensor of the same shape as pred', pred, tgt)
+        outs = {'loss': self._out('loss', 1, 1), 'diff': self._out('diff', *pred.shape), 'neg': self._out('negtgt', *pred.shape),
+                'rowsq': self._out('rowsq', pred.rows, 1)}
+        self.emit('mse_loss', {'pred': pred, 'tgt': tgt}, outs, grad_scale=grad_scale)
+        return outs['loss']
+
+    def mse_bwd(self, fwd):
+        """d(mean loss)/d pred = grad_scale * 2 (pred - tgt) / numel."""
+        out = self._out('dpred', *fwd.ins['pred'].shape)
+        self.emit('mse_bwd', {'diff': fwd.outs['diff']}, {'out': out}, grad_scale=fwd.attrs['grad_scale'])
+        return out
+
     def argmax(self, logits, out=None):
         out = out or self._out('tok', logits.rows, 1, dtype='i32')
         self.emit('argmax', {'logits': logits}, {'out': out})

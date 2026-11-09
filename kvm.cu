@@ -80,9 +80,6 @@ __device__ __forceinline__ int ld_acquire(const int* p) {
 constexpr int KC = KKC, STG = KSTG, VPK = KC / 4, LDK = KC + 4, LDM = TILE + 4, SLOT = (TILE * LDK > KC * LDM ? TILE * LDK : KC * LDM), NV = TILE * KC / 4 / NT;
 constexpr size_t DSMEM = (size_t)STG * 2 * SLOT * sizeof(float);
 extern __shared__ __align__(128) float dsm[];
-__shared__ unsigned long long g_stamp[2];
-__device__ __forceinline__ unsigned long long gtime();
-__device__ bool g_prof_on = false;
 
 __device__ __forceinline__ void cp16(float* dst, const float* src) {
   unsigned d = (unsigned)__cvta_generic_to_shared(dst);
@@ -123,7 +120,6 @@ __device__ void gemm_acc(const Buf A, const Buf B, int m0, int n0, int K, float*
   for (int c = 0; c < nch; c++) {
     cp_wait_stg();
     __syncthreads();
-    if (c == 0 && threadIdx.x == 0 && g_prof_on) g_stamp[0] = gtime();
     int nx = c + STG - 1;
     if (nx < nch) { float* p = dsm + (nx % STG) * 2 * SLOT; load_chunk<TA, TB>(p, p + SLOT, A, B, m0, n0, nx * KC); }
     cp_commit();
@@ -150,7 +146,6 @@ __device__ void gemm_acc(const Buf A, const Buf B, int m0, int n0, int K, float*
   }
   cp_wait_stg(); asm volatile("cp.async.wait_all;" ::: "memory");
   __syncthreads();   // ring reads done before the next instruction reuses it
-  if (threadIdx.x == 0 && g_prof_on) g_stamp[1] = gtime();
 #pragma unroll
   for (int i = 0; i < FR; i++)
 #pragma unroll
@@ -211,9 +206,20 @@ __device__ void exec_instr(const Instr& in, float* sm, float* loss) {
 }
 
 // ---- the VM: persistent, dynamic tape claim, counter-based deps
+// -DKVM_TIMELINE records one TRec per instruction (globaltimer ns, %smid, block): claim -> deps satisfied -> done.
+// Compiled out by default: the default kernel is byte-for-byte the same code as before.
+struct TRec { unsigned long long t_claim, t_ready, t_done; unsigned sm, blk; };   // 32 bytes
+#ifdef KVM_TIMELINE
 __device__ __forceinline__ unsigned long long gtime() { unsigned long long t; asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(t)); return t; }
+__device__ __forceinline__ unsigned smid() { unsigned v; asm volatile("mov.u32 %0, %%smid;" : "=r"(v)); return v; }
+#define TL_ARG , TRec* tl
+#define TL_STAMP(x) unsigned long long x = threadIdx.x == 0 ? gtime() : 0
+#else
+#define TL_ARG
+#define TL_STAMP(x)
+#endif
 
-__global__ void __launch_bounds__(NT) vm_kernel(const Instr* tape, int n, int* head, int* ctr, float* loss, unsigned long long* prof) {   // n = steps * perStep
+__global__ void __launch_bounds__(NT) vm_kernel(const Instr* tape, int n, int* head, int* ctr, float* loss TL_ARG) {   // n = steps * perStep
   __shared__ __align__(128) float sm[TILE * TILE];
   __shared__ int s_idx;
   for (;;) {
@@ -223,23 +229,23 @@ __global__ void __launch_bounds__(NT) vm_kernel(const Instr* tape, int n, int* h
     if (idx >= n) return;
     int stp = idx / g_kp.perStep;
     Instr in = inst_at(tape, idx - stp * g_kp.perStep, stp);
-    unsigned long long t0 = 0, t1 = 0, t2 = 0;
-    if (prof) t0 = gtime();
+    TL_STAMP(t0);
     if (threadIdx.x == 0) {
       if (in.w0c >= 0) while (ld_acquire(ctr + in.w0c) < in.w0v) __nanosleep(32);
       if (in.w1c >= 0) while (ld_acquire(ctr + in.w1c) < in.w1v) __nanosleep(32);
       __threadfence();
     }
     __syncthreads();
-    if (prof) t1 = gtime();
+    TL_STAMP(t1);
     exec_instr(in, sm, loss);
     __syncthreads();
-    if (prof) t2 = gtime();
     if (threadIdx.x == 0) {
       __threadfence();   // cumulative over the block's writes via the bar.sync above
       if (in.s0 >= 0) atomicAdd(ctr + in.s0, 1);
       if (in.s1 >= 0) atomicAdd(ctr + in.s1, 1);
-      if (prof) { prof[idx * 6] = t0; prof[idx * 6 + 1] = t1; prof[idx * 6 + 2] = t2; prof[idx * 6 + 3] = gtime(); prof[idx * 6 + 4] = g_stamp[0]; prof[idx * 6 + 5] = g_stamp[1]; }
+#ifdef KVM_TIMELINE
+      tl[idx] = TRec{t0, t1, gtime(), smid(), blockIdx.x};
+#endif
     }
   }
 }
@@ -295,11 +301,13 @@ int main(int argc, char** argv) {
   if (argc > 1 && std::string(argv[1]) == "--selftest") return selftest() ? 2 : 0;
   int steps = 1000, B = 128, D = 128, Hd = 256, O = 64, NB = 4, ref_steps = 100, R = 1;
   float lr = 0.05f;
+  std::string tl_path;   // --timeline FILE (needs -DKVM_TIMELINE)
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];
     auto nx = [&]() { return atof(argv[++i]); };
     if (a == "--steps") steps = nx(); else if (a == "--B") B = nx(); else if (a == "--D") D = nx();
     else if (a == "--H") Hd = nx(); else if (a == "--O") O = nx(); else if (a == "--nb") NB = nx();
+    else if (a == "--timeline") tl_path = argv[++i];
     else if (a == "--runs") R = nx(); else if (a == "--lr") lr = nx(); else if (a == "--ref-steps") ref_steps = nx();
   }
   if (B % TILE || D % TILE || Hd % TILE || O % TILE || B % KC || D % KC || Hd % KC || O % KC) { fprintf(stderr, "dims must be multiples of max(TILE=%d, KC=%d)\n", TILE, KC); return 1; }
@@ -467,7 +475,12 @@ int main(int argc, char** argv) {
   { cudaStream_t cs; cudaStreamCreate(&cs);
     for (int r = 0; r < R; r++) { cudaGraph_t g; cudaStreamBeginCapture(cs, cudaStreamCaptureModeGlobal); launch_seq(cs, r, r + 1); CK(cudaStreamEndCapture(cs, &g)); CK(cudaGraphInstantiate(&xRun[r], g, 0)); } }
 
-  auto run_vm = [&]() { vm_kernel<<<grid, NT, DSMEM>>>(dtapeP, ntape, dhead, dctr, dloss, nullptr); };
+#ifdef KVM_TIMELINE
+  TRec* dtl; CK(cudaMalloc(&dtl, (size_t)ntape * sizeof(TRec))); CK(cudaMemset(dtl, 0, (size_t)ntape * sizeof(TRec)));
+  auto run_vm = [&]() { vm_kernel<<<grid, NT, DSMEM>>>(dtapeP, ntape, dhead, dctr, dloss, dtl); };
+#else
+  auto run_vm = [&]() { vm_kernel<<<grid, NT, DSMEM>>>(dtapeP, ntape, dhead, dctr, dloss); };
+#endif
   auto run_seq = [&]() { launch_seq(0, 0, R); };
   auto run_seqgraph = [&]() { for (int r = 0; r < R; r++) CK(cudaGraphLaunch(xRun[r], 0)); };
   auto run_batched = [&]() { CK(cudaGraphLaunch(xB, 0)); };
@@ -491,6 +504,24 @@ int main(int argc, char** argv) {
   printf("\nmax rel loss err vs cpu fp32 (runs 0 and %d, first %d steps, all modes): %.2e\n", R - 1, rs, e_ref);
   printf("max |dW| of VM vs each baseline, all runs: %.2e\n", e_mode);
   bool ok = e_ref < 2e-2 && e_mode < 1e-3 && dec;
+#ifndef KVM_TIMELINE
+  if (!tl_path.empty()) fprintf(stderr, "--timeline ignored: rebuild with -DKVM_TIMELINE\n");
+#else
+  if (ok && !tl_path.empty()) {   // records of the last timed VM run; phase/run are decoded from the tape layout
+    std::vector<TRec> rec(ntape); CK(cudaMemcpy(rec.data(), dtl, rec.size() * sizeof(TRec), cudaMemcpyDeviceToHost));
+    FILE* f = fopen(tl_path.c_str(), "w"); if (!f) { perror(tl_path.c_str()); return 1; }
+    const char* phn[NPH] = {"H1", "Y", "DH1", "DW2", "DW1"};
+    fprintf(f, "# kvm timeline: gpu=%s sms=%d occ=%d grid=%d tile=%d runs=%d steps=%d perStep=%d\n", prop.name, prop.multiProcessorCount, occ, grid, TILE, R, steps, perStep);
+    fprintf(f, "idx,step,run,op,sm,blk,t_claim,t_ready,t_done\n");
+    unsigned long long base = ~0ull; for (auto& q : rec) if (q.t_claim) base = std::min(base, q.t_claim);
+    for (int i = 0; i < ntape; i++) {
+      int tix = i % perStep, ph = 0; while (ph + 1 < NPH && tix >= offP[ph + 1]) ph++;
+      int run = (tix - offP[ph]) / nPR[ph];
+      fprintf(f, "%d,%d,%d,%s,%u,%u,%llu,%llu,%llu\n", i, i / perStep, run, phn[ph], rec[i].sm, rec[i].blk, rec[i].t_claim - base, rec[i].t_ready - base, rec[i].t_done - base);
+    }
+    fclose(f); printf("timeline: %d records -> %s\n", ntape, tl_path.c_str());
+  }
+#endif
   printf("%s\n", ok ? "PASS" : "FAIL");
   return ok ? 0 : 2;
 }

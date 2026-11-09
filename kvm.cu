@@ -30,7 +30,7 @@ using namespace nvcuda;
   fprintf(stderr, "CUDA error %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(e_)); exit(1);} } while (0)
 
 enum { OP_GEMM = 0, OP_SGD = 1 };
-enum { F_TA = 1, F_TB = 2, F_RELU = 4, F_MSE = 8, F_RELUMASK = 16, F_SGD = 32 };
+enum { F_TA = 1, F_TB = 2, F_RELU = 4, F_MSE = 8, F_RELUMASK = 16, F_SGD = 32, F_SGDSRC = 64 };   // F_SGDSRC: the SGD input is buffer aux, not C (out-of-place update)
 
 struct Buf { float* p; int ld; };
 __constant__ Buf g_buf[256];
@@ -46,7 +46,7 @@ struct Instr {                 // 80 bytes
   int loss_idx, xflags, pad1;   // xflags: 1/2 = w0/w1 wait on previous step, 4 = a is X(step%NB), 8 = aux is T(step%NB)
 };
 
-struct KP { int SC, NB, perStep; };   // SC = counters per step (all runs), NB = data batches, perStep = template length
+struct KP { int SC, NB, perStep, pstr; };   // pstr = buffer-id distance between the two parity copies of a double-buffered buffer   // SC = counters per step (all runs), NB = data batches, perStep = template length
 __constant__ KP g_kp;
 
 // Loop opcode: the tape stores ONE step as a template; step s instantiates it on the device.
@@ -59,6 +59,12 @@ __device__ __forceinline__ Instr inst_at(const Instr* tape, int t, int s) {
   if (in.s1 >= 0) in.s1 += s * g_kp.SC;
   if (xf & 4) in.a += s % g_kp.NB;
   if (xf & 8) in.aux += s % g_kp.NB;
+  // step-parity buffer selection (--overlap 2): copy (s&1) of a / b / c / aux, or copy ((s+1)&1) of c (out-of-place weight update)
+  if (xf & 16) in.a += (s & 1) * g_kp.pstr;
+  if (xf & 32) in.b += (s & 1) * g_kp.pstr;
+  if (xf & 64) in.c += (s & 1) * g_kp.pstr;
+  if (xf & 128) in.aux += (s & 1) * g_kp.pstr;
+  if (xf & 256) in.c += ((s + 1) & 1) * g_kp.pstr;
   in.loss_idx += s;
   return in;
 }
@@ -181,7 +187,7 @@ __device__ void exec_instr(const Instr& in, float* sm, float* loss) {
       gi[it] = (size_t)(in.m0 + r) * C.ld + in.n0 + c;
       xi[it] = (size_t)(in.m0 + r) * X.ld + in.n0 + c;
       if (f & (F_RELUMASK | F_MSE)) xa[it] = __ldcg(reinterpret_cast<const float4*>(X.p + xi[it]));
-      if (f & F_SGD) cu[it] = __ldcg(reinterpret_cast<const float4*>(C.p + gi[it]));
+      if (f & F_SGD) cu[it] = __ldcg(reinterpret_cast<const float4*>((f & F_SGDSRC) ? X.p + xi[it] : C.p + gi[it]));
     }
 #pragma unroll
     for (int it = 0; it < EPI; it++) {
@@ -736,7 +742,7 @@ static int selftest() {
 KVM_ENTRY(int argc, char** argv) {
   if (argc > 1 && std::string(argv[1]) == "--selftest") return selftest() ? 2 : 0;
   int steps = 1000, B = 128, D = 128, Hd = 256, O = 64, NB = 4, ref_steps = 100, R = 1;
-  float lr = 0.05f; int nreps = 5; std::string json_path, dump_dir, tl_path, prog = "tiles"; int tl_s0 = 0, tl_s1 = 4;
+  float lr = 0.05f; int nreps = 5; std::string json_path, dump_dir, tl_path, prog = "tiles"; int tl_s0 = 0, tl_s1 = 4, ovl = 0;
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];
     auto nx = [&]() { return atof(argv[++i]); };
@@ -745,9 +751,11 @@ KVM_ENTRY(int argc, char** argv) {
     else if (a == "--reps") nreps = nx(); else if (a == "--json") json_path = argv[++i]; else if (a == "--dump-data") dump_dir = argv[++i];
     else if (a == "--timeline") tl_path = argv[++i]; else if (a == "--tl-steps") { tl_s0 = nx(); tl_s1 = nx(); }
     else if (a == "--prog") prog = argv[++i];
+    else if (a == "--overlap") ovl = nx();
     else if (a == "--runs") R = nx(); else if (a == "--lr") lr = nx(); else if (a == "--ref-steps") ref_steps = nx();
   }
   const bool fp16 = prog == "fused16", fused = prog == "fused" || fp16;
+  if (ovl < 0 || ovl > 2 || (fused && ovl)) { fprintf(stderr, "--overlap 0|1|2 applies to --prog tiles only\n"); return 1; }
   if (!fused && prog != "tiles") { fprintf(stderr, "--prog tiles|fused|fused16\n"); return 1; }
   const size_t fsm = fp16 ? FSMEM16 : FSMEM;   // dynamic smem of the fused kernels
   if (fused && (B != FB || D != FD || Hd != FH || O != FO)) { fprintf(stderr, "--prog fused is compiled for B=%d D=%d H=%d O=%d (KHS=%d)\n", FB, FD, FH, FO, HS); return 1; }
@@ -803,13 +811,15 @@ KVM_ENTRY(int argc, char** argv) {
   // ---- device buffers: shared data X_k, T_k; per-run {W1, W2, H1, dY, dH1}
   auto idX = [&](int k) { return k; };
   auto idT = [&](int k) { return NB + k; };
-  auto idW1 = [&](int r) { return 2 * NB + 5 * r; };
-  auto idW2 = [&](int r) { return 2 * NB + 5 * r + 1; };
-  auto idH1 = [&](int r) { return 2 * NB + 5 * r + 2; };
-  auto idDY = [&](int r) { return 2 * NB + 5 * r + 3; };
-  auto idDH = [&](int r) { return 2 * NB + 5 * r + 4; };
-  auto idXh = [&](int k) { return 2 * NB + 5 * R + k; };   // fp16 copies of X (fused16 only)
-  int nbuf = 2 * NB + 5 * R + (fp16 ? NB : 0);
+  // per-run buffers {W1, W2, H1, dY, dH}; --overlap 2 adds the second parity copy of W2, H1, dY at +PSTR (ids 5..7 of the run)
+  const int PB = ovl >= 2 ? 8 : 5, PSTR = 4;
+  auto idW1 = [&](int r) { return 2 * NB + PB * r; };
+  auto idW2 = [&](int r) { return 2 * NB + PB * r + 1; };
+  auto idH1 = [&](int r) { return 2 * NB + PB * r + 2; };
+  auto idDY = [&](int r) { return 2 * NB + PB * r + 3; };
+  auto idDH = [&](int r) { return 2 * NB + PB * r + 4; };
+  auto idXh = [&](int k) { return 2 * NB + PB * R + k; };   // fp16 copies of X (fused16 only)
+  int nbuf = 2 * NB + PB * R + (fp16 ? NB : 0);
   if (nbuf > 256) { fprintf(stderr, "too many buffers\n"); return 1; }
   std::vector<Buf> hb(nbuf);
   auto dmalloc = [&](size_t n) { float* p; CK(cudaMalloc(&p, n * 4)); CK(cudaMemset(p, 0, n * 4)); return p; };
@@ -823,43 +833,63 @@ KVM_ENTRY(int argc, char** argv) {
   }
   for (int r = 0; r < R; r++) {
     hb[idW1(r)] = {dmalloc(D * Hd), Hd}; hb[idW2(r)] = {dmalloc(Hd * O), O};
-    hb[idH1(r)] = {dmalloc(B * Hd), Hd}; hb[idDY(r)] = {dmalloc(fused ? (size_t)2 * NS * B * O : (size_t)B * O), O}; hb[idDH(r)] = {dmalloc(B * Hd), Hd};   // fused: DY holds the partial-y ring [parity][slice][B x O]
+    hb[idH1(r)] = {dmalloc(B * Hd), Hd}; hb[idDY(r)] = {dmalloc(fused ? (size_t)2 * NS * B * O : (size_t)B * O), O}; hb[idDH(r)] = {dmalloc(B * Hd), Hd};
+    if (ovl >= 2) { hb[idW2(r) + PSTR] = {dmalloc(Hd * O), O}; hb[idH1(r) + PSTR] = {dmalloc(B * Hd), Hd}; hb[idDY(r) + PSTR] = {dmalloc(B * O), O}; }   // fused: DY holds the partial-y ring [parity][slice][B x O]
   }
   CK(cudaMemcpyToSymbol(g_buf, hb.data(), nbuf * sizeof(Buf)));
 
   // ---- tape builder. Per step and run: H1 -> Y -> DH1 -> DW2(+SGD) -> DW1(+SGD); counters give fine-grained deps.
   const int NPH = fused ? 2 : 5;
-  enum { P_H1, P_Y, P_DH1, P_DW2, P_DW1 };
-  int CPS = 5 * (nRB + 1);
+  // counter spaces ("phases"): the five instruction groups, plus per-COLUMN counters that a consumer needing only one column waits on
+  enum { P_H1, P_Y, P_DH1, P_DW2, P_DW1, P_DW2C, P_YC, P_DH1C, NSPACE };
+  const int PIT = std::max(std::max(nRB, nHC), std::max(nOC, nDC));   // slots per space = PIT + 1 (last = aggregate)
+  int CPS = NSPACE * (PIT + 1);
   int SC = fused ? R : R * CPS;   // counters per step (fused: one "all partial y written" counter per run)
-  auto ctr = [&](int r, int s, int ph, int rb) { return (s * R + r) * CPS + ph * (nRB + 1) + (rb < 0 ? nRB : rb); };
+  auto ctr = [&](int r, int s, int ph, int idx) { return (s * R + r) * CPS + ph * (PIT + 1) + (idx < 0 ? PIT : idx); };
   auto mk = [&]() { Instr i; memset(&i, 0, sizeof i); i.aux = -1; i.w0c = i.w1c = i.s0 = i.s1 = -1; return i; };
   // Template for step 0 (waits on the previous step are flagged and dropped at s==0 on the device).
+  //   --overlap 0: every consumer waits for the whole producer phase (aggregate counters; the original tape).
+  //   --overlap 1: every consumer waits only for the producer tiles it reads (per-row / per-column counters); same buffers, so the
+  //                write-after-read hazards on H1, dY and W2 stay as waits.
+  //   --overlap 2: 1 + step-parity double buffers for H1, dY and W2 (W2 updated out of place), which removes those write-after-read
+  //                waits: DW2 no longer waits for DH1, H1(s+1) no longer waits for DW2(s). The arithmetic of every tile is unchanged.
   auto emit_phase = [&](std::vector<Instr>& tape, int r, int ph) {
     const int s = 0; float rlr = lrs[r];
     if (ph == P_H1) for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nHC; cn++) {
       Instr i = mk(); i.op = OP_GEMM; i.flags = F_RELU; i.a = idX(0); i.b = idW1(r); i.c = idH1(r); i.m0 = rb * TILE; i.n0 = cn * TILE; i.K = D; i.xflags = 4 | 1 | 2;
-      i.w0c = ctr(r, s, P_DW1, -1); i.w0v = nDC * nHC; i.w1c = ctr(r, s, P_DW2, -1); i.w1v = nHC * nOC;
+      if (ovl == 0) { i.w0c = ctr(r, s, P_DW1, -1); i.w0v = nDC * nHC; i.w1c = ctr(r, s, P_DW2, -1); i.w1v = nHC * nOC; }
+      else { i.w0c = ctr(r, s, P_DW1, cn); i.w0v = nDC; if (ovl == 1) { i.w1c = ctr(r, s, P_DW2, cn); i.w1v = nOC; } }   // W1 column cn; (ovl 1) H1 column cn read by DW2 row cn
+      if (ovl >= 2) { i.xflags = 4 | 1 | 64; i.c = idH1(r); }                                                           // c = H1[s&1]; no WAR wait
       i.s0 = ctr(r, s, P_H1, rb); i.s1 = ctr(r, s, P_H1, -1); tape.push_back(i);
     }
     if (ph == P_Y) for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nOC; cn++) {
       Instr i = mk(); i.op = OP_GEMM; i.flags = F_MSE; i.a = idH1(r); i.b = idW2(r); i.c = idDY(r); i.aux = idT(0); i.m0 = rb * TILE; i.n0 = cn * TILE; i.K = Hd; i.xflags = 8 | 2;
       i.scale = 2.f / (B * O); i.loss_idx = r * steps;
-      i.w0c = ctr(r, s, P_H1, rb); i.w0v = nHC; i.w1c = ctr(r, s, P_DW2, -1); i.w1v = nHC * nOC;
-      i.s0 = ctr(r, s, P_Y, rb); i.s1 = ctr(r, s, P_Y, -1); tape.push_back(i);
+      i.w0c = ctr(r, s, P_H1, rb); i.w0v = nHC;
+      if (ovl == 0) { i.w1c = ctr(r, s, P_DW2, -1); i.w1v = nHC * nOC; } else { i.w1c = ctr(r, s, P_DW2C, cn); i.w1v = nHC; }   // W2 column cn of the last step
+      if (ovl >= 2) i.xflags = 8 | 2 | 16 | 32 | 64;                                                                      // H1[s&1], W2[s&1], dY[s&1]
+      i.s0 = ctr(r, s, P_Y, rb); i.s1 = ovl == 0 ? ctr(r, s, P_Y, -1) : ctr(r, s, P_YC, cn); tape.push_back(i);
     }
     if (ph == P_DH1) for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nHC; cn++) {
       Instr i = mk(); i.op = OP_GEMM; i.flags = F_TB | F_RELUMASK; i.a = idDY(r); i.b = idW2(r); i.c = idDH(r); i.aux = idH1(r); i.m0 = rb * TILE; i.n0 = cn * TILE; i.K = O;
-      i.w0c = ctr(r, s, P_Y, rb); i.w0v = nOC; i.s1 = ctr(r, s, P_DH1, -1); tape.push_back(i);
+      i.w0c = ctr(r, s, P_Y, rb); i.w0v = nOC;
+      if (ovl >= 2) i.xflags = 16 | 32 | 128;                                                                             // dY[s&1], W2[s&1], H1[s&1]
+      i.s0 = ovl == 0 ? -1 : ctr(r, s, P_DH1C, cn); i.s1 = ctr(r, s, P_DH1, -1); tape.push_back(i);
     }
-    if (ph == P_DW2) for (int m = 0; m < nHC; m++) for (int n = 0; n < nOC; n++) {   // W2 -= lr H1^T dY (after all dH1 tiles read W2)
+    if (ph == P_DW2) for (int m = 0; m < nHC; m++) for (int n = 0; n < nOC; n++) {   // W2 -= lr H1^T dY
       Instr i = mk(); i.op = OP_GEMM; i.flags = F_TA | F_SGD; i.a = idH1(r); i.b = idDY(r); i.c = idW2(r); i.m0 = m * TILE; i.n0 = n * TILE; i.K = B; i.scale = rlr;
-      i.w0c = ctr(r, s, P_Y, -1); i.w0v = nRB * nOC; i.w1c = ctr(r, s, P_DH1, -1); i.w1v = nRB * nHC;
-      i.s1 = ctr(r, s, P_DW2, -1); tape.push_back(i);
+      if (ovl == 0) { i.w0c = ctr(r, s, P_Y, -1); i.w0v = nRB * nOC; i.w1c = ctr(r, s, P_DH1, -1); i.w1v = nRB * nHC; i.s1 = ctr(r, s, P_DW2, -1); }
+      else if (ovl == 1) { i.w0c = ctr(r, s, P_YC, n); i.w0v = nRB; i.w1c = ctr(r, s, P_DH1C, m); i.w1v = nRB; i.s0 = ctr(r, s, P_DW2, m); i.s1 = ctr(r, s, P_DW2C, n); }   // WAR: dH1 tiles that read W2 rows m
+      else {   // out of place: reads W2[s&1], writes W2[(s+1)&1]: nothing reads the target, so no wait for DH1
+        i.flags |= F_SGDSRC; i.aux = idW2(r); i.xflags = 16 | 32 | 128 | 256;
+        i.w0c = ctr(r, s, P_YC, n); i.w0v = nRB; i.s0 = ctr(r, s, P_DW2, m); i.s1 = ctr(r, s, P_DW2C, n); }
+      tape.push_back(i);
     }
     if (ph == P_DW1) for (int m = 0; m < nDC; m++) for (int n = 0; n < nHC; n++) {   // W1 -= lr X^T dH1
       Instr i = mk(); i.op = OP_GEMM; i.flags = F_TA | F_SGD; i.a = idX(0); i.b = idDH(r); i.c = idW1(r); i.m0 = m * TILE; i.n0 = n * TILE; i.K = B; i.scale = rlr; i.xflags = 4;
-      i.w0c = ctr(r, s, P_DH1, -1); i.w0v = nRB * nHC; i.s1 = ctr(r, s, P_DW1, -1); tape.push_back(i);
+      if (ovl == 0) { i.w0c = ctr(r, s, P_DH1, -1); i.w0v = nRB * nHC; i.s1 = ctr(r, s, P_DW1, -1); }
+      else { i.w0c = ctr(r, s, P_DH1C, n); i.w0v = nRB; i.s0 = ctr(r, s, P_DW1, n); }
+      tape.push_back(i);
     }
   };
   // fused program: FWD / BWD per (run, hidden slice); counter r counts the slices whose partial y of the step is written
@@ -921,7 +951,7 @@ KVM_ENTRY(int argc, char** argv) {
     CK(cudaMalloc(&dqoff, grid * 4)); CK(cudaMemcpy(dqoff, qoff.data(), grid * 4, cudaMemcpyHostToDevice));
     CK(cudaMalloc(&dqlen, grid * 4)); CK(cudaMemcpy(dqlen, qlen.data(), grid * 4, cudaMemcpyHostToDevice));
   }
-  { KP kp{SC, NB, perStep}; CK(cudaMemcpyToSymbol(g_kp, &kp, sizeof kp)); }
+  { KP kp{SC, NB, perStep, PSTR}; CK(cudaMemcpyToSymbol(g_kp, &kp, sizeof kp)); }
   CK(cudaMalloc(&dhead, 4)); CK(cudaMalloc(&dctr, (size_t)nctr * 4)); CK(cudaMalloc(&dloss, (size_t)R * steps * 4));
   printf("%s  SMs=%d occ=%d  vm grid=%d\n", prop.name, prop.multiProcessorCount, occ, grid);
 
@@ -944,7 +974,7 @@ KVM_ENTRY(int argc, char** argv) {
     Out o; o.L.resize((size_t)R * steps);
     CK(cudaMemcpy(o.L.data(), dloss, o.L.size() * 4, cudaMemcpyDeviceToHost));
     for (int r = 0; r < R; r++) { std::vector<float> a(W1.size()), b(W2.size());
-      CK(cudaMemcpy(a.data(), hb[idW1(r)].p, a.size() * 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(b.data(), hb[idW2(r)].p, b.size() * 4, cudaMemcpyDeviceToHost));
+      CK(cudaMemcpy(a.data(), hb[idW1(r)].p, a.size() * 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(b.data(), hb[idW2(r) + (ovl >= 2 ? (steps & 1) * PSTR : 0)].p, b.size() * 4, cudaMemcpyDeviceToHost));   // overlap 2: the last update landed in W2[steps&1]
       o.w.insert(o.w.end(), a.begin(), a.end()); o.w.insert(o.w.end(), b.begin(), b.end()); }
     return o;
   };
@@ -985,13 +1015,15 @@ KVM_ENTRY(int argc, char** argv) {
   auto relerr = [&](const float* a, const std::vector<float>& ref) { double m = 0; for (int i = 0; i < rs; i++) m = std::max(m, (double)fabs(a[i] - ref[i]) / (fabs(ref[i]) + 1e-6)); return m; };
   double e_ref = 0; for (int i = 0; i < 4; i++) { e_ref = std::max(e_ref, relerr(&o[i].L[0], ref0)); e_ref = std::max(e_ref, relerr(&o[i].L[(size_t)(R - 1) * steps], refN)); }
   // weights must be BITWISE identical in all four modes (same tape, same per-tile reduction order): exact equality, not a tolerance
-  size_t n_diff = 0; double e_mode = 0;
+  size_t n_diff = 0; double e_mode = 0; unsigned long long whash = 0;
   for (int i = 0; i < 3; i++) for (size_t j = 0; j < o[3].w.size(); j++)
     if (memcmp(&o[3].w[j], &o[i].w[j], 4) != 0) { n_diff++; e_mode = std::max(e_mode, (double)fabs(o[3].w[j] - o[i].w[j])); }
   bool dec = true; for (int r = 0; r < R; r++) dec = dec && o[3].L[(size_t)r * steps + steps - 1] < o[3].L[(size_t)r * steps];
   printf("\nloss run0: %.5f -> %.5f (lr %.4f)", o[3].L[0], o[3].L[steps - 1], lrs[0]);
   if (R > 1) printf("   run%d: %.5f -> %.5f (lr %.4f)", R - 1, o[3].L[(size_t)(R - 1) * steps], o[3].L[(size_t)(R - 1) * steps + steps - 1], lrs[R - 1]);
   printf("\nmax rel loss err vs cpu fp32 (runs 0 and %d, first %d steps, all modes): %.2e\n", R - 1, rs, e_ref);
+  { unsigned long long h = 1469598103934665603ull; const unsigned char* q = (const unsigned char*)o[3].w.data(); for (size_t j = 0; j < o[3].w.size() * 4; j++) { h ^= q[j]; h *= 1099511628211ull; } whash = h; }
+  printf("final weights FNV-1a (VM, all runs): %016llx   [overlap=%d]\n", whash, ovl);
   printf("weights VM vs each baseline, all runs: %zu of %zu elements differ bitwise (max |dW| %.2e)\n", n_diff, 3 * o[3].w.size(), e_mode);
   bool ok = e_ref < 2e-2 && n_diff == 0 && dec;
 
@@ -1035,7 +1067,7 @@ KVM_ENTRY(int argc, char** argv) {
 
   if (!json_path.empty()) {
     FILE* fp = fopen(json_path.c_str(), "w");
-    fprintf(fp, "{\"gpu\":\"%s\",\"sms\":%d,\"occ\":%d,\"grid\":%d,\"B\":%d,\"D\":%d,\"H\":%d,\"O\":%d,\"prog\":\"%s\",\"runs\":%d,\"steps\":%d,\"tile\":%d,\"kc\":%d,\"stg\":%d,\"reps\":%d,\n \"modes\":[", prop.name, prop.multiProcessorCount, occ, grid, B, D, Hd, O, prog.c_str(), R, steps, TILE, KC, STG, nreps);
+    fprintf(fp, "{\"gpu\":\"%s\",\"sms\":%d,\"occ\":%d,\"grid\":%d,\"B\":%d,\"D\":%d,\"H\":%d,\"O\":%d,\"prog\":\"%s\",\"overlap\":%d,\"weights_fnv\":\"%016llx\",\"runs\":%d,\"steps\":%d,\"tile\":%d,\"kc\":%d,\"stg\":%d,\"reps\":%d,\n \"modes\":[", prop.name, prop.multiProcessorCount, occ, grid, B, D, Hd, O, prog.c_str(), ovl, whash, R, steps, TILE, KC, STG, nreps);
     for (int i = 0; i < 4; i++) { fprintf(fp, "%s{\"name\":\"%s\",\"best_ms\":%.4f,\"median_ms\":%.4f,\"max_ms\":%.4f,\"us_per_step_run\":%.4f}", i ? "," : "", nm[i], t[i], tmed[i], tmax[i], t[i] * 1000 / tot); }
     fprintf(fp, "],\n \"weights_bitwise_differ\":%zu,\"max_rel_loss_err\":%.3e,\"pass\":%s,\"profiled_ms\":%.4f}\n", n_diff, e_ref, ok ? "true" : "false", t_prof);
     fclose(fp);

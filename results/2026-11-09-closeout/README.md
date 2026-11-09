@@ -16,7 +16,7 @@ and `results/coopt-sh` were merged into it; `run/demo162` and `perf/combined` we
 | 3c | Executor faster than the strongest conventional execution | `2026-11-06-gpt162-vs-torch`, `2026-11-06-vs-pytorch`, `2026-11-06-a100-combined` | missing (negative) | measured and **lost**: 6-12x slower than torch at 162M, 3.2-12.6x slower than a CUDA graph at tiny/small. Goal 3 does not hold for the executor. |
 | 4a | Timeline from the VM's own per-instruction timestamps (`kvm.cu`) | `2026-11-06-a100-kvm-cu/{s1,f16a,f16b}` (`timeline_*.csv`, `.png`; `%globaltimer` + `%smid`) | pass | caveat: 1 us timer ticks; profiled run is slower |
 | 4b | Timeline of the executor drawn like theirs (rows = SMs, op-class colours) | `assets/timeline-*.png`; `2026-11-06-demo-tiny`, `2026-11-06-demo-large-trace`, `demo-large-bf16s` in `a100-combined` | pass | 106 SM rows, all tasks drawn, from `trace.csv` |
-| 5a | Step overlapping the next | `2026-11-07-a100-coopt-sh/pbt-overlap`, `2026-11-09-closeout/overlap` | see section "Goal 5" below | |
+| 5a | Step overlapping the next | `2026-11-09-closeout/overlap`, `2026-11-07-a100-coopt-sh/pbt-overlap` | partial | executor window 40 vs 1: 1.41x (85.4 -> 60.5 ms for 40 steps), confounded with per-step host admission; isolated overlap inside kvm.cu: none (0.8-1.0x) |
 | 5b | Many runs filling one GPU | `2026-11-06-a100-kvm-cu`, `2026-11-07-a100-coopt-sh` | partial | works (R=32 fused in one launch) but a batched graph also fills the GPU: the VM is 1.13x over it in TF32 and loses to compiled bmm; the in-kernel successive-halving / PBT results are the co-opt a graph cannot do |
 | 5c | Different workloads sharing the GPU | `2026-11-06-demo-tiny`, `2026-11-06-demo-large-trace`, `2026-11-04-a100-sched-integrated`, `2026-11-04-a100-adaptive`, `2026-11-03-a100-sched`, `2026-11-03-a100-doom` | pass | train + serve + real Doom in one launch, 35 Hz held, Doom frame-exact; honest negatives on tail latency (FIFO) and adaptive control |
 
@@ -26,7 +26,7 @@ and `results/coopt-sh` were merged into it; `run/demo162` and `perf/combined` we
 rung boundaries rank runs on device and retire them (`alive[r]`), later tiles skip. Small-model data-dependent retire 2.0x vs the best valid torch graph baseline,
 big model 0.88x (loses); in-kernel PBT with held-out eval verified by forced replay. This is the "many runs filling one GPU, with data-dependent control" result.
 
-**Step overlap**: see `results/2026-11-09-closeout/overlap/README.md` (if present) and the negative `pbt-overlap` result: per-column optimizer-to-forward overlap in
+**Step overlap**: measured in `results/2026-11-09-closeout/overlap/README.md` (1.41x, confounded) and the negative `pbt-overlap` result: per-column optimizer-to-forward overlap in
 `kvm.cu` is correct but 0.8-1.0x of no-overlap, because single-buffered H1/dY keep the WAR on DW2 on the critical path.
 
 ## Minimum remaining work to call KVM finished

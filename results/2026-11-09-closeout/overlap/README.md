@@ -1,6 +1,6 @@
 # Step overlap on the executor: window 40 (one admission, 40 steps) vs window 1 (40 admissions), A100
 
-Goal 5a. gpt_tiny, 40 AdamW steps, 1xTF32-free exact (`--precise`) tiling a100, one serve request, no Doom (`--game-frames 0`), `demo/kvm_run` (built Nov 6 from
+Goal 5a. gpt_tiny, 40 AdamW steps, exact 3xTF32 (`--precise`), tiling a100, one serve request, no Doom (`--game-frames 0`), `demo/kvm_run` (built Nov 6 from
 the integrated tree, before this branch's merges), one `~/.gpu.lock` hold per rep, 3 reps interleaved, A100-SXM4-40GB. Manifests: `manifest_w1.json`, `manifest_w40.json`
 (generated with `python3 -m kvmfe.demo --all --train-steps 40 --window W --serve-every 1000 --serve-policy exact --game-frames 0 --game-fb-slots 0 --tiling a100 --max-bundles 2 --precise`).
 Both runs: 4193 tasks done, err_code 0, `ok` true (`run_*.json`). No loss check was run (no CPU golden here); the claim is timing only.

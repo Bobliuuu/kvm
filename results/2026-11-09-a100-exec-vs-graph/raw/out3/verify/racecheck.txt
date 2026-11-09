@@ -1,0 +1,7 @@
+========= COMPUTE-SANITIZER
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+== smoke
+== smoke: PASS (10.2s, 0 new failures)
+63 checks, 0 failed, 0 suites failed
+PASS
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)

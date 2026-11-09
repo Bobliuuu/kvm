@@ -1,0 +1,2 @@
+graph: best 430.2 us/step  median 430.3  worst 430.9  loss 4.1460 -> 1.2453  (setup 1s)
+compile_graph: best 201.5 us/step  median 201.7  worst 201.9  loss 4.1461 -> 1.2461  (setup 2s)

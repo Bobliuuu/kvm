@@ -1,6 +1,6 @@
 #!/bin/bash
 # one GPU-lock hold: interleaved rounds over overlap levels, two tile configs
-cd ~/stepov; mkdir -p out
+cd $WORK; mkdir -p out
 nvidia-smi --query-gpu=name,driver_version,clocks.sm --format=csv > out/env.txt
 nvcc --version | tail -2 >> out/env.txt
 for round in 1 2 3; do

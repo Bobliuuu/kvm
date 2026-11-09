@@ -1,6 +1,6 @@
 #!/bin/bash
-cd ~/stepov/exec; mkdir -p out
-KR=~/kvm-demo-scratch/demo/kvm_run
+cd $WORK/exec; mkdir -p out
+KR=$KVM_RUN
 echo "$(sha256sum $KR | cut -c1-16) kvm_run" > out/env.txt; nvidia-smi --query-gpu=name,driver_version --format=csv >> out/env.txt
 for rep in 1 2 3 4 5; do
   for v in w40 w40bar w1; do

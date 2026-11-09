@@ -18,7 +18,7 @@ import json
 import logging
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from . import log
@@ -167,17 +167,47 @@ def plan_train(cfg, tiling, args):
     n, s = args.train_steps, args.window or args.train_steps
     if s > n:
         raise FrontendError(f'--window {s} exceeds --train-steps {n}')
+    return plan_windows(lambda start, steps, total: compile_training(cfg, train_config(args, steps, total, start), tiling, args.reuse, args.gap),
+                        n, s, args.precise)
+
+
+def plan_windows(compile_window, n, s, precise):
+    """Training of n steps cut into windows of s steps. compile_window(start, steps, total) -> pipeline.Compiled for one window.
+    Returns (workloads, admissions, segs): a window of s steps is one template admitted n/s times, the remainder its own 'train_tail'."""
+    if not 1 <= s <= n:
+        raise FrontendError(f'window {s} must be between 1 and the number of training steps {n}')
     segs = [(a, min(s, n - a)) for a in range(0, n, s)]
     workloads, admissions = {}, []
     for i, (start, steps) in enumerate(segs):
         key = 'train' if steps == s else 'train_tail'
         if key not in workloads:
-            c = compile_training(cfg, train_config(args, steps, n, start), tiling, args.reuse, args.gap)
-            workloads[key] = Workload(key, 'train', make_precise(c.spec) if args.precise else c.spec, c.low.data_files, len(c.low.tasks), c.low.edges)
+            c = compile_window(start, steps, n)
+            workloads[key] = Workload(key, 'train', make_precise(c.spec) if precise else c.spec, c.low.data_files, len(c.low.tasks), c.low.edges)
         admissions.append(dict(name=f'train_w{i}', workload=key, steps=[start, start + steps],
                                after_bundles=[f'train_w{i - 1}'] if i else [], when=[], at_us=0 if i == 0 else None,
                                base_versions={'weights': weights_version(start)}, publishes={'weights': 2 * steps}))
     return workloads, admissions, segs
+
+
+def write_training_demo(out, module, *, loss, data, steps, optimizer=None, window=None, tiling='a100', reuse='step', gap=0, precise=False,
+                        max_bundles=6, tc: TrainConfig | None = None, seed=0, name=None):
+    """Compile ANY traced module (see generic.py) into a MANIFEST demo directory the host runner (demo/kvm_run) executes with no
+    model-specific code: training only, `steps` optimizer steps in windows of `window` (default: one window). The per-step loss is
+    the buffer `loss.<k>` of window-local step k. Returns the manifest dict."""
+    root, til = Path(out), Tiling.preset(tiling) if isinstance(tiling, str) else tiling
+    root.mkdir(parents=True, exist_ok=True)
+    base = tc or TrainConfig()
+    workloads, admissions, segs = plan_windows(
+        lambda start, n, total: compile_training(module, replace(base, steps=n, total_steps=total, first_step=start), til, reuse, gap,
+                                                 loss=loss, data=data, optimizer=optimizer, seed=seed),
+        steps, window or steps, precise)
+    notes = [f'generic module {name or getattr(module, "name", type(module).__name__)}: loss {type(loss).__name__}, data '
+             f'{type(data).__name__}, optimizer {(optimizer or base.optim).kind}; tiling {tiling}; {steps} steps in {len(segs)} window(s)']
+    for w in workloads.values():
+        write_workload(root, w)
+    m = build_manifest(root, workloads, admissions, max_bundles, notes)
+    log.info('generic demo: %s', {n: (w.tasks, w.edges) for n, w in workloads.items()})
+    return m
 
 
 def main(argv=None):

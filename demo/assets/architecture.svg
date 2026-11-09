@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 470" font-family="system-ui,Helvetica,Arial,sans-serif" font-size="13">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#444"/></marker></defs>
+<rect width="960" height="470" fill="#ffffff"/>
+<g stroke="#444" stroke-width="1.4" fill="none" marker-end="url(#a)">
+<path d="M150 98V128"/><path d="M150 188V218"/><path d="M290 258H330"/><path d="M500 118V150"/><path d="M180 330H330" stroke-dasharray="4 3"/></g>
+<text x="20" y="24" font-weight="bold" font-size="15">KVM: model in, task DAG out, one persistent kernel runs it</text>
+<g stroke="#222" stroke-width="1.2">
+<rect x="20" y="40" width="260" height="58" rx="6" fill="#eaf3fb"/>
+<rect x="20" y="130" width="260" height="58" rx="6" fill="#eaf3fb"/>
+<rect x="20" y="220" width="270" height="76" rx="6" fill="#eaf3fb"/>
+<rect x="330" y="40" width="610" height="78" rx="6" fill="#fff4dc"/>
+<rect x="330" y="152" width="610" height="196" rx="6" fill="#e3f6ee"/>
+<rect x="330" y="364" width="610" height="84" rx="6" fill="#f4f4f4" stroke-dasharray="5 3"/>
+<rect x="20" y="320" width="150" height="58" rx="6" fill="#f4f4f4" stroke-dasharray="5 3"/>
+</g>
+<g>
+<text x="32" y="62" font-weight="bold">Frontend (frontend/kvmfe)</text><text x="32" y="80">GPT, Llama/GQA, MoE, MLP, ViT: autodiff,</text><text x="32" y="94">tiling, fusion, remat -> workload JSON</text>
+<text x="32" y="152" font-weight="bold">Compiler (runtime/)</text><text x="32" y="170">ABI v2 bundle: 64-byte tasks, args,</text><text x="32" y="184">edges, weight versions, CPU golden</text>
+<text x="32" y="242" font-weight="bold">Host runner (demo/kvm_run)</text><text x="32" y="260">MANIFEST.json: training windows, serve</text><text x="32" y="274">requests, Doom ticks; admits them in</text><text x="32" y="288">order, reads the trace back</text>
+<text x="342" y="62" font-weight="bold">Admission ring + scheduler classes (include/kvm_sched.*)</text>
+<text x="342" y="82">per-class queues: weights, reservations, EDF, priority inheritance;</text>
+<text x="342" y="98">host controller (kvm_adapt.h). One admission FIFO ~0.5M tasks/s is the tail-latency limit.</text>
+<text x="342" y="174" font-weight="bold">kvm_exec.cu: ONE persistent kernel, grid = all 108 SMs of an A100</text>
+<text x="342" y="196">every block loops: pop ready task, run its operator body, publish counters / weight version</text>
+<text x="342" y="214">slot recycling (2.1M tasks via 65,536 slots), version waits, per-task %smid/%globaltimer trace</text>
+</g>
+<g stroke="#222" stroke-width="1">
+<rect x="345" y="232" width="170" height="96" rx="5" fill="#cfe3f5"/><rect x="525" y="232" width="190" height="96" rx="5" fill="#fbe5b0"/><rect x="725" y="232" width="200" height="96" rx="5" fill="#bfe8d6"/>
+</g>
+<g>
+<text x="355" y="252" font-weight="bold">class: train</text><text x="355" y="270">GPT fwd / loss / bwd /</text><text x="355" y="285">AdamW in windows;</text><text x="355" y="300">publishes weights v(n)</text>
+<text x="535" y="252" font-weight="bold">class: serve</text><text x="535" y="270">decode requests read</text><text x="535" y="285">the weights version that</text><text x="535" y="300">was current at admission</text>
+<text x="735" y="252" font-weight="bold">class: game</text><text x="735" y="270">real Doom (doomgeneric</text><text x="735" y="285">compiled for the device),</text><text x="735" y="300">one tick per frame; bytes =</text><text x="735" y="315">CPU engine's bytes</text>
+<text x="342" y="384" font-weight="bold">Operator packs (include/kvm_ops*.def + CPU references runtime/ref_*.py)</text>
+<text x="342" y="404">core 0-31, GPT 32-63, comm 64-95, extra 96-121, Doom: hand-written CUDA;</text>
+<text x="342" y="420">matmul 0.26-0.51x cuBLAS, attention 15-30% below torch fp32 SDPA.</text>
+<text x="342" y="436" fill="#a00">Code only: dist/ never ran on 2+ GPUs; 162M GPT never ran on the executor.</text>
+<text x="32" y="342" font-weight="bold">dist/ (code only)</text><text x="32" y="360">multi-GPU / multi-node, no NCCL</text>
+</g>
+</svg>

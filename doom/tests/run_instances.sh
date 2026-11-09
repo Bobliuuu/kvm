@@ -9,7 +9,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; FR="${1:-300}"; MAXN="${2:-8}"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"; LOGDIR="$ROOT/logs/$TS-doominst"; mkdir -p "$LOGDIR"
 SSH="ssh -o StrictHostKeyChecking=no -o BatchMode=yes"; REMOTE="${KVM_REMOTE:-kvm-adaptive-doom-scratch}"
 rsync -az -e "$SSH" --delete --include 'include/***' --include 'runtime/***' --include 'doom/' --include 'doom/*.py' --include 'doom/*.cu' --include 'doom/*.sh' --include 'doom/glue/***' --include 'doom/player/***' --include 'doom/tests/***' --include 'kvm_exec.cu' --exclude '*' "$ROOT/" "$KVM_HOST:$REMOTE/"
-$SSH "$KVM_HOST" "FR=$FR MAXN=$MAXN REMOTE=$REMOTE bash -s" <<'REMOTE_SCRIPT' 2>&1 | tee "$LOGDIR/run.log"
+$SSH "$KVM_HOST" "KVM_NO_LOCK=${KVM_NO_LOCK:-} FR=$FR MAXN=$MAXN REMOTE=$REMOTE bash -s" <<'REMOTE_SCRIPT' 2>&1 | tee "$LOGDIR/run.log"
 set -euo pipefail
 cd ~/$REMOTE; ln -sfn ~/kvm-doom-scratch/doom/third_party doom/third_party
 NVCC=$(ls /usr/local/cuda*/bin/nvcc | tail -1); export NVCC
@@ -49,6 +49,7 @@ python3 runtime/compile_workload.py $OUT/mc.json $OUT/mc.bundle --allow-opaque 2
 compute-sanitizer --tool memcheck --error-exitcode 9 $BUILD/doom_exec_n2 $OUT/mc.bundle --wad doom/third_party/doom1.wad --out $OUT/mc --timeout-s 300 2>&1 | grep -E "ERROR SUMMARY|Error|OK:|FAIL" | head
 echo "sanitizer exit: \${PIPESTATUS[0]}"
 HOLD
-flock -w 900 $HOME/.gpu.lock timeout 3000 bash $OUT/hold.sh 2>&1 || echo "run failed"
+FLK="flock -w 900 $HOME/.gpu.lock"; [ -z "${KVM_NO_LOCK:-}" ] || FLK=""   # KVM_NO_LOCK=1: an outer hold exists
+$FLK timeout 3000 bash $OUT/hold.sh 2>&1 || echo "run failed"
 REMOTE_SCRIPT
 echo "log: $LOGDIR/run.log"

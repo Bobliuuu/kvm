@@ -10,7 +10,7 @@ ROOT="$(cd "$DOOM_DIR/.." && pwd)"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"; LOGDIR="$ROOT/logs/$TS-doomtest"; mkdir -p "$LOGDIR"
 info "logs: $LOGDIR"
 rsync -az --delete --exclude .git --exclude 'doom/build' --exclude 'doom/third_party' --exclude logs --exclude 'doom-gpu-v1-ref' "$ROOT/" "$KVM_HOST:kvm-doom-scratch/"
-ssh "$KVM_HOST" "FRAMES=$FRAMES SAN='${SANITIZE:-}' bash -s" <<'REMOTE' 2>&1 | tee "$LOGDIR/run.log"
+ssh "$KVM_HOST" "KVM_NO_LOCK=${KVM_NO_LOCK:-} FRAMES=$FRAMES SAN='${SANITIZE:-}' bash -s" <<'REMOTE' 2>&1 | tee "$LOGDIR/run.log"
 set -euo pipefail
 cd ~/kvm-doom-scratch
 export NVCC=$(ls /usr/local/cuda*/bin/nvcc | tail -1)
@@ -22,6 +22,7 @@ python3 doom/cpu_run.py --frames $FRAMES --out $OUT/cpu --log info
 $NVCC -O2 -arch=sm_80 -rdc=true -Iinclude doom/tests/doomtest.cu doom/build/doom_dev.o -o doom/build/doomtest
 RUN="doom/build/doomtest doom/third_party/doom1.wad $FRAMES $OUT/gpu"
 if [ -n "$SAN" ]; then RUN="$(command -v compute-sanitizer || echo /usr/local/cuda/bin/compute-sanitizer) --tool ${SAN/#1/memcheck} --print-limit 20 $RUN"; fi
-flock -w 900 ~/.gpu.lock timeout 600 $RUN
+FLK="flock -w 900 $HOME/.gpu.lock"; [ -z "${KVM_NO_LOCK:-}" ] || FLK=""   # KVM_NO_LOCK=1: an outer hold exists
+$FLK timeout 600 $RUN
 python3 doom/compare.py $OUT/cpu $OUT/gpu
 REMOTE

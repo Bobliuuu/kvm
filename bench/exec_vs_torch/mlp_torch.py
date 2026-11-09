@@ -113,11 +113,14 @@ class Variant:
         torch.cuda.current_stream().wait_stream(s)
         self.reset()
 
-    def capture(self):
+    def capture(self, distinct_streams=False):
+        """Whole-step graphs, one per run. Graphs that will replay concurrently must be captured on distinct streams: PyTorch keys its cuBLAS
+        workspace by (handle, stream), so graphs captured on one stream share one workspace and race when replayed in parallel (seen at hidden >= 256)."""
         self.graphs = []
-        for b in self.bodies:
+        self.capture_streams = [torch.cuda.Stream() for _ in self.bodies] if distinct_streams else [None] * len(self.bodies)
+        for b, st in zip(self.bodies, self.capture_streams):
             g = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(g):
+            with torch.cuda.graph(g, stream=st):
                 b()
             self.graphs.append(g)
         self.reset()
@@ -147,8 +150,8 @@ class Variant:
 class Graphed(Variant):
     """Variants whose step (all runs) replays graphs; the counter advances in its own tiny graph so the replay loop is pure replay."""
 
-    def capture(self):
-        super().capture()
+    def capture(self, distinct_streams=False):
+        super().capture(distinct_streams)
         self.ctr_graph = torch.cuda.CUDAGraph()
         with torch.cuda.graph(self.ctr_graph):
             self.ctr.add_(1)
@@ -203,7 +206,7 @@ def build(wl, r, name):
         v.warm()
     elif name in ('seq_graph', 'multi_graph'):
         v = (SeqGraphV if name == 'seq_graph' else MultiGraphV)(wl, r, name, False, single_loss)
-        v.warm(); v.capture()
+        v.warm(); v.capture(distinct_streams=name == 'multi_graph')
     elif name == 'batched':
         v = OneGraphV(wl, r, name, True, batched_loss)
         v.warm(); v.capture()

@@ -1,0 +1,1838 @@
+NVIDIA A100-SXM4-40GB, 610.57.04
+      unsigned long long t0 = 0, t1 = 0, t2 = 0;
+      unsigned long long t0 = 0, t1 = 0, t2 = 0;
+      unsigned long long t0 = 0, t1 = 0, t2 = 0;
+  static double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+SH-KVM: B=64 D=64 H=128 O=64 runs=8 steps=300 rung every E=75, K=2 rungs, 36 tile instrs/run-step, tape 86700 executed instrs (289-entry template)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
+
+KVM full population (no halving): best 6.935 ms  median 6.944 ms
+KVM in-kernel successive halving : best 6.782 ms  median 6.798 ms
+halving saves 1.02x (best), 1.02x (median)
+survivors: 6(lr 0.3343) 7(lr 0.6000)
+kill rung per run: 1 1 1 1 2 2 0 0
+{
+ "gpu": "NVIDIA A100-SXM4-40GB",
+ "torch": "2.5.1+cu124",
+ "cfg": {
+  "B": 64,
+  "D": 64,
+  "H": 128,
+  "O": 64,
+  "NB": 4,
+  "R": 8,
+  "steps": 300,
+  "E": 75,
+  "K": 2
+ },
+ "correctness": {
+  "survivors_ref": [
+   6,
+   7
+  ],
+  "survivors_kvm": [
+   6,
+   7
+  ],
+  "same_survivors": true,
+  "max_rel_loss_err_sh_alive_steps": 6.0755370213883e-05,
+  "max_rel_loss_err_full_population": 6.0755370213883e-05,
+  "max_rel_weight_l2_survivors": 0.0003487401991151273,
+  "kill_epoch_ref": [
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   0,
+   0
+  ],
+  "final_loss_ref": {
+   "6": 0.06720338761806488,
+   "7": 0.045380234718322754
+  },
+  "final_loss_kvm": {
+   "6": 0.06720557808876038,
+   "7": 0.045377880334854126
+  },
+  "runs_diverged_in_full_pop_ref": [],
+  "kill_rung_kvm": [
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   0,
+   0
+  ],
+  "same_kill_rungs": true,
+  "B1_survivors_match_ref": true,
+  "B3_kill_rungs_match_ref": true,
+  "B3_kill_rungs": [
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   0,
+   0
+  ],
+  "B3_max_rel_loss_err_vs_ref": 5.236651122686453e-05,
+  "B2_survivors_match_ref": true,
+  "B1_survivors_match_ref_compiled": true,
+  "B3_kill_rungs_match_ref_compiled": true,
+  "B3_kill_rungs_compiled": [
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   0,
+   0
+  ],
+  "B3_max_rel_loss_err_vs_ref_compiled": 0.9999906420707703,
+  "B2_survivors_match_ref_compiled": true
+ },
+ "torch_ms": {
+  "B0_graph_full_population": {
+   "best_ms": 15.805439949035645,
+   "median_ms": 15.821824073791504,
+   "all_ms": [
+    15.901,
+    15.819,
+    15.822,
+    15.805,
+    15.824,
+    15.83,
+    15.813
+   ]
+  },
+  "B1_graph_masked": {
+   "best_ms": 12.498944282531738,
+   "median_ms": 12.519424438476562,
+   "all_ms": [
+    12.568,
+    12.562,
+    12.517,
+    12.567,
+    12.499,
+    12.499,
+    12.519
+   ]
+  },
+  "B3_host_polled_compaction_cached_graphs": {
+   "best_ms": 13.402112007141113,
+   "median_ms": 13.515775680541992,
+   "all_ms": [
+    13.511,
+    13.459,
+    13.402,
+    13.516,
+    13.569,
+    13.593,
+    13.573
+   ]
+  },
+  "B2_rung_graphs_static_halving": {
+   "best_ms": 12.392448425292969,
+   "median_ms": 12.411904335021973,
+   "all_ms": [
+    12.392,
+    12.412,
+    12.417,
+    12.412,
+    12.422,
+    12.502,
+    12.408
+   ]
+  },
+  "B0_graph_full_population_compiled": {
+   "best_ms": 11.378687858581543,
+   "median_ms": 11.379712104797363,
+   "all_ms": [
+    11.385,
+    11.38,
+    11.384,
+    11.38,
+    11.379,
+    11.38,
+    11.384
+   ]
+  },
+  "B1_graph_masked_compiled": {
+   "best_ms": 11.480064392089844,
+   "median_ms": 11.488256454467773,
+   "all_ms": [
+    11.494,
+    11.487,
+    11.488,
+    11.494,
+    11.485,
+    11.496,
+    11.48
+   ]
+  },
+  "B3_host_polled_compaction_cached_graphs_compiled": {
+   "best_ms": 12.327936172485352,
+   "median_ms": 12.3504638671875,
+   "all_ms": [
+    12.384,
+    12.355,
+    12.35,
+    12.359,
+    12.328,
+    12.336,
+    12.328
+   ]
+  },
+  "B2_rung_graphs_static_halving_compiled": {
+   "best_ms": 11.564031600952148,
+   "median_ms": 11.577343940734863,
+   "all_ms": [
+    11.569,
+    11.582,
+    11.58,
+    11.564,
+    11.577,
+    11.576,
+    11.587
+   ]
+  }
+ },
+ "kvm_ms": {
+  "full_population": 6.9345,
+  "controlled": 6.782
+ },
+ "speedup": {
+  "kvm_ctrl_vs_best_torch_ctrl_eager": 1.8272557395005853,
+  "kvm_ctrl_vs_best_torch_ctrl_compiled": 1.692725507533153,
+  "kvm_ctrl_vs_best_torch_any": 1.692725507533153,
+  "kvm_full_vs_B0_eager": 2.279247234701225,
+  "kvm_full_vs_B0_compiled": 1.6408807929312197
+ },
+ "torch_per_run_gpu_mem_note": "all torch variants use manual fwd/bwd with bmm, TF32, CUDA graphs"
+}
+SH-KVM: B=64 D=64 H=128 O=64 runs=16 steps=300 rung every E=75, K=3 rungs, 36 tile instrs/run-step, tape 173100 executed instrs (577-entry template)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
+
+KVM full population (no halving): best 7.705 ms  median 7.711 ms
+KVM in-kernel successive halving : best 7.216 ms  median 7.233 ms
+halving saves 1.07x (best), 1.07x (median)
+survivors: 14(lr 0.4567) 15(lr 0.6000)
+kill rung per run: 1 1 1 1 1 1 1 1 2 2 2 2 3 3 0 0
+{
+ "gpu": "NVIDIA A100-SXM4-40GB",
+ "torch": "2.5.1+cu124",
+ "cfg": {
+  "B": 64,
+  "D": 64,
+  "H": 128,
+  "O": 64,
+  "NB": 4,
+  "R": 16,
+  "steps": 300,
+  "E": 75,
+  "K": 3
+ },
+ "correctness": {
+  "survivors_ref": [
+   14,
+   15
+  ],
+  "survivors_kvm": [
+   14,
+   15
+  ],
+  "same_survivors": true,
+  "max_rel_loss_err_sh_alive_steps": 7.748671487206593e-05,
+  "max_rel_loss_err_full_population": 7.748671487206593e-05,
+  "max_rel_weight_l2_survivors": 0.0005091475904919207,
+  "kill_epoch_ref": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   2,
+   2,
+   3,
+   3,
+   0,
+   0
+  ],
+  "final_loss_ref": {
+   "14": 0.054626546800136566,
+   "15": 0.045380234718322754
+  },
+  "final_loss_kvm": {
+   "14": 0.054624803364276886,
+   "15": 0.045377880334854126
+  },
+  "runs_diverged_in_full_pop_ref": [],
+  "kill_rung_kvm": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   2,
+   2,
+   3,
+   3,
+   0,
+   0
+  ],
+  "same_kill_rungs": true,
+  "B1_survivors_match_ref": true,
+  "B3_kill_rungs_match_ref": true,
+  "B3_kill_rungs": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   2,
+   2,
+   3,
+   3,
+   0,
+   0
+  ],
+  "B3_max_rel_loss_err_vs_ref": 7.748671487206593e-05,
+  "B2_survivors_match_ref": true,
+  "B1_survivors_match_ref_compiled": true,
+  "B3_kill_rungs_match_ref_compiled": true,
+  "B3_kill_rungs_compiled": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   2,
+   2,
+   3,
+   3,
+   0,
+   0
+  ],
+  "B3_max_rel_loss_err_vs_ref_compiled": 0.9999849200248718,
+  "B2_survivors_match_ref_compiled": true
+ },
+ "torch_ms": {
+  "B0_graph_full_population": {
+   "best_ms": 16.38604736328125,
+   "median_ms": 16.40652847290039,
+   "all_ms": [
+    16.421,
+    16.42,
+    16.416,
+    16.407,
+    16.406,
+    16.39,
+    16.386
+   ]
+  },
+  "B1_graph_masked": {
+   "best_ms": 12.911616325378418,
+   "median_ms": 12.922880172729492,
+   "all_ms": [
+    12.962,
+    12.947,
+    12.946,
+    12.923,
+    12.912,
+    12.917,
+    12.917
+   ]
+  },
+  "B3_host_polled_compaction_cached_graphs": {
+   "best_ms": 13.675519943237305,
+   "median_ms": 13.740032196044922,
+   "all_ms": [
+    14.083,
+    13.728,
+    13.726,
+    13.74,
+    14.075,
+    13.818,
+    13.676
+   ]
+  },
+  "B2_rung_graphs_static_halving": {
+   "best_ms": 12.55731201171875,
+   "median_ms": 12.572671890258789,
+   "all_ms": [
+    12.577,
+    12.584,
+    12.561,
+    12.557,
+    12.571,
+    12.579,
+    12.573
+   ]
+  },
+  "B0_graph_full_population_compiled": {
+   "best_ms": 11.638784408569336,
+   "median_ms": 11.645952224731445,
+   "all_ms": [
+    11.65,
+    11.639,
+    11.641,
+    11.64,
+    11.646,
+    11.648,
+    11.648
+   ]
+  },
+  "B1_graph_masked_compiled": {
+   "best_ms": 11.794431686401367,
+   "median_ms": 11.796480178833008,
+   "all_ms": [
+    11.802,
+    11.795,
+    11.794,
+    11.796,
+    11.798,
+    11.803,
+    11.796
+   ]
+  },
+  "B3_host_polled_compaction_cached_graphs_compiled": {
+   "best_ms": 12.801024436950684,
+   "median_ms": 12.836864471435547,
+   "all_ms": [
+    16.105,
+    16.099,
+    15.348,
+    12.814,
+    12.837,
+    12.801,
+    12.826
+   ]
+  },
+  "B2_rung_graphs_static_halving_compiled": {
+   "best_ms": 11.796480178833008,
+   "median_ms": 11.823103904724121,
+   "all_ms": [
+    11.831,
+    11.814,
+    11.823,
+    11.946,
+    11.796,
+    11.817,
+    11.897
+   ]
+  }
+ },
+ "kvm_ms": {
+  "full_population": 7.7046,
+  "controlled": 7.2161
+ },
+ "speedup": {
+  "kvm_ctrl_vs_best_torch_ctrl_eager": 1.740179877180021,
+  "kvm_ctrl_vs_best_torch_ctrl_compiled": 1.634460676321194,
+  "kvm_ctrl_vs_best_torch_any": 1.634460676321194,
+  "kvm_full_vs_B0_eager": 2.126787550720511,
+  "kvm_full_vs_B0_compiled": 1.5106279895866541
+ },
+ "torch_per_run_gpu_mem_note": "all torch variants use manual fwd/bwd with bmm, TF32, CUDA graphs"
+}
+SH-KVM: B=64 D=64 H=128 O=64 runs=32 steps=300 rung every E=75, K=3 rungs, 36 tile instrs/run-step, tape 345900 executed instrs (1153-entry template)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
+
+KVM full population (no halving): best 10.524 ms  median 10.526 ms
+KVM in-kernel successive halving : best 8.786 ms  median 8.818 ms
+halving saves 1.20x (best), 1.19x (median)
+survivors: 28(lr 0.4037) 29(lr 0.4607) 30(lr 0.5258) 31(lr 0.6000)
+kill rung per run: 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 3 3 3 3 0 0 0 0
+{
+ "gpu": "NVIDIA A100-SXM4-40GB",
+ "torch": "2.5.1+cu124",
+ "cfg": {
+  "B": 64,
+  "D": 64,
+  "H": 128,
+  "O": 64,
+  "NB": 4,
+  "R": 32,
+  "steps": 300,
+  "E": 75,
+  "K": 3
+ },
+ "correctness": {
+  "survivors_ref": [
+   28,
+   29,
+   30,
+   31
+  ],
+  "survivors_kvm": [
+   28,
+   29,
+   30,
+   31
+  ],
+  "same_survivors": true,
+  "max_rel_loss_err_sh_alive_steps": 7.971256854943931e-05,
+  "max_rel_loss_err_full_population": 8.852114115143195e-05,
+  "max_rel_weight_l2_survivors": 0.0005052570486441255,
+  "kill_epoch_ref": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   3,
+   3,
+   3,
+   3,
+   0,
+   0,
+   0,
+   0
+  ],
+  "final_loss_ref": {
+   "28": 0.05934152379631996,
+   "29": 0.054301682859659195,
+   "30": 0.04964994266629219,
+   "31": 0.045380234718322754
+  },
+  "final_loss_kvm": {
+   "28": 0.059344932436943054,
+   "29": 0.05430150032043457,
+   "30": 0.049647148698568344,
+   "31": 0.045377884060144424
+  },
+  "runs_diverged_in_full_pop_ref": [],
+  "kill_rung_kvm": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   3,
+   3,
+   3,
+   3,
+   0,
+   0,
+   0,
+   0
+  ],
+  "same_kill_rungs": true,
+  "B1_survivors_match_ref": true,
+  "B3_kill_rungs_match_ref": true,
+  "B3_kill_rungs": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   3,
+   3,
+   3,
+   3,
+   0,
+   0,
+   0,
+   0
+  ],
+  "B3_max_rel_loss_err_vs_ref": 8.788872946752235e-05,
+  "B2_survivors_match_ref": true,
+  "B1_survivors_match_ref_compiled": true,
+  "B3_kill_rungs_match_ref_compiled": true,
+  "B3_kill_rungs_compiled": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   3,
+   3,
+   3,
+   3,
+   0,
+   0,
+   0,
+   0
+  ],
+  "B3_max_rel_loss_err_vs_ref_compiled": 7.977552741067484e-05,
+  "B2_survivors_match_ref_compiled": true
+ },
+ "torch_ms": {
+  "B0_graph_full_population": {
+   "best_ms": 17.2544002532959,
+   "median_ms": 17.25644874572754,
+   "all_ms": [
+    17.256,
+    17.256,
+    17.265,
+    17.266,
+    17.255,
+    17.254,
+    17.256
+   ]
+  },
+  "B1_graph_masked": {
+   "best_ms": 13.577216148376465,
+   "median_ms": 13.578240394592285,
+   "all_ms": [
+    13.583,
+    13.58,
+    13.581,
+    13.578,
+    13.578,
+    13.577,
+    13.578
+   ]
+  },
+  "B3_host_polled_compaction_cached_graphs": {
+   "best_ms": 13.989888191223145,
+   "median_ms": 14.027775764465332,
+   "all_ms": [
+    13.99,
+    14.028,
+    14.03,
+    13.994,
+    14.019,
+    14.082,
+    14.049
+   ]
+  },
+  "B2_rung_graphs_static_halving": {
+   "best_ms": 13.042688369750977,
+   "median_ms": 13.05395221710205,
+   "all_ms": [
+    13.056,
+    13.053,
+    13.054,
+    13.08,
+    13.063,
+    13.048,
+    13.043
+   ]
+  },
+  "B0_graph_full_population_compiled": {
+   "best_ms": 12.537856101989746,
+   "median_ms": 12.54092788696289,
+   "all_ms": [
+    12.547,
+    12.541,
+    12.541,
+    12.539,
+    12.544,
+    12.538,
+    12.541
+   ]
+  },
+  "B1_graph_masked_compiled": {
+   "best_ms": 12.618751525878906,
+   "median_ms": 12.622847557067871,
+   "all_ms": [
+    12.63,
+    12.628,
+    12.625,
+    12.623,
+    12.621,
+    12.619,
+    12.622
+   ]
+  },
+  "B3_host_polled_compaction_cached_graphs_compiled": {
+   "best_ms": 16.483327865600586,
+   "median_ms": 16.516096115112305,
+   "all_ms": [
+    16.516,
+    16.483,
+    16.522,
+    16.506,
+    16.552,
+    16.525,
+    16.497
+   ]
+  },
+  "B2_rung_graphs_static_halving_compiled": {
+   "best_ms": 12.115967750549316,
+   "median_ms": 12.12723159790039,
+   "all_ms": [
+    12.131,
+    12.127,
+    12.116,
+    12.137,
+    12.149,
+    12.124,
+    12.122
+   ]
+  }
+ },
+ "kvm_ms": {
+  "full_population": 10.5236,
+  "controlled": 8.7859
+ },
+ "speedup": {
+  "kvm_ctrl_vs_best_torch_ctrl_eager": 1.4845022558589305,
+  "kvm_ctrl_vs_best_torch_ctrl_compiled": 1.379024089797211,
+  "kvm_ctrl_vs_best_torch_any": 1.379024089797211,
+  "kvm_full_vs_B0_eager": 1.6395910385510566,
+  "kvm_full_vs_B0_compiled": 1.1914037118466823
+ },
+ "torch_per_run_gpu_mem_note": "all torch variants use manual fwd/bwd with bmm, TF32, CUDA graphs"
+}
+SH-KVM: B=128 D=128 H=256 O=64 runs=32 steps=300 rung every E=25, K=11 rungs, 120 tile instrs/run-step, tape 1152300 executed instrs (3841-entry template)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
+
+KVM full population (no halving): best 31.191 ms  median 31.318 ms
+KVM in-kernel successive halving : best 13.442 ms  median 13.456 ms
+halving saves 2.32x (best), 2.33x (median)
+survivors:
+kill rung per run: 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 7 6 5 5 4 4 3 3 2 2 2 2 1 1
+{
+ "gpu": "NVIDIA A100-SXM4-40GB",
+ "torch": "2.5.1+cu124",
+ "cfg": {
+  "B": 128,
+  "D": 128,
+  "H": 256,
+  "O": 64,
+  "NB": 4,
+  "R": 32,
+  "steps": 300,
+  "E": 25,
+  "K": 11
+ },
+ "correctness": {
+  "survivors_ref": [],
+  "survivors_kvm": [],
+  "same_survivors": true,
+  "max_rel_loss_err_sh_alive_steps": 0.0002216394350398332,
+  "max_rel_loss_err_full_population": 0.3459344208240509,
+  "max_rel_weight_l2_survivors": 0.00507402466610074,
+  "kill_epoch_ref": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   7,
+   6,
+   5,
+   5,
+   4,
+   4,
+   3,
+   3,
+   2,
+   2,
+   2,
+   2,
+   1,
+   1
+  ],
+  "final_loss_ref": {},
+  "final_loss_kvm": {},
+  "runs_diverged_in_full_pop_ref": [
+   30,
+   31
+  ],
+  "kill_rung_kvm": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   7,
+   6,
+   5,
+   5,
+   4,
+   4,
+   3,
+   3,
+   2,
+   2,
+   2,
+   2,
+   1,
+   1
+  ],
+  "same_kill_rungs": true,
+  "B1_survivors_match_ref": true,
+  "B3_kill_rungs_match_ref": true,
+  "B3_kill_rungs": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   7,
+   6,
+   5,
+   5,
+   4,
+   4,
+   3,
+   3,
+   2,
+   2,
+   2,
+   2,
+   1,
+   1
+  ],
+  "B3_max_rel_loss_err_vs_ref": 0.0002070883201668039,
+  "B1_survivors_match_ref_compiled": true,
+  "B3_kill_rungs_match_ref_compiled": false,
+  "B3_kill_rungs_compiled": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   1,
+   1
+  ],
+  "B3_max_rel_loss_err_vs_ref_compiled": 0.9999949336051941,
+  "B3_INVALID_not_counted_compiled": true
+ },
+ "torch_ms": {
+  "B0_graph_full_population": {
+   "best_ms": 23.90323257446289,
+   "median_ms": 23.91756820678711,
+   "all_ms": [
+    23.925,
+    23.926,
+    23.912,
+    23.924,
+    23.914,
+    23.903,
+    23.918
+   ]
+  },
+  "B1_graph_masked": {
+   "best_ms": 24.50022315979004,
+   "median_ms": 24.50943946838379,
+   "all_ms": [
+    24.517,
+    24.517,
+    24.501,
+    24.503,
+    24.5,
+    24.509,
+    24.51
+   ]
+  },
+  "B3_host_polled_compaction_cached_graphs": {
+   "best_ms": 12.179455757141113,
+   "median_ms": 12.22655963897705,
+   "all_ms": [
+    12.185,
+    12.221,
+    12.179,
+    12.237,
+    12.328,
+    12.227,
+    12.235
+   ]
+  },
+  "B0_graph_full_population_compiled": {
+   "best_ms": 23.51103973388672,
+   "median_ms": 23.5284481048584,
+   "all_ms": [
+    23.513,
+    23.511,
+    23.544,
+    23.544,
+    23.528,
+    23.526,
+    23.534
+   ]
+  },
+  "B1_graph_masked_compiled": {
+   "best_ms": 24.08448028564453,
+   "median_ms": 24.10188865661621,
+   "all_ms": [
+    24.11,
+    24.084,
+    24.1,
+    24.129,
+    24.119,
+    24.102,
+    24.086
+   ]
+  },
+  "B3_host_polled_compaction_cached_graphs_compiled": {
+   "best_ms": 4.398079872131348,
+   "median_ms": 4.434944152832031,
+   "all_ms": [
+    4.444,
+    4.415,
+    4.435,
+    4.398,
+    4.442,
+    4.427,
+    4.443
+   ]
+  }
+ },
+ "kvm_ms": {
+  "full_population": 31.191,
+  "controlled": 13.442
+ },
+ "speedup": {
+  "kvm_ctrl_vs_best_torch_ctrl_eager": 0.9060746731990116,
+  "kvm_ctrl_vs_best_torch_ctrl_compiled": 1.79173339426012,
+  "kvm_ctrl_vs_best_torch_any": 0.9060746731990116,
+  "kvm_full_vs_B0_eager": 0.766350311771437,
+  "kvm_full_vs_B0_compiled": 0.7537764013300863
+ },
+ "torch_per_run_gpu_mem_note": "all torch variants use manual fwd/bwd with bmm, TF32, CUDA graphs"
+}
+SH-KVM: B=64 D=64 H=128 O=64 runs=16 steps=300 rung every E=25, K=11 rungs, 36 tile instrs/run-step, tape 173100 executed instrs (577-entry template)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
+
+KVM full population (no halving): best 7.709 ms  median 7.717 ms
+KVM in-kernel successive halving : best 5.010 ms  median 5.020 ms
+halving saves 1.54x (best), 1.54x (median)
+survivors:
+kill rung per run: 1 1 1 1 1 1 1 1 1 7 5 4 3 2 2 1
+{
+ "gpu": "NVIDIA A100-SXM4-40GB",
+ "torch": "2.5.1+cu124",
+ "cfg": {
+  "B": 64,
+  "D": 64,
+  "H": 128,
+  "O": 64,
+  "NB": 4,
+  "R": 16,
+  "steps": 300,
+  "E": 25,
+  "K": 11
+ },
+ "correctness": {
+  "survivors_ref": [],
+  "survivors_kvm": [],
+  "same_survivors": true,
+  "max_rel_loss_err_sh_alive_steps": 0.00031808321364223957,
+  "max_rel_loss_err_full_population": 0.0021431678906083107,
+  "max_rel_weight_l2_survivors": 0.003473196178674698,
+  "kill_epoch_ref": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   7,
+   5,
+   4,
+   3,
+   2,
+   2,
+   1
+  ],
+  "final_loss_ref": {},
+  "final_loss_kvm": {},
+  "runs_diverged_in_full_pop_ref": [],
+  "kill_rung_kvm": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   7,
+   5,
+   4,
+   3,
+   2,
+   2,
+   1
+  ],
+  "same_kill_rungs": true,
+  "B1_survivors_match_ref": true,
+  "B3_kill_rungs_match_ref": true,
+  "B3_kill_rungs": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   7,
+   5,
+   4,
+   3,
+   2,
+   2,
+   1
+  ],
+  "B3_max_rel_loss_err_vs_ref": 0.00028815193218179047,
+  "B1_survivors_match_ref_compiled": true,
+  "B3_kill_rungs_match_ref_compiled": false,
+  "B3_kill_rungs_compiled": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   3,
+   2,
+   2,
+   2,
+   2,
+   2,
+   1
+  ],
+  "B3_max_rel_loss_err_vs_ref_compiled": 0.9999924898147583,
+  "B3_INVALID_not_counted_compiled": true
+ },
+ "torch_ms": {
+  "B0_graph_full_population": {
+   "best_ms": 12.796928405761719,
+   "median_ms": 16.39936065673828,
+   "all_ms": [
+    16.403,
+    16.418,
+    16.406,
+    16.399,
+    16.38,
+    16.396,
+    12.797
+   ]
+  },
+  "B1_graph_masked": {
+   "best_ms": 13.140992164611816,
+   "median_ms": 13.147135734558105,
+   "all_ms": [
+    13.152,
+    13.152,
+    13.147,
+    13.161,
+    13.147,
+    13.141,
+    13.147
+   ]
+  },
+  "B3_host_polled_compaction_cached_graphs": {
+   "best_ms": 9.686016082763672,
+   "median_ms": 9.727999687194824,
+   "all_ms": [
+    9.776,
+    9.686,
+    9.783,
+    9.728,
+    9.766,
+    9.692,
+    9.711
+   ]
+  },
+  "B0_graph_full_population_compiled": {
+   "best_ms": 14.07590389251709,
+   "median_ms": 14.920703887939453,
+   "all_ms": [
+    14.92,
+    14.921,
+    14.918,
+    14.953,
+    14.924,
+    14.923,
+    14.076
+   ]
+  },
+  "B1_graph_masked_compiled": {
+   "best_ms": 12.039168357849121,
+   "median_ms": 12.05452823638916,
+   "all_ms": [
+    12.056,
+    12.059,
+    12.046,
+    12.059,
+    12.055,
+    12.046,
+    12.039
+   ]
+  },
+  "B3_host_polled_compaction_cached_graphs_compiled": {
+   "best_ms": 4.070400238037109,
+   "median_ms": 4.081664085388184,
+   "all_ms": [
+    4.101,
+    4.087,
+    4.081,
+    4.091,
+    4.079,
+    4.07,
+    4.082
+   ]
+  }
+ },
+ "kvm_ms": {
+  "full_population": 7.7087,
+  "controlled": 5.0104
+ },
+ "speedup": {
+  "kvm_ctrl_vs_best_torch_ctrl_eager": 1.9331821975817645,
+  "kvm_ctrl_vs_best_torch_ctrl_compiled": 2.402835773161648,
+  "kvm_ctrl_vs_best_torch_any": 1.9331821975817645,
+  "kvm_full_vs_B0_eager": 1.6600630982865747,
+  "kvm_full_vs_B0_compiled": 1.825976350424467
+ },
+ "torch_per_run_gpu_mem_note": "all torch variants use manual fwd/bwd with bmm, TF32, CUDA graphs"
+}
+SH-KVM: B=128 D=128 H=256 O=64 runs=8 steps=300 rung every E=75, K=2 rungs, 120 tile instrs/run-step, tape 288300 executed instrs (961-entry template)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
+
+KVM full population (no halving): best 12.201 ms  median 12.212 ms
+KVM in-kernel successive halving : best 10.348 ms  median 10.372 ms
+halving saves 1.18x (best), 1.18x (median)
+survivors: 6(lr 0.3343) 7(lr 0.6000)
+kill rung per run: 1 1 1 1 2 2 0 0
+{
+ "gpu": "NVIDIA A100-SXM4-40GB",
+ "torch": "2.5.1+cu124",
+ "cfg": {
+  "B": 128,
+  "D": 128,
+  "H": 256,
+  "O": 64,
+  "NB": 4,
+  "R": 8,
+  "steps": 300,
+  "E": 75,
+  "K": 2
+ },
+ "correctness": {
+  "survivors_ref": [
+   6,
+   7
+  ],
+  "survivors_kvm": [
+   6,
+   7
+  ],
+  "same_survivors": true,
+  "max_rel_loss_err_sh_alive_steps": 7.878751785028726e-05,
+  "max_rel_loss_err_full_population": 7.878751785028726e-05,
+  "max_rel_weight_l2_survivors": 0.001641589216887951,
+  "kill_epoch_ref": [
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   0,
+   0
+  ],
+  "final_loss_ref": {
+   "6": 0.06993453949689865,
+   "7": 0.04700247198343277
+  },
+  "final_loss_kvm": {
+   "6": 0.06993447244167328,
+   "7": 0.04700496792793274
+  },
+  "runs_diverged_in_full_pop_ref": [],
+  "kill_rung_kvm": [
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   0,
+   0
+  ],
+  "same_kill_rungs": true,
+  "B1_survivors_match_ref": true,
+  "B3_kill_rungs_match_ref": true,
+  "B3_kill_rungs": [
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   0,
+   0
+  ],
+  "B3_max_rel_loss_err_vs_ref": 8.705152140464634e-05,
+  "B2_survivors_match_ref": true,
+  "B1_survivors_match_ref_compiled": true,
+  "B3_kill_rungs_match_ref_compiled": true,
+  "B3_kill_rungs_compiled": [
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   0,
+   0
+  ],
+  "B3_max_rel_loss_err_vs_ref_compiled": 0.9999906420707703,
+  "B2_survivors_match_ref_compiled": true
+ },
+ "torch_ms": {
+  "B0_graph_full_population": {
+   "best_ms": 15.229951858520508,
+   "median_ms": 18.347007751464844,
+   "all_ms": [
+    18.353,
+    18.347,
+    18.343,
+    18.364,
+    18.365,
+    15.641,
+    15.23
+   ]
+  },
+  "B1_graph_masked": {
+   "best_ms": 15.29856014251709,
+   "median_ms": 15.309823989868164,
+   "all_ms": [
+    15.325,
+    15.331,
+    15.31,
+    15.309,
+    15.303,
+    15.299,
+    15.312
+   ]
+  },
+  "B3_host_polled_compaction_cached_graphs": {
+   "best_ms": 15.609855651855469,
+   "median_ms": 15.67846393585205,
+   "all_ms": [
+    15.665,
+    15.61,
+    15.656,
+    15.678,
+    15.701,
+    15.687,
+    15.77
+   ]
+  },
+  "B2_rung_graphs_static_halving": {
+   "best_ms": 14.811136245727539,
+   "median_ms": 14.827520370483398,
+   "all_ms": [
+    14.925,
+    14.859,
+    14.838,
+    14.828,
+    14.82,
+    14.826,
+    14.811
+   ]
+  },
+  "B0_graph_full_population_compiled": {
+   "best_ms": 14.651391983032227,
+   "median_ms": 14.652416229248047,
+   "all_ms": [
+    14.653,
+    14.651,
+    14.652,
+    14.658,
+    14.667,
+    14.652,
+    14.651
+   ]
+  },
+  "B1_graph_masked_compiled": {
+   "best_ms": 14.66163158416748,
+   "median_ms": 14.664704322814941,
+   "all_ms": [
+    14.68,
+    14.672,
+    14.666,
+    14.662,
+    14.663,
+    14.663,
+    14.665
+   ]
+  },
+  "B3_host_polled_compaction_cached_graphs_compiled": {
+   "best_ms": 15.213567733764648,
+   "median_ms": 15.247360229492188,
+   "all_ms": [
+    15.225,
+    15.281,
+    15.248,
+    15.214,
+    15.247,
+    15.274,
+    15.217
+   ]
+  },
+  "B2_rung_graphs_static_halving_compiled": {
+   "best_ms": 14.507007598876953,
+   "median_ms": 14.514176368713379,
+   "all_ms": [
+    14.518,
+    14.514,
+    14.518,
+    14.511,
+    14.507,
+    14.507,
+    14.526
+   ]
+  }
+ },
+ "kvm_ms": {
+  "full_population": 12.201,
+  "controlled": 10.3475
+ },
+ "speedup": {
+  "kvm_ctrl_vs_best_torch_ctrl_eager": 1.431373398958931,
+  "kvm_ctrl_vs_best_torch_ctrl_compiled": 1.4019818892367193,
+  "kvm_ctrl_vs_best_torch_any": 1.4019818892367193,
+  "kvm_full_vs_B0_eager": 1.2482543937808792,
+  "kvm_full_vs_B0_compiled": 1.2008353399747747
+ },
+ "torch_per_run_gpu_mem_note": "all torch variants use manual fwd/bwd with bmm, TF32, CUDA graphs"
+}
+SH-KVM: B=128 D=128 H=256 O=64 runs=32 steps=300 rung every E=75, K=3 rungs, 120 tile instrs/run-step, tape 1152300 executed instrs (3841-entry template)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
+
+KVM full population (no halving): best 31.315 ms  median 40.169 ms
+KVM in-kernel successive halving : best 20.264 ms  median 20.286 ms
+halving saves 1.55x (best), 1.98x (median)
+survivors: 28(lr 0.4037) 29(lr 0.4607) 30(lr 0.5258) 31(lr 0.6000)
+kill rung per run: 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 3 3 3 3 0 0 0 0
+{
+ "gpu": "NVIDIA A100-SXM4-40GB",
+ "torch": "2.5.1+cu124",
+ "cfg": {
+  "B": 128,
+  "D": 128,
+  "H": 256,
+  "O": 64,
+  "NB": 4,
+  "R": 32,
+  "steps": 300,
+  "E": 75,
+  "K": 3
+ },
+ "correctness": {
+  "survivors_ref": [
+   28,
+   29,
+   30,
+   31
+  ],
+  "survivors_kvm": [
+   28,
+   29,
+   30,
+   31
+  ],
+  "same_survivors": true,
+  "max_rel_loss_err_sh_alive_steps": 7.878751785028726e-05,
+  "max_rel_loss_err_full_population": 7.900663331383839e-05,
+  "max_rel_weight_l2_survivors": 0.001641589216887951,
+  "kill_epoch_ref": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   3,
+   3,
+   3,
+   3,
+   0,
+   0,
+   0,
+   0
+  ],
+  "final_loss_ref": {
+   "28": 0.06163545697927475,
+   "29": 0.056341759860515594,
+   "30": 0.05147182196378708,
+   "31": 0.04700247198343277
+  },
+  "final_loss_kvm": {
+   "28": 0.06163650378584862,
+   "29": 0.05634171515703201,
+   "30": 0.051471225917339325,
+   "31": 0.04700496792793274
+  },
+  "runs_diverged_in_full_pop_ref": [],
+  "kill_rung_kvm": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   3,
+   3,
+   3,
+   3,
+   0,
+   0,
+   0,
+   0
+  ],
+  "same_kill_rungs": true,
+  "B1_survivors_match_ref": true,
+  "B3_kill_rungs_match_ref": true,
+  "B3_kill_rungs": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   3,
+   3,
+   3,
+   3,
+   0,
+   0,
+   0,
+   0
+  ],
+  "B3_max_rel_loss_err_vs_ref": 8.705152140464634e-05,
+  "B2_survivors_match_ref": true,
+  "B1_survivors_match_ref_compiled": true,
+  "B3_kill_rungs_match_ref_compiled": true,
+  "B3_kill_rungs_compiled": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   3,
+   3,
+   3,
+   3,
+   0,
+   0,
+   0,
+   0
+  ],
+  "B3_max_rel_loss_err_vs_ref_compiled": 7.871034904383123e-05,
+  "B2_survivors_match_ref_compiled": true
+ },
+ "torch_ms": {
+  "B0_graph_full_population": {
+   "best_ms": 23.832576751708984,
+   "median_ms": 24.05683135986328,
+   "all_ms": [
+    24.107,
+    24.139,
+    24.111,
+    24.057,
+    24.029,
+    24.028,
+    23.833
+   ]
+  },
+  "B1_graph_masked": {
+   "best_ms": 24.3056640625,
+   "median_ms": 24.3189754486084,
+   "all_ms": [
+    24.319,
+    24.306,
+    24.309,
+    24.334,
+    24.326,
+    24.316,
+    24.32
+   ]
+  },
+  "B3_host_polled_compaction_cached_graphs": {
+   "best_ms": 19.45292854309082,
+   "median_ms": 19.478527069091797,
+   "all_ms": [
+    19.481,
+    19.509,
+    19.456,
+    19.479,
+    19.453,
+    19.552,
+    19.47
+   ]
+  },
+  "B2_rung_graphs_static_halving": {
+   "best_ms": 18.348031997680664,
+   "median_ms": 18.364416122436523,
+   "all_ms": [
+    18.417,
+    18.359,
+    18.443,
+    18.391,
+    18.364,
+    18.348,
+    18.35
+   ]
+  },
+  "B0_graph_full_population_compiled": {
+   "best_ms": 23.458816528320312,
+   "median_ms": 29.639680862426758,
+   "all_ms": [
+    29.64,
+    29.652,
+    29.641,
+    29.627,
+    29.652,
+    27.276,
+    23.459
+   ]
+  },
+  "B1_graph_masked_compiled": {
+   "best_ms": 23.632896423339844,
+   "median_ms": 23.646207809448242,
+   "all_ms": [
+    23.647,
+    23.649,
+    23.645,
+    23.633,
+    23.641,
+    23.646,
+    23.671
+   ]
+  },
+  "B3_host_polled_compaction_cached_graphs_compiled": {
+   "best_ms": 18.928640365600586,
+   "median_ms": 23.802879333496094,
+   "all_ms": [
+    23.803,
+    23.908,
+    23.988,
+    23.972,
+    21.367,
+    18.973,
+    18.929
+   ]
+  },
+  "B2_rung_graphs_static_halving_compiled": {
+   "best_ms": 17.99782371520996,
+   "median_ms": 18.059263229370117,
+   "all_ms": [
+    17.998,
+    18.116,
+    18.128,
+    18.059,
+    18.07,
+    18.054,
+    18.002
+   ]
+  }
+ },
+ "kvm_ms": {
+  "full_population": 31.3149,
+  "controlled": 20.2639
+ },
+ "speedup": {
+  "kvm_ctrl_vs_best_torch_ctrl_eager": 0.9054541326043193,
+  "kvm_ctrl_vs_best_torch_ctrl_compiled": 0.8881717593952774,
+  "kvm_ctrl_vs_best_torch_any": 0.8881717593952774,
+  "kvm_full_vs_B0_eager": 0.76106188273662,
+  "kvm_full_vs_B0_compiled": 0.7491263433164503
+ },
+ "torch_per_run_gpu_mem_note": "all torch variants use manual fwd/bwd with bmm, TF32, CUDA graphs"
+}
+
++ export PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin
++ PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin
++ cd /src
++ nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
++ nvcc -O3 -arch=sm_80 -std=c++17 -DKTILE=32 -DKKC=64 -DKSTG=4 coopt_sh.cu -o coopt_sh
++ grep -v 'warning\|Remark\|^$\|\^'
++ mkdir -p /logs/final/c0
++ echo 'CONFIG --runs 8 --steps 300 --E 75 --K 2 --B 64 --D 64 --H 128 --O 64'
++ ./coopt_sh --runs 8 --steps 300 --E 75 --K 2 --B 64 --D 64 --H 128 --O 64 --out /logs/final/c0/dump
++ tee -a /logs/final/c0/kvm.log
++ python3 -I torch_sh.py /logs/final/c0/dump
++ tee /logs/final/c0/torch.log
++ mkdir -p /logs/final/c1
++ echo 'CONFIG --runs 16 --steps 300 --E 75 --K 3 --B 64 --D 64 --H 128 --O 64'
++ ./coopt_sh --runs 16 --steps 300 --E 75 --K 3 --B 64 --D 64 --H 128 --O 64 --out /logs/final/c1/dump
++ tee -a /logs/final/c1/kvm.log
++ python3 -I torch_sh.py /logs/final/c1/dump
++ tee /logs/final/c1/torch.log
++ mkdir -p /logs/final/c2
++ echo 'CONFIG --runs 32 --steps 300 --E 75 --K 3 --B 64 --D 64 --H 128 --O 64'
++ ./coopt_sh --runs 32 --steps 300 --E 75 --K 3 --B 64 --D 64 --H 128 --O 64 --out /logs/final/c2/dump
++ tee -a /logs/final/c2/kvm.log
++ python3 -I torch_sh.py /logs/final/c2/dump
++ tee /logs/final/c2/torch.log
++ mkdir -p /logs/final/c3
++ echo 'CONFIG --runs 32 --steps 300 --mode 1 --E 25 --K 11 --lrlo 0.05 --lrhi 8 --target 0.05 --divthr 1.0 --prune 3.0'
++ ./coopt_sh --runs 32 --steps 300 --mode 1 --E 25 --K 11 --lrlo 0.05 --lrhi 8 --target 0.05 --divthr 1.0 --prune 3.0 --out /logs/final/c3/dump
++ tee -a /logs/final/c3/kvm.log
++ python3 -I torch_sh.py /logs/final/c3/dump
++ tee /logs/final/c3/torch.log
++ mkdir -p /logs/final/c4
++ echo 'CONFIG --runs 16 --steps 300 --mode 1 --E 25 --K 11 --lrlo 0.05 --lrhi 8 --target 0.05 --divthr 1.0 --prune 3.0 --B 64 --D 64 --H 128 --O 64'
++ ./coopt_sh --runs 16 --steps 300 --mode 1 --E 25 --K 11 --lrlo 0.05 --lrhi 8 --target 0.05 --divthr 1.0 --prune 3.0 --B 64 --D 64 --H 128 --O 64 --out /logs/final/c4/dump
++ tee -a /logs/final/c4/kvm.log
++ python3 -I torch_sh.py /logs/final/c4/dump
++ tee /logs/final/c4/torch.log
++ mkdir -p /logs/final/c5
++ echo 'CONFIG --runs 8 --steps 300 --E 75 --K 2'
++ ./coopt_sh --runs 8 --steps 300 --E 75 --K 2 --out /logs/final/c5/dump
++ tee -a /logs/final/c5/kvm.log
++ python3 -I torch_sh.py /logs/final/c5/dump
++ tee /logs/final/c5/torch.log
++ mkdir -p /logs/final/c6
++ echo 'CONFIG --runs 32 --steps 300 --E 75 --K 3'
++ ./coopt_sh --runs 32 --steps 300 --E 75 --K 3 --out /logs/final/c6/dump
++ tee -a /logs/final/c6/kvm.log
++ python3 -I torch_sh.py /logs/final/c6/dump
++ tee /logs/final/c6/torch.log

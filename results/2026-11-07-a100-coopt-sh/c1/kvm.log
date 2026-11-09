@@ -1,0 +1,9 @@
+CONFIG --runs 16 --steps 300 --E 75 --K 3 --B 64 --D 64 --H 128 --O 64
+SH-KVM: B=64 D=64 H=128 O=64 runs=16 steps=300 rung every E=75, K=3 rungs, 36 tile instrs/run-step, tape 173100 executed instrs (577-entry template)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
+
+KVM full population (no halving): best 7.705 ms  median 7.711 ms
+KVM in-kernel successive halving : best 7.216 ms  median 7.233 ms
+halving saves 1.07x (best), 1.07x (median)
+survivors: 14(lr 0.4567) 15(lr 0.6000)
+kill rung per run: 1 1 1 1 1 1 1 1 2 2 2 2 3 3 0 0

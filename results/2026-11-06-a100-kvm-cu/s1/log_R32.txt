@@ -1,0 +1,154 @@
+model B=128 D=128 H=256 O=64  runs=32 steps=300  prog=tiles tile=32 kc=64 stg=4  tape=1152000 instrs executed, 3840-entry step template (0.29 MB)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
+
+mode                                        best ms    us/step/run run-steps/s    vs seq  max/min
+sequential, launch-per-op                    341.75          35.60       28090     1.00x    1.00x
+sequential, CUDA graph/run                   277.94          28.95       34540     1.23x    1.00x
+batched across runs (vmap-like graph)         34.98           3.64      274468     9.77x    1.00x
+KVM: all runs, ONE kernel                     33.25           3.46      288710    10.28x    1.00x
+KVM vs best baseline: 1.05x   (5 reps per mode)
+
+loss run0: 0.31605 -> 0.21904 (lr 0.0125)   run31: 0.31605 -> 0.14475 (lr 0.0875)
+max rel loss err vs cpu fp32 (runs 0 and 31, first 20 steps, all modes): 2.28e-05
+weights VM vs each baseline, all runs: 0 of 4718592 elements differ bitwise (max |dW| 0.00e+00)
+timeline: profiled VM run 33.665 ms (1.01x the unprofiled best), steps [100,103) -> out/2026-11-06-a100-kvm-cu/s1/timeline_R32_tiles.csv
+PASS
+model B=128 D=128 H=256 O=64  runs=32 steps=300  prog=fused hs=32 slices=8  tape=153600 instrs executed, 512-entry step template, 108 static queues, multi-task blocks (not resident)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=1  vm grid=108
+
+mode                                        best ms    us/step/run run-steps/s    vs seq  max/min
+sequential, launch-per-op                    308.51          32.14       31118     1.00x    1.00x
+sequential, CUDA graph/run                   283.56          29.54       33855     1.09x    1.00x
+batched across runs (vmap-like graph)         35.27           3.67      272220     8.75x    1.00x
+KVM: all runs, ONE kernel                     28.61           2.98      335564    10.78x    1.02x
+KVM vs best baseline: 1.23x   (5 reps per mode)
+
+loss run0: 0.31605 -> 0.21904 (lr 0.0125)   run31: 0.31605 -> 0.14475 (lr 0.0875)
+max rel loss err vs cpu fp32 (runs 0 and 31, first 20 steps, all modes): 2.29e-05
+weights VM vs each baseline, all runs: 0 of 4718592 elements differ bitwise (max |dW| 0.00e+00)
+timeline: profiled VM run 28.537 ms (1.00x the unprofiled best), steps [100,103) -> out/2026-11-06-a100-kvm-cu/s1/timeline_R32_fused.csv
+PASS
+[build] torch eager (autograd)                                  build+check   6.4s  loss relerr(20 steps) 3.7e-06  weights relerr 1.7e-04  decreasing True  ok
+[build] torch eager (manual backward)                           build+check   2.3s  loss relerr(20 steps) 3.7e-06  weights relerr 1.7e-04  decreasing True  ok
+[build] torch.compile step, python loop                         build+check   5.1s  loss relerr(20 steps) 1.0e+00  weights relerr 1.7e-04  decreasing True  MISMATCH
+[build] torch CUDA graph, whole run (manual backward)           build+check  13.2s  loss relerr(20 steps) 3.7e-06  weights relerr 1.7e-04  decreasing True  ok
+[build] torch.compile step + whole-run CUDA graph               build+check  15.0s  loss relerr(20 steps) 1.0e+00  weights relerr 1.7e-04  decreasing True  MISMATCH
+[build] torch hand-batched bmm, eager loop                      build+check   0.1s  loss relerr(20 steps) 8.7e-07  weights relerr 3.4e-04  decreasing True  ok
+[build] torch hand-batched bmm + whole CUDA graph               build+check   0.4s  loss relerr(20 steps) 8.7e-07  weights relerr 3.4e-04  decreasing True  ok
+[build] torch.compile bmm step + whole CUDA graph               build+check   1.4s  loss relerr(20 steps) 2.3e-07  weights relerr 0.0e+00  decreasing True  ok
+[build] torch.func.vmap(grad), eager loop                       build+check   0.3s  loss relerr(20 steps) 8.7e-07  weights relerr 3.4e-04  decreasing True  ok
+[build] torch.func.vmap(grad) + whole CUDA graph                build+check   1.2s  loss relerr(20 steps) 8.7e-07  weights relerr 3.4e-04  decreasing True  ok
+[build] torch.compile(vmap(grad)) + whole CUDA graph            build+check   1.6s  loss relerr(20 steps) 2.3e-07  weights relerr 0.0e+00  decreasing True  ok
+model B=128 D=128 H=256 O=64  runs=32 steps=300  prog=tiles tile=32 kc=64 stg=4  tape=1152000 instrs executed, 3840-entry step template (0.29 MB)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
+
+mode                                        best ms    us/step/run run-steps/s    vs seq  max/min
+sequential, launch-per-op                    341.87          35.61       28081     1.00x    1.00x
+sequential, CUDA graph/run                   277.83          28.94       34553     1.23x    1.00x
+batched across runs (vmap-like graph)         35.27           3.67      272213     9.69x    1.00x
+KVM: all runs, ONE kernel                     33.32           3.47      288116    10.26x    1.00x
+KVM vs best baseline: 1.06x   (5 reps per mode)
+
+loss run0: 0.31605 -> 0.21904 (lr 0.0125)   run31: 0.31605 -> 0.14475 (lr 0.0875)
+max rel loss err vs cpu fp32 (runs 0 and 31, first 20 steps, all modes): 2.28e-05
+weights VM vs each baseline, all runs: 0 of 4718592 elements differ bitwise (max |dW| 0.00e+00)
+PASS
+[round 0] VM prog=tiles 33.320 ms  pass=True
+model B=128 D=128 H=256 O=64  runs=32 steps=300  prog=fused hs=32 slices=8  tape=153600 instrs executed, 512-entry step template, 108 static queues, multi-task blocks (not resident)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=1  vm grid=108
+
+mode                                        best ms    us/step/run run-steps/s    vs seq  max/min
+sequential, launch-per-op                    308.34          32.12       31135     1.00x    1.00x
+sequential, CUDA graph/run                   283.58          29.54       33853     1.09x    1.00x
+batched across runs (vmap-like graph)         35.37           3.68      271440     8.72x    1.00x
+KVM: all runs, ONE kernel                     28.43           2.96      337667    10.85x    1.02x
+KVM vs best baseline: 1.24x   (5 reps per mode)
+
+loss run0: 0.31605 -> 0.21904 (lr 0.0125)   run31: 0.31605 -> 0.14475 (lr 0.0875)
+max rel loss err vs cpu fp32 (runs 0 and 31, first 20 steps, all modes): 2.29e-05
+weights VM vs each baseline, all runs: 0 of 4718592 elements differ bitwise (max |dW| 0.00e+00)
+PASS
+[round 0] VM prog=fused 28.430 ms  pass=True
+model B=128 D=128 H=256 O=64  runs=32 steps=300  prog=tiles tile=32 kc=64 stg=4  tape=1152000 instrs executed, 3840-entry step template (0.29 MB)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
+
+mode                                        best ms    us/step/run run-steps/s    vs seq  max/min
+sequential, launch-per-op                    341.86          35.61       28082     1.00x    1.00x
+sequential, CUDA graph/run                   277.68          28.92       34573     1.23x    1.00x
+batched across runs (vmap-like graph)         35.19           3.67      272799     9.71x    1.00x
+KVM: all runs, ONE kernel                     33.34           3.47      287974    10.25x    1.00x
+KVM vs best baseline: 1.06x   (5 reps per mode)
+
+loss run0: 0.31605 -> 0.21904 (lr 0.0125)   run31: 0.31605 -> 0.14475 (lr 0.0875)
+max rel loss err vs cpu fp32 (runs 0 and 31, first 20 steps, all modes): 2.29e-05
+weights VM vs each baseline, all runs: 0 of 4718592 elements differ bitwise (max |dW| 0.00e+00)
+PASS
+[round 1] VM prog=tiles 33.336 ms  pass=True
+model B=128 D=128 H=256 O=64  runs=32 steps=300  prog=fused hs=32 slices=8  tape=153600 instrs executed, 512-entry step template, 108 static queues, multi-task blocks (not resident)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=1  vm grid=108
+
+mode                                        best ms    us/step/run run-steps/s    vs seq  max/min
+sequential, launch-per-op                    308.48          32.13       31120     1.00x    1.00x
+sequential, CUDA graph/run                   283.49          29.53       33863     1.09x    1.00x
+batched across runs (vmap-like graph)         35.46           3.69      270727     8.70x    1.00x
+KVM: all runs, ONE kernel                     28.35           2.95      338570    10.88x    1.01x
+KVM vs best baseline: 1.25x   (5 reps per mode)
+
+loss run0: 0.31605 -> 0.21904 (lr 0.0125)   run31: 0.31605 -> 0.14475 (lr 0.0875)
+max rel loss err vs cpu fp32 (runs 0 and 31, first 20 steps, all modes): 2.29e-05
+weights VM vs each baseline, all runs: 0 of 4718592 elements differ bitwise (max |dW| 0.00e+00)
+PASS
+[round 1] VM prog=fused 28.355 ms  pass=True
+model B=128 D=128 H=256 O=64  runs=32 steps=300  prog=tiles tile=32 kc=64 stg=4  tape=1152000 instrs executed, 3840-entry step template (0.29 MB)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
+
+mode                                        best ms    us/step/run run-steps/s    vs seq  max/min
+sequential, launch-per-op                    341.71          35.59       28094     1.00x    1.00x
+sequential, CUDA graph/run                   277.92          28.95       34542     1.23x    1.00x
+batched across runs (vmap-like graph)         35.32           3.68      271818     9.68x    1.00x
+KVM: all runs, ONE kernel                     33.38           3.48      287612    10.24x    1.00x
+KVM vs best baseline: 1.06x   (5 reps per mode)
+
+loss run0: 0.31605 -> 0.21904 (lr 0.0125)   run31: 0.31605 -> 0.14475 (lr 0.0875)
+max rel loss err vs cpu fp32 (runs 0 and 31, first 20 steps, all modes): 2.28e-05
+weights VM vs each baseline, all runs: 0 of 4718592 elements differ bitwise (max |dW| 0.00e+00)
+PASS
+[round 2] VM prog=tiles 33.378 ms  pass=True
+model B=128 D=128 H=256 O=64  runs=32 steps=300  prog=fused hs=32 slices=8  tape=153600 instrs executed, 512-entry step template, 108 static queues, multi-task blocks (not resident)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=1  vm grid=108
+
+mode                                        best ms    us/step/run run-steps/s    vs seq  max/min
+sequential, launch-per-op                    308.62          32.15       31107     1.00x    1.00x
+sequential, CUDA graph/run                   283.77          29.56       33831     1.09x    1.00x
+batched across runs (vmap-like graph)         35.74           3.72      268625     8.64x    1.00x
+KVM: all runs, ONE kernel                     28.57           2.98      336022    10.80x    1.02x
+KVM vs best baseline: 1.25x   (5 reps per mode)
+
+loss run0: 0.31605 -> 0.21904 (lr 0.0125)   run31: 0.31605 -> 0.14475 (lr 0.0875)
+max rel loss err vs cpu fp32 (runs 0 and 31, first 20 steps, all modes): 2.29e-05
+weights VM vs each baseline, all runs: 0 of 4718592 elements differ bitwise (max |dW| 0.00e+00)
+PASS
+[round 2] VM prog=fused 28.570 ms  pass=True
+
+variant                                                              best ms  us/step/run  max/min    VM(fused) speedup
+torch.compile bmm step + whole CUDA graph                             18.771        1.955    1.00x       0.66x
+torch.compile(vmap(grad)) + whole CUDA graph                          18.879        1.967    1.25x       0.67x
+torch hand-batched bmm + whole CUDA graph                             28.329        2.951    1.00x       1.00x
+KVM: all runs, ONE kernel [fused]                                     28.355        2.954    1.03x       1.00x
+torch.func.vmap(grad) + whole CUDA graph                              29.019        3.023    1.25x       1.02x
+KVM: all runs, ONE kernel [tiles]                                     33.320        3.471    1.00x       1.18x
+batched across runs (vmap-like graph) [tiles]                         35.191        3.666    1.01x       1.24x
+batched across runs (vmap-like graph) [fused]                         35.367        3.684    1.01x       1.25x
+torch hand-batched bmm, eager loop                                    91.583        9.540    1.14x       3.23x
+sequential, CUDA graph/run [tiles]                                   277.677       28.925    1.00x       9.79x
+sequential, CUDA graph/run [fused]                                   283.492       29.530    1.00x      10.00x
+sequential, launch-per-op [fused]                                    308.339       32.119    1.00x      10.87x
+torch.func.vmap(grad), eager loop                                    339.801       35.396    1.04x      11.98x
+sequential, launch-per-op [tiles]                                    341.709       35.595    1.00x      12.05x
+torch.compile step + whole-run CUDA graph                            355.340       37.015    1.00x      12.53x  (numerics MISMATCH)
+torch CUDA graph, whole run (manual backward)                        514.788       53.624    1.11x      18.16x
+torch eager (manual backward)                                       2308.835      240.504    1.05x      81.43x
+torch.compile step, python loop                                     3216.050      335.005    1.03x     113.42x  (numerics MISMATCH)
+torch eager (autograd)                                              4678.458      487.339    1.10x     165.00x
+
+R=32 S=300: best VM = fused 28.355 ms; vs best torch (torch.compile bmm step + whole CUDA graph) = 0.66x ; pass={'tiles': True, 'fused': True}

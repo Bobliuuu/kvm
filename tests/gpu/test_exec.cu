@@ -919,6 +919,8 @@ static bool suite_recycle(bool quick) {
     unsigned parked_wid = 0;
     if (straggler) { KvmBundleBuilder pb; KvmTaskOpts o; o.wait_var = 1; o.wait_ver = 1; pb.add("noop", {}, o); CHECK(ex.submit(pb.build(), 5000, true, &parked_wid) == KvmSubmit::OK, "parked bundle"); }
     std::atomic<int> okc{0};
+    std::mutex why_mu; std::string fail_why;   // first producer failure, for the verdict line
+    auto note_failure = [&](const std::string& m) { std::lock_guard<std::mutex> lk(why_mu); if (fail_why.empty()) fail_why = m; KLOG(0, "%s", m.c_str()); };
     std::vector<std::thread> th;
     auto t0 = std::chrono::steady_clock::now();
     for (int p = 0; p < producers; ++p) th.emplace_back([&, p] {
@@ -926,12 +928,12 @@ static bool suite_recycle(bool quick) {
       for (int b = 0; b < bundles_per; ++b) {
         int set = b % SETS;
         for (auto t1 = std::chrono::steady_clock::now(); used[set] && !ex.window_done(wid[set]); ) {
-          if (std::chrono::steady_clock::now() - t1 > std::chrono::seconds(60)) return;
+          if (std::chrono::steady_clock::now() - t1 > std::chrono::seconds(60)) { note_failure("producer " + std::to_string(p) + " bundle " + std::to_string(b) + " set " + std::to_string(set) + " stuck: " + ex.window_why_not_done(wid[set])); return; }
           std::this_thread::sleep_for(std::chrono::microseconds(20));
         }
         KvmBundleBuilder bb; int prev = -1; int x = xs[p * SETS + set];
         for (int i = 0; i < T; ++i) { int t = bb.add("add", {Bf(x), Bf(one), Bf(x), I(1)}); if (prev >= 0) bb.edge(prev, t); prev = t; }
-        if (ex.submit(bb.build(), 60000, true, &wid[set]) != KvmSubmit::OK) return;
+        { KvmSubmit st = ex.submit(bb.build(), 60000, true, &wid[set]); if (st != KvmSubmit::OK) { note_failure("producer " + std::to_string(p) + " bundle " + std::to_string(b) + " submit: " + kvm_submit_name(st) + " " + ex.last_error()); return; } }
         used[set] = true; ++okc;
       }
     });
@@ -940,7 +942,7 @@ static bool suite_recycle(bool quick) {
     ex.close(); const KvmResult& r = ex.finish();
     double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     const long long total = (long long)producers * bundles_per * T + (straggler ? 2 : 0);
-    CHECK(okc == producers * bundles_per && r.ok() && r.done == total && r.admitted == total, "%s: submitted %d, done %d admitted %d expected %lld, err %s", what, okc.load(), r.done, r.admitted, total, kvm_err_name(r.err_code));
+    CHECK(okc == producers * bundles_per && r.ok() && r.done == total && r.admitted == total, "%s: submitted %d, done %d admitted %d expected %lld, err %s; %s", what, okc.load(), r.done, r.admitted, total, kvm_err_name(r.err_code), fail_why.empty() ? "no producer failed" : fail_why.c_str());
     int bad = 0; for (int p = 0; p < producers; ++p) for (int set = 0; set < SETS; ++set) {
       int uses = bundles_per / SETS + (set < bundles_per % SETS); float want = (float)uses * T;
       bad += ex.read_buffer(xs[p * SETS + set])[0] != want; }

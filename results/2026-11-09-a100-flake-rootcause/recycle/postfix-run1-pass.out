@@ -1,0 +1,25 @@
+GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
+== recycle
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 3 resident blocks/SM with 0 B dynamic smem -> grid 64 (1 admitter + 63 workers)
+[kvm_exec][I] kernel launched: grid 64 x 256 threads, live_cap 16384, slots 65536, succ ring 131072 words, ring 1048576 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 2097152/2097152 tasks in 4418.455 ms, 128 records, 63 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 3 resident blocks/SM with 0 B dynamic smem -> grid 8 (1 admitter + 7 workers)
+[kvm_exec][I] kernel launched: grid 8 x 256 threads, live_cap 512, slots 1024, succ ring 4096 words, ring 16384 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 320/320 tasks in 17.716 ms, 320 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 3 resident blocks/SM with 0 B dynamic smem -> grid 8 (1 admitter + 7 workers)
+[kvm_exec][I] kernel launched: grid 8 x 256 threads, live_cap 512, slots 1024, succ ring 4096 words, ring 16384 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 200000/200000 tasks in 1713.344 ms, 782 records, 260 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 3 resident blocks/SM with 0 B dynamic smem -> grid 32 (1 admitter + 31 workers)
+[kvm_exec][I] kernel launched: grid 32 x 256 threads, live_cap 1024, slots 4096, succ ring 8192 words, ring 4096 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 3000000/3000000 tasks in 6333.097 ms, 100000 records, 16666 ring wraps, 45277 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 3 resident blocks/SM with 0 B dynamic smem -> grid 32 (1 admitter + 31 workers)
+[kvm_exec][I] kernel launched: grid 32 x 256 threads, live_cap 1024, slots 1024, succ ring 8192 words, ring 4096 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 600002/600002 tasks in 1262.328 ms, 20002 records, 3333 ring wraps, 9264 backpressure waits
+  stream: 2097152 tasks (6289920 edges) through 65536 slots in 128 windows (127 waited on predecessor windows): 4.42 s wall, 2.11 us/task; final layer bitwise vs CPU
+  chain: 200000 dependent tasks through 1024 slots, 782 windows: counter == 200000 (every task ran once, in order)
+  long-running admission: 3000000 tasks in 100000 bundles (4096 slots, 1024-entry window table, 8192-word successor ring, 16666 ring wraps), 6.33 s, all counters exact
+  recycling beside a parked task: 600002 tasks in 20002 bundles (1024 slots, 32768-entry window table, 8192-word successor ring, 3333 ring wraps), 1.26 s, all counters exact
+== recycle: PASS (14.1s, 0 new failures)
+15 checks, 0 failed, 0 suites failed
+PASS
+exit: 0

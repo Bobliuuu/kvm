@@ -141,7 +141,7 @@ autocast-bf16 eager (47.1 ms), 9-10x than its CUDA graph (30.9-44.7 ms) and 12x 
 | `perf/admission-bottleneck` | unmerged | dispatch fix, about 1.8x on the f32 bundle (no results dir on the branch yet) | pending |
 | `perf/combined2` | unmerged | bigger tiles: 83,861 tasks, f32 358 ms, bf16s 290 ms | `results/2026-11-06-a100-tiles`, `results/2026-11-06-matmul2-perf` |
 | `perf/sched-tail` | unmerged | express (per-class) admission and a strict-priority tier for tail latency | `results/2026-11-06-a100-sched-tail` |
-| `perf/kvm-cu` | unmerged | `kvm.cu` timeline, exact weights, torch baselines, fp16 fused programs | `results/2026-11-06-a100-kvm-cu` |
+| `perf/kvm-cu` | merged (closeout) | `kvm.cu` timeline, exact weights, torch baselines, fp16 fused programs | `results/2026-11-06-a100-kvm-cu` |
 | `perf/completion-path` | unmerged | cheaper task end: **no end-to-end change** (the step is bound by the ready-queue pop) | `results/2026-11-06-a100-completion` |
 | `results/learning-162m` | merged to main | 162M learns on a 256-token stream, executor vs PyTorch 300 steps | `results/2026-11-06-a100-learning-162m` |
 
@@ -315,14 +315,24 @@ of max(KTILE, KKC). `run_remote.sh` rsyncs to a GPU box (`KVM_HOST`), builds and
 
 ## Results (A100-SXM4-40GB, MLP B=128 D=128 H=256 O=64, KTILE=32 KKC=64 KSTG=4)
 
-Every mode is checked: loss matches a CPU fp32 reference (~3e-5 rel), final weights are identical
-across all four modes.
+Every mode is checked: loss matches a CPU fp32 reference (~3e-5 rel), final weights are bitwise identical
+across all four modes (the check is exact equality: it counts differing elements and fails on any).
 
 | runs | sequential launches | sequential graphs | batched graph (vmap-like) | **KVM** | KVM vs best baseline |
 |---|---|---|---|---|---|
 | 1  | 45.1 us/step | 38.0 | 37.9 | **25.3** | 1.50x |
 | 8  | 37.0 us/step/run | 31.1 | 6.83 | **4.18** | 1.63x (8.9x vs sequential) |
 | 32 | 36.9 us/step/run | 31.1 | 3.88 | **3.45** | 1.13x (10.7x vs sequential) |
+
+## Honest attribution (read before quoting the table)
+
+- Most of the "10.7x at 32 runs" is **batching, not the VM**: the batched graph (one launch per phase for all runs, vmap-like) alone
+  gives 36.9 / 3.88 = 9.5x over sequential launches; the VM adds the remaining 1.13x (3.88 -> 3.45). The VM's own win is largest at
+  1 run (1.50x over the best baseline) and shrinks as the baseline learns to batch.
+- Against torch (same process, best valid variant incl. `torch.compile` + whole-run CUDA graph, vmap/bmm batching; `results/2026-11-06-a100-kvm-cu`,
+  branch `perf/kvm-cu`, now merged here): TF32 like-for-like 1.50x / 1.51x / **0.70x at 1 / 8 / 32 runs, so the VM loses at 32 runs**; with fp16 operands
+  (a precision switch, compared with torch fp16 autocast) 2.01x / 2.24x / 1.25x.
+- The 32-run win with fp16 operands comes from halved shared-memory bytes (two blocks per SM), not from the VM idea itself.
 
 ## Findings / caveats
 

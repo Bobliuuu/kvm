@@ -62,8 +62,7 @@ Known failures and honest negatives (do not paper over them):
 - The adaptive controller did not beat a hand-set fixed priority configuration; the dynamic scheduler is 1.7-1.8x worse on serve p99 than a
   global queue with serve priority (`2026-11-04-a100-sched-integrated`).
 - RTX 5070 Laptop (sm_120): `kvm.cu` passes but never clearly beats the batched graph, 0.73-1.12x (`2026-11-03-rtx5070-laptop-sm120`).
-- `kvm.cu` open gaps: no timeline (`prof = nullptr`, no `%smid`); the weights check allows 1e-3 although weights are bitwise identical in all
-  four modes (check exact equality); on the README's A100 batching alone gives 9.5x of the 10.7x at 32 runs.
+- `kvm.cu` (closed in the closeout PR): timeline (`--timeline`, `%smid`) and exact weight equality are in; on the A100 batching alone gives 9.5x of the 10.7x at 32 runs, and against compiled torch bmm/vmap graphs the TF32 VM loses at 32 runs (0.70x; `results/2026-11-06-a100-kvm-cu`).
 
 ## How the best do it (read before designing)
 

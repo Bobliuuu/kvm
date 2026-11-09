@@ -1,0 +1,21 @@
+exit 0 mlp_runs
+exit 0 mlp_steps_10
+exit 0 mlp_steps_200
+exit 0 mlp_steps_1000
+exit 0 mlp_size_256
+exit 0 mlp_size_1024
+exit 0 diag_r1
+exit 0 diag_r32
+exit 0 flags_r1_1
+exit 0 flags_r1_2
+exit 0 flags_r1_3
+exit 0 flags_r8_1
+exit 0 flags_r8_2
+exit 0 flags_r8_3
+exit 0 flags_r32_1
+exit 0 flags_r32_2
+exit 0 flags_r32_3
+exit 0 gpt_tiny
+exit 0 gpt_small
+exit 0 gpt_162m
+done

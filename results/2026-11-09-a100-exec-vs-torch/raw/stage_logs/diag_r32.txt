@@ -1,0 +1,20 @@
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 98304 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] out/final2/work_h72/time_n50_r32: 81600 tasks, 331392 edges, 828800 arg words
+[kvm_exec][I] kernel launched: grid 108 x 256 threads, live_cap 131072, slots 262144, succ ring 2097152 words, ring 8388608 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 81600/81600 tasks in 343.632 ms, 1 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] workload 0: 81600 tasks, 0.890 CTA-s, queue wait p50 145.4 p99 2968.6 max 3968.0 us, 0 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] trace: 81600 tasks -> out/final2/trace_r32.csv
+OK: 81600/81600 tasks, 343.632 ms
+81600 tasks, span 119.69 ms = 2394 us/step, workers 107: task-run time 889.9 ms, utilisation 6.9%, mean ready->start wait 217.3 us, mean task 10.9 us
+op                              tasks  sum run ms  mean us   max us % run time
+matmul_tile                     51200      607.34     11.9     23.6      68.2%
+sgd                              9600       71.02      7.4     18.4       8.0%
+embedding_bwd                    1600       39.42     24.6     30.7       4.4%
+softmax_ce_fwd                   1600       38.75     24.2     27.6       4.4%
+gelu_bwd                         3200       31.11      9.7     15.4       3.5%
+colsum                           3200       28.83      9.0     12.3       3.2%
+softmax_ce_bwd                   1600       26.18     16.4     21.5       2.9%
+embedding_fwd                    1600       20.39     12.7     16.4       2.3%
+select_window                    3200       12.13      3.8      8.2       1.4%
+softmax_ce_reduce                1600        9.16      5.7      8.2       1.0%
+noop                             3200        5.60      1.8      3.1       0.6%

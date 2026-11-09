@@ -1,0 +1,23 @@
+GATE 1+2 ok: 3-step run within 1e-3 of the CPU golden; 4 replicated copies bitwise equal to the single run (79 buffers)
+env {'torch': '2.7.0', 'cuda': '12.8', 'gpu': 'NVIDIA A100-SXM4-40GB', 'sms': 108}
+GATE 3: executor vs eager, loss max rel 9.46e-04, weights max rel L2 4.08e-05, loss 4.5369 -> 0.0046; vs float64: executor 9.15e-04, eager 8.31e-04
+  R=1 eager: loss vs eager 0.00e+00, vs fp64 8.31e-04
+  R=1 compile: loss vs eager 1.03e-02, vs fp64 1.03e-02
+  R=1 compile_graph: loss vs eager 1.03e-02, vs fp64 1.03e-02
+  R=1 seq_graph: loss vs eager 0.00e+00, vs fp64 8.31e-04
+  R=1 batched_compile: loss vs eager 1.02e-02, vs fp64 1.03e-02
+{"runs": 1, "steps": 1000, "eager": 770.7, "compile": 937.1, "compile_graph": 75.8, "seq_graph": 120.7, "batched_compile": 57.2, "executor": 489.2}
+  R=8 eager: loss vs eager 0.00e+00, vs fp64 8.31e-04
+  R=8 seq_graph: loss vs eager 0.00e+00, vs fp64 8.31e-04
+  R=8 multi_graph: loss vs eager 0.00e+00, vs fp64 8.31e-04
+  R=8 batched: loss vs eager 8.78e-04, vs fp64 8.88e-04
+  R=8 batched_compile: loss vs eager 1.02e-02, vs fp64 1.03e-02
+{"runs": 8, "steps": 1000, "eager": 5815.8, "seq_graph": 883.7, "multi_graph": 283.8, "batched": 148.1, "batched_compile": 71.7, "executor": 1486.2}
+
+best-of-7 us per step, all R runs advance one step; last block: variant / executor (>1: executor faster)
+   R           eager         compile   compile_graph       seq_graph batched_compile        executor     multi_graph         batched
+   1           770.7           937.1            75.8           120.7            57.2           489.2               -               -
+   8          5815.8               -               -           883.7            71.7          1486.2           283.8           148.1
+ratio
+   1           1.58x           1.92x           0.16x           0.25x           0.12x           1.00x               -               -
+   8           3.91x               -               -           0.59x           0.05x           1.00x           0.19x           0.10x

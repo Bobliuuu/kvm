@@ -285,6 +285,8 @@ Tests and how to run them: [RUNNING_TESTS.md](RUNNING_TESTS.md). Quick check wit
 
 ## 🐱 The `kvm.cu` prototype
 
+Timeline: build with `-DKVM_TIMELINE`, run `--timeline FILE`, render with `python3 -I tools/kvm_timeline.py FILE out.png` (A100 result, figures and overhead 0-1.5%: `results/2026-11-09-a100-timeline`).
+
 `kvm.cu` is a self-contained prototype (CUDA, sm_80, one file). The numbers below predate its loop opcode: rerun before quoting.
 
 ## How it works

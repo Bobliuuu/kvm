@@ -1,0 +1,31 @@
+model B=128 D=128 H=256 O=64  runs=16 steps=40  tile=32 kc=64 stg=4  tape=76800 instrs executed, 1920-entry step template (0.15 MB)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
+
+mode                                       total ms    us/step/run run-steps/s    vs seq
+sequential, launch-per-op                     21.21          33.14       30179     1.00x
+sequential, CUDA graph/run                    17.00          26.56       37653     1.25x
+batched across runs (vmap-like graph)          2.59           4.04      247525     8.20x
+KVM: all runs, ONE kernel                      2.03           3.17      315497    10.45x
+KVM vs best baseline: 1.27x
+
+loss run0: 0.31605 -> 0.29488 (lr 0.0125)   run15: 0.31605 -> 0.22191 (lr 0.0875)
+max rel loss err vs cpu fp32 (runs 0 and 15, first 40 steps, all modes): 3.64e-05
+max |dW| of VM vs each baseline, all runs: 0.00e+00
+timeline: 76800 records -> tl_16run.csv
+PASS
+model B=128 D=128 H=256 O=64  runs=48 steps=40  tile=32 kc=64 stg=4  tape=230400 instrs executed, 5760-entry step template (0.44 MB)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
+
+mode                                       total ms    us/step/run run-steps/s    vs seq
+sequential, launch-per-op                     63.02          32.82       30467     1.00x
+sequential, CUDA graph/run                    51.46          26.80       37313     1.22x
+batched across runs (vmap-like graph)          6.07           3.16      316189    10.38x
+KVM: all runs, ONE kernel                      6.19           3.23      310071    10.18x
+KVM vs best baseline: 0.98x
+
+loss run0: 0.31605 -> 0.29488 (lr 0.0125)   run47: 0.31605 -> 0.22191 (lr 0.0875)
+max rel loss err vs cpu fp32 (runs 0 and 47, first 40 steps, all modes): 3.64e-05
+max |dW| of VM vs each baseline, all runs: 0.00e+00
+timeline: 230400 records -> tl_48run.csv
+PASS
+ALLDONE

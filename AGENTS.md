@@ -49,10 +49,11 @@ DISTRIBUTED.md. Entry points and cost of every test: RUNNING_TESTS.md. A change 
 | Not built | Class-aware or sliced admission, device-side yield, dynamic shapes / control flow, real bf16/fp16 storage, TMA/wgmma/tcgen05, an executor-vs-PyTorch/CUDA-graph comparison (goal 3 holds only for the `kvm.cu` MLP). |
 
 Known failures and honest negatives (do not paper over them):
-- `recycle` long-running admission (3M tasks, 4096 slots) failed 2 of 3 runs on the adaptive tree, same flake on its base commit, not
-  root-caused; passes in about 6 s otherwise (`2026-11-04-a100-adaptive`, failure list 1).
-- `test_ops` T=1 attention-backward case: dq, dk are exactly 0 and only rounding noise remains, so its bound is absolute
-  (`tests/gpu_ops/test_ops.cu` line 264); a failure was reported on the integrated tree and no result README records it: open.
+- Root-caused 2026-11-09 (`2026-11-09-a100-flake-rootcause`), no open flakes of these three kinds: `recycle` long-running admission failed because
+  `window_done` compared `==` on a wrapping table (fixed in 15994b4; 25 alternated A100 runs: pre-fix 10 failed, fixed 0); `test_ops` T=1 attention
+  backward is deterministic rounding noise around an exact 0, so its fixed bound was a magic number (4.1e-5 seen over 2000 seeds, above the old 3e-5):
+  now bounded per element from the data (worst 0.15 of the bound); the scalar `versions` `at_least` reader may legitimately see the next version's data
+  (fix f595945; 600 alternated A100 runs: pre-fix 15 failed, fixed 0). Both suites now name the failing window and raw mark in their verdict line.
 - Matmul is about 0.5x cuBLAS (best 51.0 vs 105.6 TFLOP/s at 4096^3, 0.34-0.51x elsewhere; the 70% target was missed); attention 15-30% below
   torch fp32 SDPA (`2026-11-04-a100-ops-perf`).
 - Nothing has run on more than one GPU, over NVLink, or over a network.

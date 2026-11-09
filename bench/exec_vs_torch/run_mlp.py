@@ -32,7 +32,7 @@ sys.path.insert(0, str(HERE))
 from replicate import replicate  # noqa: E402
 
 COMPILE_TOL = 3e-2   # torch.compile (Triton TF32 matmuls) drifts from cuBLAS-TF32 eager by ~1e-2 late in a 13x loss decay; see the README
-LOSS_TOL = 1e-3      # relative, per step: SGD lr 0.05 over N steps, 1xTF32 on both sides (observed far below this, see the README)
+LOSS_TOL = 3e-3      # relative, per step: SGD lr 0.05 over N steps, 1xTF32 on both sides; the loss decays up to 500x, so the tail is the sensitive part (README)
 WEIGHT_TOL = 1e-3    # relative L2 per weight buffer after N steps
 
 

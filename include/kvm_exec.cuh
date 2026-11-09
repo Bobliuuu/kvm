@@ -518,7 +518,7 @@ __device__ __forceinline__ void kvm_publish(const KvmDevState& S, int slot, int 
 // ---------------- worker ----------------
 struct KvmShared {
   KvmTaskDesc d;
-  int cmd, skip, how, part, dup, cont;   // how: KVM_TRACE_* start reason from kvm_pop; part: STATIC-mode class of this worker's SM
+  int cmd, skip, how, part, dup, cont, qbusy;   // how: KVM_TRACE_* start reason from kvm_pop; part: STATIC-mode class of this worker's SM
   float smem[KVM_SMEM_FLOATS];
 };
 #define KVM_POP_EXIT (-2)
@@ -575,6 +575,12 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   // of sitting on the dependent-hop critical path (op end -> release -> successor ready). It is only consumed after the op.
   int sid0 = -1;
   if (threadIdx.x < d.succ_cnt) sid0 = S.succ[(unsigned)(d.succ_off + threadIdx.x) & (S.succ_cap - 1)];
+  // Continuation only while the ready queue is empty (looked at before the op, one coalesced load by warp 0): a chain must not starve queued
+  // tasks of other priorities (the aging / priority rules live in the queue). Idle workers take anything that arrives during the op.
+  if (threadIdx.x < 32) {
+    const unsigned b = __ballot_sync(0xffffffffu, S.cont_on && !S.sp.on && *(volatile long long*)&S.qctl[threadIdx.x].avail > 0);
+    if (threadIdx.x == 0) sh.qbusy = b != 0;
+  }
   if (!sh.skip) {
     KvmCtx c{S.bufs, S.nbufs, slot, S.cnt, S.herr, sh.smem};
     kvm_dispatch(d.op_id, c, S.args + d.args_off);
@@ -603,7 +609,7 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
         // accounts ready/running per class at enqueue and pop); the CTA is not free for other work while it runs, but every other
         // released successor still goes through the queue.
         const KvmTaskDesc* sd = S.tasks + s;
-        if (S.cont_on && !S.sp.on && sd->priority == d.priority && (sd->wait_var < 0 || ld_acq(S.version + sd->wait_var) >= sd->wait_ver) &&
+        if (S.cont_on && !S.sp.on && !sh.qbusy && sd->priority == d.priority && (sd->wait_var < 0 || ld_acq(S.version + sd->wait_var) >= sd->wait_ver) &&
             atomicCAS(&sh.cont, -1, s) == -1) {
           S.trace[s].ready_ns = kvm_now();
         } else { kvm_sched_pref(S, s); kvm_release_task(S, s); }  // SCHED: affinity = this block

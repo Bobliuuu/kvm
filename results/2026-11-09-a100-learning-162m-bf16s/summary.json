@@ -1,0 +1,63 @@
+{
+ "steps": 300,
+ "ln_vocab": 10.825839875788878,
+ "ln_K": 5.545177444479562,
+ "entropy": 0.876185632290844,
+ "first_loss": {
+  "executor": 11.009037,
+  "torch_tf32": 11.009115219116211,
+  "torch_fp32": 11.009134292602539,
+  "torch_bf16": 11.008987426757812
+ },
+ "last_mean": {
+  "executor": 0.9136394918666666,
+  "torch_tf32": 0.9139528512954712,
+  "torch_fp32": 0.9139514962832133,
+  "steps_averaged": 30,
+  "torch_bf16": 0.9137105961640676
+ },
+ "first_step_below_ln_K": {
+  "executor": 11,
+  "torch_tf32": 11,
+  "torch_bf16": 11
+ },
+ "first_step_below_entropy_plus_0.1": {
+  "executor": 31,
+  "torch_tf32": 31,
+  "torch_bf16": 33
+ },
+ "max_rel_gap_vs_tf32": {
+  "value": 0.002001131277516159,
+  "step": 18,
+  "median": 0.00016942506445684824,
+  "mean": 0.0002673113160566358
+ },
+ "max_rel_gap_vs_fp32": {
+  "value": 0.0016911348928189299,
+  "step": 18
+ },
+ "max_rel_gap_tf32_vs_fp32 (noise floor)": {
+  "value": 0.0003106179720364299,
+  "step": 18
+ },
+ "first_step_rel_gap_over_1pct_vs_tf32": null,
+ "holdout": {
+  "init": 10.994855165481567,
+  "tf32": 0.908249631524086,
+  "fp32": 0.908291183412075,
+  "bf16": 0.9084919020533562,
+  "executor": 0.9092314764857292
+ },
+ "holdout_batches": 8,
+ "max_rel_gap_vs_bf16": {
+  "value": 0.004341584034726473,
+  "step": 16,
+  "median": 0.0007023432202553732,
+  "mean": 0.0008020577872389514
+ },
+ "max_rel_gap_bf16_vs_tf32 (bf16 noise floor)": {
+  "value": 0.005951916402068589,
+  "step": 18,
+  "median": 0.0007963737604059463
+ }
+}

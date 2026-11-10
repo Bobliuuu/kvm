@@ -1,0 +1,201 @@
+# suite=custom tag=bf16-exec-zoo-m1 2026-11-10T09:18:12Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 1024 GB, cores: 16
+initgen vectors identical
+BUILD: tests/gpu/build.sh
+prebuild exit 0
+kvm_exec build 0
+      const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, wm = warp >> 2, wn = warp & 3, g = lane >> 2, t = lane & 3;
+      const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, wm = warp >> 2, wn = warp & 3, g = lane >> 2, t = lane & 3;
+
+real	20m13.096s
+user	42m22.780s
+sys	0m6.800s
+-rwxr-xr-x 1 root root 11242712 Nov 10 09:38 test_exec
+== test_exec
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring wrap: 64 pad words
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring wrap: 64 pad words
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][D] ring full (32768/32768 words used): backpressure
+[kvm_exec][I] kernel done: 156000/156000 tasks in 1490.051 ms, 6000 records, 82 ring wraps, 1283 backpressure waits
+  litmus: 12 runs, 1872000 tasks; each iteration races a waiter's park against the publish of its version; no lost wakeup, early run or double run
+== litmus: PASS (22.3s, 0 new failures)
+8609 checks, 1 failed, 1 suites failed
+FAIL
+exit: 1
+/work/pre/mlp_bf16: mlp_bf16 30 steps, 2790 tasks, 9024 edges, 1xTF32
+/work/pre/mlp_bf16s: mlp_bf16s 30 steps, 3450 tasks, 10618 edges, 1xTF32
+/work/pre/san_bf16: llama_bf16 2 steps, 1918 tasks, 11131 edges, 1xTF32
+/work/pre/san_bf16s: llama_bf16s 2 steps, 2046 tasks, 9709 edges, 1xTF32
+/work/pre/vit_bf16: vit_bf16 10 steps, 6510 tasks, 37009 edges, 1xTF32
+/work/pre/vit_bf16s: vit_bf16s 10 steps, 6890 tasks, 32850 edges, 1xTF32
+/work/pre/llama_bf16: llama_bf16 10 steps, 9600 tasks, 69774 edges, 1xTF32
+/work/pre/llama_bf16s: llama_bf16s 10 steps, 10240 tasks, 62536 edges, 1xTF32
+== zoo bf16
+llama_bf16 exit 0
+mlp_bf16 exit 0
+vit_bf16 exit 0
+san_bf16 exit 0
+== compute-sanitizer memcheck san_bf16
+========= COMPUTE-SANITIZER
+OK: 1918/1918 tasks, 272.345 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_bf16
+========= COMPUTE-SANITIZER
+OK: 1918/1918 tasks, 9468.113 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_bf16
+========= COMPUTE-SANITIZER
+OK: 1918/1918 tasks, 150.187 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+llama_bf16s exit 0
+mlp_bf16s exit 0
+vit_bf16s exit 0
+san_bf16s exit 0
+== compute-sanitizer memcheck san_bf16s
+========= COMPUTE-SANITIZER
+OK: 2046/2046 tasks, 253.946 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_bf16s
+========= COMPUTE-SANITIZER
+OK: 2046/2046 tasks, 10385.171 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_bf16s
+========= COMPUTE-SANITIZER
+OK: 2046/2046 tasks, 154.477 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+llama_bf16 kvm_exec: OK: 9600/9600 tasks, 22.562 ms
+lowp: 1266 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 10 loss buffers
+  ok   losses rel L2 <= 0.001: worst 3.18e-04
+  ok   119 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act62 4.97e-06
+  info: post-optimizer weights/moments differ by up to 9.68e-03 (v.llama.h0.mlp.down.w) after the run
+  info: weights differ from the golden by 1.75e-03 (llama.wte); gradients differ per step by up to 2.5e-02, relative L2 of worst tensor, per step [0.0, 0.0011, 0.0055, 0.0065, 0.0077, 0.0079]
+  ok   optimizer replay reproduces the golden weights (validates the replay) <= 1e-05: worst 1.18e-07 (llama.h0.attn.o.w)
+  ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 1.19e-07 (llama.h1.attn.v.w)
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+mlp_bf16 kvm_exec: OK: 2790/2790 tasks, 16.134 ms
+lowp: 831 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 30 loss buffers
+  ok   losses rel L2 <= 0.001: worst 8.26e-07
+  ok   26 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act25 1.31e-07
+  info: post-optimizer weights/moments differ by up to 4.20e-07 (m.mlp.fc2.w) after the run
+  info: weights differ from the golden by 3.87e-08 (mlp.fc0.b); gradients differ per step by up to 1.4e-05, relative L2 of worst tensor, per step [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  ok   optimizer replay reproduces the golden weights (validates the replay) <= 1e-05: worst 2.50e-07 (mlp.fc1.w)
+  ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 2.50e-07 (mlp.fc1.w)
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+vit_bf16 kvm_exec: OK: 6510/6510 tasks, 14.675 ms
+lowp: 863 f32 buffers (14 signal-free skipped: ['act146', 'act225', 'act304', 'act383', 'act462', 'act541']; 1 structurally-zero-gradient parameters judged in absolute terms), 10 loss buffers
+  ok   losses rel L2 <= 0.001: worst 6.00e-04
+  ok   77 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act66 3.20e-05
+  info: post-optimizer weights/moments differ by up to 3.93e-03 (m.vit.h0.attn.v.w) after the run
+  info: weights differ from the golden by 9.78e-01 (vit.h0.attn.k.b); gradients differ per step by up to 1.9e+00, relative L2 of worst tensor, per step [0.002, 0.2948, 1.2956, 1.2172, 1.4524, 1.2086]
+  ok   optimizer replay reproduces the golden weights (validates the replay) <= 1e-05: worst 1.74e-07 (vit.h0.attn.o.b)
+  ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 1.27e-07 (vit.h0.attn.o.b)
+  ok   vit.h0.attn.k.b weight (structurally zero gradient) within the optimizer envelope: |w_gpu - w_golden| max 2.017e-02, |w_gpu| max 1.780e-02, envelope T = 10 steps * 3.0e-03 = 3.000e-02
+  ok   vit.h0.attn.k.b moments at the noise level of the live gradients: |m_gpu| max 1.130e-07 (golden 9.044e-08) vs 7.754e-04, sqrt|v_gpu| max 3.823e-07 (golden 2.446e-07) vs 1.120e-03
+  ok   act146 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 4.169e-05 (golden 4.151e-05) vs 8.137e-01
+  ok   act225 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 6.407e-05 (golden 3.326e-05) vs 8.137e-01
+  ok   act304 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 2.724e-05 (golden 5.189e-05) vs 8.137e-01
+  ok   act383 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 6.336e-05 (golden 5.704e-05) vs 8.137e-01
+  ok   act462 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 5.066e-05 (golden 8.166e-05) vs 8.137e-01
+  ok   act541 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 1.054e-04 (golden 8.452e-05) vs 8.137e-01
+  ok   act620 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 1.910e-04 (golden 1.483e-04) vs 8.137e-01
+  ok   act67 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 2.235e-05 (golden 2.235e-05) vs 8.137e-01
+  ok   act699 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 1.552e-04 (golden 1.101e-04) vs 8.137e-01
+  ok   act778 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 1.220e-04 (golden 9.358e-05) vs 8.137e-01
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+san_bf16 kvm_exec: OK: 1918/1918 tasks, 6.623 ms
+lowp: 305 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 2 loss buffers
+  ok   losses rel L2 <= 0.001: worst 6.07e-08
+  ok   119 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act62 4.97e-06
+  info: post-optimizer weights/moments differ by up to 2.64e-05 (m.llama.h1.attn.k.w) after the run
+  info: weights differ from the golden by 5.47e-06 (llama.h1.attn.k.w); gradients differ per step by up to 4.3e-05, relative L2 of worst tensor, per step [0.0, 0.0]
+  ok   optimizer replay reproduces the golden weights (validates the replay) <= 1e-05: worst 5.35e-08 (llama.h0.attn.k.w)
+  ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 5.38e-08 (llama.h1.attn.q.w)
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+llama_bf16s kvm_exec: OK: 10240/10240 tasks, 22.521 ms
+lowp: 726 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 10 loss buffers
+  ok   losses rel L2 <= 0.001: worst 6.09e-04
+  ok   65 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act106 4.81e-03
+  info: post-optimizer weights/moments differ by up to 1.29e-02 (m.llama.h0.attn.q.w) after the run
+  info: weights differ from the golden by 9.61e-03 (llama.h0.attn.o.w); gradients differ per step by up to 2.0e-02, relative L2 of worst tensor, per step [0.0017, 0.0133, 0.0157, 0.016, 0.017, 0.0181]
+  ok   optimizer replay reproduces the golden weights (validates the replay) <= 1e-05: worst 1.18e-07 (llama.h1.attn.o.w)
+  ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 1.18e-07 (llama.h0.attn.o.w)
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+mlp_bf16s kvm_exec: OK: 3450/3450 tasks, 18.349 ms
+lowp: 651 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 30 loss buffers
+  ok   losses rel L2 <= 0.001: worst 8.26e-07
+  ok   20 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act28 1.31e-07
+  info: post-optimizer weights/moments differ by up to 4.20e-07 (m.mlp.fc2.w) after the run
+  info: weights differ from the golden by 3.87e-08 (mlp.fc0.b); gradients differ per step by up to 1.4e-05, relative L2 of worst tensor, per step [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  ok   optimizer replay reproduces the golden weights (validates the replay) <= 1e-05: worst 2.50e-07 (mlp.fc1.w)
+  ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 2.50e-07 (mlp.fc1.w)
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+vit_bf16s kvm_exec: OK: 6890/6890 tasks, 18.373 ms
+lowp: 633 f32 buffers (14 signal-free skipped: ['act145', 'act224', 'act303', 'act382', 'act461', 'act540']; 1 structurally-zero-gradient parameters judged in absolute terms), 10 loss buffers
+  ok   losses rel L2 <= 0.001: worst 2.30e-04
+  ok   54 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act52 4.65e-07
+  info: post-optimizer weights/moments differ by up to 3.58e-03 (m.vit.h0.attn.v.w) after the run
+  info: weights differ from the golden by 6.52e-01 (vit.h0.attn.k.b); gradients differ per step by up to 2.0e+00, relative L2 of worst tensor, per step [0.0, 0.0412, 0.4901, 1.1032, 1.1331, 1.5534]
+  ok   optimizer replay reproduces the golden weights (validates the replay) <= 1e-05: worst 1.70e-07 (vit.head.b)
+  ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 1.77e-07 (vit.h0.attn.o.b)
+  ok   vit.h0.attn.k.b weight (structurally zero gradient) within the optimizer envelope: |w_gpu - w_golden| max 1.741e-02, |w_gpu| max 1.965e-02, envelope T = 10 steps * 3.0e-03 = 3.000e-02
+  ok   vit.h0.attn.k.b moments at the noise level of the live gradients: |m_gpu| max 1.243e-07 (golden 1.248e-07) vs 7.756e-04, sqrt|v_gpu| max 2.801e-07 (golden 2.671e-07) vs 1.120e-03
+  ok   act145 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 4.113e-05 (golden 4.113e-05) vs 8.137e-01
+  ok   act224 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 3.993e-05 (golden 4.935e-05) vs 8.137e-01
+  ok   act303 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 6.318e-05 (golden 4.168e-05) vs 8.137e-01
+  ok   act382 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 7.021e-05 (golden 5.126e-05) vs 8.137e-01
+  ok   act461 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 4.995e-05 (golden 4.750e-05) vs 8.137e-01
+  ok   act540 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 5.794e-05 (golden 9.239e-05) vs 8.137e-01
+  ok   act619 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 9.012e-05 (golden 1.428e-04) vs 8.137e-01
+  ok   act66 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 2.812e-05 (golden 2.812e-05) vs 8.137e-01
+  ok   act698 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 2.801e-04 (golden 1.046e-04) vs 8.137e-01
+  ok   act777 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 1.607e-04 (golden 1.436e-04) vs 8.137e-01
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+san_bf16s kvm_exec: OK: 2046/2046 tasks, 5.857 ms
+lowp: 197 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 2 loss buffers
+  ok   losses rel L2 <= 0.001: worst 2.82e-05
+  ok   65 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act106 4.81e-03
+  info: post-optimizer weights/moments differ by up to 2.43e-02 (v.llama.h0.attn.o.w) after the run
+  info: weights differ from the golden by 1.74e-02 (llama.h0.attn.o.w); gradients differ per step by up to 2.4e-02, relative L2 of worst tensor, per step [0.0017, 0.0235]
+  ok   optimizer replay reproduces the golden weights (validates the replay) <= 1e-05: worst 5.28e-08 (llama.h0.mlp.down.w)
+  ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 5.27e-08 (llama.h0.mlp.down.w)
+  ok   no NaN/Inf in any GPU buffer: []
+PASS
+out: /logs/bf16-exec-zoo-m1/zoo
+zoo exit 0

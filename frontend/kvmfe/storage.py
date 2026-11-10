@@ -36,8 +36,8 @@ NATIVE = {
     'embedding': ((), ('out',)),
     'layernorm': (('x',), ('out',)),
     'rmsnorm': (('x',), ('out',)),
-    'layernorm_bwd': (('x', 'dy'), ('dx',)),
-    'rmsnorm_bwd': (('x', 'dy'), ('dx',)),
+    'layernorm_bwd': (('x', 'dy', 'into'), ('dx',)),   # into = dx accumulated in place (acc_x): device reads bf16 dx, adds in fp32, rounds once
+    'rmsnorm_bwd': (('x', 'dy', 'into'), ('dx',)),   # into = dx accumulated in place (acc_x): device reads bf16 dx, adds in fp32, rounds once
     'rope': (('x',), ('out',)),
     'rope_bwd': (('dy',), ('out',)),
     'gelu_bwd': (('pre', 'dy'), ('out',)),
@@ -46,7 +46,18 @@ NATIVE = {
     'colsum': (('x',), ()),
     'ce_loss': (('logits',), ()),
     'ce_bwd': (('logits',), ('out',)),
+    # causal attention (attn_fwd / attn_bwd_delta / attn_bwd_dq / attn_bwd_dkv): q, k, v, o, do and dq, dk, dv may be bf16 storage, widened into the
+    # kernels' fp32 tiles (arithmetic unchanged); lse and delta stay fp32. The bidirectional attn_full_* ops are fp32 only (see _native).
+    'attention': (('q', 'k', 'v'), ('out',)),
+    'attention_bwd': (('q', 'k', 'v', 'o', 'do'), ('dq', 'dk', 'dv')),
 }
+
+
+def _native(op):
+    """(in slots, out slots) of `op` that may hold bf16 storage, or None."""
+    if op.kind in ('attention', 'attention_bwd') and not op.attrs.get('causal'):
+        return None
+    return NATIVE.get(op.kind)
 
 
 def _capable(op):
@@ -62,7 +73,7 @@ def _out_slot(op, x):
     accumulate into x (the epilogue would have to read an fp32 'into'); storage-aware ops only when x is not also an input (RMW)."""
     if _capable(op):
         return 'out' if op.outs.get('out') is x and 'into' not in op.ins else None
-    native = NATIVE.get(op.kind)
+    native = _native(op)
     if native is None or any(t is x for t in op.ins.values()):
         return None
     return next((s for s in native[1] if op.outs.get(s) is x), None)
@@ -73,13 +84,16 @@ def _narrow_operands(ops, stats):
     all consumers of the same value of the tensor (a write to the tensor starts a new value)."""
     version: dict = {}
     copies: dict = {}
+    # outputs of the model's own bf16 casts become bf16 storage in apply() step 1: they need no copy (a copy would be a bf16 -> bf16 round trip
+    # of the whole tensor, e.g. 206M elements of dlogits per step at 162M)
+    cast_out = {op.outs['out'].uid for op in ops if op.kind == 'cast' and op.attrs.get('dtype') == 'bf16'}
     out = []
     for op in ops:
         if _capable(op):
             ins = dict(op.ins)
             for n in _OPERAND_IN[op.kind]:
                 t = ins.get(n)
-                if t is None or t.dtype != 'f32' or t.kind == 'param':
+                if t is None or t.dtype != 'f32' or t.kind == 'param' or t.uid in cast_out:
                     continue
                 key = (t.uid, version.get(t.uid, 0))
                 if key not in copies:
@@ -96,7 +110,7 @@ def _narrow_operands(ops, stats):
 
 def apply(ops: list[LogicalOp], weights: bool = True) -> tuple[list[LogicalOp], dict]:
     """weights=False keeps the fp32 masters as the matmul operands (the kernel rounds them on load): no bf16 weight shadows."""
-    stats = dict(folded=0, narrowed=0, widened=0, shadows=0, operand_copies=0, bf16_pre=0)
+    stats = dict(folded=0, redirected=0, narrowed=0, widened=0, shadows=0, operand_copies=0, bf16_pre=0)
     ops = _narrow_operands(ops, stats)
     uses: dict = {}
     prod: dict = {}
@@ -106,22 +120,34 @@ def apply(ops: list[LogicalOp], weights: bool = True) -> tuple[list[LogicalOp], 
         for t in op.outs.values():
             prod.setdefault(t.uid, []).append(i)
 
-    # 1. cast outputs become bf16; fold the cast into the producing op when that is its only consumer and the producer can store bf16
-    drop, out_of = set(), {}
+    # 1. cast outputs become bf16; fold the cast into the producing op when the producer can store bf16 and the cast is the only consumer, or
+    # every other consumer reads the value through a storage-aware input slot (it then reads the bf16 tensor: the saved attention output for
+    # attention_bwd, the bias-gradient colsum of gelu_bwd's output; torch autocast hands those consumers the bf16 value as well).
+    readers_of: dict = {}
+    for i, op in enumerate(ops):
+        for n, t in op.ins.items():
+            readers_of.setdefault(t.uid, []).append((i, n))
+    drop, out_of, redirect = set(), {}, {}
     for i, op in enumerate(ops):
         if op.kind != 'cast' or op.attrs.get('dtype') != 'bf16':
             continue
         x, out = op.ins['x'], op.outs['out']
         out.dtype = 'bf16'
         p = prod.get(x.uid, [])
-        slot = _out_slot(ops[p[0]], x) if len(p) == 1 else None
-        if slot is not None and uses.get(x.uid) == 1 and x.dtype == 'f32' and p[0] < i:
+        slot = _out_slot(ops[p[0]], x) if len(p) == 1 and p[0] not in out_of else None
+        others = [(j, n) for j, n in readers_of.get(x.uid, []) if j != i]
+        aware = all(j > p[0] and ops[j].kind != 'cast' and n in (_native(ops[j]) or ((), ()))[0]
+                    and not any(t is x for t in ops[j].outs.values()) for j, n in others) if slot is not None else False
+        if slot is not None and aware and x.dtype == 'f32' and p[0] < i:
             out_of[p[0]] = (slot, out)
             drop.add(i)
+            for j, n in others:
+                redirect.setdefault(j, {})[n] = out
             stats['folded'] += 1
+            stats['redirected'] += len(others)
         else:
             stats['narrowed'] += 1
-    ops = [op for i, op in enumerate(ops) if i not in drop] if not out_of else _fold(ops, drop, out_of)
+    ops = [op for i, op in enumerate(ops) if i not in drop] if not out_of else _fold(ops, drop, out_of, redirect)
 
     # 1b. the pre-activation a gelu linear keeps for the backward is only read by gelu_bwd (storage-aware): store it bf16 as well. The forward
     # value is gelu of the fp32 accumulator; only the saved copy is rounded (torch autocast keeps the pre-activation in bf16 too).
@@ -172,7 +198,7 @@ def apply(ops: list[LogicalOp], weights: bool = True) -> tuple[list[LogicalOp], 
         if op.kind == 'cast' and op.outs['out'].dtype == 'bf16' and op.ins['x'].dtype in ('f32', 'bf16'):
             out.append(op)                                       # a narrowing / copy cast: round_bf16 reads and writes storage natively
             continue
-        native_in, native_out = NATIVE.get(op.kind, ((), ()))
+        native_in, native_out = _native(op) or ((), ())
         # a bf16 tensor goes through an fp32 scratch unless every slot it occupies in this op is storage-aware
         slots = [(n, t, False) for n, t in op.ins.items()] + [(n, t, True) for n, t in op.outs.items()]
         tmps, pre, post = {}, [], []
@@ -209,15 +235,18 @@ def _align_optimizer(ops):
             if op.kind in ('adamw', 'grad_clip') else op for op in ops]
 
 
-def _fold(ops, drop, out_of):
+def _fold(ops, drop, out_of, redirect=None):
     res = []
     for i, op in enumerate(ops):
         if i in drop:
             continue
+        ins, outs = op.ins, op.outs
         if i in out_of:
             slot, tensor = out_of[i]
-            outs = dict(op.outs)
-            outs[slot] = tensor
-            op = LogicalOp(op.kind, op.ins, outs, op.attrs, op.name, op.step, op.phase, op.graph, op.remat)
+            outs = {**outs, slot: tensor}
+        if redirect and i in redirect:
+            ins = {**ins, **redirect[i]}
+        if ins is not op.ins or outs is not op.outs:
+            op = LogicalOp(op.kind, ins, outs, op.attrs, op.name, op.step, op.phase, op.graph, op.remat)
         res.append(op)
     return res

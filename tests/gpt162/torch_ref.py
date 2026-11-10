@@ -208,8 +208,12 @@ def curve_mode(ref, a, out):
         set_precision('tf32')
         hold['init'] = holdout_loss(ref, ref.params(torch.float32), a.holdout)
         print(f'holdout init: {hold["init"]:.4f}', flush=True)
-    for label, prec in (('tf32', 'tf32'), ('fp32', 'precise')):
+    labels = a.curve_labels.split(',')
+    for label, prec in (('tf32', 'tf32'), ('fp32', 'precise'), ('bf16', 'tf32')):
+        if label not in labels:
+            continue
         set_precision(prec)
+        ref.tm.autocast = label == 'bf16'          # torch.autocast(bfloat16): fp32 master weights and AdamW, bf16 matmuls/attention
         p = ref.params(torch.float32)
         decay = [p[n] for n, s in ref.specs.items() if s.decay]
         nod = [p[n] for n, s in ref.specs.items() if not s.decay]
@@ -223,6 +227,7 @@ def curve_mode(ref, a, out):
             opt.step()
             losses.append(float(loss))
         cur[label] = losses
+        ref.tm.autocast = False
         if a.holdout:
             hold[label] = holdout_loss(ref, p, a.holdout)
             print(f'torch {label}: holdout {hold[label]:.4f}', flush=True)
@@ -248,7 +253,9 @@ def curve_mode(ref, a, out):
         out['curve']['executor'] = e
         print('executor: ' + ' '.join(f'{x:.4f}' for x in e))
         cmp = {}
-        for label in ('tf32', 'fp32'):
+        for label in cur:
+            if label == 'executor':
+                continue
             d = [x - y for x, y in zip(e, cur[label])]
             k = max(1, a.steps // 5)
             cmp[label] = {'step1_diff': d[0], 'max_abs_diff': max(abs(x) for x in d), 'mean_abs_diff': sum(abs(x) for x in d) / len(d),
@@ -256,8 +263,10 @@ def curve_mode(ref, a, out):
                           'exec_last_mean': sum(e[-k:]) / k, 'torch_last_mean': sum(cur[label][-k:]) / k}
             print(f'executor - torch {label}: ' + json.dumps(cmp[label]))
         k = max(1, a.steps // 5)
-        cmp['torch_tf32_vs_fp32_max_abs_diff'] = max(abs(x - y) for x, y in zip(cur['tf32'], cur['fp32']))
-        print(f'torch tf32 vs torch fp32 (the noise floor): max |diff| {cmp["torch_tf32_vs_fp32_max_abs_diff"]:.4f}')
+        for x_, y_ in (('tf32', 'fp32'), ('bf16', 'tf32')):
+            if x_ in cur and y_ in cur:
+                cmp[f'torch_{x_}_vs_{y_}_max_abs_diff'] = max(abs(x - y) for x, y in zip(cur[x_], cur[y_]))
+                print(f'torch {x_} vs torch {y_} (precision noise floor): max |diff| {cmp[f"torch_{x_}_vs_{y_}_max_abs_diff"]:.4f}')
         out['curve_compare'] = cmp
 
 
@@ -273,6 +282,7 @@ def main():
     ap.add_argument('--obs', help='kvm_run observations.jsonl of the same N-step window-1 run (adds executor losses and the comparison)')
     ap.add_argument('--holdout', type=int, default=0, help='with --curve: evaluate on this many fresh held-out batches')
     ap.add_argument('--exec-weights', help='directory of a kvm_run --dump of the executor weights (w.<param>.bin) for the hold-out evaluation')
+    ap.add_argument('--curve-labels', default='tf32,fp32', help="with --curve: torch curves to run, of tf32, fp32, bf16 (autocast)")
     ap.add_argument('--device', default='cuda')
     ap.add_argument('--out')
     a = ap.parse_args()

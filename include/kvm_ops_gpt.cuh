@@ -1386,7 +1386,16 @@ struct AttnArgs {
     float *o, *lsew, *dq, *dk, *dv;
     int ldq, ldk, ldv, ldo, lddq, lddk, lddv, b, h, i0, T, H, Hkv;
     float scale;
+    unsigned sd;   // storage dtype: bit set = that operand is raw bf16 (KVM_ATT_*); lse / delta are always fp32
 };
+// bf16-storage bits of AttnArgs::sd. A bf16 operand is widened (exactly) into the same fp32 shared tiles / register fragments the fp32 path
+// uses, so the arithmetic is identical; a bf16 output is rounded once (RNE) when stored.
+enum { KVM_ATT_Q = 1, KVM_ATT_K = 2, KVM_ATT_V = 4, KVM_ATT_DO = 8, KVM_ATT_O = 16, KVM_ATT_DQ = 32, KVM_ATT_DK = 64, KVM_ATT_DV = 128 };
+// element offset into a buffer that is fp32 or raw bf16 (pointer arithmetic in units of the storage element)
+KVM_GPT_DEVI const float* eoff(const float* p, size_t off, bool bf) { return bf ? reinterpret_cast<const float*>(reinterpret_cast<const uint16_t*>(p) + off) : p + off; }
+KVM_GPT_DEVI float* eoff(float* p, size_t off, bool bf) { return bf ? reinterpret_cast<float*>(reinterpret_cast<uint16_t*>(p) + off) : p + off; }
+// two adjacent outputs (columns c, c+1 of one row) to fp32 or bf16 storage
+KVM_GPT_DEVI void st_pair(float* p, size_t i, float x, float y, bool bf) { st_s(p, i, x, bf); st_s(p, i + 1, y, bf); }
 
 // ---- tensor-core attention (flash-style) --------------------------------------------------------------------------------
 // Products run as 3xTF32 mma.sync m16n8k8 (hi/lo split: x ~= hi + lo with both exactly representable; hi*hi + lo*hi + hi*lo
@@ -1472,20 +1481,32 @@ KVM_GPT_DEVI void acc_to_a(const float (&c)[4], unsigned (&h)[4], unsigned (&l)[
 }
 // Raw fp32 A fragments of the warp's 16 rows of a [rows x HD] head slice: row g / g+8, column ks*8 + t / t+4; rows >= rmax are zero.
 template <int HD>
-KVM_GPT_DEVI void load_a_raw(float (&a)[HD / 8][4], const float* base, int ld, int row, int rmax, int t) {
+KVM_GPT_DEVI void load_a_raw(float (&a)[HD / 8][4], const float* base, int ld, int row, int rmax, int t, bool bf = false) {
     const bool v0 = row < rmax, v1 = row + 8 < rmax;
-    const float* p0 = base + (size_t)row * ld + t; const float* p1 = p0 + (size_t)8 * ld;
+    const size_t i0 = (size_t)row * ld + t, i1 = i0 + (size_t)8 * ld;   // base is already offset in storage elements (eoff)
 #pragma unroll
     for (int ks = 0; ks < HD / 8; ks++) {
-        a[ks][0] = v0 ? p0[ks * 8] : 0.f; a[ks][1] = v1 ? p1[ks * 8] : 0.f;
-        a[ks][2] = v0 ? p0[ks * 8 + 4] : 0.f; a[ks][3] = v1 ? p1[ks * 8 + 4] : 0.f;
+        a[ks][0] = v0 ? ld_s(base, i0 + ks * 8, bf) : 0.f; a[ks][1] = v1 ? ld_s(base, i1 + ks * 8, bf) : 0.f;
+        a[ks][2] = v0 ? ld_s(base, i0 + ks * 8 + 4, bf) : 0.f; a[ks][3] = v1 ? ld_s(base, i1 + ks * 8 + 4, bf) : 0.f;
     }
 }
 // cp.async copy of a 32 x HD tile (rows row0.. of a row-major matrix, leading dimension ldg) to shared rows of stride HD+4;
 // rows >= rmax are zero-filled. The padding makes every mma fragment load bank-conflict free.
 template <int HD>
-KVM_GPT_DEVI void tile32_async(float* dst, const float* src, int ldg, int row0, int rmax) {
+KVM_GPT_DEVI void tile32_async(float* dst, const float* src, int ldg, int row0, int rmax, bool bf = false) {
     constexpr int CPR = HD / 4;
+    if (bf) {   // raw bf16 source: 8-byte loads widened (exactly) into the same fp32 tile; plain stores, visible after the consumer's __syncthreads
+        for (int q = threadIdx.x; q < 32 * CPR; q += KVM_GPT_THREADS) {
+            int r = q / CPR, c = (q % CPR) * 4, gr = row0 + r;
+            float4 v = make_float4(0.f, 0.f, 0.f, 0.f);
+            if (gr < rmax) {
+                const uint2 u = *reinterpret_cast<const uint2*>(reinterpret_cast<const uint16_t*>(src) + (size_t)gr * ldg + c);
+                v = make_float4(bf_lo(u.x), bf_hi(u.x), bf_lo(u.y), bf_hi(u.y));
+            }
+            *reinterpret_cast<float4*>(dst + r * (HD + 4) + c) = v;
+        }
+        return;
+    }
     for (int q = threadIdx.x; q < 32 * CPR; q += KVM_GPT_THREADS) {
         int r = q / CPR, c = (q % CPR) * 4, gr = row0 + r;
         cp_async16(dst + r * (HD + 4) + c, gr < rmax ? src + (size_t)gr * ldg + c : src, gr < rmax ? 16 : 0);
@@ -1504,20 +1525,21 @@ KVM_GPT_DEVI void attn_fwd_t(const AttnArgs& A) {
     float* KV = reinterpret_cast<float*>(kvm_gpt_smem);   // [3 stages][K | V]
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3;
     const int kvh = A.h / (A.H / A.Hkv), Tn = A.T, wrow = A.i0 + warp * 16, rowA = wrow + g, rowB = rowA + 8;
-    const float* kb_ = A.k + (size_t)A.b * Tn * A.ldk + kvh * HD;
-    const float* vb_ = A.v + (size_t)A.b * Tn * A.ldv + kvh * HD;
+    const bool kbf = A.sd & KVM_ATT_K, vbf = A.sd & KVM_ATT_V;
+    const float* kb_ = eoff(A.k, (size_t)A.b * Tn * A.ldk + kvh * HD, kbf);
+    const float* vb_ = eoff(A.v, (size_t)A.b * Tn * A.ldv + kvh * HD, vbf);
     const int nk = (min(A.i0 + KVM_GPT_ATTN_ROWS, Tn) + 31) / 32;   // key tiles up to and including the block's last diagonal one
     auto issue = [&](int it) {
         if (it < nk) {
             float* st = KV + (it % M::NST) * M::STAGE;
-            tile32_async<HD>(st, kb_, A.ldk, it * 32, Tn);
-            tile32_async<HD>(st + M::TILE, vb_, A.ldv, it * 32, Tn);
+            tile32_async<HD>(st, kb_, A.ldk, it * 32, Tn, kbf);
+            tile32_async<HD>(st + M::TILE, vb_, A.ldv, it * 32, Tn, vbf);
         }
         cp_commit();   // empty groups too, so the wait counts stay uniform
     };
     issue(0); issue(1);
     float aq[NT][4];
-    load_a_raw<HD>(aq, A.q + (size_t)A.b * Tn * A.ldq + A.h * HD, A.ldq, rowA, Tn, t);
+    load_a_raw<HD>(aq, eoff(A.q, (size_t)A.b * Tn * A.ldq + A.h * HD, A.sd & KVM_ATT_Q), A.ldq, rowA, Tn, t, A.sd & KVM_ATT_Q);
     float m0 = -INFINITY, m1 = -INFINITY, l0 = 0.f, l1 = 0.f, o[NT][4];
 #pragma unroll
     for (int n = 0; n < NT; n++)
@@ -1585,12 +1607,12 @@ KVM_GPT_DEVI void attn_fwd_t(const AttnArgs& A) {
     l0 += __shfl_xor_sync(0xffffffffu, l0, 1); l0 += __shfl_xor_sync(0xffffffffu, l0, 2);
     l1 += __shfl_xor_sync(0xffffffffu, l1, 1); l1 += __shfl_xor_sync(0xffffffffu, l1, 2);
     const float inv0 = l0 > 0.f ? 1.f / l0 : 0.f, inv1 = l1 > 0.f ? 1.f / l1 : 0.f;
-    float* oa = A.o + ((size_t)A.b * Tn + rowA) * A.ldo + A.h * HD + 2 * t;
-    float* ob = oa + (size_t)8 * A.ldo;
+    const bool obf = A.sd & KVM_ATT_O;
+    const size_t oa = ((size_t)A.b * Tn + rowA) * A.ldo + A.h * HD + 2 * t, ob = oa + (size_t)8 * A.ldo;
 #pragma unroll
     for (int n = 0; n < NT; n++) {
-        if (rowA < Tn) { oa[n * 8] = o[n][0] * inv0; oa[n * 8 + 1] = o[n][1] * inv0; }
-        if (rowB < Tn) { ob[n * 8] = o[n][2] * inv1; ob[n * 8 + 1] = o[n][3] * inv1; }
+        if (rowA < Tn) st_pair(A.o, oa + n * 8, o[n][0] * inv0, o[n][1] * inv0, obf);
+        if (rowB < Tn) st_pair(A.o, ob + n * 8, o[n][2] * inv1, o[n][3] * inv1, obf);
     }
     if (t == 0) {
         float* ls = A.lsew + ((size_t)A.b * A.H + A.h) * Tn;
@@ -1608,21 +1630,22 @@ KVM_GPT_DEVI void attn_dq_t(const AttnArgs& A) {
     float* KV = reinterpret_cast<float*>(kvm_gpt_smem);
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3;
     const int kvh = A.h / (A.H / A.Hkv), Tn = A.T, wrow = A.i0 + warp * 16, rowA = wrow + g, rowB = rowA + 8;
-    const float* kb_ = A.k + (size_t)A.b * Tn * A.ldk + kvh * HD;
-    const float* vb_ = A.v + (size_t)A.b * Tn * A.ldv + kvh * HD;
+    const bool kbf = A.sd & KVM_ATT_K, vbf = A.sd & KVM_ATT_V;
+    const float* kb_ = eoff(A.k, (size_t)A.b * Tn * A.ldk + kvh * HD, kbf);
+    const float* vb_ = eoff(A.v, (size_t)A.b * Tn * A.ldv + kvh * HD, vbf);
     const int nk = (min(A.i0 + KVM_GPT_ATTN_ROWS, Tn) + 31) / 32;
     auto issue = [&](int it) {
         if (it < nk) {
             float* st = KV + (it % M::NST) * M::STAGE;
-            tile32_async<HD>(st, kb_, A.ldk, it * 32, Tn);
-            tile32_async<HD>(st + M::TILE, vb_, A.ldv, it * 32, Tn);
+            tile32_async<HD>(st, kb_, A.ldk, it * 32, Tn, kbf);
+            tile32_async<HD>(st + M::TILE, vb_, A.ldv, it * 32, Tn, vbf);
         }
         cp_commit();
     };
     issue(0); issue(1);
     float aq[NT][4], ad[NT][4];
-    load_a_raw<HD>(aq, A.q + (size_t)A.b * Tn * A.ldq + A.h * HD, A.ldq, rowA, Tn, t);
-    load_a_raw<HD>(ad, A.dout + (size_t)A.b * Tn * A.ldo + A.h * HD, A.ldo, rowA, Tn, t);
+    load_a_raw<HD>(aq, eoff(A.q, (size_t)A.b * Tn * A.ldq + A.h * HD, A.sd & KVM_ATT_Q), A.ldq, rowA, Tn, t, A.sd & KVM_ATT_Q);
+    load_a_raw<HD>(ad, eoff(A.dout, (size_t)A.b * Tn * A.ldo + A.h * HD, A.sd & KVM_ATT_DO), A.ldo, rowA, Tn, t, A.sd & KVM_ATT_DO);
     const size_t hrow = ((size_t)A.b * A.H + A.h) * Tn;
     const float lr0 = rowA < Tn ? A.lse[hrow + rowA] * KVM_GPT_L2E : 0.f, lr1 = rowB < Tn ? A.lse[hrow + rowB] * KVM_GPT_L2E : 0.f;
     const float dr0 = rowA < Tn ? A.delta[hrow + rowA] : 0.f, dr1 = rowB < Tn ? A.delta[hrow + rowB] : 0.f;
@@ -1677,12 +1700,12 @@ KVM_GPT_DEVI void attn_dq_t(const AttnArgs& A) {
     }
     cp_wait<0>();
     if (wrow >= Tn) return;
-    float* oa = A.dq + ((size_t)A.b * Tn + rowA) * A.lddq + A.h * HD + 2 * t;
-    float* ob = oa + (size_t)8 * A.lddq;
+    const bool qbf = A.sd & KVM_ATT_DQ;
+    const size_t oa = ((size_t)A.b * Tn + rowA) * A.lddq + A.h * HD + 2 * t, ob = oa + (size_t)8 * A.lddq;
 #pragma unroll
     for (int n = 0; n < NT; n++) {
-        if (rowA < Tn) { oa[n * 8] = acc[n][0] * A.scale; oa[n * 8 + 1] = acc[n][1] * A.scale; }
-        if (rowB < Tn) { ob[n * 8] = acc[n][2] * A.scale; ob[n * 8 + 1] = acc[n][3] * A.scale; }
+        if (rowA < Tn) st_pair(A.dq, oa + n * 8, acc[n][0] * A.scale, acc[n][1] * A.scale, qbf);
+        if (rowB < Tn) st_pair(A.dq, ob + n * 8, acc[n][2] * A.scale, acc[n][3] * A.scale, qbf);
     }
 }
 
@@ -1702,15 +1725,15 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
         if (it < nit) {
             const int h = kvh * G + it / nq, q0 = k0 + (it % nq) * 32;
             float* st = QO + (it % M::NST) * M::STAGE;
-            tile32_async<HD>(st, A.q + (size_t)A.b * Tn * A.ldq + h * HD, A.ldq, q0, Tn);
-            tile32_async<HD>(st + M::TILE, A.dout + (size_t)A.b * Tn * A.ldo + h * HD, A.ldo, q0, Tn);
+            tile32_async<HD>(st, eoff(A.q, (size_t)A.b * Tn * A.ldq + h * HD, A.sd & KVM_ATT_Q), A.ldq, q0, Tn, A.sd & KVM_ATT_Q);
+            tile32_async<HD>(st + M::TILE, eoff(A.dout, (size_t)A.b * Tn * A.ldo + h * HD, A.sd & KVM_ATT_DO), A.ldo, q0, Tn, A.sd & KVM_ATT_DO);
         }
         cp_commit();
     };
     issue(0); issue(1);
     float ak[NT][4], av[NT][4];
-    load_a_raw<HD>(ak, A.k + (size_t)A.b * Tn * A.ldk + kvh * HD, A.ldk, keyA, Tn, t);
-    load_a_raw<HD>(av, A.v + (size_t)A.b * Tn * A.ldv + kvh * HD, A.ldv, keyA, Tn, t);
+    load_a_raw<HD>(ak, eoff(A.k, (size_t)A.b * Tn * A.ldk + kvh * HD, A.sd & KVM_ATT_K), A.ldk, keyA, Tn, t, A.sd & KVM_ATT_K);
+    load_a_raw<HD>(av, eoff(A.v, (size_t)A.b * Tn * A.ldv + kvh * HD, A.sd & KVM_ATT_V), A.ldv, keyA, Tn, t, A.sd & KVM_ATT_V);
     float dk[NT][4], dv[NT][4];
 #pragma unroll
     for (int n = 0; n < NT; n++)
@@ -1781,12 +1804,13 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
     }
     cp_wait<0>();
     if (wkey >= Tn) return;
-    float* da = A.dk + ((size_t)A.b * Tn + keyA) * A.lddk + kvh * HD + 2 * t; float* db = da + (size_t)8 * A.lddk;
-    float* va = A.dv + ((size_t)A.b * Tn + keyA) * A.lddv + kvh * HD + 2 * t; float* vb = va + (size_t)8 * A.lddv;
+    const bool kbf = A.sd & KVM_ATT_DK, vbf = A.sd & KVM_ATT_DV;
+    const size_t da = ((size_t)A.b * Tn + keyA) * A.lddk + kvh * HD + 2 * t, db = da + (size_t)8 * A.lddk;
+    const size_t va = ((size_t)A.b * Tn + keyA) * A.lddv + kvh * HD + 2 * t, vb = va + (size_t)8 * A.lddv;
 #pragma unroll
     for (int n = 0; n < NT; n++) {
-        if (keyA < Tn) { da[n * 8] = dk[n][0] * A.scale; da[n * 8 + 1] = dk[n][1] * A.scale; va[n * 8] = dv[n][0]; va[n * 8 + 1] = dv[n][1]; }
-        if (keyB < Tn) { db[n * 8] = dk[n][2] * A.scale; db[n * 8 + 1] = dk[n][3] * A.scale; vb[n * 8] = dv[n][2]; vb[n * 8 + 1] = dv[n][3]; }
+        if (keyA < Tn) { st_pair(A.dk, da + n * 8, dk[n][0] * A.scale, dk[n][1] * A.scale, kbf); st_pair(A.dv, va + n * 8, dv[n][0], dv[n][1], vbf); }
+        if (keyB < Tn) { st_pair(A.dk, db + n * 8, dk[n][2] * A.scale, dk[n][3] * A.scale, kbf); st_pair(A.dv, vb + n * 8, dv[n][2], dv[n][3], vbf); }
     }
 }
 
@@ -1810,17 +1834,29 @@ KVM_GPT_DEVI bool attn_geom(Chk& k, int b, int h, int i0, int T, int H, int Hkv,
     return !k.bad;
 }
 
+// matrix view of an attention operand that may be fp32 or raw bf16 storage; sets `bit` in A.sd for bf16. Alignment: 16 bytes for fp32
+// (cp.async), 8 bytes for bf16 (4-element loads); ld a multiple of 4 elements either way.
+KVM_GPT_DEVI float* attn_mat(Chk& k, AttnArgs& A, int idx, long rows, long cols, int* ld, unsigned bit) {
+    bool bf = false;
+    void* p = k.mat_s(idx, rows, cols, ld, &bf);
+    if (k.bad) return nullptr;
+    if (bf) A.sd |= bit;
+    k.need(((uintptr_t)p & (bf ? 7 : 15)) == 0 && (*ld & 3) == 0, KVM_GPT_E_SHAPE);
+    return (float*)p;
+}
+
 KVM_GPT_DEVI void attn_fwd(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
     AttnArgs A{};
     A.b = a[5]; A.h = a[6]; A.i0 = a[7]; A.T = a[8]; A.H = a[9]; A.Hkv = a[10]; int hd = a[11]; A.scale = af(a, 12);
     if (!attn_geom(k, A.b, A.h, A.i0, A.T, A.H, A.Hkv, hd, false)) return;
     long R = (long)(A.b + 1) * A.T;
-    A.q = k.mat(a[0], R, (long)A.H * hd, &A.ldq); A.k = k.mat(a[1], R, (long)A.Hkv * hd, &A.ldk);
-    A.v = k.mat(a[2], R, (long)A.Hkv * hd, &A.ldv); A.o = k.mat(a[3], R, (long)A.H * hd, &A.ldo);
+    A.q = attn_mat(k, A, a[0], R, (long)A.H * hd, &A.ldq, KVM_ATT_Q); A.k = attn_mat(k, A, a[1], R, (long)A.Hkv * hd, &A.ldk, KVM_ATT_K);
+    A.v = attn_mat(k, A, a[2], R, (long)A.Hkv * hd, &A.ldv, KVM_ATT_V);
+    bool obf = false;
+    A.o = (float*)k.mat_s(a[3], R, (long)A.H * hd, &A.ldo, &obf);
+    if (obf) A.sd |= KVM_ATT_O;
     A.lsew = k.fvec(a[4], (long)(A.b + 1) * A.H * A.T);
-    if (k.bad) return;
-    k.need(aligned16(A.q, A.ldq) && aligned16(A.k, A.ldk) && aligned16(A.v, A.ldv), KVM_GPT_E_SHAPE);
     if (k.bad) return;
     KVM_GPT_HD_SWITCH(hd, attn_fwd_g, A)
 }
@@ -1829,15 +1865,16 @@ KVM_GPT_DEVI void attn_bwd_delta(const KvmCtx& ctx, const int32_t* a) {
     int r0 = a[3], r1 = a[4], T = a[5], H = a[6], hd = a[7], ldo, ldd;
     k.need(r0 >= 0 && r0 <= r1 && T > 0 && H > 0 && hd > 0);
     if (k.bad) return;
-    const float* o = k.mat(a[0], r1, (long)H * hd, &ldo);
-    const float* d = k.mat(a[1], r1, (long)H * hd, &ldd);
+    bool ob = false, db = false;   // o and do: fp32 or raw bf16 storage
+    const void* o = k.mat_s(a[0], r1, (long)H * hd, &ldo, &ob);
+    const void* d = k.mat_s(a[1], r1, (long)H * hd, &ldd, &db);
     float* del = k.fvec(a[2], (long)((r1 + T - 1) / T) * H * T);
     if (k.bad) return;
     int lane = threadIdx.x & 31, w = threadIdx.x >> 5;
     for (int e = w; e < (r1 - r0) * H; e += KVM_GPT_THREADS / 32) {
         int r = r0 + e / H, h = e % H;
         float s = 0.f;
-        for (int c = lane; c < hd; c += 32) s += o[(size_t)r * ldo + h * hd + c] * d[(size_t)r * ldd + h * hd + c];
+        for (int c = lane; c < hd; c += 32) s += ld_s(o, (size_t)r * ldo + h * hd + c, ob) * ld_s(d, (size_t)r * ldd + h * hd + c, db);
         s = wsum(s);
         if (lane == 0) del[((size_t)(r / T) * H + h) * T + r % T] = s;
     }
@@ -1848,11 +1885,12 @@ KVM_GPT_DEVI void attn_bwd_dq(const KvmCtx& ctx, const int32_t* a) {
     A.b = a[7]; A.h = a[8]; A.i0 = a[9]; A.T = a[10]; A.H = a[11]; A.Hkv = a[12]; int hd = a[13]; A.scale = af(a, 14);
     if (!attn_geom(k, A.b, A.h, A.i0, A.T, A.H, A.Hkv, hd, false)) return;
     long R = (long)(A.b + 1) * A.T, nl = R * A.H;
-    A.q = k.mat(a[0], R, (long)A.H * hd, &A.ldq); A.k = k.mat(a[1], R, (long)A.Hkv * hd, &A.ldk);
-    A.v = k.mat(a[2], R, (long)A.Hkv * hd, &A.ldv); A.dout = k.mat(a[3], R, (long)A.H * hd, &A.ldo);
-    A.lse = k.fvec(a[4], nl); A.delta = k.fvec(a[5], nl); A.dq = k.mat(a[6], R, (long)A.H * hd, &A.lddq);
-    if (k.bad) return;
-    k.need(aligned16(A.q, A.ldq) && aligned16(A.k, A.ldk) && aligned16(A.v, A.ldv) && aligned16(A.dout, A.ldo), KVM_GPT_E_SHAPE);
+    A.q = attn_mat(k, A, a[0], R, (long)A.H * hd, &A.ldq, KVM_ATT_Q); A.k = attn_mat(k, A, a[1], R, (long)A.Hkv * hd, &A.ldk, KVM_ATT_K);
+    A.v = attn_mat(k, A, a[2], R, (long)A.Hkv * hd, &A.ldv, KVM_ATT_V); A.dout = attn_mat(k, A, a[3], R, (long)A.H * hd, &A.ldo, KVM_ATT_DO);
+    A.lse = k.fvec(a[4], nl); A.delta = k.fvec(a[5], nl);
+    bool qbf = false;
+    A.dq = (float*)k.mat_s(a[6], R, (long)A.H * hd, &A.lddq, &qbf);
+    if (qbf) A.sd |= KVM_ATT_DQ;
     if (k.bad) return;
     KVM_GPT_HD_SWITCH(hd, attn_dq_g, A)
 }
@@ -1862,18 +1900,21 @@ KVM_GPT_DEVI void attn_bwd_dkv(const KvmCtx& ctx, const int32_t* a) {
     A.b = a[8]; A.h = a[9]; A.i0 = a[10]; A.T = a[11]; A.H = a[12]; int hd = a[13]; A.scale = af(a, 14);
     k.need(hd > 0, KVM_GPT_E_SHAPE);
     if (k.bad) return;
-    const KvmBuf* kb = k.get(a[1], KVM_GPT_F32, false);   // Hkv is not an argument (15-word task limit): Hkv = k.cols / hd
+    const KvmBuf* kb = k.get(a[1], -1, false);   // Hkv is not an argument (15-word task limit): Hkv = k.cols / hd; k is fp32 or bf16
+    if (k.bad) return;
+    k.need(kb->dtype == KVM_GPT_F32 || kb->dtype == KVM_GPT_BF16, KVM_GPT_E_DTYPE);
     if (k.bad) return;
     A.Hkv = kb->cols / hd;
     k.need(A.Hkv > 0 && kb->cols % hd == 0, KVM_GPT_E_SHAPE);
     if (k.bad || !attn_geom(k, A.b, A.h, A.i0, A.T, A.H, A.Hkv, hd, true)) return;
     long R = (long)(A.b + 1) * A.T, nl = R * A.H;
-    A.q = k.mat(a[0], R, (long)A.H * hd, &A.ldq); A.k = k.mat(a[1], R, (long)A.Hkv * hd, &A.ldk);
-    A.v = k.mat(a[2], R, (long)A.Hkv * hd, &A.ldv); A.dout = k.mat(a[3], R, (long)A.H * hd, &A.ldo);
+    A.q = attn_mat(k, A, a[0], R, (long)A.H * hd, &A.ldq, KVM_ATT_Q); A.k = attn_mat(k, A, a[1], R, (long)A.Hkv * hd, &A.ldk, KVM_ATT_K);
+    A.v = attn_mat(k, A, a[2], R, (long)A.Hkv * hd, &A.ldv, KVM_ATT_V); A.dout = attn_mat(k, A, a[3], R, (long)A.H * hd, &A.ldo, KVM_ATT_DO);
     A.lse = k.fvec(a[4], nl); A.delta = k.fvec(a[5], nl);
-    A.dk = k.mat(a[6], R, (long)A.Hkv * hd, &A.lddk); A.dv = k.mat(a[7], R, (long)A.Hkv * hd, &A.lddv);
-    if (k.bad) return;
-    k.need(aligned16(A.q, A.ldq) && aligned16(A.k, A.ldk) && aligned16(A.v, A.ldv) && aligned16(A.dout, A.ldo), KVM_GPT_E_SHAPE);
+    bool kbf = false, vbf = false;
+    A.dk = (float*)k.mat_s(a[6], R, (long)A.Hkv * hd, &A.lddk, &kbf); A.dv = (float*)k.mat_s(a[7], R, (long)A.Hkv * hd, &A.lddv, &vbf);
+    if (kbf) A.sd |= KVM_ATT_DK;
+    if (vbf) A.sd |= KVM_ATT_DV;
     if (k.bad) return;
     KVM_GPT_HD_SWITCH(hd, attn_dkv_g, A)
 }

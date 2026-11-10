@@ -1,0 +1,124 @@
+# suite=custom tag=bf16-ops-m1 2026-11-10T09:18:12Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 601 GB, cores: 16
+==> b_bf16.log <==
+real	0m57.360s
+user	0m55.330s
+sys	0m0.900s
+
+==> b_ops.log <==
+real	6m22.364s
+user	6m14.530s
+sys	0m1.240s
+
+==> b_extra.log <==
+real	41m51.673s
+user	41m6.830s
+sys	0m3.100s
+== test_bf16
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 0 out f] dv vs f64  relerr 2.073e-03 (tol 1e-02)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out f] err==0  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out f] fwd o bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out f] fwd lse bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out f] fwd o vs f64  relerr 2.004e-03 (tol 6e-03)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out f] delta bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out f] dq bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out f] dk bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out f] dv bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out f] dv vs f64  relerr 2.073e-03 (tol 1e-02)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 5 out a] err==0  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 5 out a] fwd o bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 5 out a] fwd lse bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 5 out a] fwd o vs f64  relerr 5.959e-07 (tol 2e-05)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 5 out a] delta bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 5 out a] dq bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 5 out a] dk bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 5 out a] dv bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 5 out a] dv vs f64  relerr 2.073e-03 (tol 6e-03)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in a out 5] err==0  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in a out 5] fwd o bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in a out 5] fwd lse bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in a out 5] fwd o vs f64  relerr 2.004e-03 (tol 6e-03)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in a out 5] delta bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in a out 5] dq bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in a out 5] dk bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in a out 5] dv bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in a out 5] dv vs f64  relerr 1.928e-06 (tol 6e-03)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 2 out 1] err==0  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 2 out 1] fwd o bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 2 out 1] fwd lse bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 2 out 1] fwd o vs f64  relerr 2.004e-03 (tol 6e-03)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 2 out 1] delta bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 2 out 1] dq bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 2 out 1] dk bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 2 out 1] dv bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 2 out 1] dv vs f64  relerr 1.928e-06 (tol 6e-03)
+PASS  attn_fwd bf16 q with ld % 4 != 0 -> E_SHAPE  
+
+857 passed, 0 failed
+exit 0
+== test_bf16 memcheck/racecheck (small)
+
+487 passed, 0 failed
+========= ERROR SUMMARY: 0 errors
+memcheck exit 0
+
+487 passed, 0 failed
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+racecheck exit 0
+== test_ops
+PASS  sample topk=0 V=100 matches double CDF reference exactly (96 draws)  
+PASS  sample topk=0 V=1000 matches double CDF reference exactly (96 draws)  
+PASS  sample topk=0 V=33000 matches double CDF reference exactly (96 draws)  
+PASS  sample topk=5 V=1 matches double CDF reference exactly (96 draws)  
+PASS  sample topk=5 V=100 matches double CDF reference exactly (96 draws)  
+PASS  sample topk=5 V=1000 matches double CDF reference exactly (96 draws)  
+PASS  sample topk=5 V=33000 matches double CDF reference exactly (96 draws)  
+PASS  sample topk=40 V=1 matches double CDF reference exactly (96 draws)  
+PASS  sample topk=40 V=100 matches double CDF reference exactly (96 draws)  
+PASS  sample topk=40 V=1000 matches double CDF reference exactly (96 draws)  
+PASS  sample topk=40 V=33000 matches double CDF reference exactly (96 draws)  
+PASS  sample bitwise reproducible  
+PASS  sample empirical frequencies within 5 sigma of softmax (4096 draws)  
+PASS  select_window: step-indexed token window, steps 0..4  
+PASS  select_window: offset window (targets = tokens shifted by one)  
+PASS  select_window: step past the buffer -> err 3  
+PASS  gather_rows  relerr 0.000e+00 (tol 1e-09)
+PASS  gelu_fwd bad buf index -> err 1  
+PASS  gelu_fwd int buffer passed as f32 -> err 2  
+PASS  gelu_fwd range beyond buffer -> err 3  
+PASS  attn_fwd unsupported hd -> err 4  
+PASS  failed op leaves outputs untouched  
+PASS  unknown op id -> flagged  
+
+3119 passed, 0 failed
+exit 0
+== test_extra
+PASS  error path: moe E=65 -> 1004, memory untouched  got code 1004
+PASS  error path: moe_route N beyond probs -> 1003, memory untouched  got code 1003
+PASS  error path: moe_route C too large for eidx -> 1003, memory untouched  got code 1003
+PASS  error path: moe_route k=0 -> 1004, memory untouched  got code 1004
+PASS  error path: moe_gates_fwd k=9 -> 1004, memory untouched  got code 1004
+PASS  error path: moe_balance_fwd sel too short -> 1003, memory untouched  got code 1003
+PASS  error path: attn_full hd=24 -> 1004, memory untouched  got code 1004
+PASS  error path: attn_full q0 >= T -> 1003, memory untouched  got code 1003
+PASS  error path: attn_full batch beyond buffers -> 1003, memory untouched  got code 1003
+PASS  error path: attn_full H % Hkv -> 1003, memory untouched  got code 1003
+PASS  error path: attn_full dq head beyond -> 1003, memory untouched  got code 1003
+PASS  error path: attn_full dkv kvh beyond -> 1003, memory untouched  got code 1003
+PASS  error path: round_bf16 beyond -> 1003, memory untouched  got code 1003
+PASS  error path: matmul_bf16 flags -> 1004, memory untouched  got code 1004
+PASS  error path: matmul_bf16 m0 >= M -> 1003, memory untouched  got code 1003
+PASS  error path: matmul_bf16 K beyond A -> 1003, memory untouched  got code 1003
+PASS  error path: matmul_dgelu M beyond -> 1003, memory untouched  got code 1003
+PASS  error path: lr_schedule bad kind -> 1004, memory untouched  got code 1004
+PASS  error path: lr_schedule step buffer wrong size -> 1002, memory untouched  got code 1002
+PASS  error path: adamw_lr e1 beyond -> 1003, memory untouched  got code 1003
+PASS  error path: scale_flat beyond -> 1003, memory untouched  got code 1003
+PASS  error path: add_rowtile T beyond pos -> 1003, memory untouched  got code 1003
+PASS  error path: add_rowtile T=0 -> 1003, memory untouched  got code 1003
+
+3670 passed, 0 failed
+exit 0

@@ -1,0 +1,36 @@
+== exec
+  FAIL tests/gpu/test_exec.cu:988: bad == 0 -- 1 chain counters != 100 (every task must run exactly once, in chain order)
+== front: FAIL (0.0s, 1 new failures)
+== versions: PASS (2.5s, 0 new failures)
+== recycle: PASS (9.3s, 0 new failures)
+== litmus: PASS (23.1s, 0 new failures)
+8609 checks, 1 failed, 1 suites failed
+FAIL
+exit: 1
+
+== sanitize
+PASS
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit: 0
+== smoke: PASS (0.6s, 0 new failures)
+63 checks, 0 failed, 0 suites failed
+PASS
+========= ERROR SUMMARY: 0 errors
+sanitizer exit: 0
+
+== negative
+  FAIL tests/gpu/test_exec.cu:653: bad == 0 -- seed 5517: 7 scalar readers violated their snapshot
+  FAIL tests/gpu/test_exec.cu:565: bad == 0 -- seed 1394: 8 readers saw something other than their snapshot
+  FAIL tests/gpu/test_exec.cu:565: bad == 0 -- seed 1414: 14 readers saw something other than their snapshot
+  FAIL tests/gpu/test_exec.cu:653: bad == 0 -- seed 5534: 8 scalar readers violated their snapshot
+== versions: FAIL (3.2s, 118 new failures)
+7497 checks, 118 failed, 1 suites failed
+NEGATIVE TEST PASS: the harness detected the injected violation
+exit: 0
+
+== negative-park
+  FAIL tests/gpu/test_exec.cu:1012: ok -- park/publish: blocks 33: TIMEOUT, done 155977/156000, version 6000/6000
+== litmus: FAIL (38.6s, 1 new failures)
+12 checks, 1 failed, 1 suites failed
+NEGATIVE TEST PASS: the harness detected the injected violation
+exit: 0

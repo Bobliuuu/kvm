@@ -124,18 +124,29 @@ struct KvmBundle {
     // Version waits decidable inside one bundle: a task that waits for version n of v needs every in-bundle publication of v up to n
     // first. Edges publisher -> waiter added to the dependency graph must stay acyclic, otherwise nothing can ever run.
     {
-      std::vector<std::vector<int>> pubs;   // per variable: tasks that publish it
-      std::map<int, std::vector<int>> by_var;
+      std::map<int, std::vector<int>> by_var;   // per variable: tasks that publish it
       for (int i = 0; i < nt; ++i) if (tasks[i].pub_var >= 0) by_var[tasks[i].pub_var].push_back(i);
-      std::vector<std::vector<int>> out(nt); std::vector<int> deg(nt, 0);
-      for (int i = 0; i < nt; ++i) for (int k = 0; k < tasks[i].succ_cnt; ++k) { out[i].push_back(succ[tasks[i].succ_off + k]); ++deg[succ[tasks[i].succ_off + k]]; }
+      std::vector<std::pair<int, int>> extra;   // publisher -> waiter edges (few); the successor lists are walked in place, not copied
       for (int i = 0; i < nt; ++i) if (tasks[i].wait_var >= 0) {
         auto it = by_var.find(tasks[i].wait_var); if (it == by_var.end()) continue;
-        for (int p : it->second) if (p != i && tasks[p].pub_ver <= tasks[i].wait_ver) { out[p].push_back(i); ++deg[i]; }
+        for (int p : it->second) if (p != i && tasks[p].pub_ver <= tasks[i].wait_ver) extra.push_back({p, i});
         for (int p : it->second) if (p == i && tasks[p].pub_ver <= tasks[i].wait_ver) { e << "task " << i << ": waits for version " << tasks[i].wait_ver << " of variable " << tasks[i].wait_var << " that it publishes itself"; return e.str(); }
       }
-      std::vector<int> st; int seen = 0; for (int i = 0; i < nt; ++i) if (!deg[i]) st.push_back(i);
-      while (!st.empty()) { int u = st.back(); st.pop_back(); ++seen; for (int v : out[u]) if (--deg[v] == 0) st.push_back(v); }
+      int seen = 0;
+      if (extra.empty()) seen = nt;             // the dependency graph was just shown acyclic and nothing is added to it
+      else {
+        std::sort(extra.begin(), extra.end());
+        std::vector<int> deg(nt, 0), xs(nt + 1, 0);
+        for (int i = 0; i < nt; ++i) for (int k = 0; k < tasks[i].succ_cnt; ++k) ++deg[succ[tasks[i].succ_off + k]];
+        for (auto& pe : extra) { ++deg[pe.second]; ++xs[pe.first + 1]; }
+        for (int i = 0; i < nt; ++i) xs[i + 1] += xs[i];
+        std::vector<int> st; for (int i = 0; i < nt; ++i) if (!deg[i]) st.push_back(i);
+        while (!st.empty()) {
+          int u = st.back(); st.pop_back(); ++seen;
+          for (int k = 0; k < tasks[u].succ_cnt; ++k) { int v = succ[tasks[u].succ_off + k]; if (--deg[v] == 0) st.push_back(v); }
+          for (int x = xs[u]; x < xs[u + 1]; ++x) { int v = extra[x].second; if (--deg[v] == 0) st.push_back(v); }
+        }
+      }
       if (seen != nt) return "version-wait cycle: a task waits for a version that only a task depending on it can publish";
     }
     return "";
@@ -192,6 +203,8 @@ struct KvmConfig {
   int num_vars = 64;
   int ring_words = 1 << 16;     // admission ring, multiple of 8
   int aging_us = 0;             // 0: strict priority; else one priority level per aging_us of waiting
+  int claim_ticket = 1;         // scheduler-off pops: 1 ticket claim (reserve + fetch-add), 0 the head CAS (--claim cas); the scheduler always uses the CAS
+  int cont = 1;                 // continuation: a worker runs one released successor directly (no enqueue/pop; scheduler off only); 0 = every task through the queue
   unsigned long long timeout_us = 60ull * 1000000;   // STALL timeout: no task finished or admitted for this long while work is pending (not a lifetime cap); must exceed the longest task
   unsigned long long task_limit_us = 30ull * 1000000;  // a task that ran longer than this ends the run with TASK_LIMIT (0 = off); tasks are not interruptible, this reports
   size_t stack_bytes = 0;       // per-thread stack (cudaLimitStackSize); ops with deep device calls (game ops) need a large one
@@ -269,7 +282,7 @@ class KvmExec {
     CK(cudaMalloc(&S_.qctl, nc_ * KVM_NBUCKETS * sizeof(KvmQCtl)));
     CK(cudaMalloc(&S_.wins, (size_t)cfg_.win_cap * sizeof(KvmWin)));
     CK(cudaMalloc(&S_.cnt, sizeof(KvmCounters)));
-    CK(cudaMemset(S_.tasks, 0, T * sizeof(KvmTaskDesc))); CK(cudaMemset(S_.trace, 0, T * sizeof(KvmTrace)));
+    CK(cudaMemset(S_.tasks, 0, T * sizeof(KvmTaskDesc))); CK(cudaMemset(S_.indeg, 0, T * 4));   // chunked release: a free slot's indegree is 0 (the admitter adds the true count) CK(cudaMemset(S_.trace, 0, T * sizeof(KvmTrace)));
     CK(cudaMemset(S_.version, 0, cfg_.num_vars * 4)); CK(cudaMemset(S_.qctl, 0, nc_ * KVM_NBUCKETS * sizeof(KvmQCtl)));
     CK(cudaMemset(S_.wins, 0, (size_t)cfg_.win_cap * sizeof(KvmWin))); CK(cudaMemset(S_.cnt, 0, sizeof(KvmCounters)));
     // host-shared control block: ring + doorbell/ring_head/closed on separate lines + error mirror + per-window done marks
@@ -290,7 +303,7 @@ class KvmExec {
     S_.num_vars = cfg_.num_vars; S_.ring_words = cfg_.ring_words;
     S_.aging_ns = cfg_.aging_us ? (long long)cfg_.aging_us * 1000 : (1ll << 50);
     S_.timeout_ns = cfg_.timeout_us * 1000ull; S_.task_limit_ns = cfg_.task_limit_us * 1000ull;
-    S_.rcap = 4 * cfg_.live_cap;
+    S_.rcap = 4 * cfg_.live_cap; S_.cont_on = cfg_.cont; S_.claim_ticket = cfg_.claim_ticket && !cfg_.sched.on;
     CK(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
     CK(cudaEventCreate(&e0_)); CK(cudaEventCreate(&e1_));
   }
@@ -470,6 +483,7 @@ class KvmExec {
   // host reads the per-window completion marks the device mirrors into pinned memory). Windows of other producers interleave
   // freely. Cost: a window with a cross-window dependency starts after its producers drain, so choose big windows.
   KvmSubmit submit_stream(const KvmBundle& big, int max_window_tasks = 0, int timeout_ms = 60000, std::vector<unsigned>* wids_out = nullptr) {
+    const auto tp0 = std::chrono::steady_clock::now();   // host prep time (validate + plan) is time the device idles: logged below
     std::string why = big.validate(nbufs(), cfg_.num_vars, 0);
     if (!why.empty()) { KLOG(0, "stream rejected: %s", why.c_str()); last_error_ = why; return KvmSubmit::INVALID; }
     const int nt = (int)big.tasks.size();
@@ -488,8 +502,15 @@ class KvmExec {
     const int nw = (int)lo.size() - 1;
     std::vector<int> win_of(nt);
     for (int k = 0; k < nw; ++k) for (int i = lo[k]; i < lo[k + 1]; ++i) win_of[i] = k;
-    std::vector<std::set<int>> needs(nw);
-    for (int i = 0; i < nt; ++i) for (int k = 0; k < big.tasks[i].succ_cnt; ++k) { int t = big.succ[big.tasks[i].succ_off + k]; if (win_of[t] != win_of[i]) needs[win_of[t]].insert(win_of[i]); }
+    // Windows each window must wait for. Sources are visited in task (= window) order, so the producers of one window arrive in
+    // non-decreasing order and a "last producer added" stamp de-duplicates exactly (a set insert per edge cost 350 ms on 6.9M edges).
+    std::vector<std::vector<int>> needs(nw);
+    { std::vector<int> last(nw, -1);
+      for (int i = 0; i < nt; ++i) for (int k = 0; k < big.tasks[i].succ_cnt; ++k) {
+        const int t = big.succ[big.tasks[i].succ_off + k], wt = win_of[t], wi = win_of[i];
+        if (wt != wi && last[wt] != wi) { last[wt] = wi; needs[wt].push_back(wi); }
+      } }
+    KLOG(2, "stream: host prep (validate, order check, %d windows, cross-window needs) %.1f ms", nw, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tp0).count());
     std::vector<unsigned> wid(nw, 0);
     for (int k = 0; k < nw; ++k) {
       for (int j : needs[k]) {                                  // cross-window predecessors must have completed
@@ -959,7 +980,7 @@ static int kvm_cli_sched_option(KvmConfig& cfg, int& i, int argc, char** argv) {
 static void usage() {
   fprintf(stderr, "usage: kvm_exec [options] bundle_dir...\n"
     "  bundle_dir: tasks.bin successors.bin args.bin metadata.json (ABI v2)\n"
-    "  --blocks N --live-cap N --max-tasks N --ring-words N --aging-us N --timeout-s N (stall timeout) --task-limit-s N\n"
+    "  --blocks N --live-cap N --max-tasks N --ring-words N --aging-us N --timeout-s N (stall timeout) --task-limit-s N --no-cont (no continuation) --cont-strict (only when nothing is queued) --cont-above (only above every queued priority) --claim cas|ticket\n"
     "  --sched MODE        global|static|dynamic: per-workload scheduling (workload_id = class, up to 8)  --classes N\n"
     "  --weights a,b,..    --min a,b,.. (reserved CTAs)  --max a,b,.. (CTA caps)  --bw-cta a,b,..  --urgent-us a,b,..\n"
     "  --op-affinity a,b (1 = class prefers the block that last ran the same op)  --shares a,b (static SM shares)  --arbiter  --bw-limit N   adaptive concurrent bandwidth-bound CTA limit   --affinity-us N   --no-guarantee  --no-inherit\n"
@@ -970,7 +991,7 @@ static void usage() {
 }
 
 int main(int argc, char** argv) {
-  KvmConfig cfg; std::vector<std::string> dirs; const char* csv = nullptr; bool dump = false, golden = false; float golden_tol = 1e-6f;
+  KvmConfig cfg; std::vector<std::string> dirs; const char* csv = nullptr; bool dump = false, golden = false; float golden_tol = 1e-6f; bool sized = false;
   std::string dump_dir; std::vector<int> dump_idx;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
@@ -980,14 +1001,18 @@ int main(int argc, char** argv) {
       if (e == argv[i] || *e || errno || v < lo || v > hi) { fprintf(stderr, "%s: integer in [%lld,%lld] expected, got '%s'\n", a.c_str(), lo, hi, argv[i]); exit(2); }
       return v; };
     if (a == "--blocks") cfg.blocks = (int)val(0, 1 << 20);
-    else if (a == "--live-cap") cfg.live_cap = (int)val(2, 1 << 24);
-    else if (a == "--max-tasks") cfg.max_tasks = (int)val(2, 1 << 26);
-    else if (a == "--ring-words") cfg.ring_words = (int)val(64, 1 << 28);
+    else if (a == "--live-cap") { cfg.live_cap = (int)val(2, 1 << 24); sized = true; }
+    else if (a == "--max-tasks") { cfg.max_tasks = (int)val(2, 1 << 26); sized = true; }
+    else if (a == "--ring-words") { cfg.ring_words = (int)val(64, 1 << 28); sized = true; }
     else if (a == "--dump-bin") {
       if (i + 2 >= argc) { usage(); return 2; }
       dump_dir = argv[++i];
       for (char* p = argv[++i]; *p;) { char* e; long v = strtol(p, &e, 10); if (e == p || v < 0) { usage(); return 2; } dump_idx.push_back((int)v); p = *e == ',' ? e + 1 : e; }
     }
+    else if (a == "--no-cont") cfg.cont = 0;
+    else if (a == "--cont-strict") cfg.cont = 2;
+    else if (a == "--cont-above") cfg.cont = 3;
+    else if (a == "--claim" && i + 1 < argc) { std::string v = argv[++i]; if (v == "ticket") cfg.claim_ticket = 1; else if (v == "cas") cfg.claim_ticket = 0; else { fprintf(stderr, "--claim cas|ticket\n"); return 2; } }
     else if (a == "--task-limit-s") cfg.task_limit_us = (unsigned long long)val(0, 86400) * 1000000ull;
     else if (a == "--aging-us") cfg.aging_us = (int)val(0, 1000000000);
     else if (a == "--timeout-s") cfg.timeout_us = (unsigned long long)val(1, 86400) * 1000000ull;
@@ -1002,6 +1027,22 @@ int main(int argc, char** argv) {
     else dirs.push_back(a);
   }
   if (dirs.empty()) { usage(); return 2; }
+  // Window sizing (from perf/admission-v2 72b2660): the default live_cap / ring cut a large bundle into windows, and the host submits a
+  // window only after the windows holding its producers COMPLETED (a drain per window: gpt_162m bf16s 217 ms with windows, 152 ms as one
+  // record there). With no sizing flag and a single bundle that fits, size the ring, slots and successor ring so the bundle is one record.
+  if (!sized && dirs.size() == 1) {
+    try {
+      Json m = JsonParser(read_file(dirs[0] + "/metadata.json")).parse();
+      const long long nt = (long long)m.num("task_count", -1), ne = (long long)m.num("edge_count", -1), nw = (long long)m.num("args_words", -1);
+      const long long words = KVM_REC_HDR + nt * KVM_TASK_WORDS + ne + nw;
+      auto p2 = [](long long v) { long long r = 2; while (r < v) r <<= 1; return r; };
+      if (nt > cfg.live_cap && nt <= (1 << 20) && ne >= 0 && nw >= 0 && words < (1ll << 26)) {
+        cfg.live_cap = (int)p2(nt); cfg.max_tasks = std::max(cfg.max_tasks, cfg.live_cap); cfg.ring_words = (int)std::max<long long>(cfg.ring_words, p2(2 * words + 128));
+        cfg.succ_cap = std::max<unsigned>(cfg.succ_cap, (unsigned)p2(ne + 2));
+        KLOG(2, "window sizing: %lld tasks as one record (live_cap %d, ring %d words)", nt, cfg.live_cap, cfg.ring_words);
+      }
+    } catch (const std::exception&) { /* unreadable metadata: the load below reports it */ }
+  }
   try {
     KvmExec ex(cfg);
     std::vector<KvmBundle> bundles;

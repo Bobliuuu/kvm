@@ -18,7 +18,7 @@
 
 // The dynamic shared memory a test kernel may launch with: what the executor would ask for (at least 112 KiB), capped at what this device
 // can opt into (99 KiB on sm_86/sm_89/sm_120, 163 KiB on an A100). A launch above the cap then fails at that launch, by name, instead of the
-// whole program failing at the attribute call. A small-memory device runs a reduced-tile build (-DKVM_GPT_BIG_BK=16 -DKVM_GPT_MAX_HD=64: 96 KiB);
+// whole program failing at the attribute call. A small-memory device runs a reduced-tile build (-DKVM_GPT_BIG_NST=3 -DKVM_GPT_MMA_SMEM=90112 -DKVM_GPT_MAX_HD=64: 88 KiB);
 // its cases above KVM_GPT_MAX_HD (hd=128 attention, whose variant that build does not compile) are skipped and counted, not run.
 static int kvm_test_smem_cap() {
     int dev = 0, optin = 0;

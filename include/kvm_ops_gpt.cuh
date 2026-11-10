@@ -70,10 +70,16 @@ static_assert(KVM_GPT_THREADS / 32 * 16 == KVM_GPT_ATTN_ROWS, "attention: one m1
 #define KVM_GPT_BIG_STREAM_KMAX 0x40000000   // big tiles: the same switch (0: never, default: always)
 #endif
 #ifndef KVM_GPT_BIG_BK
-#define KVM_GPT_BIG_BK 32    // k per pipeline stage of the big tiles (16 or 32); 32 x 3 stages is the matrix's best on the A100 (0.76-0.83x cuBLAS against 0.41-0.55x for 16 x 3-4 at two blocks per SM)
+#define KVM_GPT_BIG_BK 16    // k per pipeline stage of the big tiles (16 or 32). A100, one block per SM, the 256x128 tile at the 162M row's shapes
+                             // (Nov 10, tests/gpu_ops/bench_tile.cu): BK 16 x 4 stages 0.69-0.72x cuBLAS NN and 0.55x TN at 96 KiB, against
+                             // BK 32 x 3's 0.73x and 0.56x at 144 KiB; BK 32 x 2 (96 KiB) 0.41-0.45x and 0.31x. A 144 KiB launch leaves every
+                             // op 28 KB of L1 (the same executor launched at 90 KB ran gpt-tiny x1.12 on an A100). The 0.41-0.55x measured
+                             // earlier for BK 16 was read at two blocks per SM, where 128 registers make the 256x128 tile spill.
 #endif
 #ifndef KVM_GPT_BIG_NST
-#define KVM_GPT_BIG_NST 3    // pipeline stages of the big tiles (3 stages of (BM+BN) x 32 floats; 128x128: 96 KiB, 256x128: 144 KiB, so one block per SM)
+#define KVM_GPT_BIG_NST 4    // pipeline stages of the big tiles (4 stages of (BM+BN) x 16 floats: 128x128 64 KiB, 256x128 96 KiB, one block
+                             // per SM). Small-memory parts (99 KiB opt-in, sm_86/sm_89/sm_120) build -DKVM_GPT_BIG_NST=3: 96 KiB plus the
+                             // kernel's static shared memory is over their limit.
 #endif
 // Dynamic shared memory an op needs for a launch of the op set: 104 KiB covers hd=128 attention backward/forward (6 tiles of
 // 32 x 132 floats = 101 KiB); 56 KiB covers every other op (matmul 48 KiB, attention up to hd=64 at 52 KiB), so two blocks per SM still
@@ -84,8 +90,9 @@ static_assert(KVM_GPT_THREADS / 32 * 16 == KVM_GPT_ATTN_ROWS, "attention: one m1
 // cuBLAS faster in isolation, but the executor then launches with 144 KiB of shared memory, the L1 carveout shrinks for every other op, and
 // the gpt_162m step got slower (f32 249 vs 229 ms, bf16s 270 vs 257 ms; results/2026-11-09-a100-matmul-parity). mm_tf32_tile picks by
 // the launch's %dynamic_smem_size, so either build stays correct.
-// #13's tiles: the 256 x 128 tile's BK 32 x 3 stages (KVM_GPT_BIG_BK, KVM_GPT_BIG_NST) set the executor's launch to 144 KiB whatever
-// KVM_GPT_MMA_SMEM says (kvm_gpt_smem_bytes); tests/gpu_ops/bench_mm.cu prices both tile sets, and the panel read prices the carveout.
+// #13's tiles: the big tiles' stages (KVM_GPT_BIG_BK x KVM_GPT_BIG_NST) enter the executor's launch through kvm_gpt_smem_bytes. At the
+// default BK 16 x 4 the 256 x 128 tile needs 96 KiB, the same as KVM_GPT_MMA_SMEM's tiles, so a default build launches with 96 KiB;
+// BK 32 x 3 (-DKVM_GPT_BIG_BK=32 -DKVM_GPT_BIG_NST=3) would set it to 144 KiB, at the L1 cost above.
 #ifndef KVM_GPT_MMA_SMEM
 #define KVM_GPT_MMA_SMEM (96 * 1024)   // matmul_mma_bf16 (kvm_mma_bf16.cuh): 4 stages of 128 x 256 x 32 bf16; fits the 99 KiB opt-in limit of sm_86/sm_120
 #endif

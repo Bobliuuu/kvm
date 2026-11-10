@@ -30,6 +30,7 @@
 #include <cuda_runtime.h>
 #include <type_traits>
 #include "kvm_task_abi.h"
+#include "kvm_hopper.cuh"   // sm_90a TMA + wgmma tiles (no-op on every other target)
 
 #define KVM_GPT_THREADS 256
 #define KVM_GPT_DEVI __device__ __forceinline__
@@ -917,6 +918,15 @@ KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
     float* pre = k.mat(a[5], M, N, &ldp, true);
     if (k.bad) return;
     float alpha = af(a, 12);
+#ifdef KVM_HOPPER_DEVICE
+    if (!prec) {   // 1xTF32 on sm_90a: TMA + wgmma (kvm_hopper.cuh); declines (alignment, shared memory, no host init) fall through
+        const bool done = big ? kvmhop::mm_f32<128, 128>(A, lda, ta, B, ldb, tb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, gelu, accum, kvm_gpt_smem)
+                        : huge ? kvmhop::mm_f32<256, 128>(A, lda, ta, B, ldb, tb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, gelu, accum, kvm_gpt_smem)
+                               : kvmhop::mm_f32<64, 64>(A, lda, ta, B, ldb, tb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, gelu, accum, kvm_gpt_smem);
+        if (threadIdx.x == 0) atomicAdd(&kvm_hop_count[done ? 0 : 2], 1ull);
+        if (done) return;
+    }
+#endif
 #define KVM_GPT_MM(F, TA, TB, P) F<TA, TB, P KVM_GPT_MM_SHAPE>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, gelu, accum)
 #define KVM_GPT_MM_T(F, P)                                                                                                   \
     if (!ta && !tb) KVM_GPT_MM(F, false, false, P); else if (ta && !tb) KVM_GPT_MM(F, true, false, P);                       \

@@ -1,0 +1,35 @@
+NVIDIA H100 80GB HBM3, 610.57.04
+== test_hopper
+device NVIDIA H100 80GB HBM3 sm_90, 132 SMs
+test_hopper: 1612 passed, 0 failed
+exit 0
+== test_ops
+device: NVIDIA H100 80GB HBM3, 132 SMs, cc 9.0
+
+2965 passed, 0 failed
+exit 0
+== test_bf16
+device: NVIDIA H100 80GB HBM3, 132 SMs, cc 9.0, mma smem 98304 B
+  matmul_mma_bf16: 240 configurations, worst relerr 3.683e-03
+
+685 passed, 0 failed
+exit 0
+== san_memcheck
+========= COMPUTE-SANITIZER
+device NVIDIA H100 80GB HBM3 sm_90, 132 SMs
+test_hopper: 1612 passed, 0 failed
+========= ERROR SUMMARY: 0 errors
+exit 0
+== san_racecheck
+========= COMPUTE-SANITIZER
+device NVIDIA H100 80GB HBM3 sm_90, 132 SMs
+test_hopper: 1612 passed, 0 failed
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+exit 0
+== san_synccheck
+========= COMPUTE-SANITIZER
+device NVIDIA H100 80GB HBM3 sm_90, 132 SMs
+test_hopper: 1612 passed, 0 failed
+========= ERROR SUMMARY: 0 errors
+exit 0
+ALLDONE

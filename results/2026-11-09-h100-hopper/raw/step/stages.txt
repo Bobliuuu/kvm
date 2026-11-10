@@ -1,0 +1,4 @@
+== torch_tf32 05:49:21
+torch_tf32 exit 0 05:54:00
+== torch_bf16 05:54:00
+torch_bf16 exit 0 05:57:58

@@ -47,7 +47,7 @@ for n in $BUNDLES; do
   d="$WORK/$n"
   scp -q -o BatchMode=yes ${KVM_KEY:+-i $KVM_KEY} "$HOST:$REMOTE/generic_bundles/$n.dump" "$d/dump.txt"
   tail -n1 "$d/dump.txt" | sed "s/^/$n kvm_exec: /"
-  echo "== $n"; python3 -I "$ROOT/tests/gptdiff/golden_check.py" "$d/workload.json" "$d/bundle" "$d/dump.txt" --mode precise | tee "$d/check.txt" || fail=1
+  echo "== $n"; python3 -I "$ROOT/examples/models/check.py" "$d/workload.json" "$d/bundle" "$d/dump.txt" --mode precise --tol 2e-4 | tee "$d/check.txt" || fail=1
 done
 for c in $MANIFESTS; do
   d="$WORK/man_$c"; mkdir -p "$d/out"

@@ -1,0 +1,4 @@
+== litmus
+SUMMARY: 16 properties/scenarios/probes passed, 8 mutants/controls detected, 0 failures
+LITMUS PASS
+exit: 0

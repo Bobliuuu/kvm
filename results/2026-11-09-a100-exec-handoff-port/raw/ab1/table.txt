@@ -1,0 +1,14 @@
+tiny   torch r0: torch 2.7.0+cu126  cuda 12.6  gpu NVIDIA A100-SXM4-40GB  sms 108  precision tf32  reps 5  modes ?
+tiny   torch r1: torch 2.7.0+cu126  cuda 12.6  gpu NVIDIA A100-SXM4-40GB  sms 108  precision tf32  reps 5  modes ?
+tiny   torch r2: torch 2.7.0+cu126  cuda 12.6  gpu NVIDIA A100-SXM4-40GB  sms 108  precision tf32  reps 5  modes ?
+tiny   main           best       834 median       844 us/step (n=15)
+tiny   port           best       822 median       830 us/step (n=15)
+tiny   port_tk        best       818 median       828 us/step (n=15)
+tiny   port_nc        best       823 median       831 us/step (n=15)
+small  torch r0: torch 2.7.0+cu126  cuda 12.6  gpu NVIDIA A100-SXM4-40GB  sms 108  precision tf32  reps 5  modes ?
+small  torch r1: torch 2.7.0+cu126  cuda 12.6  gpu NVIDIA A100-SXM4-40GB  sms 108  precision tf32  reps 5  modes ?
+small  torch r2: torch 2.7.0+cu126  cuda 12.6  gpu NVIDIA A100-SXM4-40GB  sms 108  precision tf32  reps 5  modes ?
+small  main           best      1780 median      1797 us/step (n=15)
+small  port           best      1740 median      1749 us/step (n=15)
+small  port_tk        best      1729 median      1741 us/step (n=15)
+small  port_nc        best      1766 median      1780 us/step (n=15)

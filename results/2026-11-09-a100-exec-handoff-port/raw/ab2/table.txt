@@ -1,0 +1,36 @@
+tiny   torch r0: torch 2.7.0+cu126  cuda 12.6  gpu NVIDIA A100 80GB PCIe  sms 108  precision tf32  reps 3  modes ?
+tiny   torch r1: torch 2.7.0+cu126  cuda 12.6  gpu NVIDIA A100 80GB PCIe  sms 108  precision tf32  reps 3  modes ?
+tiny   port           best       659 median       675 us/step (n=6)
+tiny   main           best       712 median       732 us/step (n=6)
+tiny   chunk          best       675 median       700 us/step (n=6)
+tiny   chunk_c0       best       701 median       726 us/step (n=6)
+tiny   port_cs        best       650 median       689 us/step (n=6)
+tiny   port_nc        best       689 median       713 us/step (n=6)
+tiny   port_tk        best       621 median       632 us/step (n=6)
+small  torch r0: torch 2.7.0+cu126  cuda 12.6  gpu NVIDIA A100 80GB PCIe  sms 108  precision tf32  reps 3  modes ?
+small  torch r1: torch 2.7.0+cu126  cuda 12.6  gpu NVIDIA A100 80GB PCIe  sms 108  precision tf32  reps 3  modes ?
+small  port           best      1760 median      1778 us/step (n=6)
+small  main           best      1816 median      1830 us/step (n=6)
+small  chunk          best      1746 median      1765 us/step (n=6)
+small  chunk_c0       best      1759 median      1772 us/step (n=6)
+small  port_cs        best      1761 median      1771 us/step (n=6)
+small  port_nc        best      1754 median      1768 us/step (n=6)
+small  port_tk        best      1675 median      1696 us/step (n=6)
+b16    torch r0: torch 2.7.0+cu126  cuda 12.6  gpu NVIDIA A100 80GB PCIe  sms 108  precision bf16  reps 3  modes ?
+b16    torch r1: torch 2.7.0+cu126  cuda 12.6  gpu NVIDIA A100 80GB PCIe  sms 108  precision bf16  reps 3  modes ?
+b16    port           NO DATA
+b16    main           NO DATA
+b16    chunk          best    132350 median    133010 us/step (n=6)
+b16    chunk_c0       best    131759 median    133087 us/step (n=6)
+b16    port_cs        NO DATA
+b16    port_nc        NO DATA
+b16    port_tk        NO DATA
+f32    torch r0: torch 2.7.0+cu126  cuda 12.6  gpu NVIDIA A100 80GB PCIe  sms 108  precision tf32  reps 3  modes ?
+f32    torch r1: torch 2.7.0+cu126  cuda 12.6  gpu NVIDIA A100 80GB PCIe  sms 108  precision tf32  reps 3  modes ?
+f32    port           best    455821 median    456230 us/step (n=6)
+f32    main           best    713967 median    726086 us/step (n=6)
+f32    chunk          best    242974 median    243200 us/step (n=6)
+f32    chunk_c0       best    242599 median    243709 us/step (n=6)
+f32    port_cs        best    484665 median    486586 us/step (n=6)
+f32    port_nc        best    484076 median    486272 us/step (n=6)
+f32    port_tk        best    228745 median    230314 us/step (n=6)

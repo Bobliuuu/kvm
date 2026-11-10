@@ -229,9 +229,15 @@ KVM_HOP_DEVI bool mm_f32(const float* A, int lda, bool ta, const float* B, int l
     constexpr int BK = 32, ABY = TM * 128, BBY = TN * 128, STG = ABY + BBY;
     constexpr int WN = TM == 64 ? 32 : 128, MI = TM == 256 ? 2 : 1, NACC = WN / 2;
     if (!kvm_tma_ready || blockIdx.x >= KVM_TMA_MAXB || !tma_ok(A, lda, 4) || !tma_ok(B, ldb, 4)) return false;
-    // 64x64: only the all-K-major layout (flag 2) gains on an H100 (73 vs 60 TFLOP/s at 4096^3; NN ties, TN loses 38 vs 48 to the
-    // shared-memory transpose: results/2026-11-09-h100-hopper); the larger tiles win in every layout measured.
+    // Default build: only the all-K-major layout (flag 2: A [M][K], B [N][K]), where the TMA box lands in exactly the layout wgmma reads and the
+    // tile beats main's sm_80 tf32 tiles on an H100 at every tile size (results/2026-11-09-h100-hopper). The MN-major layouts (shared-memory
+    // transpose) lose to those tiles at 128x128 / 256x128 TN and TT and tie at NN; they stay compiled and tested under KVM_HOPPER_ALL_LAYOUTS
+    // (test_hopper), where only the 64x64 tile is restricted to flag 2.
+#ifdef KVM_HOPPER_ALL_LAYOUTS
     if (TM == 64 && (ta || !tb)) return false;
+#else
+    if (ta || !tb) return false;
+#endif
     const unsigned tbytes = 2 * ((ta ? ABY : 0) + (!tb ? BBY : 0));   // double-buffered transposed copies of MN-major operands
     const unsigned avail = smem_avail();
     int nst = 0;
@@ -402,6 +408,11 @@ KVM_HOP_DEVI bool mm_bf16(const uint16_t* A, int lda, const uint16_t* B, int ldb
                           const void* res, int ldr, bool rb, void* pre, int ldp, bool pb, int m0, int n0, int M, int N, int K, float alpha,
                           bool gelu_on, bool accum, unsigned char* smem) {
     constexpr int TM = 128, TN = 256;
+#ifndef KVM_HOPPER_ALL_LAYOUTS
+    // Default build: declined. main's sm_80 matmul_mma_bf16 tile runs 1.4x faster than this one on an H100 (340-353 vs 231-240 TFLOP/s at
+    // 4096^3, logits 196 vs 62: results/2026-11-09-h100-hopper); compiled and tested under KVM_HOPPER_ALL_LAYOUTS (test_hopper).
+    return false;
+#endif
     if (!kvm_tma_ready || blockIdx.x >= KVM_TMA_MAXB || !tma_ok(A, lda, 2) || !tma_ok(B, ldb, 2)) return false;
     const unsigned avail = smem_avail(), sb = (s32(smem) + 1023) & ~1023u;
     constexpr unsigned S64 = (TM + TN) * 64 * 2, S32 = (TM + TN) * 32 * 2;

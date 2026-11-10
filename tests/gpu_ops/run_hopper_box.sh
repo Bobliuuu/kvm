@@ -16,6 +16,7 @@ case "$MODE" in
 build)
   { nvidia-smi --query-gpu=name,driver_version,clocks.max.sm --format=csv,noheader; nvcc --version | tail -1; nproc; free -g | head -2; } > "$OUT/env.txt" 2>&1
   stage b_test_hopper 3600 bash -c "cd tests/gpu_ops && nvcc $OPF test_hopper.cu -lcublas -o ../../bin_h100/test_hopper" &
+  stage b_test_hopper_default 3600 bash -c "cd tests/gpu_ops && nvcc $OPF -DKVM_HOPPER_DEFAULT_POLICY test_hopper.cu -lcublas -o ../../bin_h100/test_hopper_default" &
   stage b_test_ops 5400 bash -c "cd tests/gpu_ops && nvcc $OPF test_ops.cu -o ../../bin_h100/test_ops" &
   stage b_test_bf16 5400 bash -c "cd tests/gpu_ops && nvcc $OPF test_bf16.cu -o ../../bin_h100/test_bf16" &
   stage b_test_extra 7200 bash -c "cd tests/gpu_ops && nvcc $OPF test_extra.cu -o ../../bin_h100/test_extra" &
@@ -26,6 +27,7 @@ build)
   ;;
 test)
   stage test_hopper 3600 bash -c "cd tests/gpu_ops && ../../bin_h100/test_hopper --quiet"
+  stage test_hopper_default 3600 bash -c "cd tests/gpu_ops && ../../bin_h100/test_hopper_default --quiet"
   stage test_ops 1800 bash -c "cd tests/gpu_ops && ../../bin_h100/test_ops"
   stage test_bf16 1800 bash -c "cd tests/gpu_ops && ../../bin_h100/test_bf16"
   stage test_extra 1800 bash -c "cd tests/gpu_ops && ../../bin_h100/test_extra"

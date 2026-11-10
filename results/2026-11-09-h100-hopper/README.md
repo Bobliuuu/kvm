@@ -1,5 +1,24 @@
 # Hopper (sm_90a) GEMM tiles: TMA + mbarrier + wgmma on the H100 (2026-11-09)
 
+## Current state (after merging main #16, which made the sm_80 tiles much faster)
+
+#16 (matmul parity) landed while this work was in review. On an H100 its sm_80 tiles beat this branch's Hopper tiles in every layout except tf32 with both
+operands K-major (`raw/after_main16_all_layouts_bench.log`): bf16 128x256 340-353 vs 231-240 TFLOP/s, logits 196 vs 62, tf32 TN/TT 113-144 vs 85-101. So the
+**default build takes the Hopper path only for `matmul_tile` 1xTF32 with K-major A and B (flag 2, NT), at every tile size**; bf16 and the MN-major tf32 layouts
+stay compiled and tested under `-DKVM_HOPPER_ALL_LAYOUTS` (`test_hopper`) but are off in the executor. Default policy against main's tiles on the same H100
+(`raw/after_main16_default_policy.log`, `test_hopper_default --bench`, 4096^3):
+
+| tile | Hopper (default policy) | main's sm_80 tile | cuBLAS | gain |
+|---|---|---|---|---|
+| tf32 64x64 NT | 70.4 | 52.3 | 394.1 | 1.35x |
+| tf32 128x128 NT | 196.2 | 126.5 | 392.2 | 1.55x |
+| tf32 256x128 NT | 220.7 | 155.4 | 389.5 | 1.42x |
+| every other tf32 layout, all bf16 (declined) | = main | | | 1.00x |
+
+`test_hopper` (all layouts) and `test_hopper_default` (the default rule, every decline predicted) both pass 1612/0 on the merged tree. The executor and op-suite
+runs below used the pre-#16 tree with the wider policy; the default policy only narrows the path (a decline runs main's code), and they were not repeated.
+The sections below are the measurements against the pre-#16 sm_80 tiles.
+
 **Verdict.** KVM now has a real sm_90a path (`include/kvm_hopper.cuh`): `matmul_tile` (1xTF32) and `matmul_mma_bf16` load their operands with TMA
 (`cp.async.bulk.tensor`, tensor maps patched per task on the device), complete on mbarriers, and multiply with `wgmma.mma_async`. It is correct everywhere it
 runs (`test_hopper` 1612/0 against float64 and against the sm_80 tile; the executor suite 8609/0 and the op suites on the sm_90a build), the sm_80 build is

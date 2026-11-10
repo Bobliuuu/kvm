@@ -5,6 +5,7 @@
 //                cleared). The tile counters prove the Hopper path ran (a silent fallback fails the test).
 //   bench (--bench): TFLOP/s of the Hopper tile, the sm_80 tile on the same GPU and cuBLAS (TF32 / bf16, fp32 accumulate), one CTA per tile.
 // Build (sm_90a only): nvcc -O3 -arch=sm_90a -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -I../../include -I. test_hopper.cu -lcublas -o test_hopper
+//   (every layout and the bf16 tile); add -DKVM_HOPPER_DEFAULT_POLICY for test_hopper_default (the executor's default rule).
 #include <algorithm>
 #include <chrono>
 #include <cstring>
@@ -12,6 +13,9 @@
 #include <cublas_v2.h>
 #ifndef KVM_GPT_MAX_HD
 #define KVM_GPT_MAX_HD 64
+#endif
+#ifndef KVM_HOPPER_DEFAULT_POLICY   // -DKVM_HOPPER_DEFAULT_POLICY: test the executor's default rule (tf32 with K-major A and B only, no bf16)
+#define KVM_HOPPER_ALL_LAYOUTS   // every Hopper layout and the bf16 tile
 #endif
 #define KVM_HARNESS_NO_FULL
 #include "harness.cuh"
@@ -104,7 +108,11 @@ static void run_case(Rng& rng, int which, const Case& cs, bool ob, int smem) {
     // stages plus the double-buffered transposed copies); otherwise it must decline for every tile.
     const long avail = (long)smem - 2048;
     const long need = which ? 2L * (128 + 256) * 32 * 2 : 2L * (bm + bn) * 128 + 2L * ((ta ? bm : 0) + (!tb ? bn : 0)) * 128;
+#ifdef KVM_HOPPER_ALL_LAYOUTS
     const bool fits = need <= avail && !(!which && bm == 64 && (ta || !tb));   // 64x64 tf32: Hopper only for K-major A and B
+#else
+    const bool fits = need <= avail && !which && !ta && tb;                    // default policy: tf32, K-major A and B, every tile size
+#endif
     char det[96]; snprintf(det, sizeof det, "%llu of %d tiles (expected %s)", taken[0], nt, fits ? "all" : "none: pipeline does not fit");
     check_true(std::string(name) + " hopper path taken", taken[0] == (fits ? (unsigned long long)nt : 0ull), det);
     check_true(std::string(name) + " sm80 path when disarmed", taken[1] == 0, "");

@@ -370,6 +370,7 @@ static int proc_main(int argc, char** argv) {
   std::vector<std::string> hosts(world, "127.0.0.1");
   if (hosts_env) { std::stringstream hs(hosts_env); for (int i = 0; i < world && std::getline(hs, tok, ','); ++i) hosts[i] = tok; }
   TcpConfig c; c.rank = rank; c.hosts = hosts; c.ports = ports; c.cluster_id = 7;
+  if (const char* lp = getenv("KVM_DIST_LISTEN_PORT")) c.listen_port = atoi(lp);   // NAT / container port map: bind here, peers dial ports[rank]
   TcpTransport tcp(c);
   FaultyTransport faulty(tcp, f);
   Transport& t = (f.drop > 0 || f.dup > 0 || f.delay > 0) ? (Transport&)faulty : (Transport&)tcp;

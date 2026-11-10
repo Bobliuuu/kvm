@@ -2,17 +2,12 @@
 // Included by kvm_exec.cuh after KvmCtx/ARG_* exist. Every op is block-cooperative (all 256 threads call it with the same
 // arguments); validation failures are uniform across threads, so no thread leaves a barrier early.
 
-KVM_OP(put) {
-  KvmView s = ARG_BUF(0), d = ARG_BUF(1);
-  const int so = ARG_I32(2), dof = ARG_I32(3), rows = ARG_I32(4), cols = ARG_I32(5), sld = ARG_I32(6), dld = ARG_I32(7);
+__device__ __forceinline__ void kvm_put_body(const KvmCtx& c, KvmView s, KvmView d, int so, int dof, int rows, int cols, int sld, int dld) {
   if (!kvm_tile_ok(c, s, so, rows, cols, sld) || !kvm_tile_ok(c, d, dof, rows, cols, dld)) return;
   kvm_tile_copy(d.p + dof, dld, s.p + so, sld, rows, cols);
 }
-
-KVM_OP(put_signal) {
-  KvmView s = ARG_BUF(0), d = ARG_BUF(1), f = ARG_BUF(8);
-  const int so = ARG_I32(2), dof = ARG_I32(3), rows = ARG_I32(4), cols = ARG_I32(5), sld = ARG_I32(6), dld = ARG_I32(7);
-  const int var = ARG_I32(9), ver = ARG_I32(10);
+__device__ __forceinline__ void kvm_put_signal_body(const KvmCtx& c, KvmView s, KvmView d, KvmView f, int so, int dof, int rows, int cols,
+                                                    int sld, int dld, int var, int ver) {
   if (!kvm_tile_ok(c, s, so, rows, cols, sld) || !kvm_tile_ok(c, d, dof, rows, cols, dld) || !kvm_flag_ok(c, f, var, ver)) return;
 #ifdef KVM_DIST_BREAK_ORDER   // negative test: signal first, then a long delay, then the data (the consumer must see stale data)
   if (threadIdx.x == 0) { kvm_remote_publish((unsigned*)f.p, var, ver); unsigned long long e = kvm_now() + 200000ull; while (kvm_now() < e) {} }
@@ -23,6 +18,22 @@ KVM_OP(put_signal) {
   __syncthreads();                                   // every thread's stores precede thread 0's fence (header, cumulativity)
   if (threadIdx.x == 0) kvm_remote_publish((unsigned*)f.p, var, ver);
 #endif
+}
+__device__ __forceinline__ KvmView kvm_words(KvmIView v) { return {(float*)v.p, v.rows, v.cols}; }   // i32 tile moved as raw 32-bit words
+
+KVM_OP(put) {
+  kvm_put_body(c, ARG_BUF(0), ARG_BUF(1), ARG_I32(2), ARG_I32(3), ARG_I32(4), ARG_I32(5), ARG_I32(6), ARG_I32(7));
+}
+KVM_OP(put_i32) {
+  kvm_put_body(c, kvm_words(ARG_IBUF(0)), kvm_words(ARG_IBUF(1)), ARG_I32(2), ARG_I32(3), ARG_I32(4), ARG_I32(5), ARG_I32(6), ARG_I32(7));
+}
+
+KVM_OP(put_signal) {
+  kvm_put_signal_body(c, ARG_BUF(0), ARG_BUF(1), ARG_BUF(8), ARG_I32(2), ARG_I32(3), ARG_I32(4), ARG_I32(5), ARG_I32(6), ARG_I32(7), ARG_I32(9), ARG_I32(10));
+}
+KVM_OP(put_signal_i32) {
+  kvm_put_signal_body(c, kvm_words(ARG_IBUF(0)), kvm_words(ARG_IBUF(1)), ARG_BUF(8), ARG_I32(2), ARG_I32(3), ARG_I32(4), ARG_I32(5), ARG_I32(6),
+                      ARG_I32(7), ARG_I32(9), ARG_I32(10));
 }
 
 KVM_OP(signal) {
@@ -49,10 +60,8 @@ KVM_OP(reduce_put_signal) {
 }
 
 // Inter-node send: payload into the next send-queue slot (mapped pinned host memory), then publish the slot.
-KVM_OP(send_proxy) {
-  KvmView s = ARG_BUF(0), q = ARG_BUF(1);
-  const int so = ARG_I32(2), rows = ARG_I32(3), cols = ARG_I32(4), sld = ARG_I32(5);
-  const int rank = ARG_I32(6), dbuf = ARG_I32(7), doff = ARG_I32(8), dld = ARG_I32(9), var = ARG_I32(10), ver = ARG_I32(11);
+__device__ __forceinline__ void kvm_send_proxy_body(const KvmCtx& c, KvmView s, KvmView q, int so, int rows, int cols, int sld, int rank, int dbuf,
+                                                    int doff, int dld, int var, int ver) {
   if (!kvm_tile_ok(c, s, so, rows, cols, sld)) return;
   KvmSqHdr* H = (KvmSqHdr*)q.p;
   int* sm = (int*)c.smem;                            // sm[0] status, sm[1..2] ticket
@@ -87,6 +96,15 @@ KVM_OP(send_proxy) {
     kvm_fence_sys();
     st_rel_sys64(&h->seq, t + 1);
   }
+}
+
+KVM_OP(send_proxy) {
+  kvm_send_proxy_body(c, ARG_BUF(0), ARG_BUF(1), ARG_I32(2), ARG_I32(3), ARG_I32(4), ARG_I32(5), ARG_I32(6), ARG_I32(7), ARG_I32(8), ARG_I32(9),
+                      ARG_I32(10), ARG_I32(11));
+}
+KVM_OP(send_proxy_i32) {
+  kvm_send_proxy_body(c, kvm_words(ARG_IBUF(0)), ARG_BUF(1), ARG_I32(2), ARG_I32(3), ARG_I32(4), ARG_I32(5), ARG_I32(6), ARG_I32(7), ARG_I32(8),
+                      ARG_I32(9), ARG_I32(10), ARG_I32(11));
 }
 
 __device__ __forceinline__ unsigned short kvm_f32_to_bf16(float x) {   // round to nearest even; NaN stays NaN

@@ -34,7 +34,8 @@ cd "$ROOT"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"; LOG="$ROOT/logs/$STAMP-dist"; B="$ROOT/logs/dist-build"
 mkdir -p "$LOG" "$B"
 TMO="${KVM_STAGE_TIMEOUT:-600}"
-PY="python3 -I"
+PY="${KVM_PYTHON:-python3} -I"   # 3.10+
+TIMEOUT=timeout; command -v timeout >/dev/null 2>&1 || TIMEOUT="perl -e alarm(shift);exec(@ARGV)"   # macOS launch node: no coreutils timeout
 NGPU=0; if command -v nvidia-smi >/dev/null 2>&1; then NGPU="$(nvidia-smi -L 2>/dev/null | grep -c '^GPU')"; fi
 NVCC="$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc 2>/dev/null | tail -1 || true)"; HAVE_NVCC=1; [ -z "$NVCC" ] && { HAVE_NVCC=0; NVCC=nvcc; }
 ARCH="${KVM_ARCH:-}"
@@ -48,6 +49,9 @@ if [ "$DRY" = 0 ] && [ "$CPU_ONLY" = 0 ] && [ "$NGPU" -gt 0 ] && [ -e "$LOCKF" ]
   exec flock -w "$LOCKWAIT" "$LOCKF" env KVM_LOCK_HELD=1 bash "$0" "$@"
 fi
 NVFLAGS="-O3 -arch=$ARCH -std=c++17 -I$ROOT/include --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DKVM_EXEC_NO_MAIN"
+# sm_86 / sm_89 / sm_120 allow 99 KiB of opt-in shared memory per block (sm_80: 163 KiB): the GPT pack's default 4-stage bf16 MMA
+# buffers (96 KiB) plus the kernel's static shared memory do not fit, so those parts build the 3-stage variant (72 KiB).
+case "$ARCH" in sm_86|sm_87|sm_89|sm_120|sm_121) NVFLAGS="$NVFLAGS -DKVM_MMA_NST=3 -DKVM_GPT_MMA_SMEM=73728";; esac
 
 echo "== KVM distributed test run $STAMP  commit ${KVM_COMMIT:-$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo '?')}  GPUs: $NGPU  arch: $ARCH  nvcc: $([ "$HAVE_NVCC" = 1 ] && echo "$NVCC" || echo none)  dry-run: $DRY"
 declare -a NAMES RESULTS NOTES
@@ -60,7 +64,9 @@ stage() {
   case "$needs" in
     gpu)   [ "$CPU_ONLY" = 1 ] && reason="--cpu-only"; [ -z "$reason" ] && [ "$NGPU" -lt 1 ] && reason="no GPU"; [ -z "$reason" ] && [ "$HAVE_NVCC" = 0 ] && reason="no nvcc";;
     gpu2)  [ "$CPU_ONLY" = 1 ] && reason="--cpu-only"; [ -z "$reason" ] && [ "$NGPU" -lt 2 ] && reason="needs 2 GPUs (found $NGPU)"; [ -z "$reason" ] && [ "$HAVE_NVCC" = 0 ] && reason="no nvcc";;
-    nodes) [ "$CPU_ONLY" = 1 ] && reason="--cpu-only"; [ -z "$reason" ] && [ "$(echo "${KVM_NODES:-}" | tr ',' '\n' | grep -c .)" -lt 2 ] && reason="needs KVM_NODES with 2+ nodes"; [ -z "$reason" ] && [ "$NGPU" -lt 1 ] && reason="no GPU on the launch node";;
+    ibv)   [ -e /usr/include/infiniband/verbs.h ] || reason="no libibverbs headers (apt install libibverbs-dev)";;
+    rdmadev) [ "$CPU_ONLY" = 1 ] && reason="--cpu-only"; [ -z "$reason" ] && [ -z "$(ls /dev/infiniband/uverbs* 2>/dev/null)" ] && reason="no RDMA device node (/dev/infiniband/uverbs*): none passed into this container (sysfs may still list the host's NIC); Soft-RoCE needs CAP_NET_ADMIN";;
+    nodes) [ "$CPU_ONLY" = 1 ] && reason="--cpu-only"; [ -z "$reason" ] && [ "$(echo "${KVM_NODES:-}" | tr ',' '\n' | grep -c .)" -lt 2 ] && reason="needs KVM_NODES with 2+ nodes"; [ -z "$reason" ] && [ "$NGPU" -lt 1 ] && [ -z "${KVM_PREBUILT:-}" ] && reason="no GPU on the launch node (or KVM_PREBUILT=1 with $TD present)";;
   esac
   if [ "$DRY" = 1 ]; then
     echo "DRY  [$needs] $name${reason:+  (would SKIP: $reason)}"; echo "       \$ $cmd"
@@ -71,7 +77,8 @@ stage() {
   fi
   echo "---- RUN  $name  (timeout ${TMO}s)"
   local t0=$SECONDS rc
-  timeout "$TMO" bash -c "$cmd" > "$LOG/$name.log" 2>&1; rc=$?
+  local tmo="$TMO"; [ "$name" = gpu-build ] && tmo="${KVM_BUILD_TIMEOUT:-3600}"   # four nvcc builds of the full op set: tens of minutes
+  $TIMEOUT "$tmo" bash -c "$cmd" > "$LOG/$name.log" 2>&1; rc=$?
   local dt=$((SECONDS - t0))
   if [ $rc -eq 0 ]; then echo "PASS $name (${dt}s)"; RESULTS+=("PASS"); NOTES+=("${dt}s")
   else echo "FAIL $name (exit $rc, ${dt}s)  log: $LOG/$name.log"; tail -15 "$LOG/$name.log" | sed 's/^/     | /'; RESULTS+=("FAIL"); NOTES+=("exit $rc"); FAILED=1; fi
@@ -84,6 +91,9 @@ TT="$B/test_transport"; TD="$B/test_dist"; TDN="$B/test_dist_neg"; TDB="$B/test_
 stage cpu-partitioner-sim cpu "cd $ROOT && $PY -m unittest discover -s tests/dist -p 'test_partition.py' 2>&1 | tail -15; exit \${PIPESTATUS[0]}"
 stage cpu-transport-proxy cpu "g++ -O2 -std=c++17 -pthread -I$ROOT/dist $ROOT/tests/dist/test_transport.cpp -o $TT && KVM_DIST_LOG=1 $TT"
 stage cpu-rdma-shim cpu "g++ -O2 -std=c++17 -pthread -I$ROOT/dist $ROOT/tests/dist/test_rdma.cpp -o $B/test_rdma && KVM_DIST_LOG=1 $B/test_rdma"
+# the real libibverbs backend (IbvVerbs): compiled and linked against rdma-core when its headers exist; running it needs an RDMA device
+stage cpu-rdma-ibverbs-build ibv "g++ -O2 -std=c++17 -pthread -DHAVE_IBVERBS -I$ROOT/dist $ROOT/tests/dist/test_rdma.cpp -o $B/test_rdma_ibv -libverbs && KVM_DIST_LOG=1 $B/test_rdma_ibv"
+stage rdma-device-present rdmadev "ibv_devices && ibv_devinfo | grep -E 'hca_id|state|link_layer'"
 stage cpu-xdc-wan cpu "g++ -O2 -std=c++17 -pthread -I$ROOT/dist $ROOT/tests/dist/test_xdc.cpp -o $B/test_xdc && KVM_DIST_LOG=1 $B/test_xdc"
 stage cpu-scaleout-sim cpu "cd $ROOT && $PY -m unittest discover -s tests/dist -p 'test_scaleout*.py' 2>&1 | tail -15; exit \${PIPESTATUS[0]}"
 stage cpu-fault-recovery cpu "cd $ROOT && $PY -m unittest discover -s tests/dist -p 'test_fault*.py' 2>&1 | tail -15; exit \${PIPESTATUS[0]}"
@@ -92,7 +102,14 @@ stage cpu-multiprocess-tcp cpu "cd $ROOT && PORTS=\$($PY -c \"import socket;s=[s
   $PY dist/launch.py --local 3 --timeout 120 -- $TT proc {rank} {world} \"\$PORTS,drop=0.1,dup=0.1,delay=0.2\""
 
 # ---- single-GPU stages (everything here is real device code; remote memory = another allocation) ------------------------------
-stage gpu-build gpu "cd $ROOT && $NVCC $NVFLAGS tests/dist/test_dist.cu -o $TD -lpthread && $NVCC $NVFLAGS -DKVM_DIST_BREAK_ORDER tests/dist/test_dist.cu -o $TDN -lpthread && $NVCC $NVFLAGS -DKVM_DIST_NO_BP_POLL tests/dist/test_dist.cu -o $TDB -lpthread && $NVCC $NVFLAGS tests/gpu/test_exec.cu -o $B/test_exec -lpthread"
+# The four builds run in parallel (each is one long single-threaded cicc/ptxas), at most KVM_BUILD_JOBS at a time: ptxas peaks at
+# ~45 GB per full-op-set binary (measured on two Vast hosts), so the default is MemAvailable / 48 GB, 1..4. KVM_PREBUILT=1 reuses
+# binaries already in $B.
+JOBS="${KVM_BUILD_JOBS:-$(awk '/MemAvailable/ {j = int($2 / (48 * 1024 * 1024)); print (j < 1 ? 1 : (j > 4 ? 4 : j))}' /proc/meminfo 2>/dev/null || echo 1)}"
+printf '%s\n' "$NVFLAGS tests/dist/test_dist.cu -o $TD" "$NVFLAGS -DKVM_DIST_BREAK_ORDER tests/dist/test_dist.cu -o $TDN" \
+  "$NVFLAGS -DKVM_DIST_NO_BP_POLL tests/dist/test_dist.cu -o $TDB" "$NVFLAGS tests/gpu/test_exec.cu -o $B/test_exec" > "$B/builds.txt" 2>/dev/null || true
+stage gpu-build gpu "cd $ROOT && if [ -n \"\${KVM_PREBUILT:-}\" ] && [ -x $TD ] && [ -x $TDN ] && [ -x $TDB ] && [ -x $B/test_exec ]; then echo 'prebuilt binaries reused'; exit 0; fi; \
+  echo 'build jobs: $JOBS'; xargs -P $JOBS -I{} sh -c '$NVCC {} -lpthread' < $B/builds.txt"
 stage gpu-executor-regression gpu "$B/test_exec smoke"
 stage gpu-ops gpu "$TD ops"
 stage gpu-pingpong-versions gpu "$TD pingpong"
@@ -111,12 +128,16 @@ stage multigpu-p2p-bandwidth gpu2 "$TD bw"
 stage multigpu-p2p-pingpong gpu2 "$TD pingpong"
 stage multigpu-plans-one-rank-per-gpu gpu2 "cd $ROOT && $PY tests/dist/make_plans.py $B/plans_gpus --devices $NGPU && for p in tp_gpus zero_gpus pipe_p2p tp_ring zero_mixed; do echo \"== plan \$p, ranks spread over $NGPU GPUs\"; $TD plan $B/plans_gpus/\$p || exit 1; done"
 
+stage multigpu-model-plans gpu2 "cd $ROOT && bash dist/run_model_plans.sh $TD $LOG/model-plans correctness"
+
 # ---- needs several hosts ------------------------------------------------------------------------------------------------------------
-stage multinode-tcp-plans nodes "cd $ROOT && rm -rf $B/src && mkdir -p $B/src && cp -R include dist runtime examples tests kvm_exec.cu $B/src/ && WORLD=\$(echo \"\$KVM_NODES\" | tr ',' '\n' | awk -F: 'NF>1 && \$NF ~ /^[0-9]+\$/ {s+=\$NF; next} {s+=1} END {print s}') && \
-  $PY tests/dist/make_plans.py $B/plans_nodes --devices \$WORLD >/dev/null && PLIST=\$($PY tests/dist/make_plans.py $B/plans_nodes --devices \$WORLD --print-proxy-only \$WORLD) && [ -n \"\$PLIST\" ] && \
+# KVM_PREBUILT=1: ship this node's test_dist binary (same CUDA major arch on every node; an sm_80 build runs on sm_86) instead of
+# compiling on every node. Nodes behind NAT / container port maps: KVM_ADVERTISE='host:port[/port],...' + KVM_LISTEN_BASE (dist/launch.py).
+stage multinode-tcp-plans nodes "if [ -n \"\${KVM_PREBUILT:-}\" ]; then BUILD=(--rsync $TD kvm-dist-run/test_dist); else BUILD=(--setup \"$NVCC $NVFLAGS tests/dist/test_dist.cu -o test_dist -lpthread\"); fi; cd $ROOT && rm -rf $B/src && mkdir -p $B/src && cp -R include dist runtime examples tests kvm_exec.cu $B/src/ && WORLD=\$(echo \"\$KVM_NODES\" | tr ',' '\n' | awk -F: 'NF>1 && \$NF ~ /^[0-9]+\$/ {s+=\$NF; next} {s+=1} END {print s}') && \
+  $PY tests/dist/make_plans.py $B/plans_nodes --devices \$WORLD >/dev/null && PLIST=\$($PY tests/dist/make_plans.py $B/plans_nodes --devices \$WORLD --print-proxy-only \$WORLD | tail -1) && [ -n \"\$PLIST\" ] && \
   for p in \$PLIST; do echo \"== plan \$p across \$WORLD ranks on the KVM_NODES hosts\"; \
     $PY dist/launch.py --timeout 400 --workdir '~/kvm-dist-run' --rsync $B/src/ '~/kvm-dist-run/' --rsync $B/plans_nodes/ '~/kvm-dist-run/plans_nodes/' \
-      --setup \"$NVCC $NVFLAGS tests/dist/test_dist.cu -o test_dist -lpthread\" -- ./test_dist plan plans_nodes/\$p --rank {rank} --peers {peers} || exit 1; done"
+      \"\${BUILD[@]}\" -- ./test_dist plan plans_nodes/\$p --rank {rank} --peers {peers} || exit 1; done"
 
 # ---- summary --------------------------------------------------------------------------------------------------------------------------
 echo; echo "================ SUMMARY ($STAMP) ================"

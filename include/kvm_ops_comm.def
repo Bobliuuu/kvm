@@ -20,3 +20,7 @@ X(send_proxy,        69, "src:buf,q:buf,src_off:i32,rows:i32,cols:i32,src_ld:i32
 // Wire compression: n fp32 -> n bf16 (round to nearest even) packed two per float word; unpack adds into dst when acc=1.
 X(pack_bf16,         70, "src:buf,dst:buf,src_off:i32,dst_off:i32,n:i32")
 X(unpack_bf16,       71, "src:buf,dst:buf,src_off:i32,dst_off:i32,n:i32,acc:i32")
+// The same tile moves for i32 buffers (step counters, token ids): bit-exact 32-bit words, ibuf views on the device.
+X(put_i32,           72, "src:buf,dst:buf,src_off:i32,dst_off:i32,rows:i32,cols:i32,src_ld:i32,dst_ld:i32")
+X(put_signal_i32,    73, "src:buf,dst:buf,src_off:i32,dst_off:i32,rows:i32,cols:i32,src_ld:i32,dst_ld:i32,flag:buf,var:i32,ver:i32")
+X(send_proxy_i32,    74, "src:buf,q:buf,src_off:i32,rows:i32,cols:i32,src_ld:i32,dst_rank:i32,dst_buf:i32,dst_off:i32,dst_ld:i32,var:i32,ver:i32")

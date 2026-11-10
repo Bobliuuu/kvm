@@ -51,11 +51,28 @@ static_assert(KVM_GPT_THREADS / 32 * 16 == KVM_GPT_ATTN_ROWS, "attention: one m1
 // 32 x 132 floats = 101 KiB); 56 KiB covers every other op (matmul 48 KiB, attention up to hd=64 at 52 KiB), so two blocks per SM still
 // fit in the 164 KiB of an A100. The executor must opt in with cudaFuncSetAttribute(MaxDynamicSharedMemorySize) (it does, from
 // KVM_GPT_SMEM_BYTES).
+// KVM_GPT_MMA_SMEM: the GEMM tiles' stage buffers. 96 KiB (4 stages of 128 x 256 x 32 bf16) fits the 99 KiB opt-in limit of sm_86/sm_89/
+// sm_120. A build for exactly one datacenter part (-arch=sm_80, sm_90 or sm_100: 163-227 KiB per block) gets 144 KiB, which lets the
+// 256 x 128 TF32 tile run 3 stages of BK = 32 instead of 4 of BK = 16 (mm_tf32_tile picks by the launch's %dynamic_smem_size, so a
+// smaller launch stays correct). Override with -DKVM_GPT_MMA_SMEM=...
+#define KVM_NARGS_(a, b, c, d, e, f, g, h, N, ...) N
+#define KVM_NARGS(...) KVM_NARGS_(__VA_ARGS__, 8, 7, 6, 5, 4, 3, 2, 1, 0)
+#define KVM_FIRST_(a, ...) a
+#define KVM_FIRST(...) KVM_FIRST_(__VA_ARGS__, 0)
+#define KVM_GPT_TF32_TILE 1   // mm_tf32_tile exists (benchmarks that also build against older trees test this)
 #ifndef KVM_GPT_MMA_SMEM
-#define KVM_GPT_MMA_SMEM (96 * 1024)   // matmul_mma_bf16 (kvm_mma_bf16.cuh): 4 stages of 128 x 256 x 32 bf16; fits the 99 KiB opt-in limit of sm_86/sm_120
+#if defined(__CUDA_ARCH_LIST__)
+#if KVM_NARGS(__CUDA_ARCH_LIST__) == 1 && (KVM_FIRST(__CUDA_ARCH_LIST__) == 800 || KVM_FIRST(__CUDA_ARCH_LIST__) == 900 || KVM_FIRST(__CUDA_ARCH_LIST__) == 1000)
+#define KVM_GPT_MMA_SMEM (144 * 1024)
+#endif
+#endif
+#endif
+#ifndef KVM_GPT_MMA_SMEM
+#define KVM_GPT_MMA_SMEM (96 * 1024)
 #endif
 __host__ __device__ constexpr int kvm_gpt_smem_bytes(int max_hd) {
-    return max_hd > 64 ? 104 * 1024
+    // the largest of: attention (104 KiB for hd = 128), the 128x128 mm_tile_big stages, and the GEMM tiles' stage buffers
+    return (max_hd > 64 && 104 * 1024 > KVM_GPT_MMA_SMEM) ? 104 * 1024
                        : (1536 * KVM_GPT_BIG_BK * KVM_GPT_BIG_NST > KVM_GPT_MMA_SMEM ? 1536 * KVM_GPT_BIG_BK * KVM_GPT_BIG_NST : KVM_GPT_MMA_SMEM);
 }
 #ifndef KVM_GPT_MAX_HD
@@ -302,6 +319,7 @@ struct TileReg {
 
 // ---- cp.async / ldmatrix / mma.sync primitives -------------------------------------------------------------------------
 KVM_GPT_DEVI unsigned smem_u32(const void* p) { return (unsigned)__cvta_generic_to_shared(p); }
+KVM_GPT_DEVI unsigned dyn_smem_bytes() { unsigned r; asm("mov.u32 %0, %%dynamic_smem_size;\n" : "=r"(r)); return r; }   // of this launch
 KVM_GPT_DEVI void cp_async16(float* dst, const float* src, int src_bytes = 16) {   // src_bytes < 16 zero-fills the rest (0 reads nothing)
     asm volatile("cp.async.cg.shared.global [%0], [%1], 16, %2;\n" ::"r"(smem_u32(dst)), "l"(src), "r"(src_bytes));
 }
@@ -313,9 +331,12 @@ KVM_GPT_DEVI unsigned f2tf32(float x) {
     const unsigned u = __float_as_uint(x);
     return (((u & 0x7fffffffu) > 0x7f800000u) ? u : u + 0x1000u) & 0xffffe000u;   // NaN keeps its bits (the carry would turn 0x7fffffff into -0)
 }
-// Operand for a single (1x) TF32 mma: the tensor core ignores the low 13 bits, so the mask is free and adding the rounding bias is
-// round-to-nearest in ONE op. (Round-toward-zero would save that op for ~8% speed but triples the error: measured 7.6e-4 vs 2.7e-4.)
-KVM_GPT_DEVI unsigned f2tf32_op(float x) { const unsigned u = __float_as_uint(x); return ((u & 0x7fffffffu) > 0x7f800000u) ? u : u + 0x1000u; }
+// Operand for a single (1x) TF32 mma: the tensor core ignores the low 13 bits, so adding the rounding bias is round-to-nearest (ties away,
+// the value cvt.rna.tf32 gives) in one add. Finite values only: Inf and NaN keep their bits (the core reads Inf either way, and a NaN with a
+// full mantissa would carry into the sign). Two instructions (FSETP on |x| + a predicated IADD; CUTLASS's round_half_ulp_truncate),
+// one fewer than the integer-compare form it replaces, and bitwise the operands cuBLAS TF32 feeds its tensor cores (results/
+// 2026-11-09-a100-matmul-parity: 0 difference on 4096^3). (Round-toward-zero would save the add but triples the error: 7.6e-4 vs 2.7e-4.)
+KVM_GPT_DEVI unsigned f2tf32_op(float x) { const unsigned u = __float_as_uint(x); return fabsf(x) < __int_as_float(0x7f800000) ? u + 0x1000u : u; }
 KVM_GPT_DEVI void ldmatrix_x4(unsigned (&r)[4], const float* p) {   // four 8x8 b16 matrices == four 8x4 tf32 matrices
     asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0,%1,%2,%3}, [%4];\n" : "=r"(r[0]), "=r"(r[1]), "=r"(r[2]), "=r"(r[3]) : "r"(smem_u32(p)));
 }
@@ -563,9 +584,79 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
     }
 }
 
+// Staged epilogue of the tensor-core GEMM tiles (mm_tile_big, mma_bf16_tile). The accumulators of one warp row (64 output rows) at a
+// time go to shared memory as fp32 (row stride BN + 8 floats: the float2 stores of a half warp hit 32 distinct banks), then all 256
+// threads walk the 64 x BN slab in a ROLLED loop of 4-element pieces: v = acc * alpha (+ bias) -> pre (+ gelu) (+ res) (+ out if
+// accumulate) -> out, the same operations in the same order as the register epilogue it replaces. Why: the register epilogue was fully
+// unrolled over 4 x NJ x 2 fragment rows with every optional operand tested per element, about 180 KB of straight-line SASS run once per
+// tile; it missed the instruction cache on almost every instruction and took 42% of a 4096^3 bf16 GEMM (ncu: stall_no_inst 36% of all
+// warp samples, results/2026-11-09-a100-matmul-parity). The rolled loop is a few hundred bytes and its global accesses are 16-byte
+// (fp32) / 8-byte (bf16) per thread, coalesced along rows. Callers must have drained their cp.async pipeline (cp_wait<0>()): the slab
+// reuses the stage buffers. Storage: out / res / pre are fp32 or bf16 (ob / rb / pb), bias fp32.
+// PM / PN: the tile's fragments use the permuted row / column ownership of mm_tf32_tile (MN-major operands, see there): fragment row
+// (i, g, half) is warp row 8g + 2(i ^ (g&1)) + half instead of i*16 + g + 8*half; fragment column (j, 2t+e) is warp column (2t+e)*NJ + j.
+template <int WM, int WN, int WTN, bool PM = false, bool PN = false>
+KVM_GPT_DEVI void mm_epilogue_staged(const float (&acc)[4][WTN / 8][4], void* out, int ldo, bool ob, const float* bias, const void* res, int ldr,
+                                     bool rb, void* pre, int ldp, bool pb, int m0, int n0, int M, int N, float alpha, bool gelu, bool accum) {
+    constexpr int BN = WN * WTN, LDS = BN + 8, NJ = WTN / 8, PIECES = 64 * BN / 4;
+    static_assert(WM * WN * 32 == KVM_GPT_THREADS, "8 warps");
+    static_assert(64 * LDS * 4 <= KVM_GPT_MMA_SMEM, "the staged epilogue slab must fit the dynamic shared memory");
+    float* st = reinterpret_cast<float*>(kvm_gpt_smem);
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, wmi = warp / WN, wni = warp % WN, g = lane >> 2, t = lane & 3;
+    // 4-wide vector accesses are legal for a piece when its first column is a multiple of 4 and each operand's base and ld allow it
+    const bool vo = (n0 & 3) == 0 && vec4_ok(out, ldo, ob), vr = !res || vec4_ok(res, ldr, rb), vp = !pre || vec4_ok(pre, ldp, pb),
+               vbias = !bias || ((uintptr_t)bias & 15) == 0, vall = vo && vr && vp && vbias;
+    __syncthreads();   // every warp is done reading the last pipeline stage
+    for (int p = 0; p < WM; p++) {
+        if (wmi == p) {
+#pragma unroll
+            for (int i = 0; i < 4; i++)
+#pragma unroll
+                for (int j = 0; j < NJ; j++)
+#pragma unroll
+                    for (int hf = 0; hf < 2; hf++) {
+                        float* row = st + (PM ? 8 * g + 2 * (i ^ (g & 1)) + hf : i * 16 + g + hf * 8) * LDS + wni * WTN;
+                        if (PN) { row[(2 * t) * NJ + j] = acc[i][j][2 * hf]; row[(2 * t + 1) * NJ + j] = acc[i][j][2 * hf + 1]; }
+                        else *reinterpret_cast<float2*>(row + j * 8 + 2 * t) = make_float2(acc[i][j][2 * hf], acc[i][j][2 * hf + 1]);
+                    }
+        }
+        __syncthreads();
+        const int r0 = m0 + p * 64;
+#pragma unroll 1
+        for (int q = threadIdx.x; q < PIECES; q += KVM_GPT_THREADS) {
+            const int r = q / (BN / 4), c = (q % (BN / 4)) * 4, gm = r0 + r, gn = n0 + c;
+            if (gm >= M || gn >= N) continue;
+            const float4 a4 = *reinterpret_cast<const float4*>(st + r * LDS + c);
+            float v[4] = {a4.x * alpha, a4.y * alpha, a4.z * alpha, a4.w * alpha};
+            const size_t oi = (size_t)gm * ldo + gn, ri = (size_t)gm * ldr + gn, pi = (size_t)gm * ldp + gn;
+            if (vall && gn + 3 < N) {
+                if (bias) { const float4 b = *reinterpret_cast<const float4*>(bias + gn); v[0] += b.x; v[1] += b.y; v[2] += b.z; v[3] += b.w; }
+                if (pre) st4(pre, pi, make_float4(v[0], v[1], v[2], v[3]), pb);
+                if (gelu) { v[0] = gelu_f(v[0]); v[1] = gelu_f(v[1]); v[2] = gelu_f(v[2]); v[3] = gelu_f(v[3]); }
+                if (res) { const float4 x = ld4(res, ri, rb); v[0] += x.x; v[1] += x.y; v[2] += x.z; v[3] += x.w; }
+                if (accum) { const float4 x = ld4(out, oi, ob); v[0] += x.x; v[1] += x.y; v[2] += x.z; v[3] += x.w; }
+                st4(out, oi, make_float4(v[0], v[1], v[2], v[3]), ob);
+            } else {
+#pragma unroll 1
+                for (int e = 0; e < 4 && gn + e < N; e++) {
+                    float x = v[e];
+                    if (bias) x += bias[gn + e];
+                    if (pre) st_s(pre, pi + e, x, pb);
+                    if (gelu) x = gelu_f(x);
+                    if (res) x += ld_s(res, ri + e, rb);
+                    if (accum) x += ld_s(out, oi + e, ob);
+                    st_s(out, oi + e, x, ob);
+                }
+            }
+        }
+        __syncthreads();   // the slab is overwritten by the next warp row
+    }
+}
+
 // 128x128 output tile (flag 32): the same math as mm_tile with a quarter of the shared-to-L2 traffic per FLOP, which is what bounds
 // the 64x64 tile. BK=16, 3-stage cp.async pipeline (3 x 16 KiB = 48 KiB), 8 warps as 2 (m) x 4 (n), each owning a 64x32 sub-tile
-// = 4 m16 x 4 n8 fragments over the whole K (no split-K); the epilogue runs straight from the accumulator registers.
+// = 4 m16 x 4 n8 fragments over the whole K (no split-K); the epilogue is mm_epilogue_staged. Since mm_tf32_tile this is the general path
+// (unaligned operands, 3xTF32).
 template <bool TA, bool TB, bool PREC, int WM, int WN, int WTN>   // WM x WN warps, each owning a 64 x WTN sub-tile; tile = 64*WM x WTN*WN
 KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, float* out, int ldo, const float* bias, const float* res,
                               int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, bool gelu, bool accum) {
@@ -645,39 +736,178 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
         }
     }
     cp_wait<0>();
-    // Epilogue from registers: thread holds (row g | g+8, columns 2t, 2t+1) of every fragment. Pairs of columns go out as float2
-    // when every operand is 8-byte aligned.
-    const bool pair = ((n0 & 1) == 0) && (((uintptr_t)out | (uintptr_t)(ldo * 4)) & 7) == 0 && (!bias || (((uintptr_t)bias) & 7) == 0) &&
-                      (!res || (((uintptr_t)res | (uintptr_t)(ldr * 4)) & 7) == 0) && (!pre || (((uintptr_t)pre | (uintptr_t)(ldp * 4)) & 7) == 0);
+    mm_epilogue_staged<WM, WN, WTN>(acc, out, ldo, false, bias, res, ldr, false, pre, ldp, false, m0, n0, M, N, alpha, gelu, accum);
+}
+
+// ---- mm_tf32_tile: the fast path of the 128x128 (flag 32) and 256x128 (flag 64) 1xTF32 tiles ------------------------------------
+// Same math as mm_tile_big (operands rounded to nearest by f2tf32_op, fp32 accumulation in increasing k: bitwise the result of cuBLAS
+// TF32 on the same shapes), a different schedule: NST cp.async stages of BK floats of k, the fragments of the next k8 step loaded while
+// the current one feeds the tensor cores, one barrier per stage, and the staged epilogue. K-major operands (A as [m][k], B as [n][k]) use
+// ldmatrix. MN-major operands (A as [k][m], B as [k][n]) cannot (ldmatrix moves 16-bit elements), and the loads must land in the
+// registers the mma reads (a register shuffle per value cost 20% of the loop): B uses one LDS.32 per value in the standard fragment
+// layout; A uses one LDS.64 per (a0, a1) / (a2, a3) pair, which needs the two rows of a pair adjacent in m, so fragment i of thread g
+// owns warp rows 8g + 2(i ^ (g&1)) + {0, 1} (the parity flip spreads a half warp over both 8-byte halves of each 16-byte bank group).
+// A sum over k does not care which output element a register pair belongs to; only the epilogue does (PM of mm_epilogue_staged).
+// Measured on A100-SXM4-40GB, 4096^3, same process as cuBLAS TF32 (results/2026-11-09-a100-matmul-parity): 256 x 128 BK 32 x 3 stages
+// (144 KiB) 0.76-0.80x cuBLAS, BK 16 x 4 stages (96 KiB) 0.69-0.78x; 128 x 128 (warp tile 64 x 32) 0.63-0.65x.
+// Preconditions (else matmul_tile falls back to mm_tile_big): A, B 16-byte aligned with lda, ldb, K multiples of 4, and the MN-major
+// extents multiples of 4 (a 16-byte chunk is either wholly inside the matrix or wholly zero-filled).
+// MN-major stage rows: 16-byte chunk c of k row k is stored at chunk c ^ sw_f<S>(k). S = 1 (B, read by LDS.32 in the standard column
+// mapping: the 4 k rows of a warp's load land on chunk pairs 2j | 2j+1 XOR {0, 2, 4, 6}), S = 2 (A, read by LDS.64 in the permuted row
+// mapping, see mm_tf32_tile: the 16 lanes of a half warp cover 4 chunks x 4 k rows x 2 halves). Both are bank-conflict free.
+template <int S> KVM_GPT_DEVI int sw_f(int k) { return S == 1 ? (k & 3) << 1 : (k & 3); }
+// One operand stage tile: KMAJ: ROWS x 16 floats ([mn][k]); else 16 x ROWS floats ([k][mn]). 256 threads, NS = ROWS*4/256 16-byte chunks
+// each. A thread's chunks are RS rows apart (same swizzle phase), so its state is one running global pointer (advanced one stage per
+// issue: stages are issued in order), one shared offset and a validity mask; the rest is immediates. Keeping this small matters: the
+// warp tile holds 128 accumulators, and a larger loader state made the compiler rebuild every address from threadIdx in the k loop.
+template <bool KMAJ, int ROWS, int S, int BK = 16>
+struct Tf32Loader {
+    static constexpr int NS = ROWS * BK / 4 / KVM_GPT_THREADS, CPR = KMAJ ? BK / 4 : ROWS / 4, RS = KVM_GPT_THREADS / CPR;
+    const float* p;   // this thread's chunk 0 of the next stage to issue (src when chunk 0 is outside the mn extent)
+    int off;          // shared offset of chunk 0 (floats)
+    int kq;           // k of chunk 0 within a stage
+    int mask;         // bit s: chunk s inside the mn extent
+    KVM_GPT_DEVI void init(const float* src, int ld, int mn0, int MN) {
+        const int row = threadIdx.x / CPR, c = threadIdx.x % CPR;
+        mask = 0;
+        if (KMAJ) {
+            off = sw_kc<BK>(row, c * 4); kq = c * 4;
+#pragma unroll
+            for (int s = 0; s < NS; s++) mask |= (mn0 + row + RS * s < MN) << s;
+            p = (mask & 1) ? src + (size_t)(mn0 + row) * ld + kq : src;
+        } else {
+            off = row * ROWS + ((c ^ sw_f<S>(row)) << 2); kq = row;
+            mask = mn0 + c * 4 < MN ? (1 << NS) - 1 : 0;
+            p = mask ? src + (size_t)row * ld + mn0 + c * 4 : src;
+        }
+    }
+    // stage at k0 into `tile`; ld and K are the caller's (shared by both operands' loaders to save registers)
+    KVM_GPT_DEVI void issue(float* tile, int k0, int ld, int K) {
+#pragma unroll
+        for (int s = 0; s < NS; s++) {
+            const bool ok = ((mask >> s) & 1) && (KMAJ ? k0 + kq : k0 + kq + RS * s) < K;
+            cp_async16(tile + off + s * RS * (KMAJ ? BK : ROWS), ok ? p + s * RS * ld : p, ok ? 16 : 0);
+        }
+        if (mask) p += KMAJ ? BK : BK * ld;
+    }
+};
+template <bool PREC> KVM_GPT_DEVI void tf32_split(unsigned& h, unsigned& l) {
+    const float x = __uint_as_float(h);
+    if (PREC) { const unsigned hi = f2tf32(x); l = __float_as_uint(x - __uint_as_float(hi)); h = hi; }
+    else h = f2tf32_op(x);
+}
+// The epilogue operands (out, bias, res, pre, their leading dimensions, alpha, flags) are read from the task words only after the k loop:
+// passed in, they stayed live through it, and the 256 x 128 loop (128 accumulators + 64 fragment registers) spilled and ran at 0.5x
+// instead of 0.8x cuBLAS. matmul_tile has validated them already.
+// Out of line (__noinline__): inlined into matmul_tile, or into the executor's op switch, the loop shared the register budget with every
+// value live in the caller and spilled in the k loop (14 local loads per stage, 0.37-0.5x cuBLAS); as its own function it allocates like a
+// standalone kernel. The call costs a few hundred cycles once per tile.
+template <bool TA, bool TB, bool PREC, int WM, int WN, int WTN, int BK, int NST>
+__device__ __noinline__ void mm_tf32_tile(const float* A, int lda, const float* B, int ldb, int m0, int n0, int M, int N, int K, const KvmCtx& ctx,
+                               const int32_t* a) {
+    constexpr int BM = 64 * WM, BN = WTN * WN, NJ = WTN / 8, ATILE = BM * BK, STAGE = (BM + BN) * BK, KS = BK / 8;   // KS k8 steps per stage
+    constexpr int SA = 2, SB = 1;        // swizzle modes of the MN-major A / B stage tiles (sw_f)
+    static_assert(WM * WN == 8 && (NJ == 4 || NJ == 8), "8 warps, warp tile 64 x 32|64");
+    static_assert(NST * STAGE * 4 <= KVM_GPT_MMA_SMEM, "mm_tf32_tile stages must fit the dynamic shared memory");
+    float* sm = reinterpret_cast<float*>(kvm_gpt_smem);
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, wmi = warp / WN, wni = warp % WN, g = lane >> 2, t = lane & 3;
+    float acc[4][NJ][4];
 #pragma unroll
     for (int i = 0; i < 4; i++)
 #pragma unroll
         for (int j = 0; j < NJ; j++)
 #pragma unroll
-            for (int hf = 0; hf < 2; hf++) {
-        const int gm = m0 + wmi * 64 + i * 16 + g + hf * 8, gn = n0 + wni * WTN + j * 8 + 2 * t;
-        if (gm >= M || gn >= N) continue;
-        float v[2] = {acc[i][j][2 * hf] * alpha, acc[i][j][2 * hf + 1] * alpha};
-        if (pair && gn + 1 < N) {
-            if (bias) { const float2 b2 = *reinterpret_cast<const float2*>(bias + gn); v[0] += b2.x; v[1] += b2.y; }
-            if (pre) *reinterpret_cast<float2*>(pre + (size_t)gm * ldp + gn) = make_float2(v[0], v[1]);
-            if (gelu) { v[0] = gelu_f(v[0]); v[1] = gelu_f(v[1]); }
-            if (res) { const float2 r2 = *reinterpret_cast<const float2*>(res + (size_t)gm * ldr + gn); v[0] += r2.x; v[1] += r2.y; }
-            float2* o = reinterpret_cast<float2*>(out + (size_t)gm * ldo + gn);
-            if (accum) { const float2 o2 = *o; v[0] += o2.x; v[1] += o2.y; }
-            *o = make_float2(v[0], v[1]);
+            for (int e = 0; e < 4; e++) acc[i][j][e] = 0.f;
+    const int nk = (K + BK - 1) / BK;
+    Tf32Loader<!TA, BM, SA, BK> la;
+    Tf32Loader<TB, BN, SB, BK> lb;
+    la.init(A, lda, m0, M);
+    lb.init(B, ldb, n0, N);
+    int wst = 0;   // stage the next issue writes (stages are issued in order, it % NST without the division)
+    auto issue = [&](int it) { float* st = sm + wst * STAGE; la.issue(st, it * BK, lda, K); lb.issue(st + ATILE, it * BK, ldb, K); wst = wst + 1 == NST ? 0 : wst + 1; };
+    unsigned ah[2][4][4], bh[2][NJ][2], al[PREC ? 2 : 1][4][4], bl[PREC ? 2 : 1][NJ][2];
+    auto load_frags = [&](int buf, int rs, int kk) {   // rs: stage index to read
+        const float* As = sm + rs * STAGE; const float* Bs = As + ATILE;
+        if (!TA) {
+#pragma unroll
+            for (int i = 0; i < 4; i++) ldmatrix_x4(ah[buf][i], As + sw_kc<BK>(wmi * 64 + i * 16 + (lane & 7) + 8 * ((lane >> 3) & 1), kk + 4 * (lane >> 4)));
         } else {
-            for (int e = 0; e < 2 && gn + e < N; e++) {
-                float x = v[e];
-                if (bias) x += bias[gn + e];
-                if (pre) pre[(size_t)gm * ldp + gn + e] = x;
-                if (gelu) x = gelu_f(x);
-                if (res) x += res[(size_t)gm * ldr + gn + e];
-                float* o = out + (size_t)gm * ldo + gn + e;
-                *o = accum ? *o + x : x;
+#pragma unroll
+            for (int hk = 0; hk < 2; hk++) {   // k rows kk+t (a0, a1) and kk+t+4 (a2, a3); fragment i rows = warp rows 8g + 2(i ^ (g&1)) + {0, 1}
+                const int k = kk + t + 4 * hk;
+#pragma unroll
+                for (int i = 0; i < 4; i++) {
+                    const int m = wmi * 64 + 8 * g + 2 * (i ^ (g & 1));
+                    const float2 x = *reinterpret_cast<const float2*>(As + k * BM + ((((m >> 2) ^ sw_f<SA>(k))) << 2) + (m & 3));
+                    ah[buf][i][2 * hk] = __float_as_uint(x.x); ah[buf][i][2 * hk + 1] = __float_as_uint(x.y);
+                }
             }
         }
+        if (TB) {
+#pragma unroll
+            for (int jp = 0; jp < NJ / 2; jp++) {
+                unsigned r[4];
+                ldmatrix_x4(r, Bs + sw_kc<BK>(wni * WTN + jp * 16 + (lane & 7) + 8 * (lane >> 4), kk + 4 * ((lane >> 3) & 1)));
+                bh[buf][2 * jp][0] = r[0]; bh[buf][2 * jp][1] = r[1]; bh[buf][2 * jp + 1][0] = r[2]; bh[buf][2 * jp + 1][1] = r[3];
+            }
+        } else {
+#pragma unroll
+            for (int j = 0; j < NJ; j++) {   // standard column mapping: n = warp column 8j + g; k rows kk+t (b0) and kk+t+4 (b1)
+                const int n = wni * WTN + 8 * j + g, k = kk + t;
+                const float* q = Bs + k * BN + ((((n >> 2) ^ sw_f<SB>(k))) << 2) + (n & 3);
+                bh[buf][j][0] = __float_as_uint(q[0]); bh[buf][j][1] = __float_as_uint(q[4 * BN]);
+            }
+        }
+    };
+    auto compute = [&](int buf) {
+        constexpr int LB = PREC ? 1 : 0;
+#pragma unroll
+        for (int i = 0; i < 4; i++)
+#pragma unroll
+            for (int e = 0; e < 4; e++) tf32_split<PREC>(ah[buf][i][e], al[LB * buf][i][e]);
+#pragma unroll
+        for (int j = 0; j < NJ; j++)
+#pragma unroll
+            for (int e = 0; e < 2; e++) tf32_split<PREC>(bh[buf][j][e], bl[LB * buf][j][e]);
+#pragma unroll
+        for (int i = 0; i < 4; i++)
+#pragma unroll
+            for (int j = 0; j < NJ; j++) {
+                if (PREC) { mma_tf32(acc[i][j], al[LB * buf][i], bh[buf][j][0], bh[buf][j][1]); mma_tf32(acc[i][j], ah[buf][i], bl[LB * buf][j][0], bl[LB * buf][j][1]); }
+                mma_tf32(acc[i][j], ah[buf][i], bh[buf][j][0], bh[buf][j][1]);
+            }
+    };
+#pragma unroll
+    for (int p = 0; p < NST - 1; p++) { if (p < nk) issue(p); cp_commit(); }
+    cp_wait<NST - 2>();
+    __syncthreads();
+    load_frags(0, 0, 0);
+    int rst = 0;   // stage of slab it (it % NST)
+    for (int it = 0; it < nk; it++) {
+        const int rnx = rst + 1 == NST ? 0 : rst + 1;
+#pragma unroll
+        for (int ks = 0; ks < KS; ks++) {   // k8 step ks: fragments of step ks+1 load while step ks computes
+            const int b = ks & 1;
+            if (ks + 1 < KS) { load_frags(b ^ 1, rst, (ks + 1) * 8); compute(b); continue; }
+            cp_wait<NST - 3>();     // last k8 step of the stage: stage it+1 landed (this thread's copies) ...
+            __syncthreads();        // ... for every thread, and nobody still reads the stage refilled below
+            if (it + NST - 1 < nk) issue(it + NST - 1);
+            cp_commit();
+            if (it + 1 < nk) load_frags(b ^ 1, rnx, 0);
+            compute(b);
+        }
+        rst = rnx;
     }
+    cp_wait<0>();
+    __syncthreads();   // also keeps the operand reads below after the loop
+    Chk k(ctx);
+    int ldo, ldr = 0, ldp = 0;
+    float* out = k.mat(a[2], M, N, &ldo);
+    const float* bias = k.fvec(a[3], N, true);
+    const float* res = k.mat(a[4], M, N, &ldr, true);
+    float* pre = k.mat(a[5], M, N, &ldp, true);
+    const int fl = a[11];
+    mm_epilogue_staged<WM, WN, WTN, TA, false>(acc, out, ldo, false, bias, res, ldr, false, pre, ldp, false, m0, n0, M, N, af(a, 12), fl & 8, fl & 4);
 }
 
 KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
@@ -701,8 +931,22 @@ KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
 #define KVM_GPT_MM_T(F, P)                                                                                                   \
     if (!ta && !tb) KVM_GPT_MM(F, false, false, P); else if (ta && !tb) KVM_GPT_MM(F, true, false, P);                       \
     else if (!ta && tb) KVM_GPT_MM(F, false, true, P); else KVM_GPT_MM(F, true, true, P)
+    // mm_tf32_tile (1xTF32 only) needs whole, aligned 16-byte chunks of both operands (see there); anything else, and 3xTF32, takes the
+    // general mm_tile_big. The 256 x 128 tile runs BK = 32 x 3 stages when the launch has the shared memory for it (144 KiB).
+    const bool fast = !prec && aligned16(A, lda) && aligned16(B, ldb) && (K & 3) == 0 && (m0 & 3) == 0 && (n0 & 3) == 0 &&
+                      (!ta || (M & 3) == 0) && (tb || (N & 3) == 0);
+    const bool deep = dyn_smem_bytes() >= 3 * (256 + 128) * 32 * 4;
+#define KVM_GPT_MMF(TA, TB, ...) mm_tf32_tile<TA, TB, false, __VA_ARGS__>(A, lda, B, ldb, m0, n0, M, N, K, ctx, a)
+#define KVM_GPT_MMF_T(...)                                                                                                   \
+    if (!ta && !tb) KVM_GPT_MMF(false, false, __VA_ARGS__); else if (ta && !tb) KVM_GPT_MMF(true, false, __VA_ARGS__);      \
+    else if (!ta && tb) KVM_GPT_MMF(false, true, __VA_ARGS__); else KVM_GPT_MMF(true, true, __VA_ARGS__)
+    if (big && fast) { KVM_GPT_MMF_T(2, 4, 32, 32, 3); }               // 128 x 128, BK 32 x 3 stages (96 KiB)
+    else if (huge && fast && deep) { KVM_GPT_MMF_T(4, 2, 64, 32, 3); } // 256 x 128, BK 32 x 3 stages (144 KiB)
+    else if (huge && fast) { KVM_GPT_MMF_T(4, 2, 64, 16, 4); }         // 256 x 128, BK 16 x 4 stages (96 KiB)
+#undef KVM_GPT_MMF_T
+#undef KVM_GPT_MMF
 #define KVM_GPT_MM_SHAPE , 2, 4, 32
-    if (big) { if (prec) { KVM_GPT_MM_T(mm_tile_big, true); } else { KVM_GPT_MM_T(mm_tile_big, false); } }
+    else if (big) { if (prec) { KVM_GPT_MM_T(mm_tile_big, true); } else { KVM_GPT_MM_T(mm_tile_big, false); } }
 #undef KVM_GPT_MM_SHAPE
 #define KVM_GPT_MM_SHAPE , 4, 2, 64
     else if (huge) { if (prec) { KVM_GPT_MM_T(mm_tile_big, true); } else { KVM_GPT_MM_T(mm_tile_big, false); } }

@@ -93,6 +93,8 @@ makes the overlap likelier; it is a test race, not an executor bug. The test now
 Merge #8 took #1's `kvm_exec.cu`, which predates real bf16 storage (d48f3e6): main allocated every buffer at 4 bytes, rejected dtype 2 and lost
 `--dump-bin`, so every bf16s bundle failed at load (`[kvm_exec][E] bad buffer shape or dtype`, ab2). The host code was restored verbatim from
 1c2111b in PR #10 (merged a99fdca) and on this branch.
+The #15 merge (7ce1932) then reverted #10's lines in `kvm_exec.cu` (its only change to that file), so main lost bf16s again; this branch keeps
+the restored file when it merges main (27de80d). The bf16s rows of ab3 ran on this branch's code (93f727c).
 
 ## Why a whole-step CUDA graph still wins at small sizes
 

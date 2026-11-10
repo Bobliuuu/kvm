@@ -1,0 +1,14 @@
+[kvm_exec][I] manifest ok: 6 workloads, 11 admissions, 2301 buffers, serial order game ... serve_s6
+[kvm_exec][D] bundle game             5600 tasks (precompiled)
+[kvm_exec][D] bundle serve_s0         8805 tasks (precompiled)
+[kvm_exec][D] bundle train_w0        58635 tasks (precompiled)
+[kvm_exec][D] bundle train_w1        58635 tasks (precompiled)
+[kvm_exec][D] bundle serve_s2         8805 tasks (precompiled)
+[kvm_exec][D] bundle train_w2        58635 tasks (precompiled)
+[kvm_exec][D] bundle train_w3        58635 tasks (precompiled)
+[kvm_exec][D] bundle serve_s4         8805 tasks (precompiled)
+[kvm_exec][D] bundle train_w4        58635 tasks (precompiled)
+[kvm_exec][D] bundle train_w5        58635 tasks (precompiled)
+[kvm_exec][D] bundle serve_s6         8805 tasks (precompiled)
+[kvm_exec][I] check-only: 11 bundles load, remap and validate
+[kvm_exec][I] check-only: manifest, bundles and version flow are consistent

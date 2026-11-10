@@ -1,0 +1,219 @@
+{
+ "runs": 1,
+ "steps": 300,
+ "reps": 2,
+ "rounds": 1,
+ "precision": "tf32",
+ "torch": "2.7.0+cu126",
+ "cuda": "12.6",
+ "gpu": "NVIDIA A100-SXM4-40GB",
+ "sms": 108,
+ "vm_json": {
+  "tiles": {
+   "gpu": "NVIDIA A100-SXM4-40GB",
+   "sms": 108,
+   "occ": 2,
+   "grid": 216,
+   "B": 128,
+   "D": 128,
+   "H": 256,
+   "O": 64,
+   "prog": "tiles",
+   "runs": 1,
+   "steps": 300,
+   "tile": 32,
+   "kc": 64,
+   "stg": 4,
+   "reps": 2,
+   "modes": [
+    {
+     "name": "sequential, launch-per-op",
+     "best_ms": 13.3734,
+     "median_ms": 13.3816,
+     "max_ms": 13.3816,
+     "us_per_step_run": 44.5781
+    },
+    {
+     "name": "sequential, CUDA graph/run",
+     "best_ms": 11.0111,
+     "median_ms": 11.0141,
+     "max_ms": 11.0141,
+     "us_per_step_run": 36.7036
+    },
+    {
+     "name": "batched across runs (vmap-like graph)",
+     "best_ms": 10.07,
+     "median_ms": 10.3188,
+     "max_ms": 10.3188,
+     "us_per_step_run": 33.5667
+    },
+    {
+     "name": "KVM: all runs, ONE kernel",
+     "best_ms": 8.83,
+     "median_ms": 8.8402,
+     "max_ms": 8.8402,
+     "us_per_step_run": 29.4332
+    }
+   ],
+   "weights_bitwise_differ": 0,
+   "max_rel_loss_err": 2.799e-05,
+   "pass": true,
+   "profiled_ms": 0.0
+  },
+  "fused": {
+   "gpu": "NVIDIA A100-SXM4-40GB",
+   "sms": 108,
+   "occ": 1,
+   "grid": 8,
+   "B": 128,
+   "D": 128,
+   "H": 256,
+   "O": 64,
+   "prog": "fused",
+   "runs": 1,
+   "steps": 300,
+   "tile": 32,
+   "kc": 64,
+   "stg": 4,
+   "reps": 2,
+   "modes": [
+    {
+     "name": "sequential, launch-per-op",
+     "best_ms": 10.6609,
+     "median_ms": 10.6691,
+     "max_ms": 10.6691,
+     "us_per_step_run": 35.5362
+    },
+    {
+     "name": "sequential, CUDA graph/run",
+     "best_ms": 9.8017,
+     "median_ms": 9.8038,
+     "max_ms": 9.8038,
+     "us_per_step_run": 32.6724
+    },
+    {
+     "name": "batched across runs (vmap-like graph)",
+     "best_ms": 8.3958,
+     "median_ms": 8.3958,
+     "max_ms": 8.3958,
+     "us_per_step_run": 27.9859
+    },
+    {
+     "name": "KVM: all runs, ONE kernel",
+     "best_ms": 7.7271,
+     "median_ms": 7.7322,
+     "max_ms": 7.7322,
+     "us_per_step_run": 25.757
+    }
+   ],
+   "weights_bitwise_differ": 0,
+   "max_rel_loss_err": 2.819e-05,
+   "pass": true,
+   "profiled_ms": 0.0
+  }
+ },
+ "torch_variants": [
+  {
+   "name": "torch CUDA graph, whole run (manual backward)",
+   "best_ms": 21.021696090698242,
+   "median_ms": 21.06112003326416,
+   "max_ms": 21.100543975830078,
+   "round_best": [
+    21.021696090698242
+   ],
+   "us_per_step_run": 70.07232030232747,
+   "loss_relerr": 2.102011876559118e-06,
+   "weights_relerr": 5.885029167984612e-05,
+   "matches_vm": true
+  }
+ ],
+ "vm_modes": {
+  "tiles": [
+   {
+    "name": "sequential, launch-per-op [tiles]",
+    "best_ms": 13.3734,
+    "round_best": [
+     13.3734
+    ],
+    "us_per_step_run": 44.577999999999996,
+    "max_ms": 13.3816
+   },
+   {
+    "name": "sequential, CUDA graph/run [tiles]",
+    "best_ms": 11.0111,
+    "round_best": [
+     11.0111
+    ],
+    "us_per_step_run": 36.70366666666667,
+    "max_ms": 11.0141
+   },
+   {
+    "name": "batched across runs (vmap-like graph) [tiles]",
+    "best_ms": 10.07,
+    "round_best": [
+     10.07
+    ],
+    "us_per_step_run": 33.56666666666667,
+    "max_ms": 10.3188
+   },
+   {
+    "name": "KVM: all runs, ONE kernel [tiles]",
+    "best_ms": 8.83,
+    "round_best": [
+     8.83
+    ],
+    "us_per_step_run": 29.433333333333334,
+    "max_ms": 8.8402
+   }
+  ],
+  "fused": [
+   {
+    "name": "sequential, launch-per-op [fused]",
+    "best_ms": 10.6609,
+    "round_best": [
+     10.6609
+    ],
+    "us_per_step_run": 35.53633333333333,
+    "max_ms": 10.6691
+   },
+   {
+    "name": "sequential, CUDA graph/run [fused]",
+    "best_ms": 9.8017,
+    "round_best": [
+     9.8017
+    ],
+    "us_per_step_run": 32.672333333333334,
+    "max_ms": 9.8038
+   },
+   {
+    "name": "batched across runs (vmap-like graph) [fused]",
+    "best_ms": 8.3958,
+    "round_best": [
+     8.3958
+    ],
+    "us_per_step_run": 27.985999999999997,
+    "max_ms": 8.3958
+   },
+   {
+    "name": "KVM: all runs, ONE kernel [fused]",
+    "best_ms": 7.7271,
+    "round_best": [
+     7.7271
+    ],
+    "us_per_step_run": 25.757,
+    "max_ms": 7.7322
+   }
+  ]
+ },
+ "vm_pass": {
+  "tiles": true,
+  "fused": true
+ },
+ "best_torch": "torch CUDA graph, whole run (manual backward)",
+ "best_vm_prog": "fused",
+ "vm_vs_best_torch": 2.7205155997331785,
+ "vm_vs_best_hand_baseline": {
+  "tiles": 1.1404303510758778,
+  "fused": 1.0865395814729975
+ }
+}

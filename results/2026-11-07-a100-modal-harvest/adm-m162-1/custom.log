@@ -1,0 +1,54 @@
+# suite=custom tag=adm-m162-1 2026-11-07T07:43:51Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 601 GB, cores: 16
+2026-11-07 07:44:46,029 INFO kvm.compiler: wrote bundle to w162/bundle
+{"model": {"name": "gpt_162m", "vocab": 50304, "d_model": 768, "layers": 12, "heads": 12, "seq": 1024, "batch": 4, "ffn_mult": 4, "norm": "layernorm", "bias": true, "init_std": 0.02, "rope_theta": 10000.0, "seed": 0, "repeat_batch": false}, "steps": 1, "mode": "tf32", "tiling": "a100", "fuse": false
+
+real	33m20.627s
+user	32m29.140s
+sys	0m6.320s
+
+real	52m41.387s
+user	51m22.850s
+sys	0m8.130s
+-rwxr-xr-x 1 root root 27679576 Nov  7 08:37 kvm_exec_base
+-rwxr-xr-x 1 root root 22973752 Nov  7 08:18 kvm_exec_new
+== base rep 1
+OK: 270914/270914 tasks, 861.726 ms
+== new rep 1
+OK: 270914/270914 tasks, 462.562 ms
+== base rep 2
+OK: 270914/270914 tasks, 867.406 ms
+== new rep 2
+OK: 270914/270914 tasks, 456.249 ms
+== base rep 3
+OK: 270914/270914 tasks, 867.970 ms
+== new rep 3
+OK: 270914/270914 tasks, 467.975 ms
+== base rep 4
+OK: 270914/270914 tasks, 867.911 ms
+== new rep 4
+OK: 270914/270914 tasks, 464.741 ms
+== base rep 5
+OK: 270914/270914 tasks, 874.277 ms
+== new rep 5
+OK: 270914/270914 tasks, 463.645 ms
+== traced base
+OK: 270914/270914 tasks, 864.561 ms
+tasks 270914, workers 107, span 746.1 ms, mean busy 25.1, mean queued 1556.4
+ready->start wait us: p50 822 p90 22622 p99 25474 max 25880
+bins with queue depth > workers: 120 of 150
+  in those bins: mean queued 1928, mean busy 25.3 of 107, starts/s 4e+05
+overall start rate 3.63e+05 tasks/s (2.75 us/task)
+== traced new
+OK: 270914/270914 tasks, 475.881 ms
+tasks 270914, workers 107, span 426.7 ms, mean busy 44.3, mean queued 259.1
+ready->start wait us: p50 204 p90 529 p99 7301 max 16988
+bins with queue depth > workers: 48 of 86
+  in those bins: mean queued 414, mean busy 51.3 of 107, starts/s 8.09e+05
+overall start rate 6.35e+05 tasks/s (1.58 us/task)
+== defaults (no --max-tasks) base/new
+OK: 270914/270914 tasks, 861.338 ms
+OK: 270914/270914 tasks, 485.320 ms

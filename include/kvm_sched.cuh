@@ -88,7 +88,6 @@ static inline bool kvm_cost_names_registered() {
 __device__ __forceinline__ void red_add(int* p, int v) { asm volatile("red.relaxed.gpu.global.add.s32 [%0],%1;" ::"l"(p), "r"(v) : "memory"); }
 __device__ __forceinline__ int kvm_vol(const int* p) { return *(const volatile int*)p; }
 __device__ __forceinline__ unsigned long long kvm_voll(const unsigned long long* p) { return *(const volatile unsigned long long*)p; }
-__device__ __forceinline__ void red_add64(unsigned long long* p, unsigned long long v) { asm volatile("red.relaxed.gpu.global.add.u64 [%0],%1;" ::"l"(p), "l"(v) : "memory"); }
 __device__ __forceinline__ bool kvm_should_exit(const KvmDevState& S, KvmWatch& t0);
 
 // ---------------- enqueue / ready accounting ----------------
@@ -114,6 +113,11 @@ __device__ __forceinline__ size_t kvm_queue_of(const KvmDevState& S, const KvmTa
 // Fill and publish the cell of ticket `pos` on queue qi (the caller took the ticket and, with the scheduler on, already added the
 // task to its class's ready count and, if it has a deadline, to dl_ready).
 __device__ __forceinline__ void kvm_publish_cell(const KvmDevState& S, int slot, size_t qi, unsigned long long pos) {
+  if (S.fifo_only) {   // one store: the consumer of this ticket sees the slot together with its sequence (no free-cell wait: tasks in flight are far below rcap, and a consumer that ever finds a later generation reports QUEUE_OVERFLOW)
+    if (S.trace_on) S.trace[slot].ready_ns = kvm_now();
+    st_rel64(&S.cells[pos & (unsigned long long)(S.rcap - 1)].seq, ((pos + 1) << KVM_FIFO_SHIFT) | (unsigned long long)(unsigned)slot);
+    return;
+  }
   const KvmTaskDesc* d = S.tasks + slot;
   const int c = (int)(qi / KVM_NBUCKETS);
   KvmCell* cell = S.cells + qi * S.rcap + (pos & (unsigned long long)(S.rcap - 1));
@@ -133,40 +137,16 @@ __device__ __forceinline__ void kvm_publish_cell(const KvmDevState& S, int slot,
     cell->res = S.sp.info[slot].res | ((pref + 1) << 8);
   } else cell->res = KVM_RES_MIXED;
   st_rel64(&cell->seq, pos + 1);
-  if (S.claim_ticket && !S.sp.on) red_add64(&S.qctl[qi].avail, 1ull);   // after the publish: a reservation (kvm_claim_ticket) implies a cell published or about to be
+  red_add64(&S.qctl[qi].avail, 1ull);   // posted, after the publish: a reservation in kvm_claim that sees it finds a published cell or waits a few cycles
 }
 
 __device__ __forceinline__ void kvm_enqueue(const KvmDevState& S, int slot) {
+  if (S.fifo_only) { kvm_publish_cell(S, slot, 0, atom_add64(&S.qctl[0].tail, 1ull)); return; }   // no descriptor load: one queue
   const KvmTaskDesc* d = S.tasks + slot;
   const size_t qi = kvm_queue_of(S, d);
   const int c = (int)(qi / KVM_NBUCKETS);
   if (S.sp.on) { kvm_sched_ready(S, c); if (d->deadline_us >= 0) atom_add(&S.sp.dev->cls[c].dl_ready, 1); }
   kvm_publish_cell(S, slot, qi, atom_add64(&S.qctl[qi].tail, 1ull));
-}
-
-// Warp-aggregated enqueue for admission (all 32 lanes call; `slot` < 0 = this lane enqueues nothing). Lanes bound for the same queue
-// take one block of tickets with a single atomic and add themselves to the class's ready count together, instead of one atomic each:
-// a 64k-task record of independent tasks otherwise pays 64k contended atomics on one tail and one counter. Cell order inside a
-// queue is the lane order, the cells are published one by one exactly as in kvm_enqueue.
-__device__ __forceinline__ void kvm_enqueue_warp(const KvmDevState& S, int slot) {
-  const int lane = threadIdx.x & 31;
-  const unsigned act = __ballot_sync(0xffffffffu, slot >= 0);
-  if (!act) return;
-  const KvmTaskDesc* d = slot >= 0 ? S.tasks + slot : nullptr;
-  const size_t qi = slot >= 0 ? kvm_queue_of(S, d) : 0;
-  const bool dl = slot >= 0 && d->deadline_us >= 0;
-  unsigned peers = slot >= 0 ? __match_any_sync(act, (unsigned)qi) : 0u;
-  if (slot < 0) return;
-  const int leader = __ffs(peers) - 1, n = __popc(peers), rank = __popc(peers & ((1u << lane) - 1));
-  const unsigned dlm = __ballot_sync(peers, dl);
-  unsigned long long base = 0;
-  if (lane == leader) {
-    const int c = (int)(qi / KVM_NBUCKETS);
-    if (S.sp.on) { kvm_sched_ready(S, c, n); if (dlm) atom_add(&S.sp.dev->cls[c].dl_ready, __popc(dlm)); }
-    base = atom_add64(&S.qctl[qi].tail, (unsigned long long)n);
-  }
-  base = __shfl_sync(peers, base, leader);
-  kvm_publish_cell(S, slot, qi, base + (unsigned long long)rank);
 }
 
 // ---------------- pop ----------------
@@ -207,63 +187,61 @@ __device__ __forceinline__ KvmCand kvm_scan(const KvmDevState& S, int c, unsigne
   return r;
 }
 
-// Head CAS on the scanned bucket. All lanes call; returns the slot, or -2 if another worker took it first.
-// The CAS is issued first; while it is in flight the lanes fetch what the winner will need next (the cell's slot id, then the slot's
-// descriptor words, one per lane < KVM_TASK_WORDS in `dw`, and the admission-time running-time estimate in `est` when `want_est`). The
-// loads are only used if the CAS wins, in which case the slot is ours and its descriptor is immutable; a lost CAS discards them (the
-// cell's slot id was valid when its seq was observed and cells only ever hold valid ids, so the speculative addresses are in range).
-__device__ __forceinline__ int kvm_claim(const KvmDevState& S, int c, const KvmCand& cd, int2& dw, unsigned& est, bool want_est) {
+// Claim from the scanned bucket with a reservation and a ticket (the two fetch-adds of perf/admission-bottleneck): a head CAS fails for every
+// worker that raced for the same cell (one pop per memory round trip whatever the task, ~0.7 M tasks/s at 107 pollers). Reserve an item with
+// a fetch-add on avail (published minus reserved), then take the bucket's next ticket with a fetch-add on head: no retries, FIFO per bucket;
+// the ticket's cell is the next published item, or will be within a few instructions (its enqueuer is between its tail ticket and the
+// release store). After the claim the lanes fetch what the worker needs (the descriptor, one word per lane < KVM_TASK_WORDS, and the admission
+// estimate) in one round trip. Returns the slot in every lane, or -2 when the bucket was emptied first.
+__device__ __forceinline__ int kvm_claim(const KvmDevState& S, int c, const KvmCand& cd, int& dw, unsigned& est, bool want_est) {
   const int lane = threadIdx.x & 31;
   const size_t qi = (size_t)c * KVM_NBUCKETS + cd.lane;
-  KvmCell* cell = S.cells + qi * S.rcap + (cd.head & (unsigned long long)(S.rcap - 1));
-  unsigned long long old = ~cd.head; int sl = 0;
-  if (lane == cd.lane) {
-    old = atom_cas64(&S.qctl[qi].head, cd.head, cd.head + 1);
-    sl = __ldcg(&cell->slot);
-  }
-  sl = __shfl_sync(0xffffffffu, sl, cd.lane);
-  const bool valid = sl >= 0 && sl < S.nslots;
-  dw.x = (lane < KVM_TASK_WORDS && valid) ? __ldcg((const int*)(S.tasks + sl) + lane) : 0;
-  dw.y = (lane < KVM_ARG_STRIDE && valid && S.args) ? __ldcg(S.args + (size_t)sl * KVM_ARG_STRIDE + lane) : 0;   // its argument words (inline in the slot), same round trip
-  est = (want_est && valid) ? __ldcg(&S.sp.info[sl].est_ns) : 0;
-  int got = -2;
-  if (lane == cd.lane && old == cd.head) {
-    got = sl;
-    st_rel64(&cell->seq, cd.head + (unsigned long long)S.rcap);  // recycle before running
-  }
-  return __shfl_sync(0xffffffffu, got, cd.lane);
-}
-
-// Ticket claim (from perf/admission-bottleneck a10bc49 / b69ad80, scheduler off only). A head CAS makes every worker that raced for the
-// same cell retry: with ~100 polling workers one pop wins per L2 round trip, a dispatch ceiling whatever the tasks are. Instead the worker
-// RESERVES an item with a fetch-add on avail (published minus reserved: an item that exists for it, or that an enqueuer is about to
-// publish) and then takes a ticket with a fetch-add on head: no retries, and the ring stays FIFO per bucket. The ticket's cell may be the
-// one scanned or a later one of the same bucket (same class and priority, which is all the scheduler-off pop looks at). Look before
-// reserving: a failed reservation is a decrement plus a restore on the contended line, and with many more pollers than items that storm
-// starves individual warps. All lanes call; returns the slot or -2; lanes < KVM_TASK_WORDS return the descriptor word in dw.
-__device__ __forceinline__ int kvm_claim_ticket(const KvmDevState& S, const KvmCand& cd, int2& dw) {
-  const int lane = threadIdx.x & 31;
-  const size_t qi = (size_t)cd.lane;   // class 0
   KvmQCtl* q = S.qctl + qi;
   int got = -2;
-  if (lane == cd.lane && (long long)ld_acq64(&q->avail) > 0) {
+  if (lane == cd.lane && (long long)ld_acq64(&q->avail) > 0) {          // look before reserving: a failed reservation is a decrement plus a restore on the contended line
     if ((long long)atom_add64(&q->avail, ~0ull) > 0) {
       const unsigned long long h = atom_add64(&q->head, 1ull);
       KvmCell* cell = S.cells + qi * S.rcap + (h & (unsigned long long)(S.rcap - 1));
       int spin = 0;
-      while (ld_acq64(&cell->seq) != h + 1) {   // its enqueuer publishes within a few instructions
+      while (ld_acq64(&cell->seq) != h + 1) {                            // its enqueuer publishes within a few instructions
         if (++spin > (1 << 22) || *(volatile int*)&S.cnt->err_code) { kvm_fail(S, KVM_ERR_QUEUE_OVERFLOW, -1, 99, (int)h); break; }
         __nanosleep(16);
       }
       if (spin <= (1 << 22) && !*(volatile int*)&S.cnt->err_code) {
         got = cell->slot;
-        st_rel64(&cell->seq, h + (unsigned long long)S.rcap);  // recycle before running
+        st_rel64(&cell->seq, h + (unsigned long long)S.rcap);           // recycle before running
       }
-    } else atom_add64(&q->avail, 1ull);   // lost the race for the last item: give the reservation back
+    } else atom_add64(&q->avail, 1ull);                                 // lost the race for the last item: give the reservation back
   }
   got = __shfl_sync(0xffffffffu, got, cd.lane);
-  dw.x = (lane < KVM_TASK_WORDS && got >= 0) ? __ldcg((const int*)(S.tasks + got) + lane) : 0;
-  dw.y = (lane < KVM_ARG_STRIDE && got >= 0 && S.args) ? __ldcg(S.args + (size_t)got * KVM_ARG_STRIDE + lane) : 0;
+  const bool valid = got >= 0 && got < S.nslots;
+  dw = (lane < KVM_TASK_WORDS && valid) ? __ldcg((const int*)(S.tasks + got) + lane) : 0;
+  est = (want_est && valid) ? __ldcg(&S.sp.info[got].est_ns) : 0;
+  return got;
+}
+
+// FIFO mode (every task priority 0, no deadlines, scheduler off): lane 0 takes a ticket on the one ready ring when it has none, then watches the cell of that ticket (no scan of 32
+// buckets, no reservation, no CAS retries). Every lane returns the slot, or KVM_POP_EXIT when the run has ended. A ticket survives until its cell fills; a block leaves holding one only
+// at the end of the run (kvm_should_exit: every admitted task is done and admission is closed), when no further task can land in its cell.
+__device__ __forceinline__ int kvm_fifo_pop(const KvmDevState& S, KvmWatch& t0, long long& ticket, int& dw) {
+  const int lane = threadIdx.x & 31;
+  int got = -1;
+  if (lane == 0) {
+    if (ticket < 0) ticket = (long long)atom_add64(&S.qctl[0].head, 1ull);
+    const unsigned long long want = (unsigned long long)ticket + 1;
+    KvmCell* cell = S.cells + ((unsigned long long)ticket & (unsigned long long)(S.rcap - 1));
+    for (int spin = 0;; ++spin) {
+      const unsigned long long v = ld_acq64(&cell->seq), hi = v >> KVM_FIFO_SHIFT;
+      if (hi == want) { got = (int)(v & ((1ull << KVM_FIFO_SHIFT) - 1)); ticket = -1; break; }
+      if (hi > want) { kvm_fail(S, KVM_ERR_QUEUE_OVERFLOW, -1, 98, (int)ticket); got = KVM_POP_EXIT; break; }
+      if ((spin & 15) == 15) {
+        if (kvm_should_exit(S, t0)) { got = KVM_POP_EXIT; break; }
+        if (spin > 64) __nanosleep(64);
+      }
+    }
+  }
+  got = __shfl_sync(0xffffffffu, got, 0);
+  dw = (lane < KVM_TASK_WORDS && got >= 0) ? __ldcg((const int*)(S.tasks + got) + lane) : 0;
   return got;
 }
 
@@ -276,20 +254,20 @@ __device__ __forceinline__ int kvm_sched_part(const KvmDevState& S) {
 }
 
 // Warp-wide (all 32 lanes call). Returns a slot or -1; `how` = KVM_TRACE_* start-reason bits (same in all lanes); lane l < KVM_TASK_WORDS
-//  returns word l of the claimed task's descriptor in `dw.x` and lane l < KVM_ARG_STRIDE argument word l in `dw.y` (prefetched during the claim).
+//  returns word l of the claimed task's descriptor in `dw` (prefetched during the claim).
 //  GLOBAL/STATIC serve exactly one class (0 or the worker's SM-owner), so they scan it and claim. DYNAMIC first decides the
 //  class from counters alone (two coalesced loads per class, all in flight at once), and scans only the chosen class; a class
 //  is scanned before the decision only when it holds ready deadline tasks and has a deadline window (urgency needs the head).
-__device__ __forceinline__ int kvm_pop(const KvmDevState& S, unsigned long long now, int part, int& how, int2& dw) {
+__device__ __forceinline__ int kvm_pop(const KvmDevState& S, unsigned long long now, int part, int& how, int& dw) {
   const int lane = threadIdx.x & 31;
   const KvmSchedPtrs& sp = S.sp;
-  how = 0; dw = make_int2(0, 0);
+  how = 0; dw = 0;
   if (!sp.on) {  // the original executor: one class, no accounting
     for (int attempt = 0; attempt < 4; ++attempt) {
       KvmCand cd = kvm_scan(S, 0, now, false, 0);
       if (cd.score < 0) return -1;
       unsigned est;
-      int got = S.claim_ticket ? kvm_claim_ticket(S, cd, dw) : kvm_claim(S, 0, cd, dw, est, false);
+      int got = kvm_claim(S, 0, cd, dw, est, false);
       if (got >= 0) return got;
     }
     return -1;

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from .ir import Builder, FrontendError, LogicalOp, Tensor
-from .opset import ATTN_BLOCK, ATTN_Q, F_ACC, F_BIG, F_GELU, F_HUGE, F_PRECISE, F_TA, F_TB, MM_TILE, MMA_TILE, mm_dims, op as device_op
+from .opset import ATTN_BLOCK, ATTN_Q, F_ACC, F_BIG, F_DGELU, F_EXACT, F_GELU, F_HUGE, F_PRECISE, F_TA, F_TB, F_TRUNC, MM_TILE, MMA_TILE, mm_dims, op as device_op
 
 
 @dataclass(frozen=True)
@@ -22,17 +22,27 @@ class Tiling:
     cols: int = 128          # column block of column reductions (colsum, norm parameter gradients)
     vocab: int = 1024        # key block of the embedding gradient
     opt_elems: int = 16384   # AdamW chunk (rounded down to whole rows)
-    join_min: int = 32       # a predecessor set of at least this many tasks that two tasks need is replaced by a join (dataflow.py)
-    mm_tile: int = 64        # TF32 GEMM output tile: 64 (64x64), 128 (128x128, flag 32) or 256 (256x128, flag 64); see mm_choice for fallbacks
+    mm_tile: int = 64        # GEMM output tile: 64 (64x64), 128 (128x128, flag 32) or 256 (256x128, flag 64); see mm_choice for fallbacks
     mm_min_tiles: int = 8    # a GEMM that would give fewer tiles than this at mm_tile steps down to a smaller tile (parallelism over hop cost)
+    mm_huge_min_tiles: int = 1    # the 256x128 tile needs at least this many tiles (a narrow GEMM wants more SMs busy on smaller tiles; the a100 preset asks 32)
+    mm_huge_min_k: int = 1        # ... and this much K: below it the tile's fixed cost outweighs its output (a 128x128 tile beats a 256x128 one at K=96, 1.14x against 0.76x of cuBLAS; a100 asks 256)
     mm_min_eff: float = 0.75 # ... and so does one whose padded tiles would waste more than 1 - this of their area
+    join_min: int = 32       # a predecessor set of at least this many tasks that two tasks need is replaced by a join (dataflow.py)
+    row_tasks: int = 1       # a norm, rope or attention delta splits into at least this many blocks of whole warps, none above `rows` (row_blocks)
     precise: bool = False    # GEMM tiles use 3xTF32 (matmul_tile flag 16, fp32 accuracy) instead of the default 1xTF32
+    ew_elems: int = 1 << 40   # flat elementwise ops and the sgd update: target elements of one task, so a wide matrix is not streamed through one SM (a single task's stream is bound by one SM's bandwidth)
+    ew_max_tasks: int = 128   # ... but never more tasks than this for one operation (the executor's parallelism)
+    tf32_preround: bool = False   # 256x128-tile GEMMs read TF32 copies of their operands, made once per value (tf32.py), instead of rounding them in every tile
+    tf32_trunc: bool = False # 1xTF32 GEMM tiles skip the operand rounding (flag 256) and scale out the truncation's mean bias: ~25% faster big tile, but outside 2x of eager's float64 error on some rows (cuBLAS rounds)
 
     PRESETS = {
         'cpu': dict(rows=8, ew_rows=8, cols=32, vocab=16, opt_elems=256),
-        # a100: 256 x 128 TF32 tiles (results/2026-11-09-a100-matmul-parity: 0.7-0.8x cuBLAS vs 0.2-0.3x for 64 x 64, 8x fewer tasks)
-        'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256),
-        'a100_mm64': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8),   # the previous a100 (64x64 GEMM tiles)
+        'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, row_tasks=16),   # 256x128 tiles stepping down by shape, TF32 operands rounded to nearest in the tiles
+        'a100_pre': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, tf32_preround=True),   # a100 with the 256x128-tile GEMMs reading round_tf32 copies of their operands (tf32.py: the same products, rounded once per value, the 162M step 6% faster), at the copies' memory: the 162M bundle's buffers grow 9.4 -> 12.6 GB, more than a 40 GB A100 holds beside PyTorch's resident models
+        'a100_mm128': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=128, ew_elems=16384),   # 128x128 tiles, rounded (the previous a100)
+        'a100_trunc': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, tf32_trunc=True, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256),   # a100's tiles with the operands truncated by the tensor core and the output scaled to remove the mean bias (KVM_GPT_RZ_GAIN): inside the panel's numerics gates, but after 1000 SGD steps the weights end about 2x further from float64 than rounding's (six MLP widths)
+        'a100_mm64': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, ew_elems=16384),   # 64x64 GEMM tiles
+        'a100_mm256': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384),
         'b200': dict(rows=128, ew_rows=256, cols=512, vocab=4096, opt_elems=524288, join_min=8),
     }
 
@@ -46,10 +56,12 @@ class Tiling:
         if self.mm_tile not in (64, 128, 256):
             raise FrontendError(f'Tiling.mm_tile must be 64, 128 or 256, got {self.mm_tile!r}')
         for k, v in vars(self).items():
-            if k in ('precise', 'mm_min_eff'):
+            if k in ('precise', 'mm_min_eff', 'tf32_trunc', 'tf32_preround'):
                 continue
             if not isinstance(v, int) or v < 1:
                 raise FrontendError(f'Tiling.{k} must be a positive int, got {v!r}')
+        if self.tf32_preround and (self.tf32_trunc or self.precise):
+            raise FrontendError('Tiling.tf32_preround makes rounded operand copies; it does not combine with tf32_trunc or precise')
 
 
 @dataclass
@@ -87,6 +99,19 @@ def blocks(n, size):
     return [(a, min(a + size, n)) for a in range(0, n, size)]
 
 
+ROW_WARPS = 8   # warps of a row-wise device op (KVM_GPT_THREADS / 32), one row per warp at a time: the finest block worth a task
+
+
+def row_blocks(n, size, tc):
+    """Blocks of an op whose rows are computed independently of each other (a norm's forward and dx, rope, the attention delta):
+    none above `size` rows, and at least tc.row_tasks of them while each keeps a whole warp's rows (ROW_WARPS), so a short op runs
+    on several SMs instead of one (R-37: each of gpt-small's ten layernorms was one task over its 128 rows, 16 rows a warp in
+    sequence, 32% of its critical path). No arithmetic depends on the split."""
+    want = -(-n // tc.row_tasks)
+    want = -(-want // ROW_WARPS) * ROW_WARPS
+    return blocks(n, min(size, max(ROW_WARPS, want)))
+
+
 def lower_op(op: LogicalOp, tc: Tiling) -> list[TileTask]:
     if op.kind not in LOWER:
         raise FrontendError(f'no lowering registered for logical op {op.kind!r} ({op.name}); registered: {sorted(LOWER)}')
@@ -115,15 +140,18 @@ def _task(dev, reads, writes, **args):
 
 
 # ------------------------------------------------------------------------------------------------ matmul family
-def mm_choice(M, N, tc: Tiling, allow_big=True):
-    """matmul_tile size flag (0, F_BIG, F_HUGE) for an MxN output: the requested tile, stepped down while the GEMM is smaller than the
-    tile (a dim under its size), the padded edge tiles waste too much, or the grid would be too small to keep the workers busy."""
+def mm_choice(M, N, K, tc: Tiling, allow_big=True):
+    """matmul_tile size flag (0, F_BIG, F_HUGE) for an MxNxK GEMM: the requested tile, stepped down while the GEMM is smaller than the
+    tile (a dim under its size), the padded edge tiles waste too much, the grid would be too small to keep the workers busy, or (the 256x128 tile) K is too short to pay for it."""
     for fl in (_STEPS[tc.mm_tile] if allow_big else ()):
         tm, tn = mm_dims(fl)
         if M < tm or N < tn:
             continue
         gm, gn = -(-M // tm), -(-N // tn)
-        if gm * gn < tc.mm_min_tiles or (M * N) / (gm * tm * gn * tn) < tc.mm_min_eff:
+        min_tiles = tc.mm_huge_min_tiles if fl & F_HUGE else tc.mm_min_tiles
+        if gm * gn < min_tiles or (M * N) / (gm * tm * gn * tn) < tc.mm_min_eff:
+            continue
+        if fl & F_HUGE and K < tc.mm_huge_min_k:
             continue
         return fl
     return 0
@@ -132,17 +160,19 @@ def mm_choice(M, N, tc: Tiling, allow_big=True):
 _STEPS = {64: (), 128: (F_BIG,), 256: (F_HUGE, F_BIG)}
 
 
-def _mm_tiles(a, b, out, M, N, K, ta, tb, flags, bias=None, res=None, pre=None, acc=False, dev='matmul_tile', precise=False, tc=None):
+def _mm_tiles(a, b, out, M, N, K, ta, tb, flags, bias=None, res=None, pre=None, acc=False, dev='matmul_tile', precise=False, tc=None, exact=False):
     flags |= F_PRECISE if precise and dev == 'matmul_tile' else 0
-    if dev == 'matmul_tile' and tc is not None:
-        flags |= mm_choice(M, N, tc)
-    tm, tn = MMA_TILE if dev == 'matmul_mma_bf16' else mm_dims(flags) if dev == 'matmul_tile' else (MM_TILE, MM_TILE)
-    ms, ns = list(range(0, M, tm)), list(range(0, N, tn))
+    flags |= F_EXACT if exact else 0   # operands are round_tf32 copies (tf32.py)
+    flags |= mm_choice(M, N, K, tc, allow_big=(dev == 'matmul_tile')) if tc is not None else 0
+    if tc is not None and tc.tf32_trunc and dev == 'matmul_tile' and not flags & F_PRECISE:
+        flags |= F_TRUNC
+    TM, TN = MMA_TILE if dev == 'matmul_mma_bf16' else mm_dims(flags)
+    ms, ns = list(range(0, M, TM)), list(range(0, N, TN))
     # Admission order is execution order: iterate the dimension with more tiles outermost, so consecutive tiles share the operand block of the
     # shorter one and the long operand streams through L2 once (4096 x 50304 x 768 logits: 1.5x faster than m-outer on the A100).
     order = [(m0, n0) for n0 in ns for m0 in ms] if dev == 'matmul_mma_bf16' and len(ns) > len(ms) else [(m0, n0) for m0 in ms for n0 in ns]
     for m0, n0 in order:
-        m1, n1 = min(m0 + tm, M), min(n0 + tn, N)
+        m1, n1 = min(m0 + TM, M), min(n0 + TN, N)
         ra = a.region(0, K, m0, m1) if ta else a.region(m0, m1, 0, K)
         rb = b.region(n0, n1, 0, K) if tb else b.region(0, K, n0, n1)
         tile = out.region(m0, m1, n0, n1)
@@ -165,7 +195,8 @@ def _(op, tc):
     x, w, out = op.ins['x'], op.ins['w'], op.outs['out']
     wt = op.attrs['wt']
     yield from _mm_tiles(x, w, out, x.rows, out.cols, x.cols, False, wt, (F_GELU if op.attrs['gelu'] else 0) | (F_TB if wt else 0),
-                         op.ins.get('bias'), op.ins.get('res'), op.outs.get('pre'), dev=_mm_dev(op), precise=tc.precise, tc=tc)
+                         op.ins.get('bias'), op.ins.get('res'), op.outs.get('pre'), dev=_mm_dev(op), precise=tc.precise, tc=tc,
+                         exact=op.attrs.get('tf32_exact', False))
 
 
 @lowers('mm')
@@ -175,7 +206,7 @@ def _(op, tc):
     N = b.rows if tb else b.cols
     acc = 'into' in op.ins
     yield from _mm_tiles(a, b, out, M, N, K, ta, tb, (F_TA if ta else 0) | (F_TB if tb else 0) | (F_ACC if acc else 0), acc=acc,
-                         dev=_mm_dev(op), precise=tc.precise, tc=tc)
+                         dev=_mm_dev(op), precise=tc.precise, tc=tc, exact=op.attrs.get('tf32_exact', False))
 
 
 # ------------------------------------------------------------------------------------------------ data / row-wise ops
@@ -199,7 +230,7 @@ def _(op, tc):
 def _norm(op, tc):
     x, out, rstd = op.ins['x'], op.outs['out'], op.outs['rstd']
     ln = op.kind == 'layernorm'
-    for r0, r1 in blocks(x.rows, tc.rows):
+    for r0, r1 in row_blocks(x.rows, tc.rows, tc):
         reads = [_rows(x, r0, r1), _full(op.ins['g'])] + ([_full(op.ins['beta'])] if ln else [])
         writes = [_rows(out, r0, r1), _rows(rstd, r0, r1)] + ([_rows(op.outs['mean'], r0, r1)] if ln else [])
         if ln:
@@ -218,7 +249,7 @@ def _norm_bwd(op, tc):
     ln = op.kind == 'layernorm_bwd'
     x, g, dy, rstd, dx = op.ins['x'], op.ins['g'], op.ins['dy'], op.ins['rstd'], op.outs['dx']
     mean = op.ins.get('mean')
-    for r0, r1 in blocks(x.rows, tc.rows):
+    for r0, r1 in row_blocks(x.rows, tc.rows, tc):            # dx only: dgamma and dbeta are column tasks over all rows, below
         reads = [_rows(x, r0, r1), _rows(dy, r0, r1), _rows(rstd, r0, r1), _full(g), _rows(mean, r0, r1) if ln else None,
                  _rows(dx, r0, r1) if op.attrs['acc_x'] else None]
         a = dict(x=x, dy=dy, gamma=g, rstd=rstd, dx=dx, r0=r0, r1=r1, d=x.cols, acc=int(op.attrs['acc_x']))
@@ -243,7 +274,7 @@ lowers('rmsnorm_bwd')(_norm_bwd)
 def _(op, tc):
     x, out, pos = op.ins['x'], op.outs['out'], op.ins.get('pos')
     H, hd = op.attrs['heads'], x.cols // op.attrs['heads']
-    for r0, r1 in blocks(x.rows, tc.rows):
+    for r0, r1 in row_blocks(x.rows, tc.rows, tc):
         yield _task('rope_fwd', [_rows(x, r0, r1), _full(pos) if pos else None], [_rows(out, r0, r1)],
                     x=x, out=out, pos=pos, r0=r0, r1=r1, T=op.attrs['seq'], H=H, hd=hd, theta=op.attrs['theta'])
 
@@ -252,7 +283,7 @@ def _(op, tc):
 def _(op, tc):
     dy, out = op.ins['dy'], op.outs['out']
     H, hd = op.attrs['heads'], dy.cols // op.attrs['heads']
-    for r0, r1 in blocks(dy.rows, tc.rows):
+    for r0, r1 in row_blocks(dy.rows, tc.rows, tc):
         yield _task('rope_bwd', [_rows(dy, r0, r1)], [_rows(out, r0, r1)], x=dy, out=out, pos=None, r0=r0, r1=r1,
                     T=op.attrs['seq'], H=H, hd=hd, theta=op.attrs['theta'])
 
@@ -260,7 +291,7 @@ def _(op, tc):
 @lowers('gelu_bwd')
 def _(op, tc):
     pre, dy, out = op.ins['pre'], op.ins['dy'], op.outs['out']
-    for r0, r1 in blocks(pre.rows, tc.ew_rows):
+    for r0, r1 in blocks(pre.rows, _ew_row_step(pre, tc)):
         yield _task('gelu_bwd', [_rows(pre, r0, r1), _rows(dy, r0, r1)], [_rows(out, r0, r1)], x=pre, dy=dy, dx=out,
                     e0=r0 * pre.cols, e1=r1 * pre.cols, acc=0)
 
@@ -268,7 +299,7 @@ def _(op, tc):
 @lowers('add_into')
 def _(op, tc):
     dst, src = op.ins['dst'], op.ins['src']
-    for r0, r1 in blocks(dst.rows, tc.ew_rows):
+    for r0, r1 in blocks(dst.rows, _ew_row_step(dst, tc)):
         yield _task('residual_add', [_rows(dst, r0, r1), _rows(src, r0, r1)], [_rows(dst, r0, r1)], a=dst, b=src, out=dst,
                     e0=r0 * dst.cols, e1=r1 * dst.cols)
 
@@ -319,7 +350,7 @@ def _(op, tc):
     T, H, Hkv, hd, G, causal = _attn_geom(op)
     B = q.rows // T
     for b in range(B):                                            # delta = rowsum(do * o), per sequence, all heads
-        for t0, t1 in blocks(T, tc.rows):
+        for t0, t1 in row_blocks(T, tc.rows, tc):
             yield _task('attn_bwd_delta', [o.region(b * T + t0, b * T + t1), do.region(b * T + t0, b * T + t1)],
                         [delta.region(b * H, (b + 1) * H, t0, t1)], o=o, do=do, delta=delta, r0=b * T + t0, r1=b * T + t1,
                         T=T, H=H, hd=hd)
@@ -383,6 +414,16 @@ def _(op, tc):
     for r0, r1 in blocks(lg.rows, tc.rows):
         yield _task('softmax_ce_bwd', [_rows(lg, r0, r1), _rows(tgt, r0, r1), _rows(lse, r0, r1), _full(loss)], [_rows(out, r0, r1)],
                     logits=lg, tgt=tgt, lse=lse, loss=loss, dlogits=out, r0=r0, r1=r1, V=lg.cols, ignore=-1, scale=op.attrs['grad_scale'])
+
+
+@lowers('ce_fused')
+def _(op, tc):
+    # fuse.py's ce_loss + ce_bwd: forward and backward of each row block in one task; the reduce stays a separate task, off the path (the backward's 1/count is N here, nothing is ignored)
+    lg, tgt, loss, rl, lse, out = op.ins['logits'], op.ins['tgt'], op.outs['loss'], op.outs['rowloss'], op.outs['lse'], op.outs['out']
+    for r0, r1 in blocks(lg.rows, tc.rows):
+        yield _task('softmax_ce_fused', [_rows(lg, r0, r1), _rows(tgt, r0, r1)], [_rows(rl, r0, r1), _rows(lse, r0, r1), _rows(out, r0, r1)],
+                    logits=lg, tgt=tgt, rowloss=rl, lse=lse, dlogits=out, r0=r0, r1=r1, V=lg.cols, ignore=-1, N=lg.rows, scale=op.attrs['grad_scale'])
+    yield _task('softmax_ce_reduce', [_full(rl), _full(tgt)], [_full(loss)], rowloss=rl, tgt=tgt, loss=loss, N=lg.rows, ignore=-1)
 
 
 @lowers('mse_loss')
@@ -459,8 +500,15 @@ def _(op, tc):
 
 @lowers('sgd')
 def _(op, tc):
-    w, g = op.ins['w'], op.ins['g']
-    yield _task('sgd', [_full(w), _full(g), _full(op.ins['tok']) if 'tok' in op.ins else None], [_full(w)], w=w, g=g, lr=op.attrs['lr'], n=w.numel)
+    w, g, tok = op.ins['w'], op.ins['g'], op.ins.get('tok')
+    extra = [_full(tok)] if tok is not None else []
+    if w.rows > 1:
+        for r0, r1 in blocks(w.rows, _ew_row_step(w, tc)):
+            yield _task('sgd_range', [_rows(w, r0, r1), _rows(g, r0, r1), *extra], [_rows(w, r0, r1)], w=w, g=g, lr=op.attrs['lr'], e0=r0 * w.cols, e1=r1 * w.cols)
+    else:   # a vector: split along the columns
+        step = max(1, min(tc.ew_elems, w.cols))
+        for c0, c1 in blocks(w.cols, step):
+            yield _task('sgd_range', [w.region(0, 1, c0, c1), g.region(0, 1, c0, c1), *extra], [w.region(0, 1, c0, c1)], w=w, g=g, lr=op.attrs['lr'], e0=c0, e1=c1)
 
 
 @lowers('counter_inc')
@@ -476,8 +524,14 @@ def _(op, tc):
 
 
 # ------------------------------------------------------------------------------------------------ extra pack
+def _ew_row_step(t, tc):
+    """Rows per task of a flat elementwise op on t: tc.ew_rows, or fewer when t is wide, so that one task holds about tc.ew_elems elements (never more than tc.ew_max_tasks tasks)."""
+    tasks = min(tc.ew_max_tasks, max(1, -(-t.rows * t.cols // tc.ew_elems)))
+    return max(1, min(tc.ew_rows, -(-t.rows // tasks)))
+
+
 def _flat_blocks(t, tc):
-    for r0, r1 in blocks(t.rows, tc.ew_rows):
+    for r0, r1 in blocks(t.rows, _ew_row_step(t, tc)):
         yield r0, r1, r0 * t.cols, r1 * t.cols
 
 
@@ -613,8 +667,9 @@ def _(op, tc):
 @lowers('cast')
 def _(op, tc):
     x, out = op.ins['x'], op.outs['out']
+    dev = 'round_tf32' if op.attrs.get('dtype') == 'tf32' else 'round_bf16'   # tf32: an operand copy for a pre-rounded GEMM (tf32.py)
     for r0, r1, e0, e1 in _flat_blocks(x, tc):
-        yield _task('round_bf16', [_rows(x, r0, r1)], [_rows(out, r0, r1)], x=x, out=out, e0=e0, e1=e1)
+        yield _task(dev, [_rows(x, r0, r1)], [_rows(out, r0, r1)], x=x, out=out, e0=e0, e1=e1)
 
 
 @lowers('lr_schedule')
@@ -647,17 +702,17 @@ def _(op, tc):
     a, b, pre, out, ta, tb = op.ins['a'], op.ins['b'], op.ins['pre'], op.outs['out'], op.attrs['ta'], op.attrs['tb']
     M, K = (a.cols, a.rows) if ta else (a.rows, a.cols)
     N = b.rows if tb else b.cols
-    big = mm_choice(M, N, tc)
+    big = mm_choice(M, N, K, tc)
     for m0, m1, n0, n1, ra, rb in _mm_grid(a, b, M, N, K, ta, tb, big):
         tile = out.region(m0, m1, n0, n1)
-        yield _task('matmul_tile_dgelu', [ra, rb, pre.region(m0, m1, n0, n1)], [tile], a=a, b=b, out=out, pre=pre, m0=m0, n0=n0,
-                    M=M, N=N, K=K, flags=(F_TA if ta else 0) | (F_TB if tb else 0) | (F_PRECISE if tc.precise else 0) | big, alpha=1.0)
+        yield _task('matmul_tile', [ra, rb, pre.region(m0, m1, n0, n1)], [tile], a=a, b=b, out=out, bias=None, res=None, pre=pre, m0=m0, n0=n0,
+                    M=M, N=N, K=K, flags=F_DGELU | (F_TA if ta else 0) | (F_TB if tb else 0) | (F_PRECISE if tc.precise else (F_TRUNC if tc.tf32_trunc else 0)) | big, alpha=1.0)
 
 
 @lowers('linear_silu_mul')
 def _(op, tc):
     x, w, gate, out, up = op.ins['x'], op.ins['w'], op.ins['gate'], op.outs['out'], op.outs['up']
-    big = mm_choice(x.rows, w.cols, tc)
+    big = mm_choice(x.rows, w.cols, x.cols, tc)
     for m0, m1, n0, n1, ra, rb in _mm_grid(x, w, x.rows, w.cols, x.cols, False, False, big):
         t = (m0, m1, n0, n1)
         yield _task('matmul_tile_silu_mul', [ra, rb, gate.region(*t)], [out.region(*t), up.region(*t)], a=x, b=w, out=out, gate=gate,
@@ -670,7 +725,7 @@ def _(op, tc):
     dg, du, ta, tb = op.outs['dgate'], op.outs['dup'], op.attrs['ta'], op.attrs['tb']
     M, K = (a.cols, a.rows) if ta else (a.rows, a.cols)
     N = b.rows if tb else b.cols
-    big = mm_choice(M, N, tc)
+    big = mm_choice(M, N, K, tc)
     for m0, m1, n0, n1, ra, rb in _mm_grid(a, b, M, N, K, ta, tb, big):
         t = (m0, m1, n0, n1)
         yield _task('matmul_tile_silu_mul_bwd', [ra, rb, gate.region(*t), up.region(*t)], [dg.region(*t), du.region(*t)], a=a, b=b,

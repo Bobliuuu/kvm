@@ -68,6 +68,10 @@ def compile_training(model, tc: TrainConfig | None = None, tiling: Tiling | None
     if getattr(model.cfg, 'precision', 'f32') == 'bf16s':
         from . import storage
         ops, _ = storage.apply(ops)
-    low = lower_program(ops, tiling or Tiling.preset('a100'), reuse, gap, prefix='act')
+    tiling = tiling or Tiling.preset('a100')
+    if tiling.tf32_preround:
+        from . import tf32
+        ops, _ = tf32.apply(ops, tiling)
+    low = lower_program(ops, tiling, reuse, gap, prefix='act')
     spec = to_workload(low, {'train': GraphPolicy()}) if with_spec else None
     return Compiled(low, spec, prog)

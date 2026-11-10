@@ -58,6 +58,8 @@ class Lowered:
 
 
 def lower_program(ops: list[LogicalOp], tiling: Tiling, reuse='shape', gap=0, prefix='act') -> Lowered:
+    from .fuse import DEFAULT_PATTERNS, fuse
+    ops, _ = fuse(ops, DEFAULT_PATTERNS)                    # default fusions run on every program, so every generator and bundle gets them (fuse.py: bitwise-equal by construction)
     tasks = []
     for i, op in enumerate(ops):
         for t in lower_op(op, tiling):

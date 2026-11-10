@@ -69,7 +69,8 @@ def _embedding_bwd(b, a):
 def _matmul_tile(b, a):
     A, B, out, bias, res, pre = b['a'], b['b'], b['out'], b['bias'], b['res'], b['pre']
     M, N, K, fl, alpha = a['M'], a['N'], a['K'], a['flags'], a['alpha']
-    ta, tb, accum, gelu = fl & 1, fl & 2, fl & 4, fl & 8
+    ta, tb, accum, gelu, dg = fl & 1, fl & 2, fl & 4, fl & 8, fl & 512
+    _need(not dg or (pre is not None and bias is None and res is None and not accum and not gelu and not fl & 128), 'matmul_tile: flag 512 needs pre and refuses bias, res and flags 4, 8, 128')
     tm, tn = (256, 128) if fl & 64 else (128, 128) if fl & 32 else (64, 64)
     for m in range(a['m0'], min(a['m0'] + tm, M)):
         for n in range(a['n0'], min(a['n0'] + tn, N)):
@@ -81,10 +82,13 @@ def _matmul_tile(b, a):
             v = f32(acc * alpha)
             if bias is not None:
                 v = f32(v + bias[n])
-            if pre is not None:
-                pre[m * pre.cols + n] = v
-            if gelu:
-                v = f32(_gelu(v))
+            if dg:
+                v = f32(v * _gelu_grad(pre.at(m, n)))
+            else:
+                if pre is not None:
+                    pre[m * pre.cols + n] = v
+                if gelu:
+                    v = f32(_gelu(v))
             if res is not None:
                 v = f32(v + res.at(m, n))
             o = m * out.cols + n
@@ -94,7 +98,7 @@ def _matmul_tile(b, a):
 def _matmul_extents(a):
     M, N, K, fl = a['M'], a['N'], a['K'], a['flags']
     _need(M > 0 and N > 0 and K > 0 and 0 <= a['m0'] < M and 0 <= a['n0'] < N, 'matmul_tile: bad M/N/K/m0/n0')
-    _need(fl & ~127 == 0 and not (fl & 32 and fl & 64), f'matmul_tile: unsupported flags {fl}')
+    _need(fl & ~(127 | 256 | 512 | 1024) == 0 and not (fl & 32 and fl & 64) and not (fl & 256 and fl & 1024), f'matmul_tile: unsupported flags {fl}')   # 256: truncated operands, same exact-product golden; 512: dgelu epilogue; 1024: operands already TF32 (round_tf32 copies)
     return {'a': (K, M) if fl & 1 else (M, K), 'b': (N, K) if fl & 2 else (K, N), 'out': (M, N), 'bias': N,
             'res': (M, N), 'pre': (M, N)}
 
@@ -210,6 +214,26 @@ def _residual_add(b, a):
         b['out'][i] = f32(b['a'][i] + b['b'][i])
 
 
+def _tf32_round(x):
+    """float32 value as a TF32 value, as f2tf32 in kvm_ops_gpt.cuh: to nearest, ties away from zero, low 13 bits cleared; NaN keeps its high bits."""
+    import struct
+    u = struct.unpack('<I', struct.pack('<f', x))[0]
+    if (u & 0x7fffffff) <= 0x7f800000:
+        u = (u + 0x1000) & 0xffffffff
+    return struct.unpack('<f', struct.pack('<I', u & 0xffffe000))[0]
+
+
+def _round_tf32(b, a):
+    for i in range(a['e0'], a['e1']):
+        b['out'][i] = _tf32_round(b['x'][i])
+
+
+def _sgd_range(b, a):
+    w, g = b['w'], b['g']
+    for i in range(a['e0'], a['e1']):
+        w[i] = f32(w[i] - f32(a['lr'] * g[i]))
+
+
 def _zero_buf(b, a):
     x = b['x']
     zero = 0 if x.dtype == 'i32' else 0.0
@@ -247,7 +271,7 @@ def _rope_ext(a):
 # ---- attention ----------------------------------------------------------------------------------------------------------
 def _geom(a, kv=False):
     _need(a['hd'] in (16, 32, 64, 128), f"attention: hd {a['hd']} not in 16/32/64/128")
-    _need(a['T'] > 0 and a['H'] > 0 and a['Hkv'] > 0 and a['H'] % a['Hkv'] == 0 and a['b'] >= 0 and 0 <= a['q0'] < a['T'],
+    _need(a['T'] > 0 and a['H'] > 0 and a['Hkv'] > 0 and a['H'] % a['Hkv'] == 0 and a['b'] >= 0 and a['q0'] >= 0 and (a['q0'] & 0xFFFF) < a['T'],
           'attention: bad T/H/Hkv/b/q0')
     _need(0 <= a['h'] < (a['Hkv'] if kv else a['H']), 'attention: head index out of range')
 
@@ -334,7 +358,7 @@ def _attn_bwd_dkv(b, a):
 
 def _attn_bwd_dkv_ext(a):
     _need(a['hd'] in (16, 32, 64, 128), f"attention: hd {a['hd']} not in 16/32/64/128")
-    _need(a['T'] > 0 and a['H'] > 0 and a['b'] >= 0 and 0 <= a['k0'] < a['T'] and a['kvh'] >= 0, 'attn_bwd_dkv: bad T/H/b/k0/kvh')
+    _need(a['T'] > 0 and a['H'] > 0 and a['b'] >= 0 and 0 <= (a['k0'] & 0xFFFF) < a['T'] and a['k0'] >= 0 and a['kvh'] >= 0, 'attn_bwd_dkv: bad T/H/b/k0/kvh')
     R, hd = (a['b'] + 1) * a['T'], a['hd']
     return {'q': (R, a['H'] * hd), 'k': (R, (a['kvh'] + 1) * hd), 'v': (R, (a['kvh'] + 1) * hd), 'do': (R, a['H'] * hd),
             'lse': R * a['H'], 'delta': R * a['H'], 'dk': (R, (a['kvh'] + 1) * hd), 'dv': (R, (a['kvh'] + 1) * hd)}
@@ -413,15 +437,20 @@ def _ce_reduce(b, a):
     b['loss'][1] = f32(1.0 / c) if c else 0.0
 
 
-def _ce_bwd(b, a):
-    lg, tg, ls, loss, dl, V = b['logits'], b['tgt'], b['lse'], b['loss'], b['dlogits'], a['V']
-    f = f32(loss[1] * a['scale'])
+def _ce_bwd(b, a, inv_count=None):
+    lg, tg, ls, dl, V = b['logits'], b['tgt'], b['lse'], b['dlogits'], a['V']
+    f = f32((b['loss'][1] if inv_count is None else inv_count) * a['scale'])
     for r in range(a['r0'], a['r1']):
         t = tg[r]
         if t != a['ignore']:
             _token(t, V, 'target')
         for c in range(V):
             dl[r * dl.cols + c] = 0.0 if t == a['ignore'] else f32((math.exp(lg.at(r, c) - ls[r]) - (1.0 if c == t else 0.0)) * f)
+
+
+def _ce_fused(b, a):
+    _ce_fwd(b, a)
+    _ce_bwd(b, a, inv_count=f32(1.0 / a['N']))      # the reduce's loss[1] when nothing is ignored
 
 
 # ---- optimizer ----------------------------------------------------------------------------------------------------------
@@ -560,6 +589,8 @@ GPT_OPS = {
     'gelu_fwd': _R(_gelu_fwd, _flat_ext(bufs=('x', 'out'))),
     'gelu_bwd': _R(_gelu_bwd, _flat_ext(bufs=('x', 'dy', 'dx'))),
     'residual_add': _R(_residual_add, _flat_ext(bufs=('a', 'b', 'out'))),
+    'sgd_range': _R(_sgd_range, _flat_ext(bufs=('w', 'g'))),
+    'round_tf32': _R(_round_tf32, _flat_ext(bufs=('x', 'out'))),
     'rope_fwd': _R(_rope(1), _rope_ext, ints=('pos',)),
     'rope_bwd': _R(_rope(-1), _rope_ext, ints=('pos',)),
     'attn_fwd': _R(_attn_fwd, _attn_fwd_ext),
@@ -575,6 +606,8 @@ GPT_OPS = {
     'softmax_ce_bwd': _R(_ce_bwd, lambda a: (_rng(a['r0'], a['r1']), _need(a['V'] > 0, 'softmax_ce_bwd: V must be > 0'),
                                              {'logits': (a['r1'], a['V']), 'tgt': a['r1'], 'lse': a['r1'], 'loss': 2,
                                               'dlogits': (a['r1'], a['V'])})[2], ints=('tgt',)),
+    'softmax_ce_fused': _R(_ce_fused, lambda a: (_rng(a['r0'], a['r1']), _need(a['V'] > 0 and a['ignore'] == -1 and a['N'] > 0, 'softmax_ce_fused: bad V/ignore/N'),
+                                                 {'logits': (a['r1'], a['V']), 'tgt': a['r1'], 'rowloss': a['r1'], 'lse': a['r1'], 'dlogits': (a['r1'], a['V'])})[2], ints=('tgt',)),
     'adamw': _R(_adamw, lambda a: (_rng(a['e0'], a['e1']), {'p': a['e1'], 'g': a['e1'], 'm': a['e1'], 'v': a['e1'], 'gscale': 1, 'step': 1})[1],
                 ints=('step',)),
     'gradnorm_partial': _R(_gradnorm_partial, lambda a: (_rng(a['e0'], a['e1']), _need(a['slot'] >= 0, 'gradnorm_partial: slot < 0'),

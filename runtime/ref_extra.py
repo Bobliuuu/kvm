@@ -369,15 +369,6 @@ def _tile_range(a):
     return range(a['m0'], min(a['m0'] + tm, a['M'])), range(a['n0'], min(a['n0'] + tn, a['N']))
 
 
-def _mm_dgelu(b, a):
-    _tile_mm(b, a, b['out'])
-    pre, out = b['pre'], b['out']
-    ms, ns = _tile_range(a)
-    for m in ms:
-        for n in ns:
-            out[m * out.cols + n] = f32(out[m * out.cols + n] * _gelu_d(pre.at(m, n)))
-
-
 def _mm_silu_mul(b, a):
     _tile_mm(b, a, b['up'])
     gate, up, out = b['gate'], b['up'], b['out']
@@ -454,7 +445,6 @@ EXTRA_OPS = {
     'scale_flat': _R(_scale_flat, _flat_ext(bufs=('x', 'out'))),
     'add_rowtile': _R(_add_rowtile, lambda a: (_rng(a['r0'], a['r1']), _need(a['T'] > 0 and a['d'] > 0, 'add_rowtile: bad T/d'),
                                                {'x': (a['r1'], a['d']), 'pos': (a['T'], a['d']), 'out': (a['r1'], a['d'])})[2]),
-    'matmul_tile_dgelu': _R(_mm_dgelu, _mm_ext(('out', 'pre'))),
     'matmul_tile_silu_mul': _R(_mm_silu_mul, _mm_ext(('out', 'gate', 'up'))),
     'matmul_tile_silu_mul_bwd': _R(_mm_silu_mul_bwd, _mm_ext(('gate', 'up', 'dgate', 'dup'))),
 }
@@ -482,6 +472,7 @@ _BF16_STORAGE = {   # op: (buffers that may be bf16 storage, of which written)
     'attn_bwd_delta': (('o', 'do'), ()),
     'attn_bwd_dq': (('q', 'k', 'v', 'do', 'dq'), ('dq',)),
     'attn_bwd_dkv': (('q', 'k', 'v', 'do', 'dk', 'dv'), ('dk', 'dv')),
+    'softmax_ce_fused': (('logits', 'dlogits'), ('dlogits',)),
 }
 
 

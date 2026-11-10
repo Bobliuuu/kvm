@@ -50,6 +50,7 @@ NATIVE = {
     # kernels' fp32 tiles (arithmetic unchanged); lse and delta stay fp32. The bidirectional attn_full_* ops are fp32 only (see _native).
     'attention': (('q', 'k', 'v'), ('out',)),
     'attention_bwd': (('q', 'k', 'v', 'o', 'do'), ('dq', 'dk', 'dv')),
+    'ce_fused': (('logits',), ('out',)),
 }
 
 

@@ -8,18 +8,22 @@
 #      bitwise with the unfused path;
 #   4. the plan's CPU replay (every dependency honoured, no deadlock).
 #   KVM_EXE=./kvm_exec KVM_PY=python3 tests/static/run_check.sh [workers ...]   (from the repo root; KVM_PY needs numpy and torch; scratch in a temp dir)
-#   KVM_CHECK_MLP_HIDDEN sets the MLP bundle's width (default 72, the panel's narrow rows). A fused step must fit one block's shared memory:
-#   72 needs 99.3 KB at 16 rows, which an A100 has (163 KB) and an RTX 3090 (99 KB) has not; use 48 there.
+#   KVM_CHECK_MLP_HIDDEN and KVM_CHECK_MLP_DEPTH set the MLP bundle's width and depth (default 72 and 2, the panel's narrow rows):
+#   * The one-block fused step must fit one block's shared memory. 72 needs 99.3 KB at 16 rows, which an A100 has (163 KB) and an RTX 3090
+#     (99 KB) has not; use 48 there.
+#   * A width one block cannot hold takes the split form (gangs of 6 x S fmlp_split members), which fires only where a gang fits the
+#     workers: KVM_CHECK_MLP_HIDDEN=256 tests/static/run_check.sh 16 48 107 (and KVM_CHECK_MLP_DEPTH=4 with 128 for the deepest).
 set -euo pipefail
 EXE="${KVM_EXE:-./kvm_exec}"; [ -x "$EXE" ] || { echo "no executor at $EXE (set KVM_EXE)"; exit 2; }
 WORKERS=("${@:-1 4 16 107}"); read -r -a WORKERS <<< "${WORKERS[*]}"
 PY="${KVM_PY:-python3}"
 MLP_H="${KVM_CHECK_MLP_HIDDEN:-72}"; [[ "$MLP_H" =~ ^[0-9]+$ ]] || { echo "KVM_CHECK_MLP_HIDDEN must be a width, got $MLP_H"; exit 2; }
+MLP_D="${KVM_CHECK_MLP_DEPTH:-2}"; [[ "$MLP_D" =~ ^[1-9]$ ]] || { echo "KVM_CHECK_MLP_DEPTH must be a depth 1-9, got $MLP_D"; exit 2; }
 "$PY" -c 'import numpy, torch' 2> /dev/null || { echo "no numpy and torch in $PY (set KVM_PY)"; exit 2; }
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/kvm-static-check.XXXXXX")"; trap 'rm -rf "$TMP"' EXIT
 "$PY" bench/vs_pytorch/gen.py "$TMP/gpt" --model gpt_tiny --steps 3 --tiling a100 > /dev/null
-echo "MLP bundle: hidden $MLP_H, depth 2, 3 steps"
-"$PY" -I bench/exec_vs_torch/gen_mlp.py "$TMP/mlp" --steps 3 --hidden "$MLP_H" --depth 2 > /dev/null
+echo "MLP bundle: hidden $MLP_H, depth $MLP_D, 3 steps"
+"$PY" -I bench/exec_vs_torch/gen_mlp.py "$TMP/mlp" --steps 3 --hidden "$MLP_H" --depth "$MLP_D" > /dev/null
 if command -v g++ > /dev/null; then g++ -std=c++17 -O2 -Iinclude tests/static/test_static_plan.cpp -o "$TMP/plan_test"; "$TMP/plan_test" "$TMP/gpt/bundle"; "$TMP/plan_test" "$TMP/mlp/bundle"; fi
 fails=0
 fail() { echo "FAIL: $*"; fails=$((fails + 1)); }

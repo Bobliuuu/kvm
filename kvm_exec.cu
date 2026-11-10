@@ -200,6 +200,7 @@ struct KvmConfig {
   unsigned long long timeout_us = 60ull * 1000000;   // STALL timeout: no task finished or admitted for this long while work is pending (not a lifetime cap); must exceed the longest task
   unsigned long long task_limit_us = 30ull * 1000000;  // a task that ran longer than this ends the run with TASK_LIMIT (0 = off); tasks are not interruptible, this reports
   size_t stack_bytes = 0;       // per-thread stack (cudaLimitStackSize); ops with deep device calls (game ops) need a large one
+  int warm_ms = 0;              // >0: keep the GPU busy this long in start(), right before the timed launch, so a short timed kernel runs at the clock of sustained work (the A100's SM clock falls to 1095 MHz under sparse work)
   KvmSchedCfg sched;            // SCHED: scheduling policy (off by default: the original single-queue executor)
 };
 enum class KvmSubmit { OK, BACKPRESSURE_TIMEOUT, TOO_BIG, DEVICE_ERROR, CLOSED, INVALID };
@@ -234,6 +235,13 @@ struct KvmInit {
 // Host reference of the seeded generator (bit-identical to the device kernel and runtime/initgen.py).
 static void kvm_seeded_reference(float* out, size_t n, unsigned long long seed, int draws, float bias, float coef) {
   for (size_t i = 0; i < n; ++i) out[i] = kvm_seeded_value(seed, i, draws, bias, coef);
+}
+
+// Float arithmetic on every thread of every block for a few milliseconds per launch: what holds the SM clock up before a timed launch (--warm-ms).
+__global__ void kvm_clock_warm_kernel(float* sink) {
+  float x = 1.0f + static_cast<float>(threadIdx.x) / 512.0f;
+  for (int i = 0; i < 300000; ++i) x = x * 1.0000001f + 1.0e-7f;
+  if (threadIdx.x == 0) atomicAdd(sink, x);         // (keeps the loop's result live)
 }
 
 class KvmExec {
@@ -396,10 +404,27 @@ class KvmExec {
     if (wpos_) CK(cudaMemcpy(S_.stage, ring_, wpos_ * 4, cudaMemcpyHostToDevice));
     S_.prestaged = wpos_ != 0;
   }
+  // --warm-ms: sustained GPU work between the setup and the timed launch. The SM clock runs at 1095 MHz under light or sparse work and at 1410 under sustained work (A100, Nov 9);
+  // it reaches 1410 within about 0.3 s of sustained load and holds it about 1.7 s after. A process's setup (bundle load, allocations) can outlast that hold, so the warm-up runs here, after setup.
+  void clock_warmup() {
+    if (cfg_.warm_ms <= 0) return;
+    float* sink = nullptr;
+    CK(cudaMalloc(&sink, sizeof(float)));
+    const auto t0 = std::chrono::steady_clock::now();
+    int launches = 0;
+    while (std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() < cfg_.warm_ms) {
+      kvm_clock_warm_kernel<<<grid_, KVM_THREADS, 0, stream_>>>(sink);
+      CK(cudaGetLastError()); CK(cudaStreamSynchronize(stream_));
+      ++launches;
+    }
+    CK(cudaFree(sink));
+    KLOG(2, "clock warm-up: %d launches, %d ms requested", launches, cfg_.warm_ms);
+  }
   void start() {
     if (started_) throw std::logic_error("already started");
     prepare();
     { KvmDevState warm = S_; warm.warm_only = 1; kvm_exec_kernel<<<1, KVM_THREADS, dyn_smem_, stream_>>>(warm); CK(cudaGetLastError()); CK(cudaStreamSynchronize(stream_)); }   // upload the kernel's code outside the timed window
+    clock_warmup();
     kvm_init_kernel<<<64, KVM_THREADS, 0, stream_>>>(S_);
     CK(cudaGetLastError());
     CK(cudaEventRecord(e0_, stream_));
@@ -967,6 +992,7 @@ static void usage() {
 
     "  --golden [--golden-tol R]  compare with <bundle_dir>/golden.json (single bundle): final buffers, versions, observed versions\n"
     "  --trace-csv FILE   per-task timeline  --dump-buffers   print buffers   --quiet   errors only   --check-ops   print registry\n"
+    "  --warm-ms N   keep the GPU busy N ms right before the timed launch (the SM clock runs low under sparse work; short timed runs inherit it)\n"
     "  --dump-bin DIR i,j,..  write the listed buffers (by metadata index, widened to little-endian f32 / raw i32) to DIR/<index>.bin after the run\n");
 }
 
@@ -987,6 +1013,7 @@ int main(int argc, char** argv) {
     else if (a == "--max-tasks") { cfg.max_tasks = (int)val(2, 1 << 26); sized = true; }
     else if (a == "--ring-words") { cfg.ring_words = (int)val(64, 1 << 28); sized = true; }
     else if (a == "--task-limit-s") cfg.task_limit_us = (unsigned long long)val(0, 86400) * 1000000ull;
+    else if (a == "--warm-ms") cfg.warm_ms = (int)val(0, 60000);
     else if (a == "--aging-us") cfg.aging_us = (int)val(0, 1000000000);
     else if (a == "--no-cont") cfg.cont = 0;
     else if (a == "--no-fifo") no_fifo = true;

@@ -47,6 +47,8 @@ lock itself. Any non-empty value counts.
 |---|---|---|---|
 | `examples/models/run_box.sh PREBUILT OUT [--sanitize] [--cases F] [--check-only]` | the `examples/models/run.sh` check with bundles from `examples/models/prebuild.sh` (CPU only); only scratch is `OUT` | 3400 s | `flock` unless `KVM_NO_LOCK=1` or `--check-only` |
 | `tests/gpu/run_gpt.sh`, `tests/litmus/run_litmus.sh`, `tests/litmus/run_fuzz.sh` | called by `run_exec_tests.sh --gpt/--litmus/--fuzz` | 900 / per stage / 3000 s | `flock` unless `KVM_NO_LOCK` is non-empty |
+| `tests/gpu_ops/run_hopper_box.sh build\|test\|bench\|step OUT` (sm_90 box) | the Hopper TMA + wgmma tiles (`include/kvm_hopper.cuh`): `build` = every sm_90a binary in parallel; `test` = `test_hopper` (every layout x tile kind x epilogue x launch size vs float64 and vs the sm_80 tile, path-taken counters), `test_ops`, `test_bf16`, `test_extra`, `test_exec`, sanitizers on `test_hopper`; `bench` = TFLOP/s Hopper vs sm_80 tile vs cuBLAS; `step` = gpt_162m step time with/without the Hopper tiles (`KVM_NO_HOPPER=1`) and PyTorch eager / graph / compile | build ~20 min on 32 cores; test ~30 min | none (no lock) |
+| `modal run --detach tests/modal/run_h100.py --stage build\|test\|bench\|step\|custom --tag NAME` | the same script on Modal: `build` on a CPU-only container, the rest on an H100 | as above | none |
 
 ## Not in the table on purpose
 

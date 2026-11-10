@@ -7,6 +7,9 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#ifndef KVM_TMA_MAXB
+#define KVM_TMA_MAXB 65536   // one block per tile here: every concurrent block needs its own tensor-map slot (sm_90a path)
+#endif
 #include "kvm_ctx_shim.cuh"
 #include "kvm_ops_gpt.cuh"
 
@@ -105,7 +108,7 @@ struct Batch {   // independent tasks, one block each
 static int g_smem_attr = 0;
 // Runs the batch (one block of 256 threads per task) and returns the device error word (0 = ok).
 static int run(Dev& d, const Batch& b, int smem = kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)) {   // what the executor would launch with
-    if (!g_smem_attr) { CK(cudaFuncSetAttribute(k_run, cudaFuncAttributeMaxDynamicSharedMemorySize, 112 * 1024)); g_smem_attr = 1; }
+    if (!g_smem_attr) { CK(cudaFuncSetAttribute(k_run, cudaFuncAttributeMaxDynamicSharedMemorySize, 112 * 1024)); kvm_hopper_host_init(); g_smem_attr = 1; }
     d.sync_table();
     int32_t* w; int *op, *off;
     CK(cudaMalloc(&w, b.w.size() * 4 + 4)); CK(cudaMalloc(&op, b.op.size() * 4)); CK(cudaMalloc(&off, b.off.size() * 4));

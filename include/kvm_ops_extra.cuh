@@ -678,6 +678,15 @@ KVM_GPT_DEVI void matmul_mma_bf16(const KvmCtx& ctx, const int32_t* a) {
                       (((uintptr_t)A | (uintptr_t)B) & 15) == 0 && (m0 & 7) == 0 && (n0 & 7) == 0;
     if (fast) {
         const float alpha = af(a, 12);
+#ifdef KVM_HOPPER_DEVICE
+        {   // sm_90a: TMA + wgmma m64n256k16 (kvm_hopper.cuh); a decline falls through to the mma.sync tile
+#define KVM_HOP_CALL(TA, TB) kvmhop::mm_bf16<TA, TB>((const uint16_t*)A, lda, (const uint16_t*)B, ldb, out, ldo, fo, bias, res, ldr, fr, pre, ldp, fp, m0, n0, M, N, K, alpha, gelu, accum, kvm_gpt_smem)
+            const bool done = (!ta && !tb) ? KVM_HOP_CALL(false, false) : (ta && !tb) ? KVM_HOP_CALL(true, false) : (!ta && tb) ? KVM_HOP_CALL(false, true) : KVM_HOP_CALL(true, true);
+#undef KVM_HOP_CALL
+            if (threadIdx.x == 0) atomicAdd(&kvm_hop_count[done ? 1 : 3], 1ull);
+            if (done) return;
+        }
+#endif
 #define KVM_MMA_CALL(TA, TB) kvmgpt::mma_bf16_tile<TA, TB>((const uint16_t*)A, lda, (const uint16_t*)B, ldb, out, ldo, fo, bias, res, ldr, fr, pre, ldp, fp, m0, n0, M, N, K, alpha, gelu, accum)
         if (!ta && !tb) KVM_MMA_CALL(false, false); else if (ta && !tb) KVM_MMA_CALL(true, false);
         else if (!ta && tb) KVM_MMA_CALL(false, true); else KVM_MMA_CALL(true, true);

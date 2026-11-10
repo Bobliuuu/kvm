@@ -476,6 +476,10 @@ _BF16_STORAGE = {   # op: (buffers that may be bf16 storage, of which written)
     'rope_bwd': (('x', 'out'), ('out',)),
     'softmax_ce_fwd': (('logits',), ()),
     'softmax_ce_bwd': (('logits', 'dlogits'), ('dlogits',)),
+    'attn_fwd': (('q', 'k', 'v', 'o'), ('o',)),
+    'attn_bwd_delta': (('o', 'do'), ()),
+    'attn_bwd_dq': (('q', 'k', 'v', 'do', 'dq'), ('dq',)),
+    'attn_bwd_dkv': (('q', 'k', 'v', 'do', 'dk', 'dv'), ('dk', 'dv')),
 }
 
 

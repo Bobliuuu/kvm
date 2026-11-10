@@ -1,0 +1,28 @@
+name: cpu-suites
+# GPU suites run on an A100 via tests/modal/run_suite.py (see RUNNING_TESTS.md); this job is the "before every commit" CPU gate.
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install numpy
+      - name: compiler, ABI, CPU VM, registries
+        run: python3 -I -m unittest discover -s tests
+      - name: frontend
+        run: python3 -I -m unittest discover -s tests/frontend
+      - name: distributed (CPU)
+        run: python3 -I -m unittest discover -s tests/dist -p 'test_*.py'
+      - name: adaptive controller (host)
+        run: c++ -std=c++17 -Iinclude tests/host/test_adapt.cpp -o /tmp/test_adapt && /tmp/test_adapt
+      - name: shell syntax
+        run: for f in $(git ls-files '*.sh'); do bash -n "$f" || exit 1; done

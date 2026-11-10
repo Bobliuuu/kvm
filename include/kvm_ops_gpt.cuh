@@ -98,6 +98,24 @@ __host__ __device__ constexpr int kvm_gpt_smem_bytes(int max_hd) {
 #endif
 #define KVM_GPT_SMEM_BYTES kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)
 
+// ---- One task's dynamic shared memory: what the launch is sized from (KvmExec::size_launch) and what the ops' guards check ----------
+// KVM_GPT_SMEM_BYTES is the most any task of this build can need. A launch that asks for it leaves the A100 28 KB of L1 at 147,456 B
+// (the carve-out serves shared memory first), slowing every op's cached loads and spill reloads; sized to the tasks a bundle really
+// runs it keeps 60-128 KB. Every kernel below static_asserts its footprint against these, so host and device never disagree.
+// The executor runs our tiles for every matmul_tile task (#16's j16 set beside them is the bench's A/B, not a dispatch path).
+#define KVM_GPT_SMEM_SMALL (8 * 1024)   // every other op of the pack: block reductions and attn_decode's 4 KiB, well under it
+__host__ __device__ constexpr int kvm_gpt_tile64_smem() { return KVM_GPT_TILE64_NST * 2 * 2048 * 4; }   // stages; the k-halves' partials reuse them
+__host__ __device__ constexpr int kvm_gpt_bigtile_smem(int bm, int bn) {   // 128x128 / 256x128: stages, or the accumulators staged for the epilogue
+    return bm * (bn + 8) * 4 <= kvm_gpt_smem_bytes(64) && bm * (bn + 8) * 4 > KVM_GPT_BIG_NST * (bm + bn) * KVM_GPT_BIG_BK * 4
+               ? bm * (bn + 8) * 4 : KVM_GPT_BIG_NST * (bm + bn) * KVM_GPT_BIG_BK * 4;
+}
+__host__ __device__ constexpr int kvm_gpt_attn_smem(int hd) { return 3 * 2 * 32 * (hd + 4) * 4; }   // 3 stages of two 32 x (hd+4) tiles
+// matmul_tile by its flags (a[11]): 64 (256x128) without 16 (3xTF32) or 128 (bf16 operands) is one 256x128 tile; 32, or 64 with either,
+// a 128x128 tile (two passes for 64); everything else the 64x64 tile.
+__host__ __device__ constexpr int kvm_gpt_matmul_tile_smem(int fl) {
+    return (fl & 64) && !(fl & (16 | 128)) ? kvm_gpt_bigtile_smem(256, 128) : (fl & (32 | 64)) ? kvm_gpt_bigtile_smem(128, 128) : kvm_gpt_tile64_smem();
+}
+
 extern __shared__ __align__(128) unsigned char kvm_gpt_smem[];
 
 // Device error codes reported through ctx.fail (distinct from the executor's own KVM_ERR_* values, which are small).
@@ -108,11 +126,14 @@ enum KvmGptErr {
     KVM_GPT_E_RANGE = KVM_GPT_ERR_BASE + 3,   // range / shape arguments outside the buffer
     KVM_GPT_E_SHAPE = KVM_GPT_ERR_BASE + 4,   // unsupported shape (head size), bad flags or misaligned buffer
     KVM_GPT_E_TOKEN = KVM_GPT_ERR_BASE + 5,   // token id / target outside [0, V)
-    KVM_GPT_E_KVLEN = KVM_GPT_ERR_BASE + 6    // KV cache length overflow
+    KVM_GPT_E_KVLEN = KVM_GPT_ERR_BASE + 6,   // KV cache length overflow
+    KVM_GPT_E_SMEM = KVM_GPT_ERR_BASE + 7     // the launch's dynamic shared memory is below what the task needs (kvm_gpt_*_smem)
 };
 enum { KVM_GPT_F32 = 0, KVM_GPT_I32 = 1, KVM_GPT_BF16 = 2 };   // KvmBuf.dtype; bf16 = raw 16-bit storage
 
 namespace kvmgpt {
+
+KVM_GPT_DEVI unsigned dyn_smem_bytes() { unsigned r; asm("mov.u32 %0, %%dynamic_smem_size;\n" : "=r"(r)); return r; }   // of this launch
 
 // ---- argument validation: all checks are block-uniform, so on failure every thread returns before any barrier -------------
 struct Chk {
@@ -715,6 +736,7 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
                           int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, int act, bool accum,
                           int sd = 0) {   // sd (BF only): storage-dtype bits, 1 A, 2 B, 4 out, 8 res, 16 pre are raw bf16 instead of fp32
     constexpr int BK = 32, TM = 64, TN = 64, TILE = 2048, STAGE = 2 * TILE, NST = KVM_GPT_TILE64_NST, CLD = TN + 8;
+    static_assert(NST * STAGE * 4 == kvm_gpt_tile64_smem() && 2 * TM * CLD * 4 <= kvm_gpt_tile64_smem(), "the launch is sized by kvm_gpt_tile64_smem");
     float* sm = reinterpret_cast<float*>(kvm_gpt_smem);   // [stage][A | B]
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, wmi = (warp >> 1) & 1, wni = warp & 1, kh = warp >> 2;
     const int g = lane >> 2, t = lane & 3;
@@ -835,6 +857,7 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
                               int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, int act, bool accum) {
     constexpr int BK = KVM_GPT_BIG_BK, NST = KVM_GPT_BIG_NST, BM = 64 * WM, BN = WTN * WN, NJ = WTN / 8, ATILE = BM * BK, TILE = ATILE, STAGE = (BM + BN) * BK;
     static_assert(WM * WN == 8, "8 warps");
+    static_assert(NST * STAGE * 4 <= kvm_gpt_bigtile_smem(BM, BN), "the launch is sized by kvm_gpt_bigtile_smem");
     float* sm = reinterpret_cast<float*>(kvm_gpt_smem);   // [stage][A | B]
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, wmi = warp / WN, wni = warp % WN, g = lane >> 2, t = lane & 3;
     const bool va = aligned16(A, lda) && (!TA || (m0 & 3) == 0), vb = aligned16(B, ldb) && (TB || (n0 & 3) == 0);   // tile origin column too
@@ -967,6 +990,7 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
     KVM_GPT_PROBE(2);
     cp_wait<0>();
     constexpr int CLD = BN + 8;   // row stride of the accumulator tile in shared memory (padded against bank conflicts)
+    static_assert(BM * CLD * 4 > kvm_gpt_smem_bytes(64) || BM * CLD * 4 <= kvm_gpt_bigtile_smem(BM, BN), "the staged epilogue is sized by kvm_gpt_bigtile_smem");
     if constexpr (BM * CLD * 4 <= kvm_gpt_smem_bytes(64)) {   // accumulators through shared memory (the register epilogue below costs one 8-byte store per accumulator pair, in instructions the block's 8 warps share)
         __syncthreads();   // all warps done reading the last stage; shared memory now takes the accumulators
 #pragma unroll
@@ -1039,6 +1063,7 @@ KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
     k.need(!dg || (a[5] != -1 && a[3] == -1 && a[4] == -1 && !accum && !gelu && !bf), KVM_GPT_E_SHAPE);   // 512 (dgelu): pre is its input, and it replaces the rest of the epilogue
     k.need(M > 0 && N > 0 && K > 0 && m0 >= 0 && m0 < M && n0 >= 0 && n0 < N);
     k.need((fl & ~2047) == 0, KVM_GPT_E_SHAPE);
+    k.need(dyn_smem_bytes() >= (unsigned)kvm_gpt_matmul_tile_smem(fl), KVM_GPT_E_SMEM);   // a launch sized below this task's tile (KvmExec::size_launch)
     if (k.bad) return;
     int lda, ldb, ldo, ldr = 0, ldp = 0;
     const float* A = k.mat(a[0], ta ? K : M, ta ? M : K, &lda);
@@ -1190,7 +1215,6 @@ namespace j16 {
 // one fewer than the integer-compare form it replaces, and bitwise the operands cuBLAS TF32 feeds its tensor cores (results/
 // 2026-11-09-a100-matmul-parity: 0 difference on 4096^3). (Round-toward-zero would save the add but triples the error: 7.6e-4 vs 2.7e-4.)
 KVM_GPT_DEVI unsigned f2tf32_op(float x) { const unsigned u = __float_as_uint(x); return fabsf(x) < __int_as_float(0x7f800000) ? u + 0x1000u : u; }
-KVM_GPT_DEVI unsigned dyn_smem_bytes() { unsigned r; asm("mov.u32 %0, %%dynamic_smem_size;\n" : "=r"(r)); return r; }   // of this launch
 
 
 // ---- mm_tf32_tile: the fast path of the 128x128 (flag 32) and 256x128 (flag 64) 1xTF32 tiles ------------------------------------
@@ -2008,6 +2032,7 @@ template <int HD> struct AM {
     static_assert(HD % 8 == 0, "hd");
     static constexpr int LD = HD + 4, NT = HD / 8, TILE = 32 * LD, STAGE = 2 * TILE, NST = 3, NF = NT < 4 ? NT : 4;
     static constexpr int SMEM = NST * STAGE * 4;   // bytes: 3 stages of two 32 x (HD+4) tiles = 51 KiB at hd=64, 99 KiB at hd=128
+    static_assert(SMEM == kvm_gpt_attn_smem(HD), "the launch is sized by kvm_gpt_attn_smem");
 };
 // c[n0 + i] += A * B[i], i < N, three products each; product-major so the N independent accumulator chains interleave.
 template <int N, int NA>
@@ -2438,6 +2463,8 @@ KVM_GPT_DEVI void attn_fwd(const KvmCtx& ctx, const int32_t* a) {
     AttnArgs A{};
     A.b = a[5]; A.h = a[6]; A.i0 = a[7]; A.T = a[8]; A.H = a[9]; A.Hkv = a[10]; int hd = a[11]; A.scale = af(a, 12);
     if (!attn_geom(k, A.b, A.h, A.i0, A.T, A.H, A.Hkv, hd, false)) return;
+    k.need(dyn_smem_bytes() >= (unsigned)kvm_gpt_attn_smem(hd), KVM_GPT_E_SMEM);   // a launch sized below this head size's stages
+    if (k.bad) return;
     long R = (long)(A.b + 1) * A.T;
     A.q = attn_mat(k, A, a[0], R, (long)A.H * hd, &A.ldq, KVM_ATT_Q); A.k = attn_mat(k, A, a[1], R, (long)A.Hkv * hd, &A.ldk, KVM_ATT_K);
     A.v = attn_mat(k, A, a[2], R, (long)A.Hkv * hd, &A.ldv, KVM_ATT_V);
@@ -2502,6 +2529,8 @@ KVM_GPT_DEVI void attn_bwd_dq(const KvmCtx& ctx, const int32_t* a) {
     AttnArgs A{};
     A.b = a[7]; A.h = a[8]; A.i0 = a[9]; A.T = a[10]; A.H = a[11]; A.Hkv = a[12]; int hd = a[13]; A.scale = af(a, 14);
     if (!attn_geom(k, A.b, A.h, A.i0, A.T, A.H, A.Hkv, hd, false)) return;
+    k.need(dyn_smem_bytes() >= (unsigned)kvm_gpt_attn_smem(hd), KVM_GPT_E_SMEM);   // a launch sized below this head size's stages
+    if (k.bad) return;
     long R = (long)(A.b + 1) * A.T, nl = R * A.H;
     A.q = attn_mat(k, A, a[0], R, (long)A.H * hd, &A.ldq, KVM_ATT_Q); A.k = attn_mat(k, A, a[1], R, (long)A.Hkv * hd, &A.ldk, KVM_ATT_K);
     A.v = attn_mat(k, A, a[2], R, (long)A.Hkv * hd, &A.ldv, KVM_ATT_V); A.dout = attn_mat(k, A, a[3], R, (long)A.H * hd, &A.ldo, KVM_ATT_DO);
@@ -2525,6 +2554,8 @@ KVM_GPT_DEVI void attn_bwd_dkv(const KvmCtx& ctx, const int32_t* a) {
     A.Hkv = kb->cols / hd;
     k.need(A.Hkv > 0 && kb->cols % hd == 0, KVM_GPT_E_SHAPE);
     if (k.bad || !attn_geom(k, A.b, A.h, A.i0, A.T, A.H, A.Hkv, hd, true)) return;
+    k.need(dyn_smem_bytes() >= (unsigned)kvm_gpt_attn_smem(hd), KVM_GPT_E_SMEM);   // a launch sized below this head size's stages
+    if (k.bad) return;
     long R = (long)(A.b + 1) * A.T, nl = R * A.H;
     A.q = attn_mat(k, A, a[0], R, (long)A.H * hd, &A.ldq, KVM_ATT_Q); A.k = attn_mat(k, A, a[1], R, (long)A.Hkv * hd, &A.ldk, KVM_ATT_K);
     A.v = attn_mat(k, A, a[2], R, (long)A.Hkv * hd, &A.ldv, KVM_ATT_V); A.dout = attn_mat(k, A, a[3], R, (long)A.H * hd, &A.ldo, KVM_ATT_DO);

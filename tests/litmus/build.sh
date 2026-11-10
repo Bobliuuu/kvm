@@ -31,8 +31,8 @@ mut nodekkerfence kvm_exec.cuh 's#^(\s*)__threadfence\(\);  // seq_cst fence: pu
 mut exchbefore kvm_exec.cuh 's#^(\s*)int old = atom_cas\(S.version \+ var, ver - 1, ver\);#\1kvm_scan_parked(S, var); int old = atom_cas(S.version + var, ver - 1, ver);#; s#^  kvm_scan_parked\(S, var\);$#  /* mutant */#'
 # MP: publisher fence removed and release CAS demoted to a relaxed atomicCAS
 mut weakpub kvm_exec.cuh 's#^(\s*)__threadfence\(\);( +)// fence.sc.gpu: weights before version.*#\1/* mutant */#; s#int old = atom_cas\(S.version \+ var, ver - 1, ver\);#int old = atomicCAS(S.version + var, ver - 1, ver);#'
-# Queue: popper claims the head with a plain store instead of CAS (double pop under contention)
-mut popplain kvm_sched.cuh 's#old = atom_cas64\(&S.qctl\[qi\].head, cd.head, cd.head \+ 1\);#*(volatile unsigned long long*)\&S.qctl[qi].head = cd.head + 1; old = cd.head;#'
+# Queue: popper reserves an item with a plain read-modify-write instead of the atomic fetch-add (two poppers reserve the same item: double pop)
+mut popplain kvm_sched.cuh 's#\(long long\)atom_add64\(&q->avail, ~0ull\) > 0#(long long)((*(volatile unsigned long long*)\&q->avail)--) > 0#'
 # Queue: producer publishes the cell with a relaxed store (no release): payload may be stale
 mut qrelax kvm_sched.cuh 's#st_rel64\(&cell->seq, pos \+ 1\);#*(volatile unsigned long long*)\&cell->seq = pos + 1;#'
 bad=0

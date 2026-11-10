@@ -165,7 +165,7 @@ struct KvmTrace {  // one per slot, 64 B
 #define KVM_TRACE_CONT   16   // started as the continuation of the task that released it (no enqueue, no pop)
 
 struct KvmCell { unsigned long long seq, ready_ns, deadline_ns; int slot, res; };   // 32 B; deadline_ns 0 = none, res = KvmRes (SCHED)
-struct alignas(128) KvmQCtl { unsigned long long head, tail; };                    // own cache line
+struct alignas(128) KvmQCtl { unsigned long long head, tail, avail; };   // own cache line; avail = published - reserved (scheduler off: see kvm_claim)
 
 struct KvmWin { int remaining; unsigned succ_end; int ne; int pad; };                              // per admitted bundle record ("window")
 

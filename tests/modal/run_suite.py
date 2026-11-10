@@ -35,7 +35,7 @@ SUITES = {
     "negative": 'FLAGS="-DKVM_BREAK_FENCE"\n' + BUILD + 'timeout 2400 ./test_exec --expect-fail versions; echo "exit: $?"',
     "negative-park": 'FLAGS="-DKVM_BREAK_PARK_RECHECK"\n' + BUILD + 'timeout 2400 ./test_exec --expect-fail litmus; echo "exit: $?"',
     "sanitize": 'FLAGS=""\n' + BUILD + 'for t in memcheck racecheck synccheck; do echo "== compute-sanitizer --tool $t smoke"; timeout 1800 compute-sanitizer --tool $t --error-exitcode 9 ./test_exec smoke 2>&1 | tail -40; echo "sanitizer exit: ${PIPESTATUS[0]}"; done',
-    "litmus": 'bash tests/litmus/run_litmus.sh; echo "exit: $?"',
+    "litmus": 'KVM_JOBS=8 bash tests/litmus/run_litmus.sh; echo "exit: $?"',
     "generic": 'bash tests/generic/run_box.sh /logs/$TAG/generic; echo "exit: $?"',
     "gpt": 'FLAGS=""\n' + BUILD + 'bash tests/gpu/run_gpt.sh; echo "exit: $?"',
 }

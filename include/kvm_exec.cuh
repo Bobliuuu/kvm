@@ -684,7 +684,8 @@ __device__ void kvm_post_task(const KvmDevState& S, int slot, unsigned wid) {
   red_add(&S.cnt->done, 1);                                                              // counted last; posted
 }
 
-__device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
+__device__ void kvm_worker(const KvmDevState& Sparam, KvmWatch& t0, KvmShared& sh) {
+  const KvmDevState S = Sparam;   // a by-value copy: everything is inlined into this worker, so the fields live in registers instead of a generic load through the parameter's address at every use (dozens per hop)
   unsigned backoff = 0;
   if (threadIdx.x == 0) sh.part = kvm_sched_part(S);
   int owed = -1;   // the task whose completion bookkeeping (kvm_post_task) this block still owes; every thread tracks it, thread 32 pays it during the pop (or, for a continuation, while the next descriptor loads)

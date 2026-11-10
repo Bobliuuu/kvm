@@ -1,0 +1,8 @@
+w_tiny     cont                   best   776.7  median   785.9  worst   789.4 us/step  failed 0
+w_tiny     ticket_cont            best   748.1  median   767.9  worst   770.7 us/step  failed 0
+w_tiny     ticket_nocont          best   820.3  median   844.6  worst   851.9 us/step  failed 0
+w_tiny     nocont                 best   831.0  median   854.3  worst   856.2 us/step  failed 0
+w_small    cont                   best  1728.4  median  1731.4  worst  2086.9 us/step  failed 0
+w_small    ticket_cont            best  1567.2  median  1569.8  worst  1572.7 us/step  failed 0
+w_small    ticket_nocont          best  1649.2  median  1649.9  worst  1653.9 us/step  failed 0
+w_small    nocont                 best  1814.8  median  1820.0  worst  1824.7 us/step  failed 0

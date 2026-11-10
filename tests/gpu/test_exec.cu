@@ -961,12 +961,17 @@ static bool suite_front() {
   int before = g_fail;
   const int CH = 100, LEN = 50;   // 100 independent chains of 50 dependent adds, each on its own counter
   KvmConfig c = small_cfg(8); c.max_tasks = 1 << 14; c.live_cap = 1 << 13; c.succ_cap = 1 << 14; c.ring_words = 1 << 17;
-  KvmExec ex(c); int one = ex.add_buffer(1, 1, std::vector<float>{1.f}); std::vector<int> xs;
+  // The two submissions use their own counters: the front interleaves their chunks, and `add` is a plain read-modify-write, so two chains on one
+  // counter would race (lost updates) whenever a chunk of each is live at once; dispatch fast enough to start them in lockstep made that a coin flip.
+  KvmExec ex(c); int one = ex.add_buffer(1, 1, std::vector<float>{1.f}); std::vector<int> xs, ys;
   for (int i = 0; i < CH; ++i) xs.push_back(ex.add_buffer(1, 1, std::vector<float>{0.f}));
+  for (int i = 0; i < CH; ++i) ys.push_back(ex.add_buffer(1, 1, std::vector<float>{0.f}));
   ex.start();
-  KvmBundleBuilder bb;
-  for (int ch = 0; ch < CH; ++ch) { int prev = -1; for (int k = 0; k < LEN; ++k) { int t = bb.add("add", {Bf(xs[ch]), Bf(one), Bf(xs[ch]), I(1)}); if (prev >= 0) bb.edge(prev, t); prev = t; } }
-  KvmBundle whole = bb.build();
+  auto chains = [&](const std::vector<int>& cs) {
+    KvmBundleBuilder b;
+    for (int ch = 0; ch < CH; ++ch) { int prev = -1; for (int k = 0; k < LEN; ++k) { int t = b.add("add", {Bf(cs[ch]), Bf(one), Bf(cs[ch]), I(1)}); if (prev >= 0) b.edge(prev, t); prev = t; } }
+    return b.build(); };
+  KvmBundle whole = chains(xs), whole2 = chains(ys);
   std::vector<KvmBundle> parts = KvmFront::split(whole, 700);
   size_t nt = 0, ne = 0; bool inside = true;
   for (auto& p : parts) {
@@ -979,13 +984,13 @@ static bool suite_front() {
   CHECK(KvmFront::split(whole, 10000).size() == 1, "a bundle under the limit must stay one record");
   CHECK(KvmFront::split(whole, 30).size() == (size_t)CH, "a component over the limit is its own chunk (one chain per chunk)");
   KvmFront::Cfg fc; fc.chunk_tasks = 700; fc.ring_budget_tasks = 1400; fc.classes = 2; KvmFront fr(ex, fc);
-  KvmFront::Ticket t0 = fr.submit(whole, 1), t1 = fr.submit(whole, 0);
+  KvmFront::Ticket t0 = fr.submit(whole, 1), t1 = fr.submit(whole2, 0);
   CHECK(fr.wait(t0, 30000) && fr.wait(t1, 30000), "front tickets did not complete");
   CHECK(fr.flush(10000), "front flush");
   ex.close(); const KvmResult& r = ex.finish();
   CHECK(r.ok() && r.done == 2 * (int)nt && r.admitted == 2 * (int)nt, "done %d admitted %d (want %zu)", r.done, r.admitted, 2 * nt);
-  int bad = 0; for (int ch = 0; ch < CH; ++ch) bad += ex.read_buffer(xs[ch])[0] != (float)(2 * LEN);
-  CHECK(bad == 0, "%d chain counters != %d (every task must run exactly once, in chain order)", bad, 2 * LEN);
+  int bad = 0; for (int ch = 0; ch < CH; ++ch) bad += (ex.read_buffer(xs[ch])[0] != (float)LEN) + (ex.read_buffer(ys[ch])[0] != (float)LEN);
+  CHECK(bad == 0, "%d chain counters != %d (every task must run exactly once, in chain order)", bad, LEN);
   printf("  front: %zu tasks in %zu chunks x2 bundles, %d ring submissions, every chain counter exact\n", nt, parts.size(), fr.chunks_submitted());
   return g_fail == before;
 }

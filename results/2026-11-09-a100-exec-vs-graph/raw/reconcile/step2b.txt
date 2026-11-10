@@ -1,0 +1,8 @@
+w_tiny     base_lean              best   806.3  median   828.2  worst   831.0 us/step  failed 0
+w_tiny     nocont                 best   829.3  median   850.6  worst   853.9 us/step  failed 0
+w_tiny     cont_start             best   812.3  median   836.2  worst   839.7 us/step  failed 0
+w_tiny     cont_end               best   833.2  median   841.1  worst   842.5 us/step  failed 0
+w_small    base_lean              best  1785.1  median  1787.5  worst  2179.1 us/step  failed 0
+w_small    nocont                 best  1815.5  median  1816.8  worst  1819.1 us/step  failed 0
+w_small    cont_start             best  1786.7  median  1791.2  worst  1795.7 us/step  failed 0
+w_small    cont_end               best  1787.9  median  1792.3  worst  1800.3 us/step  failed 0

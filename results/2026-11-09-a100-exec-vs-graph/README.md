@@ -1,23 +1,54 @@
 # Goal 3c: executor vs whole-step CUDA graph, A100 (2026-11-09): faster than before, still loses 1.8x / 2.4x
 
-> **Landing note.** The numbers below were measured on branch `perf/exec-vs-graph` (PR #6), whose device changes (ticket-based ready-queue claim, continuation fast path, one-fence-warp completion, admitter staging, `--no-cont`, `KVM_LEAN`) rewrite the same hot paths as the completion hand-off / staged admission of PR #1 and conflict with them in `include/kvm_exec.cuh`, `include/kvm_sched.cuh`, `tests/gpu/test_exec.cu` and `tests/litmus/build.sh`. The combined branch keeps PR #1's device code (GPU-verified there) and carries PR #6's results and `bench/exec_vs_graph/` scripts only; `nocont.sh` and the "executor (this work)" column need the PR #6 code (branch tip 7801809). The verdict (goal 3 negative for the executor) rests on the numbers in this file and on PR #7's independent measurement.
+> **Reconciliation (PR #9 on the landing branch).** The numbers in the first table were measured on `perf/exec-vs-graph` (PR #6, tip 7801809). The landing branch (PRs #1-#7) had dropped
+> #6's device code because it rewrites the same hot paths as #1's completion hand-off. It is now ported back piece by piece onto #1's code, each piece measured on its own
+> (table below); only the pieces that win were kept, and the landing branch's racecheck fixes (every warp fences its own stores before the op's barrier) stay in. The
+> reconciled executor reproduces #6's numbers (761 / 1570 us per step against 760 / 1565 for the #6 build, same box, interleaved) and the verdict is unchanged.
 
+## Reconciliation: each piece measured alone (executor us per step, best / median of 7, interleaved runs on one box)
 
-**Verdict: bounded negative.** After porting the unmerged admission/completion work and adding a continuation fast path, the executor trains
-`gpt_tiny` at 758 us/step and `gpt_small` at 1567 us/step (was 1166 / 2818 in `2026-11-06-vs-pytorch`), correct against PyTorch. A whole-step CUDA graph
-runs the same steps at 430 / 645 us (best of 7), `torch.compile` + graph at 202 / 334 us. The executor therefore **loses to the whole-step graph by
-1.76x (tiny) and 2.43x (small)**; goal 3 does not hold for the executor on any workload measured. No worker count helps (below), so the loss is
+`gpt_tiny` / `gpt_small`, A100-SXM4-40GB, `-DKVM_LEAN` builds unless noted, driver `bench/exec_vs_graph/ab.py` (round r runs every variant once, order rotated). Raw: `raw/reconcile/`.
+
+| Step | tiny | small | Kept? |
+|---|---|---|---|
+| landing (PR #8 device code: #1 hand-off, head CAS) | 822.6 / 830.8 | 1785.9 / 1788.6 | baseline |
+| 1. `-DKVM_LEAN` vs the full build (`raw/reconcile/p6.txt`, same code) | 818.9 / 827.3 vs 819.9 / 830.2 | 1782.3 / 1786.6 vs 1785.8 / 1787.2 | yes: no runtime effect, build 5-6 min instead of 25+ |
+| 2a. continuation, first port (worker pops nothing, but still pays the previous task's bookkeeping before the barrier) | 827.4 / 836.1 (landing 818.6; same binary `--no-cont` 838.9) | 1788.9 / 1793.8 (landing 1784.0; `--no-cont` 1810.6) | no: +1.2% over `--no-cont`, but not better than landing |
+| 2b. same, queue-empty test moved from task start to op end | 833.2 / 841.1 (continuation fires on ~47% of tasks) | 1787.9 / 1792.3 | no change |
+| 2c. continuation + the previous task's `kvm_post_task` paid by an idle thread during the release phase | 775.4 / 783.5 (landing 819.9) | 1724.2 / 1729.8 (landing 1782.8) | **yes**: -5.4% / -3.3% |
+| 3. ticket claim (reserve + fetch-add) on top of 2c, scheduler off | 748.1 / 767.9 (vs 776.7 / 785.9 without) | 1567.2 / 1569.8 (vs 1728.4 / 1731.4) | **yes**: -3.7% / -9.3%; without continuation 820.3 vs 831.0 and 1649.2 vs 1814.8 |
+| reconciled (LEAN + 2c + 3), final tree | **760.6 / 768.0** | **1570.4 / 1571.4** | |
+| same, `--no-cont` | 836.9 / 846.0 | 1646.9 / 1652.1 | |
+| PR #6 tip 7801809 (reference build, same run) | 760.2 / 769.6 | 1565.2 / 1568.1 | |
+
+Why 2a did not win and 2c does: in the landing code the pop's claim is cheap and its completion bookkeeping is hidden behind it (`kvm_post_task` runs on thread 32 during
+the pop). A continuation skips the pop, so that bookkeeping (window credit, slot recycle, done count: three dependent L2 round trips) landed in front of the barrier
+that starts the successor and cost what the pop used to; moving it to an otherwise idle thread of the release phase (`pay` in `kvm_run_task`) makes the skipped pop
+a real saving. The ticket claim wins even though it adds round trips per pop, because with 100+ polling workers the head CAS retries (one winner per round trip); it is
+used only with the scheduler off. With the scheduler on, the claim has to take exactly the scanned cell (the policy block counts ready/running/BW/deadline tasks from that
+cell's `res` and deadline before the claim), so the CAS claim stays there. Continuation is likewise off with the scheduler on.
+
+Not ported, and why: #6's admitter staging and host-side stream prep. #1 has its own staged admission, and the reconciled executor is within 0.1-0.3% of the #6 build on both
+workloads, so nothing measurable is left for it on these sizes (admission is off the dependency chain here, see below). #6's one-fence-warp completion is not ported
+either: it drops the per-warp fence that fixed the rare `versions` failure.
+
+The graph baselines were re-measured the same day on the same box: whole-step graph 430.4 / 430.6 (tiny) and 645.1 / 829.7 (small), `torch.compile` + graph 201.7 and 425.2
+(`raw/reconcile/torch_now_*.json`). Executor / graph: 1.77x (tiny) and 2.43x (small, best) or 1.89x (small, median; the graph flips between two clock states).
+
+**Verdict: bounded negative.** The executor trains `gpt_tiny` at 761 us/step and `gpt_small` at 1570 us/step on the landing code (1166 / 2818 in `2026-11-06-vs-pytorch`, 822 / 1786
+before this reconciliation), correct against PyTorch. A whole-step CUDA graph runs the same steps at 430 / 645 us (best of 7), `torch.compile` + graph at 202 / 425. The executor
+**loses to the whole-step graph by 1.77x (tiny) and 2.43x (small)**; goal 3 does not hold for the executor on any workload measured. No worker count helps (below), so the loss is
 dependency-chain latency, not contention.
 
 | | |
 |---|---|
 | GPU | A100-SXM4-40GB, 108 SMs, driver 580.105.08, CUDA 12.8, shared box, one `flock ~/.gpu.lock` hold per run |
-| Code | branch `perf/exec-vs-graph` (PR #2 tip c9ab1bc + cherry-picks of `perf/admission-bottleneck` 882c173 0d5ab11 92f34d1 5014d26 af266bf a05b926 and `perf/completion-path` a44c1c0 5d825ae c4e3ab5, + continuation, see git log) |
+| Code (first table) | branch `perf/exec-vs-graph` (PR #6; PR #2 tip c9ab1bc + cherry-picks of `perf/admission-bottleneck` 882c173 0d5ab11 92f34d1 5014d26 af266bf a05b926 and `perf/completion-path` a44c1c0 5d825ae c4e3ab5, + continuation, see git log) |
 | Executor build | `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude -DKVM_LEAN --fmad=false -Xcompiler -ffp-contract=off -lineinfo kvm_exec.cu` (`KVM_LEAN` drops the comm/extra packs, 6 min instead of 25+; the GPT pack the bundles use is in) |
 | Workloads | `bench/vs_pytorch/gen.py`: gpt_tiny (1 layer, d32, 32 tokens/step) and gpt_small (2 layers, d64, 128 tokens/step), 50 steps, TF32, a100 tiling |
 | Commands | `bench/exec_vs_graph/run.sh` (graph, compile_graph, executor with/without continuation, traced run), `verify.sh`-equivalent steps listed under Correctness; raw in `raw/` |
 
-## Numbers (us per optimizer step, best / median of 7)
+## Numbers of PR #6's own build (us per optimizer step, best / median of 7; reproduced above on the landing code)
 
 | | whole-step graph | compile + graph | executor (this work) | executor, no continuation | executor 2026-11-06 | executor vs graph |
 |---|---|---|---|---|---|---|

@@ -1,0 +1,8 @@
+w_tiny     landing                best   822.6  median   830.8  worst   831.7 us/step  failed 0
+w_tiny     final                  best   760.6  median   768.0  worst   771.1 us/step  failed 0
+w_tiny     final_nocont           best   836.9  median   846.0  worst   848.4 us/step  failed 0
+w_tiny     p6                     best   760.2  median   769.6  worst   771.0 us/step  failed 0
+w_small    landing                best  1785.9  median  1788.6  worst  2204.8 us/step  failed 0
+w_small    final                  best  1570.4  median  1571.4  worst  1629.1 us/step  failed 0
+w_small    final_nocont           best  1646.9  median  1652.1  worst  1653.6 us/step  failed 0
+w_small    p6                     best  1565.2  median  1568.1  worst  1571.1 us/step  failed 0

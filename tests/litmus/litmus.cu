@@ -15,7 +15,7 @@
 #endif
 #include "kvm_exec.cuh"
 #define NSLOTS_SET(nt) (S.nslots = 0)   /* slot-recycling executor: no free ring here (kvm_init_kernel must not touch fcells) */
-__device__ __forceinline__ int lit_pop(const KvmDevState& S) { int how; return kvm_pop(S, kvm_now(), -1, how); }   // scheduler off: one class
+__device__ __forceinline__ int lit_pop(const KvmDevState& S) { int how, dw; return kvm_pop(S, kvm_now(), -1, how, dw); }   // scheduler off: one class
 
 #define CK(x) do { cudaError_t e_ = (x); if (e_ != cudaSuccess) { fprintf(stderr, "%s:%d %s -> %s\n", __FILE__, __LINE__, #x, cudaGetErrorString(e_)); exit(3); } } while (0)
 

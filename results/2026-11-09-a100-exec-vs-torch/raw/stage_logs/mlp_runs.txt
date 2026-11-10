@@ -1,0 +1,53 @@
+GATE 1+2 ok: 3-step run within 1e-3 of the CPU golden; 4 replicated copies bitwise equal to the single run (79 buffers)
+env {'torch': '2.7.0', 'cuda': '12.8', 'gpu': 'NVIDIA A100-SXM4-40GB', 'sms': 108}
+GATE 3: executor vs eager, loss max rel 2.40e-04, weights max rel L2 5.07e-05, loss 4.5369 -> 0.3433; vs float64: executor 3.05e-04, eager 1.89e-04
+  R=1 eager: loss vs eager 0.00e+00, vs fp64 1.89e-04
+  R=1 compile: loss vs eager 1.03e-02, vs fp64 1.03e-02
+  R=1 compile_graph: loss vs eager 1.03e-02, vs fp64 1.03e-02
+  R=1 seq_graph: loss vs eager 0.00e+00, vs fp64 1.89e-04
+  R=1 batched_compile: loss vs eager 1.02e-02, vs fp64 1.03e-02
+{"runs": 1, "steps": 50, "eager": 803.9, "compile": 956.6, "compile_graph": 62.6, "seq_graph": 115.2, "batched_compile": 60.8, "executor": 554.1}
+  R=2 eager: loss vs eager 0.00e+00, vs fp64 1.89e-04
+  R=2 seq_graph: loss vs eager 0.00e+00, vs fp64 1.89e-04
+  R=2 multi_graph: loss vs eager 0.00e+00, vs fp64 1.89e-04
+  R=2 batched: loss vs eager 2.06e-04, vs fp64 3.09e-04
+  R=2 batched_compile: loss vs eager 1.02e-02, vs fp64 1.03e-02
+{"runs": 2, "steps": 50, "eager": 1594.6, "seq_graph": 215.5, "multi_graph": 127.2, "batched": 132.3, "batched_compile": 61.6, "executor": 720.4}
+  R=4 eager: loss vs eager 0.00e+00, vs fp64 1.89e-04
+  R=4 seq_graph: loss vs eager 0.00e+00, vs fp64 1.89e-04
+  R=4 multi_graph: loss vs eager 0.00e+00, vs fp64 1.89e-04
+  R=4 batched: loss vs eager 2.06e-04, vs fp64 3.09e-04
+  R=4 batched_compile: loss vs eager 1.02e-02, vs fp64 1.03e-02
+{"runs": 4, "steps": 50, "eager": 2995.6, "seq_graph": 430.8, "multi_graph": 151.9, "batched": 137.0, "batched_compile": 65.2, "executor": 1091.4}
+  R=8 eager: loss vs eager 0.00e+00, vs fp64 1.89e-04
+  R=8 seq_graph: loss vs eager 0.00e+00, vs fp64 1.89e-04
+  R=8 multi_graph: loss vs eager 0.00e+00, vs fp64 1.89e-04
+  R=8 batched: loss vs eager 2.06e-04, vs fp64 3.09e-04
+  R=8 batched_compile: loss vs eager 1.02e-02, vs fp64 1.03e-02
+{"runs": 8, "steps": 50, "eager": 5644.8, "seq_graph": 861.9, "multi_graph": 291.3, "batched": 146.4, "batched_compile": 71.2, "executor": 1872.9}
+  R=16 seq_graph: loss vs eager 0.00e+00, vs fp64 1.89e-04
+  R=16 multi_graph: loss vs eager 0.00e+00, vs fp64 1.89e-04
+  R=16 batched: loss vs eager 2.06e-04, vs fp64 3.09e-04
+  R=16 batched_compile: loss vs eager 1.02e-02, vs fp64 1.03e-02
+{"runs": 16, "steps": 50, "seq_graph": 1739.9, "multi_graph": 573.9, "batched": 152.9, "batched_compile": 79.3, "executor": 3524.1}
+  R=32 seq_graph: loss vs eager 0.00e+00, vs fp64 1.89e-04
+  R=32 multi_graph: loss vs eager 0.00e+00, vs fp64 1.89e-04
+  R=32 batched: loss vs eager 2.06e-04, vs fp64 3.09e-04
+  R=32 batched_compile: loss vs eager 1.02e-02, vs fp64 1.03e-02
+{"runs": 32, "steps": 50, "seq_graph": 3564.8, "multi_graph": 1127.5, "batched": 197.9, "batched_compile": 96.3, "executor": 6614.9}
+
+best-of-7 us per step, all R runs advance one step; last block: variant / executor (>1: executor faster)
+   R           eager         compile   compile_graph       seq_graph batched_compile        executor     multi_graph         batched
+   1           803.9           956.6            62.6           115.2            60.8           554.1               -               -
+   2          1594.6               -               -           215.5            61.6           720.4           127.2           132.3
+   4          2995.6               -               -           430.8            65.2          1091.4           151.9           137.0
+   8          5644.8               -               -           861.9            71.2          1872.9           291.3           146.4
+  16               -               -               -          1739.9            79.3          3524.1           573.9           152.9
+  32               -               -               -          3564.8            96.3          6614.9          1127.5           197.9
+ratio
+   1           1.45x           1.73x           0.11x           0.21x           0.11x           1.00x               -               -
+   2           2.21x               -               -           0.30x           0.09x           1.00x           0.18x           0.18x
+   4           2.74x               -               -           0.39x           0.06x           1.00x           0.14x           0.13x
+   8           3.01x               -               -           0.46x           0.04x           1.00x           0.16x           0.08x
+  16               -               -               -           0.49x           0.02x           1.00x           0.16x           0.04x
+  32               -               -               -           0.54x           0.01x           1.00x           0.17x           0.03x

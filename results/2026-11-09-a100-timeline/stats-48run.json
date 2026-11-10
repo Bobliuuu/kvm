@@ -1,0 +1,10 @@
+{
+ "records": 230400,
+ "span_us": 6183.936,
+ "workers": 216,
+ "exec_fraction": 0.6496882915371076,
+ "wait_fraction": 0.1403585030634211,
+ "steps_overlapping_previous": 39,
+ "steps": 40,
+ "instrs_started_before_prev_step_done": 5455
+}

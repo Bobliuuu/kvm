@@ -1,0 +1,151 @@
+{
+ "gpu": "NVIDIA A100-SXM4-40GB",
+ "torch": "2.5.1+cu124",
+ "cfg": {
+  "B": 128,
+  "D": 128,
+  "H": 256,
+  "O": 64,
+  "NB": 4,
+  "R": 16,
+  "steps": 300,
+  "E": 25,
+  "K": 11,
+  "eval": 1
+ },
+ "correctness": {
+  "same_pbt_decisions_all_rungs": true,
+  "rungs_where_kvm_decision_equals_fp32_oracle": 11,
+  "rungs_total": 11,
+  "forced_replay_max_rel_train_loss_err": 0.010996423661708832,
+  "forced_replay_max_rel_eval_loss_err": 0.0016434247372671962,
+  "forced_replay_max_rel_final_lr_err": 0.0,
+  "forced_replay_max_rel_weight_l2": 0.013278237544000149,
+  "max_rel_train_loss_err": 0.010996423661708832,
+  "max_rel_eval_loss_err": 0.0016434247372671962,
+  "max_rel_final_lr_err": 0.0,
+  "max_rel_weight_l2": 0.013278237544000149,
+  "final_best_train_loss_pbt_ref": 0.0097639299929142,
+  "final_best_train_loss_no_pbt_ref": 0.020153436809778214,
+  "final_median_train_loss_pbt_ref": 0.010836608707904816,
+  "final_median_train_loss_no_pbt_ref": 0.06687040627002716,
+  "final_best_heldout_pbt_ref": 0.06388421356678009,
+  "kvm_final_best_train_loss": 0.009777586907148361,
+  "final_lrs_ref": [
+   2.65421,
+   7.16636,
+   4.77758,
+   8.59964,
+   2.65421,
+   7.16636,
+   2.65421,
+   7.16636,
+   3.31776,
+   5.97197,
+   5.73309,
+   6.87971,
+   2.65421,
+   8.25565,
+   2.12337,
+   6.87971
+  ],
+  "B1_decisions_match_ref": true,
+  "B1_max_rel_train_loss_err_vs_ref": 0.019462348893284798,
+  "B3_decisions_match_ref": true,
+  "B3_max_rel_train_loss_err_vs_ref": 0.019968969747424126,
+  "B1_decisions_match_ref_compiled": true,
+  "B1_max_rel_train_loss_err_vs_ref_compiled": 0.019462348893284798,
+  "B3_decisions_match_ref_compiled": true,
+  "B3_max_rel_train_loss_err_vs_ref_compiled": 0.019969049841165543
+ },
+ "torch_ms": {
+  "B0_graph_no_pbt": {
+   "best_ms": 17.751039505004883,
+   "median_ms": 17.757183074951172,
+   "all_ms": [
+    17.751,
+    17.756,
+    17.762,
+    17.757,
+    17.753,
+    17.759,
+    17.767
+   ]
+  },
+  "B1_graph_in_graph_pbt": {
+   "best_ms": 18.968576431274414,
+   "median_ms": 18.974720001220703,
+   "all_ms": [
+    18.994,
+    18.975,
+    18.975,
+    18.976,
+    18.969,
+    18.972,
+    19.004
+   ]
+  },
+  "B3_host_synced_pbt": {
+   "best_ms": 21.86342430114746,
+   "median_ms": 21.898239135742188,
+   "all_ms": [
+    21.863,
+    21.912,
+    22.041,
+    21.929,
+    21.898,
+    21.889,
+    21.891
+   ]
+  },
+  "B0_graph_no_pbt_compiled": {
+   "best_ms": 16.730112075805664,
+   "median_ms": 16.747520446777344,
+   "all_ms": [
+    19.717,
+    19.498,
+    16.748,
+    16.754,
+    16.736,
+    16.735,
+    16.73
+   ]
+  },
+  "B1_graph_in_graph_pbt_compiled": {
+   "best_ms": 16.539648056030273,
+   "median_ms": 16.5611515045166,
+   "all_ms": [
+    16.575,
+    16.589,
+    16.577,
+    16.561,
+    16.552,
+    16.554,
+    16.54
+   ]
+  },
+  "B3_host_synced_pbt_compiled": {
+   "best_ms": 19.543039321899414,
+   "median_ms": 24.0578556060791,
+   "all_ms": [
+    24.149,
+    24.257,
+    24.199,
+    24.058,
+    24.002,
+    23.506,
+    19.543
+   ]
+  }
+ },
+ "kvm_ms": {
+  "no_pbt": 21.3176,
+  "pbt": 19.5502
+ },
+ "speedup": {
+  "kvm_pbt_vs_B1_eager": 0.9702497381752828,
+  "kvm_pbt_vs_B3_eager": 1.1183222832066915,
+  "kvm_pbt_vs_best_valid_torch": 0.8460091485524585,
+  "kvm_nopbt_vs_B0_eager": 0.8326940886875109
+ }
+}

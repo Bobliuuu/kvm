@@ -1,0 +1,197 @@
+{
+ "gpu": "NVIDIA A100-SXM4-40GB",
+ "torch": "2.5.1+cu124",
+ "cfg": {
+  "B": 64,
+  "D": 64,
+  "H": 128,
+  "O": 64,
+  "NB": 4,
+  "R": 16,
+  "steps": 300,
+  "E": 25,
+  "K": 11
+ },
+ "correctness": {
+  "survivors_ref": [],
+  "survivors_kvm": [],
+  "same_survivors": true,
+  "max_rel_loss_err_sh_alive_steps": 0.00031808321364223957,
+  "max_rel_loss_err_full_population": 0.0021432943176478148,
+  "max_rel_weight_l2_survivors": 0.003473196178674698,
+  "kill_epoch_ref": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   7,
+   5,
+   4,
+   3,
+   2,
+   2,
+   1
+  ],
+  "final_loss_ref": {},
+  "final_loss_kvm": {},
+  "runs_diverged_in_full_pop_ref": [],
+  "kill_rung_kvm": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   7,
+   5,
+   4,
+   3,
+   2,
+   2,
+   1
+  ],
+  "same_kill_rungs": true,
+  "B1_survivors_match_ref": true,
+  "B3_kill_rungs_match_ref": true,
+  "B3_kill_rungs": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   7,
+   5,
+   4,
+   3,
+   2,
+   2,
+   1
+  ],
+  "B3_max_rel_loss_err_vs_ref": 0.00028815193218179047,
+  "B1_survivors_match_ref_compiled": true,
+  "B3_kill_rungs_match_ref_compiled": true,
+  "B3_kill_rungs_compiled": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   7,
+   5,
+   4,
+   3,
+   2,
+   2,
+   1
+  ],
+  "B3_max_rel_loss_err_vs_ref_compiled": 0.00028815193218179047
+ },
+ "torch_ms": {
+  "B0_graph_full_population": {
+   "best_ms": 15.542271614074707,
+   "median_ms": 19.931135177612305,
+   "all_ms": [
+    19.957,
+    19.932,
+    19.931,
+    19.932,
+    15.853,
+    15.542,
+    15.543
+   ]
+  },
+  "B1_graph_masked": {
+   "best_ms": 15.8023681640625,
+   "median_ms": 15.80339241027832,
+   "all_ms": [
+    15.81,
+    15.805,
+    15.803,
+    15.802,
+    15.803,
+    15.802,
+    15.802
+   ]
+  },
+  "B3_host_polled_compaction_cached_graphs": {
+   "best_ms": 10.042367935180664,
+   "median_ms": 10.074111938476562,
+   "all_ms": [
+    10.042,
+    10.065,
+    10.079,
+    10.073,
+    10.213,
+    10.076,
+    10.074
+   ]
+  },
+  "B0_graph_full_population_compiled": {
+   "best_ms": 13.45740795135498,
+   "median_ms": 13.47379207611084,
+   "all_ms": [
+    13.486,
+    13.482,
+    13.499,
+    13.474,
+    13.474,
+    13.473,
+    13.457
+   ]
+  },
+  "B1_graph_masked_compiled": {
+   "best_ms": 10.762240409851074,
+   "median_ms": 10.765312194824219,
+   "all_ms": [
+    10.765,
+    10.765,
+    10.764,
+    10.766,
+    10.765,
+    10.763,
+    10.762
+   ]
+  },
+  "B3_host_polled_compaction_cached_graphs_compiled": {
+   "best_ms": 10.016768455505371,
+   "median_ms": 10.081279754638672,
+   "all_ms": [
+    10.086,
+    10.095,
+    10.081,
+    10.072,
+    10.071,
+    10.083,
+    10.017
+   ]
+  }
+ },
+ "kvm_ms": {
+  "full_population": 7.6964,
+  "controlled": 4.9889
+ },
+ "speedup": {
+  "kvm_ctrl_vs_best_torch_ctrl_eager": 2.012942318984278,
+  "kvm_ctrl_vs_best_torch_ctrl_compiled": 2.0078110315912068,
+  "kvm_ctrl_vs_best_torch_any": 2.0078110315912068,
+  "kvm_full_vs_B0_eager": 2.0194209778694856,
+  "kvm_full_vs_B0_compiled": 1.748532814218983
+ },
+ "torch_per_run_gpu_mem_note": "all torch variants use manual fwd/bwd with bmm, TF32, CUDA graphs"
+}

@@ -213,7 +213,7 @@ guard of section 1 is the contract such a feature must keep: same condition, sam
 ## Run the tests
 
 ```bash
-python3 -I -m unittest discover -s tests -v        # 145 tests; the frontend has its own: ... -s tests/frontend (59 tests)
+python3 -I -m unittest discover -s tests -v        # 145 tests; the frontend has its own: ... -s tests/frontend (78 tests)
 ```
 
 GPU entry points, runtimes and lock behaviour: [RUNNING_TESTS.md](RUNNING_TESTS.md).

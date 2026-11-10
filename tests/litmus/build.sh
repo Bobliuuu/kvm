@@ -1,20 +1,29 @@
 #!/usr/bin/env bash
 # Build the litmus binaries on the GPU box: the production headers plus MUTANTS (each removes exactly one ordering step).
-# Usage (repository root): tests/litmus/build.sh <outdir>      -> <outdir>/litmus_prod, litmus_<mutant>...
+# Usage (repository root): [KVM_ARCH=sm_80] [KVM_JOBS=2] tests/litmus/build.sh <outdir>      -> <outdir>/litmus_prod, litmus_<mutant>...
+# KVM_ARCH: target architecture (default sm_80). KVM_JOBS: concurrent nvcc processes (default 2; each can need several GB, 8 at once
+# was OOM-killed on a loaded box). Every build failure is reported by name and the script exits non-zero after all builds finished.
 set -euo pipefail
 OUT="${1:?outdir}"; HERE="$(cd "$(dirname "$0")" && pwd)"; ROOT="$(cd "$HERE/../.." && pwd)"
 NVCC="$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc | tail -1)"
 mkdir -p "$OUT"
-B="-O3 -arch=sm_80 -std=c++17 -lineinfo -Wno-deprecated-gpu-targets"
-$NVCC $B -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_prod" &
-$NVCC $B -DLIT_NOFENCE -DLIT_MUTANT='"nofence(all __threadfence)"' -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_nofence" &
+ARCH="${KVM_ARCH:-sm_80}"; JOBS="${KVM_JOBS:-2}"
+B="-O3 -arch=$ARCH -std=c++17 -lineinfo -Wno-deprecated-gpu-targets"
+nv prod $B -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_prod"
+nv nofence $B -DLIT_NOFENCE -DLIT_MUTANT='"nofence(all __threadfence)"' -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_nofence"
 # the executor's own mutant: a waiter that never re-checks the version after parking (classic lost wakeup)
-$NVCC $B -DKVM_BREAK_PARK_RECHECK -DLIT_MUTANT='"norecheck(KVM_BREAK_PARK_RECHECK)"' -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_norecheck" &
+nv norecheck $B -DKVM_BREAK_PARK_RECHECK -DLIT_MUTANT='"norecheck(KVM_BREAK_PARK_RECHECK)"' -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_norecheck"
+PIDS=(); NAMES=(); RC=()
+nv() {  # name, nvcc args...: run in the background; build number i first waits for build i-JOBS, so at most JOBS run at once
+  local name="$1" i=${#PIDS[@]}; shift
+  if [ "$i" -ge "$JOBS" ]; then wait "${PIDS[$((i - JOBS))]}" && RC[$((i - JOBS))]=0 || RC[$((i - JOBS))]=1; fi
+  "$NVCC" "$@" & PIDS+=($!); NAMES+=("$name"); RC+=(-)
+}
 mut() {  # name, header file, sed-expression: a header copy with exactly one step removed
   local d="$OUT/hdr_$1"; rm -rf "$d"; mkdir -p "$d"; cp "$ROOT"/include/* "$d/"
   sed -E "$3" "$ROOT/include/$2" > "$d/$2"
   if cmp -s "$d/$2" "$ROOT/include/$2"; then echo "mutant $1: sed matched nothing" >&2; exit 1; fi
-  $NVCC $B -DLIT_MUTANT="\"$1\"" -I"$d" "$HERE/litmus.cu" -o "$OUT/litmus_$1" &
+  nv "$1" $B -DLIT_MUTANT="\"$1\"" -I"$d" "$HERE/litmus.cu" -o "$OUT/litmus_$1"
 }
 # Dekker: drop the two fences that implement the argument (waiter: push->fence->load; publisher: store->fence->detach)
 mut nodekkerfence kvm_exec.cuh 's#^(\s*)__threadfence\(\);  // seq_cst fence: push.*#\1/* mutant */#; s#^(\s*)__threadfence\(\);( +)// version store -> fence.*#\1/* mutant */#'
@@ -23,8 +32,13 @@ mut exchbefore kvm_exec.cuh 's#^(\s*)int old = atom_cas\(S.version \+ var, ver -
 # MP: publisher fence removed and release CAS demoted to a relaxed atomicCAS
 mut weakpub kvm_exec.cuh 's#^(\s*)__threadfence\(\);( +)// fence.sc.gpu: weights before version.*#\1/* mutant */#; s#int old = atom_cas\(S.version \+ var, ver - 1, ver\);#int old = atomicCAS(S.version + var, ver - 1, ver);#'
 # Queue: popper claims the head with a plain store instead of CAS (double pop under contention)
-mut popplain kvm_sched.cuh 's#if \(atom_cas64\(&q->head, cd.head, cd.head \+ 1\) == cd.head\) \{#if ((*(volatile unsigned long long*)\&q->head = cd.head + 1), true) {#'
+mut popplain kvm_sched.cuh 's#old = atom_cas64\(&S.qctl\[qi\].head, cd.head, cd.head \+ 1\);#*(volatile unsigned long long*)\&S.qctl[qi].head = cd.head + 1; old = cd.head;#'
 # Queue: producer publishes the cell with a relaxed store (no release): payload may be stale
 mut qrelax kvm_sched.cuh 's#st_rel64\(&cell->seq, pos \+ 1\);#*(volatile unsigned long long*)\&cell->seq = pos + 1;#'
-wait
-echo built in "$OUT"
+bad=0
+for i in "${!PIDS[@]}"; do
+  [ "${RC[$i]}" = - ] && { wait "${PIDS[$i]}" && RC[$i]=0 || RC[$i]=1; }
+  [ "${RC[$i]}" = 0 ] || { echo "BUILD FAILED: litmus_${NAMES[$i]}" >&2; bad=1; }
+done
+[ "$bad" = 0 ] || exit 1
+echo built in "$OUT" "($ARCH)"

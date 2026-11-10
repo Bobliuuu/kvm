@@ -1,10 +1,12 @@
 """One-call entry points: config -> workload dict (train / serve / game), used by the demo CLI, inspect and tests."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from . import log
 from .emit import GraphPolicy, Lowered, lower_program, to_workload
+from .generic import TrainableModule
+from .ir import FrontendError
 from .lower import Tiling
 from .nn import GPT, ModelConfig
 from .train import Program, TrainConfig, build_training
@@ -32,9 +34,30 @@ def build_model(cfg):
     return models.build(cfg)
 
 
-def compile_training(model_cfg, tc: TrainConfig, tiling: Tiling, reuse='step', gap=0, with_spec=True, fuse=False) -> Compiled:
-    """model_cfg: nn.ModelConfig (GPT), a models.* config, or a model object. fuse=True applies fuse.py before lowering."""
-    model = build_model(model_cfg)
+def compile_training(model, tc: TrainConfig | None = None, tiling: Tiling | None = None, reuse='step', gap=0, with_spec=True,
+                     fuse=False, *, loss=None, data=None, optimizer=None, steps=None, seed=0) -> Compiled:
+    """Compile an unrolled training program.
+
+    Two ways to call it:
+      * a model the frontend already knows (nn.ModelConfig / models.* config / model object with the training protocol):
+        compile_training(cfg, TrainConfig(...), tiling)
+      * ANY traced module (anything with `.specs` and `__call__(b, *inputs, w)`; see generic.py) with a pluggable loss, data
+        source and optimizer: compile_training(module, loss=MSE(), data=ArrayData(...), optimizer=OptimConfig(kind='sgd'),
+        steps=20, tiling=...). `tc` may still carry the other TrainConfig fields (accum, schedule, clip, ...); `steps` and
+        `optimizer` override its fields.
+    tiling defaults to the 'a100' preset. fuse=True applies fuse.py before lowering."""
+    if loss is not None or data is not None:
+        if loss is None or data is None:
+            raise FrontendError('a generic module needs both loss= and data=')
+        model = TrainableModule(model, loss, data, seed)
+    elif optimizer is not None or steps is not None or seed:
+        raise FrontendError('steps=, optimizer= and seed= belong to the generic form (loss= and data=); '
+                            'for a known model put them in the TrainConfig')
+    if tc is None:
+        tc = TrainConfig(**({'steps': steps} if steps is not None else {}), **({'optim': optimizer} if optimizer else {}))
+    elif loss is not None:
+        tc = replace(tc, **({'steps': steps} if steps is not None else {}), **({'optim': optimizer} if optimizer else {}))
+    model = build_model(model)
     n = sum(s.rows * s.cols for s in model.specs.values())
     log.info('model %s: %.2fM parameters, %d tensors', model.cfg.name, n / 1e6, len(model.specs))
     prog = build_training(model, tc)
@@ -45,6 +68,6 @@ def compile_training(model_cfg, tc: TrainConfig, tiling: Tiling, reuse='step', g
     if getattr(model.cfg, 'precision', 'f32') == 'bf16s':
         from . import storage
         ops, _ = storage.apply(ops)
-    low = lower_program(ops, tiling, reuse, gap, prefix='act')
+    low = lower_program(ops, tiling or Tiling.preset('a100'), reuse, gap, prefix='act')
     spec = to_workload(low, {'train': GraphPolicy()}) if with_spec else None
     return Compiled(low, spec, prog)

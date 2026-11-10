@@ -18,8 +18,11 @@
 #include <cmath>
 #include <vector>
 #include <string>
+#include <algorithm>
+#include <type_traits>
 #include <chrono>
 #include <cuda_runtime.h>
+#include <cuda_fp16.h>
 #include <mma.h>
 using namespace nvcuda;
 
@@ -27,7 +30,7 @@ using namespace nvcuda;
   fprintf(stderr, "CUDA error %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(e_)); exit(1);} } while (0)
 
 enum { OP_GEMM = 0, OP_SGD = 1 };
-enum { F_TA = 1, F_TB = 2, F_RELU = 4, F_MSE = 8, F_RELUMASK = 16, F_SGD = 32 };
+enum { F_TA = 1, F_TB = 2, F_RELU = 4, F_MSE = 8, F_RELUMASK = 16, F_SGD = 32, F_SGDSRC = 64 };   // F_SGDSRC: the SGD input is buffer aux, not C (out-of-place update)
 
 struct Buf { float* p; int ld; };
 __constant__ Buf g_buf[256];
@@ -43,7 +46,7 @@ struct Instr {                 // 80 bytes
   int loss_idx, xflags, pad1;   // xflags: 1/2 = w0/w1 wait on previous step, 4 = a is X(step%NB), 8 = aux is T(step%NB)
 };
 
-struct KP { int SC, NB, perStep; };   // SC = counters per step (all runs), NB = data batches, perStep = template length
+struct KP { int SC, NB, perStep, pstr; };   // pstr = buffer-id distance between the two parity copies of a double-buffered buffer   // SC = counters per step (all runs), NB = data batches, perStep = template length
 __constant__ KP g_kp;
 
 // Loop opcode: the tape stores ONE step as a template; step s instantiates it on the device.
@@ -56,6 +59,12 @@ __device__ __forceinline__ Instr inst_at(const Instr* tape, int t, int s) {
   if (in.s1 >= 0) in.s1 += s * g_kp.SC;
   if (xf & 4) in.a += s % g_kp.NB;
   if (xf & 8) in.aux += s % g_kp.NB;
+  // step-parity buffer selection (--overlap 2): copy (s&1) of a / b / c / aux, or copy ((s+1)&1) of c (out-of-place weight update)
+  if (xf & 16) in.a += (s & 1) * g_kp.pstr;
+  if (xf & 32) in.b += (s & 1) * g_kp.pstr;
+  if (xf & 64) in.c += (s & 1) * g_kp.pstr;
+  if (xf & 128) in.aux += (s & 1) * g_kp.pstr;
+  if (xf & 256) in.c += ((s + 1) & 1) * g_kp.pstr;
   in.loss_idx += s;
   return in;
 }
@@ -178,7 +187,7 @@ __device__ void exec_instr(const Instr& in, float* sm, float* loss) {
       gi[it] = (size_t)(in.m0 + r) * C.ld + in.n0 + c;
       xi[it] = (size_t)(in.m0 + r) * X.ld + in.n0 + c;
       if (f & (F_RELUMASK | F_MSE)) xa[it] = __ldcg(reinterpret_cast<const float4*>(X.p + xi[it]));
-      if (f & F_SGD) cu[it] = __ldcg(reinterpret_cast<const float4*>(C.p + gi[it]));
+      if (f & F_SGD) cu[it] = __ldcg(reinterpret_cast<const float4*>((f & F_SGDSRC) ? X.p + xi[it] : C.p + gi[it]));
     }
 #pragma unroll
     for (int it = 0; it < EPI; it++) {
@@ -239,7 +248,11 @@ __global__ void __launch_bounds__(NT) vm_kernel(const Instr* tape, int n, int* h
       __threadfence();   // cumulative over the block's writes via the bar.sync above
       if (in.s0 >= 0) atomicAdd(ctr + in.s0, 1);
       if (in.s1 >= 0) atomicAdd(ctr + in.s1, 1);
-      if (prof) { prof[idx * 6] = t0; prof[idx * 6 + 1] = t1; prof[idx * 6 + 2] = t2; prof[idx * 6 + 3] = gtime(); prof[idx * 6 + 4] = g_stamp[0]; prof[idx * 6 + 5] = g_stamp[1]; }
+      if (prof) {   // 8 u64 per instruction: claim, deps ready, compute done, end, mma start, mma end, smid | block<<32, unused
+        unsigned smid; asm volatile("mov.u32 %0, %%smid;" : "=r"(smid));
+        unsigned long long* q = prof + (size_t)idx * 8;
+        q[0] = t0; q[1] = t1; q[2] = t2; q[3] = gtime(); q[4] = g_stamp[0]; q[5] = g_stamp[1]; q[6] = (unsigned long long)smid | ((unsigned long long)blockIdx.x << 32); q[7] = 0;
+      }
     }
   }
 }
@@ -248,6 +261,436 @@ __global__ void __launch_bounds__(NT) vm_kernel(const Instr* tape, int n, int* h
 __global__ void __launch_bounds__(NT) phase_kernel(const Instr* tape, int off, int step, float* loss) {
   __shared__ __align__(128) float sm[TILE * TILE];
   exec_instr(inst_at(tape, off + blockIdx.x, step), sm, loss);
+}
+
+// ======================================================================================================================
+// Fused column-parallel program (--prog fused): the 2-layer MLP step as TWO instructions per (run, hidden slice).
+//
+// Why: in the tile program one step is a chain of 4 dependent phases (H1 -> Y -> dH1 -> dW1 -> next H1), each hop ~5-6 us. Megatron-style
+// tensor parallelism needs ONE cross-block exchange per step: slice W1 by columns and W2 by the same rows, then
+//   FWD[c]: h_c = relu(X W1[:,c]);  yp_c = h_c W2[c,:]  (partial y, to global)
+//   --- the one hop: every slice needs the sum of all slices' partials ---
+//   BWD[c]: y = sum_c' yp_c' (fixed order);  dy = (y - t) 2/(B O);  dh_c = (dy W2[c,:]^T) * (h_c > 0);
+//           W2[c,:] -= lr h_c^T dy;  W1[:,c] -= lr X^T dh_c        (all local to the slice)
+// A slice's weights and h_c can stay in shared memory across steps ("resident") and its instruction queue is static (no claim atomic):
+// the loop opcode (inst_at) re-instantiates the two instructions every step. The baselines run the very same two instructions as one
+// launch per phase (weights and h_c round-trip through global memory, same device functions, same arithmetic), so the weights stay
+// bitwise identical across the four modes. Sum order of the partials differs from the tile program, so tile-vs-fused agree to TF32 noise.
+// ======================================================================================================================
+enum { OP_FWD = 2, OP_BWD = 3 };
+#ifndef KHS
+#define KHS 32
+#endif
+constexpr int FB = 128, FD = 128, FH = 256, FO = 64, HS = KHS, NS = FH / HS, FNT = 256;
+constexpr int LDX = FD + 4, LDH = HS + 4, LDY = FO + 4;
+constexpr int SZ_X = FB * LDX, SZ_W1 = FD * LDH, SZ_H = FB * LDH, SZ_DY = FB * LDY, SZ_W2 = HS * LDY;
+constexpr size_t FSMEM = (size_t)(SZ_X + SZ_W1 + SZ_H + SZ_DY + SZ_W2) * sizeof(float);
+static_assert(HS % 32 == 0 && FH % HS == 0 && FB == 128 && FNT == 256, "fused program geometry");
+
+using FragC = wmma::fragment<wmma::accumulator, 16, 16, 8, float>;
+__shared__ unsigned long long s_tready;
+#ifdef KSTAGE
+__device__ unsigned long long g_stage[24];
+__shared__ long long s_last;
+#define STAGE(i) do { if (ctr && blockIdx.x == 0 && threadIdx.x == 0) { long long n_ = clock64(); if ((i) > 0) atomicAdd(&g_stage[i], (unsigned long long)(n_ - s_last)); s_last = n_; } } while (0)
+#else
+#define STAGE(i) do {} while (0)
+#endif
+
+// acc[j] += A(16 x 8k) * B(8k x 16), per k-step of 8; A/B element order given by ACOL/BCOL (smem pointers, strides in floats)
+template <bool ACOL, bool BCOL, int NF>
+__device__ __forceinline__ void warp_mma(FragC (&acc)[NF], const float* pa, int lda, int astep, const float* pb, int ldb, int bstep, int bn, int ksteps) {
+  using AL = typename std::conditional<ACOL, wmma::col_major, wmma::row_major>::type;
+  using BL = typename std::conditional<BCOL, wmma::col_major, wmma::row_major>::type;
+  wmma::fragment<wmma::matrix_a, 16, 16, 8, wmma::precision::tf32, AL> fa;
+  wmma::fragment<wmma::matrix_b, 16, 16, 8, wmma::precision::tf32, BL> fb;
+#pragma unroll 4
+  for (int k = 0; k < ksteps; k++) {
+    wmma::load_matrix_sync(fa, pa + k * astep, lda);
+#pragma unroll
+    for (int e = 0; e < fa.num_elements; e++) fa.x[e] = wmma::__float_to_tf32(fa.x[e]);
+#pragma unroll
+    for (int j = 0; j < NF; j++) {
+      wmma::load_matrix_sync(fb, pb + k * bstep + j * bn, ldb);
+#pragma unroll
+      for (int e = 0; e < fb.num_elements; e++) fb.x[e] = wmma::__float_to_tf32(fb.x[e]);
+      wmma::mma_sync(acc[j], fa, fb, acc[j]);
+    }
+  }
+}
+template <int NF> __device__ __forceinline__ void zero_acc(FragC (&acc)[NF]) {
+#pragma unroll
+  for (int j = 0; j < NF; j++) wmma::fill_fragment(acc[j], 0.f);
+}
+__device__ __forceinline__ float lr_of(const Instr& in) { return __int_as_float(in.pad1); }   // fused instrs carry the learning rate bits in pad1
+
+// async copy of a [rows x vecs*4] global block (row stride gld floats) into smem (row stride sld floats), all FNT threads
+__device__ __forceinline__ void cp_block(float* s, int sld, const float* g, size_t gld, int rows, int vecs) {
+  for (int i = threadIdx.x; i < rows * vecs; i += FNT) { int r = i / vecs, c4 = (i % vecs) * 4; cp16(s + r * sld + c4, g + r * gld + c4); }
+}
+__device__ __forceinline__ void cp_wait_all() { asm volatile("cp.async.wait_all;" ::: "memory"); }
+
+// FWD[c]. res: smem still holds this slice's weights from the previous step and BWD prefetched X, so only step 0 loads them.
+__device__ void fwd_slice(const Instr& in, int stp, bool res, float* sm, int* ctr) {
+  float *sX = sm, *sW1 = sX + SZ_X, *sH = sW1 + SZ_W1, *sDY = sH + SZ_H, *sW2 = sDY + SZ_DY;
+  const Buf X = g_buf[in.a], W1 = g_buf[in.b], W2 = g_buf[in.c], T = g_buf[in.aux], HG = g_buf[in.n0], YP = g_buf[in.K];
+  const int c = in.m0, w = threadIdx.x >> 5;
+  if (!(res && stp > 0)) {
+    cp_block(sX, LDX, X.p, X.ld, FB, FD / 4);
+    cp_block(sW1, LDH, W1.p + c * HS, W1.ld, FD, HS / 4);
+    cp_block(sW2, LDY, W2.p + (size_t)c * HS * W2.ld, W2.ld, HS, FO / 4);
+  }
+  STAGE(0);
+  cp_commit(); cp_wait_all(); __syncthreads();
+  STAGE(1);
+  FragC a1[HS / 16]; zero_acc(a1);
+  warp_mma<false, false, HS / 16>(a1, sX + 16 * w * LDX, LDX, 8, sW1, LDH, 8 * LDH, 16, FD / 8);
+  float* hg = HG.p + (size_t)(16 * w) * HG.ld + c * HS;
+#pragma unroll
+  for (int j = 0; j < HS / 16; j++) {
+#pragma unroll
+    for (int e = 0; e < a1[j].num_elements; e++) a1[j].x[e] = fmaxf(a1[j].x[e], 0.f);
+    wmma::store_matrix_sync(sH + 16 * w * LDH + j * 16, a1[j], LDH, wmma::mem_row_major);
+    if (!res) wmma::store_matrix_sync(hg + j * 16, a1[j], HG.ld, wmma::mem_row_major);   // a non-resident BWD reads h back from here
+  }
+  __syncthreads(); STAGE(2);
+  __syncwarp();                                               // F2 reads only this warp's own 16 rows of h
+  FragC a2[FO / 16]; zero_acc(a2);
+  warp_mma<false, false, FO / 16>(a2, sH + 16 * w * LDH, LDH, 8, sW2, LDY, 8 * LDY, 16, HS / 8);
+  float* yp = YP.p + (size_t)((stp & 1) * NS + c) * FB * FO + (size_t)(16 * w) * FO;   // double-buffered by step parity
+#pragma unroll
+  for (int j = 0; j < FO / 16; j++) wmma::store_matrix_sync(yp + j * 16, a2[j], FO, wmma::mem_row_major);
+  __syncthreads(); STAGE(3);
+  if (ctr && threadIdx.x == 0) { __threadfence(); atomicAdd(ctr + in.s0, 1); }
+  STAGE(4);
+}
+
+// BWD[c]. ctr == nullptr: launched as an ordinary kernel (launch order is the dependency). next_a: X buffer id of the next step (-1 = none).
+__device__ void bwd_slice(const Instr& in, int stp, bool res, float* sm, float* loss, int* ctr, bool prof, int next_a) {
+  __shared__ float red[FNT / 32];
+  float *sX = sm, *sW1 = sX + SZ_X, *sH = sW1 + SZ_W1, *sDY = sH + SZ_H, *sW2 = sDY + SZ_DY;
+  const Buf X = g_buf[in.a], W1 = g_buf[in.b], W2 = g_buf[in.c], T = g_buf[in.aux], HG = g_buf[in.n0], YP = g_buf[in.K];
+  const int c = in.m0, w = threadIdx.x >> 5, tid = threadIdx.x;
+  if (!res) {   // nothing resident: bring X, h, t and the current W2 slice back (independent of the hop, overlaps the wait)
+    cp_block(sX, LDX, X.p, X.ld, FB, FD / 4); cp_block(sH, LDH, HG.p + c * HS, HG.ld, FB, HS / 4);
+    cp_block(sW2, LDY, W2.p + (size_t)c * HS * W2.ld, W2.ld, HS, FO / 4);
+    cp_commit();
+  }
+  STAGE(5);
+  if (tid == 0) {   // the one hop: all slices' partial y of this step are in global memory
+    if (ctr) { while (ld_acquire(ctr + in.w0c) < in.w0v) __nanosleep(16); __threadfence(); }
+    if (prof) s_tready = gtime();
+  }
+  cp_wait_all(); __syncthreads(); STAGE(6);
+  // ---- y = sum of the partials in slice order; dy = (y - t) * s; loss
+  const float* ypb = YP.p + (size_t)(stp & 1) * NS * FB * FO;
+  float lsum = 0.f;
+#pragma unroll 1
+  for (int g = 0; g < 4; g++) {
+    float4 v[2][NS], tv[2];
+#pragma unroll
+    for (int u = 0; u < 2; u++)
+#pragma unroll
+      for (int p = 0; p < NS; p++) v[u][p] = __ldcg(reinterpret_cast<const float4*>(ypb + (size_t)p * FB * FO) + tid + FNT * (2 * g + u));
+#pragma unroll
+    for (int u = 0; u < 2; u++) tv[u] = __ldcg(reinterpret_cast<const float4*>(T.p) + tid + FNT * (2 * g + u));
+#pragma unroll
+    for (int u = 0; u < 2; u++) {
+      int i4 = tid + FNT * (2 * g + u), r = i4 / (FO / 4), cc = (i4 % (FO / 4)) * 4;
+      float4 y = v[u][0];
+#pragma unroll
+      for (int p = 1; p < NS; p++) { y.x += v[u][p].x; y.y += v[u][p].y; y.z += v[u][p].z; y.w += v[u][p].w; }
+      float4 t = tv[u], o;
+      const float* yy = &y.x; const float* tt = &t.x; float* oo = &o.x;
+#pragma unroll
+      for (int j = 0; j < 4; j++) { float d = yy[j] - tt[j]; lsum += d * d * in.scale * 0.5f; oo[j] = d * in.scale; }
+      *reinterpret_cast<float4*>(sDY + r * LDY + cc) = o;
+    }
+  }
+  if (c == 0) {   // slice 0 reports the loss: one writer per (run, step), fixed reduction order
+    for (int o = 16; o; o >>= 1) lsum += __shfl_xor_sync(0xffffffff, lsum, o);
+    if ((tid & 31) == 0) red[w] = lsum;
+  }
+  __syncthreads(); STAGE(7);   // dy complete (and red[])
+  if (c == 0 && tid == 0) { float t = 0; for (int i = 0; i < FNT / 32; i++) t += red[i]; loss[in.loss_idx] = t; }
+  const float lr = lr_of(in);
+  // ---- gW2 = h^T dy (M = HS, N = FO, K = FB), 16x16 output tiles round-robin over the 8 warps
+  constexpr int NT2 = HS / 32;   // tiles per warp: (HS/16)*(FO/16) / 8 warps
+  FragC g2[NT2];
+#pragma unroll
+  for (int q = 0; q < NT2; q++) {
+    int tile = w + 8 * q, mt = tile / (FO / 16), nt = tile % (FO / 16);
+    FragC one[1]; zero_acc(one);
+    warp_mma<true, false, 1>(one, sH + mt * 16, LDH, 8 * LDH, sDY + nt * 16, LDY, 8 * LDY, 16, FB / 8);
+    g2[q] = one[0];
+  }
+  // ---- dh = (dy W2^T) masked by h > 0, from the OLD W2 slice (the update comes after every warp has read it)
+  FragC dh[HS / 16]; zero_acc(dh);
+  warp_mma<false, true, HS / 16>(dh, sDY + 16 * w * LDY, LDY, 8, sW2, LDY, 8, 16 * LDY, FO / 8);
+  STAGE(8);
+  __syncthreads();   // all warps done with h (gW2) and the old W2 slice
+#pragma unroll
+  for (int j = 0; j < HS / 16; j++) {
+    FragC hm; wmma::load_matrix_sync(hm, sH + 16 * w * LDH + j * 16, LDH, wmma::mem_row_major);
+#pragma unroll
+    for (int e = 0; e < dh[j].num_elements; e++) dh[j].x[e] = (hm.x[e] > 0.f) ? dh[j].x[e] : 0.f;
+    wmma::store_matrix_sync(sH + 16 * w * LDH + j * 16, dh[j], LDH, wmma::mem_row_major);   // dh replaces h in place (a lane owns the same elements)
+  }
+#pragma unroll
+  for (int q = 0; q < NT2; q++) {   // W2 slice update, in smem and in global
+    int tile = w + 8 * q, mt = tile / (FO / 16), nt = tile % (FO / 16);
+    FragC cw; wmma::load_matrix_sync(cw, sW2 + mt * 16 * LDY + nt * 16, LDY, wmma::mem_row_major);
+#pragma unroll
+    for (int e = 0; e < cw.num_elements; e++) cw.x[e] = cw.x[e] - lr * g2[q].x[e];
+    wmma::store_matrix_sync(sW2 + mt * 16 * LDY + nt * 16, cw, LDY, wmma::mem_row_major);
+    wmma::store_matrix_sync(W2.p + (size_t)(c * HS + mt * 16) * W2.ld + nt * 16, cw, W2.ld, wmma::mem_row_major);
+  }
+  if (!res) { cp_block(sW1, LDH, W1.p + c * HS, W1.ld, FD, HS / 4); cp_commit(); }   // resident: sW1 already holds the current slice
+  __syncthreads(); STAGE(9);   // dh complete for all 128 rows
+  // ---- gW1 = X^T dh (M = FD, N = HS, K = FB); W1 slice update
+  FragC g1[HS / 16]; zero_acc(g1);
+  warp_mma<true, false, HS / 16>(g1, sX + 16 * w, LDX, 8 * LDX, sH, LDH, 8 * LDH, 16, FB / 8);
+  cp_wait_all(); __syncthreads(); STAGE(10);   // (non-resident: the W1 slice has arrived)
+#pragma unroll
+  for (int j = 0; j < HS / 16; j++) {
+    FragC cw; wmma::load_matrix_sync(cw, sW1 + 16 * w * LDH + j * 16, LDH, wmma::mem_row_major);
+#pragma unroll
+    for (int e = 0; e < cw.num_elements; e++) cw.x[e] = cw.x[e] - lr * g1[j].x[e];
+    wmma::store_matrix_sync(sW1 + 16 * w * LDH + j * 16, cw, LDH, wmma::mem_row_major);
+    wmma::store_matrix_sync(W1.p + (size_t)(16 * w) * W1.ld + c * HS + j * 16, cw, W1.ld, wmma::mem_row_major);
+  }
+  __syncthreads(); STAGE(11);   // sX is dead
+  if (res && next_a >= 0) { const Buf Xn = g_buf[next_a]; cp_block(sX, LDX, Xn.p, Xn.ld, FB, FD / 4); cp_commit(); }   // next step's X streams in during the epilogue
+  STAGE(12);
+  if (!res) __threadfence();   // the next launch reads this slice's weights from global
+}
+
+// ---- the static-queue VM: block b owns a fixed list of tape entries and runs it once per step (loop opcode); res = one task per block
+__global__ void __launch_bounds__(FNT) fvm_kernel(const Instr* tape, const int* qoff, const int* qlen, int steps, int* ctr, float* loss, unsigned long long* prof, int perStep, int res) {
+  const int b = blockIdx.x, n = qlen[b], q0 = qoff[b];
+  for (int s = 0; s < steps; s++)
+    for (int i = 0; i < n; i++) {
+      const int t = q0 + i;
+      Instr in = inst_at(tape, t, s);
+      unsigned long long t0 = 0, t1 = 0;
+      if (prof) t0 = gtime();
+      if (in.op == OP_FWD) { fwd_slice(in, s, res, dsm, ctr); t1 = t0; }
+      else {
+        int next_a = (s + 1 < steps) ? inst_at(tape, t, s + 1).a : -1;
+        bwd_slice(in, s, res, dsm, loss, ctr, prof != nullptr, next_a);
+        if (prof) t1 = s_tready;
+      }
+      __syncthreads();
+      if (prof && threadIdx.x == 0) {
+        unsigned smid; asm volatile("mov.u32 %0, %%smid;" : "=r"(smid));
+        unsigned long long* q = prof + ((size_t)s * perStep + t) * 8; unsigned long long te = gtime();
+        q[0] = t0; q[1] = t1; q[2] = te; q[3] = te; q[4] = t1; q[5] = te; q[6] = (unsigned long long)smid | ((unsigned long long)b << 32); q[7] = 0;
+      }
+    }
+}
+// ---- baseline: one launch per phase, block i runs tape[off + i], nothing resident
+__global__ void __launch_bounds__(FNT) fphase_kernel(const Instr* tape, int off, int step, float* loss) {
+  Instr in = inst_at(tape, off + blockIdx.x, step);
+  if (in.op == OP_FWD) fwd_slice(in, step, false, dsm, nullptr); else bwd_slice(in, step, false, dsm, loss, nullptr, false, -1);
+}
+
+// ======================================================================================================================
+// fused16: the same two-instruction program on fp16 tensor-core inputs (fp32 accumulate, fp32 master weights).
+//
+// Why: the TF32 fused kernel measured ~35k cycles/step at 1 run, 15x over the tensor-core bound and bound by shared-memory traffic
+// (4-byte operands, 16 KB slice re-read by every warp) and by 148 KB of smem (one block per SM, 8 warps to hide latency). fp16 operands
+// halve every byte (10-bit mantissa like TF32, so the loss tracks the fp32 reference equally well), double the k per mma, and shrink a
+// block to 78 KB: two blocks per SM, and up to 27 runs (216 slice-tasks) stay resident. Gradients (dy, dh) are carried x1024 so they do
+// not fall into fp16's subnormal range; the weight update multiplies by lr/1024 (power of two: exact). Weights stay fp32 in global
+// memory (master); an fp16 shadow of the slice lives in smem and is refreshed after every update. X is pre-converted to fp16 once.
+// Accumulator tiles go through a small fp32 scratch (aliasing the dy buffer) for relu / masking / the shadow refresh.
+// ======================================================================================================================
+constexpr int GS = 1024, LXH = FD + 8, LHH = HS + 8, LYH = FO + 8, LSF = HS + 4, LS2 = FO + 4;
+constexpr int OFF_X = 0, OFF_W1 = OFF_X + FB * LXH, OFF_H = OFF_W1 + FD * LHH, OFF_DY = OFF_H + FB * LHH, OFF_W2 = OFF_DY + FB * LYH;
+constexpr size_t FSMEM16 = (size_t)(OFF_W2 + HS * LYH) * sizeof(__half);
+static_assert(HS == 32 && FB * LYH * 2 == FB * LSF * 4 && HS * LS2 * 4 <= FB * LHH * 2, "fused16 scratch aliasing assumes HS == 32");
+using FragH = wmma::fragment<wmma::accumulator, 16, 16, 16, float>;
+
+template <bool ACOL, bool BCOL, int NF>
+__device__ __forceinline__ void warp_mma16(FragH (&acc)[NF], const __half* pa, int lda, int astep, const __half* pb, int ldb, int bstep, int bn, int ksteps) {
+  using AL = typename std::conditional<ACOL, wmma::col_major, wmma::row_major>::type;
+  using BL = typename std::conditional<BCOL, wmma::col_major, wmma::row_major>::type;
+  wmma::fragment<wmma::matrix_a, 16, 16, 16, __half, AL> fa;
+  wmma::fragment<wmma::matrix_b, 16, 16, 16, __half, BL> fb;
+#pragma unroll 4
+  for (int k = 0; k < ksteps; k++) {
+    wmma::load_matrix_sync(fa, pa + k * astep, lda);
+#pragma unroll
+    for (int j = 0; j < NF; j++) {
+      wmma::load_matrix_sync(fb, pb + k * bstep + j * bn, ldb);
+      wmma::mma_sync(acc[j], fa, fb, acc[j]);
+    }
+  }
+}
+template <int NF> __device__ __forceinline__ void zero_acc16(FragH (&acc)[NF]) {
+#pragma unroll
+  for (int j = 0; j < NF; j++) wmma::fill_fragment(acc[j], 0.f);
+}
+__device__ __forceinline__ void cp_block16(__half* s, int sld, const __half* g, size_t gld, int rows, int vecs8) {
+  for (int i = threadIdx.x; i < rows * vecs8; i += FNT) { int r = i / vecs8, c8 = (i % vecs8) * 8; cp16(reinterpret_cast<float*>(s + r * sld + c8), reinterpret_cast<const float*>(g + r * gld + c8)); }
+}
+// fp16 shadow of this slice's fp32 master weights (W1 slice [FD x HS], W2 slice [HS x FO])
+__device__ __forceinline__ void load_shadow(const Buf& W1, const Buf& W2, int c, __half* sW1, __half* sW2, bool w1) {
+  if (w1) for (int i = threadIdx.x; i < FD * HS / 4; i += FNT) {
+    int r = i / (HS / 4), c4 = (i % (HS / 4)) * 4; float4 v = __ldcg(reinterpret_cast<const float4*>(W1.p + (size_t)r * W1.ld + c * HS + c4));
+    *reinterpret_cast<__half2*>(sW1 + r * LHH + c4) = __floats2half2_rn(v.x, v.y); *reinterpret_cast<__half2*>(sW1 + r * LHH + c4 + 2) = __floats2half2_rn(v.z, v.w);
+  }
+  for (int i = threadIdx.x; i < HS * FO / 4; i += FNT) {
+    int r = i / (FO / 4), c4 = (i % (FO / 4)) * 4; float4 v = __ldcg(reinterpret_cast<const float4*>(W2.p + (size_t)(c * HS + r) * W2.ld + c4));
+    *reinterpret_cast<__half2*>(sW2 + r * LYH + c4) = __floats2half2_rn(v.x, v.y); *reinterpret_cast<__half2*>(sW2 + r * LYH + c4 + 2) = __floats2half2_rn(v.z, v.w);
+  }
+}
+
+__device__ void fwd16_slice(const Instr& in, int stp, bool res, __half* sm, int* ctr) {
+  __half *sX = sm + OFF_X, *sW1 = sm + OFF_W1, *sH = sm + OFF_H, *sW2 = sm + OFF_W2;
+  float* Sf = reinterpret_cast<float*>(sm + OFF_DY);
+  const Buf X = g_buf[in.a], W1 = g_buf[in.b], W2 = g_buf[in.c], HG = g_buf[in.n0], YP = g_buf[in.K];
+  const int c = in.m0, w = threadIdx.x >> 5, lane = threadIdx.x & 31;
+  if (!(res && stp > 0)) { cp_block16(sX, LXH, reinterpret_cast<const __half*>(X.p), X.ld, FB, FD / 8); cp_commit(); load_shadow(W1, W2, c, sW1, sW2, true); }
+  cp_wait_all(); __syncthreads();
+  FragH a1[HS / 16]; zero_acc16(a1);
+  warp_mma16<false, false, HS / 16>(a1, sX + 16 * w * LXH, LXH, 16, sW1, LHH, 16 * LHH, 16, FD / 16);
+#pragma unroll
+  for (int j = 0; j < HS / 16; j++) wmma::store_matrix_sync(Sf + 16 * w * LSF + j * 16, a1[j], LSF, wmma::mem_row_major);
+  __syncwarp();
+  __half* hgp = reinterpret_cast<__half*>(HG.p);
+  for (int e = lane; e < 16 * HS; e += 32) {   // relu, to fp16; this warp's rows only
+    int r = 16 * w + e / HS, col = e % HS; __half hv = __float2half(fmaxf(Sf[r * LSF + col], 0.f));
+    sH[r * LHH + col] = hv; if (!res) hgp[(size_t)r * HG.ld + c * HS + col] = hv;   // a non-resident BWD reads h back from here
+  }
+  __syncwarp();
+  FragH a2[FO / 16]; zero_acc16(a2);
+  warp_mma16<false, false, FO / 16>(a2, sH + 16 * w * LHH, LHH, 16, sW2, LYH, 16 * LYH, 16, HS / 16);
+  float* yp = YP.p + (size_t)((stp & 1) * NS + c) * FB * FO + (size_t)(16 * w) * FO;
+#pragma unroll
+  for (int j = 0; j < FO / 16; j++) wmma::store_matrix_sync(yp + j * 16, a2[j], FO, wmma::mem_row_major);
+  __syncthreads();
+  if (ctr && threadIdx.x == 0) { __threadfence(); atomicAdd(ctr + in.s0, 1); }
+}
+
+__device__ void bwd16_slice(const Instr& in, int stp, bool res, __half* sm, float* loss, int* ctr, bool prof, int next_a) {
+  __shared__ float red[FNT / 32];
+  __half *sX = sm + OFF_X, *sW1 = sm + OFF_W1, *sH = sm + OFF_H, *sDY = sm + OFF_DY, *sW2 = sm + OFF_W2;
+  float* Sf = reinterpret_cast<float*>(sDY);
+  const Buf X = g_buf[in.a], W1 = g_buf[in.b], W2 = g_buf[in.c], T = g_buf[in.aux], HG = g_buf[in.n0], YP = g_buf[in.K];
+  const int c = in.m0, w = threadIdx.x >> 5, lane = threadIdx.x & 31, tid = threadIdx.x, mt = w >> 2, nt = w & 3;
+  if (!res) {
+    cp_block16(sX, LXH, reinterpret_cast<const __half*>(X.p), X.ld, FB, FD / 8);
+    cp_block16(sH, LHH, reinterpret_cast<const __half*>(HG.p) + c * HS, HG.ld, FB, HS / 8); cp_commit();
+    load_shadow(W1, W2, c, sW1, sW2, false);
+  }
+  // fp32 master weights for the update: issue the loads now, they land while the hop and the GEMMs run
+  FragH cw1[HS / 16], cw2;
+#pragma unroll
+  for (int j = 0; j < HS / 16; j++) wmma::load_matrix_sync(cw1[j], W1.p + (size_t)(16 * w) * W1.ld + c * HS + j * 16, W1.ld, wmma::mem_row_major);
+  wmma::load_matrix_sync(cw2, W2.p + (size_t)(c * HS + mt * 16) * W2.ld + nt * 16, W2.ld, wmma::mem_row_major);
+  if (tid == 0) {
+    if (ctr) { while (ld_acquire(ctr + in.w0c) < in.w0v) __nanosleep(16); __threadfence(); }
+    if (prof) s_tready = gtime();
+  }
+  cp_wait_all(); __syncthreads();
+  // ---- y = sum of the partials in slice order; dy = (y - t) * s * GS (fp16); loss
+  const float* ypb = YP.p + (size_t)(stp & 1) * NS * FB * FO;
+  const float s2 = in.scale * (float)GS;
+  float lsum = 0.f;
+#pragma unroll 1
+  for (int g = 0; g < 4; g++) {
+    float4 v[2][NS], tv[2];
+#pragma unroll
+    for (int u = 0; u < 2; u++)
+#pragma unroll
+      for (int p = 0; p < NS; p++) v[u][p] = __ldcg(reinterpret_cast<const float4*>(ypb + (size_t)p * FB * FO) + tid + FNT * (2 * g + u));
+#pragma unroll
+    for (int u = 0; u < 2; u++) tv[u] = __ldcg(reinterpret_cast<const float4*>(T.p) + tid + FNT * (2 * g + u));
+#pragma unroll
+    for (int u = 0; u < 2; u++) {
+      int i4 = tid + FNT * (2 * g + u), r = i4 / (FO / 4), cc = (i4 % (FO / 4)) * 4;
+      float4 y = v[u][0];
+#pragma unroll
+      for (int p = 1; p < NS; p++) { y.x += v[u][p].x; y.y += v[u][p].y; y.z += v[u][p].z; y.w += v[u][p].w; }
+      float d0 = y.x - tv[u].x, d1 = y.y - tv[u].y, d2 = y.z - tv[u].z, d3 = y.w - tv[u].w;
+      lsum += d0 * d0 * in.scale * 0.5f + d1 * d1 * in.scale * 0.5f + d2 * d2 * in.scale * 0.5f + d3 * d3 * in.scale * 0.5f;
+      *reinterpret_cast<__half2*>(sDY + r * LYH + cc) = __floats2half2_rn(d0 * s2, d1 * s2);
+      *reinterpret_cast<__half2*>(sDY + r * LYH + cc + 2) = __floats2half2_rn(d2 * s2, d3 * s2);
+    }
+  }
+  if (c == 0) {
+    for (int o = 16; o; o >>= 1) lsum += __shfl_xor_sync(0xffffffff, lsum, o);
+    if (lane == 0) red[w] = lsum;
+  }
+  __syncthreads();
+  if (c == 0 && tid == 0) { float t = 0; for (int i = 0; i < FNT / 32; i++) t += red[i]; loss[in.loss_idx] = t; }
+  const float lrs = lr_of(in) * (1.f / GS);
+  // gW2 (x GS) = h^T dy: one 16x16 tile per warp; dh (x GS) = dy W2^T from the OLD W2 shadow
+  FragH g2[1]; zero_acc16(g2);
+  warp_mma16<true, false, 1>(g2, sH + mt * 16, LHH, 16 * LHH, sDY + nt * 16, LYH, 16 * LYH, 16, FB / 16);
+  FragH dh[HS / 16]; zero_acc16(dh);
+  warp_mma16<false, true, HS / 16>(dh, sDY + 16 * w * LYH, LYH, 16, sW2, LYH, 16, 16 * LYH, FO / 16);
+  __syncthreads();   // h, dy, old W2 shadow no longer needed by any warp (dy's smem becomes scratch)
+#pragma unroll
+  for (int j = 0; j < HS / 16; j++) wmma::store_matrix_sync(Sf + 16 * w * LSF + j * 16, dh[j], LSF, wmma::mem_row_major);
+  __syncwarp();
+  for (int e = lane; e < 16 * HS; e += 32) {   // mask by h > 0, dh replaces h (this warp's rows)
+    int r = 16 * w + e / HS, col = e % HS;
+    sH[r * LHH + col] = (__half2float(sH[r * LHH + col]) > 0.f) ? __float2half(Sf[r * LSF + col]) : __float2half(0.f);
+  }
+  __syncthreads();
+  FragH g1[HS / 16]; zero_acc16(g1);
+  warp_mma16<true, false, HS / 16>(g1, sX + 16 * w, LXH, 16 * LXH, sH, LHH, 16 * LHH, 16, FB / 16);
+  __syncthreads();   // sX, sH dead
+  if (res && next_a >= 0) { const Buf Xn = g_buf[next_a]; cp_block16(sX, LXH, reinterpret_cast<const __half*>(Xn.p), Xn.ld, FB, FD / 8); cp_commit(); }   // next step's X streams in during the updates
+  float* sW2f = reinterpret_cast<float*>(sH);
+#pragma unroll
+  for (int j = 0; j < HS / 16; j++) {
+#pragma unroll
+    for (int e = 0; e < cw1[j].num_elements; e++) cw1[j].x[e] = cw1[j].x[e] - lrs * g1[j].x[e];
+    wmma::store_matrix_sync(W1.p + (size_t)(16 * w) * W1.ld + c * HS + j * 16, cw1[j], W1.ld, wmma::mem_row_major);
+    wmma::store_matrix_sync(Sf + 16 * w * LSF + j * 16, cw1[j], LSF, wmma::mem_row_major);
+  }
+#pragma unroll
+  for (int e = 0; e < cw2.num_elements; e++) cw2.x[e] = cw2.x[e] - lrs * g2[0].x[e];
+  wmma::store_matrix_sync(W2.p + (size_t)(c * HS + mt * 16) * W2.ld + nt * 16, cw2, W2.ld, wmma::mem_row_major);
+  wmma::store_matrix_sync(sW2f + mt * 16 * LS2 + nt * 16, cw2, LS2, wmma::mem_row_major);
+  __syncwarp();
+  for (int e = lane; e < 16 * HS; e += 32) { int r = 16 * w + e / HS, col = e % HS; sW1[r * LHH + col] = __float2half(Sf[r * LSF + col]); }   // refresh the shadows
+  __syncthreads();
+  for (int i = tid; i < HS * FO; i += FNT) { int r = i / FO, col = i % FO; sW2[r * LYH + col] = __float2half(sW2f[r * LS2 + col]); }
+  if (!res) __threadfence();
+}
+
+__global__ void __launch_bounds__(FNT, 2) fvm16_kernel(const Instr* tape, const int* qoff, const int* qlen, int steps, int* ctr, float* loss, unsigned long long* prof, int perStep) {
+  const int b = blockIdx.x, n = qlen[b], q0 = qoff[b];
+  const bool res = n == 2;   // one task: its slice stays resident in this block's smem; more tasks share the block and reload
+  __half* sm = reinterpret_cast<__half*>(dsm);
+  for (int s = 0; s < steps; s++)
+    for (int i = 0; i < n; i++) {
+      const int t = q0 + i;
+      Instr in = inst_at(tape, t, s);
+      unsigned long long t0 = 0, t1 = 0;
+      if (prof) t0 = gtime();
+      if (in.op == OP_FWD) { fwd16_slice(in, s, res, sm, ctr); t1 = t0; }
+      else {
+        int next_a = (s + 1 < steps) ? inst_at(tape, t, s + 1).a : -1;
+        bwd16_slice(in, s, res, sm, loss, ctr, prof != nullptr, next_a);
+        if (prof) t1 = s_tready;
+      }
+      __syncthreads();
+      if (prof && threadIdx.x == 0) {
+        unsigned smid; asm volatile("mov.u32 %0, %%smid;" : "=r"(smid));
+        unsigned long long* q = prof + ((size_t)s * perStep + t) * 8; unsigned long long te = gtime();
+        q[0] = t0; q[1] = t1; q[2] = te; q[3] = te; q[4] = t1; q[5] = te; q[6] = (unsigned long long)smid | ((unsigned long long)b << 32); q[7] = 0;
+      }
+    }
+}
+__global__ void __launch_bounds__(FNT, 2) fphase16_kernel(const Instr* tape, int off, int step, float* loss) {
+  Instr in = inst_at(tape, off + blockIdx.x, step);
+  __half* sm = reinterpret_cast<__half*>(dsm);
+  if (in.op == OP_FWD) fwd16_slice(in, step, false, sm, nullptr); else bwd16_slice(in, step, false, sm, loss, nullptr, false, -1);
 }
 
 // ================= host =================
@@ -291,17 +734,31 @@ static int selftest() {
   return bad;
 }
 
-int main(int argc, char** argv) {
+#ifdef KVM_LIB
+#define KVM_ENTRY extern "C" int kvm_main
+#else
+#define KVM_ENTRY static int kvm_main
+#endif
+KVM_ENTRY(int argc, char** argv) {
   if (argc > 1 && std::string(argv[1]) == "--selftest") return selftest() ? 2 : 0;
   int steps = 1000, B = 128, D = 128, Hd = 256, O = 64, NB = 4, ref_steps = 100, R = 1;
-  float lr = 0.05f;
+  float lr = 0.05f; int nreps = 5; std::string json_path, dump_dir, tl_path, prog = "tiles"; int tl_s0 = 0, tl_s1 = 4, ovl = 0;
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];
     auto nx = [&]() { return atof(argv[++i]); };
     if (a == "--steps") steps = nx(); else if (a == "--B") B = nx(); else if (a == "--D") D = nx();
     else if (a == "--H") Hd = nx(); else if (a == "--O") O = nx(); else if (a == "--nb") NB = nx();
+    else if (a == "--reps") nreps = nx(); else if (a == "--json") json_path = argv[++i]; else if (a == "--dump-data") dump_dir = argv[++i];
+    else if (a == "--timeline") tl_path = argv[++i]; else if (a == "--tl-steps") { tl_s0 = nx(); tl_s1 = nx(); }
+    else if (a == "--prog") prog = argv[++i];
+    else if (a == "--overlap") ovl = nx();
     else if (a == "--runs") R = nx(); else if (a == "--lr") lr = nx(); else if (a == "--ref-steps") ref_steps = nx();
   }
+  const bool fp16 = prog == "fused16", fused = prog == "fused" || fp16;
+  if (ovl < 0 || ovl > 2 || (fused && ovl)) { fprintf(stderr, "--overlap 0|1|2 applies to --prog tiles only\n"); return 1; }
+  if (!fused && prog != "tiles") { fprintf(stderr, "--prog tiles|fused|fused16\n"); return 1; }
+  const size_t fsm = fp16 ? FSMEM16 : FSMEM;   // dynamic smem of the fused kernels
+  if (fused && (B != FB || D != FD || Hd != FH || O != FO)) { fprintf(stderr, "--prog fused is compiled for B=%d D=%d H=%d O=%d (KHS=%d)\n", FB, FD, FH, FO, HS); return 1; }
   if (B % TILE || D % TILE || Hd % TILE || O % TILE || B % KC || D % KC || Hd % KC || O % KC) { fprintf(stderr, "dims must be multiples of max(TILE=%d, KC=%d)\n", TILE, KC); return 1; }
   int nRB = B / TILE, nHC = Hd / TILE, nOC = O / TILE, nDC = D / TILE;
   // run r trains the same model from the same init with its own learning rate (an LR sweep)
@@ -354,12 +811,15 @@ int main(int argc, char** argv) {
   // ---- device buffers: shared data X_k, T_k; per-run {W1, W2, H1, dY, dH1}
   auto idX = [&](int k) { return k; };
   auto idT = [&](int k) { return NB + k; };
-  auto idW1 = [&](int r) { return 2 * NB + 5 * r; };
-  auto idW2 = [&](int r) { return 2 * NB + 5 * r + 1; };
-  auto idH1 = [&](int r) { return 2 * NB + 5 * r + 2; };
-  auto idDY = [&](int r) { return 2 * NB + 5 * r + 3; };
-  auto idDH = [&](int r) { return 2 * NB + 5 * r + 4; };
-  int nbuf = 2 * NB + 5 * R;
+  // per-run buffers {W1, W2, H1, dY, dH}; --overlap 2 adds the second parity copy of W2, H1, dY at +PSTR (ids 5..7 of the run)
+  const int PB = ovl >= 2 ? 8 : 5, PSTR = 4;
+  auto idW1 = [&](int r) { return 2 * NB + PB * r; };
+  auto idW2 = [&](int r) { return 2 * NB + PB * r + 1; };
+  auto idH1 = [&](int r) { return 2 * NB + PB * r + 2; };
+  auto idDY = [&](int r) { return 2 * NB + PB * r + 3; };
+  auto idDH = [&](int r) { return 2 * NB + PB * r + 4; };
+  auto idXh = [&](int k) { return 2 * NB + PB * R + k; };   // fp16 copies of X (fused16 only)
+  int nbuf = 2 * NB + PB * R + (fp16 ? NB : 0);
   if (nbuf > 256) { fprintf(stderr, "too many buffers\n"); return 1; }
   std::vector<Buf> hb(nbuf);
   auto dmalloc = [&](size_t n) { float* p; CK(cudaMalloc(&p, n * 4)); CK(cudaMemset(p, 0, n * 4)); return p; };
@@ -367,46 +827,77 @@ int main(int argc, char** argv) {
     hb[idX(k)] = {dmalloc(B * D), D}; CK(cudaMemcpy(hb[idX(k)].p, X[k].data(), B * D * 4, cudaMemcpyHostToDevice));
     hb[idT(k)] = {dmalloc(B * O), O}; CK(cudaMemcpy(hb[idT(k)].p, T[k].data(), B * O * 4, cudaMemcpyHostToDevice));
   }
+  if (fp16) for (int k = 0; k < NB; k++) {
+    std::vector<__half> xh(X[k].size()); for (size_t i = 0; i < xh.size(); i++) xh[i] = __float2half(X[k][i]);
+    __half* d; CK(cudaMalloc(&d, xh.size() * 2)); CK(cudaMemcpy(d, xh.data(), xh.size() * 2, cudaMemcpyHostToDevice)); hb[idXh(k)] = {reinterpret_cast<float*>(d), D};
+  }
   for (int r = 0; r < R; r++) {
     hb[idW1(r)] = {dmalloc(D * Hd), Hd}; hb[idW2(r)] = {dmalloc(Hd * O), O};
-    hb[idH1(r)] = {dmalloc(B * Hd), Hd}; hb[idDY(r)] = {dmalloc(B * O), O}; hb[idDH(r)] = {dmalloc(B * Hd), Hd};
+    hb[idH1(r)] = {dmalloc(B * Hd), Hd}; hb[idDY(r)] = {dmalloc(fused ? (size_t)2 * NS * B * O : (size_t)B * O), O}; hb[idDH(r)] = {dmalloc(B * Hd), Hd};
+    if (ovl >= 2) { hb[idW2(r) + PSTR] = {dmalloc(Hd * O), O}; hb[idH1(r) + PSTR] = {dmalloc(B * Hd), Hd}; hb[idDY(r) + PSTR] = {dmalloc(B * O), O}; }   // fused: DY holds the partial-y ring [parity][slice][B x O]
   }
   CK(cudaMemcpyToSymbol(g_buf, hb.data(), nbuf * sizeof(Buf)));
 
   // ---- tape builder. Per step and run: H1 -> Y -> DH1 -> DW2(+SGD) -> DW1(+SGD); counters give fine-grained deps.
-  constexpr int NPH = 5;
-  enum { P_H1, P_Y, P_DH1, P_DW2, P_DW1 };
-  int CPS = NPH * (nRB + 1);
-  int SC = R * CPS;   // counters per step
-  auto ctr = [&](int r, int s, int ph, int rb) { return (s * R + r) * CPS + ph * (nRB + 1) + (rb < 0 ? nRB : rb); };
+  const int NPH = fused ? 2 : 5;
+  // counter spaces ("phases"): the five instruction groups, plus per-COLUMN counters that a consumer needing only one column waits on
+  enum { P_H1, P_Y, P_DH1, P_DW2, P_DW1, P_DW2C, P_YC, P_DH1C, NSPACE };
+  const int PIT = std::max(std::max(nRB, nHC), std::max(nOC, nDC));   // slots per space = PIT + 1 (last = aggregate)
+  int CPS = NSPACE * (PIT + 1);
+  int SC = fused ? R : R * CPS;   // counters per step (fused: one "all partial y written" counter per run)
+  auto ctr = [&](int r, int s, int ph, int idx) { return (s * R + r) * CPS + ph * (PIT + 1) + (idx < 0 ? PIT : idx); };
   auto mk = [&]() { Instr i; memset(&i, 0, sizeof i); i.aux = -1; i.w0c = i.w1c = i.s0 = i.s1 = -1; return i; };
   // Template for step 0 (waits on the previous step are flagged and dropped at s==0 on the device).
+  //   --overlap 0: every consumer waits for the whole producer phase (aggregate counters; the original tape).
+  //   --overlap 1: every consumer waits only for the producer tiles it reads (per-row / per-column counters); same buffers, so the
+  //                write-after-read hazards on H1, dY and W2 stay as waits.
+  //   --overlap 2: 1 + step-parity double buffers for H1, dY and W2 (W2 updated out of place), which removes those write-after-read
+  //                waits: DW2 no longer waits for DH1, H1(s+1) no longer waits for DW2(s). The arithmetic of every tile is unchanged.
   auto emit_phase = [&](std::vector<Instr>& tape, int r, int ph) {
     const int s = 0; float rlr = lrs[r];
     if (ph == P_H1) for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nHC; cn++) {
       Instr i = mk(); i.op = OP_GEMM; i.flags = F_RELU; i.a = idX(0); i.b = idW1(r); i.c = idH1(r); i.m0 = rb * TILE; i.n0 = cn * TILE; i.K = D; i.xflags = 4 | 1 | 2;
-      i.w0c = ctr(r, s, P_DW1, -1); i.w0v = nDC * nHC; i.w1c = ctr(r, s, P_DW2, -1); i.w1v = nHC * nOC;
+      if (ovl == 0) { i.w0c = ctr(r, s, P_DW1, -1); i.w0v = nDC * nHC; i.w1c = ctr(r, s, P_DW2, -1); i.w1v = nHC * nOC; }
+      else { i.w0c = ctr(r, s, P_DW1, cn); i.w0v = nDC; if (ovl == 1) { i.w1c = ctr(r, s, P_DW2, cn); i.w1v = nOC; } }   // W1 column cn; (ovl 1) H1 column cn read by DW2 row cn
+      if (ovl >= 2) { i.xflags = 4 | 1 | 64; i.c = idH1(r); }                                                           // c = H1[s&1]; no WAR wait
       i.s0 = ctr(r, s, P_H1, rb); i.s1 = ctr(r, s, P_H1, -1); tape.push_back(i);
     }
     if (ph == P_Y) for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nOC; cn++) {
       Instr i = mk(); i.op = OP_GEMM; i.flags = F_MSE; i.a = idH1(r); i.b = idW2(r); i.c = idDY(r); i.aux = idT(0); i.m0 = rb * TILE; i.n0 = cn * TILE; i.K = Hd; i.xflags = 8 | 2;
       i.scale = 2.f / (B * O); i.loss_idx = r * steps;
-      i.w0c = ctr(r, s, P_H1, rb); i.w0v = nHC; i.w1c = ctr(r, s, P_DW2, -1); i.w1v = nHC * nOC;
-      i.s0 = ctr(r, s, P_Y, rb); i.s1 = ctr(r, s, P_Y, -1); tape.push_back(i);
+      i.w0c = ctr(r, s, P_H1, rb); i.w0v = nHC;
+      if (ovl == 0) { i.w1c = ctr(r, s, P_DW2, -1); i.w1v = nHC * nOC; } else { i.w1c = ctr(r, s, P_DW2C, cn); i.w1v = nHC; }   // W2 column cn of the last step
+      if (ovl >= 2) i.xflags = 8 | 2 | 16 | 32 | 64;                                                                      // H1[s&1], W2[s&1], dY[s&1]
+      i.s0 = ctr(r, s, P_Y, rb); i.s1 = ovl == 0 ? ctr(r, s, P_Y, -1) : ctr(r, s, P_YC, cn); tape.push_back(i);
     }
     if (ph == P_DH1) for (int rb = 0; rb < nRB; rb++) for (int cn = 0; cn < nHC; cn++) {
       Instr i = mk(); i.op = OP_GEMM; i.flags = F_TB | F_RELUMASK; i.a = idDY(r); i.b = idW2(r); i.c = idDH(r); i.aux = idH1(r); i.m0 = rb * TILE; i.n0 = cn * TILE; i.K = O;
-      i.w0c = ctr(r, s, P_Y, rb); i.w0v = nOC; i.s1 = ctr(r, s, P_DH1, -1); tape.push_back(i);
+      i.w0c = ctr(r, s, P_Y, rb); i.w0v = nOC;
+      if (ovl >= 2) i.xflags = 16 | 32 | 128;                                                                             // dY[s&1], W2[s&1], H1[s&1]
+      i.s0 = ovl == 0 ? -1 : ctr(r, s, P_DH1C, cn); i.s1 = ctr(r, s, P_DH1, -1); tape.push_back(i);
     }
-    if (ph == P_DW2) for (int m = 0; m < nHC; m++) for (int n = 0; n < nOC; n++) {   // W2 -= lr H1^T dY (after all dH1 tiles read W2)
+    if (ph == P_DW2) for (int m = 0; m < nHC; m++) for (int n = 0; n < nOC; n++) {   // W2 -= lr H1^T dY
       Instr i = mk(); i.op = OP_GEMM; i.flags = F_TA | F_SGD; i.a = idH1(r); i.b = idDY(r); i.c = idW2(r); i.m0 = m * TILE; i.n0 = n * TILE; i.K = B; i.scale = rlr;
-      i.w0c = ctr(r, s, P_Y, -1); i.w0v = nRB * nOC; i.w1c = ctr(r, s, P_DH1, -1); i.w1v = nRB * nHC;
-      i.s1 = ctr(r, s, P_DW2, -1); tape.push_back(i);
+      if (ovl == 0) { i.w0c = ctr(r, s, P_Y, -1); i.w0v = nRB * nOC; i.w1c = ctr(r, s, P_DH1, -1); i.w1v = nRB * nHC; i.s1 = ctr(r, s, P_DW2, -1); }
+      else if (ovl == 1) { i.w0c = ctr(r, s, P_YC, n); i.w0v = nRB; i.w1c = ctr(r, s, P_DH1C, m); i.w1v = nRB; i.s0 = ctr(r, s, P_DW2, m); i.s1 = ctr(r, s, P_DW2C, n); }   // WAR: dH1 tiles that read W2 rows m
+      else {   // out of place: reads W2[s&1], writes W2[(s+1)&1]: nothing reads the target, so no wait for DH1
+        i.flags |= F_SGDSRC; i.aux = idW2(r); i.xflags = 16 | 32 | 128 | 256;
+        i.w0c = ctr(r, s, P_YC, n); i.w0v = nRB; i.s0 = ctr(r, s, P_DW2, m); i.s1 = ctr(r, s, P_DW2C, n); }
+      tape.push_back(i);
     }
     if (ph == P_DW1) for (int m = 0; m < nDC; m++) for (int n = 0; n < nHC; n++) {   // W1 -= lr X^T dH1
       Instr i = mk(); i.op = OP_GEMM; i.flags = F_TA | F_SGD; i.a = idX(0); i.b = idDH(r); i.c = idW1(r); i.m0 = m * TILE; i.n0 = n * TILE; i.K = B; i.scale = rlr; i.xflags = 4;
-      i.w0c = ctr(r, s, P_DH1, -1); i.w0v = nRB * nHC; i.s1 = ctr(r, s, P_DW1, -1); tape.push_back(i);
+      if (ovl == 0) { i.w0c = ctr(r, s, P_DH1, -1); i.w0v = nRB * nHC; i.s1 = ctr(r, s, P_DW1, -1); }
+      else { i.w0c = ctr(r, s, P_DH1C, n); i.w0v = nRB; i.s0 = ctr(r, s, P_DW1, n); }
+      tape.push_back(i);
     }
+  };
+  // fused program: FWD / BWD per (run, hidden slice); counter r counts the slices whose partial y of the step is written
+  auto emit_fused = [&](std::vector<Instr>& tape, int r, int c, int ph) {
+    Instr i = mk(); i.op = ph == 0 ? OP_FWD : OP_BWD; i.a = fp16 ? idXh(0) : idX(0); i.b = idW1(r); i.c = idW2(r); i.aux = idT(0); i.m0 = c; i.n0 = idH1(r); i.K = idDY(r);
+    i.scale = 2.f / (B * O); memcpy(&i.pad1, &lrs[r], 4); i.loss_idx = r * steps; i.xflags = 4 | 8;
+    if (ph == 0) i.s0 = r; else { i.w0c = r; i.w0v = NS; }
+    tape.push_back(i);
   };
   // one-step template, phase-major then run: [ph][r] segments. Batched baseline launches a whole phase (all runs);
   // sequential baseline launches one (run, phase) segment.
@@ -414,23 +905,54 @@ int main(int argc, char** argv) {
   std::vector<std::vector<int>> offPR(NPH, std::vector<int>(R));
   for (int ph = 0; ph < NPH; ph++) {
     offP[ph] = (int)tapeP.size();
-    for (int r = 0; r < R; r++) { offPR[ph][r] = (int)tapeP.size(); emit_phase(tapeP, r, ph); }
+    for (int r = 0; r < R; r++) {
+      offPR[ph][r] = (int)tapeP.size();
+      if (fused) for (int c = 0; c < NS; c++) emit_fused(tapeP, r, c, ph); else emit_phase(tapeP, r, ph);
+    }
     nP[ph] = (int)tapeP.size() - offP[ph]; nPR[ph] = nP[ph] / R;
   }
-  int perStep = (int)tapeP.size();
-  int ntape = perStep * steps, nctr = steps * SC;
-  printf("model B=%d D=%d H=%d O=%d  runs=%d steps=%d  tile=%d kc=%d stg=%d  tape=%d instrs executed, %d-entry step template (%.2f MB)\n", B, D, Hd, O, R, steps, TILE, KC, STG, ntape, perStep, perStep * sizeof(Instr) / 1e6);
-
-  Instr* dtapeP; int *dhead, *dctr; float* dloss;
-  CK(cudaMalloc(&dtapeP, perStep * sizeof(Instr))); CK(cudaMemcpy(dtapeP, tapeP.data(), perStep * sizeof(Instr), cudaMemcpyHostToDevice));
-  { KP kp{SC, NB, perStep}; CK(cudaMemcpyToSymbol(g_kp, &kp, sizeof kp)); }
-  CK(cudaMalloc(&dhead, 4)); CK(cudaMalloc(&dctr, (size_t)nctr * 4)); CK(cudaMalloc(&dloss, (size_t)R * steps * 4));
-
-  CK(cudaFuncSetAttribute(vm_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)DSMEM));
-  CK(cudaFuncSetAttribute(phase_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)DSMEM));
   int dev; cudaGetDevice(&dev); cudaDeviceProp prop; cudaGetDeviceProperties(&prop, dev);
-  int occ; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, vm_kernel, NT, DSMEM));
-  int grid = prop.multiProcessorCount * occ;
+  // The VM's own tape. tiles: the phase-major template, entries claimed dynamically. fused: a static queue per block (tasks round-robin over
+  // min(tasks, SMs) blocks, each queue = all its FWDs then all its BWDs), run once per step by the loop opcode; resident iff one task per block.
+  std::vector<Instr> tapeV; std::vector<int> tmplPhase, tmplRun, qoff, qlen; int res = 0, grid = 0, occ = 1;
+  if (!fused) {
+    tapeV = tapeP;
+    for (int ph = 0; ph < NPH; ph++) for (int r = 0; r < R; r++) { tmplPhase.resize(offPR[ph][r] + nPR[ph], ph); tmplRun.resize(offPR[ph][r] + nPR[ph], r); }
+    CK(cudaFuncSetAttribute(vm_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)DSMEM));
+    CK(cudaFuncSetAttribute(phase_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)DSMEM));
+    CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, vm_kernel, NT, DSMEM));
+    grid = prop.multiProcessorCount * occ;
+  } else {
+    CK(cudaFuncSetAttribute(fvm_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)FSMEM));
+    CK(cudaFuncSetAttribute(fphase_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)FSMEM));
+    CK(cudaFuncSetAttribute(fvm16_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)FSMEM16));
+    CK(cudaFuncSetAttribute(fphase16_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)FSMEM16));
+    if (fp16) CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, fvm16_kernel, FNT, FSMEM16));
+    else CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, fvm_kernel, FNT, FSMEM));
+    if (occ < 1) { fprintf(stderr, "fused kernel does not fit (%zu B smem)\n", fsm); return 1; }
+    int ntask = R * NS; grid = std::min(ntask, prop.multiProcessorCount * occ); res = ntask <= grid;
+    std::vector<std::vector<int>> tasks(grid);
+    for (int t = 0; t < ntask; t++) tasks[t % grid].push_back(t);
+    for (int b = 0; b < grid; b++) {
+      qoff.push_back((int)tapeV.size());
+      for (int ph = 0; ph < 2; ph++) for (int t : tasks[b]) { emit_fused(tapeV, t / NS, t % NS, ph); tmplPhase.push_back(ph); tmplRun.push_back(t / NS); }
+      qlen.push_back((int)tapeV.size() - qoff.back());
+    }
+  }
+  int perStep = (int)tapeV.size();
+  int ntape = perStep * steps, nctr = steps * SC;
+  if (fused) printf("model B=%d D=%d H=%d O=%d  runs=%d steps=%d  prog=fused hs=%d slices=%d  tape=%d instrs executed, %d-entry step template, %d static queues%s\n", B, D, Hd, O, R, steps, HS, NS, ntape, perStep, grid, res ? ", weights resident in smem" : ", multi-task blocks (not resident)");
+  else printf("model B=%d D=%d H=%d O=%d  runs=%d steps=%d  prog=tiles tile=%d kc=%d stg=%d  tape=%d instrs executed, %d-entry step template (%.2f MB)\n", B, D, Hd, O, R, steps, TILE, KC, STG, ntape, perStep, perStep * sizeof(Instr) / 1e6);
+
+  Instr *dtapeP, *dtapeV; int *dhead, *dctr, *dqoff = nullptr, *dqlen = nullptr; float* dloss;
+  CK(cudaMalloc(&dtapeP, tapeP.size() * sizeof(Instr))); CK(cudaMemcpy(dtapeP, tapeP.data(), tapeP.size() * sizeof(Instr), cudaMemcpyHostToDevice));
+  CK(cudaMalloc(&dtapeV, tapeV.size() * sizeof(Instr))); CK(cudaMemcpy(dtapeV, tapeV.data(), tapeV.size() * sizeof(Instr), cudaMemcpyHostToDevice));
+  if (fused) {
+    CK(cudaMalloc(&dqoff, grid * 4)); CK(cudaMemcpy(dqoff, qoff.data(), grid * 4, cudaMemcpyHostToDevice));
+    CK(cudaMalloc(&dqlen, grid * 4)); CK(cudaMemcpy(dqlen, qlen.data(), grid * 4, cudaMemcpyHostToDevice));
+  }
+  { KP kp{SC, NB, perStep, PSTR}; CK(cudaMemcpyToSymbol(g_kp, &kp, sizeof kp)); }
+  CK(cudaMalloc(&dhead, 4)); CK(cudaMalloc(&dctr, (size_t)nctr * 4)); CK(cudaMalloc(&dloss, (size_t)R * steps * 4));
   printf("%s  SMs=%d occ=%d  vm grid=%d\n", prop.name, prop.multiProcessorCount, occ, grid);
 
   auto reset = [&]() {
@@ -442,9 +964,9 @@ int main(int argc, char** argv) {
     CK(cudaDeviceSynchronize());
   };
   auto launch_seq = [&](cudaStream_t st, int rlo, int rhi) {   // one model at a time: run r, step s, phase ph
-    for (int r = rlo; r < rhi; r++) for (int s = 0; s < steps; s++) for (int ph = 0; ph < NPH; ph++) phase_kernel<<<nPR[ph], NT, DSMEM, st>>>(dtapeP, offPR[ph][r], s, dloss);
+    for (int r = rlo; r < rhi; r++) for (int s = 0; s < steps; s++) for (int ph = 0; ph < NPH; ph++) { if (fp16) fphase16_kernel<<<nPR[ph], FNT, FSMEM16, st>>>(dtapeP, offPR[ph][r], s, dloss); else if (fused) fphase_kernel<<<nPR[ph], FNT, FSMEM, st>>>(dtapeP, offPR[ph][r], s, dloss); else phase_kernel<<<nPR[ph], NT, DSMEM, st>>>(dtapeP, offPR[ph][r], s, dloss); }
   };
-  auto launch_batched = [&](cudaStream_t st) { for (int s = 0; s < steps; s++) for (int ph = 0; ph < NPH; ph++) phase_kernel<<<nP[ph], NT, DSMEM, st>>>(dtapeP, offP[ph], s, dloss); };
+  auto launch_batched = [&](cudaStream_t st) { for (int s = 0; s < steps; s++) for (int ph = 0; ph < NPH; ph++) { if (fp16) fphase16_kernel<<<nP[ph], FNT, FSMEM16, st>>>(dtapeP, offP[ph], s, dloss); else if (fused) fphase_kernel<<<nP[ph], FNT, FSMEM, st>>>(dtapeP, offP[ph], s, dloss); else phase_kernel<<<nP[ph], NT, DSMEM, st>>>(dtapeP, offP[ph], s, dloss); } };
   cudaEvent_t e0, e1; cudaEventCreate(&e0); cudaEventCreate(&e1);
   auto timed = [&](auto fn) { reset(); cudaEventRecord(e0); fn(); cudaEventRecord(e1); CK(cudaEventSynchronize(e1)); CK(cudaGetLastError()); float ms; cudaEventElapsedTime(&ms, e0, e1); return (double)ms; };
   struct Out { std::vector<float> L, w; };
@@ -452,7 +974,7 @@ int main(int argc, char** argv) {
     Out o; o.L.resize((size_t)R * steps);
     CK(cudaMemcpy(o.L.data(), dloss, o.L.size() * 4, cudaMemcpyDeviceToHost));
     for (int r = 0; r < R; r++) { std::vector<float> a(W1.size()), b(W2.size());
-      CK(cudaMemcpy(a.data(), hb[idW1(r)].p, a.size() * 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(b.data(), hb[idW2(r)].p, b.size() * 4, cudaMemcpyDeviceToHost));
+      CK(cudaMemcpy(a.data(), hb[idW1(r)].p, a.size() * 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(b.data(), hb[idW2(r) + (ovl >= 2 ? (steps & 1) * PSTR : 0)].p, b.size() * 4, cudaMemcpyDeviceToHost));   // overlap 2: the last update landed in W2[steps&1]
       o.w.insert(o.w.end(), a.begin(), a.end()); o.w.insert(o.w.end(), b.begin(), b.end()); }
     return o;
   };
@@ -467,30 +989,93 @@ int main(int argc, char** argv) {
   { cudaStream_t cs; cudaStreamCreate(&cs);
     for (int r = 0; r < R; r++) { cudaGraph_t g; cudaStreamBeginCapture(cs, cudaStreamCaptureModeGlobal); launch_seq(cs, r, r + 1); CK(cudaStreamEndCapture(cs, &g)); CK(cudaGraphInstantiate(&xRun[r], g, 0)); } }
 
-  auto run_vm = [&]() { vm_kernel<<<grid, NT, DSMEM>>>(dtapeP, ntape, dhead, dctr, dloss, nullptr); };
+  auto vm_launch = [&](unsigned long long* prof) {
+    if (fp16) fvm16_kernel<<<grid, FNT, FSMEM16>>>(dtapeV, dqoff, dqlen, steps, dctr, dloss, prof, perStep);
+    else if (fused) fvm_kernel<<<grid, FNT, FSMEM>>>(dtapeV, dqoff, dqlen, steps, dctr, dloss, prof, perStep, res);
+    else vm_kernel<<<grid, NT, DSMEM>>>(dtapeV, ntape, dhead, dctr, dloss, prof);
+  };
+  auto run_vm = [&]() { vm_launch(nullptr); };
   auto run_seq = [&]() { launch_seq(0, 0, R); };
   auto run_seqgraph = [&]() { for (int r = 0; r < R; r++) CK(cudaGraphLaunch(xRun[r], 0)); };
   auto run_batched = [&]() { CK(cudaGraphLaunch(xB, 0)); };
-  double t[4]; Out o[4];
-  auto best = [&](auto fn, int idx) { timed(fn); double b = 1e30; for (int q = 0; q < 3; q++) b = std::min(b, timed(fn)); t[idx] = b; o[idx] = fetch(); };
-  best(run_seq, 0); best(run_seqgraph, 1); best(run_batched, 2); best(run_vm, 3);
+  // each mode: 1 warm-up, then `reps` timed repetitions; best = min, spread = max/min (ratios below use the best)
+  std::vector<double> ts[4]; Out o[4];
+  auto measure = [&](auto fn, int idx) { timed(fn); for (int q = 0; q < nreps; q++) ts[idx].push_back(timed(fn)); o[idx] = fetch(); };
+  measure(run_seq, 0); measure(run_seqgraph, 1); measure(run_batched, 2); measure(run_vm, 3);
+  double t[4], tmax[4], tmed[4];
+  for (int i = 0; i < 4; i++) { auto v = ts[i]; std::sort(v.begin(), v.end()); t[i] = v[0]; tmax[i] = v.back(); tmed[i] = v[v.size() / 2]; }
 
   double tot = (double)R * steps;
   const char* nm[4] = {"sequential, launch-per-op", "sequential, CUDA graph/run", "batched across runs (vmap-like graph)", "KVM: all runs, ONE kernel"};
-  printf("\n%-40s %10s %14s %10s %9s\n", "mode", "total ms", "us/step/run", "run-steps/s", "vs seq");
-  for (int i = 0; i < 4; i++) printf("%-40s %10.2f %14.2f %11.0f %8.2fx\n", nm[i], t[i], t[i] * 1000 / tot, tot / (t[i] / 1000), t[0] / t[i]);
-  printf("KVM vs best baseline: %.2fx\n", std::min(std::min(t[0], t[1]), t[2]) / t[3]);
+  printf("\n%-40s %10s %14s %11s %9s %8s\n", "mode", "best ms", "us/step/run", "run-steps/s", "vs seq", "max/min");
+  for (int i = 0; i < 4; i++) printf("%-40s %10.2f %14.2f %11.0f %8.2fx %7.2fx\n", nm[i], t[i], t[i] * 1000 / tot, tot / (t[i] / 1000), t[0] / t[i], tmax[i] / t[i]);
+  printf("KVM vs best baseline: %.2fx   (%d reps per mode)\n", std::min(std::min(t[0], t[1]), t[2]) / t[3], nreps);
 
   // ---- correctness
   auto relerr = [&](const float* a, const std::vector<float>& ref) { double m = 0; for (int i = 0; i < rs; i++) m = std::max(m, (double)fabs(a[i] - ref[i]) / (fabs(ref[i]) + 1e-6)); return m; };
   double e_ref = 0; for (int i = 0; i < 4; i++) { e_ref = std::max(e_ref, relerr(&o[i].L[0], ref0)); e_ref = std::max(e_ref, relerr(&o[i].L[(size_t)(R - 1) * steps], refN)); }
-  double e_mode = 0; for (int i = 0; i < 3; i++) for (size_t j = 0; j < o[3].w.size(); j++) e_mode = std::max(e_mode, (double)fabs(o[3].w[j] - o[i].w[j]));
+  // weights must be BITWISE identical in all four modes (same tape, same per-tile reduction order): exact equality, not a tolerance
+  size_t n_diff = 0; double e_mode = 0; unsigned long long whash = 0;
+  for (int i = 0; i < 3; i++) for (size_t j = 0; j < o[3].w.size(); j++)
+    if (memcmp(&o[3].w[j], &o[i].w[j], 4) != 0) { n_diff++; e_mode = std::max(e_mode, (double)fabs(o[3].w[j] - o[i].w[j])); }
   bool dec = true; for (int r = 0; r < R; r++) dec = dec && o[3].L[(size_t)r * steps + steps - 1] < o[3].L[(size_t)r * steps];
   printf("\nloss run0: %.5f -> %.5f (lr %.4f)", o[3].L[0], o[3].L[steps - 1], lrs[0]);
   if (R > 1) printf("   run%d: %.5f -> %.5f (lr %.4f)", R - 1, o[3].L[(size_t)(R - 1) * steps], o[3].L[(size_t)(R - 1) * steps + steps - 1], lrs[R - 1]);
   printf("\nmax rel loss err vs cpu fp32 (runs 0 and %d, first %d steps, all modes): %.2e\n", R - 1, rs, e_ref);
-  printf("max |dW| of VM vs each baseline, all runs: %.2e\n", e_mode);
-  bool ok = e_ref < 2e-2 && e_mode < 1e-3 && dec;
+  { unsigned long long h = 1469598103934665603ull; const unsigned char* q = (const unsigned char*)o[3].w.data(); for (size_t j = 0; j < o[3].w.size() * 4; j++) { h ^= q[j]; h *= 1099511628211ull; } whash = h; }
+  printf("final weights FNV-1a (VM, all runs): %016llx   [overlap=%d]\n", whash, ovl);
+  printf("weights VM vs each baseline, all runs: %zu of %zu elements differ bitwise (max |dW| %.2e)\n", n_diff, 3 * o[3].w.size(), e_mode);
+  bool ok = e_ref < 2e-2 && n_diff == 0 && dec;
+
+  // ---- optional: raw data for external baselines (PyTorch), so every framework trains from the very same bits
+  if (!dump_dir.empty()) {
+    auto wr = [&](const char* name, const void* p, size_t bytes) { std::string f = dump_dir + "/" + name; FILE* fp = fopen(f.c_str(), "wb"); if (!fp) { fprintf(stderr, "cannot write %s\n", f.c_str()); exit(1); } fwrite(p, 1, bytes, fp); fclose(fp); };
+    for (int k = 0; k < NB; k++) { wr(("X" + std::to_string(k) + ".f32").c_str(), X[k].data(), B * D * 4); wr(("T" + std::to_string(k) + ".f32").c_str(), T[k].data(), B * O * 4); }
+    wr("W1.f32", W1.data(), W1.size() * 4); wr("W2.f32", W2.data(), W2.size() * 4); wr("lrs.f32", lrs.data(), R * 4);
+    wr("vm_loss.f32", o[3].L.data(), o[3].L.size() * 4); wr("vm_weights.f32", o[3].w.data(), o[3].w.size() * 4);
+    std::string f = dump_dir + "/meta.json"; FILE* fp = fopen(f.c_str(), "w");
+    fprintf(fp, "{\"B\":%d,\"D\":%d,\"H\":%d,\"O\":%d,\"NB\":%d,\"R\":%d,\"steps\":%d}\n", B, D, Hd, O, NB, R, steps); fclose(fp);
+  }
+
+  // ---- optional timeline: one extra VM run with per-instruction timestamps (prof pointer set), CSV for the step window [tl_s0, tl_s1)
+  double t_prof = 0;
+  if (!tl_path.empty()) {
+#ifdef KSTAGE
+    { unsigned long long z[24] = {0}; CK(cudaMemcpyToSymbol(g_stage, z, sizeof z)); }
+#endif
+    unsigned long long* dprof; size_t pbytes = (size_t)ntape * 8 * 8; CK(cudaMalloc(&dprof, pbytes)); CK(cudaMemset(dprof, 0, pbytes));
+    t_prof = timed([&]() { vm_launch(dprof); });
+    std::vector<unsigned long long> hp((size_t)ntape * 8); CK(cudaMemcpy(hp.data(), dprof, pbytes, cudaMemcpyDeviceToHost)); cudaFree(dprof);
+    unsigned long long tmin = ~0ull; for (int i = 0; i < ntape; i++) tmin = std::min(tmin, hp[(size_t)i * 8]);
+    FILE* fp = fopen(tl_path.c_str(), "w"); if (!fp) { fprintf(stderr, "cannot write %s\n", tl_path.c_str()); exit(1); }
+    fprintf(fp, "# idx,step,tmpl,phase,run,smid,block,claim_ns,ready_ns,compute_end_ns,end_ns,mma_start_ns,mma_end_ns (ns since the first claim of the whole run; prog=%s phases %s; profiled run %.3f ms)\n", prog.c_str(), fused ? "0=FWD 1=BWD" : "0=H1 1=Y 2=DH1 3=DW2 4=DW1", t_prof);
+    for (int i = 0; i < ntape; i++) {
+      int stp = i / perStep, tm = i % perStep; if (stp < tl_s0 || stp >= tl_s1) continue;
+      const unsigned long long* q = &hp[(size_t)i * 8];
+      fprintf(fp, "%d,%d,%d,%d,%d,%u,%u,%lld,%lld,%lld,%lld,%lld,%lld\n", i, stp, tm, tmplPhase[tm], tmplRun[tm], (unsigned)(q[6] & 0xffffffffu), (unsigned)(q[6] >> 32),
+              (long long)(q[0] - tmin), (long long)(q[1] - tmin), (long long)(q[2] - tmin), (long long)(q[3] - tmin), (long long)(q[4] - tmin), (long long)(q[5] - tmin));
+    }
+    fclose(fp);
+#ifdef KSTAGE
+    { unsigned long long st[24]; CK(cudaMemcpyFromSymbol(st, g_stage, sizeof st)); int clk; cudaDeviceGetAttribute(&clk, cudaDevAttrClockRate, dev);
+      printf("stage cycles per step (block 0, summed over instrs; %d kHz): FWD load/wait %.0f  F1 %.0f  F2+store %.0f  signal %.0f | BWD pre-wait %.0f  hop+load %.0f  reduce+dy %.0f  loss %.0f  gW2+dh %.0f  mask+W2upd %.0f  gW1 %.0f  W1upd %.0f  tail %.0f\n", clk,
+             st[1] / (double)steps, st[2] / (double)steps, st[3] / (double)steps, st[4] / (double)steps, st[5] / (double)steps, st[6] / (double)steps, st[7] / (double)steps,
+             (double)0, st[8] / (double)steps, st[9] / (double)steps, st[10] / (double)steps, st[11] / (double)steps, st[12] / (double)steps); }
+#endif
+    printf("timeline: profiled VM run %.3f ms (%.2fx the unprofiled best), steps [%d,%d) -> %s\n", t_prof, t_prof / t[3], tl_s0, tl_s1, tl_path.c_str());
+  }
+
+  if (!json_path.empty()) {
+    FILE* fp = fopen(json_path.c_str(), "w");
+    fprintf(fp, "{\"gpu\":\"%s\",\"sms\":%d,\"occ\":%d,\"grid\":%d,\"B\":%d,\"D\":%d,\"H\":%d,\"O\":%d,\"prog\":\"%s\",\"overlap\":%d,\"weights_fnv\":\"%016llx\",\"runs\":%d,\"steps\":%d,\"tile\":%d,\"kc\":%d,\"stg\":%d,\"reps\":%d,\n \"modes\":[", prop.name, prop.multiProcessorCount, occ, grid, B, D, Hd, O, prog.c_str(), ovl, whash, R, steps, TILE, KC, STG, nreps);
+    for (int i = 0; i < 4; i++) { fprintf(fp, "%s{\"name\":\"%s\",\"best_ms\":%.4f,\"median_ms\":%.4f,\"max_ms\":%.4f,\"us_per_step_run\":%.4f}", i ? "," : "", nm[i], t[i], tmed[i], tmax[i], t[i] * 1000 / tot); }
+    fprintf(fp, "],\n \"weights_bitwise_differ\":%zu,\"max_rel_loss_err\":%.3e,\"pass\":%s,\"profiled_ms\":%.4f}\n", n_diff, e_ref, ok ? "true" : "false", t_prof);
+    fclose(fp);
+  }
   printf("%s\n", ok ? "PASS" : "FAIL");
   return ok ? 0 : 2;
 }
+
+#ifndef KVM_LIB
+int main(int argc, char** argv) { return kvm_main(argc, argv); }
+#endif

@@ -1,0 +1,19 @@
+[kvm_exec][I] manifest ok: 2 workloads, 2 admissions, 194 buffers, serial order serve_s0 ... train_w0
+[kvm_exec][I] config: live_cap 8192, slots 32768, ring 524288 words, stack 0 B, sched dynamic, classes [train, serve]
+[kvm_exec][I]   class 0 train    weight 1 min_cta 0 max_cta 2147483647 urgent_us 0
+[kvm_exec][I]   class 1 serve    weight 1 min_cta 0 max_cta 2147483647 urgent_us 0
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 108 (1 admitter + 1 policy + 106 workers)
+[kvm_exec][I] kernel launched: grid 108 x 256 threads, live_cap 8192, slots 32768, succ ring 2097152 words, ring 524288 words, aging 0 us, sched dynamic
+[kvm_exec][I] started: 2 admissions, 2 classes, 1 version variables, 194 buffers
+[kvm_exec][I] [       46 us] admit     serve_s0       (class serve) versions [0,0,0,0,0,0,0,0]
+[kvm_exec][I] [     2666 us] done      serve_s0           73 tasks, versions [0,0,0,0,0,0,0,0]
+[kvm_exec][I] [     2680 us] admit     train_w0       (class train) versions [0,0,0,0,0,0,0,0]
+[kvm_exec][I] [    59665 us] done      train_w0         4120 tasks, versions [80,0,0,0,0,0,0,0]
+[kvm_exec][I] kernel done: 4193/4193 tasks in 59.765 ms, 2 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] version check: 0 version-carrying tasks (0 exact), 0 violations, 0 at_least readers saw the version advance while they ran; 46 reads of version 0 carry no tag (ordered by the host barrier only)
+[kvm_exec][I] workload 0: 4120 tasks, 0.038 CTA-s, queue wait p50 11.3 p99 43.0 max 51.2 us, 0 deadline misses, 0.02 GB moved (0.4 GB/s over the run)
+[kvm_exec][I] workload 1: 73 tasks, 0.001 CTA-s, queue wait p50 10.2 p99 15.4 max 15.4 us, 0 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] trace: 4193 tasks -> out/w40_5/trace.csv
+[kvm_exec][I] dumped 20 buffers to out/w40_5/buffers
+[kvm_exec][I] wrote out/w40_5/run.json
+OK: 4193/4193 tasks, 59.765 ms, 2 admissions

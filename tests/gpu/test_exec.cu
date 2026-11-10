@@ -919,6 +919,8 @@ static bool suite_recycle(bool quick) {
     unsigned parked_wid = 0;
     if (straggler) { KvmBundleBuilder pb; KvmTaskOpts o; o.wait_var = 1; o.wait_ver = 1; pb.add("noop", {}, o); CHECK(ex.submit(pb.build(), 5000, true, &parked_wid) == KvmSubmit::OK, "parked bundle"); }
     std::atomic<int> okc{0};
+    std::mutex why_mu; std::string fail_why;   // first producer failure, for the verdict line
+    auto note_failure = [&](const std::string& m) { std::lock_guard<std::mutex> lk(why_mu); if (fail_why.empty()) fail_why = m; KLOG(0, "%s", m.c_str()); };
     std::vector<std::thread> th;
     auto t0 = std::chrono::steady_clock::now();
     for (int p = 0; p < producers; ++p) th.emplace_back([&, p] {
@@ -926,12 +928,12 @@ static bool suite_recycle(bool quick) {
       for (int b = 0; b < bundles_per; ++b) {
         int set = b % SETS;
         for (auto t1 = std::chrono::steady_clock::now(); used[set] && !ex.window_done(wid[set]); ) {
-          if (std::chrono::steady_clock::now() - t1 > std::chrono::seconds(60)) return;
+          if (std::chrono::steady_clock::now() - t1 > std::chrono::seconds(60)) { note_failure("producer " + std::to_string(p) + " bundle " + std::to_string(b) + " set " + std::to_string(set) + " stuck: " + ex.window_why_not_done(wid[set])); return; }
           std::this_thread::sleep_for(std::chrono::microseconds(20));
         }
         KvmBundleBuilder bb; int prev = -1; int x = xs[p * SETS + set];
         for (int i = 0; i < T; ++i) { int t = bb.add("add", {Bf(x), Bf(one), Bf(x), I(1)}); if (prev >= 0) bb.edge(prev, t); prev = t; }
-        if (ex.submit(bb.build(), 60000, true, &wid[set]) != KvmSubmit::OK) return;
+        { KvmSubmit st = ex.submit(bb.build(), 60000, true, &wid[set]); if (st != KvmSubmit::OK) { note_failure("producer " + std::to_string(p) + " bundle " + std::to_string(b) + " submit: " + kvm_submit_name(st) + " " + ex.last_error()); return; } }
         used[set] = true; ++okc;
       }
     });
@@ -940,7 +942,7 @@ static bool suite_recycle(bool quick) {
     ex.close(); const KvmResult& r = ex.finish();
     double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     const long long total = (long long)producers * bundles_per * T + (straggler ? 2 : 0);
-    CHECK(okc == producers * bundles_per && r.ok() && r.done == total && r.admitted == total, "%s: submitted %d, done %d admitted %d expected %lld, err %s", what, okc.load(), r.done, r.admitted, total, kvm_err_name(r.err_code));
+    CHECK(okc == producers * bundles_per && r.ok() && r.done == total && r.admitted == total, "%s: submitted %d, done %d admitted %d expected %lld, err %s; %s", what, okc.load(), r.done, r.admitted, total, kvm_err_name(r.err_code), fail_why.empty() ? "no producer failed" : fail_why.c_str());
     int bad = 0; for (int p = 0; p < producers; ++p) for (int set = 0; set < SETS; ++set) {
       int uses = bundles_per / SETS + (set < bundles_per % SETS); float want = (float)uses * T;
       bad += ex.read_buffer(xs[p * SETS + set])[0] != want; }
@@ -951,6 +953,40 @@ static bool suite_recycle(bool quick) {
   };
   many("long-running admission", 2, quick ? 3000 : 50000, false);
   many("recycling beside a parked task", 1, quick ? 2000 : 20000, true);
+  return g_fail == before;
+}
+
+// ================= admission front end (KvmFront): chunking keeps every edge, results equal a direct submit =================
+static bool suite_front() {
+  int before = g_fail;
+  const int CH = 100, LEN = 50;   // 100 independent chains of 50 dependent adds, each on its own counter
+  KvmConfig c = small_cfg(8); c.max_tasks = 1 << 14; c.live_cap = 1 << 13; c.succ_cap = 1 << 14; c.ring_words = 1 << 17;
+  KvmExec ex(c); int one = ex.add_buffer(1, 1, std::vector<float>{1.f}); std::vector<int> xs;
+  for (int i = 0; i < CH; ++i) xs.push_back(ex.add_buffer(1, 1, std::vector<float>{0.f}));
+  ex.start();
+  KvmBundleBuilder bb;
+  for (int ch = 0; ch < CH; ++ch) { int prev = -1; for (int k = 0; k < LEN; ++k) { int t = bb.add("add", {Bf(xs[ch]), Bf(one), Bf(xs[ch]), I(1)}); if (prev >= 0) bb.edge(prev, t); prev = t; } }
+  KvmBundle whole = bb.build();
+  std::vector<KvmBundle> parts = KvmFront::split(whole, 700);
+  size_t nt = 0, ne = 0; bool inside = true;
+  for (auto& p : parts) {
+    nt += p.tasks.size(); ne += p.succ.size();
+    CHECK(p.validate(ex.nbufs(), c.num_vars, c.live_cap).empty(), "a chunk fails validation: %s", p.validate(ex.nbufs(), c.num_vars, c.live_cap).c_str());
+    CHECK((int)p.tasks.size() <= 700, "chunk of %zu tasks exceeds the limit", p.tasks.size());
+    for (int v : p.succ) inside = inside && v >= 0 && v < (int)p.tasks.size();
+  }
+  CHECK(nt == whole.tasks.size() && ne == whole.succ.size() && inside && parts.size() >= 7, "split: %zu tasks %zu edges in %zu chunks (want %zu / %zu)", nt, ne, parts.size(), whole.tasks.size(), whole.succ.size());
+  CHECK(KvmFront::split(whole, 10000).size() == 1, "a bundle under the limit must stay one record");
+  CHECK(KvmFront::split(whole, 30).size() == (size_t)CH, "a component over the limit is its own chunk (one chain per chunk)");
+  KvmFront::Cfg fc; fc.chunk_tasks = 700; fc.ring_budget_tasks = 1400; fc.classes = 2; KvmFront fr(ex, fc);
+  KvmFront::Ticket t0 = fr.submit(whole, 1), t1 = fr.submit(whole, 0);
+  CHECK(fr.wait(t0, 30000) && fr.wait(t1, 30000), "front tickets did not complete");
+  CHECK(fr.flush(10000), "front flush");
+  ex.close(); const KvmResult& r = ex.finish();
+  CHECK(r.ok() && r.done == 2 * (int)nt && r.admitted == 2 * (int)nt, "done %d admitted %d (want %zu)", r.done, r.admitted, 2 * nt);
+  int bad = 0; for (int ch = 0; ch < CH; ++ch) bad += ex.read_buffer(xs[ch])[0] != (float)(2 * LEN);
+  CHECK(bad == 0, "%d chain counters != %d (every task must run exactly once, in chain order)", bad, 2 * LEN);
+  printf("  front: %zu tasks in %zu chunks x2 bundles, %d ring submissions, every chain counter exact\n", nt, parts.size(), fr.chunks_submitted());
   return g_fail == before;
 }
 
@@ -987,7 +1023,7 @@ int main(int argc, char** argv) {
   bool expect_fail = false; std::vector<std::string> want;
   for (int i = 1; i < argc; ++i) { std::string a = argv[i]; if (a == "--expect-fail") expect_fail = true; else if (a == "--quiet") g_kvm_log = 0; else if (a == "--log") g_kvm_log = atoi(argv[++i]); else want.push_back(a); }
   bool quick = getenv("KVM_TEST_QUICK") != nullptr;
-  if (want.empty()) want = {"checker", "ops", "types", "init", "errors", "dag", "sched", "admission", "versions", "recycle", "litmus"};
+  if (want.empty()) want = {"checker", "ops", "types", "init", "errors", "dag", "sched", "admission", "front", "versions", "recycle", "litmus"};
   int dev; cudaDeviceProp p; CK(cudaGetDevice(&dev)); CK(cudaGetDeviceProperties(&p, dev));
   int drv, rt; cudaDriverGetVersion(&drv); cudaRuntimeGetVersion(&rt);
   printf("GPU %s, %d SMs, sm_%d%d, driver CUDA %d.%d, runtime %d.%d%s\n", p.name, p.multiProcessorCount, p.major, p.minor, drv / 1000, drv % 1000 / 10, rt / 1000, rt % 1000 / 10, quick ? " [quick]" : "");
@@ -1002,7 +1038,7 @@ int main(int argc, char** argv) {
       if (s == "checker") ok = suite_checker(); else if (s == "ops") ok = suite_ops(); else if (s == "errors") ok = suite_errors();
       else if (s == "dag") ok = suite_dag(quick); else if (s == "sched") ok = suite_sched(); else if (s == "admission") ok = suite_admission();
       else if (s == "versions") ok = suite_versions(quick); else if (s == "types") ok = suite_types(); else if (s == "init") ok = suite_init();
-      else if (s == "recycle") ok = suite_recycle(quick); else if (s == "litmus") ok = suite_litmus(quick); else if (s == "bench") ok = suite_bench(); else if (s == "smoke") ok = suite_smoke();
+      else if (s == "front") ok = suite_front(); else if (s == "recycle") ok = suite_recycle(quick); else if (s == "litmus") ok = suite_litmus(quick); else if (s == "bench") ok = suite_bench(); else if (s == "smoke") ok = suite_smoke();
       else { fprintf(stderr, "unknown suite %s\n", s.c_str()); return 2; }
     } catch (const std::exception& e) { fprintf(stderr, "  EXCEPTION: %s\n", e.what()); ++g_fail; ok = false; }
     ok = ok && g_fail == f0;

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Zoo-model golden check on a GPU box: bundles are generated here (no GPU needed), run remotely through kvm_exec under ONE hold of the
 # GPU lock, and checked here against the compiler's CPU golden by check.py.
-# Usage: KVM_HOST=user@host [KVM_KEY=key] [KVM_ARCH=sm_80] examples/models/run.sh [--sanitize] [--cases FILE] [--prebuilt DIR]
+# Usage: KVM_HOST=user@host [KVM_KEY=key] [KVM_ARCH=sm_80] [KVM_NO_LOCK=1] examples/models/run.sh [--sanitize] [--cases FILE] [--prebuilt DIR]
 # --prebuilt DIR: reuse DIR/<case>/ bundles made earlier by examples/models/prebuild.sh (generation is the slow, CPU-only part)
 # A case line:  NAME | MODEL | STEPS | MODE(precise|tf32) | TOL | extra gen_bundle.py flags    (# comments, blank lines ignored)
 set -euo pipefail
@@ -34,7 +34,8 @@ RUN="cd $REMOTE && for c in ${NAMES[*]}; do ./kvm_exec --quiet --dump-buffers mb
 if [ "$SANITIZE" = 1 ]; then
   RUN="$RUN; for c in ${NAMES[*]}; do for tool in memcheck racecheck synccheck; do echo \"== compute-sanitizer \$tool \$c\"; compute-sanitizer --tool \$tool --error-exitcode 9 ./kvm_exec --blocks 4 --quiet mbundles/\$c 2>&1 | tail -3; echo \"sanitizer exit \${PIPESTATUS[0]}\"; done; done"
 fi
-$SSH "$HOST" "flock -w 14400 ~/.gpu.lock timeout 3000 bash -c '$RUN'" | tee "$LOG/runs.txt"
+FLK="flock -w 14400 ~/.gpu.lock"; [ -z "${KVM_NO_LOCK:-}" ] || FLK=""   # KVM_NO_LOCK=1: an outer hold exists
+$SSH "$HOST" "$FLK timeout 3000 bash -c '$RUN'" | tee "$LOG/runs.txt"
 fail=0; grep -E "exit [1-9]" "$LOG/runs.txt" && fail=1
 for i in "${!NAMES[@]}"; do
   c="${NAMES[$i]}"; d="$WORK/$c"

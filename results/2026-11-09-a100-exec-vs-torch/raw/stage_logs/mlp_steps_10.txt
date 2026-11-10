@@ -1,0 +1,23 @@
+GATE 1+2 ok: 3-step run within 1e-3 of the CPU golden; 4 replicated copies bitwise equal to the single run (79 buffers)
+env {'torch': '2.7.0', 'cuda': '12.8', 'gpu': 'NVIDIA A100-SXM4-40GB', 'sms': 108}
+GATE 3: executor vs eager, loss max rel 1.24e-05, weights max rel L2 9.87e-05, loss 4.5369 -> 4.1404; vs float64: executor 1.31e-05, eager 1.65e-05
+  R=1 eager: loss vs eager 0.00e+00, vs fp64 1.65e-05
+  R=1 compile: loss vs eager 3.94e-04, vs fp64 3.92e-04
+  R=1 compile_graph: loss vs eager 3.94e-04, vs fp64 3.92e-04
+  R=1 seq_graph: loss vs eager 0.00e+00, vs fp64 1.65e-05
+  R=1 batched_compile: loss vs eager 3.94e-04, vs fp64 3.92e-04
+{"runs": 1, "steps": 10, "eager": 751.4, "compile": 846.8, "compile_graph": 77.2, "seq_graph": 141.4, "batched_compile": 75.2, "executor": 690.7}
+  R=8 eager: loss vs eager 0.00e+00, vs fp64 1.65e-05
+  R=8 seq_graph: loss vs eager 0.00e+00, vs fp64 1.65e-05
+  R=8 multi_graph: loss vs eager 0.00e+00, vs fp64 1.65e-05
+  R=8 batched: loss vs eager 1.24e-05, vs fp64 1.31e-05
+  R=8 batched_compile: loss vs eager 3.94e-04, vs fp64 3.92e-04
+{"runs": 8, "steps": 10, "eager": 5663.5, "seq_graph": 1071.3, "multi_graph": 310.0, "batched": 184.4, "batched_compile": 89.9, "executor": 2326.7}
+
+best-of-7 us per step, all R runs advance one step; last block: variant / executor (>1: executor faster)
+   R           eager         compile   compile_graph       seq_graph batched_compile        executor     multi_graph         batched
+   1           751.4           846.8            77.2           141.4            75.2           690.7               -               -
+   8          5663.5               -               -          1071.3            89.9          2326.7           310.0           184.4
+ratio
+   1           1.09x           1.23x           0.11x           0.20x           0.11x           1.00x               -               -
+   8           2.43x               -               -           0.46x           0.04x           1.00x           0.13x           0.08x

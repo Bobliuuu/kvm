@@ -1,0 +1,23 @@
+GATE 1+2 ok: 3-step run within 1e-3 of the CPU golden; 4 replicated copies bitwise equal to the single run (79 buffers)
+env {'torch': '2.7.0', 'cuda': '12.8', 'gpu': 'NVIDIA A100-SXM4-40GB', 'sms': 108}
+GATE 3: executor vs eager, loss max rel 3.16e-04, weights max rel L2 4.53e-05, loss 4.5369 -> 0.1002; vs float64: executor 3.51e-04, eager 3.46e-04
+  R=1 eager: loss vs eager 0.00e+00, vs fp64 3.46e-04
+  R=1 compile: loss vs eager 1.03e-02, vs fp64 1.03e-02
+  R=1 compile_graph: loss vs eager 1.03e-02, vs fp64 1.03e-02
+  R=1 seq_graph: loss vs eager 0.00e+00, vs fp64 3.46e-04
+  R=1 batched_compile: loss vs eager 1.02e-02, vs fp64 1.03e-02
+{"runs": 1, "steps": 200, "eager": 724.7, "compile": 820.7, "compile_graph": 58.9, "seq_graph": 108.7, "batched_compile": 57.4, "executor": 515.5}
+  R=8 eager: loss vs eager 0.00e+00, vs fp64 3.46e-04
+  R=8 seq_graph: loss vs eager 0.00e+00, vs fp64 3.46e-04
+  R=8 multi_graph: loss vs eager 0.00e+00, vs fp64 3.46e-04
+  R=8 batched: loss vs eager 3.19e-04, vs fp64 3.38e-04
+  R=8 batched_compile: loss vs eager 1.02e-02, vs fp64 1.03e-02
+{"runs": 8, "steps": 200, "eager": 5905.4, "seq_graph": 862.4, "multi_graph": 285.9, "batched": 147.9, "batched_compile": 71.4, "executor": 1675.1}
+
+best-of-7 us per step, all R runs advance one step; last block: variant / executor (>1: executor faster)
+   R           eager         compile   compile_graph       seq_graph batched_compile        executor     multi_graph         batched
+   1           724.7           820.7            58.9           108.7            57.4           515.5               -               -
+   8          5905.4               -               -           862.4            71.4          1675.1           285.9           147.9
+ratio
+   1           1.41x           1.59x           0.11x           0.21x           0.11x           1.00x               -               -
+   8           3.53x               -               -           0.51x           0.04x           1.00x           0.17x           0.09x

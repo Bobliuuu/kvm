@@ -187,6 +187,7 @@ class Trainer:
                 for p in self.plist:
                     p.grad = None
                 body()
+                ctr.zero_()                          # warm-up must not run the step counter past the stream (steps < 3)
         torch.cuda.current_stream().wait_stream(s)
         g = torch.cuda.CUDAGraph()
         for p in self.plist:

@@ -1,0 +1,128 @@
+NVIDIA A100-SXM4-40GB, 580.105.08, 1410 MHz
+selftest K=256 TA=1 TB=1  max abs err 5.783e-03 [c0 -2.134 ref0 -2.132]  ok
+selftest K=256 TA=1 TB=1  max abs err 5.783e-03 [c0 -2.134 ref0 -2.132]  ok
+== 1run
+model B=128 D=128 H=256 O=64  runs=1 steps=6  tile=32 kc=64 stg=4  tape=720 instrs executed, 120-entry step template (0.01 MB)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
+
+mode                                       total ms    us/step/run run-steps/s    vs seq
+sequential, launch-per-op                      0.20          33.28       30048     1.00x
+sequential, CUDA graph/run                     0.16          26.97       37085     1.23x
+batched across runs (vmap-like graph)          0.16          26.79       37321     1.24x
+KVM: all runs, ONE kernel                      0.14          22.53       44389     1.48x
+KVM vs best baseline: 1.19x
+
+loss run0: 0.31605 -> 0.29812 (lr 0.0500)
+max rel loss err vs cpu fp32 (runs 0 and 0, first 6 steps, all modes): 2.80e-05
+max |dW| of VM vs each baseline, all runs: 0.00e+00
+timeline: 720 records -> tl_1run.csv
+PASS
+== 16run
+model B=128 D=128 H=256 O=64  runs=16 steps=8  tile=32 kc=64 stg=4  tape=15360 instrs executed, 1920-entry step template (0.15 MB)
+NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
+
+mode                                       total ms    us/step/run run-steps/s    vs seq
+sequential, launch-per-op                      4.19          32.73       30555     1.00x
+sequential, CUDA graph/run                     3.41          26.65       37526     1.23x
+batched across runs (vmap-like graph)          0.52           4.06      246548     8.07x
+KVM: all runs, ONE kernel                      0.41           3.23      309406    10.13x
+KVM vs best baseline: 1.25x
+
+loss run0: 0.31605 -> 0.32337 (lr 0.0125)   run15: 0.31605 -> 0.28772 (lr 0.0875)
+max rel loss err vs cpu fp32 (runs 0 and 15, first 8 steps, all modes): 1.92e-05
+max |dW| of VM vs each baseline, all runs: 0.00e+00
+FAIL
+== 64run
+too many buffers
+== overhead
+plain R=1
+KVM: all runs, ONE kernel                      6.76          22.55       44349     1.85x
+PASS
+tl R=1
+KVM: all runs, ONE kernel                      6.70          22.34       44762     1.48x
+PASS
+plain R=8
+KVM: all runs, ONE kernel                      8.82           3.67      272213     9.02x
+PASS
+tl R=8
+KVM: all runs, ONE kernel                      8.87           3.70      270578     8.82x
+PASS
+plain R=32
+KVM: all runs, ONE kernel                     28.78           3.00      333594    10.89x
+PASS
+tl R=32
+KVM: all runs, ONE kernel                     29.19           3.04      328855    10.89x
+PASS
+plain R=1
+KVM: all runs, ONE kernel                      6.75          22.49       44463     1.45x
+PASS
+tl R=1
+KVM: all runs, ONE kernel                      6.66          22.21       45024     1.49x
+PASS
+plain R=8
+KVM: all runs, ONE kernel                      8.80           3.67      272688     8.94x
+PASS
+tl R=8
+KVM: all runs, ONE kernel                      8.87           3.69      270672     8.87x
+PASS
+plain R=32
+KVM: all runs, ONE kernel                     28.71           2.99      334356    10.92x
+PASS
+tl R=32
+KVM: all runs, ONE kernel                     29.12           3.03      329618    10.92x
+PASS
+plain R=1
+KVM: all runs, ONE kernel                      6.69          22.31       44817     1.47x
+PASS
+tl R=1
+KVM: all runs, ONE kernel                      6.69          22.30       44851     1.46x
+PASS
+plain R=8
+KVM: all runs, ONE kernel                      8.81           3.67      272339     8.90x
+PASS
+tl R=8
+KVM: all runs, ONE kernel                      8.87           3.70      270547     8.85x
+PASS
+plain R=32
+KVM: all runs, ONE kernel                     28.71           2.99      334332    11.09x
+PASS
+tl R=32
+KVM: all runs, ONE kernel                     29.19           3.04      328924    10.75x
+PASS
+plain R=1
+KVM: all runs, ONE kernel                      6.71          22.37       44701     1.47x
+PASS
+tl R=1
+KVM: all runs, ONE kernel                      6.69          22.31       44831     1.45x
+PASS
+plain R=8
+KVM: all runs, ONE kernel                      8.82           3.68      271991     8.86x
+PASS
+tl R=8
+KVM: all runs, ONE kernel                      8.88           3.70      270329     8.95x
+PASS
+plain R=32
+KVM: all runs, ONE kernel                     28.77           3.00      333642    10.91x
+PASS
+tl R=32
+KVM: all runs, ONE kernel                     29.18           3.04      328947    10.92x
+PASS
+plain R=1
+KVM: all runs, ONE kernel                      6.71          22.37       44701     1.47x
+PASS
+tl R=1
+KVM: all runs, ONE kernel                      6.65          22.18       45093     1.48x
+PASS
+plain R=8
+KVM: all runs, ONE kernel                      8.82           3.67      272213     9.00x
+PASS
+tl R=8
+KVM: all runs, ONE kernel                      8.88           3.70      270360     8.81x
+PASS
+plain R=32
+KVM: all runs, ONE kernel                     28.71           2.99      334344    11.11x
+PASS
+tl R=32
+KVM: all runs, ONE kernel                     29.19           3.04      328832    10.77x
+PASS
+ALLDONE

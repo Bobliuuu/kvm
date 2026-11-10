@@ -1,0 +1,34 @@
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 98304 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+dump md5 kvm_exec 496983d7e65d
+dump md5 kvm_exec_smem72 496983d7e65d
+R=1 kvm_exec OK: 2550/2550 tasks, 27.203 ms
+R=1 kvm_exec_smem72 OK: 2550/2550 tasks, 27.120 ms
+R=1 kvm_exec OK: 2550/2550 tasks, 27.145 ms
+R=1 kvm_exec_smem72 OK: 2550/2550 tasks, 27.163 ms
+R=1 kvm_exec OK: 2550/2550 tasks, 27.031 ms
+R=1 kvm_exec_smem72 OK: 2550/2550 tasks, 30.231 ms
+R=1 kvm_exec OK: 2550/2550 tasks, 29.517 ms
+R=1 kvm_exec_smem72 OK: 2550/2550 tasks, 28.828 ms
+R=1 kvm_exec OK: 2550/2550 tasks, 28.919 ms
+R=1 kvm_exec_smem72 OK: 2550/2550 tasks, 28.908 ms
+R=8 kvm_exec OK: 20400/20400 tasks, 102.039 ms
+R=8 kvm_exec_smem72 OK: 20400/20400 tasks, 95.072 ms
+R=8 kvm_exec OK: 20400/20400 tasks, 94.977 ms
+R=8 kvm_exec_smem72 OK: 20400/20400 tasks, 95.167 ms
+R=8 kvm_exec OK: 20400/20400 tasks, 94.840 ms
+R=8 kvm_exec_smem72 OK: 20400/20400 tasks, 94.687 ms
+R=8 kvm_exec OK: 20400/20400 tasks, 96.295 ms
+R=8 kvm_exec_smem72 OK: 20400/20400 tasks, 94.230 ms
+R=8 kvm_exec OK: 20400/20400 tasks, 94.004 ms
+R=8 kvm_exec_smem72 OK: 20400/20400 tasks, 94.663 ms
+R=32 kvm_exec OK: 81600/81600 tasks, 332.255 ms
+R=32 kvm_exec_smem72 OK: 81600/81600 tasks, 332.229 ms
+R=32 kvm_exec OK: 81600/81600 tasks, 331.399 ms
+R=32 kvm_exec_smem72 OK: 81600/81600 tasks, 331.389 ms
+R=32 kvm_exec OK: 81600/81600 tasks, 332.535 ms
+R=32 kvm_exec_smem72 OK: 81600/81600 tasks, 332.077 ms
+R=32 kvm_exec OK: 81600/81600 tasks, 333.095 ms
+R=32 kvm_exec_smem72 OK: 81600/81600 tasks, 332.922 ms
+R=32 kvm_exec OK: 81600/81600 tasks, 332.537 ms
+R=32 kvm_exec_smem72 OK: 81600/81600 tasks, 331.819 ms

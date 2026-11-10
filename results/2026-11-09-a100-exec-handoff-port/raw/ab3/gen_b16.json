@@ -1,0 +1,3 @@
+2026-11-10 04:47:15,183 INFO kvm.compiler: compiled 58634 tasks (0 gates), 480777 edges, 1393 buffers, 1 variables in 1.45s (parse 0.82s, graph+versions 0.38s, pack 0.26s)
+2026-11-10 04:47:15,324 INFO kvm.compiler: wrote bundle to w_b16/bundle
+{"model": {"name": "gpt_162m", "vocab": 50304, "d_model": 768, "layers": 12, "heads": 12, "seq": 1024, "batch": 4, "ffn_mult": 4, "norm": "layernorm", "bias": true, "init_std": 0.02, "rope_theta": 10000.0, "seed": 0, "repeat_batch": false, "precision": "bf16s", "data_vocab": 0, "data_noise": 0.0}, "steps": 1, "mode": "tf32", "tiling": "a100", "fuse": false, "params": 162322944, "tasks": 58634, "logical_ops": 777, "logical_depth": 326, "flops_per_step": 3307393253376.0, "min_bytes_per_step": 14671810560, "tokens_per_step": 4096}

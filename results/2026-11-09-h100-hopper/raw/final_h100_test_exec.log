@@ -1,0 +1,42 @@
+NVIDIA H100 80GB HBM3, 610.57.04
+== errors: PASS (0.4s, 0 new failures)
+== dag
+  wraparound: 6000 tasks through 32 rings of 64 cells (one ring took all of them: 93 wraps)
+  dag: 267600 tasks over seeds x grids {1,2,15,auto workers}, all exactly-once, edges ordered by timestamps, values bitwise vs CPU; 1570 duplicate edges removed by the builder
+== dag: PASS (2.3s, 0 new failures)
+== sched
+  priority: 340 queued tasks ran in non-increasing priority order (0 inversions), FIFO within a priority (0 violations)
+  aging    0 us/level: low-priority task ran after 400 of 400 high-priority chain tasks, waited 43.64 ms of a 43.62 ms chain
+  aging 2000 us/level: low-priority task ran after 184 of 400 high-priority chain tasks, waited 20.08 ms of a 43.62 ms chain
+  deadlines: missed flag set only for the 1 us deadline; smid/block recorded; CSV written
+== sched: PASS (0.3s, 0 new failures)
+== admission
+[kvm_exec][E] bundle record larger than the admission ring (200 > 128 words)
+[kvm_exec][W] admission ring full for 300 ms
+[kvm_exec][E] DEVICE ERROR PARK_STALL (more tasks parked on versions than the park budget (live_cap) and admission needs room): slot -1, a=32, b=0; done 0/32
+[kvm_exec][W] submit after close()
+  admission ring: 300 bundles / 3600 tasks through a 512-word ring: 218 wraps (pad records), 251 backpressure waits, values bitwise vs CPU
+  backpressure: 30 bundles x 3 x 300 us on one worker, 256-word ring: host waited 7 times, nothing dropped (90/90 done)
+  explicit failures: TOO_BIG for an oversized record; BACKPRESSURE_TIMEOUT after 22 submits against a stalled live window; device ended with PARK_STALL (admitted 32, done 0)
+  cross-bundle wait: 8 waiters (a full live_cap) admitted before the bundle that publishes their version: 9/9 done, no deadlock
+  close(): empty launch exits; close() right after submit drains all 50 tasks
+  4 producer threads x 60 bundles concurrently: 2400 tasks, exactly-once, values bitwise vs CPU
+== admission: PASS (2.1s, 0 new failures)
+== front
+  front: 5000 tasks in 8 chunks x2 bundles, 16 ring submissions, every chain counter exact
+== front: PASS (0.0s, 0 new failures)
+== versions
+  versions: 180 runs (vector 64Ki-float weights and the real predict->mse_grad->sgd graph): 3225 exact + 653 at_least readers checked, 0 violations
+== versions: PASS (2.8s, 0 new failures)
+== recycle
+  stream: 2097152 tasks (6289920 edges) through 65536 slots in 128 windows (127 waited on predecessor windows): 3.23 s wall, 1.54 us/task; final layer bitwise vs CPU
+  chain: 200000 dependent tasks through 1024 slots, 782 windows: counter == 200000 (every task ran once, in order)
+  long-running admission: 3000000 tasks in 100000 bundles (4096 slots, 1024-entry window table, 8192-word successor ring, 16666 ring wraps), 13.49 s, all counters exact
+  recycling beside a parked task: 600002 tasks in 20002 bundles (1024 slots, 32768-entry window table, 8192-word successor ring, 3333 ring wraps), 2.86 s, all counters exact
+== recycle: PASS (22.3s, 0 new failures)
+== litmus
+  litmus: 12 runs, 1872000 tasks; each iteration races a waiter's park against the publish of its version; no lost wakeup, early run or double run
+== litmus: PASS (22.3s, 0 new failures)
+8609 checks, 0 failed, 0 suites failed
+PASS
+exit 0

@@ -2,23 +2,25 @@
 
 The criticism this answers: *"It's single-GPU only. Flapping could train a trillion-parameter model with a megakernel without NCCL
 across nodes and datacenters."* The honest answer has three parts. The design below is built. The single-box parts of it are
-tested for real. The multi-GPU, multi-node and trillion-parameter parts are not run, and the last is only arithmetic.
-Nothing in this repository trains a trillion-parameter model, or any model on more than one GPU, yet.
+tested for real, and since 2026-11-09 so are the multi-GPU and multi-node parts (two NVLinked GPUs; two hosts in two countries over
+TCP; `results/2026-11-09-multigpu`). The trillion-parameter part is still only arithmetic: the largest model trained across GPUs here is
+gpt_162m (data parallel, two GPUs, one step), and RDMA has never touched a NIC.
 
 ## What is built, what is tested, what is only modeled
 
 | Piece | State | Evidence |
 |---|---|---|
 | Remote version variables (inbox + pump), ABI v2 unchanged | built, tested on one A100 (two executors in one process, same GPU) | `test_dist pingpong`, `errors` |
-| Comm ops 64-71 (`put`, `put_signal`, `signal`, `reduce2`, `reduce_put_signal`, `send_proxy`, `pack_bf16`, `unpack_bf16`) | built, tested numerically (bitwise) on A100 | `test_dist ops`: 240 random tiles, reductions, bf16 |
+| Comm ops 64-74 (`put`, `put_signal`, `signal`, `reduce2`, `reduce_put_signal`, `send_proxy`, `pack_bf16`, `unpack_bf16`; i32 twins `put_i32`, `put_signal_i32`, `send_proxy_i32`) | built, tested numerically (bitwise) on A100 and RTX 3090 | `test_dist ops`: 240 random tiles, reductions, bf16; the i32 twins carry step counters across GPUs in the pipeline plans |
 | Data-before-signal ordering across executors | built; the checker is shown to fail when the order is broken | `-DKVM_DIST_BREAK_ORDER` negative run |
-| Peer-to-peer over NVLink/PCIe (`cudaDeviceEnablePeerAccess`, peer pointers) | built, **untested on >1 physical GPU** (same-GPU "peer" = another pointer) | `multigpu-*` stages SKIP below 2 GPUs |
+| Peer-to-peer over NVLink/PCIe (`cudaDeviceEnablePeerAccess`, peer pointers) | built, **tested on two physical GPUs over NVLink** (2x RTX 3090, NV4) | `multigpu-p2p-pingpong`, `multigpu-plans-one-rank-per-gpu`, `multigpu-model-plans` (`results/2026-11-09-multigpu`) |
 | Host proxy + reliable channel (ack/retransmit/ordering/windows/liveness) | built, tested on CPU and with the real device queue on A100 | `test_transport` (Mac and box), `gpu-plans-tcp-faults` |
-| TCP transport (framing, CRC-32, reconnect-free, WAN buffers) with drop/dup/delay/corrupt injection | built, tested on loopback and between processes on one host | `test_transport`, `cpu-multiprocess-tcp`, `gpu-multiprocess-tcp` |
-| RDMA / GPUDirect transport | **not built**; documented stub with a TODO list | `dist/transport_rdma.hpp` |
+| TCP transport (framing, CRC-32, reconnect-free, WAN buffers) with drop/dup/delay/corrupt injection | built, tested on loopback, between processes, and **between two hosts in two countries** (container port maps: bind locally, peers dial the advertised port) | `test_transport proc`, `multinode-tcp-plans` |
+| RDMA / GPUDirect transport | `RdmaTransport` + `IbvVerbs` (real libibverbs) built; **compiles and links against rdma-core**, protocol tested on the in-process shim; **never run on a NIC** (no RDMA device reachable: `rdma-device-present` SKIP); GPUDirect is design only | `dist/transport_rdma.hpp`, `cpu-rdma-ibverbs-build` |
 | Partitioner (DP, ZeRO/FSDP, Megatron TP, all-to-all, pipeline + microbatches, HEFT) | built; verified on the CPU simulator against the unpartitioned VM; plans also run on the A100 | `tests/dist/test_partition.py` (32 tests), `gpu-plans-*` |
-| Multi-node, multi-datacenter runs | **not run**; launcher exists and dry-runs | `dist/launch.py`, `multinode-tcp-plans` (needs `KVM_NODES`) |
-| NVLink / PCIe P2P bandwidth numbers | **not measured** (one GPU only) | `multigpu-p2p-bandwidth` |
+| Frontend models partitioned (GPT, Llama, ViT: pipeline placement; any training workload: `dp` mode) | built; CPU simulator bitwise (pipeline) / replicas bitwise and equal to gradient accumulation (dp); **run on two GPUs**: gpt_tiny, llama_tiny, gpt_small dp and pipeline as close to the CPU golden as one GPU; **gpt_162m dp x2: 1.76x over one GPU, state bitwise equal to accum=2** | `tests/dist/test_model_plans.py`, `dist/run_model_plans.sh`, `results/2026-11-09-multigpu` |
+| Multi-node runs | **run**: 5 proxy plans x 4 ranks on two hosts (US, Europe) bitwise equal; gpt_tiny data parallel across the two hosts equal to one GPU | `multinode-tcp-plans`, `results/2026-11-09-multigpu/multinode.txt` |
+| NVLink P2P bandwidth | **measured**: peer stores 48.3 / 39.2 GB/s per direction on an NV4 RTX 3090 pair (nominal 56); cross-GPU round trip 112 us median | `multigpu-p2p-bandwidth`, `multigpu-p2p-pingpong` |
 | Overlap of communication with compute at tile granularity | partly: pipelined microbatches and chunked collectives are built; row-tile splitting of compute ops needs offset-capable tile ops | modeled only, see below |
 | Expert-parallel routing with data-dependent token placement | **not built**; the static-capacity all-to-all is | `ROWS <-> COLS` resharding |
 | Trillion-parameter training | **not built, not run, not claimed**; section "Scaling math" is arithmetic | `dist/scaling.py` |
@@ -91,7 +93,8 @@ kernel with a decoded device error (`KVM_ERR_DIST_*`, codes 64-70), never undefi
   `Transport` (`dist/transport.hpp`): `send(dst, bytes)`, `poll(event)`, events `RECV` and `PEER_DOWN`, allowed to be lossy.
   Implemented: loopback (tests), **TCP** (portable, any host, no libraries; framing + CRC-32, bad frames dropped and counted,
   `SO_SNDBUF/RCVBUF` for long fat links), and a **fault injector** (drop, duplicate, delay/reorder, plus corruption inside TCP).
-  `RdmaTransport` is a documented stub: what ibverbs and GPUDirect-RDMA need, in order, is listed in `dist/transport_rdma.hpp`.
+  `RdmaTransport` runs on the in-process verbs shim and its real libibverbs backend compiles and links against rdma-core, but has never
+  run on a NIC; what GPUDirect-RDMA needs, in order, is listed in `dist/transport_rdma.hpp`.
 * **Reliability above any transport** (`dist/reliable.hpp`): per-peer sequence numbers, exactly-once in-order delivery
   (deterministic per source-destination pair), cumulative acks, retransmit with backoff, and a **send window** (messages and
   bytes). The window is the pipeline depth: for a WAN link set `window_bytes >= bandwidth x RTT` and use large chunks
@@ -120,6 +123,18 @@ buffers and the inbox variables.
   Buffers follow a coherence rule (read elsewhere = one cached transfer; write invalidates). `microbatches` clones the
   per-microbatch part of the graph; weights are shared, partial gradients are combined in microbatch order. Cross-device
   `at_least` reads of a published variable get a mirrored inbox variable and a `signal` chain; cross-device `exact` reads are refused.
+  Works on frontend models (GPT, Llama, ViT training graphs): the written arguments of every registered op come from `OP_WRITES`
+  (measured by running the model zoo with store-recording buffers; `tests/dist/test_op_writes.py` re-derives it), the author's
+  control-only `after` edges are kept (cross-device ones become a one-shot `signal`, or a one-word proxy message across nodes), and an
+  automatic placement keeps every publisher of one version variable on the device of its first publisher.
+* **`dp` mode** (data parallelism for any training workload, `DPPlanner`). Every rank runs the whole program on replicas of every
+  buffer; rank r reads window r of each group of P windows of the data streams; every gradient (the `g` of each optimizer task) is
+  scaled by 1/P (exact: P must be a power of two) and all-reduced right before its first reader after the backward pass, so clipping
+  and AdamW run redundantly on identical bits and the replicas stay bitwise identical (checked by `Plan.reconstruct`). The reference is
+  the same model compiled with gradient accumulation over P microbatches on one device: `tests/dist/gpt_dp.py` builds both. Intra-rank
+  order is the frontend's `after` edges, so tiled writers of one gradient stay parallel. MoE is excluded from the equivalence claim:
+  the frontend builds the balance loss at a fixed coefficient (not scaled by 1/accum), so accum=P sums the aux gradient where dp
+  averages it.
 * **Dependencies** come from replaying program order with RAW/WAR/WAW tracking per buffer row range, a superset of the author's
   `after` edges. The compiler's checks (acyclic, bounds, versions) run on every shard.
 * **Cost model** (`op_cost_us`, `Cluster`): roofline-ish compute plus the executor's measured dispatch cost (1.4 us per task,
@@ -166,10 +181,12 @@ print `SKIP: needs 2 GPUs` below that and run automatically otherwise; the multi
 | `gpu-sanitizer` | 1 GPU | compute-sanitizer memcheck, racecheck, synccheck on the ops suite (the two-executor suites cannot run under it: it serialises launches, and two persistent kernels waiting on each other would deadlock by construction) |
 | `gpu-plans-in-process`, `gpu-plans-tcp-faults`, `gpu-multiprocess-tcp` | 1 GPU | partitioner output on the GPU against golden: all ranks as threads, over TCP with faults, and one OS process per rank |
 | `multigpu-p2p-bandwidth`, `multigpu-p2p-pingpong`, `multigpu-plans-one-rank-per-gpu` | **2+ GPUs** | real peer-to-peer stores, NVLink/PCIe bandwidth, ranks on distinct GPUs |
-| `multinode-tcp-plans` | **`KVM_NODES`** | ranks on several hosts over TCP (sources rsynced to `~/kvm-dist-run`, built on every node) |
+| `multigpu-model-plans` | **2+ GPUs** | frontend models (gpt_tiny, llama_tiny, gpt_small) in `dp` and pipeline partitions on the GPUs vs the CPU golden, each next to the same reference program on one GPU (`dist/run_model_plans.sh`) |
+| `multinode-tcp-plans` | **`KVM_NODES`** | ranks on several hosts over TCP (sources rsynced to `~/kvm-dist-run`, built on every node, or `KVM_PREBUILT=1` ships this node's binary); behind port maps add `KVM_ADVERTISE` + `KVM_LISTEN_BASE` |
+| `cpu-rdma-ibverbs-build`, `rdma-device-present` | libibverbs headers; an RDMA device node | the real verbs backend compiles and its shim tests pass; a device is reachable (none was, so far) |
 
-Recorded outcome (`results/2026-11-03-dist-singlebox/`): 14 passed, 0 failed, 4 skipped (the 4 are the 2+-GPU and multi-node stages above), at
-commit 77b7775 and again on the merged tree. Everything beyond one GPU stays unrun. Test commands and lock behaviour: [RUNNING_TESTS.md](RUNNING_TESTS.md).
+Recorded outcomes: `results/2026-11-03-dist-singlebox/` (one A100: 14 passed, 4 skipped); `results/2026-11-09-multigpu/` (2x RTX 3090 over
+NVLink + a second host in another country: 24 passed, 1 skipped = `rdma-device-present`, no RDMA device in the containers). Test commands and lock behaviour: [RUNNING_TESTS.md](RUNNING_TESTS.md).
 
 ### Measured so far (one A100 shared with other jobs; `results/2026-11-03-dist-singlebox/`)
 
@@ -178,7 +195,9 @@ commit 77b7775 and again on the merged tree. Everything beyond one GPU stays unr
   copy, a system-scope fence, the admitter's poll and the wakeup. Not yet profiled or tuned.
 * Through the host proxy a round trip of two hops and two 16 KiB tiles takes about 0.5 ms (peer pointers), about 1 ms (loopback
   transport and TCP on loopback; 1 ms timer resolution); with 10% drop, 10% duplicates and 20% delay it is about 20 ms (retransmit timeouts).
-* Nothing measured over a real network or between physical GPUs.
+* Between physical GPUs (2x RTX 3090, NVLink NV4, `results/2026-11-09-multigpu`): peer stores 48.3 GB/s (GPU0->1) and 39.2 GB/s (GPU1->0);
+  round trip on one GPU's clock (two version hops + a 16 KiB tile) median 112 us with peer pointers, 382 us via the host proxy, 591 us
+  proxy over TCP. Over the internet (US <-> Europe) the 2-step gpt_tiny data-parallel run takes about 0.9 s, all of it WAN round trips.
 
 ## 7. Scaling math (arithmetic, not measurement)
 
@@ -278,7 +297,7 @@ with one representative rank per pipeline stage (checked against explicit instan
 ## 11. RDMA transport and cross-datacenter protocol (emulated; nothing here touched a NIC)
 
 * `dist/verbs_shim.hpp` emulates the libibverbs subset in process; `dist/transport_rdma.hpp` implements `RdmaTransport` and `RdmaVersionInbox` on a small `Verbs` interface
-  (shim backend always compiled, real libibverbs backend only under `HAVE_IBVERBS`, **never compiled or run here**). The version publish is an RDMA write of the tile followed on the same RC QP by a
+  (shim backend always compiled, real libibverbs backend under `HAVE_IBVERBS`: **compiled and linked against rdma-core on 2026-11-09 (`cpu-rdma-ibverbs-build`), never run on a NIC**: the rented hosts expose no RDMA device to their containers). The version publish is an RDMA write of the tile followed on the same RC QP by a
   write-with-immediate carrying (var, version); QP in-order delivery is what makes data-before-signal hold, and the receiver's CQ thread applies it to the inbox with release semantics. Tested: `tests/dist/test_rdma.cpp`.
 * GPUDirect RDMA (nvidia-peermem or dma-buf registration of device memory, device-initiated doorbells) is design only; see the comment block in `transport_rdma.hpp`. Whether NIC writes into GPU memory are visible to an `ld.acquire.sys` poller under write-with-immediate ordering alone is a platform question that must be verified on hardware.
 * `dist/xdc.hpp`: adaptive window sizing from measured RTT and delivery rate, version-publish batching; `reliable.hpp` gained an RTT estimator. Tested on an emulated high-latency link (`tests/dist/test_xdc.cpp`).

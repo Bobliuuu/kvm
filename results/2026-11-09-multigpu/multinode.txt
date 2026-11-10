@@ -1,0 +1,145 @@
+# 4 ranks (2 per node) across two hosts in two countries, TCP through container port maps; test_dist plan per rank via dist/launch.py
+## dp_fp_net
+[rank 0] == plan mn/plans_nodes/dp_fp_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 1] == plan mn/plans_nodes/dp_fp_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 2] == plan mn/plans_nodes/dp_fp_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 3] == plan mn/plans_nodes/dp_fp_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 1]   rank 1: 22 tasks, 571.00 ms kernel, device 1
+[rank 1]   13 values compared, 13 bitwise equal, worst relative difference 0
+[rank 0]   rank 0: 22 tasks, 578.00 ms kernel, device 0
+[rank 0]   13 values compared, 13 bitwise equal, worst relative difference 0
+[rank 3]   rank 3: 24 tasks, 435.00 ms kernel, device 0
+[rank 3]   13 values compared, 13 bitwise equal, worst relative difference 0
+[rank 2]   rank 2: 24 tasks, 413.00 ms kernel, device 0
+[rank 2]   13 values compared, 13 bitwise equal, worst relative difference 0
+[launch] PASS: 4/4 ranks succeeded
+## dp_gpt_tiny_x2_net
+[rank 0] == plan mn/dp_gpt_tiny_x2_net/plan: 2 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 1] == plan mn/dp_gpt_tiny_x2_net/plan: 2 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 1]   rank 1: 704 tasks, 966.00 ms kernel, device 0
+[rank 1]   50592 values compared, 10445 bitwise equal, worst relative difference 2.86e-06
+[rank 0]   rank 0: 704 tasks, 865.00 ms kernel, device 0
+[rank 0]   50592 values compared, 10445 bitwise equal, worst relative difference 2.86e-06
+[launch] PASS: 2/2 ranks succeeded
+## dp_gpt_tiny_x4_net
+[rank 2] == plan mn/dp_gpt_tiny_x4_net/plan: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 0] == plan mn/dp_gpt_tiny_x4_net/plan: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 1] == plan mn/dp_gpt_tiny_x4_net/plan: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 3] == plan mn/dp_gpt_tiny_x4_net/plan: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 2]   rank 2: 904 tasks, 925.00 ms kernel, device 0
+[rank 2]   50592 values compared, 871 bitwise equal, worst relative difference 0.000366
+[rank 0]   rank 0: 864 tasks, 842.00 ms kernel, device 0
+[rank 0]   50592 values compared, 871 bitwise equal, worst relative difference 0.000366
+[rank 1]   rank 1: 864 tasks, 853.00 ms kernel, device 1
+[rank 1]   50592 values compared, 871 bitwise equal, worst relative difference 0.000366
+[rank 3]   rank 3: 904 tasks, 967.00 ms kernel, device 0
+[rank 3]   50592 values compared, 871 bitwise equal, worst relative difference 0.000366
+[launch] PASS: 4/4 ranks succeeded
+## pipe_net
+[rank 0] == plan mn/plans_nodes/pipe_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 1] == plan mn/plans_nodes/pipe_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 2] == plan mn/plans_nodes/pipe_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 3] == plan mn/plans_nodes/pipe_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 0]   rank 0: 16 tasks, 0.00 ms kernel, device 0
+[rank 0]   256 values compared, 256 bitwise equal, worst relative difference 0
+[rank 3]   rank 3: 12 tasks, 309.00 ms kernel, device 0
+[rank 3]   192 values compared, 192 bitwise equal, worst relative difference 0
+[rank 2]   rank 2: 20 tasks, 295.00 ms kernel, device 0
+[rank 2]   192 values compared, 192 bitwise equal, worst relative difference 0
+[rank 1]   rank 1: 20 tasks, 14.00 ms kernel, device 1
+[rank 1]   192 values compared, 192 bitwise equal, worst relative difference 0
+[launch] PASS: 4/4 ranks succeeded
+## tp_ring_net
+[rank 0] == plan mn/plans_nodes/tp_ring_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 1] == plan mn/plans_nodes/tp_ring_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 2] == plan mn/plans_nodes/tp_ring_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 3] == plan mn/plans_nodes/tp_ring_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 2]   rank 2: 31 tasks, 434.00 ms kernel, device 0
+[rank 2]   320 values compared, 320 bitwise equal, worst relative difference 0
+[rank 0]   rank 0: 31 tasks, 575.00 ms kernel, device 0
+[rank 0]   320 values compared, 320 bitwise equal, worst relative difference 0
+[rank 1]   rank 1: 31 tasks, 569.00 ms kernel, device 1
+[rank 1]   320 values compared, 320 bitwise equal, worst relative difference 0
+[rank 3]   rank 3: 31 tasks, 436.00 ms kernel, device 0
+[rank 3]   320 values compared, 320 bitwise equal, worst relative difference 0
+[launch] PASS: 4/4 ranks succeeded
+## zero_bf16_net
+[rank 0] == plan mn/plans_nodes/zero_bf16_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 1] == plan mn/plans_nodes/zero_bf16_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 2] == plan mn/plans_nodes/zero_bf16_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 3] == plan mn/plans_nodes/zero_bf16_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 2]   rank 2: 27 tasks, 444.00 ms kernel, device 0
+[rank 2]   336 values compared, 336 bitwise equal, worst relative difference 0
+[rank 3]   rank 3: 27 tasks, 460.00 ms kernel, device 0
+[rank 3]   336 values compared, 336 bitwise equal, worst relative difference 0
+[rank 0]   rank 0: 25 tasks, 428.00 ms kernel, device 0
+[rank 0]   336 values compared, 336 bitwise equal, worst relative difference 0
+[rank 1]   rank 1: 25 tasks, 425.00 ms kernel, device 1
+[rank 1]   336 values compared, 336 bitwise equal, worst relative difference 0
+[launch] PASS: 4/4 ranks succeeded
+## zero_net
+[rank 3] == plan mn/plans_nodes/zero_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 2] == plan mn/plans_nodes/zero_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 0] == plan mn/plans_nodes/zero_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 1] == plan mn/plans_nodes/zero_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 3]   rank 3: 33 tasks, 630.00 ms kernel, device 0
+[rank 3]   336 values compared, 336 bitwise equal, worst relative difference 0
+[rank 2]   rank 2: 33 tasks, 652.00 ms kernel, device 0
+[rank 2]   336 values compared, 336 bitwise equal, worst relative difference 0
+[rank 0]   rank 0: 32 tasks, 426.00 ms kernel, device 0
+[rank 0]   336 values compared, 336 bitwise equal, worst relative difference 0
+[rank 1]   rank 1: 31 tasks, 421.00 ms kernel, device 1
+[rank 1]   336 values compared, 336 bitwise equal, worst relative difference 0
+[launch] PASS: 4/4 ranks succeeded
+
+## the suite's own stage (dist/run_multigpu_tests.sh, KVM_NODES + KVM_ADVERTISE + KVM_LISTEN_BASE from the environment)
+== plan zero_net across 4 ranks on the KVM_NODES hosts
+[rank 2] == plan plans_nodes/zero_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 0] == plan plans_nodes/zero_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 3] == plan plans_nodes/zero_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 1] == plan plans_nodes/zero_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 2]   336 values compared, 336 bitwise equal, worst relative difference 0
+[rank 3]   336 values compared, 336 bitwise equal, worst relative difference 0
+[rank 1]   336 values compared, 336 bitwise equal, worst relative difference 0
+[rank 0]   336 values compared, 336 bitwise equal, worst relative difference 0
+[launch] PASS: 4/4 ranks succeeded
+== plan zero_bf16_net across 4 ranks on the KVM_NODES hosts
+[rank 3] == plan plans_nodes/zero_bf16_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 2] == plan plans_nodes/zero_bf16_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 0] == plan plans_nodes/zero_bf16_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 1] == plan plans_nodes/zero_bf16_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 3]   336 values compared, 336 bitwise equal, worst relative difference 0
+[rank 2]   336 values compared, 336 bitwise equal, worst relative difference 0
+[rank 0]   336 values compared, 336 bitwise equal, worst relative difference 0
+[rank 1]   336 values compared, 336 bitwise equal, worst relative difference 0
+[launch] PASS: 4/4 ranks succeeded
+== plan tp_ring_net across 4 ranks on the KVM_NODES hosts
+[rank 2] == plan plans_nodes/tp_ring_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 3] == plan plans_nodes/tp_ring_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 0] == plan plans_nodes/tp_ring_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 1] == plan plans_nodes/tp_ring_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 0]   320 values compared, 320 bitwise equal, worst relative difference 0
+[rank 3]   320 values compared, 320 bitwise equal, worst relative difference 0
+[rank 2]   320 values compared, 320 bitwise equal, worst relative difference 0
+[rank 1]   320 values compared, 320 bitwise equal, worst relative difference 0
+[launch] PASS: 4/4 ranks succeeded
+== plan dp_fp_net across 4 ranks on the KVM_NODES hosts
+[rank 2] == plan plans_nodes/dp_fp_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 3] == plan plans_nodes/dp_fp_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 0] == plan plans_nodes/dp_fp_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 1] == plan plans_nodes/dp_fp_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 0]   13 values compared, 13 bitwise equal, worst relative difference 0
+[rank 1]   13 values compared, 13 bitwise equal, worst relative difference 0
+[rank 2]   13 values compared, 13 bitwise equal, worst relative difference 0
+[rank 3]   13 values compared, 13 bitwise equal, worst relative difference 0
+[launch] PASS: 4/4 ranks succeeded
+== plan pipe_net across 4 ranks on the KVM_NODES hosts
+[rank 2] == plan plans_nodes/pipe_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 3] == plan plans_nodes/pipe_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
+[rank 0] == plan plans_nodes/pipe_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 1] == plan plans_nodes/pipe_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 0]   256 values compared, 256 bitwise equal, worst relative difference 0
+[rank 3]   192 values compared, 192 bitwise equal, worst relative difference 0
+[rank 2]   192 values compared, 192 bitwise equal, worst relative difference 0
+[rank 1]   192 values compared, 192 bitwise equal, worst relative difference 0
+[launch] PASS: 4/4 ranks succeeded

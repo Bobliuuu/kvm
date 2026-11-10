@@ -260,8 +260,9 @@ class DeterminismAndPlans(unittest.TestCase):
     def test_comm_ops_are_registered_and_compile_to_abi_ids(self):
         ops = commops.merged_ops()
         self.assertEqual({n: o.id for n, o in ops.items() if 64 <= o.id <= 95}, {
-            'put': 64, 'put_signal': 65, 'signal': 66, 'reduce2': 67, 'reduce_put_signal': 68, 'send_proxy': 69, 'pack_bf16': 70, 'unpack_bf16': 71})
-        self.assertTrue(all(64 <= o.id <= 95 for n, o in ops.items() if n in commops._ref()))
+            'put': 64, 'put_signal': 65, 'signal': 66, 'reduce2': 67, 'reduce_put_signal': 68, 'send_proxy': 69, 'pack_bf16': 70, 'unpack_bf16': 71,
+            'put_i32': 72, 'put_signal_i32': 73, 'send_proxy_i32': 74})
+        self.assertTrue(all(64 <= o.id <= 95 for n, o in ops.items() if n in commops._ref_all()))
 
     def test_every_remote_signal_chain_is_single_writer_and_increasing(self):
         plan = pt.partition(wl.mlp(), pt.Cluster.uniform(4, 2), shard(dict(ZERO, **TP), collective='ring', chunks=2))

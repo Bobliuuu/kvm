@@ -1,0 +1,33 @@
+# 2026-11-10T04:59:07Z GPUs: 2 x NVIDIA GeForce RTX 3090, executor blocks per rank: 82
+{"name": "gpt_dp_mid", "vocab": 1024, "d_model": 512, "layers": 6, "heads": 8, "seq": 256, "batch": 4} dp x2 (1 node(s)): 34797 tasks/rank (reference 67605), 171 gradient all-reduces, 342 messages, 134.40 MiB
+scale_dp_x2                        rc=0  ranks 2 x 82 blocks  max kernel ms over ranks 71.00     0 values compared, 0 bitwise equal, worst relative difference 0
+scale_ref1gpu_accum2               rc=0  ranks 1 x 82 blocks  max kernel ms over ranks 121.00    0 values compared, 0 bitwise equal, worst relative difference 0
+2 ranks, 171 state buffers: replicas bit-identical; worst max|err|/max|ref| vs reference 2.00e-05 (w.llama.h5.mlp.down.w), tolerance 0.001; non-finite []
+PASS
+RESULT: PASS
+## correctness run (before the pipeline 1-GPU references were added)
+# 2026-11-10T04:19:40Z GPUs: 2 x NVIDIA GeForce RTX 3090, executor blocks per rank: 82
+gpt_tiny dp x2 (1 node(s)): 704 tasks/rank (reference 776), 40 gradient all-reduces, 80 messages, 0.26 MiB
+dp_gpt_tiny_x2                     rc=0  ranks 2 x 82 blocks  max kernel ms over ranks 2.00      101184 values compared, 20890 bitwise equal, worst relative difference 2.86e-06
+dp_gpt_tiny_x2_ref1gpu             rc=0  ranks 1 x 82 blocks  max kernel ms over ranks 1.00      50592 values compared, 10445 bitwise equal, worst relative difference 2.86e-06
+gpt_tiny dp x4 (1 node(s)): 864 tasks/rank (reference 1240), 40 gradient all-reduces, 480 messages, 1.54 MiB
+dp_gpt_tiny_x4                     rc=0  ranks 4 x 41 blocks  max kernel ms over ranks 2.00      202368 values compared, 3484 bitwise equal, worst relative difference 0.000366
+dp_gpt_tiny_x4_ref1gpu             rc=0  ranks 1 x 82 blocks  max kernel ms over ranks 2.00      50592 values compared, 871 bitwise equal, worst relative difference 0.000366
+gpt_tiny pipeline x2: tasks/rank [418, 371], 245 messages, 0.19 MiB
+pipe_gpt_tiny_x2                   rc=0  ranks 2 x 82 blocks  max kernel ms over ranks 4.00      171902 values compared, 24616 bitwise equal, worst relative difference 8.23e-06
+llama_tiny dp x2 (1 node(s)): 1828 tasks/rank (reference 2076), 42 gradient all-reduces, 84 messages, 1.07 MiB
+dp_llama_tiny_x2                   rc=0  ranks 2 x 82 blocks  max kernel ms over ranks 4.00      419712 values compared, 45674 bitwise equal, worst relative difference 9.83e-05
+dp_llama_tiny_x2_ref1gpu           rc=0  ranks 1 x 82 blocks  max kernel ms over ranks 4.00      209856 values compared, 22837 bitwise equal, worst relative difference 9.83e-05
+llama_tiny pipeline x2: tasks/rank [1212, 1172], 724 messages, 0.80 MiB
+pipe_llama_tiny_x2                 rc=0  ranks 2 x 82 blocks  max kernel ms over ranks 12.00     574608 values compared, 30972 bitwise equal, worst relative difference 0.00174
+gpt_small dp x2 (1 node(s)): 3464 tasks/rank (reference 4460), 72 gradient all-reduces, 144 messages, 1.78 MiB
+dp_gpt_small_x2                    rc=0  ranks 2 x 82 blocks  max kernel ms over ranks 6.00      698880 values compared, 23728 bitwise equal, worst relative difference 0.000124
+dp_gpt_small_x2_ref1gpu            rc=0  ranks 1 x 82 blocks  max kernel ms over ranks 7.00      349440 values compared, 11919 bitwise equal, worst relative difference 0.000124
+gpt_small pipeline x2: tasks/rank [2179, 2136], 1139 messages, 1.34 MiB
+pipe_gpt_small_x2                  rc=0  ranks 2 x 82 blocks  max kernel ms over ranks 28.00     1837490 values compared, 87473 bitwise equal, worst relative difference 0.000163
+{"name": "gpt_dp_mid", "vocab": 512, "d_model": 256, "layers": 4, "heads": 8, "seq": 128, "batch": 4} dp x2 (1 node(s)): 7722 tasks/rank (reference 14151), 117 gradient all-reduces, 234 messages, 27.80 MiB
+scale_dp_x2                        rc=0  ranks 2 x 82 blocks  max kernel ms over ranks 19.00     0 values compared, 0 bitwise equal, worst relative difference 0
+scale_ref1gpu_accum2               rc=0  ranks 1 x 82 blocks  max kernel ms over ranks 27.00     0 values compared, 0 bitwise equal, worst relative difference 0
+2 ranks, 117 state buffers: replicas bit-identical; worst max|err|/max|ref| vs reference 3.29e-03 (w.llama.h1.mlp.down.w), tolerance 0.001; non-finite []
+FAIL
+RESULT: FAIL

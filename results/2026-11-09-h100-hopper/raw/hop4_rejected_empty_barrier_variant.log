@@ -1,0 +1,43 @@
+rc 0
+✓ Finished downloading files to local!
+NVIDIA H100 80GB HBM3, 610.57.04
+== test
+device NVIDIA H100 80GB HBM3 sm_90, 132 SMs
+test_hopper: 1612 passed, 0 failed
+exit 0
+== bench
+device NVIDIA H100 80GB HBM3 sm_90, 132 SMs
+case                                   hopper       sm80     cuBLAS  hop/cuB
+4096^3 NN                                35.0       46.7      393.7     0.09   (TFLOP/s; hopper tiles 32768/4096, err 0)
+4096^3 NT                                52.8       60.1      398.2     0.13   (TFLOP/s; hopper tiles 32768/4096, err 0)
+4096^3 TN                                29.9       47.6      256.6     0.12   (TFLOP/s; hopper tiles 32768/4096, err 0)
+4096^3 NN big                           101.5       78.2      392.1     0.26   (TFLOP/s; hopper tiles 8192/1024, err 0)
+4096^3 NT big                           166.9       82.7      398.0     0.42   (TFLOP/s; hopper tiles 8192/1024, err 0)
+4096^3 NN huge                          107.2       80.6      391.9     0.27   (TFLOP/s; hopper tiles 4096/512, err 0)
+4096^3 NT huge                          190.9       86.2      397.9     0.48   (TFLOP/s; hopper tiles 4096/512, err 0)
+qkv 4096x2304x768 NN                     29.5       38.9      196.4     0.15   (TFLOP/s; hopper tiles 18432/2304, err 0)
+fc1 4096x3072x768 NN                     29.6       39.2      252.1     0.12   (TFLOP/s; hopper tiles 24576/3072, err 0)
+bf16 4096^3 NN                          204.5      225.4      737.0     0.28   (TFLOP/s; hopper tiles 4096/512, err 0)
+bf16 4096^3 NT                          206.6      221.3      734.7     0.28   (TFLOP/s; hopper tiles 4096/512, err 0)
+bf16 4096^3 TN                          203.1      225.3      738.1     0.28   (TFLOP/s; hopper tiles 4096/512, err 0)
+bf16 4096^3 TT                          207.7      223.4      737.6     0.28   (TFLOP/s; hopper tiles 4096/512, err 0)
+bf16 logits 4096x50304x768 NT            56.2       73.1      537.9     0.10   (TFLOP/s; hopper tiles 50432/6304, err 0)
+== same
+case                                   hopper       sm80     cuBLAS  hop/cuB
+4096^3 NN                                35.5       46.9      394.8     0.09   (TFLOP/s; hopper tiles 32768/4096, err 0)
+4096^3 NT                                54.0       60.6      399.3     0.14   (TFLOP/s; hopper tiles 32768/4096, err 0)
+4096^3 TN                                30.4       47.8      257.4     0.12   (TFLOP/s; hopper tiles 32768/4096, err 0)
+4096^3 NN big                           102.3       80.5      392.8     0.26   (TFLOP/s; hopper tiles 8192/1024, err 0)
+4096^3 NT big                           169.2       85.2      399.2     0.42   (TFLOP/s; hopper tiles 8192/1024, err 0)
+4096^3 NN huge                          136.7       86.9      393.0     0.35   (TFLOP/s; hopper tiles 4096/512, err 0)
+4096^3 NT huge                          239.2       94.2      399.8     0.60   (TFLOP/s; hopper tiles 4096/512, err 0)
+qkv 4096x2304x768 NN                     30.0       39.7      204.9     0.15   (TFLOP/s; hopper tiles 18432/2304, err 0)
+fc1 4096x3072x768 NN                     30.2       39.9      255.4     0.12   (TFLOP/s; hopper tiles 24576/3072, err 0)
+bf16 4096^3 NN                          301.6      291.4      736.8     0.41   (TFLOP/s; hopper tiles 4096/512, err 0)
+bf16 4096^3 NT                          320.4      283.3      732.8     0.44   (TFLOP/s; hopper tiles 4096/512, err 0)
+bf16 4096^3 TN                          297.6      291.4      734.7     0.41   (TFLOP/s; hopper tiles 4096/512, err 0)
+bf16 4096^3 TT                          318.4      287.7      737.1     0.43   (TFLOP/s; hopper tiles 4096/512, err 0)
+bf16 logits 4096x50304x768 NT           103.9      133.0      538.3     0.19   (TFLOP/s; hopper tiles 50432/6304, err 0)
+exit done
+✓ Finished downloading files to local!
+ITER_DONE

@@ -1,0 +1,2 @@
+[kvm_exec][I] hopper: TMA + wgmma tiles armed, dynamic smem 204800 B
+[kvm_exec][I] device NVIDIA H100 80GB HBM3, 132 SMs, 1 resident blocks/SM with 204800 B dynamic smem -> grid 132 (1 admitter + 131 workers)

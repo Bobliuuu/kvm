@@ -109,7 +109,8 @@ OPAQUE_OPS = {
     'doom_tick': _opaque(), 'doom_status': _opaque(),
     'doom_present': _opaque(lambda a: {'fb': 16256}),
     'doom_tick_n': _opaque(), 'doom_status_n': _opaque(), 'doom_present_n': _opaque(lambda a: {'fb': 16256}),
-    **{n: _opaque() for n in ('put', 'put_signal', 'signal', 'reduce2', 'reduce_put_signal', 'send_proxy', 'pack_bf16', 'unpack_bf16')},
+    **{n: _opaque() for n in ('put', 'put_signal', 'signal', 'reduce2', 'reduce_put_signal', 'send_proxy', 'pack_bf16', 'unpack_bf16',
+                             'put_i32', 'put_signal_i32', 'send_proxy_i32')},
 }
 OPS.update(GPT_OPS)
 OPS.update(EXTRA_OPS)

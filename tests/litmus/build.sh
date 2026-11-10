@@ -9,10 +9,6 @@ NVCC="$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc | tail -1)"
 mkdir -p "$OUT"
 ARCH="${KVM_ARCH:-sm_80}"; JOBS="${KVM_JOBS:-2}"
 B="-O3 -arch=$ARCH -std=c++17 -lineinfo -Wno-deprecated-gpu-targets"
-nv prod $B -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_prod"
-nv nofence $B -DLIT_NOFENCE -DLIT_MUTANT='"nofence(all __threadfence)"' -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_nofence"
-# the executor's own mutant: a waiter that never re-checks the version after parking (classic lost wakeup)
-nv norecheck $B -DKVM_BREAK_PARK_RECHECK -DLIT_MUTANT='"norecheck(KVM_BREAK_PARK_RECHECK)"' -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_norecheck"
 PIDS=(); NAMES=(); RC=()
 nv() {  # name, nvcc args...: run in the background; build number i first waits for build i-JOBS, so at most JOBS run at once
   local name="$1" i=${#PIDS[@]}; shift
@@ -25,6 +21,10 @@ mut() {  # name, header file, sed-expression: a header copy with exactly one ste
   if cmp -s "$d/$2" "$ROOT/include/$2"; then echo "mutant $1: sed matched nothing" >&2; exit 1; fi
   nv "$1" $B -DLIT_MUTANT="\"$1\"" -I"$d" "$HERE/litmus.cu" -o "$OUT/litmus_$1"
 }
+nv prod $B -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_prod"
+nv nofence $B -DLIT_NOFENCE -DLIT_MUTANT='"nofence(all __threadfence)"' -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_nofence"
+# the executor's own mutant: a waiter that never re-checks the version after parking (classic lost wakeup)
+nv norecheck $B -DKVM_BREAK_PARK_RECHECK -DLIT_MUTANT='"norecheck(KVM_BREAK_PARK_RECHECK)"' -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_norecheck"
 # Dekker: drop the two fences that implement the argument (waiter: push->fence->load; publisher: store->fence->detach)
 mut nodekkerfence kvm_exec.cuh 's#^(\s*)__threadfence\(\);  // seq_cst fence: push.*#\1/* mutant */#; s#^(\s*)__threadfence\(\);( +)// version store -> fence.*#\1/* mutant */#'
 # Dekker: publisher detaches the list BEFORE storing the version (and not after)
@@ -33,6 +33,8 @@ mut exchbefore kvm_exec.cuh 's#^(\s*)int old = atom_cas\(S.version \+ var, ver -
 mut weakpub kvm_exec.cuh 's#^(\s*)__threadfence\(\);( +)// fence.sc.gpu: weights before version.*#\1/* mutant */#; s#int old = atom_cas\(S.version \+ var, ver - 1, ver\);#int old = atomicCAS(S.version + var, ver - 1, ver);#'
 # Queue: popper claims the head with a plain store instead of CAS (double pop under contention)
 mut popplain kvm_sched.cuh 's#old = atom_cas64\(&S.qctl\[qi\].head, cd.head, cd.head \+ 1\);#*(volatile unsigned long long*)\&S.qctl[qi].head = cd.head + 1; old = cd.head;#'
+# Queue, ticket claim: the popper reserves an item with a plain read-modify-write instead of the atomic fetch-add (two poppers reserve the same item: double pop)
+mut popticket kvm_sched.cuh 's#\(long long\)atom_add64\(&q->avail, ~0ull\) > 0#(long long)((*(volatile unsigned long long*)\&q->avail)--) > 0#'
 # Queue: producer publishes the cell with a relaxed store (no release): payload may be stale
 mut qrelax kvm_sched.cuh 's#st_rel64\(&cell->seq, pos \+ 1\);#*(volatile unsigned long long*)\&cell->seq = pos + 1;#'
 bad=0

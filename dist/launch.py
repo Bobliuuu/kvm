@@ -18,6 +18,7 @@ rank and exits non-zero if any rank failed. Logging is verbose by default; --qui
 import argparse
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import threading
@@ -55,13 +56,40 @@ def hostname_of(host):
     return host.split('@')[-1]
 
 
-def layout(nodes, port_base):
+def parse_advertise(text, nodes):
+    """'host:p0/p1,host2:p0' (node order, one port per slot): the address peers DIAL for each rank, when it is not the ssh target and
+    the launch port (NAT, container port mapping). Comes from --advertise / KVM_ADVERTISE, never from a committed file."""
+    items = [x.strip() for x in text.split(',') if x.strip()]
+    if len(items) != len(nodes):
+        raise SystemExit(f'--advertise needs one entry per node ({len(nodes)}), got {len(items)}')
+    out = []
+    for item, (host, slots) in zip(items, nodes):
+        h, _, ports = item.rpartition(':')
+        ps = [int(x) for x in ports.split('/') if x]
+        if not h or len(ps) != slots:
+            raise SystemExit(f'bad --advertise entry {item!r}: want host:port[/port...] with {slots} port(s)')
+        out.append((h, ps))
+    return out
+
+
+def layout(nodes, port_base, advertise=None):
     ranks = []
     for ni, (host, slots) in enumerate(nodes):
         for s in range(slots):
             ranks.append(dict(rank=len(ranks), node=ni, local=s, host=host, port=port_base + len(ranks)))
-    peers = ','.join(f"{'127.0.0.1' if hostname_of(r['host']) in LOCAL_NAMES else hostname_of(r['host'])}:{r['port']}" for r in ranks)
+            if advertise:
+                ranks[-1]['addr'], ranks[-1]['port'] = advertise[ni][0], advertise[ni][1][s]
+    addr = lambda r: r.get('addr') or ('127.0.0.1' if hostname_of(r['host']) in LOCAL_NAMES else hostname_of(r['host']))
+    peers = ','.join(f"{addr(r)}:{r['port']}" for r in ranks)
     return ranks, peers
+
+
+def peers_for(me, ranks, peers, listen_base):
+    """With --advertise + --listen-base: ranks on MY node are dialed on loopback at their bind port (a container usually cannot reach
+    its own public mapped port: no hairpin NAT); ranks elsewhere at their advertised address."""
+    if not listen_base or not me.get('addr'):
+        return peers
+    return ','.join(f"127.0.0.1:{listen_base + q['local']}" if q['node'] == me['node'] else f"{q['addr']}:{q['port']}" for q in ranks)
 
 
 def rank_env(r, world, peers):
@@ -77,13 +105,16 @@ def subst(arg, r, world, peers):
 SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ServerAliveInterval=10', '-tt']
 
 
-def build_cmd(r, world, peers, cmd, workdir, timeout, extra_env):
+def build_cmd(r, world, peers, cmd, workdir, timeout, extra_env, listen_base=0):
     env = dict(rank_env(r, world, peers), **extra_env)
+    if listen_base:
+        env['KVM_DIST_LISTEN_PORT'] = str(listen_base + r['local'])   # bind here; peers dial the advertised port
     argv = [subst(a, r, world, peers) for a in cmd]
     line = shlex.join(argv)
     envs = ' '.join(f'{k}={shlex.quote(v)}' for k, v in env.items())
-    if hostname_of(r['host']) in LOCAL_NAMES:
-        return ['bash', '-c', f"cd {qdir(workdir or '.')} && exec env {envs} timeout {timeout} {line}"], env
+    if hostname_of(r['host']) in LOCAL_NAMES:   # macOS has no coreutils `timeout`: perl's alarm does the same for one exec
+        tmo = 'timeout' if shutil.which('timeout') else "perl -e 'alarm shift; exec @ARGV'"
+        return ['bash', '-c', f"cd {qdir(workdir or '.')} && exec env {envs} {tmo} {timeout} {line}"], env
     remote = f"cd {qdir(workdir or '~')} && exec env {envs} timeout {timeout} {line}"
     return SSH + [r['host'], remote], env
 
@@ -100,7 +131,8 @@ def run_all(ranks, world, peers, cmd, args):
     procs, threads, outputs = {}, [], {}
     t0 = time.monotonic()
     for r in ranks:
-        argv, _ = build_cmd(r, world, peers, cmd, args.workdir, args.timeout, dict(kv.split('=', 1) for kv in args.env))
+        argv, _ = build_cmd(r, world, peers_for(r, ranks, peers, args.listen_base), cmd, args.workdir, args.timeout,
+                            dict(kv.split('=', 1) for kv in args.env), args.listen_base)
         if args.dry_run:
             print(f"DRY rank {r['rank']} @ {r['host']}: {shlex.join(argv)}")
             continue
@@ -150,6 +182,9 @@ def main(argv=None):
     ap.add_argument('--env', action='append', default=[], metavar='K=V')
     ap.add_argument('--rsync', nargs=2, metavar=('SRC', 'DEST'), action='append', default=[], help='copy SRC to DEST on every remote node first')
     ap.add_argument('--setup', action='append', default=[], help='shell command run once on every node (after --rsync) in --workdir')
+    ap.add_argument('--advertise', default=os.environ.get('KVM_ADVERTISE', ''), help="per node 'host:port[/port..]' that peers dial (NAT/port mapping)")
+    ap.add_argument('--listen-base', type=int, default=int(os.environ.get('KVM_LISTEN_BASE', '0')),
+                    help='with --advertise: rank in slot s binds port LISTEN_BASE + s inside its node (KVM_DIST_LISTEN_PORT)')
     ap.add_argument('--dry-run', action='store_true')
     ap.add_argument('--quiet', action='store_true')
     ap.add_argument('cmd', nargs=argparse.REMAINDER)
@@ -158,7 +193,7 @@ def main(argv=None):
     if not cmd:
         ap.error('no command (put it after --)')
     nodes = [('localhost', args.local)] if args.local else parse_nodes(args.nodes)
-    ranks, peers = layout(nodes, args.port_base)
+    ranks, peers = layout(nodes, args.port_base, parse_advertise(args.advertise, nodes) if args.advertise else None)
     world = len(ranks)
     log(f'world {world}: ' + ', '.join(f'{hostname_of(h)}x{s}' for h, s in nodes) + f'; peers {peers}')
     remote = [h for h, _ in nodes if hostname_of(h) not in LOCAL_NAMES]

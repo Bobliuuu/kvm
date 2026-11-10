@@ -1,0 +1,9 @@
+NVIDIA H100 80GB HBM3, 610.57.04
+device: NVIDIA H100 80GB HBM3, 132 SMs, cc 9.0
+  matmul_tile_bf16 worst relerr 3.546e-07
+  bf16 storage matmul: 752 combinations, worst relerr 3.789e-03
+  lr_schedule worst relerr 4.970e-08 (432 configs)
+  error-path mutations: 208 cases, 0 failed
+
+3669 passed, 0 failed
+exit 0

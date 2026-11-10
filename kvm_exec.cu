@@ -772,7 +772,7 @@ class KvmExec {
     ops.fmlp_slice = kvm_op_by_name("fmlp_slice"); ops.fmlp_sgd = kvm_op_by_name("fmlp_sgd");
     std::vector<KvmFuseBuf> infos(bufs_.size());
     for (size_t i = 0; i < bufs_.size(); ++i) infos[i] = KvmFuseBuf{bufs_[i].rows, bufs_[i].cols, bufs_[i].ld, bufs_[i].dtype};
-    const KvmSOpLookup op_of = [](int id) { const KvmOpInfo* i = kvm_op(id); KvmSOpInfo v; if (i) { v.arity = i->arity; v.types = i->types; } return v; };
+    const KvmSOpLookup op_of = [](int id) { const KvmOpInfo* i = kvm_op(id); KvmSOpInfo v; if (i) { v.arity = i->arity; v.types = i->types; kvm_static_gang_args(i->sig, v); } return v; };
     KvmFuseOptions opts; opts.workers = workers; opts.keep = keep; opts.smem_floats = fused_smem_floats();
     KvmFuseResult r = kvm_fuse_mlp(b.tasks, b.succ, b.args, infos, ops, op_of, opts);
     for (const std::string& line : r.report) KLOG(2, "fuse: %s", line.c_str());
@@ -821,7 +821,7 @@ class KvmExec {
     if (!why.empty()) { res_.err_code = -1; last_error_ = why; throw std::runtime_error("bundle rejected: " + why); }
     prepare();   // buffers and the host mirrors are in place before anything launches
     KvmSConfig sc; sc.workers = o.workers ? std::min(o.workers, grid_) : grid_; sc.comm_us = o.comm_us; sc.partition = o.partition;
-    const KvmSOpLookup op_of = [](int id) { const KvmOpInfo* i = kvm_op(id); KvmSOpInfo v; if (i) { v.arity = i->arity; v.types = i->types; } return v; };
+    const KvmSOpLookup op_of = [](int id) { const KvmOpInfo* i = kvm_op(id); KvmSOpInfo v; if (i) { v.arity = i->arity; v.types = i->types; kvm_static_gang_args(i->sig, v); } return v; };
     const auto t0 = std::chrono::steady_clock::now();
     const KvmSCostFn cost_fn = kvm_static_cost;
     const KvmSPlan plan = kvm_static_plan(b.tasks, b.succ, b.args, sc, op_of, cost_fn);
@@ -1509,9 +1509,22 @@ int main(int argc, char** argv) {
       for (const std::string& n : names) list += (list.empty() ? "" : ", ") + n;
       return list;
     };
+    // A gang op's members meet at barriers inside the op, so they must run at once: only the static plan places them so (kvm_static_plan).
+    auto gang_task = [&](const KvmBundle& b) {
+      for (size_t t = 0; t < b.tasks.size(); ++t) {
+        const KvmOpInfo* o = kvm_op(b.tasks[t].op_id);
+        KvmSOpInfo g;
+        if (o) kvm_static_gang_args(o->sig, g);
+        if (g.gang_arg >= 0) return (int)t;
+      }
+      return -1;
+    };
     if (!opt_dynamic && !opt_static && bundles.size() == 1 && !cfg.sched.on && static_feasible(bundles[0])) {
       const std::string unpriced = unpriced_ops(bundles[0]);
-      if (!unpriced.empty()) {
+      if (gang_task(bundles[0]) >= 0) {
+        opt_static = true;
+        KLOG(2, "path: static (the bundle has gang ops, which only the static plan runs)");
+      } else if (!unpriced.empty()) {
         KLOG(2, "path: dynamic (the static cost model does not price %s)", unpriced.c_str());
       } else {
         const double mean = static_mean_us(bundles[0]);
@@ -1534,6 +1547,10 @@ int main(int argc, char** argv) {
       }
       resp = &ex.run_static(bundles[0], so);
     } else {
+      for (const KvmBundle& b : bundles) {
+        const int t = gang_task(b);
+        if (t >= 0) throw std::runtime_error("task " + std::to_string(t) + ": " + kvm_op(b.tasks[t].op_id)->name + " is a gang op, whose members must run at once; only the static path plans that (one bundle, no --dynamic, no scheduling classes)");
+      }
       if (dissolve && !golden && !csv && dirs.size() == 1 && !cfg.sched.on) {   // the dynamic path only (the static planner and the fused-step matcher read the bundle as written); a trace's slots are the bundle's task indices, so a traced run keeps its noops
         const int nd = kvm_dissolve_noops(bundles[0]);
         if (nd) KLOG(2, "%d noops dissolved: %zu tasks, %zu edges", nd, bundles[0].tasks.size(), bundles[0].succ.size());

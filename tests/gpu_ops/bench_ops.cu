@@ -14,7 +14,7 @@ __global__ void __launch_bounds__(256) k_one(KvmCtx c, const int32_t* w, const i
 
 struct Staged { int32_t* w; int* op; int* off; int n; KvmCtx c; };
 static Staged stage(Dev& d, const Batch& b) {
-    static int attr = 0; if (!attr) { CK(cudaFuncSetAttribute(k_run, cudaFuncAttributeMaxDynamicSharedMemorySize, 112 * 1024)); attr = 1; }
+    static int attr = 0; if (!attr) { CK(cudaFuncSetAttribute(k_run, cudaFuncAttributeMaxDynamicSharedMemorySize, std::max(112 * 1024, (int)kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)))); attr = 1; }
     d.sync_table(); Staged s{}; s.n = (int)b.op.size();
     CK(cudaMalloc(&s.w, b.w.size() * 4 + 4)); CK(cudaMalloc(&s.op, s.n * 4)); CK(cudaMalloc(&s.off, s.n * 4));
     CK(cudaMemcpy(s.w, b.w.data(), b.w.size() * 4, cudaMemcpyHostToDevice)); CK(cudaMemcpy(s.op, b.op.data(), s.n * 4, cudaMemcpyHostToDevice));
@@ -23,7 +23,7 @@ static Staged stage(Dev& d, const Batch& b) {
 }
 template <int ID> static void launch_one(const Staged& s, int smem) {
     static bool attr = false;
-    if (!attr) { CK(cudaFuncSetAttribute(k_one<ID>, cudaFuncAttributeMaxDynamicSharedMemorySize, 112 * 1024)); attr = true; }
+    if (!attr) { CK(cudaFuncSetAttribute(k_one<ID>, cudaFuncAttributeMaxDynamicSharedMemorySize, std::max(112 * 1024, (int)kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)))); attr = true; }
     k_one<ID><<<s.n, 256, smem>>>(s.c, s.w, s.off);
 }
 static void launch_full(const Staged& s, int smem) { k_run<<<s.n, 256, smem>>>(s.c, s.w, s.op, s.off); }

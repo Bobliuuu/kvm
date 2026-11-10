@@ -1,0 +1,3 @@
+mlp72/bundle: the plan test prints the same 10 lines as with the planner of 339c6b9 (this branch's base), at 8 worker counts
+mlp576/bundle: the plan test prints the same 10 lines as with the planner of 339c6b9 (this branch's base), at 8 worker counts
+mlp72-r8: the plan test prints the same 10 lines as with the planner of 339c6b9 (this branch's base), at 8 worker counts

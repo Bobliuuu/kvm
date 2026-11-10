@@ -1,0 +1,19 @@
+== gang_dev
+NVIDIA GeForce RTX 3080 Ti: 80 blocks in 7 gangs (sizes 1 2 3 5 8 13 48), 2000 rounds of two crossings
+launch 0: 0 wrong values read, 0 gang(s) with a count left nonzero or a generation other than 4000
+launch 1: 0 wrong values read, 0 gang(s) with a count left nonzero or a generation other than 8000
+PASS: every member read every slot of its round, and every gang's control words are as a clean run leaves them
+== memcheck
+PASS: every member read every slot of its round, and every gang's control words are as a clean run leaves them
+========= ERROR SUMMARY: 0 errors
+== racecheck
+PASS: every member read every slot of its round, and every gang's control words are as a clean run leaves them
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+== synccheck
+PASS: every member read every slot of its round, and every gang's control words are as a clean run leaves them
+========= ERROR SUMMARY: 0 errors
+== mutant
+NVIDIA GeForce RTX 3080 Ti: 80 blocks in 7 gangs (sizes 1 2 3 5 8 13 48), 2000 rounds of two crossings
+launch 0: 310408672 wrong values read, 6 gang(s) with a count left nonzero or a generation other than 4000
+launch 1: 310497536 wrong values read, 6 gang(s) with a count left nonzero or a generation other than 8000
+FAIL

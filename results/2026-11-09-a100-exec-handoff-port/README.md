@@ -78,6 +78,7 @@ All on A100-SXM4-40GB (Modal), prebuilt binaries (`tests/gpu/build.sh`, CPU cont
 | CPU suites `tests` / `tests/frontend` | PR head | 153 OK / 124 OK (15 skipped) |
 | `test_exec` (all suites) | 93f727c | **8609 checks, 1 failed**: `front` (below); every other suite passes |
 | `front` with its race removed, 20 runs (`-DKVM_LEAN` build) | ea48d76 | 20 of 20 PASS |
+| `test_exec` (all suites) after merging main (#15, #16) | 27de80d | **8609 checks, 0 failed** (`raw/gate5`) |
 | compute-sanitizer memcheck / racecheck / synccheck on `smoke` | 93f727c | 0 errors / 0 hazards / 0 errors |
 | `-DKVM_BREAK_FENCE --expect-fail versions` | 93f727c | 118 violations detected (NEGATIVE TEST PASS) |
 | `-DKVM_BREAK_PARK_RECHECK --expect-fail litmus` | 93f727c | detected (NEGATIVE TEST PASS) |
@@ -86,7 +87,7 @@ All on A100-SXM4-40GB (Modal), prebuilt binaries (`tests/gpu/build.sh`, CPU cont
 `front` failure: the suite submitted the same 100 chains twice (classes 1 and 0) onto ONE counter per chain, with no edge between the two
 submissions, so the two copies of a chain race on `x = x + 1` once both are admitted; 1 of 100 counters came out wrong. The faster admission
 makes the overlap likelier; it is a test race, not an executor bug. The test now gives each submission its own counters (ea48d76) and passes
-20 of 20 runs. Not rerun after that change: the full `test_exec` binary (a 62-minute build).
+20 of 20 runs, and the full suite passes on the merged tree (27de80d).
 
 ## bf16 storage regression on main (found here, fixed by #10)
 

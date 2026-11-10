@@ -1,7 +1,9 @@
 // CPU check of the GPT step matcher (include/kvm_fuse_gpt.h) on real bundles: prints the decision for every run, and on a matched run checks
 // that its steps account for every task of the run exactly once, prints the step's shape and its parameter updates by buffer name, then
 // breaks the bundle in ways the template must refuse (each mutation must leave the run unmatched, with its own reason).
-//   g++ -std=c++17 -O2 -Iinclude tests/static/test_fuse_gpt.cpp -o /tmp/test_fuse_gpt && /tmp/test_fuse_gpt BUNDLE_DIR...   (from the repo root)
+//   g++ -std=c++17 -O2 -Iinclude -DKVM_EXTRA_OPS_DEF='"kvm_ops_fgpt.def"' tests/static/test_fuse_gpt.cpp -o /tmp/test_fuse_gpt && /tmp/test_fuse_gpt BUNDLE_DIR...
+// The registry is compiled in from include/kvm_ops_list.inc (registry.h); fgpt_step joins it through the list's extension hook until the
+// executor dispatches it. A tree that lacks an op the matcher reads fails here.
 #include <algorithm>
 #include <cstdio>
 #include <functional>
@@ -11,11 +13,12 @@
 #include <vector>
 #include "bundle_io.h"
 #include "kvm_fuse_gpt.h"
+#include "registry.h"
 
 namespace {
 
-KvmFuseGptOps gpt_ops(const bundle_io::Registry& reg) {
-    const auto id = [&](const char* n) { auto it = reg.ids.find(n); return it == reg.ids.end() ? -1 : it->second; };
+KvmFuseGptOps gpt_ops(const kvm_test_registry::Registry& reg) {
+    const auto id = [&](const char* n) { return reg.require(n); };
     KvmFuseGptOps o;
     o.select_window = id("select_window"); o.embedding_fwd = id("embedding_fwd"); o.layernorm_fwd = id("layernorm_fwd"); o.matmul_tile = id("matmul_tile");
     o.rope_fwd = id("rope_fwd"); o.attn_fwd = id("attn_fwd"); o.softmax_ce_fused = id("softmax_ce_fused"); o.softmax_ce_reduce = id("softmax_ce_reduce");
@@ -34,7 +37,7 @@ int first_of(const Bundle& b, int op) { for (size_t i = 0; i < b.tasks.size(); +
 
 int main(int argc, char** argv) {
     if (argc < 2) { fprintf(stderr, "usage: %s [--refuse] BUNDLE_DIR... (from the repo root; bundles after --refuse must match no GPT run)\n", argv[0]); return 2; }
-    const bundle_io::Registry reg = bundle_io::load_registry("include");
+    const kvm_test_registry::Registry& reg = kvm_test_registry::registry();
     const KvmFuseGptOps ops = gpt_ops(reg);
     int failures = 0;
     bool refuse = false;
@@ -90,11 +93,10 @@ int main(int argc, char** argv) {
 
         // 3. the rewrite: each matched run becomes one gang of G fgpt_step members; every other task is copied through; the static planner places the gang
         {
-            const auto fgpt = reg.ids.find("fgpt_step");
-            if (fgpt == reg.ids.end()) { printf("  FAIL: the registry has no fgpt_step\n"); ++failures; continue; }
-            const KvmSOpLookup op_of = [&](int i) { auto it = reg.ops.find(i); return it == reg.ops.end() ? KvmSOpInfo{} : it->second; };
+            const int fgpt = reg.require("fgpt_step");
+            const KvmSOpLookup op_of = reg.lookup();
             KvmFuseGptOptions opt;
-            const KvmFuseGptPlan P = kvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt->second, opt);
+            const KvmFuseGptPlan P = kvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, opt);
             printf("  rewrite: %d fused, %d unchanged, %d tasks replaced by %d members\n", P.fused_runs, P.unchanged_runs, P.replaced_tasks, P.new_tasks);
             for (const auto& line : P.report) printf("    %s\n", line.c_str());
             // a matched run that is not fused must be refused for its fit alone (a run too large for a resident gang, like the 162M tape)
@@ -117,7 +119,7 @@ int main(int argc, char** argv) {
             for (size_t i = 0; i < P.tasks.size(); ++i) {
                 const KvmTaskDesc& d = P.tasks[i];
                 const int32_t* a = P.args.data() + d.args_off;
-                if (d.op_id == fgpt->second) {
+                if (d.op_id == fgpt) {
                     if (d.args_words != 4 || a[0] != a[1] || a[0] < 0 || a[0] >= (int)P.runs.size() || a[3] != P.gang[a[0]] || a[2] < 0 || a[2] >= a[3] || d.succ_cnt || d.indegree) ++bad_member;
                     members[a[1]].push_back(a[2]);
                     continue;
@@ -137,11 +139,11 @@ int main(int argc, char** argv) {
             for (int W : {8, 32, 108}) {
                 if (P.fused_runs && W < *std::max_element(P.gang.begin(), P.gang.end())) continue;
                 KvmSConfig cfg; cfg.workers = W;
-                const KvmSCostFn cost = [&](int op, const int32_t*) { return op == fgpt->second ? 100.0 : op == 0 ? 0.1 : 3.0; };
+                const KvmSCostFn cost = [&](int op, const int32_t*) { return op == fgpt ? 100.0 : op == 0 ? 0.1 : 3.0; };
                 const KvmSPlan plan = kvm_static_plan(P.tasks, P.succ, P.args, cfg, op_of, cost);
                 int placed = 0; for (const auto& prog : plan.prog) placed += (int)prog.size();
                 std::map<int, std::set<int>> workers_of_gang;
-                for (size_t i = 0; i < P.tasks.size(); ++i) if (P.tasks[i].op_id == fgpt->second) workers_of_gang[P.args[P.tasks[i].args_off + 1]].insert(plan.worker_of[i]);
+                for (size_t i = 0; i < P.tasks.size(); ++i) if (P.tasks[i].op_id == fgpt) workers_of_gang[P.args[P.tasks[i].args_off + 1]].insert(plan.worker_of[i]);
                 bool spread = true; for (const auto& kv : workers_of_gang) spread = spread && (int)kv.second.size() == P.gang[kv.first];
                 printf("  W=%d: planned %d of %zu tasks, each gang on distinct workers: %s, predicted makespan %.1f us\n", W, placed, P.tasks.size(), spread ? "yes" : "NO", plan.makespan_us);
                 if (placed != (int)P.tasks.size() || !spread) ++failures;
@@ -149,9 +151,9 @@ int main(int argc, char** argv) {
             // refusals of the rewrite, on a run it fuses by default: a budget no gang fits, and a dumped activation the fused step would leave stale
             if (P.fused_runs) {
                 KvmFuseGptOptions tight; tight.smem_floats = 1000;
-                const KvmFuseGptPlan T = kvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt->second, tight);
+                const KvmFuseGptPlan T = kvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, tight);
                 KvmFuseGptOptions dump; if (!r.runs.empty()) dump.keep = {*r.runs[0].shape.interior.begin()};
-                const KvmFuseGptPlan D = kvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt->second, dump);
+                const KvmFuseGptPlan D = kvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, dump);
                 const bool tight_ok = !T.fused_runs && T.report[r.runs[0].component].find("does not fit a resident gang") != std::string::npos;
                 const bool dump_ok = !D.fused_runs && D.report[r.runs[0].component].find("stale") != std::string::npos;
                 printf("  rewrite refusals: budget of 1000 floats %s; a dumped activation %s\n", tight_ok ? "refused" : "NOT REFUSED", dump_ok ? "refused" : "NOT REFUSED");

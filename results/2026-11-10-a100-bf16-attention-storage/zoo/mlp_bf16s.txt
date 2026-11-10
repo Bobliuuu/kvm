@@ -1,0 +1,9 @@
+lowp: 651 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 30 loss buffers
+  ok   losses rel L2 <= 0.001: worst 8.26e-07
+  ok   20 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act28 1.31e-07
+  info: post-optimizer weights/moments differ by up to 4.20e-07 (m.mlp.fc2.w) after the run
+  info: weights differ from the golden by 3.87e-08 (mlp.fc0.b); gradients differ per step by up to 1.4e-05, relative L2 of worst tensor, per step [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  ok   optimizer replay reproduces the golden weights (validates the replay) <= 1e-05: worst 2.50e-07 (mlp.fc1.w)
+  ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 2.50e-07 (mlp.fc1.w)
+  ok   no NaN/Inf in any GPU buffer: []
+PASS

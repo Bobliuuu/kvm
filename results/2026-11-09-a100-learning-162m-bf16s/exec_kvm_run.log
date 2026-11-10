@@ -1,0 +1,1512 @@
+[kvm_exec][I] manifest ok: 1 workloads, 300 admissions, 1075 buffers, serial order train_w0 ... train_w299
+[kvm_exec][I] config: live_cap 65536, slots 2097152, ring 4194304 words, stack 0 B, sched dynamic, classes [train]
+[kvm_exec][I]   class 0 train    weight 1 min_cta 0 max_cta 2147483647 urgent_us 0
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 98304 B dynamic smem -> grid 108 (1 admitter + 1 policy + 106 workers)
+[kvm_exec][I] kernel launched: grid 108 x 256 threads, live_cap 65536, slots 2097152, succ ring 2097152 words, ring 4194304 words, aging 0 us, sched dynamic
+[kvm_exec][I] started: 300 admissions, 1 classes, 1 version variables, 1075 buffers
+[kvm_exec][I] [      679 us] admit     train_w0       (class train) versions [0,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.5 ms
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [   341456 us] done      train_w0        58635 tasks, versions [2,0,0,0,0,0,0,0]
+[kvm_exec][I] [   342904 us] admit     train_w1       (class train) versions [2,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [   655456 us] done      train_w1        58635 tasks, versions [4,0,0,0,0,0,0,0]
+[kvm_exec][I] [   656977 us] admit     train_w2       (class train) versions [4,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [   939441 us] done      train_w2        58635 tasks, versions [6,0,0,0,0,0,0,0]
+[kvm_exec][I] [   940817 us] admit     train_w3       (class train) versions [6,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  1223618 us] done      train_w3        58635 tasks, versions [8,0,0,0,0,0,0,0]
+[kvm_exec][I] [  1225045 us] admit     train_w4       (class train) versions [8,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  1508744 us] done      train_w4        58635 tasks, versions [10,0,0,0,0,0,0,0]
+[kvm_exec][I] [  1510071 us] admit     train_w5       (class train) versions [10,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  1792186 us] done      train_w5        58635 tasks, versions [12,0,0,0,0,0,0,0]
+[kvm_exec][I] [  1793550 us] admit     train_w6       (class train) versions [12,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  2076443 us] done      train_w6        58635 tasks, versions [14,0,0,0,0,0,0,0]
+[kvm_exec][I] [  2077837 us] admit     train_w7       (class train) versions [14,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  2359749 us] done      train_w7        58635 tasks, versions [16,0,0,0,0,0,0,0]
+[kvm_exec][I] [  2361360 us] admit     train_w8       (class train) versions [16,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  2644209 us] done      train_w8        58635 tasks, versions [18,0,0,0,0,0,0,0]
+[kvm_exec][I] [  2645801 us] admit     train_w9       (class train) versions [18,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.5 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  2930892 us] done      train_w9        58635 tasks, versions [20,0,0,0,0,0,0,0]
+[kvm_exec][I] [  2932261 us] admit     train_w10      (class train) versions [20,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  3216532 us] done      train_w10       58635 tasks, versions [22,0,0,0,0,0,0,0]
+[kvm_exec][I] [  3217973 us] admit     train_w11      (class train) versions [22,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  3501239 us] done      train_w11       58635 tasks, versions [24,0,0,0,0,0,0,0]
+[kvm_exec][I] [  3502669 us] admit     train_w12      (class train) versions [24,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  3786342 us] done      train_w12       58635 tasks, versions [26,0,0,0,0,0,0,0]
+[kvm_exec][I] [  3787670 us] admit     train_w13      (class train) versions [26,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  4070823 us] done      train_w13       58635 tasks, versions [28,0,0,0,0,0,0,0]
+[kvm_exec][I] [  4072027 us] admit     train_w14      (class train) versions [28,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  4354869 us] done      train_w14       58635 tasks, versions [30,0,0,0,0,0,0,0]
+[kvm_exec][I] [  4356175 us] admit     train_w15      (class train) versions [30,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.4 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  4639286 us] done      train_w15       58635 tasks, versions [32,0,0,0,0,0,0,0]
+[kvm_exec][I] [  4640546 us] admit     train_w16      (class train) versions [32,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  4922690 us] done      train_w16       58635 tasks, versions [34,0,0,0,0,0,0,0]
+[kvm_exec][I] [  4923931 us] admit     train_w17      (class train) versions [34,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  5206494 us] done      train_w17       58635 tasks, versions [36,0,0,0,0,0,0,0]
+[kvm_exec][I] [  5207772 us] admit     train_w18      (class train) versions [36,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  5490413 us] done      train_w18       58635 tasks, versions [38,0,0,0,0,0,0,0]
+[kvm_exec][I] [  5491616 us] admit     train_w19      (class train) versions [38,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  5774453 us] done      train_w19       58635 tasks, versions [40,0,0,0,0,0,0,0]
+[kvm_exec][I] [  5775706 us] admit     train_w20      (class train) versions [40,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  6057665 us] done      train_w20       58635 tasks, versions [42,0,0,0,0,0,0,0]
+[kvm_exec][I] [  6058896 us] admit     train_w21      (class train) versions [42,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  6341923 us] done      train_w21       58635 tasks, versions [44,0,0,0,0,0,0,0]
+[kvm_exec][I] [  6343142 us] admit     train_w22      (class train) versions [44,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  6625750 us] done      train_w22       58635 tasks, versions [46,0,0,0,0,0,0,0]
+[kvm_exec][I] [  6626988 us] admit     train_w23      (class train) versions [46,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  6911246 us] done      train_w23       58635 tasks, versions [48,0,0,0,0,0,0,0]
+[kvm_exec][I] [  6912473 us] admit     train_w24      (class train) versions [48,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  7196173 us] done      train_w24       58635 tasks, versions [50,0,0,0,0,0,0,0]
+[kvm_exec][I] [  7197493 us] admit     train_w25      (class train) versions [50,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  7480096 us] done      train_w25       58635 tasks, versions [52,0,0,0,0,0,0,0]
+[kvm_exec][I] [  7481468 us] admit     train_w26      (class train) versions [52,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  7765660 us] done      train_w26       58635 tasks, versions [54,0,0,0,0,0,0,0]
+[kvm_exec][I] [  7766928 us] admit     train_w27      (class train) versions [54,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  8049052 us] done      train_w27       58635 tasks, versions [56,0,0,0,0,0,0,0]
+[kvm_exec][I] [  8050298 us] admit     train_w28      (class train) versions [56,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  8332264 us] done      train_w28       58635 tasks, versions [58,0,0,0,0,0,0,0]
+[kvm_exec][I] [  8333519 us] admit     train_w29      (class train) versions [58,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  8617278 us] done      train_w29       58635 tasks, versions [60,0,0,0,0,0,0,0]
+[kvm_exec][I] [  8618673 us] admit     train_w30      (class train) versions [60,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  8901525 us] done      train_w30       58635 tasks, versions [62,0,0,0,0,0,0,0]
+[kvm_exec][I] [  8902884 us] admit     train_w31      (class train) versions [62,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  9184577 us] done      train_w31       58635 tasks, versions [64,0,0,0,0,0,0,0]
+[kvm_exec][I] [  9185802 us] admit     train_w32      (class train) versions [64,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  9468884 us] done      train_w32       58635 tasks, versions [66,0,0,0,0,0,0,0]
+[kvm_exec][I] [  9470193 us] admit     train_w33      (class train) versions [66,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [  9752911 us] done      train_w33       58635 tasks, versions [68,0,0,0,0,0,0,0]
+[kvm_exec][I] [  9754270 us] admit     train_w34      (class train) versions [68,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 10037006 us] done      train_w34       58635 tasks, versions [70,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 10038347 us] admit     train_w35      (class train) versions [70,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 10320962 us] done      train_w35       58635 tasks, versions [72,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 10322308 us] admit     train_w36      (class train) versions [72,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 10604951 us] done      train_w36       58635 tasks, versions [74,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 10606248 us] admit     train_w37      (class train) versions [74,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 10890031 us] done      train_w37       58635 tasks, versions [76,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 10891245 us] admit     train_w38      (class train) versions [76,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 11175607 us] done      train_w38       58635 tasks, versions [78,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 11176899 us] admit     train_w39      (class train) versions [78,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 11462416 us] done      train_w39       58635 tasks, versions [80,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 11463781 us] admit     train_w40      (class train) versions [80,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 11748373 us] done      train_w40       58635 tasks, versions [82,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 11749757 us] admit     train_w41      (class train) versions [82,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 12034495 us] done      train_w41       58635 tasks, versions [84,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 12035982 us] admit     train_w42      (class train) versions [84,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 12321338 us] done      train_w42       58635 tasks, versions [86,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 12322818 us] admit     train_w43      (class train) versions [86,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 12607786 us] done      train_w43       58635 tasks, versions [88,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 12609106 us] admit     train_w44      (class train) versions [88,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 12892839 us] done      train_w44       58635 tasks, versions [90,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 12894202 us] admit     train_w45      (class train) versions [90,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 13179395 us] done      train_w45       58635 tasks, versions [92,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 13180770 us] admit     train_w46      (class train) versions [92,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 13463907 us] done      train_w46       58635 tasks, versions [94,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 13465270 us] admit     train_w47      (class train) versions [94,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 13748463 us] done      train_w47       58635 tasks, versions [96,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 13749969 us] admit     train_w48      (class train) versions [96,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 14033022 us] done      train_w48       58635 tasks, versions [98,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 14034379 us] admit     train_w49      (class train) versions [98,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 14317883 us] done      train_w49       58635 tasks, versions [100,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 14319435 us] admit     train_w50      (class train) versions [100,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 14603418 us] done      train_w50       58635 tasks, versions [102,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 14604916 us] admit     train_w51      (class train) versions [102,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 14889076 us] done      train_w51       58635 tasks, versions [104,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 14890568 us] admit     train_w52      (class train) versions [104,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 15174093 us] done      train_w52       58635 tasks, versions [106,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 15175534 us] admit     train_w53      (class train) versions [106,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 15458685 us] done      train_w53       58635 tasks, versions [108,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 15460133 us] admit     train_w54      (class train) versions [108,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 15743289 us] done      train_w54       58635 tasks, versions [110,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 15744778 us] admit     train_w55      (class train) versions [110,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 16029670 us] done      train_w55       58635 tasks, versions [112,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 16031137 us] admit     train_w56      (class train) versions [112,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 16313535 us] done      train_w56       58635 tasks, versions [114,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 16315073 us] admit     train_w57      (class train) versions [114,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 16597477 us] done      train_w57       58635 tasks, versions [116,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 16598854 us] admit     train_w58      (class train) versions [116,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 16881272 us] done      train_w58       58635 tasks, versions [118,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 16882674 us] admit     train_w59      (class train) versions [118,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 17164631 us] done      train_w59       58635 tasks, versions [120,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 17165952 us] admit     train_w60      (class train) versions [120,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 17449105 us] done      train_w60       58635 tasks, versions [122,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 17450544 us] admit     train_w61      (class train) versions [122,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 17733993 us] done      train_w61       58635 tasks, versions [124,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 17735353 us] admit     train_w62      (class train) versions [124,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 18017937 us] done      train_w62       58635 tasks, versions [126,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 18019257 us] admit     train_w63      (class train) versions [126,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 18301709 us] done      train_w63       58635 tasks, versions [128,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 18303062 us] admit     train_w64      (class train) versions [128,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 18586510 us] done      train_w64       58635 tasks, versions [130,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 18587895 us] admit     train_w65      (class train) versions [130,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 18870911 us] done      train_w65       58635 tasks, versions [132,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 18872302 us] admit     train_w66      (class train) versions [132,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 19155926 us] done      train_w66       58635 tasks, versions [134,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 19157678 us] admit     train_w67      (class train) versions [134,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 19442448 us] done      train_w67       58635 tasks, versions [136,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 19443893 us] admit     train_w68      (class train) versions [136,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 19726807 us] done      train_w68       58635 tasks, versions [138,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 19728179 us] admit     train_w69      (class train) versions [138,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 20011309 us] done      train_w69       58635 tasks, versions [140,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 20012642 us] admit     train_w70      (class train) versions [140,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 20294801 us] done      train_w70       58635 tasks, versions [142,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 20296189 us] admit     train_w71      (class train) versions [142,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 20580329 us] done      train_w71       58635 tasks, versions [144,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 20581775 us] admit     train_w72      (class train) versions [144,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 20864066 us] done      train_w72       58635 tasks, versions [146,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 20865650 us] admit     train_w73      (class train) versions [146,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 21150133 us] done      train_w73       58635 tasks, versions [148,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 21151576 us] admit     train_w74      (class train) versions [148,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 21434919 us] done      train_w74       58635 tasks, versions [150,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 21436245 us] admit     train_w75      (class train) versions [150,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 21719284 us] done      train_w75       58635 tasks, versions [152,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 21720824 us] admit     train_w76      (class train) versions [152,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 22004525 us] done      train_w76       58635 tasks, versions [154,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 22006026 us] admit     train_w77      (class train) versions [154,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 22289653 us] done      train_w77       58635 tasks, versions [156,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 22291117 us] admit     train_w78      (class train) versions [156,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 22573515 us] done      train_w78       58635 tasks, versions [158,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 22574984 us] admit     train_w79      (class train) versions [158,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 22857887 us] done      train_w79       58635 tasks, versions [160,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 22859377 us] admit     train_w80      (class train) versions [160,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 23142680 us] done      train_w80       58635 tasks, versions [162,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 23144146 us] admit     train_w81      (class train) versions [162,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 23427855 us] done      train_w81       58635 tasks, versions [164,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 23429312 us] admit     train_w82      (class train) versions [164,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 23711091 us] done      train_w82       58635 tasks, versions [166,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 23712698 us] admit     train_w83      (class train) versions [166,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 23995948 us] done      train_w83       58635 tasks, versions [168,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 23997435 us] admit     train_w84      (class train) versions [168,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 24280758 us] done      train_w84       58635 tasks, versions [170,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 24282267 us] admit     train_w85      (class train) versions [170,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 24564714 us] done      train_w85       58635 tasks, versions [172,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 24566161 us] admit     train_w86      (class train) versions [172,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 24849068 us] done      train_w86       58635 tasks, versions [174,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 24850645 us] admit     train_w87      (class train) versions [174,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 25134830 us] done      train_w87       58635 tasks, versions [176,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 25136315 us] admit     train_w88      (class train) versions [176,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 25420980 us] done      train_w88       58635 tasks, versions [178,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 25422524 us] admit     train_w89      (class train) versions [178,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 25704852 us] done      train_w89       58635 tasks, versions [180,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 25706239 us] admit     train_w90      (class train) versions [180,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 25988573 us] done      train_w90       58635 tasks, versions [182,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 25989939 us] admit     train_w91      (class train) versions [182,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 26273994 us] done      train_w91       58635 tasks, versions [184,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 26275376 us] admit     train_w92      (class train) versions [184,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 26557399 us] done      train_w92       58635 tasks, versions [186,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 26558834 us] admit     train_w93      (class train) versions [186,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 26842928 us] done      train_w93       58635 tasks, versions [188,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 26844247 us] admit     train_w94      (class train) versions [188,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 27127212 us] done      train_w94       58635 tasks, versions [190,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 27128506 us] admit     train_w95      (class train) versions [190,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 27411798 us] done      train_w95       58635 tasks, versions [192,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 27413247 us] admit     train_w96      (class train) versions [192,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 27698057 us] done      train_w96       58635 tasks, versions [194,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 27699496 us] admit     train_w97      (class train) versions [194,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 27982955 us] done      train_w97       58635 tasks, versions [196,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 27984476 us] admit     train_w98      (class train) versions [196,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.1 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 28268973 us] done      train_w98       58635 tasks, versions [198,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 28270475 us] admit     train_w99      (class train) versions [198,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 28553821 us] done      train_w99       58635 tasks, versions [200,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 28555244 us] admit     train_w100     (class train) versions [200,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 28837513 us] done      train_w100      58635 tasks, versions [202,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 28839010 us] admit     train_w101     (class train) versions [202,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 29125643 us] done      train_w101      58635 tasks, versions [204,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 29127056 us] admit     train_w102     (class train) versions [204,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 29410857 us] done      train_w102      58635 tasks, versions [206,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 29412291 us] admit     train_w103     (class train) versions [206,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 29695360 us] done      train_w103      58635 tasks, versions [208,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 29696851 us] admit     train_w104     (class train) versions [208,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 29979578 us] done      train_w104      58635 tasks, versions [210,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 29980989 us] admit     train_w105     (class train) versions [210,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 30264197 us] done      train_w105      58635 tasks, versions [212,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 30265650 us] admit     train_w106     (class train) versions [212,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 30548546 us] done      train_w106      58635 tasks, versions [214,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 30550485 us] admit     train_w107     (class train) versions [214,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 30834074 us] done      train_w107      58635 tasks, versions [216,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 30835819 us] admit     train_w108     (class train) versions [216,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 31121313 us] done      train_w108      58635 tasks, versions [218,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 31122737 us] admit     train_w109     (class train) versions [218,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 31406329 us] done      train_w109      58635 tasks, versions [220,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 31407728 us] admit     train_w110     (class train) versions [220,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 31690859 us] done      train_w110      58635 tasks, versions [222,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 31692215 us] admit     train_w111     (class train) versions [222,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 31975693 us] done      train_w111      58635 tasks, versions [224,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 31976961 us] admit     train_w112     (class train) versions [224,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 32259459 us] done      train_w112      58635 tasks, versions [226,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 32260725 us] admit     train_w113     (class train) versions [226,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 32544312 us] done      train_w113      58635 tasks, versions [228,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 32545669 us] admit     train_w114     (class train) versions [228,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.4 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 32829405 us] done      train_w114      58635 tasks, versions [230,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 32830752 us] admit     train_w115     (class train) versions [230,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 33113969 us] done      train_w115      58635 tasks, versions [232,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 33115153 us] admit     train_w116     (class train) versions [232,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 33397931 us] done      train_w116      58635 tasks, versions [234,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 33399252 us] admit     train_w117     (class train) versions [234,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 33682277 us] done      train_w117      58635 tasks, versions [236,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 33683951 us] admit     train_w118     (class train) versions [236,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 33967633 us] done      train_w118      58635 tasks, versions [238,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 33968974 us] admit     train_w119     (class train) versions [238,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 34253061 us] done      train_w119      58635 tasks, versions [240,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 34254544 us] admit     train_w120     (class train) versions [240,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 34537875 us] done      train_w120      58635 tasks, versions [242,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 34539250 us] admit     train_w121     (class train) versions [242,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 34821702 us] done      train_w121      58635 tasks, versions [244,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 34823134 us] admit     train_w122     (class train) versions [244,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 35107255 us] done      train_w122      58635 tasks, versions [246,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 35108645 us] admit     train_w123     (class train) versions [246,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 35391855 us] done      train_w123      58635 tasks, versions [248,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 35393256 us] admit     train_w124     (class train) versions [248,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 35675886 us] done      train_w124      58635 tasks, versions [250,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 35677344 us] admit     train_w125     (class train) versions [250,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 35959331 us] done      train_w125      58635 tasks, versions [252,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 35960692 us] admit     train_w126     (class train) versions [252,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 36244110 us] done      train_w126      58635 tasks, versions [254,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 36245632 us] admit     train_w127     (class train) versions [254,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 36528535 us] done      train_w127      58635 tasks, versions [256,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 36529826 us] admit     train_w128     (class train) versions [256,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 36813909 us] done      train_w128      58635 tasks, versions [258,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 36815255 us] admit     train_w129     (class train) versions [258,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 37097277 us] done      train_w129      58635 tasks, versions [260,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 37098641 us] admit     train_w130     (class train) versions [260,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 37382402 us] done      train_w130      58635 tasks, versions [262,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 37383807 us] admit     train_w131     (class train) versions [262,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 37667944 us] done      train_w131      58635 tasks, versions [264,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 37669434 us] admit     train_w132     (class train) versions [264,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 37952781 us] done      train_w132      58635 tasks, versions [266,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 37954411 us] admit     train_w133     (class train) versions [266,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 38238819 us] done      train_w133      58635 tasks, versions [268,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 38242095 us] admit     train_w134     (class train) versions [268,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 38529913 us] done      train_w134      58635 tasks, versions [270,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 38531295 us] admit     train_w135     (class train) versions [270,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 38814207 us] done      train_w135      58635 tasks, versions [272,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 38815582 us] admit     train_w136     (class train) versions [272,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 39101101 us] done      train_w136      58635 tasks, versions [274,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 39102524 us] admit     train_w137     (class train) versions [274,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 39385092 us] done      train_w137      58635 tasks, versions [276,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 39386481 us] admit     train_w138     (class train) versions [276,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 39669777 us] done      train_w138      58635 tasks, versions [278,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 39671232 us] admit     train_w139     (class train) versions [278,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 39954783 us] done      train_w139      58635 tasks, versions [280,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 39956209 us] admit     train_w140     (class train) versions [280,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 40240228 us] done      train_w140      58635 tasks, versions [282,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 40241559 us] admit     train_w141     (class train) versions [282,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 40524506 us] done      train_w141      58635 tasks, versions [284,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 40526025 us] admit     train_w142     (class train) versions [284,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 40809909 us] done      train_w142      58635 tasks, versions [286,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 40811279 us] admit     train_w143     (class train) versions [286,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 41093579 us] done      train_w143      58635 tasks, versions [288,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 41094918 us] admit     train_w144     (class train) versions [288,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 41378871 us] done      train_w144      58635 tasks, versions [290,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 41380363 us] admit     train_w145     (class train) versions [290,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 41663103 us] done      train_w145      58635 tasks, versions [292,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 41664469 us] admit     train_w146     (class train) versions [292,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 41949990 us] done      train_w146      58635 tasks, versions [294,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 41951538 us] admit     train_w147     (class train) versions [294,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 42234331 us] done      train_w147      58635 tasks, versions [296,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 42235695 us] admit     train_w148     (class train) versions [296,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 42519396 us] done      train_w148      58635 tasks, versions [298,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 42520830 us] admit     train_w149     (class train) versions [298,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 42804863 us] done      train_w149      58635 tasks, versions [300,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 42806455 us] admit     train_w150     (class train) versions [300,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 43090185 us] done      train_w150      58635 tasks, versions [302,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 43091567 us] admit     train_w151     (class train) versions [302,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 43374776 us] done      train_w151      58635 tasks, versions [304,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 43376091 us] admit     train_w152     (class train) versions [304,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 43659762 us] done      train_w152      58635 tasks, versions [306,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 43661268 us] admit     train_w153     (class train) versions [306,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 43945000 us] done      train_w153      58635 tasks, versions [308,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 43946345 us] admit     train_w154     (class train) versions [308,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 44228503 us] done      train_w154      58635 tasks, versions [310,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 44230057 us] admit     train_w155     (class train) versions [310,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 44513210 us] done      train_w155      58635 tasks, versions [312,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 44514840 us] admit     train_w156     (class train) versions [312,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 44800006 us] done      train_w156      58635 tasks, versions [314,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 44801490 us] admit     train_w157     (class train) versions [314,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 45085446 us] done      train_w157      58635 tasks, versions [316,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 45086875 us] admit     train_w158     (class train) versions [316,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 45370625 us] done      train_w158      58635 tasks, versions [318,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 45372013 us] admit     train_w159     (class train) versions [318,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 45656942 us] done      train_w159      58635 tasks, versions [320,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 45658467 us] admit     train_w160     (class train) versions [320,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 45941403 us] done      train_w160      58635 tasks, versions [322,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 45942814 us] admit     train_w161     (class train) versions [322,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 46226910 us] done      train_w161      58635 tasks, versions [324,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 46228395 us] admit     train_w162     (class train) versions [324,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 46512260 us] done      train_w162      58635 tasks, versions [326,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 46513688 us] admit     train_w163     (class train) versions [326,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 46796932 us] done      train_w163      58635 tasks, versions [328,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 46798373 us] admit     train_w164     (class train) versions [328,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 47081893 us] done      train_w164      58635 tasks, versions [330,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 47083641 us] admit     train_w165     (class train) versions [330,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 47367794 us] done      train_w165      58635 tasks, versions [332,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 47369177 us] admit     train_w166     (class train) versions [332,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 47653645 us] done      train_w166      58635 tasks, versions [334,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 47655304 us] admit     train_w167     (class train) versions [334,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 47938048 us] done      train_w167      58635 tasks, versions [336,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 47939530 us] admit     train_w168     (class train) versions [336,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 48223426 us] done      train_w168      58635 tasks, versions [338,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 48224958 us] admit     train_w169     (class train) versions [338,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 48508435 us] done      train_w169      58635 tasks, versions [340,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 48509847 us] admit     train_w170     (class train) versions [340,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 48793487 us] done      train_w170      58635 tasks, versions [342,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 48794950 us] admit     train_w171     (class train) versions [342,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 49078971 us] done      train_w171      58635 tasks, versions [344,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 49080642 us] admit     train_w172     (class train) versions [344,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 49364768 us] done      train_w172      58635 tasks, versions [346,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 49366158 us] admit     train_w173     (class train) versions [346,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 49648306 us] done      train_w173      58635 tasks, versions [348,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 49649880 us] admit     train_w174     (class train) versions [348,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 49933642 us] done      train_w174      58635 tasks, versions [350,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 49935025 us] admit     train_w175     (class train) versions [350,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 50222386 us] done      train_w175      58635 tasks, versions [352,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 50223812 us] admit     train_w176     (class train) versions [352,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 50507466 us] done      train_w176      58635 tasks, versions [354,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 50508892 us] admit     train_w177     (class train) versions [354,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 50792371 us] done      train_w177      58635 tasks, versions [356,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 50793768 us] admit     train_w178     (class train) versions [356,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 51077695 us] done      train_w178      58635 tasks, versions [358,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 51079020 us] admit     train_w179     (class train) versions [358,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 51362820 us] done      train_w179      58635 tasks, versions [360,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 51364245 us] admit     train_w180     (class train) versions [360,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 51648619 us] done      train_w180      58635 tasks, versions [362,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 51650061 us] admit     train_w181     (class train) versions [362,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 51935054 us] done      train_w181      58635 tasks, versions [364,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 51937897 us] admit     train_w182     (class train) versions [364,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 52221768 us] done      train_w182      58635 tasks, versions [366,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 52223297 us] admit     train_w183     (class train) versions [366,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 52506571 us] done      train_w183      58635 tasks, versions [368,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 52507912 us] admit     train_w184     (class train) versions [368,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 52792449 us] done      train_w184      58635 tasks, versions [370,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 52793811 us] admit     train_w185     (class train) versions [370,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 53078488 us] done      train_w185      58635 tasks, versions [372,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 53079894 us] admit     train_w186     (class train) versions [372,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 53362686 us] done      train_w186      58635 tasks, versions [374,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 53364086 us] admit     train_w187     (class train) versions [374,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 53647342 us] done      train_w187      58635 tasks, versions [376,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 53648799 us] admit     train_w188     (class train) versions [376,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 53932257 us] done      train_w188      58635 tasks, versions [378,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 53933576 us] admit     train_w189     (class train) versions [378,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 54217803 us] done      train_w189      58635 tasks, versions [380,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 54219219 us] admit     train_w190     (class train) versions [380,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.4 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 54503555 us] done      train_w190      58635 tasks, versions [382,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 54504951 us] admit     train_w191     (class train) versions [382,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 54789633 us] done      train_w191      58635 tasks, versions [384,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 54790933 us] admit     train_w192     (class train) versions [384,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 55073787 us] done      train_w192      58635 tasks, versions [386,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 55075167 us] admit     train_w193     (class train) versions [386,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 55358147 us] done      train_w193      58635 tasks, versions [388,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 55359532 us] admit     train_w194     (class train) versions [388,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 55647778 us] done      train_w194      58635 tasks, versions [390,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 55649199 us] admit     train_w195     (class train) versions [390,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 55932634 us] done      train_w195      58635 tasks, versions [392,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 55933975 us] admit     train_w196     (class train) versions [392,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 56217062 us] done      train_w196      58635 tasks, versions [394,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 56218342 us] admit     train_w197     (class train) versions [394,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 56502766 us] done      train_w197      58635 tasks, versions [396,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 56504068 us] admit     train_w198     (class train) versions [396,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 56788173 us] done      train_w198      58635 tasks, versions [398,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 56789564 us] admit     train_w199     (class train) versions [398,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 57072328 us] done      train_w199      58635 tasks, versions [400,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 57073632 us] admit     train_w200     (class train) versions [400,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 57357439 us] done      train_w200      58635 tasks, versions [402,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 57358786 us] admit     train_w201     (class train) versions [402,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 57642190 us] done      train_w201      58635 tasks, versions [404,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 57643574 us] admit     train_w202     (class train) versions [404,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 57926427 us] done      train_w202      58635 tasks, versions [406,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 57927785 us] admit     train_w203     (class train) versions [406,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 58211022 us] done      train_w203      58635 tasks, versions [408,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 58212513 us] admit     train_w204     (class train) versions [408,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 58495763 us] done      train_w204      58635 tasks, versions [410,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 58497062 us] admit     train_w205     (class train) versions [410,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 58781830 us] done      train_w205      58635 tasks, versions [412,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 58783303 us] admit     train_w206     (class train) versions [412,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 59067997 us] done      train_w206      58635 tasks, versions [414,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 59069314 us] admit     train_w207     (class train) versions [414,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 59352413 us] done      train_w207      58635 tasks, versions [416,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 59353822 us] admit     train_w208     (class train) versions [416,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 59639961 us] done      train_w208      58635 tasks, versions [418,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 59641298 us] admit     train_w209     (class train) versions [418,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 59924231 us] done      train_w209      58635 tasks, versions [420,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 59925541 us] admit     train_w210     (class train) versions [420,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 60209738 us] done      train_w210      58635 tasks, versions [422,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 60211136 us] admit     train_w211     (class train) versions [422,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 60494050 us] done      train_w211      58635 tasks, versions [424,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 60495314 us] admit     train_w212     (class train) versions [424,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 60778259 us] done      train_w212      58635 tasks, versions [426,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 60779571 us] admit     train_w213     (class train) versions [426,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 61062760 us] done      train_w213      58635 tasks, versions [428,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 61064112 us] admit     train_w214     (class train) versions [428,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 61347048 us] done      train_w214      58635 tasks, versions [430,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 61348273 us] admit     train_w215     (class train) versions [430,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 61630926 us] done      train_w215      58635 tasks, versions [432,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 61632236 us] admit     train_w216     (class train) versions [432,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 61917334 us] done      train_w216      58635 tasks, versions [434,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 61918772 us] admit     train_w217     (class train) versions [434,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 62201271 us] done      train_w217      58635 tasks, versions [436,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 62202649 us] admit     train_w218     (class train) versions [436,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 62485390 us] done      train_w218      58635 tasks, versions [438,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 62486753 us] admit     train_w219     (class train) versions [438,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 62769629 us] done      train_w219      58635 tasks, versions [440,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 62771010 us] admit     train_w220     (class train) versions [440,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 63054830 us] done      train_w220      58635 tasks, versions [442,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 63056141 us] admit     train_w221     (class train) versions [442,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 63338923 us] done      train_w221      58635 tasks, versions [444,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 63340226 us] admit     train_w222     (class train) versions [444,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 63624122 us] done      train_w222      58635 tasks, versions [446,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 63625605 us] admit     train_w223     (class train) versions [446,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 63907883 us] done      train_w223      58635 tasks, versions [448,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 63909235 us] admit     train_w224     (class train) versions [448,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 64191883 us] done      train_w224      58635 tasks, versions [450,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 64193186 us] admit     train_w225     (class train) versions [450,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 64476037 us] done      train_w225      58635 tasks, versions [452,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 64477340 us] admit     train_w226     (class train) versions [452,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 64760561 us] done      train_w226      58635 tasks, versions [454,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 64761869 us] admit     train_w227     (class train) versions [454,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 65044781 us] done      train_w227      58635 tasks, versions [456,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 65046091 us] admit     train_w228     (class train) versions [456,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 65328152 us] done      train_w228      58635 tasks, versions [458,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 65329505 us] admit     train_w229     (class train) versions [458,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 65615404 us] done      train_w229      58635 tasks, versions [460,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 65616791 us] admit     train_w230     (class train) versions [460,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 65899219 us] done      train_w230      58635 tasks, versions [462,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 65900578 us] admit     train_w231     (class train) versions [462,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.1 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 66183801 us] done      train_w231      58635 tasks, versions [464,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 66185176 us] admit     train_w232     (class train) versions [464,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 66467813 us] done      train_w232      58635 tasks, versions [466,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 66469111 us] admit     train_w233     (class train) versions [466,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 66751394 us] done      train_w233      58635 tasks, versions [468,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 66752830 us] admit     train_w234     (class train) versions [468,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 67035326 us] done      train_w234      58635 tasks, versions [470,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 67036711 us] admit     train_w235     (class train) versions [470,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 67319081 us] done      train_w235      58635 tasks, versions [472,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 67320420 us] admit     train_w236     (class train) versions [472,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 67602838 us] done      train_w236      58635 tasks, versions [474,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 67604495 us] admit     train_w237     (class train) versions [474,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 67888617 us] done      train_w237      58635 tasks, versions [476,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 67889941 us] admit     train_w238     (class train) versions [476,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 68172300 us] done      train_w238      58635 tasks, versions [478,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 68173723 us] admit     train_w239     (class train) versions [478,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 68456344 us] done      train_w239      58635 tasks, versions [480,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 68457751 us] admit     train_w240     (class train) versions [480,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 68740596 us] done      train_w240      58635 tasks, versions [482,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 68742043 us] admit     train_w241     (class train) versions [482,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 69024702 us] done      train_w241      58635 tasks, versions [484,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 69026104 us] admit     train_w242     (class train) versions [484,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 69309703 us] done      train_w242      58635 tasks, versions [486,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 69311010 us] admit     train_w243     (class train) versions [486,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 69594550 us] done      train_w243      58635 tasks, versions [488,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 69595921 us] admit     train_w244     (class train) versions [488,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 69879576 us] done      train_w244      58635 tasks, versions [490,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 69880892 us] admit     train_w245     (class train) versions [490,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 70163860 us] done      train_w245      58635 tasks, versions [492,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 70165277 us] admit     train_w246     (class train) versions [492,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 70451492 us] done      train_w246      58635 tasks, versions [494,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 70452941 us] admit     train_w247     (class train) versions [494,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 70735725 us] done      train_w247      58635 tasks, versions [496,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 70737318 us] admit     train_w248     (class train) versions [496,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 71020120 us] done      train_w248      58635 tasks, versions [498,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 71021422 us] admit     train_w249     (class train) versions [498,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 71303847 us] done      train_w249      58635 tasks, versions [500,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 71305138 us] admit     train_w250     (class train) versions [500,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 71588853 us] done      train_w250      58635 tasks, versions [502,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 71590203 us] admit     train_w251     (class train) versions [502,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 71873810 us] done      train_w251      58635 tasks, versions [504,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 71875309 us] admit     train_w252     (class train) versions [504,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 72159045 us] done      train_w252      58635 tasks, versions [506,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 72160509 us] admit     train_w253     (class train) versions [506,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 72443303 us] done      train_w253      58635 tasks, versions [508,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 72444740 us] admit     train_w254     (class train) versions [508,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 72727707 us] done      train_w254      58635 tasks, versions [510,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 72729018 us] admit     train_w255     (class train) versions [510,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 73011755 us] done      train_w255      58635 tasks, versions [512,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 73013104 us] admit     train_w256     (class train) versions [512,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 73295633 us] done      train_w256      58635 tasks, versions [514,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 73296933 us] admit     train_w257     (class train) versions [514,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 73580079 us] done      train_w257      58635 tasks, versions [516,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 73581521 us] admit     train_w258     (class train) versions [516,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 73864528 us] done      train_w258      58635 tasks, versions [518,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 73865886 us] admit     train_w259     (class train) versions [518,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 74150327 us] done      train_w259      58635 tasks, versions [520,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 74151839 us] admit     train_w260     (class train) versions [520,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 74436072 us] done      train_w260      58635 tasks, versions [522,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 74437408 us] admit     train_w261     (class train) versions [522,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 74721005 us] done      train_w261      58635 tasks, versions [524,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 74722627 us] admit     train_w262     (class train) versions [524,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 75006209 us] done      train_w262      58635 tasks, versions [526,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 75007616 us] admit     train_w263     (class train) versions [526,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 75292631 us] done      train_w263      58635 tasks, versions [528,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 75293946 us] admit     train_w264     (class train) versions [528,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 75576931 us] done      train_w264      58635 tasks, versions [530,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 75578264 us] admit     train_w265     (class train) versions [530,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 75862107 us] done      train_w265      58635 tasks, versions [532,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 75863428 us] admit     train_w266     (class train) versions [532,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 76147531 us] done      train_w266      58635 tasks, versions [534,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 76149212 us] admit     train_w267     (class train) versions [534,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 76433537 us] done      train_w267      58635 tasks, versions [536,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 76435127 us] admit     train_w268     (class train) versions [536,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 76719168 us] done      train_w268      58635 tasks, versions [538,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 76720651 us] admit     train_w269     (class train) versions [538,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 77004717 us] done      train_w269      58635 tasks, versions [540,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 77006030 us] admit     train_w270     (class train) versions [540,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 77289531 us] done      train_w270      58635 tasks, versions [542,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 77290901 us] admit     train_w271     (class train) versions [542,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 77577261 us] done      train_w271      58635 tasks, versions [544,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 77578774 us] admit     train_w272     (class train) versions [544,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 77862962 us] done      train_w272      58635 tasks, versions [546,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 77864362 us] admit     train_w273     (class train) versions [546,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 78150248 us] done      train_w273      58635 tasks, versions [548,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 78151766 us] admit     train_w274     (class train) versions [548,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 78435530 us] done      train_w274      58635 tasks, versions [550,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 78437081 us] admit     train_w275     (class train) versions [550,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 78721003 us] done      train_w275      58635 tasks, versions [552,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 78722571 us] admit     train_w276     (class train) versions [552,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 79007278 us] done      train_w276      58635 tasks, versions [554,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 79008769 us] admit     train_w277     (class train) versions [554,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 79292721 us] done      train_w277      58635 tasks, versions [556,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 79294243 us] admit     train_w278     (class train) versions [556,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 79578608 us] done      train_w278      58635 tasks, versions [558,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 79580180 us] admit     train_w279     (class train) versions [558,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 79864893 us] done      train_w279      58635 tasks, versions [560,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 79866326 us] admit     train_w280     (class train) versions [560,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 80151350 us] done      train_w280      58635 tasks, versions [562,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 80152838 us] admit     train_w281     (class train) versions [562,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 80437573 us] done      train_w281      58635 tasks, versions [564,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 80438984 us] admit     train_w282     (class train) versions [564,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 80723041 us] done      train_w282      58635 tasks, versions [566,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 80724439 us] admit     train_w283     (class train) versions [566,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 81009186 us] done      train_w283      58635 tasks, versions [568,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 81010478 us] admit     train_w284     (class train) versions [568,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 81294336 us] done      train_w284      58635 tasks, versions [570,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 81295634 us] admit     train_w285     (class train) versions [570,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 81580785 us] done      train_w285      58635 tasks, versions [572,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 81582111 us] admit     train_w286     (class train) versions [572,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 81866776 us] done      train_w286      58635 tasks, versions [574,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 81868117 us] admit     train_w287     (class train) versions [574,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 82154713 us] done      train_w287      58635 tasks, versions [576,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 82156143 us] admit     train_w288     (class train) versions [576,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 82440077 us] done      train_w288      58635 tasks, versions [578,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 82441389 us] admit     train_w289     (class train) versions [578,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 82728276 us] done      train_w289      58635 tasks, versions [580,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 82729653 us] admit     train_w290     (class train) versions [580,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 83013986 us] done      train_w290      58635 tasks, versions [582,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 83015346 us] admit     train_w291     (class train) versions [582,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 83300166 us] done      train_w291      58635 tasks, versions [584,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 83301482 us] admit     train_w292     (class train) versions [584,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 83586406 us] done      train_w292      58635 tasks, versions [586,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 83587792 us] admit     train_w293     (class train) versions [586,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.4 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 83875628 us] done      train_w293      58635 tasks, versions [588,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 83876961 us] admit     train_w294     (class train) versions [588,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.3 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 84161875 us] done      train_w294      58635 tasks, versions [590,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 84163281 us] admit     train_w295     (class train) versions [590,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 84447493 us] done      train_w295      58635 tasks, versions [592,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 84448986 us] admit     train_w296     (class train) versions [592,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 84733911 us] done      train_w296      58635 tasks, versions [594,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 84735283 us] admit     train_w297     (class train) versions [594,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 85021528 us] done      train_w297      58635 tasks, versions [596,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 85022824 us] admit     train_w298     (class train) versions [596,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.1 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 85306648 us] done      train_w298      58635 tasks, versions [598,0,0,0,0,0,0,0]
+[kvm_exec][I] [ 85307917 us] admit     train_w299     (class train) versions [598,0,0,0,0,0,0,0]
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 9.2 ms
+[kvm_exec][D] ring wrap: 1909464 pad words
+[kvm_exec][D] stream: 58635 tasks in 2 windows
+[kvm_exec][I] [ 85594484 us] done      train_w299      58635 tasks, versions [600,0,0,0,0,0,0,0]
+[kvm_exec][I] kernel done: 17590500/17590500 tasks in 85600.023 ms, 600 records, 299 ring wraps, 0 backpressure waits
+[kvm_exec][W] version check: 17590500 tasks > 2097152 slots, slots were recycled; trace covers only the last occupants: skipped
+[kvm_exec][I] workload 0: 2097152 tasks, 288.963 CTA-s, queue wait p50 111.6 p99 3598.3 max 5841.9 us, 0 deadline misses, 178.50 GB moved (17.4 GB/s over the run)
+[kvm_exec][I] trace: 2097152 tasks -> /work/scr/out/trace.csv
+[kvm_exec][I] dumped 196 buffers to /work/scr/out/buffers
+[kvm_exec][I] wrote /work/scr/out/run.json
+OK: 17590500/17590500 tasks, 85600.023 ms, 300 admissions

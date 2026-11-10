@@ -1,0 +1,17 @@
+# suite=custom tag=bf16-exec-m2 2026-11-10T09:40:26Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100 80GB PCIe, 610.57.04, 1410 MHz
+host RAM: 779 GB, cores: 16
+BUILD
+
+real	28m35.209s
+user	27m54.950s
+sys	0m2.150s
+-rwxr-xr-x 1 root root 11242712 Nov 10 10:09 test_exec
+== test_exec run 1
+exit: 0
+8609 checks, 0 failed, 0 suites failed
+== test_exec run 2
+exit: 0
+8609 checks, 0 failed, 0 suites failed

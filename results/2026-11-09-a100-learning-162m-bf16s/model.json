@@ -1,0 +1,1 @@
+{"name":"gpt_162m","vocab":50304,"d_model":768,"layers":12,"heads":12,"seq":1024,"batch":4,"data_vocab":256,"data_noise":0.1,"precision":"bf16s"}

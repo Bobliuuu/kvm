@@ -1,0 +1,18 @@
+NVIDIA GeForce RTX 3080 Ti: 80 blocks in 7 gangs (sizes 1 2 3 5 8 13 48), 2000 rounds of two crossings
+launch 0: 0 wrong values read, 0 gang(s) with a count left nonzero or a generation other than 4000
+launch 1: 0 wrong values read, 0 gang(s) with a count left nonzero or a generation other than 8000
+abort launch: ended (no hang); 47 member(s) gave up at a crossing (the widest gang has 47 others; members of other gangs may give up too once the word is set)
+PASS: every member read every slot of its round, every gang's control words are as a clean run leaves them, and an aborted gang ends
+rc=0
+== memcheck
+abort launch: ended (no hang); 47 member(s) gave up at a crossing (the widest gang has 47 others; members of other gangs may give up too once the word is set)
+PASS: every member read every slot of its round, every gang's control words are as a clean run leaves them, and an aborted gang ends
+========= ERROR SUMMARY: 0 errors
+== racecheck
+abort launch: ended (no hang); 78 member(s) gave up at a crossing (the widest gang has 47 others; members of other gangs may give up too once the word is set)
+PASS: every member read every slot of its round, every gang's control words are as a clean run leaves them, and an aborted gang ends
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+== synccheck
+abort launch: ended (no hang); 47 member(s) gave up at a crossing (the widest gang has 47 others; members of other gangs may give up too once the word is set)
+PASS: every member read every slot of its round, every gang's control words are as a clean run leaves them, and an aborted gang ends
+========= ERROR SUMMARY: 0 errors

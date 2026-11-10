@@ -1,0 +1,3 @@
+# kvm_exec --quiet <gpt_162m bf16s 1-step bundle>, executor from new (d12c206 / this branch)
+[kvm_exec][E] bad buffer shape or dtype
+exit 1

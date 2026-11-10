@@ -1,0 +1,36 @@
+rep 1 main_f32 OK: 270914/270914 tasks, 756.950 ms
+rep 1 new_f32 OK: 52615/52615 tasks, 250.599 ms
+rep 1 main_bf16s 
+rep 1 new_bf16s 
+rep 1 newexec_main_f32_bundle OK: 270914/270914 tasks, 754.004 ms
+rep 2 main_f32 OK: 270914/270914 tasks, 762.401 ms
+rep 2 new_f32 OK: 52615/52615 tasks, 251.744 ms
+rep 2 main_bf16s 
+rep 2 new_bf16s 
+rep 2 newexec_main_f32_bundle OK: 270914/270914 tasks, 742.104 ms
+rep 3 main_f32 OK: 270914/270914 tasks, 741.954 ms
+rep 3 new_f32 OK: 52615/52615 tasks, 250.795 ms
+rep 3 main_bf16s 
+rep 3 new_bf16s 
+rep 3 newexec_main_f32_bundle OK: 270914/270914 tasks, 744.474 ms
+rep 4 main_f32 OK: 270914/270914 tasks, 745.659 ms
+rep 4 new_f32 OK: 52615/52615 tasks, 251.478 ms
+rep 4 main_bf16s 
+rep 4 new_bf16s 
+rep 4 newexec_main_f32_bundle OK: 270914/270914 tasks, 744.775 ms
+rep 5 main_f32 OK: 270914/270914 tasks, 739.594 ms
+rep 5 new_f32 OK: 52615/52615 tasks, 257.065 ms
+rep 5 main_bf16s 
+rep 5 new_bf16s 
+rep 5 newexec_main_f32_bundle OK: 270914/270914 tasks, 756.230 ms
+rep 6 main_f32 OK: 270914/270914 tasks, 755.841 ms
+rep 6 new_f32 OK: 52615/52615 tasks, 253.325 ms
+rep 6 main_bf16s 
+rep 6 new_bf16s 
+rep 6 newexec_main_f32_bundle OK: 270914/270914 tasks, 745.060 ms
+rep 7 main_f32 OK: 270914/270914 tasks, 757.263 ms
+rep 7 new_f32 OK: 52615/52615 tasks, 249.437 ms
+rep 7 main_bf16s 
+rep 7 new_bf16s 
+rep 7 newexec_main_f32_bundle OK: 270914/270914 tasks, 747.846 ms
+finished

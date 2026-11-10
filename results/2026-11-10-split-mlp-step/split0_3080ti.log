@@ -1,0 +1,50 @@
+1665 MHz, 2100 MHz, 117.54 W, 250.00 W, 62
+hold: split-bed queued 2026-11-10T21:18:22Z; waiting for its turn (hold --ls)
+hold: split-bed started 2026-11-10T21:18:52Z
+=== S=10
+NVIDIA GeForce RTX 3080 Ti, 80 SMs, 99 KB shared memory a block (opt-in); model E 48 V 100 H 576 depth 1, T 96 (6 slices of 16), S 10 shares (width <= 64, padded 64): 60 blocks, 81.2 KB a block
+check after 3 steps: loss max rel 5.52e-07; update rel L2 W0 4.37e-04, b0 2.72e-04, Wh 4.16e-04, emb 5.92e-04 (TF32 operands: a few 1e-3 expected)
+check ok
+timed: 200 steps in 4.544 ms = 22.72 us a step (events, launch included); block 0 by phase (cycles a step, rated clock 1665 MHz):
+  load (weights, embedding rows)         7260  (16.6%)
+  forward GEMM (Z = X0 W0_s)             1258  ( 2.9%)
+  GELU and gelu'                         1389  ( 3.2%)
+  logits partial GEMM (to L2)            3510  ( 8.0%)
+  barrier 1                              1981  ( 4.5%)
+  logits: S partials summed              3902  ( 8.9%)
+  cross-entropy                          6454  (14.7%)
+  dH GEMM and dZ                         2531  ( 5.8%)
+  dWh_s GEMM (to L2)                     2306  ( 5.3%)
+  dW0_s GEMM (to L2)                     1282  ( 2.9%)
+  dX0 GEMM (to L2)                       2022  ( 4.6%)
+  db0 column sums (to L2)                 286  ( 0.7%)
+  barrier 2                              2283  ( 5.2%)
+  owners: parameters                     2836  ( 6.5%)
+  owners: embedding rows + barrier 3     4494  (10.3%)
+  total                                 43794 cycles = 26.30 us at the rated clock
+effective SM clock 1927 MHz (block 0's cycles over the events' time: below the rated clock, the GPU ran slower or was shared)
+=== S=8
+NVIDIA GeForce RTX 3080 Ti, 80 SMs, 99 KB shared memory a block (opt-in); model E 48 V 100 H 576 depth 1, T 96 (6 slices of 16), S 8 shares (width <= 80, padded 80): 48 blocks, 94.2 KB a block
+check after 3 steps: loss max rel 5.69e-07; update rel L2 W0 4.37e-04, b0 2.72e-04, Wh 4.16e-04, emb 5.92e-04 (TF32 operands: a few 1e-3 expected)
+check ok
+timed: 200 steps in 5.198 ms = 25.99 us a step (events, launch included); block 0 by phase (cycles a step, rated clock 1665 MHz):
+  load (weights, embedding rows)         7388  (17.3%)
+  forward GEMM (Z = X0 W0_s)             1263  ( 3.0%)
+  GELU and gelu'                         2131  ( 5.0%)
+  logits partial GEMM (to L2)            2086  ( 4.9%)
+  barrier 1                              2189  ( 5.1%)
+  logits: S partials summed              3012  ( 7.1%)
+  cross-entropy                          6129  (14.4%)
+  dH GEMM and dZ                         3059  ( 7.2%)
+  dWh_s GEMM (to L2)                     2739  ( 6.4%)
+  dW0_s GEMM (to L2)                     1415  ( 3.3%)
+  dX0 GEMM (to L2)                       1583  ( 3.7%)
+  db0 column sums (to L2)                 287  ( 0.7%)
+  barrier 2                              1935  ( 4.5%)
+  owners: parameters                     2971  ( 7.0%)
+  owners: embedding rows + barrier 3     4515  (10.6%)
+  total                                 42704 cycles = 25.65 us at the rated clock
+effective SM clock 1643 MHz (block 0's cycles over the events' time: below the rated clock, the GPU ran slower or was shared)
+1950 MHz, 147.95 W
+hold: split-bed ended 2026-11-10T21:18:53Z rc=0
+SPLIT0B-DONE

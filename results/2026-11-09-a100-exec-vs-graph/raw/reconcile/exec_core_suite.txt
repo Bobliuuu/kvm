@@ -1,0 +1,16 @@
+# run_exec_tests.sh (full build) on commit f3c3e94, A100
+== checker: PASS (0.0s, 0 new failures)
+== ops: PASS (0.3s, 0 new failures)
+== types: PASS (0.0s, 0 new failures)
+== init: PASS (0.1s, 0 new failures)
+== errors: PASS (0.4s, 0 new failures)
+== dag: PASS (2.6s, 0 new failures)
+== sched: PASS (0.1s, 0 new failures)
+== admission: PASS (1.6s, 0 new failures)
+== front: PASS (0.0s, 0 new failures)
+== versions: PASS (1.7s, 0 new failures)
+== recycle: PASS (7.3s, 0 new failures)
+== litmus: PASS (22.6s, 0 new failures)
+8609 checks, 0 failed, 0 suites failed
+PASS
+exit: 0

@@ -1,0 +1,9 @@
+scheduler off, 16 blocks: OK: 544/544 tasks, 3.475 ms  buffers md5 c1b81ab60871
+scheduler off, auto grid: OK: 544/544 tasks, 3.358 ms  buffers md5 c1b81ab60871
+global, 2 classes: OK: 544/544 tasks, 4.448 ms  buffers md5 c1b81ab60871
+static, 1 class: OK: 544/544 tasks, 4.531 ms  buffers md5 c1b81ab60871
+dynamic, 2 classes: OK: 544/544 tasks, 4.666 ms  buffers md5 c1b81ab60871
+dynamic, arbiter, affinity: OK: 544/544 tasks, 6.655 ms  buffers md5 c1b81ab60871
+sanitizer memcheck: ========= COMPUTE-SANITIZER OK: 544/544 tasks, 163.268 ms ========= ERROR SUMMARY: 0 errors 
+sanitizer synccheck: ========= COMPUTE-SANITIZER OK: 544/544 tasks, 51.630 ms ========= ERROR SUMMARY: 0 errors 
+GPT PASS

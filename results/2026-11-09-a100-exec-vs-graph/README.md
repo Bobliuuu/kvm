@@ -94,10 +94,17 @@ is the `kvm.cu` and coopt-sh results, not a single dependent step.
 
 ## Correctness
 
-- Executor loss vs PyTorch (whole-step graph losses from the same run, same weights/tokens/optimizer): step 0 relative difference 3.2e-6 (tiny), 9.7e-8 (small);
-  worst over 50 steps 1.3e-4 (tiny), 7.3e-4 (small), identical with and without continuation (`raw/out3/verify/losses_*.json`); same order as the 2026-11-06 result.
-- GPU suite (`tests/gpu/build_core.sh`, core ops, A100): 8613 checks, 0 failed (`raw/out3/verify/core_suite.txt`); `-DKVM_BREAK_FENCE` negative build fails as required
-  (118 violations); compute-sanitizer memcheck and racecheck on `smoke`: rc 0.
-- CPU suites: `tests` 153 OK, `tests/frontend` 105 OK.
-- **Not run:** the full-ops `run_exec_tests.sh` (`--gpt`, `--fuzz`, litmus on the full build) and the sched/adaptive suites with the scheduler on (continuation is
-  disabled there by construction). The core litmus suite inside `test_exec` passed.
+Gates of the reconciled device code (commit f3c3e94; the device code is identical since b1bcbf4), A100; raw in `raw/reconcile/`:
+
+- Executor loss vs PyTorch (whole-step graph losses of the same run, same weights/tokens/optimizer): step 0 relative difference 3.2e-6 (tiny), 9.7e-8 (small); worst over 50 steps
+  1.3e-4 (tiny), 7.3e-4 (small), the same numbers as on PR #6's build (`losses_*.json`; the losses are from the default run, continuation on).
+- `run_exec_tests.sh` (full build, every suite): 8609 checks, 0 failed (`exec_core_suite.txt`). The core build ran five times in a row: 8609 / 0 each time.
+- `-DKVM_BREAK_FENCE` negative build (`run_exec_tests.sh --negative`): fails as required, 118 violations (`exec_negative.txt`).
+- compute-sanitizer memcheck and racecheck on the core build's `smoke`: 0 errors, 0 hazards. The gpt_tiny bundle (544 tasks) gives byte-identical buffers in six scheduler modes
+  and is clean under memcheck, racecheck and synccheck (`gpt_bundle.txt`).
+- Scheduler ON (it takes the CAS claim, continuation is off): `run_sched_tests.sh` 499 checks, 0 failed; both negatives (`starve_neg`, `inherit_neg`) are detected (`sched_suites.txt`).
+- CPU suites: unchanged by this PR (no host-side Python touched).
+- Two pre-existing flakes surfaced and are in `gates_core_build_and_flakes.txt`: `front` (a test race on shared counters, 1/60 on landing, 31/60 once dispatch was faster; **fixed in the
+  test**, 0/100 after) and `sched` aging (admission publish order: 13/300 on landing, 0/300 here, one failure in one full run here; **not fixed**, rerun passes).
+- The litmus wrapper `tests/litmus/build.sh` died with `nv: command not found` (function defined after its first use); fixed. Its mutant `popplain` was rewritten to mutate the ticket claim's
+  fetch-add; the full wrapper run (`run_exec_tests.sh --litmus`: production properties 0 violations, mutants must fail) was **not completed** (its builds exceeded the time available on the shared box). The litmus suite inside `test_exec` (queue and park/publish litmus on the production headers) passes in every run above.

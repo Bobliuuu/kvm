@@ -1,0 +1,5 @@
+# run_exec_tests.sh --negative (-DKVM_BREAK_FENCE) on commit b1bcbf4 (device code identical to f3c3e94)
+== versions: FAIL (1.9s, 118 new failures)
+7497 checks, 118 failed, 1 suites failed
+NEGATIVE TEST PASS: the harness detected the injected violation
+exit: 0

@@ -1,0 +1,12 @@
+# core-build gates (tests/gpu/build_core.sh, A100), final device code
+test_exec_core, 5 consecutive full runs: 8609 checks, 0 failed, 0 suites failed (each)
+compute-sanitizer --tool memcheck  test_exec_core smoke: rc 0, 0 errors
+compute-sanitizer --tool racecheck test_exec_core smoke: rc 0, 0 hazards
+# loss vs PyTorch (whole-step graph losses of the same run): losses_tiny.json / losses_small.json
+tiny : step 0 rel diff 3.2e-6, worst of 50 steps 1.3e-4
+small: step 0 rel diff 9.7e-8, worst of 50 steps 7.3e-4
+# flakes found on the way (both pre-existing, neither introduced by this change)
+suite `front` (test_exec front, repeated): landing 1/60 failed; reconciled code before the test fix 31/60; after the test fix (each submission on its own counters) 0/100.
+  cause: two submissions add to the same counters through a plain read-modify-write `add`; the front interleaves their chunks, so chains race whenever a chunk of each is live.
+suite `sched` (test_exec_core sched, repeated): landing 13/300 failed (aging checks: the priority-0 task is popped before the chain root is published), reconciled 0/300; one failure
+  of the same kind (ran after 0 of 400) in one full run of the reconciled code. Not fixed here (admission publish order, outside this change); a rerun passes.

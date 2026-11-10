@@ -50,7 +50,7 @@ struct BatchX {
 static int g_attr = 0;
 static int runx(Dev& d, const BatchX& b) {
     const int smem = std::max(kvm_gpt_smem_bytes(KVM_GPT_MAX_HD), KVM_MMA_SMEM);
-    if (!g_attr) { CK(cudaFuncSetAttribute(k_runx, cudaFuncAttributeMaxDynamicSharedMemorySize, 112 * 1024)); g_attr = 1; }
+    if (!g_attr) { CK(cudaFuncSetAttribute(k_runx, cudaFuncAttributeMaxDynamicSharedMemorySize, 160 * 1024)); g_attr = 1; }
     d.sync_table();
     int32_t* w; int *op, *off;
     CK(cudaMalloc(&w, b.w.size() * 4 + 4)); CK(cudaMalloc(&op, b.op.size() * 4)); CK(cudaMalloc(&off, b.off.size() * 4));

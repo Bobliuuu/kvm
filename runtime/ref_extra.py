@@ -360,20 +360,13 @@ def _add_rowtile(b, a):
 def _tile_mm(b, a, out, extra=None):
     """matmul_tile on the 64x64 tile with no epilogue, written into `out`."""
     mb = {'a': b['a'], 'b': b['b'], 'out': out, 'bias': None, 'res': None, 'pre': None}
-    _matmul_tile(mb, {**a, 'flags': a['flags'] & 3})
+    _matmul_tile(mb, {**a, 'flags': a['flags'] & (3 | 32 | 64)})
 
 
 def _tile_range(a):
-    return range(a['m0'], min(a['m0'] + 64, a['M'])), range(a['n0'], min(a['n0'] + 64, a['N']))
-
-
-def _mm_dgelu(b, a):
-    _tile_mm(b, a, b['out'])
-    pre, out = b['pre'], b['out']
-    ms, ns = _tile_range(a)
-    for m in ms:
-        for n in ns:
-            out[m * out.cols + n] = f32(out[m * out.cols + n] * _gelu_d(pre.at(m, n)))
+    fl = a['flags']
+    tm, tn = (256, 128) if fl & 64 else (128, 128) if fl & 32 else (64, 64)
+    return range(a['m0'], min(a['m0'] + tm, a['M'])), range(a['n0'], min(a['n0'] + tn, a['N']))
 
 
 def _mm_silu_mul(b, a):
@@ -400,7 +393,7 @@ def _mm_ext(extra):
     def ext(a):
         M, N, K, fl = a['M'], a['N'], a['K'], a['flags']
         _need(M > 0 and N > 0 and K > 0 and 0 <= a['m0'] < M and 0 <= a['n0'] < N, 'matmul_tile*: bad M/N/K/m0/n0')
-        _need(fl & ~19 == 0, f'matmul_tile*: unsupported flags {fl}')
+        _need(fl & ~(19 | 96) == 0 and not (fl & 32 and fl & 64), f'matmul_tile*: unsupported flags {fl}')
         return {'a': (K, M) if fl & 1 else (M, K), 'b': (N, K) if fl & 2 else (K, N), **{n: (M, N) for n in extra}}
     return ext
 
@@ -452,7 +445,6 @@ EXTRA_OPS = {
     'scale_flat': _R(_scale_flat, _flat_ext(bufs=('x', 'out'))),
     'add_rowtile': _R(_add_rowtile, lambda a: (_rng(a['r0'], a['r1']), _need(a['T'] > 0 and a['d'] > 0, 'add_rowtile: bad T/d'),
                                                {'x': (a['r1'], a['d']), 'pos': (a['T'], a['d']), 'out': (a['r1'], a['d'])})[2]),
-    'matmul_tile_dgelu': _R(_mm_dgelu, _mm_ext(('out', 'pre'))),
     'matmul_tile_silu_mul': _R(_mm_silu_mul, _mm_ext(('out', 'gate', 'up'))),
     'matmul_tile_silu_mul_bwd': _R(_mm_silu_mul_bwd, _mm_ext(('gate', 'up', 'dgate', 'dup'))),
 }
@@ -476,6 +468,7 @@ _BF16_STORAGE = {   # op: (buffers that may be bf16 storage, of which written)
     'rope_bwd': (('x', 'out'), ('out',)),
     'softmax_ce_fwd': (('logits',), ()),
     'softmax_ce_bwd': (('logits', 'dlogits'), ('dlogits',)),
+    'softmax_ce_fused': (('logits', 'dlogits'), ('dlogits',)),
 }
 
 

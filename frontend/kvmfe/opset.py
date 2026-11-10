@@ -21,6 +21,15 @@ MM_TILE = 64        # matmul_tile computes a 64 x 64 output tile (flags: 1 trans
 ATTN_Q = 32         # bidirectional attn_full_*: 32 query rows (or keys) per task; also the sequence-length granularity of the model configs
 ATTN_BLOCK = 128    # causal attn_fwd / attn_bwd_dq: 128 query rows per task; attn_bwd_dkv: 128 keys per task (KVM_GPT_ATTN_ROWS in kvm_ops_gpt.cuh)
 F_TA, F_TB, F_ACC, F_GELU, F_PRECISE = 1, 2, 4, 8, 16
+F_BIG, F_HUGE = 32, 64   # matmul_tile flags: 32 = 128x128 output tile, 64 = 256x128 (rows x cols; one tile of 4x2 warps, or two 128x128 passes with bf16 or precise operands). Default 64x64.
+F_TRUNC = 256            # matmul_tile flag, plain 1xTF32 tiles of any size: operands are truncated by the tensor core, not rounded to tf32 first, and the output is scaled by KVM_GPT_RZ_GAIN to remove the truncation's mean bias (cuBLAS TF32 rounds: this is faster than it, not its numerics)
+F_EXACT = 1024           # matmul_tile flag: a and b already hold TF32 values (round_tf32 copies): the tile skips its rounding; same products as rounding
+F_DGELU = 512            # matmul_tile flag: out = alpha*acc*gelu'(pre) in the tile's epilogue (pre is an input; no bias, res, accumulate or gelu)
+
+
+def mm_dims(fl):
+    """(rows, cols) of the output tile a matmul_tile* task with flags `fl` computes."""
+    return (256, 128) if fl & F_HUGE else (128, 128) if fl & F_BIG else (MM_TILE, MM_TILE)
 
 
 class Buf:
@@ -133,7 +142,9 @@ def _argmax(b, a):
 
 # ------------------------------------------------------------------------------------------------ matmul
 def _mm_flops(a):
-    return 2.0 * max(0, min(MM_TILE, a['M'] - a['m0'])) * max(0, min(MM_TILE, a['N'] - a['n0'])) * a['K']
+    tm, tn = mm_dims(a['flags'])
+    cells = max(0, min(tm, a['M'] - a['m0'])) * max(0, min(tn, a['N'] - a['n0']))
+    return 2.0 * cells * a['K'] + (20.0 * cells if a['flags'] & F_DGELU else 0.0)
 
 
 def _mm_acc(A, B, fl, m0, m1, n0, n1, K):
@@ -158,7 +169,8 @@ def _mm_acc(A, B, fl, m0, m1, n0, n1, K):
 def _matmul_tile(b, a):
     M, N, K, fl = a['M'], a['N'], a['K'], a['flags']
     A, B, out = b['a'], b['b'], b['out']
-    m1, n1 = min(a['m0'] + MM_TILE, M), min(a['n0'] + MM_TILE, N)
+    tm, tn = mm_dims(fl)
+    m1, n1 = min(a['m0'] + tm, M), min(a['n0'] + tn, N)
     prod = _mm_acc(A, B, fl, a['m0'], m1, a['n0'], n1, K)
     for i, m in enumerate(range(a['m0'], m1)):
         vals = []
@@ -166,10 +178,13 @@ def _matmul_tile(b, a):
             v = a['alpha'] * prod[i][j]
             if b['bias'] is not None:
                 v += b['bias'].a[n]
-            if b['pre'] is not None:
-                b['pre'].a[m * b['pre'].cols + n] = bf16_round(v) if b['pre'].bf16 else ctypes.c_float(v).value if out.f32 else v
-            if fl & F_GELU:
-                v = _gelu(v)
+            if fl & F_DGELU:
+                v *= _gelu_d(b['pre'].a[m * b['pre'].cols + n])
+            else:
+                if b['pre'] is not None:
+                    b['pre'].a[m * b['pre'].cols + n] = bf16_round(v) if b['pre'].bf16 else ctypes.c_float(v).value if out.f32 else v
+                if fl & F_GELU:
+                    v = _gelu(v)
             if b['res'] is not None:
                 v += b['res'].a[m * b['res'].cols + n]
             if fl & F_ACC:
@@ -437,6 +452,18 @@ def _ce_bwd(b, a):
         b['dlogits'].put(r, 0, [(math.exp(x - lse) - (c == t)) * k for c, x in enumerate(b['logits'].row(r)[:a['V']])])
 
 
+@impl('softmax_ce_fused', lambda a: 12.0 * (a['r1'] - a['r0']) * a['V'])
+def _ce_fused(b, a):
+    if a['ignore'] != -1:
+        raise FrontendError('softmax_ce_fused: ignored targets are not supported')
+    _ce_fwd(b, a)
+    k = a['scale'] / a['N']                     # the reduce's loss[1] with no ignored target, times the backward's scale
+    for r in range(a['r0'], a['r1']):
+        t = int(b['tgt'].a[r])
+        lse = b['lse'].a[r]
+        b['dlogits'].put(r, 0, [(math.exp(x - lse) - (c == t)) * k for c, x in enumerate(b['logits'].row(r)[:a['V']])])
+
+
 @impl('adamw', lambda a: 12.0 * (a['e1'] - a['e0']))
 def _adamw(b, a):
     t = int(b['step'].a[0])
@@ -468,6 +495,12 @@ def _gradnorm_finish(b, a):
 def _select_window(b, a):
     base = int(b['step'].a[0]) * a['stride'] + a['off']
     b['dst'].a[a['i0']:a['i1']] = b['src'].a[base + a['i0']:base + a['i1']]
+
+
+@impl('sgd_range', lambda a: 2.0 * (a['e1'] - a['e0']))
+def _sgd_range(b, a):
+    e0, e1 = a['e0'], a['e1']
+    b['w'].put(0, e0, [w - a['lr'] * g for w, g in zip(b['w'].a[e0:e1], b['g'].a[e0:e1])])
 
 
 @impl('sgd', lambda a: 2.0 * a['n'])
@@ -719,6 +752,21 @@ def bf16_round(x):
     return struct.unpack('<f', struct.pack('<I', bits))[0]
 
 
+def tf32_round(x):
+    """A float32 value as the TF32 value the tiles hand the tensor core (f2tf32 in kvm_ops_gpt.cuh): to nearest, ties away from zero, the low
+    13 bits cleared; a NaN keeps its high bits."""
+    import struct
+    u = struct.unpack('<I', struct.pack('<f', x))[0]
+    if (u & 0x7fffffff) <= 0x7f800000:
+        u = (u + 0x1000) & 0xffffffff
+    return struct.unpack('<f', struct.pack('<I', u & 0xffffe000))[0]
+
+
+@impl('round_tf32', lambda a: float(a['e1'] - a['e0']))
+def _round_tf32(b, a):
+    b['out'].a[a['e0']:a['e1']] = [tf32_round(x) for x in b['x'].a[a['e0']:a['e1']]]
+
+
 @impl('round_bf16', lambda a: float(a['e1'] - a['e0']))
 def _round_bf16(b, a):
     b['out'].a[a['e0']:a['e1']] = [bf16_round(x) for x in b['x'].a[a['e0']:a['e1']]]   # also the narrow / widen of bf16 storage
@@ -773,22 +821,15 @@ def _add_rowtile(b, a):
 
 def _tile_nofx(b, a, out):
     """matmul_tile without epilogue into `out` (flags 1, 2 only)."""
-    _matmul_tile({'a': b['a'], 'b': b['b'], 'out': out, 'bias': None, 'res': None, 'pre': None}, {**a, 'flags': a['flags'] & 3})
+    _matmul_tile({'a': b['a'], 'b': b['b'], 'out': out, 'bias': None, 'res': None, 'pre': None}, {**a, 'flags': a['flags'] & (3 | F_BIG | F_HUGE)})
 
 
 def _tile_cells(a):
-    return [(m, n) for m in range(a['m0'], min(a['m0'] + MM_TILE, a['M'])) for n in range(a['n0'], min(a['n0'] + MM_TILE, a['N']))]
+    tm, tn = mm_dims(a['flags'])
+    return [(m, n) for m in range(a['m0'], min(a['m0'] + tm, a['M'])) for n in range(a['n0'], min(a['n0'] + tn, a['N']))]
 
 
-@impl('matmul_tile_dgelu', lambda a: _mm_flops(a) + 20.0 * MM_TILE * MM_TILE)
-def _matmul_tile_dgelu(b, a):
-    out, pre = b['out'], b['pre']
-    _tile_nofx(b, a, out)
-    for m, n in _tile_cells(a):
-        out.a[m * out.cols + n] *= _gelu_d(pre.a[m * pre.cols + n])
-
-
-@impl('matmul_tile_silu_mul', lambda a: _mm_flops(a) + 10.0 * MM_TILE * MM_TILE)
+@impl('matmul_tile_silu_mul', lambda a: _mm_flops(a) + 10.0 * (lambda d: d[0] * d[1])(mm_dims(a['flags'])))
 def _matmul_tile_silu_mul(b, a):
     out, up, gate = b['out'], b['up'], b['gate']
     _tile_nofx(b, a, up)
@@ -796,7 +837,7 @@ def _matmul_tile_silu_mul(b, a):
         out.a[m * out.cols + n] = _silu(gate.a[m * gate.cols + n]) * up.a[m * up.cols + n]
 
 
-@impl('matmul_tile_silu_mul_bwd', lambda a: _mm_flops(a) + 20.0 * MM_TILE * MM_TILE)
+@impl('matmul_tile_silu_mul_bwd', lambda a: _mm_flops(a) + 20.0 * (lambda d: d[0] * d[1])(mm_dims(a['flags'])))
 def _matmul_tile_silu_mul_bwd(b, a):
     dg, du, gate, up = b['dgate'], b['dup'], b['gate'], b['up']
     _tile_nofx(b, a, dg)

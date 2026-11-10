@@ -46,6 +46,7 @@ NATIVE = {
     'colsum': (('x',), ()),
     'ce_loss': (('logits',), ()),
     'ce_bwd': (('logits',), ('out',)),
+    'ce_fused': (('logits',), ('out',)),
 }
 
 

@@ -8,13 +8,16 @@
 #endif
 #include "harness.cuh"
 #include "refs.hpp"
+#ifdef BENCH_CUBLAS
+#include <cublas_v2.h>
+#endif
 
 template <int ID>
 __global__ void __launch_bounds__(256) k_one(KvmCtx c, const int32_t* w, const int* off) { kvm_gpt_dispatch(c, ID, w + off[blockIdx.x]); }
 
 struct Staged { int32_t* w; int* op; int* off; int n; KvmCtx c; };
 static Staged stage(Dev& d, const Batch& b) {
-    static int attr = 0; if (!attr) { CK(cudaFuncSetAttribute(k_run, cudaFuncAttributeMaxDynamicSharedMemorySize, 112 * 1024)); attr = 1; }
+    static int attr = 0; if (!attr) { CK(cudaFuncSetAttribute(k_run, cudaFuncAttributeMaxDynamicSharedMemorySize, 160 * 1024)); attr = 1; }
     d.sync_table(); Staged s{}; s.n = (int)b.op.size();
     CK(cudaMalloc(&s.w, b.w.size() * 4 + 4)); CK(cudaMalloc(&s.op, s.n * 4)); CK(cudaMalloc(&s.off, s.n * 4));
     CK(cudaMemcpy(s.w, b.w.data(), b.w.size() * 4, cudaMemcpyHostToDevice)); CK(cudaMemcpy(s.op, b.op.data(), s.n * 4, cudaMemcpyHostToDevice));
@@ -23,7 +26,7 @@ static Staged stage(Dev& d, const Batch& b) {
 }
 template <int ID> static void launch_one(const Staged& s, int smem) {
     static bool attr = false;
-    if (!attr) { CK(cudaFuncSetAttribute(k_one<ID>, cudaFuncAttributeMaxDynamicSharedMemorySize, 112 * 1024)); attr = true; }
+    if (!attr) { CK(cudaFuncSetAttribute(k_one<ID>, cudaFuncAttributeMaxDynamicSharedMemorySize, 160 * 1024)); attr = true; }
     k_one<ID><<<s.n, 256, smem>>>(s.c, s.w, s.off);
 }
 static void launch_full(const Staged& s, int smem) { k_run<<<s.n, 256, smem>>>(s.c, s.w, s.op, s.off); }
@@ -70,7 +73,21 @@ template <int ID> static void bench_mm(int M, int N, int K, int ta, int tb, int 
     verdict(std::string("bench check: ") + nm, me / mx < tol, d);
     double flops = 2.0 * M * N * K;   // nominal 2MNK (3xTF32 performs 3x the tensor work)
     double ms = time_ms([&] { launch_full(s, kvm_gpt_smem_bytes(64)); }, 10); report(nm, "full dispatch", ms, flops, "GFLOP/s", prec ? 156000 / 3.0 : 156000);
+    const double ms_full = ms;
     ms = time_ms([&] { launch_one<ID>(s, kvm_gpt_smem_bytes(64)); }, 10); report(nm, "single-op", ms, flops, "GFLOP/s", prec ? 156000 / 3.0 : 156000);
+#ifdef BENCH_CUBLAS
+    {   // cuBLAS in the same process: row-major C = op(A) op(B) is column-major C^T = op(B)^T op(A)^T
+        static cublasHandle_t h = nullptr; if (!h) cublasCreate(&h);
+        cublasSetMathMode(h, prec ? CUBLAS_DEFAULT_MATH : CUBLAS_TF32_TENSOR_OP_MATH);
+        float *da, *db, *dc; cudaMalloc(&da, (size_t)M * K * 4); cudaMalloc(&db, (size_t)K * N * 4); cudaMalloc(&dc, (size_t)M * N * 4);
+        cudaMemcpy(da, ha.data(), (size_t)M * K * 4, cudaMemcpyHostToDevice); cudaMemcpy(db, hb.data(), (size_t)K * N * 4, cudaMemcpyHostToDevice);
+        const float one = 1.f, zero = 0.f;
+        auto f = [&] { cublasSgemm(h, tb ? CUBLAS_OP_T : CUBLAS_OP_N, ta ? CUBLAS_OP_T : CUBLAS_OP_N, N, M, K, &one, db, tb ? K : N, da, ta ? M : K, &zero, dc, N); };
+        double cms = time_ms(f, 10); report(nm, "cuBLAS", cms, flops, "GFLOP/s", prec ? 156000 / 3.0 : 156000);
+        printf("RATIO  %-46s kvm/cuBLAS %.3f (full dispatch) %.3f (single-op)\n", nm, cms / ms_full, cms / ms);
+        cudaFree(da); cudaFree(db); cudaFree(dc);
+    }
+#endif
 }
 
 template <int HD> static void bench_attn(int B, int T, int H, int Hkv) {

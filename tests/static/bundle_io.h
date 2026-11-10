@@ -1,6 +1,6 @@
 #pragma once
-// Plain-C++ readers of a bundle directory (tasks.bin, successors.bin, args.bin, metadata.json) and of the operator registry (.def files),
-// for the host-only checks under tests/static: no JSON library, no CUDA.
+// Plain-C++ readers of a bundle directory (tasks.bin, successors.bin, args.bin, metadata.json) for the host-only checks under
+// tests/static: no JSON library, no CUDA. The operator registry is registry.h's, compiled from the executor's own list.
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
@@ -28,35 +28,6 @@ template <class T> std::vector<T> load(const std::string& p) {
     std::vector<T> v(r.size() / sizeof(T));
     memcpy(v.data(), r.data(), r.size());
     return v;
-}
-
-// The registry from the .def files (X(name, id, "sig") lines): name -> id, id -> signature (types packed 3 bits an argument).
-struct Registry { std::map<std::string, int> ids; std::map<int, KvmSOpInfo> ops; };
-inline int types_of(const std::string& sig, int* arity) {
-    uint64_t t = 0; int i = 0; std::stringstream ss(sig); std::string tok;
-    while (std::getline(ss, tok, ',')) {
-        const auto c = tok.find(':'); const std::string ty = tok.substr(c + 1);
-        const uint64_t v = ty == "buf" ? 0 : ty == "i32" ? 1 : ty == "f32" ? 2 : ty == "buf?" ? 3 : 7;
-        assert(v != 7 && "unknown argument type in a .def signature");
-        t |= v << (3 * i++);
-    }
-    *arity = i; return (int)t;
-}
-inline Registry load_registry(const std::string& inc) {
-    Registry r;
-    const std::regex re("^\\s*X\\(\\s*(\\w+)\\s*,\\s*(\\d+)\\s*,\\s*\"([^\"]*)\"");
-    for (const char* f : {"kvm_ops.def", "kvm_ops_gpt.def", "kvm_ops_extra.def", "kvm_ops_comm.def", "kvm_ops_game.def", "kvm_ops_fmlp.def", "kvm_ops_fgpt.def"}) {
-        std::ifstream in(inc + "/" + f); std::string line;
-        while (std::getline(in, line)) {
-            std::smatch m;
-            if (!std::regex_search(line, m, re)) continue;
-            int ar = 0; KvmSOpInfo o; o.types = (uint64_t)types_of(m[3].str(), &ar); o.arity = ar;
-            kvm_static_gang_args(m[3].str().c_str(), o);   // a gang op names gang, member and members
-            const int id = std::stoi(m[2].str());
-            r.ops[id] = o; r.ids[m[1].str()] = id;
-        }
-    }
-    return r;
 }
 
 // The buffer table from metadata.json: every {"name": ..., "index": N, "rows": R, "cols": C, "dtype": D} entry of "buffers".

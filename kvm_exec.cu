@@ -191,6 +191,7 @@ struct KvmConfig {
   int win_cap = 1 << 16;        // bundle records in flight, power of two
   int num_vars = 64;
   int ring_words = 1 << 16;     // admission ring, multiple of 8
+  int cont = 1;  // continuation: a worker runs one released successor directly (no enqueue/pop); 0 = every task through the queue
   int aging_us = 0;             // 0: strict priority; else one priority level per aging_us of waiting
   unsigned long long timeout_us = 60ull * 1000000;   // STALL timeout: no task finished or admitted for this long while work is pending (not a lifetime cap); must exceed the longest task
   unsigned long long task_limit_us = 30ull * 1000000;  // a task that ran longer than this ends the run with TASK_LIMIT (0 = off); tasks are not interruptible, this reports
@@ -287,7 +288,7 @@ class KvmExec {
     S_.num_vars = cfg_.num_vars; S_.ring_words = cfg_.ring_words;
     S_.aging_ns = cfg_.aging_us ? (long long)cfg_.aging_us * 1000 : (1ll << 50);
     S_.timeout_ns = cfg_.timeout_us * 1000ull; S_.task_limit_ns = cfg_.task_limit_us * 1000ull;
-    S_.rcap = 4 * cfg_.live_cap;
+    S_.rcap = 4 * cfg_.live_cap; S_.cont_on = cfg_.cont;
     CK(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
     CK(cudaEventCreate(&e0_)); CK(cudaEventCreate(&e1_));
   }
@@ -919,7 +920,7 @@ static int kvm_cli_sched_option(KvmConfig& cfg, int& i, int argc, char** argv) {
 static void usage() {
   fprintf(stderr, "usage: kvm_exec [options] bundle_dir...\n"
     "  bundle_dir: tasks.bin successors.bin args.bin metadata.json (ABI v2)\n"
-    "  --blocks N --live-cap N --max-tasks N --ring-words N --aging-us N --timeout-s N (stall timeout) --task-limit-s N\n"
+    "  --blocks N --live-cap N --max-tasks N --ring-words N --aging-us N --timeout-s N (stall timeout) --task-limit-s N --no-cont (no continuation)\n"
     "  --sched MODE        global|static|dynamic: per-workload scheduling (workload_id = class, up to 8)  --classes N\n"
     "  --weights a,b,..    --min a,b,.. (reserved CTAs)  --max a,b,.. (CTA caps)  --bw-cta a,b,..  --urgent-us a,b,..\n"
     "  --op-affinity a,b (1 = class prefers the block that last ran the same op)  --shares a,b (static SM shares)  --arbiter  --bw-limit N   adaptive concurrent bandwidth-bound CTA limit   --affinity-us N   --no-guarantee  --no-inherit\n"
@@ -938,6 +939,7 @@ int main(int argc, char** argv) {
       if (e == argv[i] || *e || errno || v < lo || v > hi) { fprintf(stderr, "%s: integer in [%lld,%lld] expected, got '%s'\n", a.c_str(), lo, hi, argv[i]); exit(2); }
       return v; };
     if (a == "--blocks") cfg.blocks = (int)val(0, 1 << 20);
+    else if (a == "--no-cont") cfg.cont = 0;
     else if (a == "--live-cap") cfg.live_cap = (int)val(2, 1 << 24);
     else if (a == "--max-tasks") cfg.max_tasks = (int)val(2, 1 << 26);
     else if (a == "--ring-words") cfg.ring_words = (int)val(64, 1 << 28);

@@ -162,6 +162,7 @@ struct KvmTrace {  // one per slot, 64 B
 #endif
 };
 #define KVM_TRACE_MISSED 1
+#define KVM_TRACE_CONT   16   // started as the continuation of the task that released it (no enqueue, no pop)
 
 struct KvmCell { unsigned long long seq, ready_ns, deadline_ns; int slot, res; };   // 32 B; deadline_ns 0 = none, res = KvmRes (SCHED)
 struct alignas(128) KvmQCtl { unsigned long long head, tail; };                    // own cache line
@@ -187,6 +188,7 @@ struct KvmDevState {
   int nslots, live_cap, nbufs, ring_words, num_vars, win_cap, rcap, pad1;   // rcap = ready-ring depth = 4 * live_cap (see KvmCounters::parked)
   unsigned succ_cap;
   long long aging_ns;
+  int cont_on;   // 1: a worker runs one released successor directly (continuation); needs the scheduler off
   unsigned long long timeout_ns, task_limit_ns;   // stall timeout; per-task running-time limit (0 = off, checked when the task ends)
   const KvmBuf* bufs;
   KvmTaskDesc* tasks;                               // [nslots]
@@ -521,7 +523,7 @@ __device__ __forceinline__ void kvm_publish(const KvmDevState& S, int slot, int 
 // ---------------- worker ----------------
 struct KvmShared {
   KvmTaskDesc d;
-  int cmd, skip, how, part;   // how: KVM_TRACE_* start reason from kvm_pop (| KVM_HOW_BW); part: STATIC-mode class of this worker's SM
+  int cmd, skip, how, part, cont, qbusy;   // cont: successor the finishing task runs itself (-1 none); qbusy: the ready queue held work when the task started; how: KVM_TRACE_* start reason from kvm_pop (| KVM_HOW_BW); part: STATIC-mode class of this worker's SM
 #ifdef KVM_PROF_GAP
   long long pg[16]; int pg_valid;
 #endif
@@ -581,6 +583,14 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
     if (d.pub_var >= 0) kvm_publish(S, slot, d.pub_var, d.pub_ver);
 #endif
     sh.skip = bad || *(volatile int*)&S.cnt->err_code;
+    sh.cont = -1;
+  }
+  // Continuation only while the ready queue is empty (looked at before the op, one coalesced load per lane by warp 0): a chain must not
+  // starve queued tasks of other priorities (the aging / priority rules live in the queue). Workers idle during the op take whatever arrives.
+  if (threadIdx.x < 32) {
+    const bool busy = S.cont_on && !S.sp.on && kvm_voll(&S.qctl[threadIdx.x].head) != kvm_voll(&S.qctl[threadIdx.x].tail);
+    const unsigned b = __ballot_sync(0xffffffffu, busy);
+    if (threadIdx.x == 0) sh.qbusy = b != 0;
   }
   __syncthreads();
   KVM_PG(9);
@@ -620,7 +630,16 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   if (!sh.skip && (int)threadIdx.x < d.succ_cnt) {
     for (int e = threadIdx.x; e < d.succ_cnt; e += blockDim.x) {
       int s = S.succ[(unsigned)(d.succ_off + e) & (S.succ_cap - 1)];
-      if (atom_add(S.indeg + s, -1) == 1) { kvm_sched_pref(S, s); kvm_release_task(S, s); }  // SCHED: affinity = this block
+      if (atom_add(S.indeg + s, -1) == 1) {
+        // Continuation: one released successor of the same priority whose version wait is met is run by this worker directly (no enqueue,
+        // no pop: several L2 round trips on the dependent-hop critical path). Only without the scheduler (it accounts ready/running per
+        // class at enqueue and pop) and only when the queue was empty at task start; every other released successor goes through the queue.
+        const KvmTaskDesc* sd = S.tasks + s;
+        if (S.cont_on && !S.sp.on && !sh.qbusy && sd->priority == d.priority && (sd->wait_var < 0 || ld_acq(S.version + sd->wait_var) >= sd->wait_ver) &&
+            atomicCAS(&sh.cont, -1, s) == -1) {
+          S.trace[s].ready_ns = kvm_now();
+        } else { kvm_sched_pref(S, s); kvm_release_task(S, s); }  // SCHED: affinity = this block
+      }
     }
   }
   __syncthreads();
@@ -658,8 +677,13 @@ __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
 #ifdef KVM_PROF_GAP
   if (threadIdx.x == 0) sh.pg_valid = 0;
 #endif
+  int next = -1;   // continuation chosen by the previous task (kvm_run_task): run it without a pop
   for (;;) {
-    if (threadIdx.x < 32) {
+    if (next >= 0) {   // the successor's descriptor is immutable (admitted, released): load it as a pop's claim would have
+      if (threadIdx.x == 0) { sh.cmd = next; sh.how = KVM_TRACE_CONT; }
+      if (threadIdx.x < KVM_TASK_WORDS) ((int*)&sh.d)[threadIdx.x] = __ldcg((const int*)(S.tasks + next) + threadIdx.x);
+      else if (threadIdx.x == 32 && owed >= 0) kvm_post_task(S, owed);
+    } else if (threadIdx.x < 32) {
       int how, dw, r = kvm_pop(S, kvm_now(), part, how, dw);
       if (r < 0 && threadIdx.x == 0 && kvm_should_exit(S, t0)) r = KVM_POP_EXIT;
       if (threadIdx.x == 0) { sh.cmd = r; sh.how = how; }
@@ -678,6 +702,7 @@ __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
     backoff = 0;
     kvm_run_task(S, cmd, sh);
     owed = cmd;
+    next = sh.cont;   // read by every thread before the next task's thread 0 resets it (the barrier after the pop)
   }
 }
 

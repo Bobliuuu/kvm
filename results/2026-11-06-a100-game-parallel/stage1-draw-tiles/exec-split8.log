@@ -1,0 +1,10 @@
+OK: 4500/4500 tasks, 1918.221 ms
+[doom] WAD doom/third_party/doom1.wad (4196020 bytes) uploaded, stack limit 16384 bytes/thread
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] bundle out/verify2/split8/bundle: 4500 tasks, 7795 edges, 302 buffers; grid 108 blocks, stack 16384 B/thread
+[kvm_exec][I] kernel launched: grid 108 x 256 threads, live_cap 16384, slots 262144, succ ring 2097152 words, ring 193808 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 4500/4500 tasks in 1918.221 ms, 1 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] workload 0: 4500 tasks, 2.014 CTA-s, queue wait p50 11.3 p99 19.5 max 22.5 us, 90 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[kvm_exec][I] trace: 4500 tasks -> out/verify2/split8/run/trace.csv
+[kvm_exec][I] 35 Hz: 0 of 298 tick gaps over 28.57 ms, 6 ticks flagged missed (absolute deadline)
+[kvm_exec][I] frames 300, achieved 171.1 fps (35 needed), tick gap p50/p99 6.20/10.19 ms, frame latency p50/p99 6.19/10.18 ms, tick queue wait p99 8 us, doom ran on 107 of 107 SMs, block utilization 1.0%

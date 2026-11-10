@@ -39,12 +39,9 @@ int main(int argc, char** argv) {
     std::map<std::string, int> buf_idx;
     for (auto& jb : m.get("buffers")->a) {
       const int idx = (int)jb.num("index", -1), rows = (int)jb.num("rows", 0), cols = (int)jb.num("cols", 0);
-      std::vector<float> init;
-      if (auto* in = jb.get("init")) {
-        const Json* kind = in->get("kind");
-        if (kind->s == "fill") init.assign((size_t)rows * cols, (float)in->num("value", 0)); else for (auto& v : in->get("values")->a) init.push_back((float)v.n);
-      }
-      if (ex.add_buffer(rows, cols, init) != idx) throw std::logic_error("buffer index mismatch");
+      const int dtype = (int)jb.num("dtype", 0);
+      KvmInit init = kvm_parse_init(jb, dir, dtype);
+      if (ex.add_buffer(rows, cols, init, dtype) != idx) throw std::logic_error("buffer index mismatch");
       buf_idx[jb.get("name")->s] = idx;
     }
     KLOG(2, "bundle %s: %d tasks, %d edges, %d buffers; grid %d blocks, stack %zu B/thread", dir.c_str(), nt, ne, ex.nbufs(), ex.grid(), cfg.stack_bytes);
@@ -98,9 +95,9 @@ int main(int argc, char** argv) {
     std::vector<double> tick_s(frames, -1), tick_e(frames, -1), frame_done(frames, -1), tick_wait;
     unsigned long long t0 = ~0ull; for (auto& t : r.trace) if (t.admit_ns) t0 = std::min(t0, t.admit_ns);
     auto us = [&](unsigned long long x) { return (double)(x - t0) / 1e3; };
-    const int op_tick = kvm_op_by_name("doom_tick"), op_tick_n = kvm_op_by_name("doom_tick_n");
-    auto is_tick = [&](int op) { return op == op_tick || op == op_tick_n; };
-    auto is_game = [&](int op) { return is_tick(op) || op == kvm_op_by_name("doom_present") || op == kvm_op_by_name("doom_status") || op == kvm_op_by_name("doom_present_n") || op == kvm_op_by_name("doom_status_n"); };
+    const int op_tick = kvm_op_by_name("doom_tick"), op_tick_n = kvm_op_by_name("doom_tick_n"), op_sim = kvm_op_by_name("doom_sim");
+    auto is_tick = [&](int op) { return op == op_tick || op == op_tick_n || op == op_sim; };
+    auto is_game = [&](int op) { return is_tick(op) || op == kvm_op_by_name("doom_draw") || op == kvm_op_by_name("doom_planes") || op == kvm_op_by_name("doom_post") || op == kvm_op_by_name("doom_present") || op == kvm_op_by_name("doom_status") || op == kvm_op_by_name("doom_present_n") || op == kvm_op_by_name("doom_status_n"); };
     if (multi) {   // per-instance cadence: the bundle lists instance 0's tasks first, then instance 1's, ...; ticks are in chain order
       std::vector<double> ts; for (size_t i = 0; i < r.trace.size(); ++i) if (is_tick(r.tasks[i].op_id) && r.trace[i].end_ns) ts.push_back(r.trace[i].start_ns / 1e3);
       for (int k = 0; k < NI && (size_t)(k + 1) * frames <= ts.size(); ++k) {

@@ -172,10 +172,14 @@ static void suite_ops() {
 }
 
 // ==================================================================================================== multi-rank scaffolding
-struct PlanBuf { enum Kind { LOCAL, PEER, INBOX, SENDQ } kind = LOCAL; int rows = 1, cols = 1, rank = -1, idx = -1; bool fill = true; float fillv = 0; std::vector<float> vals; };
+// gen = a block of a counter-based seeded matrix (runtime/initgen.py: SplitMix64 at counter j, same values as the CPU reference):
+// logical matrix GR x GC, element (r, c) = draw index tr ? c*GR + r : r*GC + c; this buffer holds rows r0.., cols c0.. of it.
+struct PlanBuf { enum Kind { LOCAL, PEER, INBOX, SENDQ } kind = LOCAL; int rows = 1, cols = 1, rank = -1, idx = -1; bool fill = true; float fillv = 0; std::vector<float> vals;
+  bool i32 = false, gen = false; std::string file; unsigned long long seed = 0; int draws = 1, gr = 0, gc = 0, tr = 0, r0 = 0, c0 = 0; float bias = 0, coef = 1; };
+struct DumpSpec { int idx; std::string name; int r0, c0, gr, gc; };
 struct PlanRank {
   int rank = 0, world = 1, nvars = 1;
-  std::vector<PlanBuf> bufs; std::vector<std::pair<int, int>> vars; std::vector<int> in_vars; std::map<int, std::vector<float>> expect;
+  std::vector<PlanBuf> bufs; std::vector<std::pair<int, int>> vars; std::vector<int> in_vars; std::map<int, std::vector<float>> expect; std::vector<DumpSpec> dumps;
   KvmBundle bundle;
   bool uses_sendq() const { for (auto& b : bufs) if (b.kind == PlanBuf::SENDQ) return true; return false; }
   bool uses_peer() const { for (auto& b : bufs) if (b.kind == PlanBuf::PEER || b.kind == PlanBuf::INBOX) return true; return false; }
@@ -204,18 +208,43 @@ static PlanRank load_rank(const std::string& dir) {
       if (kind == "local") {
         std::string init; ls >> b.rows >> b.cols >> init;
         if (init == "fill") { b.fill = true; ls >> b.fillv; }
+        else if (init == "gen") { b.fill = false; b.gen = true; ls >> b.seed >> b.draws >> b.bias >> b.coef >> b.gr >> b.gc >> b.tr >> b.r0 >> b.c0; }
+        else if (init == "file") { b.fill = false; std::string fn; ls >> fn; b.file = dir + "/" + fn; }   // raw 32-bit words, already in the buffer's dtype
         else { b.fill = false; b.vals.resize((size_t)b.rows * b.cols); std::string t; for (auto& x : b.vals) { ls >> t; x = strtof(t.c_str(), nullptr); } }
-      } else if (kind == "peer") { b.kind = PlanBuf::PEER; ls >> b.rank >> b.idx >> b.rows >> b.cols; }
+        { std::string t; while (ls >> t) if (t == "i32") b.i32 = true; }
+      } else if (kind == "peer") { b.kind = PlanBuf::PEER; ls >> b.rank >> b.idx >> b.rows >> b.cols; std::string t; while (ls >> t) if (t == "i32") b.i32 = true; }
       else if (kind == "inbox") { b.kind = PlanBuf::INBOX; ls >> b.rank >> b.cols; b.rows = 1; }
       else if (kind == "sendq") b.kind = PlanBuf::SENDQ;
       else throw std::runtime_error("unknown buffer kind " + kind);
       pr.bufs.push_back(std::move(b));
     } else if (key == "var") { int id, base; ls >> id >> base; pr.vars.push_back({id, base}); }
     else if (key == "inbox_var") { int v; ls >> v; pr.in_vars.push_back(v); }
+    else if (key == "dump") { DumpSpec d; ls >> d.idx >> d.name >> d.r0 >> d.c0 >> d.gr >> d.gc; pr.dumps.push_back(d); }
     else if (key == "expect") { int idx, n; ls >> idx >> n; std::vector<float> v(n); std::string t; for (auto& x : v) { ls >> t; x = strtof(t.c_str(), nullptr); } pr.expect[idx] = std::move(v); }
   }
   pr.nvars = std::max(pr.nvars, 1);
   return pr;
+}
+
+static inline unsigned long long sm64(unsigned long long seed, unsigned long long j) {
+  unsigned long long z = seed + (j + 1) * 0x9E3779B97F4A7C15ULL;
+  z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL; z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL; return z ^ (z >> 31);
+}
+static inline float gen_u(unsigned long long seed, unsigned long long j) { return (float)(sm64(seed, j) >> 40) * (1.0f / 16777216.0f); }
+// Fills h[0 .. rows*cols) with the block of the seeded matrix described by b (threads: the box is shared, keep it small).
+static void gen_block(const PlanBuf& b, std::vector<float>& h) {
+  size_t n = (size_t)b.rows * b.cols; h.resize(n);
+  int T = (int)std::min<size_t>(8, std::max<size_t>(1, n >> 20)); std::vector<std::thread> th;
+  for (int t = 0; t < T; ++t) th.emplace_back([&, t] {
+    size_t lo = n * t / T, hi = n * (t + 1) / T;
+    for (size_t i = lo; i < hi; ++i) {
+      unsigned long long lr = i / b.cols, lc = i % b.cols, r = b.r0 + lr, c = b.c0 + lc;
+      unsigned long long idx = b.tr ? c * (unsigned long long)b.gr + r : r * (unsigned long long)b.gc + c, j = idx * b.draws;
+      float acc = b.draws == 1 ? gen_u(b.seed, j) : ((gen_u(b.seed, j) + gen_u(b.seed, j + 1)) + (gen_u(b.seed, j + 2) + gen_u(b.seed, j + 3)));
+      h[i] = (acc - b.bias) * b.coef;
+    }
+  });
+  for (auto& x : th) x.join();
 }
 
 struct Net {   // the inter-node fabric of an in-process run: one transport per rank
@@ -228,6 +257,7 @@ struct Net {   // the inter-node fabric of an in-process run: one transport per 
     base.resize(world); top.resize(world); rel.resize(world);
     if (self >= 0 && !hosts.empty()) {   // multi-process: only our own rank exists here
       TcpConfig c; c.rank = self; c.hosts = hosts; c.ports = ports; c.cluster_id = 0x4b564d;
+      if (const char* lp = getenv("KVM_DIST_LISTEN_PORT")) c.listen_port = atoi(lp);   // container port mapping: bind here, peers dial the advertised port
       base[self] = std::make_unique<TcpTransport>(c);
     } else if (tcp) {
       auto ports2 = pick_free_ports(world); std::vector<std::thread> th;
@@ -262,6 +292,7 @@ struct World {
   KvmConfig cfg = small_cfg(4);
   uint32_t sq_slots = 16, sq_slot_bytes = 256 * 1024;      // slot = the partitioner's max_msg_bytes
   std::vector<float*> allocs;
+  std::map<int, size_t> local_bytes, local_count;
 
   ~World() { px.clear(); sink.clear(); ex.clear(); for (float* p : allocs) cudaFree(p); dd.clear(); }
 
@@ -284,8 +315,10 @@ struct World {
       for (size_t i = 0; i < p.bufs.size(); ++i) {
         PlanBuf& b = p.bufs[i];
         if (b.kind != PlanBuf::LOCAL) continue;
-        size_t n = (size_t)b.rows * b.cols; float* d; CK(cudaMalloc(&d, n * 4)); allocs.push_back(d);
-        std::vector<float> h = b.fill ? std::vector<float>(n, b.fillv) : b.vals;
+        size_t n = (size_t)b.rows * b.cols; float* d; CK(cudaMalloc(&d, n * 4)); allocs.push_back(d); local_bytes[r] += n * 4; ++local_count[r];
+        std::vector<float> h; if (b.gen) gen_block(b, h); else if (!b.file.empty()) h = slurp<float>(b.file); else h = b.fill ? std::vector<float>(n, b.fillv) : b.vals;
+        if (!b.file.empty() && h.size() != n) throw std::runtime_error("init file " + b.file + ": wrong size");
+        if (b.i32 && b.file.empty()) for (auto& x : h) { int iv = (int)x; memcpy(&x, &iv, 4); }
         CK(cudaMemcpy(d, h.data(), n * 4, cudaMemcpyHostToDevice)); local[r][i] = d;
       }
     }
@@ -308,7 +341,7 @@ struct World {
             ptr = dd[b.rank]->inbox_buf(); break;
           case PlanBuf::SENDQ: ptr = dd[r]->sendq_buf(); rows = 1; cols = (int)dd[r]->sendq_floats(); break;
         }
-        if (ex[r]->add_view(ptr, rows, cols) != (int)i) throw std::logic_error("buffer index mismatch");
+        if (ex[r]->add_view(ptr, rows, cols, b.i32 ? 1 : 0) != (int)i) throw std::logic_error("buffer index mismatch");
       }
       for (auto& v : p.vars) if (v.second) ex[r]->set_version(v.first, v.second);
       ex[r]->set_dist(dd[r]->dev());
@@ -484,6 +517,13 @@ static void suite_pingpong(bool proxy, FaultSpec f = {}, bool tcp = false, int R
     CHECK(in0[0] == (unsigned)R && in1[0] == (unsigned)R, "inbox versions %u/%u, want %d", in0[0], in1[0], R);
     CHECK(out[0].res.version[0] == R && out[1].res.version[0] == R, "executor versions %d/%d, want %d", out[0].res.version[0], out[1].res.version[0], R);
     fprintf(stderr, "  %d round trips in %.1f ms = %.1f us per round trip including setup (two cross-executor version hops + two %d-float tile copies each)\n", R, ms, ms * 1000 / R, N);
+    if (w.dev[0] != w.dev[1] && R > 2) {    // two GPUs, two clocks: rank 0's own timestamps give the round trip (put end -> next round's start)
+      std::vector<double> rt; const auto& t0 = out[0].res.trace;
+      for (int r = 0; r + 1 < R; ++r) rt.push_back((double)((long long)t0[2 * (r + 1)].start_ns - (long long)t0[2 * r + 1].end_ns) / 1e3);
+      std::sort(rt.begin(), rt.end());
+      fprintf(stderr, "  cross-GPU round trip on rank 0's clock (its put_signal end -> its next task start: two version hops + rank 1's tile copy): median %.1f us (p90 %.1f)\n",
+              rt[rt.size() / 2], rt[rt.size() * 9 / 10]);
+    }
     if (w.dev[0] == w.dev[1] && !proxy) {   // one GPU = one %globaltimer: the executors' own timestamps give the hop latency
       std::vector<double> h01, h10;
       const auto &t0 = out[0].res.trace, &t1 = out[1].res.trace;
@@ -607,13 +647,15 @@ static void suite_bw() {
 
 // ==================================================================================================== plan runner
 static int suite_plan(int argc, char** argv) {
-  std::string dir; bool tcp = false; FaultSpec f; int only = -1, blocks = 4; std::vector<std::string> hosts; std::vector<int> ports; double tol = -1;
+  std::string dir; bool tcp = false; FaultSpec f; int only = -1, blocks = 4; std::vector<std::string> hosts; std::vector<int> ports; double tol = -1; double timeout_s = -1; std::string dump_dir;
   for (int i = 2; i < argc; ++i) {
     std::string a = argv[i];
     if (a == "--net" && i + 1 < argc) tcp = std::string(argv[++i]) == "tcp";
     else if (a == "--rank" && i + 1 < argc) only = atoi(argv[++i]);
     else if (a == "--blocks" && i + 1 < argc) blocks = atoi(argv[++i]);
     else if (a == "--tol" && i + 1 < argc) tol = atof(argv[++i]);
+    else if (a == "--timeout" && i + 1 < argc) timeout_s = atof(argv[++i]);
+    else if (a == "--dump" && i + 1 < argc) dump_dir = argv[++i];
     else if (a == "--fault" && i + 1 < argc) { std::stringstream ss(argv[++i]); std::string t; while (std::getline(ss, t, ',')) { if (!t.rfind("drop=", 0)) f.drop = atof(t.c_str() + 5); else if (!t.rfind("dup=", 0)) f.dup = atof(t.c_str() + 4); else if (!t.rfind("delay=", 0)) f.delay = atof(t.c_str() + 6); } }
     else if (a == "--peers" && i + 1 < argc) { std::stringstream ss(argv[++i]); std::string t; while (std::getline(ss, t, ',')) { auto c = t.rfind(':'); hosts.push_back(t.substr(0, c)); ports.push_back(atoi(t.c_str() + c + 1)); } }
     else if (dir.empty()) dir = a;
@@ -624,10 +666,20 @@ static int suite_plan(int argc, char** argv) {
   if (!W) { fprintf(stderr, "no rank* directories in %s\n", dir.c_str()); return 2; }
   for (int r = 0; r < W; ++r) w.pr.push_back(load_rank(dir + "/rank" + std::to_string(r)));
   for (int r = 0; r < W; ++r) w.dev.push_back(device_of(r));
-  w.only = only; w.cfg = small_cfg(blocks); w.cfg.timeout_us = (only >= 0 ? 180ull : 20ull) * 1000000;   // processes/hosts start with skew w.cfg.max_tasks = 1 << 16; w.cfg.live_cap = 1 << 13;
+  w.only = only; w.cfg = small_cfg(blocks); w.cfg.timeout_us = (only >= 0 ? 180ull : 20ull) * 1000000;
+  w.cfg.max_tasks = 1 << 16; w.cfg.live_cap = 1 << 12; w.cfg.ring_words = 1 << 20;   // big plans: thousands of tasks per rank (the comment on the line above used to swallow these)   // processes/hosts start with skew w.cfg.max_tasks = 1 << 16; w.cfg.live_cap = 1 << 13;
+  if (timeout_s > 0) w.cfg.timeout_us = (unsigned long long)(timeout_s * 1e6);
+  if (const char* e = getenv("KVM_DIST_MAX_TASKS")) w.cfg.max_tasks = atoi(e);     // model-sized plans (dp of a GPT): more tasks than the defaults
+  if (const char* e = getenv("KVM_DIST_LIVE_CAP")) w.cfg.live_cap = atoi(e);
+  if (const char* e = getenv("KVM_DIST_RING_WORDS")) w.cfg.ring_words = atoi(e);
+  if (const char* e = getenv("KVM_DIST_SUCC_CAP")) w.cfg.succ_cap = (unsigned)atoll(e);   // successor-edge pool (power of two)
   fprintf(stderr, "== plan %s: %d ranks on %d GPU(s), net %s%s\n", dir.c_str(), W, g_ngpu, only >= 0 ? "tcp (multi-process)" : tcp ? "tcp" : "loopback", (f.drop > 0 || f.dup > 0 || f.delay > 0) ? " + faults" : "");
   if (only >= 0 && hosts.size() != (size_t)W) { fprintf(stderr, "--rank needs --peers with %d entries\n", W); return 2; }
   w.build(tcp || only >= 0, f, hosts, ports);
+  { size_t tot = 0; for (int r = 0; r < W; ++r) { if (!w.active(r)) continue; tot += w.local_bytes[r];
+      fprintf(stderr, "  MEM rank %d: %zu local buffers, %zu bytes\n", r, w.local_count[r], w.local_bytes[r]); }
+    fprintf(stderr, "  MEM total local buffer bytes %zu\n", tot);
+    size_t fr = 0, tt = 0; cudaMemGetInfo(&fr, &tt); fprintf(stderr, "  MEM device used after allocation (cudaMemGetInfo, whole device incl. other users) %zu bytes\n", tt - fr); }
   auto out = w.run();
   report("plan", out, w);
   long cmp = 0, bad = 0, exact = 0; double worst = 0;
@@ -642,6 +694,20 @@ static int suite_plan(int argc, char** argv) {
         if (tol < 0 || rel > tol) { if (bad++ < 5) fprintf(stderr, "  MISMATCH rank %d buf %d [%zu] = %.9g want %.9g\n", r, kv.first, i, got[i], kv.second[i]); }
       }
     }
+  }
+  if (!dump_dir.empty()) {
+    FILE* man = fopen((dump_dir + "/manifest.txt").c_str(), "w");
+    for (int r = 0; r < W; ++r) {
+      if (!w.active(r) || !out[r].ok) continue;
+      for (auto& d : w.pr[r].dumps) {
+        const PlanBuf& b = w.pr[r].bufs[d.idx]; size_t n = (size_t)b.rows * b.cols;
+        std::vector<float> got = download(w.local[r][d.idx], n);
+        std::string fn = "rank" + std::to_string(r) + "_" + d.name + ".bin";
+        FILE* f = fopen((dump_dir + "/" + fn).c_str(), "wb"); fwrite(got.data(), 4, n, f); fclose(f);
+        fprintf(man, "%d %s %d %d %d %d %d %d %s\n", r, d.name.c_str(), b.rows, b.cols, d.r0, d.c0, d.gr, d.gc, fn.c_str());
+      }
+    }
+    fclose(man);
   }
   CHECK(bad == 0, "%ld of %ld expected values differ", bad, cmp);
   fprintf(stderr, "  %ld values compared, %ld bitwise equal, worst relative difference %.3g\n", cmp, exact, worst);
@@ -662,7 +728,7 @@ int main(int argc, char** argv) {
   cudaDeviceProp p; cudaGetDeviceProperties(&p, 0);
   fprintf(stderr, "test_dist: %d GPU(s); device 0 = %s, %d SMs, sm_%d%d\n", g_ngpu, p.name, p.multiProcessorCount, p.major, p.minor);
   try {
-    if (!suites.empty() && suites[0] == "plan") { suite_plan(argc, argv); }
+    if (!suites.empty() && suites[0] == "plan") { if (int rc = suite_plan(argc, argv)) { fprintf(stderr, "FAIL: plan setup error (exit %d)\n", rc); return rc; } }
     else {
       bool all = suites.empty();
       auto want = [&](const char* s) { return all || std::find(suites.begin(), suites.end(), s) != suites.end(); };

@@ -22,7 +22,7 @@ _installed = False
 def merged_ops():
     """Every operator the compiler knows (the registries of include/, comm ops included: runtime/abi.py loads them all)."""
     ops = abi.load_ops()
-    missing = {n for n, o in ops.items() if 64 <= o.id <= 95} - set(_ref())
+    missing = {n for n, o in ops.items() if 64 <= o.id <= 95} - set(_ref_all())
     if missing:
         raise abi.AbiError(f'comm ops without reference semantics: {sorted(missing)}')
     return ops
@@ -136,11 +136,20 @@ def _ref():
     }
 
 
+def _ref_all():
+    """The f32 ops plus their i32 twins (put_i32, put_signal_i32, send_proxy_i32): same semantics on i32 buffers, words moved bit-exactly."""
+    r = _ref()
+    for f32, i32, ints in (('put', 'put_i32', ('src', 'dst')), ('put_signal', 'put_signal_i32', ('src', 'dst')), ('send_proxy', 'send_proxy_i32', ('src',))):
+        o = r[f32]
+        r[i32] = _RO(o.run, o.extents, o.mins, ints=frozenset(ints))
+    return r
+
+
 def install():
     """Idempotent: replaces the opaque placeholders in ref_ops.OPS by the real comm-op semantics (extents, tile copies, signals)."""
     global _installed
     if _installed:
         return
     merged_ops()
-    ref_ops.OPS.update(_ref())
+    ref_ops.OPS.update(_ref_all())
     _installed = True

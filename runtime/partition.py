@@ -30,6 +30,8 @@ from __future__ import annotations
 
 import argparse
 import copy
+import shutil
+import struct
 import json
 import logging
 import sys
@@ -112,10 +114,13 @@ def op_cost_us(op, a, cl: Cluster):
     f32 = 4
     if op == 'matmul':
         flops, byt = 2.0 * a['m'] * a['n'] * a['k'], f32 * (a['m'] * a['k'] + a['k'] * a['n'] + a['m'] * a['n'])
-    elif op in ('put', 'put_signal', 'send_proxy', 'signal'):
+    elif op in ('put', 'put_signal', 'send_proxy', 'signal', 'put_i32', 'put_signal_i32', 'send_proxy_i32'):
         return cl.task_overhead_us
     elif op == 'noop':
         return cl.task_overhead_us
+    elif op == 'adamw':                                   # 4 streams read, 3 written, ~20 flops per element
+        n = a['e1'] - a['e0']
+        return cl.task_overhead_us + max(20.0 * n / (cl.tflops * 1e6), 7 * f32 * n / (cl.hbm_gbs * 1e3))
     else:
         n = a.get('n', a.get('rows', 1) * a.get('cols', 1))
         flops, byt = 4.0 * n, 3 * f32 * n
@@ -125,6 +130,26 @@ def op_cost_us(op, a, cl: Cluster):
 # ------------------------------------------------------------------------------------------------ workload IR
 OUT_ONLY = {'copy': ['dst'], 'add': ['out'], 'scale': ['out'], 'relu': ['out'], 'predict': ['out'],
             'mse_grad': ['loss', 'grad'], 'matmul': ['out'], 'fill': ['x']}
+# Buffer arguments each registered op WRITES (all others are read). Measured, not hand-written: every task of the model-zoo,
+# gpt_tiny and bf16/bf16s workloads ran in the CPU VM with buffers that record stores (tests/dist/test_op_writes.py re-derives
+# it and fails on any difference). The place and dp planners need it for coherence: a write invalidates the other copies.
+OP_WRITES = {
+    'act_bwd': ('dx',), 'act_fwd': ('out',), 'adamw': ('m', 'p', 'v'), 'adamw_lr': ('m', 'p', 'v'), 'add_rowtile': ('out',),
+    'attn_bwd_delta': ('delta',), 'attn_bwd_dkv': ('dk', 'dv'), 'attn_bwd_dq': ('dq',), 'attn_full_bwd_dkv': ('dk', 'dv'),
+    'attn_full_bwd_dq': ('dq',), 'attn_full_fwd': ('lse', 'o'), 'attn_fwd': ('lse', 'o'), 'colsum': ('out',), 'counter_inc': ('x',),
+    'embedding_bwd': ('dtab',), 'embedding_fwd': ('out',), 'gather_rows_scaled': ('dst',), 'gelu_bwd': ('dx',),
+    'gradnorm_finish': ('out',), 'gradnorm_partial': ('partial',), 'layernorm_bwd_dx': ('dx',),
+    'layernorm_fwd': ('mean', 'out', 'rstd'), 'lr_schedule': ('lr',), 'matmul_mma_bf16': ('out', 'pre'),
+    'matmul_tile': ('out', 'pre'), 'matmul_tile_bf16': ('out',), 'matmul_tile_dgelu': ('out',),
+    'matmul_tile_silu_mul': ('out', 'up'), 'matmul_tile_silu_mul_bwd': ('dgate', 'dup'), 'moe_balance_bwd': ('dprobs',),
+    'moe_balance_fwd': ('loss',), 'moe_gates_bwd': ('dprobs',), 'moe_gates_fwd': ('gs',), 'moe_route': ('eidx', 'sel', 'slot'),
+    'noop': (), 'norm_bwd_params': ('dbeta', 'dgamma'), 'pack_bf16': ('dst',), 'put': ('dst',), 'put_i32': ('dst',), 'put_signal': ('dst', 'flag'), 'put_signal_i32': ('dst', 'flag'),
+    'reduce2': ('out',), 'reduce_put_signal': ('dst', 'flag'), 'residual_add': ('out',), 'rmsnorm_bwd_dx': ('dx',),
+    'rmsnorm_fwd': ('out', 'rstd'), 'rope_bwd': ('out',), 'rope_fwd': ('out',), 'round_bf16': ('out',), 'row_dot': ('out',),
+    'scale_flat': ('out', 'x'), 'scatter_add_rows': ('dst',), 'select_window': ('dst',), 'send_proxy': ('q',), 'send_proxy_i32': ('q',), 'signal': ('flag',),
+    'silu_mul_bwd': ('dgate', 'dup'), 'silu_mul_fwd': ('out',), 'softmax_ce_bwd': ('dlogits',), 'softmax_ce_fwd': ('lse', 'rowloss'),
+    'softmax_ce_reduce': ('loss',), 'softmax_rows_bwd': ('dx',), 'softmax_rows_fwd': ('out',), 'unpack_bf16': ('dst',),
+}
 ELEMENTWISE = {'copy': ('n', ['src'], ['dst'], True), 'add': ('n', ['a', 'b'], ['out'], True),
                'scale': ('n', ['x'], ['out'], True), 'relu': ('n', ['x'], ['out'], False),
                'sgd': ('n', ['w', 'g'], ['w'], False), 'predict': ('n', ['x'], ['out'], False),
@@ -138,10 +163,12 @@ class Prog:
     tasks: list              # program order; dicts with id, op, args, after(list of ids), priority, publishes, reads, deadline_us
 
 
-def parse_program(spec) -> Prog:
+def parse_program(spec, symbolic=False) -> Prog:
     """Flatten graphs into one program-ordered task list (ids 'graph.task'). Order respects `after` and version edges."""
     compiled = cw.compile_spec(copy.deepcopy(spec))        # full validation, and gives us the canonical buffer values
-    bufs = {b.name: dict(rows=b.rows, cols=b.cols, values=b.materialize()) for b in compiled.buffers}
+    # symbolic: nothing is materialised (init metadata only), for shapes whose values do not fit in Python lists
+    bufs = {b.name: dict(rows=b.rows, cols=b.cols, dtype=b.dtype, init=b.init, values=None if symbolic else b.materialize())
+            for b in compiled.buffers}
     tasks, idx = [], {}
     for g in spec['graphs']:
         for t in g['tasks']:
@@ -229,18 +256,18 @@ class ShardBuilder:
         self.ntmp = 0
         self.mirror: dict = {}
 
-    def buf(self, name, rows, cols, values=None):
+    def buf(self, name, rows, cols, values=None, dtype='f32', gen=None, place=None):
         if name in self.buffers:
             b = self.buffers[name]
             _need((b['rows'], b['cols']) == (rows, cols), f'shard {self.rank}: buffer {name!r} redeclared with another shape')
             return name
-        self.buffers[name] = dict(name=name, rows=rows, cols=cols, values=values)
+        self.buffers[name] = dict(name=name, rows=rows, cols=cols, values=values, dtype=dtype, gen=gen, place=place)
         self.trk[name] = Tracker()
         return name
 
-    def tmp(self, base, rows, cols):
+    def tmp(self, base, rows, cols, dtype='f32'):
         self.ntmp += 1
-        return self.buf(f'{base}~{self.ntmp}', rows, cols)
+        return self.buf(f'{base}~{self.ntmp}', rows, cols, dtype=dtype)
 
     def index(self, name):
         return list(self.buffers).index(name)
@@ -259,7 +286,7 @@ class ShardBuilder:
     def remote_peer(self, other, phys):
         b = other.buffers[phys]
         name = f'@{other.rank}/{phys}'
-        self.buf(name, b['rows'], b['cols'])
+        self.buf(name, b['rows'], b['cols'], dtype=b.get('dtype', 'f32'))
         self.remotes[name] = dict(kind='peer', rank=other.rank, buf=phys)
         return name
 
@@ -302,10 +329,22 @@ class ShardBuilder:
         for name, rem in self.remotes.items():
             if rem['kind'] == 'inbox':
                 self.buffers[name]['cols'] = max(1, nvars_of(rem['rank']))
+        def bdict(b):
+            if (b['gen'] or {}).get('kind') == 'init':            # replicated buffer (dp mode, symbolic): the original init travels as is
+                keep = {'fill': ('kind', 'value'), 'values': ('kind', 'values'), 'seeded': ('kind', 'seed', 'scale', 'dist'), 'file': ('kind', 'path')}
+                ini = b['gen']['init']
+                d = dict(name=b['name'], rows=b['rows'], cols=b['cols'], init={k: ini[k] for k in keep[ini['kind']] if k in ini})
+                if b.get('dtype', 'f32') != 'f32':
+                    d['dtype'] = b['dtype']
+                return d
+            d = dict(name=b['name'], rows=b['rows'], cols=b['cols'],
+                     init={'kind': 'values', 'values': b['values']} if b['values'] is not None else
+                     {'kind': 'fill', 'value': (b['gen'] or {}).get('value', 0) if (b['gen'] or {}).get('kind') == 'fill' else 0})
+            if b.get('dtype', 'f32') != 'f32':
+                d['dtype'] = b['dtype']
+            return d
         return {'variables': self.variables,
-                'buffers': [dict(name=b['name'], rows=b['rows'], cols=b['cols'],
-                                 init={'kind': 'values', 'values': b['values']} if b['values'] is not None else
-                                 {'kind': 'fill', 'value': 0}) for b in self.buffers.values()],
+                'buffers': [bdict(b) for b in self.buffers.values()],
                 'graphs': [{'name': 'shard', 'tasks': self.tasks or [dict(id='idle', op='noop')]}]}   # a device may own no work
 
 
@@ -316,6 +355,7 @@ class Shard:
     remotes: dict            # buffer name -> {'kind': 'peer'|'inbox'|'sendq', ...}: table entries that point off-device
     in_vars: list            # variables fed by remote publishers (the pump polls their inbox slots)
     buffer_names: list       # declaration order == KvmBuf table index
+    meta: dict = field(default_factory=dict)    # buffer name -> {dtype, gen (symbolic init descriptor), place (r0, c0, GR, GC)}
 
     def buf_index(self, name):
         return self.buffer_names.index(name)
@@ -346,17 +386,19 @@ class Planner:
         _need(link.kind == 'p2p' or per_row <= self.cl.max_msg_bytes,
               f'a single row of {per_row} B exceeds the proxy slot ({self.cl.max_msg_bytes} B); raise max_msg_bytes')
         toks = []
+        i32 = S.buffers[src].get('dtype', 'f32') == 'i32'          # i32 tiles (step counters, token ids) take the *_i32 twins
+        _need(not i32 or D.buffers[dst].get('dtype', 'f32') == 'i32', f'xfer {src!r} -> {dst!r}: i32 source into a non-i32 buffer')
         for r in range(0, rows, step):
             nr = min(step, rows - r)
             v = D.inbox_var()
             acc = [(src, src_rows[0] + r, src_rows[0] + r + nr, 'r')]
             so, do = src_off + r * src_ld, dst_off + r * dst_ld
             if link.kind == 'p2p':
-                S.add('put_signal', dict(src=src, dst=S.remote_peer(D, dst), src_off=so, dst_off=do, rows=nr, cols=cols,
+                S.add('put_signal_i32' if i32 else 'put_signal', dict(src=src, dst=S.remote_peer(D, dst), src_off=so, dst_off=do, rows=nr, cols=cols,
                                          src_ld=src_ld, dst_ld=dst_ld, flag=S.remote_inbox(D), var=D.var(v), ver=1),
                       acc, label=f'put>{d}', priority=self.prio_comm)
             else:
-                S.add('send_proxy', dict(src=src, q=S.sendq(), src_off=so, rows=nr, cols=cols, src_ld=src_ld, dst_rank=d,
+                S.add('send_proxy_i32' if i32 else 'send_proxy', dict(src=src, q=S.sendq(), src_off=so, rows=nr, cols=cols, src_ld=src_ld, dst_rank=d,
                                          dst_buf=D.index(dst), dst_off=do, dst_ld=dst_ld, var=D.var(v), ver=1),
                       acc, label=f'send>{d}', priority=self.prio_comm)
             D.trk[dst].commit_remote(dst_rows[0] + r, dst_rows[0] + r + nr, ('w', v))
@@ -366,7 +408,8 @@ class Planner:
         return toks
 
     def local_put(self, dev, src, src_off, dst, dst_off, rows, cols, src_ld, dst_ld, src_rows, dst_rows, label='slice'):
-        return self.sh[dev].add('put', dict(src=src, dst=dst, src_off=src_off, dst_off=dst_off, rows=rows, cols=cols,
+        op = 'put_i32' if self.sh[dev].buffers[src].get('dtype', 'f32') == 'i32' else 'put'
+        return self.sh[dev].add(op, dict(src=src, dst=dst, src_off=src_off, dst_off=dst_off, rows=rows, cols=cols,
                                             src_ld=src_ld, dst_ld=dst_ld),
                                 [(src, *src_rows, 'r'), (dst, *dst_rows, 'w')], label=label)
 
@@ -666,15 +709,29 @@ class ShardPlanner(Planner):
         if self.scalar(name) and lay in (ROWS, COLS):
             lay = R
         self.layout[name] = lay
-        shape, full = self.shape(name), self.prog.buffers[name]['values']
+        shape, B = self.shape(name), self.prog.buffers[name]
         r, c = self.phys_shape(shape, lay)
+        if self.st.get('symbolic'):
+            gen = self.st.get('gen', {}).get(name)
+            for d in range(self.P):
+                r0, nr, c0, nc = (0, shape[0], 0, shape[1]) if lay in (R, PART) else self.blk(shape, lay, d)
+                if lay == PART:
+                    desc = dict(kind='fill', value=0)
+                elif gen:
+                    desc = dict(kind='gen', **gen)
+                else:
+                    _need(B['init']['kind'] == 'fill', f'symbolic mode: {name!r} needs a fill init or a strategy.gen entry')
+                    desc = dict(kind='fill', value=B['init']['value'])
+                self.sh[d].buf(name, r, c, None, dtype=B['dtype'], gen=desc, place=(r0, c0, shape[0], shape[1]))
+            return
+        full = B['values']
         for d in range(self.P):
             if lay in (R, PART):
                 vals = list(full) if lay == R else [0.0] * len(full)
             else:
                 r0, nr, c0, nc = self.blk(shape, lay, d)
                 vals = [full[(r0 + i) * shape[1] + c0 + j] for i in range(nr) for j in range(nc)]
-            self.sh[d].buf(name, r, c, vals)
+            self.sh[d].buf(name, r, c, vals, dtype=B['dtype'], place=(0, 0, shape[0], shape[1]) if lay in (R, PART) else None)
 
     def ensure(self, name):
         self.decide(name, self.init_layout.get(name, R))
@@ -702,7 +759,9 @@ class ShardPlanner(Planner):
             except PartitionError as e:
                 raise PartitionError(f"{t['id']}: {e}") from None
         shards = [Shard(d, self.sh[d].spec(lambda r: len(self.sh[r].variables)), self.sh[d].remotes, self.sh[d].in_vars,
-                        list(self.sh[d].buffers)) for d in range(self.P)]
+                        list(self.sh[d].buffers),
+                        {n: dict(dtype=b['dtype'], gen=b['gen'], place=b['place']) for n, b in self.sh[d].buffers.items()})
+                  for d in range(self.P)]
         return Plan(shards, dict(self.layout), self.comm_bytes, self.comm_msgs, self.prog, self.cl, self.st)
 
     def emit_all(self, t, op, args_for, acc_for, label=None, carry=True):
@@ -733,8 +792,38 @@ class ShardPlanner(Planner):
             self.plan_mse(t)
         elif op == 'matmul':
             self.plan_matmul(t)
+        elif op == 'adamw':
+            self.plan_adamw(t)
         else:
             raise PartitionError(f'op {op!r} has no sharding rule')
+
+    def plan_adamw(self, t):
+        """Sharded optimizer step (ZeRO): AdamW is elementwise, so it runs on whatever shard of p/m/v a device owns. p, m, v take
+        the layout declared for p (ROWS = ZeRO-style); the gradient is brought into that layout, which for a PART gradient is a
+        reduce-scatter (no all-reduce, no replicated optimizer state). Covers the whole buffer (e0 = 0, e1 = size)."""
+        a = t['args']
+        p, g, m, v = a['p'], a['g'], a['m'], a['v']
+        full = self.shape(p)[0] * self.shape(p)[1]
+        _need(a['e0'] == 0 and a['e1'] == full, f'adamw must cover its whole buffer (e0=0, e1={full}), got [{a["e0"]},{a["e1"]})')
+        for nm in (g, m, v):
+            _need(self.shape(nm) == self.shape(p), f'adamw: {nm!r} and {p!r} differ in shape')
+        T = self.ensure(p)
+        for nm in (m, v):
+            _need(self.ensure(nm) == T, f'adamw: {nm!r} must have the layout of {p!r} ({T})')
+        gv = self.view(g, T)
+        st = self.view(a['step'], R)
+        extra = [x for x in (a.get('gscale'),) if x]
+        ev = [self.view(x, R) for x in extra]
+        n_loc = full // self.P if T in (ROWS, COLS) else full
+
+        def args_for(d):
+            args = dict(a, g=gv, step=st, e0=0, e1=n_loc)
+            if ev:
+                args['gscale'] = ev[0]
+            return args
+        self.emit_all(t, 'adamw', args_for, lambda d: self.acc(d, reads=[gv, st] + ev, writes=[p, m, v]))
+        for o in (p, m, v):
+            self.epoch[o] += 1
 
     def common_layout(self, ins, outs, linear):
         for o in outs:                                   # a decided output (parameter, in-place operand) fixes the layout
@@ -812,7 +901,7 @@ class ShardPlanner(Planner):
         la0, lb0 = self.ensure(A), self.ensure(B)
         want = self.layout.get(O) or self.init_layout.get(O)
         best = None
-        for (la, lb), lo in self.MM_RULES:
+        for (la, lb), lo in (self.MM_RULES if self.P > 1 else [((R, R), R)]):     # one device: no layout games, no slice copies
             if (lo == ROWS and m % self.P) or (lo == COLS and n % self.P) or (lo == PART and k % self.P):
                 continue
             cost = self.reshard_cost((m, k), la0, la) + self.reshard_cost((k, n), lb0, lb)
@@ -1016,7 +1105,10 @@ class PlacePlanner(Planner):
         return [(k, v) for k, v in t['args'].items() if isinstance(v, str) and v in self.prog.buffers]
 
     def writes(self, t):
-        return set(OUT_ONLY.get(t['op'], [])) | ({'w'} if t['op'] == 'sgd' else set())
+        if t['op'] in OUT_ONLY or t['op'] in ELEMENTWISE:
+            return set(OUT_ONLY.get(t['op'], [])) | ({'w'} if t['op'] == 'sgd' else set())
+        _need(t['op'] in OP_WRITES, f"op {t['op']!r} has no entry in OP_WRITES (its written arguments are unknown; see tests/dist/test_op_writes.py)")
+        return set(OP_WRITES[t['op']])
 
     def heft(self, cost):
         """Heterogeneous-earliest-finish-time list scheduling in program order, with transfer cost on cross-device RAW."""
@@ -1049,21 +1141,27 @@ class PlacePlanner(Planner):
         if not vmap:
             home = self.st.get('home', {}).get(name, dev)
             _need(0 <= home < self.P, f'home of {name!r} out of range')
-            self.sh[home].buf(name, r, c, list(b['values']))
+            dt = b.get('dtype', 'f32')
+            if b['values'] is None:                       # symbolic init (large models): the descriptor travels, not the values
+                _need(b['init']['kind'] == 'fill', f'symbolic place mode: {name!r} needs a fill init')
+                self.sh[home].buf(name, r, c, None, dtype=dt, gen=dict(kind='fill', value=b['init']['value']), place=(0, 0, r, c))
+            else:
+                self.sh[home].buf(name, r, c, list(b['values']), dtype=dt)
             vmap[home] = name
         if dev in vmap:
             return vmap[dev]
+        dt = b.get('dtype', 'f32')
         if not need_data:
-            return self.sh[dev].tmp(name + '.o', r, c)
+            return self.sh[dev].tmp(name + '.o', r, c, dtype=dt)
         src = min(vmap, key=lambda s: self.cl.xfer_us(s, dev, r * c * 4))
-        phys = self.sh[dev].tmp(name + '.c', r, c)
-        self.xfer_buf(src, vmap[src], dev, phys, r, c)
+        phys = self.sh[dev].tmp(name + '.c', r, c, dtype=dt)
+        self.xfer_buf(src, vmap[src], dev, phys, r, c, dt)
         vmap[dev] = phys
         return phys
 
-    def xfer_buf(self, s, sphys, d, dphys, r, c):
+    def xfer_buf(self, s, sphys, d, dphys, r, c, dtype='f32'):
         n = r * c
-        if self.wire == 'bf16' and n % 2 == 0:
+        if self.wire == 'bf16' and n % 2 == 0 and dtype == 'f32':      # integers travel bit-exact
             packed = self.sh[s].tmp('pk', 1, n // 2)
             self.sh[s].add('pack_bf16', dict(src=sphys, dst=packed, src_off=0, dst_off=0, n=n),
                            [(sphys, 0, r, 'r'), (packed, 0, 1, 'w')], label='pack', priority=self.prio_comm)
@@ -1075,6 +1173,26 @@ class PlacePlanner(Planner):
             self.xfer(s, sphys, 0, d, dphys, 0, r, c, c, c, (0, r), (0, r))
 
     # -- cross-device version variables ------------------------------------------------------------------------------------
+    def ctl_edge(self, s, src_tid, d):
+        """Inbox variable on device d that reaches version 1 after task src_tid on device s has finished (a control-only edge)."""
+        key = (s, src_tid, d)
+        if key in self.ctl:
+            return self.ctl[key]
+        S, D = self.sh[s], self.sh[d]
+        v = D.inbox_var()
+        if self.cl.link(s, d).kind == 'p2p':
+            S.add('signal', dict(flag=S.remote_inbox(D), var=D.var(v), ver=1), [], label=f'ctl>{d}', priority=self.prio_comm,
+                  extra_after=[src_tid])
+        else:                                          # across nodes: a one-word message through the proxy carries the signal
+            src, dst = S.buf('@ctl.src', 1, 1, [0.0]), D.buf('@ctl.dst', 1, 1, [0.0])
+            S.add('send_proxy', dict(src=src, q=S.sendq(), src_off=0, rows=1, cols=1, src_ld=1, dst_rank=d, dst_buf=D.index(dst),
+                                     dst_off=0, dst_ld=1, var=D.var(v), ver=1), [], label=f'ctl>{d}', priority=self.prio_comm,
+                  extra_after=[src_tid])
+            self.comm_bytes += 4
+        self.comm_msgs += 1
+        self.ctl[key] = v
+        return v
+
     def mirror_var(self, var, dev):
         D = self.sh[dev]
         if ('mirror', var) not in D.mirror:
@@ -1083,7 +1201,13 @@ class PlacePlanner(Planner):
 
     def plan(self):
         self.place()
+        self.tid_of, self.last_pub, self.ctl = {}, {}, {}
         tasks = self.prog.tasks
+        if self.st.get('auto') and not self.st.get('assign'):
+            owner = {}                                 # automatic placements: one variable's publishers follow its first publisher
+            for t in tasks:                            # (an explicit assignment that splits them is still refused below)
+                if t.get('publishes'):
+                    self.assign[t['id']] = owner.setdefault(t['publishes'], self.assign[t['id']])
         pubs, rev, cnt = {}, {}, {}
         for t in tasks:
             if t.get('publishes'):
@@ -1107,7 +1231,9 @@ class PlacePlanner(Planner):
                 raise PartitionError(f"{t['id']}: {e}") from None
         where = {n: next(iter(vm.items())) for n, vm in self.valid.items()}
         shards = [Shard(d, self.sh[d].spec(lambda r: len(self.sh[r].variables)), self.sh[d].remotes, self.sh[d].in_vars,
-                        list(self.sh[d].buffers)) for d in range(self.P)]
+                        list(self.sh[d].buffers),
+                        {n: dict(dtype=b['dtype'], gen=b['gen'], place=b['place']) for n, b in self.sh[d].buffers.items()})
+                  for d in range(self.P)]
         return Plan(shards, where, self.comm_bytes, self.comm_msgs, self.prog, self.cl, self.st)
 
     def place_task(self, t, pubs, rev, readers):
@@ -1123,7 +1249,19 @@ class PlacePlanner(Planner):
             acc.append((phys, 0, b['rows'], 'w' if is_out else 'r'))
             if is_out:
                 wrote.append((v, phys))
-        reads = []
+        # The author's `after` edges are kept, not only the buffer hazards: control-only tasks (barriers that publish a version once
+        # every update is done) carry their ordering in `after` alone. Same device: a plain edge. Other device: a one-shot signal.
+        extra, reads = [], []
+        for x in t.get('after', []):
+            if x not in self.tid_of:
+                continue
+            xd, xt = self.tid_of[x]
+            if xd == d:
+                extra.append(xt)
+            else:
+                reads.append(dict(var=self.ctl_edge(xd, xt, d), policy='at_least', version=1))
+        if t.get('publishes') and t['publishes'] in self.last_pub.get(d, {}):
+            extra.append(self.last_pub[d][t['publishes']])          # publishers of one variable stay ordered on their device
         for r in t.get('reads', []):
             r = dict(r)
             pt = pubs.get((r['var'], r['version'])) if r['version'] > 0 else None
@@ -1134,7 +1272,10 @@ class PlacePlanner(Planner):
         if t.get('publishes'):
             S.var(t['publishes'])
         tid = S.add(t['op'], a, acc, label=t['id'], priority=t.get('priority', 0), reads=reads,
-                    publishes=t.get('publishes'), deadline_us=t.get('deadline_us', -1))
+                    publishes=t.get('publishes'), deadline_us=t.get('deadline_us', -1), extra_after=extra)
+        self.tid_of[t['id']] = (d, tid)
+        if t.get('publishes'):
+            self.last_pub.setdefault(d, {})[t['publishes']] = tid
         for v, phys in wrote:
             self.valid[v] = {d: phys}
         if t.get('publishes'):
@@ -1155,6 +1296,94 @@ class PlacePlanner(Planner):
         if t['op'] == 'mse_grad':
             return full == 1
         return a.get('n', 0) >= full
+
+
+class DPPlanner(Planner):
+    """Data parallelism for any training workload (strategy {"mode": "dp"}): every rank runs the whole program on a replica of
+    every buffer; rank r reads window r of every group of P consecutive windows of the data streams (`select_window` tasks:
+    off += r * stride, stride *= P), and every gradient (the `g` of each optimizer task) is scaled by 1/P and all-reduced right
+    before its first reader after the backward pass (gradient clipping and the optimizer then run redundantly on identical bits,
+    so the replicas stay bitwise identical). Equivalent to the same workload with gradient accumulation over P microbatches
+    (frontend `accum=P`): the input workload must carry that run's data streams (P x the windows), see tests/dist/gpt_dp.py.
+
+    Intra-rank ordering is the author's `after` edges (the frontend's dataflow), not re-derived, so tiled writers of one gradient
+    stay parallel; the inserted tasks get explicit edges: a join after every writer of g, the reduction after the join, the
+    readers after the reduced buffer's landings, and the next writers of g after the reduction's reads (WAR via the tracker)."""
+
+    OPTIM = {'adamw': 'g', 'adamw_lr': 'g', 'sgd': 'g'}
+
+    def __init__(self, prog, cluster, strategy):
+        super().__init__(prog, cluster, strategy)
+        self.grads = {t['args'][a] for t in prog.tasks for op, a in self.OPTIM.items() if t['op'] == op and a in t['args']}
+        _need(self.grads, 'dp mode: no optimizer task (adamw/adamw_lr/sgd) names a gradient')
+        self.streams = set(strategy.get('streams') or {t['args']['src'] for t in prog.tasks if t['op'] == 'select_window'})
+        _need(not (self.P & (self.P - 1)), 'dp mode: the rank count must be a power of two (the 1/P gradient scale is then exact)')
+
+    def writes(self, t):
+        return PlacePlanner.writes(self, t)
+
+    def plan(self):
+        P, prog = self.P, self.prog
+        for d in range(P):
+            for name, b in prog.buffers.items():
+                pl = (0, 0, b['rows'], b['cols'])
+                if b['values'] is None:
+                    self.sh[d].buf(name, b['rows'], b['cols'], None, dtype=b['dtype'], gen=dict(kind='init', init=b['init']), place=pl)
+                else:
+                    self.sh[d].buf(name, b['rows'], b['cols'], list(b['values']), dtype=b['dtype'], place=pl)
+        tid = [{} for _ in range(P)]                   # original id -> shard task id, per rank
+        writers = {g: [[] for _ in range(P)] for g in self.grads}
+        reduced = {}                                   # g -> reduced buffer name, valid until g is written again
+        self.reductions = 0
+        for t in prog.tasks:
+            outs = {v for k, v in t['args'].items() if k in self.writes(t) and isinstance(v, str)}
+            ins = {v for k, v in t['args'].items() if k not in self.writes(t) and isinstance(v, str) and v in prog.buffers}
+            for g in sorted(ins & self.grads - outs):
+                if g not in reduced:
+                    reduced[g] = self.reduce_grad(g, writers[g])
+            for g in outs & self.grads:
+                reduced.pop(g, None)
+            for d in range(P):
+                S = self.sh[d]
+                a = dict(t['args'])
+                if t['op'] == 'select_window' and a.get('src') in self.streams:
+                    a['off'], a['stride'] = a.get('off', 0) + d * a['stride'], a['stride'] * P
+                acc, extra = [], [tid[d][x] for x in t.get('after', []) if x in tid[d]]
+                for k, v in t['args'].items():
+                    if isinstance(v, str) and v in reduced and k not in self.writes(t):
+                        a[k] = reduced[v]
+                        acc.append((reduced[v], 0, prog.buffers[v]['rows'], 'r'))
+                for g in outs & self.grads:                # WAR: the previous reduction must have read g
+                    extra += [x[1] for x in S.trk[g].query(0, prog.buffers[g]['rows'], True) if x[0] == 't']
+                reads = [dict(r) for r in t.get('reads', [])]
+                for r in reads:
+                    S.var(r['var'])
+                if t.get('publishes'):
+                    S.var(t['publishes'])
+                tid[d][t['id']] = S.add(t['op'], a, acc, label=t['id'], priority=t.get('priority', 0), reads=reads,
+                                        publishes=t.get('publishes'), extra_after=sorted(set(extra)), deadline_us=t.get('deadline_us', -1))
+                for g in outs & self.grads:
+                    writers[g][d].append(tid[d][t['id']])
+        state = {t['args'][k] for t in prog.tasks if t['op'] in self.OPTIM for k in ('p', 'm', 'v', 'w') if k in t['args']}
+        self.layout = {n: R for n in state}
+        shards = [Shard(d, self.sh[d].spec(lambda r: len(self.sh[r].variables)), self.sh[d].remotes, self.sh[d].in_vars,
+                        list(self.sh[d].buffers),
+                        {n: dict(dtype=b['dtype'], gen=b['gen'], place=b['place']) for n, b in self.sh[d].buffers.items()})
+                  for d in range(P)]
+        plan = Plan(shards, self.layout, self.comm_bytes, self.comm_msgs, prog, self.cl, self.st)
+        plan.reductions = self.reductions
+        return plan
+
+    def reduce_grad(self, g, writers):
+        b = self.prog.buffers[g]
+        n = b['rows'] * b['cols']
+        for d in range(self.P):
+            S = self.sh[d]
+            j = S.add('noop', {}, [(g, 0, b['rows'], 'w')], label=f'dp.join.{g}', extra_after=writers[d])
+            writers[d].clear()
+            S.add('scale', dict(x=g, out=g, alpha=1.0 / self.P, n=n), [(g, 0, b['rows'], 'w')], label=f'dp.scale.{g}', extra_after=[j])
+        self.reductions += 1
+        return self.all_reduce(g, g, (b['rows'], b['cols']))
 
 
 def balance_stages(costs, S):
@@ -1187,9 +1416,9 @@ def partition(spec, cluster: Cluster, strategy: dict) -> Plan:
     mode = strategy.get('mode', 'shard')
     if strategy.get('microbatches', 1) > 1:
         spec = microbatch(spec, strategy['microbatches'], strategy.get('split', []), strategy.get('accumulate', {}))
-    prog = parse_program(spec)
-    _need(mode in ('shard', 'place'), "strategy.mode must be 'shard' or 'place'")
-    plan = (ShardPlanner if mode == 'shard' else PlacePlanner)(prog, cluster, strategy).plan()
+    prog = parse_program(spec, bool(strategy.get('symbolic')))
+    _need(mode in ('shard', 'place', 'dp'), "strategy.mode must be 'shard', 'place' or 'dp'")
+    plan = {'shard': ShardPlanner, 'place': PlacePlanner, 'dp': DPPlanner}[mode](prog, cluster, strategy).plan()
     plan.strategy = dict(strategy, mode=mode)
     plan.spec = spec
     log.info('%s: %d devices, %d tasks total, %d messages, %.1f KiB moved', mode, cluster.n,
@@ -1277,7 +1506,7 @@ def estimate(plan: Plan):
                 utilisation=[c / mk if mk else 0 for c in compute], finish=done)
 
 
-def compile_shard(shard: Shard):
+def compile_shard(shard: Shard, data_dir=None):
     """Compile one shard. Variables fed by remote publishers are published OUTSIDE this batch, which the compiler would reject
     ("can never be satisfied"); telling it they are already at the highest version this shard waits for (base_versions) makes
     it keep the waits. The runtime must therefore start those variables at 0, not at the compiled base: write_plan, the
@@ -1287,27 +1516,54 @@ def compile_shard(shard: Shard):
         for r in t.get('reads', []):
             if r['var'] in shard.in_vars:
                 need[r['var']] = max(need.get(r['var'], 0), r['version'])
-    return cw.compile_spec(copy.deepcopy(shard.spec), need)
+    return cw.compile_spec(copy.deepcopy(shard.spec), need, data_dir=data_dir)
 
 
-def write_plan(plan: Plan, out_dir, golden=None):
+FILE_WORDS = 4096        # dist.txt carries buffer values inline up to this size, larger ones as raw .bin files
+
+
+def write_plan(plan: Plan, out_dir, golden=None, data_dir=None):
     """out_dir/rank<r>/{tasks,successors,args}.bin + dist.txt (+ expect lines). dist.txt is line based so the C++ harness
     needs no JSON parser; see tests/dist/test_dist.cu."""
     out = Path(out_dir)
     for s in plan.shards:
-        compiled = compile_shard(s)
+        compiled = compile_shard(s, data_dir)
         d = out / f'rank{s.rank}'
         cw.write_bundle(compiled, d)
         lines = [f'rank {s.rank} world {len(plan.shards)}', f'nvars {len(compiled.variables)}']
         for b in compiled.buffers:
             rem = s.remotes.get(b.name)
             if rem is None:
-                if b.init['kind'] == 'fill':
-                    lines.append(f'buf {b.index} local {b.rows} {b.cols} fill {b.init["value"]!r}')
+                m = s.meta.get(b.name, {})
+                g = m.get('gen')
+                tail = ' i32' if b.dtype == 'i32' else ''
+                if g and g['kind'] == 'gen':
+                    pl = m['place']
+                    lines.append(f'buf {b.index} local {b.rows} {b.cols} gen {g["seed"]} {g["draws"]} {g["bias"]!r} {g["coef"]!r} '
+                                 f'{g["gr"]} {g["gc"]} {1 if g.get("transpose") else 0} {pl[0]} {pl[1]}{tail}')
+                elif g and g['kind'] == 'fill':
+                    lines.append(f'buf {b.index} local {b.rows} {b.cols} fill {g["value"]!r}{tail}')
+                elif b.init['kind'] == 'fill':
+                    lines.append(f'buf {b.index} local {b.rows} {b.cols} fill {b.init["value"]!r}{tail}')
+                elif b.init['kind'] == 'seeded' and b.dtype == 'f32':   # the harness's gen_block is the same SplitMix64 draw (runtime/initgen.py)
+                    i = b.init
+                    lines.append(f'buf {b.index} local {b.rows} {b.cols} gen {i["seed"]} {i["draws"]} {i["bias"]!r} {i["coef"]!r} '
+                                 f'{b.rows} {b.cols} 0 0 0')
+                elif b.init['kind'] == 'file' and b.dtype in ('f32', 'i32'):   # raw little-endian words already: copy, do not parse
+                    _need(data_dir is not None, f'buffer {b.name!r}: file init needs write_plan(data_dir=...)')
+                    fn = f'b{b.index}.bin'
+                    shutil.copyfile(Path(data_dir) / b.init['path'], d / fn)
+                    lines.append(f'buf {b.index} local {b.rows} {b.cols} file {fn}{tail}')
+                elif b.rows * b.cols > FILE_WORDS:          # model-sized: raw words next to dist.txt, not text
+                    vals = b.materialize()
+                    fn = f'b{b.index}.bin'
+                    (d / fn).write_bytes(struct.pack(f'<{len(vals)}{"i" if b.dtype == "i32" else "f"}', *([int(v) for v in vals] if b.dtype == 'i32' else vals)))
+                    lines.append(f'buf {b.index} local {b.rows} {b.cols} file {fn}{tail}')
                 else:
-                    lines.append(f'buf {b.index} local {b.rows} {b.cols} values ' + ' '.join(repr(v) for v in b.materialize()))
+                    lines.append(f'buf {b.index} local {b.rows} {b.cols} values ' + ' '.join(repr(v) for v in b.materialize()) + tail)
             elif rem['kind'] == 'peer':
-                lines.append(f'buf {b.index} peer {rem["rank"]} {plan.shards[rem["rank"]].buf_index(rem["buf"])} {b.rows} {b.cols}')
+                lines.append(f'buf {b.index} peer {rem["rank"]} {plan.shards[rem["rank"]].buf_index(rem["buf"])} {b.rows} {b.cols}'
+                             + (' i32' if b.dtype == 'i32' else ''))
             elif rem['kind'] == 'inbox':
                 lines.append(f'buf {b.index} inbox {rem["rank"]} {b.cols}')
             else:
@@ -1317,6 +1573,13 @@ def write_plan(plan: Plan, out_dir, golden=None):
             lines.append(f'var {v.id} {0 if v.name in s.in_vars else v.base_version}')
         for nme in s.in_vars:
             lines.append(f'inbox_var {names.index(nme)}')
+        dump = list(plan.strategy.get('dump', []))
+        if plan.strategy['mode'] == 'dp' and plan.strategy.get('dump_state'):
+            dump += sorted(n for n in plan.layout if s.meta.get(n, {}).get('dtype', 'f32') == 'f32')
+        for nme in dump:
+            if nme in s.meta and s.meta[nme].get('place'):
+                bi = next(b.index for b in compiled.buffers if b.name == nme)
+                lines.append(f'dump {bi} {nme} ' + ' '.join(str(x) for x in s.meta[nme]['place']))
         if golden is not None:
             for name, lay in plan.layout.items():
                 if plan.strategy['mode'] == 'place':
@@ -1328,7 +1591,10 @@ def write_plan(plan: Plan, out_dir, golden=None):
                     if lay == PART:
                         continue
                     vals, target = expected_shard(plan, golden, name, lay, s.rank), name
-                bi = next(b.index for b in compiled.buffers if b.name == target)
+                tb = next(b for b in compiled.buffers if b.name == target)
+                if tb.dtype == 'i32':
+                    continue                  # the harness compares floats; integer buffers (step counters) are inputs only
+                bi = tb.index
                 lines.append(f'expect {bi} {len(vals)} ' + ' '.join(repr(float(v)) for v in vals))
         (d / 'dist.txt').write_text('\n'.join(lines) + '\n')
     log.info('plan written to %s', out)

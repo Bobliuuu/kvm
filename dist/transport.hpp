@@ -181,6 +181,7 @@ struct TcpConfig {
   int rank = 0;
   std::vector<std::string> hosts;        // one entry per rank
   std::vector<int> ports;                // one per rank
+  int listen_port = 0;                   // 0 = ports[rank]; else bind here and let peers dial ports[rank] (NAT / container port mapping)
   uint32_t cluster_id = 0;               // refuses connections from another job
   int connect_timeout_ms = 30000;
   int sndbuf = 0, rcvbuf = 0;            // 0 = OS default; set to the bandwidth-delay product on long fat links
@@ -207,10 +208,11 @@ class TcpTransport : public Transport {
     listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
     int one = 1;
     setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
-    sockaddr_in a{}; a.sin_family = AF_INET; a.sin_addr.s_addr = htonl(INADDR_ANY); a.sin_port = htons((uint16_t)c_.ports[c_.rank]);
+    sockaddr_in a{}; a.sin_family = AF_INET; a.sin_addr.s_addr = htonl(INADDR_ANY); a.sin_port = htons((uint16_t)(c_.listen_port > 0 ? c_.listen_port : c_.ports[c_.rank]));
     if (::bind(listen_fd_, (sockaddr*)&a, sizeof a) != 0 || ::listen(listen_fd_, 64) != 0)
-      throw std::runtime_error("tcp: cannot listen on port " + std::to_string(c_.ports[c_.rank]) + ": " + strerror(errno));
-    KD_LOG(2, "tcp", "rank %d listening on %d (world %zu)", c_.rank, c_.ports[c_.rank], c_.hosts.size());
+      throw std::runtime_error("tcp: cannot listen on port " + std::to_string(c_.listen_port > 0 ? c_.listen_port : c_.ports[c_.rank]) + ": " + strerror(errno));
+    KD_LOG(2, "tcp", "rank %d listening on %d, advertised %d (world %zu)", c_.rank, c_.listen_port > 0 ? c_.listen_port : c_.ports[c_.rank],
+           c_.ports[c_.rank], c_.hosts.size());
     acceptor_ = std::thread([this] { accept_loop(); });
     for (int p = c_.rank + 1; p < (int)c_.hosts.size(); ++p) dialers_.emplace_back([this, p] { dial(p); });
   }

@@ -1,0 +1,46 @@
+{
+ "d": 4096,
+ "layers": 12,
+ "m": 64,
+ "steps": 3,
+ "ranks": 2,
+ "collective": "direct",
+ "lr": 0.001,
+ "logical_params": 201326592,
+ "runs": {
+  "P2": {
+   "tag": "P2",
+   "rc": 0,
+   "wall_s": 32.3,
+   "mem_local_bytes_total": 23393730680,
+   "mem_local_bytes_per_rank": [
+    11696865340,
+    11696865340
+   ],
+   "device_used_after_alloc_bytes": 23952424960,
+   "kernel_ms": [
+    11627.0,
+    11624.0
+   ],
+   "compared": 0,
+   "bitwise_equal": 0,
+   "worst_rel": 0.0,
+   "tail": [
+    "  rank 0: 1191 tasks, 11627.00 ms kernel, device 0",
+    "  rank 1: 1191 tasks, 11624.00 ms kernel, device 0",
+    "  0 values compared, 0 bitwise equal, worst relative difference 0"
+   ],
+   "plan_build_s": 0.11,
+   "tasks_per_rank": [
+    1191,
+    1191
+   ],
+   "planner_predicted_local_bytes_per_rank": 11696865340,
+   "planned_local_bytes_per_rank": 11696865340,
+   "planned_comm_bytes": 5145362432,
+   "planned_flops_per_rank": 237565378560,
+   "predicted_comm_bytes": 5145362432,
+   "predicted_flops_per_rank": 237565378560
+  }
+ }
+}

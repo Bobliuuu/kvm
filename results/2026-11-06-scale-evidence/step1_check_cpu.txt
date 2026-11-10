@@ -1,0 +1,8 @@
+OK P=2 zero  dims=[8, 16, 8] steps=1 direct chunks=1: comm 4608 B == predicted, flops/dev 15360, bytes/dev 13204 == predicted, worst rel vs unpartitioned 0
+OK P=2 zero  dims=[8, 16, 8] steps=1 ring   chunks=1: comm 4608 B == predicted, flops/dev 15360, bytes/dev 13204 == predicted, worst rel vs unpartitioned 0
+OK P=4 zero  dims=[8, 16, 8] steps=1 direct chunks=1: comm 17280 B == predicted, flops/dev 7680, bytes/dev 12756 == predicted, worst rel vs unpartitioned 0
+OK P=4 zero  dims=[8, 16, 8] steps=1 ring   chunks=1: comm 15744 B == predicted, flops/dev 7680, bytes/dev 11732 == predicted, worst rel vs unpartitioned 0
+OK P=4 zero  dims=[8, 8, 8, 8] steps=1 ring   chunks=2: comm 16512 B == predicted, flops/dev 6016, bytes/dev 10708 == predicted, worst rel vs unpartitioned 0
+OK P=2 tp    dims=[16, 32, 16] steps=1 direct chunks=1: comm 2048 B == predicted, flops/dev 61440, bytes/dev 25100 == predicted, worst rel vs unpartitioned 0
+OK P=4 tp    dims=[16, 32, 16] steps=1 ring   chunks=1: comm 6144 B == predicted, flops/dev 30720, bytes/dev 15884 == predicted, worst rel vs unpartitioned 0
+OK P=4 zero  dims=[8, 16, 8] steps=3 direct chunks=1: comm 49536 B == predicted, flops/dev 23040, bytes/dev 26236 == predicted, worst rel vs unpartitioned 1.3e-05

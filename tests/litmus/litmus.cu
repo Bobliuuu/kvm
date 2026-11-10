@@ -15,7 +15,7 @@
 #endif
 #include "kvm_exec.cuh"
 #define NSLOTS_SET(nt) (S.nslots = 0)   /* slot-recycling executor: no free ring here (kvm_init_kernel must not touch fcells) */
-__device__ __forceinline__ int lit_pop(const KvmDevState& S) { int how, dw; return kvm_pop(S, kvm_now(), -1, how, dw); }   // scheduler off: one class
+__device__ __forceinline__ int lit_pop(const KvmDevState& S) { int how; int2 dw; return kvm_pop(S, kvm_now(), -1, how, dw); }   // scheduler off: one class
 
 #define CK(x) do { cudaError_t e_ = (x); if (e_ != cudaSuccess) { fprintf(stderr, "%s:%d %s -> %s\n", __FILE__, __LINE__, #x, cudaGetErrorString(e_)); exit(3); } } while (0)
 
@@ -274,6 +274,7 @@ __global__ void k_queue_init(KvmDevState S, int ntok, int* inq, unsigned* payloa
 }
 static void run_queue(int cap, int blocks, long long budget_k, unsigned seed) {
   Dev D; D.alloc(cap, 1, cap); D.reset();
+  D.S.claim_ticket = getenv("LIT_TICKET") && atoi(getenv("LIT_TICKET")) ? 1 : 0;   // LIT_TICKET=1: the ticket claim (scheduler-off default) instead of the head CAS
   int *inq, *dbl, *ab, *seen, *popped; unsigned* pay; long long* pops;
   CK(cudaMalloc(&inq, cap * 4)); CK(cudaMalloc(&pay, cap * 4)); CK(cudaMalloc(&pops, 8)); CK(cudaMalloc(&dbl, 4)); CK(cudaMalloc(&ab, 4)); CK(cudaMalloc(&seen, cap * 4)); CK(cudaMalloc(&popped, 4));
   CK(cudaMemset(pops, 0, 8)); CK(cudaMemset(dbl, 0, 4)); CK(cudaMemset(ab, 0, 4)); CK(cudaMemset(seen, 0, cap * 4)); CK(cudaMemset(popped, 0, 4));
@@ -286,7 +287,7 @@ static void run_queue(int cap, int blocks, long long budget_k, unsigned seed) {
   CK(cudaMemcpy(h.data(), pay, cap * 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(sn.data(), seen, cap * 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(&np, popped, 4, cudaMemcpyDeviceToHost));
   long long sum = 0, lostq = 0, dupq = 0; for (int i = 0; i < cap; ++i) { sum += h[i]; if (sn[i] == 0) ++lostq; else if (sn[i] > 1) ++dupq; }
   long long lostupd = p - sum;
-  char buf[96]; snprintf(buf, sizeof buf, "queue[cap=%d,ctas=%d]", cap, blocks);
+  char buf[96]; snprintf(buf, sizeof buf, "queue[cap=%d,ctas=%d,%s]", cap, blocks, D.S.claim_ticket ? "ticket" : "cas");
   report(buf, p, d + (lostupd > 0 ? lostupd : -lostupd) + a + lostq + dupq + D.err(), "double_pop+lost_update+abort+drain_err+err");
   printf("       detail: pops=%lld (wraps/bucket ~%lld) double_pop=%d lost_updates=%lld aborts=%d drain_lost=%lld drain_dup=%lld err=%d\n", p, p / (cap ? cap : 1), d, lostupd, a, lostq, dupq, D.err());
 }

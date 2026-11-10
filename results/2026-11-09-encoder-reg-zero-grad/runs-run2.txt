@@ -1,0 +1,10 @@
+reg_mlp_cpu exit 0
+reg_mlp_a100 exit 0
+res_rms_mlp_cpu exit 0
+res_rms_mlp_a100 exit 0
+cnn1d_cpu exit 0
+cnn1d_a100 exit 0
+encoder_reg_cpu exit 0
+encoder_reg_a100 exit 0
+man_reg_mlp kvm_run exit 0
+man_cnn1d kvm_run exit 0

@@ -1,0 +1,10 @@
+name  max|exec| max|golden| max|f64|  | max abs diff exec-f64, golden-f64, exec-golden
+act47      1.55e-02 1.55e-02 1.55e-02 | 9.04e-09 7.00e-09 9.78e-09
+act53      1.12e-08 2.79e-09 1.63e-17 | 1.12e-08 2.79e-09 1.30e-08
+act115     5.59e-09 1.86e-09 1.00e-17 | 5.59e-09 1.86e-09 4.37e-09
+m.enc.k.b  1.78e-10 4.83e-11 2.18e-19 | 1.78e-10 4.83e-11 1.55e-10
+v.enc.k.b  1.10e-19 9.12e-21 2.80e-37 | 1.10e-19 9.12e-21 1.06e-19
+w.enc.k.b  1.97e-04 5.35e-05 3.00e-13 | 1.97e-04 5.35e-05 1.86e-04
+act69      4.72e+00 4.72e+00 4.72e+00 | 1.13e-04 3.09e-05 1.33e-04
+tensors that are ~0 in float64 (max < 1e-9) yet nonzero in exec or golden:
+['w.enc.k.b', 'm.enc.k.b', 'v.enc.k.b', 'act53', 'act115']

@@ -1,0 +1,97 @@
+reg_mlp_cpu exit 0
+reg_mlp_a100 exit 0
+res_rms_mlp_cpu exit 0
+res_rms_mlp_a100 exit 0
+cnn1d_cpu exit 0
+cnn1d_a100 exit 0
+encoder_reg_cpu exit 0
+encoder_reg_a100 exit 0
+man_reg_mlp kvm_run exit 0
+man_cnn1d kvm_run exit 0
+reg_mlp_cpu kvm_exec: OK: 93/93 tasks, 2.517 ms
+== reg_mlp_cpu
+precise: 0 step(s), 75 f32 buffers
+  worst: act53 1.21e-06, act32 7.91e-07, act57 7.55e-07, act62 5.74e-07
+  ok   all buffers rel L2 <= 0.0002: worst act53 1.21e-06
+PASS
+reg_mlp_a100 kvm_exec: OK: 93/93 tasks, 2.398 ms
+== reg_mlp_a100
+precise: 0 step(s), 75 f32 buffers
+  worst: act53 1.21e-06, act32 7.91e-07, act57 7.55e-07, act62 5.74e-07
+  ok   all buffers rel L2 <= 0.0002: worst act53 1.21e-06
+PASS
+res_rms_mlp_cpu kvm_exec: OK: 210/210 tasks, 3.334 ms
+== res_rms_mlp_cpu
+precise: 3 step(s), 153 f32 buffers
+  worst: v.rm.n0.g 7.80e-07, v.rm.fc1.w 6.93e-07, act112 6.61e-07, act31 6.21e-07
+  ok   all buffers rel L2 <= 0.0002: worst v.rm.n0.g 7.80e-07
+PASS
+res_rms_mlp_a100 kvm_exec: OK: 180/180 tasks, 3.198 ms
+== res_rms_mlp_a100
+precise: 3 step(s), 153 f32 buffers
+  worst: v.rm.n0.g 7.80e-07, v.rm.fc1.w 6.93e-07, act112 6.61e-07, act31 6.21e-07
+  ok   all buffers rel L2 <= 0.0002: worst v.rm.n0.g 7.80e-07
+PASS
+cnn1d_cpu kvm_exec: OK: 426/426 tasks, 4.555 ms
+== cnn1d_cpu
+precise: 0 step(s), 147 f32 buffers
+  worst: act40 6.76e-07, act43 6.53e-07, act131 5.01e-07, act29 4.84e-07
+  ok   all buffers rel L2 <= 0.0002: worst act40 6.76e-07
+PASS
+cnn1d_a100 kvm_exec: OK: 186/186 tasks, 3.619 ms
+== cnn1d_a100
+precise: 0 step(s), 147 f32 buffers
+  worst: act40 6.76e-07, act43 6.53e-07, act131 5.01e-07, act29 4.84e-07
+  ok   all buffers rel L2 <= 0.0002: worst act40 6.76e-07
+PASS
+encoder_reg_cpu kvm_exec: OK: 470/470 tasks, 4.347 ms
+== encoder_reg_cpu
+precise: 2 step(s), 197 f32 buffers
+  structurally-zero gradients (float64-confirmed), absolute bound instead of relative L2: act115, act53, m.enc.k.b, v.enc.k.b, w.enc.k.b
+  ok   GPU: act53 (sum of act47, structurally 0) within (R+8)*2^-23*L1: worst |g|/bound 0.011, max|g| 1.12e-08
+  ok   GPU: act115 (sum of act109, structurally 0) within (R+8)*2^-23*L1: worst |g|/bound 0.011, max|g| 5.59e-09
+  ok   GPU: m.enc.k.b <= max gradient bound: 1.78e-10 vs 1.92e-06
+  ok   GPU: v.enc.k.b <= max gradient bound^2: 1.10e-19 vs 3.70e-12
+  ok   GPU: w.enc.k.b within 2 Adam steps of its start (weak check): 1.97e-04 vs 2.33e-03
+  ok   golden: act53 (sum of act47, structurally 0) within (R+8)*2^-23*L1: worst |g|/bound 0.003, max|g| 2.79e-09
+  ok   golden: act115 (sum of act109, structurally 0) within (R+8)*2^-23*L1: worst |g|/bound 0.004, max|g| 1.86e-09
+  ok   golden: m.enc.k.b <= max gradient bound: 4.83e-11 vs 1.92e-06
+  ok   golden: v.enc.k.b <= max gradient bound^2: 9.12e-21 vs 3.70e-12
+  ok   golden: w.enc.k.b within 2 Adam steps of its start (weak check): 5.35e-05 vs 2.33e-03
+  worst: act69 4.34e-05, act72 2.76e-05, m.enc.q.b 2.20e-06, act111 1.86e-06
+  ok   all buffers rel L2 <= 0.0002: worst act69 4.34e-05
+PASS
+encoder_reg_a100 kvm_exec: OK: 226/226 tasks, 3.456 ms
+== encoder_reg_a100
+precise: 2 step(s), 197 f32 buffers
+  structurally-zero gradients (float64-confirmed), absolute bound instead of relative L2: act115, act53, m.enc.k.b, v.enc.k.b, w.enc.k.b
+  ok   GPU: act53 (sum of act47, structurally 0) within (R+8)*2^-23*L1: worst |g|/bound 0.011, max|g| 1.12e-08
+  ok   GPU: act115 (sum of act109, structurally 0) within (R+8)*2^-23*L1: worst |g|/bound 0.011, max|g| 5.59e-09
+  ok   GPU: m.enc.k.b <= max gradient bound: 1.78e-10 vs 1.92e-06
+  ok   GPU: v.enc.k.b <= max gradient bound^2: 1.10e-19 vs 3.70e-12
+  ok   GPU: w.enc.k.b within 2 Adam steps of its start (weak check): 1.97e-04 vs 2.33e-03
+  ok   golden: act53 (sum of act47, structurally 0) within (R+8)*2^-23*L1: worst |g|/bound 0.003, max|g| 2.79e-09
+  ok   golden: act115 (sum of act109, structurally 0) within (R+8)*2^-23*L1: worst |g|/bound 0.004, max|g| 1.86e-09
+  ok   golden: m.enc.k.b <= max gradient bound: 4.83e-11 vs 1.92e-06
+  ok   golden: v.enc.k.b <= max gradient bound^2: 9.12e-21 vs 3.70e-12
+  ok   golden: w.enc.k.b within 2 Adam steps of its start (weak check): 5.35e-05 vs 2.33e-03
+  worst: act69 4.34e-05, act72 2.76e-05, m.enc.q.b 2.20e-06, act111 1.86e-06
+  ok   all buffers rel L2 <= 0.0002: worst act69 4.34e-05
+PASS
+== man_reg_mlp
+PASS  executor: 186/186 tasks in 6.1 ms on NVIDIA A100-SXM4-40GB (108 SMs, grid 108), sched dynamic, err_code 0
+SKIP  versions: no admission reads a versioned variable
+PASS  training: 6 step losses, first 1.2409 -> last 0.2956 (mean of first/last 1: 1.2409 -> 0.2956, falls); max relative deviation from the CPU golden 3.87e-07 (tolerance 2e-03)
+SKIP  serving: no serving admissions
+SKIP  game: no buffers dumped
+SKIP  cadence: 0 doom_tick rows
+ALL CHECKS PASSED (SKIPs are listed above)
+== man_cnn1d
+PASS  executor: 372/372 tasks in 9.9 ms on NVIDIA A100-SXM4-40GB (108 SMs, grid 108), sched dynamic, err_code 0
+SKIP  versions: no admission reads a versioned variable
+PASS  training: 6 step losses, first 1.3911 -> last 1.2072 (mean of first/last 1: 1.3911 -> 1.2072, falls); max relative deviation from the CPU golden 3.11e-09 (tolerance 2e-03)
+SKIP  serving: no serving admissions
+SKIP  game: no buffers dumped
+SKIP  cadence: 0 doom_tick rows
+ALL CHECKS PASSED (SKIPs are listed above)
+remote scratch kept: ~/kvm-scratch-encreg-fix

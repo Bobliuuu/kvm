@@ -20,3 +20,20 @@ permission layer; the coordinator's authorization is not a user approval).
 | 2026-11-06 | `tests/ctl/run.sh` on A100 (sm_80): 10 bundles, loops with data-dependent trip counts (0..12 of 12; GEMM-body loop 1/7/12 of 14) and both branch directions, one `kvm_exec` build, `--golden` vs CPU VM | 69e90f8 (+docs) | 10/10 PASS, executor `pred_skipped` count equals the expected skipped tasks in every case | `results/2026-11-06-generality-ctl/ctl-summary.txt` |
 | 2026-11-06 | `tests/gpu/build.sh` + `test_exec` functional suite, A100, tree with predicated tasks | 69e90f8 | 8607 checks, 0 failed, 0 suites failed (incl. dag, versions, recycle, litmus suites) | `results/2026-11-06-generality-ctl/reg-functional.txt` |
 | 2026-11-06 | `test_exec bench` hot-path cost, flags==0, 3 runs each, base = origin/feat/integration 1ca85d1 vs new | 69e90f8 | independent noop @108 blocks 1.415 us/task both; dependent hop 8.60 (base) vs 8.64 us (new), +0.4%, within run-to-run noise | `results/2026-11-06-generality-ctl/reg-bench.txt` |
+
+# Run log (perf/game-parallel)
+
+Shared Lambda A100-SXM4-40GB (host not recorded here), every GPU run inside `flock ~/.gpu.lock`, scratch `~/kvm-scratch-game`, jobs launched detached (`setsid nohup`).
+Modal (own A100) was authorised but the launch was denied by the permission system in this session, so nothing ran there and no Modal app exists.
+
+| when (UTC, 2026-11-06) | job | spec | where the numbers are |
+|---|---|---|---|
+| 06:5x | classic phase profile | `bin/doomprof` (`DOOM_PROF=1` build), 700 frames | results/2026-11-06-a100-game-parallel/classic-phase-profile.jsonl |
+| 08:0x | stage 1 verify | `harness.py verify` (draw tiles only) | .../stage1-draw-tiles/ |
+| 09:0x | stage 2a verify | planes drawn by one thread each | .../stage2a-planes-one-thread-each/ |
+| 09:1x | stage 2 verify | planes compute spans, tiles draw pixels | .../stage2-planes-spans-tiles/ |
+| 09:3x | speed | `harness.py speed` (3 reps, 700 frames) | .../speed/ |
+| 09:2x-10:0x | sanitize; study x3 + heavy; instances 1-16; adaptive_run gamepar x3; 64-instance attempt (faulted) | `harness.py sanitize/study/instances`, `adaptive/batch.sh gamepar` | .../sanitize, .../study, .../instances, .../adaptive-gamepar |
+
+Command pattern: `flock -w 14400 ~/.gpu.lock timeout <s> python3 doom/modal/harness.py <job> out/<job> <ninst>` from `~/kvm-scratch-game`
+(`harness.py` is the in-container runner of `doom/modal/app.py`; it runs unchanged on any box with the built engine objects).

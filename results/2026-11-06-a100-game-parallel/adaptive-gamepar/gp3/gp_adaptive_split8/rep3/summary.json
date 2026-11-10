@@ -1,0 +1,6 @@
+{"tag": "gp_adaptive_split8-rep3", "device": "NVIDIA A100-SXM4-40GB", "sms": 108, "grid": 108, "workers": 106, "sched": "dynamic", "ctl": "adaptive", "duration_s": 24.029, "kernel_ms": 24204.770,
+ "doom": {"instances": 1, "frames": 840, "deadline_misses": 0, "frame_time_us": {"p50": 7396, "p99": 16879, "p999": 18887, "max": 18887}, "lateness_us": {"p99": -11349, "p999": -9664, "max": -9664}, "submit_call_us": {"p50": 1, "p99": 12, "max": 172}, "fps": 34.96},
+ "serve": {"arrivals": 2172, "completed": 2172, "dropped": 0, "latency_us": {"p50": 16158, "p99": 51332, "p999": 55253, "max": 55641}, "tokens_consistent": 1},
+ "train": {"runs": 3, "steps": 1116, "steps_per_s": 46.444},
+ "sweep": {"gb": 0.00, "gbytes_moved": 0.00, "gb_per_s": 0.0},
+ "tasks": {"admitted": 13457679, "done": 13457679}, "doom_frames_done": 841}

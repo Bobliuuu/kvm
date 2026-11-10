@@ -88,15 +88,25 @@ static KvmBundle load_bundle(const std::string& dir, Pool& pool, int cls) {
 }
 
 // ------------------------------------------------------------ Doom
+static int g_doom_split = 0, g_doom_planes = 4;   // --doom-split T / --doom-planes P: split-tick Doom (doom_sim -> doom_planes -> T x doom_draw -> doom_post)
 #ifdef KVM_WITH_GAME
 struct DoomInst { int inst, input, state; std::vector<int> fb; };
 static KvmBundle doom_frame(const DoomInst& d, int f, int deadline_us, int extra_us, bool indexed) {
   KvmBundleBuilder bb; KvmTaskOpts o; o.workload = CLS_DOOM; o.deadline_us = deadline_us;
-  auto A = [&](std::vector<KvmArg> a) { if (indexed) a.push_back(KvmArg::i32(d.inst)); return a; };
-  const char* sfx = indexed ? "_n" : "";
-  const int tick = bb.add((std::string("doom_tick") + sfx).c_str(), A({KvmArg::i32(f), KvmArg::buf(d.input), KvmArg::buf(d.state)}), o);
-  int gate = tick;
-  if (extra_us > 0) { gate = bb.add("spin", {KvmArg::i32(extra_us)}, o); bb.edge(tick, gate); }
+  const bool ix = indexed || g_doom_split > 0;
+  auto A = [&](std::vector<KvmArg> a) { if (ix) a.push_back(KvmArg::i32(d.inst)); return a; };
+  const char* sfx = ix ? "_n" : "";
+  int tick, last;
+  if (g_doom_split > 0) {
+    tick = bb.add("doom_sim", A({KvmArg::i32(f), KvmArg::buf(d.input), KvmArg::buf(d.state)}), o);
+    std::vector<int> pl, tl;
+    for (int t = 0; t < g_doom_planes; ++t) { pl.push_back(bb.add("doom_planes", A({KvmArg::i32(f), KvmArg::i32(t), KvmArg::i32(g_doom_planes)}), o)); bb.edge(tick, pl.back()); }
+    for (int t = 0; t < g_doom_split; ++t) { tl.push_back(bb.add("doom_draw", A({KvmArg::i32(f), KvmArg::i32(t), KvmArg::i32(g_doom_split)}), o)); for (int p : pl) bb.edge(p, tl.back()); }
+    last = bb.add("doom_post", A({KvmArg::i32(f)}), o);
+    for (int t : tl) bb.edge(t, last);
+  } else last = tick = bb.add((std::string("doom_tick") + sfx).c_str(), A({KvmArg::i32(f), KvmArg::buf(d.input), KvmArg::buf(d.state)}), o);
+  int gate = last;
+  if (extra_us > 0) { gate = bb.add("spin", {KvmArg::i32(extra_us)}, o); bb.edge(last, gate); }
   for (int k = 0; k < 4; ++k) bb.edge(gate, bb.add((std::string("doom_present") + sfx).c_str(), A({KvmArg::buf(d.fb[f]), KvmArg::i32(k * 50), KvmArg::i32(50)}), o));
   bb.edge(gate, bb.add((std::string("doom_status") + sfx).c_str(), A({KvmArg::i32(f), KvmArg::buf(d.state)}), o));
   return bb.build();
@@ -434,6 +444,7 @@ int main(int argc, char** argv) {
     auto dv = [&]() { return atof(sv().c_str()); }; auto iv = [&]() { return atoi(sv().c_str()); };
     if (a == "--out") o.out = sv(); else if (a == "--wad") o.wad = sv(); else if (a == "--tag") o.tag = sv();
     else if (a == "--ctl") o.ctl = sv(); else if (a == "--duration-s") o.duration_s = dv(); else if (a == "--fps") o.fps = dv();
+    else if (a == "--doom-split") adp::g_doom_split = iv(); else if (a == "--doom-planes") adp::g_doom_planes = iv();
     else if (a == "--doom-instances") o.doom_instances = iv(); else if (a == "--train-runs") o.train_runs = iv(); else if (a == "--serve-slots") o.serve_slots = iv();
     else if (a == "--serve-rate") o.serve_rate = dv();
     else if (a == "--burst") { o.burst0 = dv(); o.burst1 = dv(); o.burst_rate = dv(); }            // --burst T0 T1 RATE

@@ -15,7 +15,7 @@ clang --print-targets | grep -q nvptx64 || die "this clang has no nvptx64 target
 
 mkdir -p "$BUILD"
 STAMP="$(cat "$DOOM_DIR"/patch_engine.py "$DOOM_DIR"/build.sh "$DOOM_DIR"/lib.sh "$DOOM_DIR"/glue/*.[ch] "$DOOM_DIR"/glue/*.py "$DOOM_DIR"/glue/libc/*.h "$DOOM_DIR"/glue/libc/sys/*.h \
-  "$DOOM_DIR"/player/player.c "$DOOM_DIR"/player/route_e1m1.h | md5sum | cut -d' ' -f1)-$(git -C "$TP/doomgeneric" rev-parse HEAD)-$ARCH-n$DOOM_INSTANCES"
+  "$DOOM_DIR"/player/player.c "$DOOM_DIR"/player/route_e1m1.h | md5sum | cut -d' ' -f1)-$(git -C "$TP/doomgeneric" rev-parse HEAD)-$ARCH-n$DOOM_INSTANCES-p${DOOM_PROF:-0}"
 if [ -s "$BUILD/doom_dev.o" ] && [ "$(cat "$BUILD/stamp" 2>/dev/null)" = "$STAMP" ] && [ -z "${FORCE:-}" ]; then
   info "doom_dev.o up to date ($ARCH)"; exit 0
 fi
@@ -23,7 +23,7 @@ info "building doom_dev.o for $ARCH with $(clang --version | head -1), $("$NVCC"
 
 RES="$(clang -print-resource-dir)"
 CF=(--target=nvptx64-nvidia-cuda -march=sm_80 -O2 -ffreestanding -fno-stack-protector -fno-jump-tables -w -nostdinc
-    -isystem "$DOOM_DIR/glue/libc" -isystem "$RES/include" -I"$BUILD/src" -I"$DOOM_DIR/glue" -DNORMALUNIX -DLINUX -D_DEFAULT_SOURCE
+    -isystem "$DOOM_DIR/glue/libc" -isystem "$RES/include" -I"$BUILD/src" -I"$DOOM_DIR/glue" ${DOOM_PROF:+-DDOOM_PROF} -DNORMALUNIX -DLINUX -D_DEFAULT_SOURCE
     -DDOOMGENERIC_RESX=320 -DDOOMGENERIC_RESY=200)
 python3 "$DOOM_DIR/patch_engine.py" "$SRC" "$BUILD/src" gpu
 OBJ="$BUILD/obj"; rm -rf "$OBJ"; mkdir -p "$OBJ"
@@ -53,11 +53,19 @@ llc -march=nvptx64 -mcpu=sm_80 -mattr=+ptx75 -O2 "$BUILD/doom_nv.ll" -o "$BUILD/
 # the PTX is always sm_80; ptxas compiles it forward for newer GPUs. Registers are capped so the engine's CTA leaves room for other work.
 "$NVCC" -gencode "arch=compute_80,code=$ARCH" -dc -maxrregcount=112 "$BUILD/doom.ptx" -o "$BUILD/doom_dev.o" 2>&1 | grep -v 'Potential out of bound' || true
 [ -s "$BUILD/doom_dev.o" ] || die "nvcc produced no doom_dev.o"
-for k in $(seq 1 $((DOOM_INSTANCES - 1))); do
+inst() {   # k: the same engine with every symbol prefixed i<k>_
+  local k=$1
   python3 "$DOOM_DIR/glue/prefix_symbols.py" "$BUILD/doom_nv.ll" "$BUILD/doom_i$k.ll" "i${k}_"
   llc -march=nvptx64 -mcpu=sm_80 -mattr=+ptx75 -O2 "$BUILD/doom_i$k.ll" -o "$BUILD/doom_i$k.ptx"
   "$NVCC" -gencode "arch=compute_80,code=$ARCH" -dc -maxrregcount=112 "$BUILD/doom_i$k.ptx" -o "$BUILD/doom_dev_i$k.o" 2>&1 | grep -v 'Potential out of bound' || true
   [ -s "$BUILD/doom_dev_i$k.o" ] || die "nvcc produced no doom_dev_i$k.o"
+}
+JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"; running=0
+for k in $(seq 1 $((DOOM_INSTANCES - 1))); do
+  inst "$k" & running=$((running + 1))
+  if [ "$running" -ge "$JOBS" ]; then wait -n || die "instance build failed"; running=$((running - 1)); fi
 done
+wait || die "instance build failed"
+for k in $(seq 1 $((DOOM_INSTANCES - 1))); do [ -s "$BUILD/doom_dev_i$k.o" ] || die "missing doom_dev_i$k.o"; done
 echo "$STAMP" > "$BUILD/stamp"
 info "built $BUILD/doom_dev.o ($(wc -c < "$BUILD/doom_dev.o") bytes, $ARCH)"

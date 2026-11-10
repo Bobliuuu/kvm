@@ -1,0 +1,130 @@
+{
+ "d": 2048,
+ "layers": 16,
+ "m": 64,
+ "steps": 3,
+ "ranks": 4,
+ "collective": "direct",
+ "lr": 0.001,
+ "logical_params": 67108864,
+ "runs": {
+  "P1": {
+   "tag": "P1",
+   "rc": 0,
+   "wall_s": 7.57,
+   "mem_local_bytes_total": 2183659556,
+   "mem_local_bytes_per_rank": [
+    2183659556
+   ],
+   "device_used_after_alloc_bytes": 2695757824,
+   "kernel_ms": [
+    6604.0
+   ],
+   "compared": 0,
+   "bitwise_equal": 0,
+   "worst_rel": 0.0,
+   "tail": [
+    "[kvm_exec][I] kernel done: 387/387 tasks in 6605.586 ms, 1 records, 0 ring wraps, 0 backpressure waits",
+    "  rank 0: 387 tasks, 6604.00 ms kernel, device 0",
+    "  0 values compared, 0 bitwise equal, worst relative difference 0"
+   ],
+   "plan_build_s": 0.06,
+   "tasks_per_rank": [
+    387
+   ],
+   "planner_predicted_local_bytes_per_rank": 2183659556,
+   "planned_local_bytes_per_rank": 2183659556,
+   "planned_comm_bytes": 0,
+   "planned_flops_per_rank": 159450660864,
+   "predicted_comm_bytes": 0,
+   "predicted_flops_per_rank": 159450660864
+  },
+  "P4": {
+   "tag": "P4",
+   "rc": 0,
+   "wall_s": 5.23,
+   "mem_local_bytes_total": 13522436336,
+   "mem_local_bytes_per_rank": [
+    3380609084,
+    3380609084,
+    3380609084,
+    3380609084
+   ],
+   "device_used_after_alloc_bytes": 14177599488,
+   "kernel_ms": [
+    2060.0,
+    2059.0,
+    2059.0,
+    2059.0
+   ],
+   "compared": 0,
+   "bitwise_equal": 0,
+   "worst_rel": 0.0,
+   "tail": [
+    "  rank 2: 3175 tasks, 2059.00 ms kernel, device 0",
+    "  rank 3: 3176 tasks, 2059.00 ms kernel, device 0",
+    "  0 values compared, 0 bitwise equal, worst relative difference 0"
+   ],
+   "plan_build_s": 0.63,
+   "tasks_per_rank": [
+    2703,
+    2703,
+    2703,
+    2703
+   ],
+   "planner_predicted_local_bytes_per_rank": 3380609084,
+   "planned_local_bytes_per_rank": 3380609084,
+   "planned_comm_bytes": 5707137024,
+   "planned_flops_per_rank": 39862665216,
+   "predicted_comm_bytes": 5707137024,
+   "predicted_flops_per_rank": 39862665216
+  }
+ },
+ "compare_final_state": {
+  "W1": {
+   "max_abs": 0.0001339539885520935,
+   "max_rel": 0.0001339539885520935,
+   "bitwise_equal_fraction": 0.4972553253173828
+  },
+  "W16": {
+   "max_abs": 0.0001521781086921692,
+   "max_rel": 0.0001521781086921692,
+   "bitwise_equal_fraction": 0.5510706901550293
+  },
+  "W1T": {
+   "max_abs": 0.00013486482203006744,
+   "max_rel": 0.00013486482203006744,
+   "bitwise_equal_fraction": 0.5514471530914307
+  },
+  "W16T": {
+   "max_abs": 0.00036461371928453445,
+   "max_rel": 0.00036461371928453445,
+   "bitwise_equal_fraction": 0.4976496696472168
+  },
+  "loss1": {
+   "unsharded": 0.33312007784843445,
+   "sharded": 0.33312004804611206,
+   "rel": 8.946420138045141e-08
+  },
+  "loss2": {
+   "unsharded": 0.33245694637298584,
+   "sharded": 0.33245694637298584,
+   "rel": 0.0
+  },
+  "loss3": {
+   "unsharded": 1.5038816928863525,
+   "sharded": 1.503885269165039,
+   "rel": 2.378031922489754e-06
+  }
+ },
+ "loss_unsharded": [
+  0.33312007784843445,
+  0.33245694637298584,
+  1.5038816928863525
+ ],
+ "loss_sharded": [
+  0.33312004804611206,
+  0.33245694637298584,
+  1.503885269165039
+ ]
+}

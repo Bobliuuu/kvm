@@ -197,7 +197,9 @@ def execute(dev, i, by_rank):
             continue
         name = t.args[a.name]
         rem = dev.shard.remotes.get(name)
-        if rem is None:
+        if name is None:                       # optional buffer argument left out
+            bufs[a.name] = None
+        elif rem is None:
             bufs[a.name] = dev.buf[name]
         elif rem['kind'] == 'peer':
             bufs[a.name] = by_rank[rem['rank']].buf[rem['buf']]

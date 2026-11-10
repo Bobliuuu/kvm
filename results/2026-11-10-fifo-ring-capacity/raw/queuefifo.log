@@ -1,0 +1,22 @@
+GPU NVIDIA GeForce RTX 3080 Ti sm_86, 80 SMs  [build: production header]
+LITMUS queuefifo[cap=2,ctas=7]            rounds=100002  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=100002 head=100009 tail=100002 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=2,ctas=200]          rounds=100002  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=100002 head=100202 tail=100003 unread=1 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=4,ctas=7]            rounds=100006  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=100006 head=100013 tail=100006 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=4,ctas=200]          rounds=100006  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=100006 head=100206 tail=100006 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=8,ctas=7]            rounds=100010  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=100010 head=100017 tail=100010 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=8,ctas=200]          rounds=100013  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=100013 head=100213 tail=100013 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=64,ctas=7]           rounds=100069  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=100069 head=100076 tail=100069 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=64,ctas=200]         rounds=100097  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=100097 head=100297 tail=100097 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=1024,ctas=7]         rounds=101029  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=101029 head=101036 tail=101029 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=1024,ctas=200]       rounds=101133  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=101133 head=101333 tail=101133 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+TOTAL rounds=1002367 violations=0

@@ -1,0 +1,33 @@
+GPU NVIDIA GeForce RTX 3080 Ti, 80 SMs, sm_86, driver CUDA 13.2, runtime 12.8
+== checker
+== checker: PASS (0.0s, 0 new failures)
+== ops
+== ops: PASS (0.1s, 0 new failures)
+== types
+== types: PASS (0.0s, 0 new failures)
+== init
+== init: PASS (0.1s, 0 new failures)
+== errors
+== errors: PASS (0.4s, 0 new failures)
+== dag
+[kvm_exec][W] ready queue: the FIFO ring does not fit (8 workers, live_cap 8, max_tasks 65536; it needs workers < live_cap and max_tasks <= 67108864): using the 32 bucket rings
+[kvm_exec][W] ready queue: the FIFO ring does not fit (15 workers, live_cap 8, max_tasks 65536; it needs workers < live_cap and max_tasks <= 67108864): using the 32 bucket rings
+[kvm_exec][W] ready queue: the FIFO ring does not fit (15 workers, live_cap 8, max_tasks 65536; it needs workers < live_cap and max_tasks <= 67108864): using the 32 bucket rings
+[kvm_exec][W] ready queue: the FIFO ring does not fit (15 workers, live_cap 8, max_tasks 32768; it needs workers < live_cap and max_tasks <= 67108864): using the 32 bucket rings
+[kvm_exec][W] ready queue: the FIFO ring does not fit (15 workers, live_cap 8, max_tasks 65536; it needs workers < live_cap and max_tasks <= 67108864): using the 32 bucket rings
+  FIFO capacity: refused at 8 and 15 workers with live_cap 8, kept at 7 with 8 and 3 with 4096; a refused request ran 640 tasks on the bucket rings
+== dag: PASS (2.2s, 0 new failures)
+== sched
+== sched: PASS (0.1s, 0 new failures)
+== admission
+== admission: PASS (1.6s, 0 new failures)
+== front
+== front: PASS (0.0s, 0 new failures)
+== versions
+== versions: PASS (1.5s, 0 new failures)
+== recycle
+== recycle: PASS (3.9s, 0 new failures)
+== litmus
+== litmus: PASS (11.0s, 0 new failures)
+8623 checks, 0 failed, 0 suites failed
+PASS

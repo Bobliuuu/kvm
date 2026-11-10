@@ -1,0 +1,22 @@
+GPU NVIDIA GeForce RTX 3080 Ti sm_86, 80 SMs  [build: production header]
+LITMUS queue[cap=2,ctas=7,ticket]         rounds=100002  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100002 (wraps/bucket ~50001) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0(OK)
+LITMUS queue[cap=2,ctas=200,ticket]       rounds=100004  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100004 (wraps/bucket ~50002) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0(OK)
+LITMUS queue[cap=4,ctas=7,ticket]         rounds=100005  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100005 (wraps/bucket ~25001) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0(OK)
+LITMUS queue[cap=4,ctas=200,ticket]       rounds=100006  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100006 (wraps/bucket ~25001) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0(OK)
+LITMUS queue[cap=8,ctas=7,ticket]         rounds=100006  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100006 (wraps/bucket ~12500) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0(OK)
+LITMUS queue[cap=8,ctas=200,ticket]       rounds=100008  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100008 (wraps/bucket ~12501) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0(OK)
+LITMUS queue[cap=64,ctas=7,ticket]        rounds=100007  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100007 (wraps/bucket ~1562) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0(OK)
+LITMUS queue[cap=64,ctas=200,ticket]      rounds=100010  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100010 (wraps/bucket ~1562) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0(OK)
+LITMUS queue[cap=1024,ctas=7,ticket]      rounds=100004  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100004 (wraps/bucket ~97) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0(OK)
+LITMUS queue[cap=1024,ctas=200,ticket]    rounds=100011  double_pop+lost_update+abort+drain_err+err=0  none
+       detail: pops=100011 (wraps/bucket ~97) double_pop=0 lost_updates=0 aborts=0 drain_lost=0 drain_dup=0 err=0(OK)
+TOTAL rounds=1000063 violations=0

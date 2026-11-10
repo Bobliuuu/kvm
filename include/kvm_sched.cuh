@@ -113,7 +113,7 @@ __device__ __forceinline__ size_t kvm_queue_of(const KvmDevState& S, const KvmTa
 // Fill and publish the cell of ticket `pos` on queue qi (the caller took the ticket and, with the scheduler on, already added the
 // task to its class's ready count and, if it has a deadline, to dl_ready).
 __device__ __forceinline__ void kvm_publish_cell(const KvmDevState& S, int slot, size_t qi, unsigned long long pos) {
-  if (S.fifo_only) {   // one store: the consumer of this ticket sees the slot together with its sequence (no free-cell wait: tasks in flight are far below rcap, and a consumer that ever finds a later generation reports QUEUE_OVERFLOW)
+  if (S.fifo_only) {   // one store: the consumer of this ticket sees the slot together with its sequence (no free-cell wait: KvmExec::fifo_fits keeps the ready tasks plus one ticket per worker below rcap, and a consumer that ever finds a later generation reports QUEUE_OVERFLOW)
     if (S.trace_on) S.trace[slot].ready_ns = kvm_now();
     st_rel64(&S.cells[pos & (unsigned long long)(S.rcap - 1)].seq, ((pos + 1) << KVM_FIFO_SHIFT) | (unsigned long long)(unsigned)slot);
     return;

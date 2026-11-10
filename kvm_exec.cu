@@ -192,6 +192,9 @@ struct KvmConfig {
   int num_vars = 64;
   int ring_words = 1 << 16;     // admission ring, multiple of 8
   int aging_us = 0;             // 0: strict priority; else one priority level per aging_us of waiting
+#ifdef KVM_PROF_GAP
+  int noop_ops = 0;             // profiling only: run the graph with every op body skipped (--noop-ops)
+#endif
   int cont = 1;                 // 1: continuation (a worker runs one released successor directly, when the ready queue is empty); 0: every release goes through the queue
   int fifo_only = 0;            // 1: one FIFO ring with ticket waits (every task priority 0, no deadline, scheduler off); the CLI sets it when its bundles qualify
   int no_recycle = 0;           // 1: the whole run is one record and slots are not reused (the CLI, when a single bundle fits as one record)
@@ -301,6 +304,9 @@ class KvmExec {
     S_.num_vars = cfg_.num_vars; S_.ring_words = cfg_.ring_words;
     S_.aging_ns = cfg_.aging_us ? (long long)cfg_.aging_us * 1000 : (1ll << 50);
     S_.cont_on = cfg_.cont;
+#ifdef KVM_PROF_GAP
+    S_.noop_ops = cfg_.noop_ops;
+#endif
     S_.fifo_only = cfg_.fifo_only;
     S_.no_recycle = cfg_.no_recycle; S_.no_waits = cfg_.no_waits; S_.trace_on = cfg_.trace_on;
     S_.prestaged = 0; S_.warm_only = 0;
@@ -840,7 +846,7 @@ static void kvm_write_trace_csv(const KvmResult& r, const char* path) {
   for (auto& t : r.trace) if (t.admit_ns) t0 = std::min(t0, t.admit_ns);
   fprintf(f, "slot,op,workload,priority,deadline_us,admit_us,ready_us,start_us,end_us,queue_wait_us,run_us,smid,block,ver_start,ver_end,missed,exec_count,bytes,res,resv,boost,urgent,cont"
 #ifdef KVM_PROF_GAP
-    ",gp0,gp1,gp2,gp3,gp4,gp5,gp6,gp7,gp8,gp_valid,gp_cycle"
+    ",gp0,gp1,gp2,gp3,gp4,gp5,gp6,gp7,gp8,gp_valid,gp_cycle,sub_succ_id,sub_atomic,sub_enqueue,sub_desc,sub_post,sub_errv"
 #endif
     "\n");
   for (size_t i = 0; i < r.trace.size(); ++i) {
@@ -853,7 +859,8 @@ static void kvm_write_trace_csv(const KvmResult& r, const char* path) {
             si.bytes, si.res, (t.flags & KVM_TRACE_RESV) ? 1 : 0, (t.flags & KVM_TRACE_BOOST) ? 1 : 0, (t.flags & KVM_TRACE_URGENT) ? 1 : 0, (t.flags & KVM_TRACE_CONT) ? 1 : 0);
 #ifdef KVM_PROF_GAP
     for (int k = 0; k < 9; ++k) fprintf(f, ",%d", t.gp[k]);
-    fprintf(f, ",%d,%u", t.gp[15], (unsigned)t.gp[14]);
+    fprintf(f, ",%d,%u", t.gp[15], (unsigned)t.gp[16]);
+    for (int k = 0; k < KVM_PG_SUBS; ++k) fprintf(f, ",%d", t.gp[9 + k]);
 #endif
     fputc('\n', f);
   }
@@ -1016,6 +1023,9 @@ int main(int argc, char** argv) {
     else if (a == "--warm-ms") cfg.warm_ms = (int)val(0, 60000);
     else if (a == "--aging-us") cfg.aging_us = (int)val(0, 1000000000);
     else if (a == "--no-cont") cfg.cont = 0;
+#ifdef KVM_PROF_GAP
+    else if (a == "--noop-ops") cfg.noop_ops = 1;
+#endif
     else if (a == "--no-fifo") no_fifo = true;
     else if (a == "--timeout-s") cfg.timeout_us = (unsigned long long)val(1, 86400) * 1000000ull;
     else if (int r = kvm_cli_sched_option(cfg, i, argc, argv)) { if (r < 0) { usage(); return 2; } }

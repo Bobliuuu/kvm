@@ -15,6 +15,8 @@ import numpy as np
 
 PHASES = ('publish', 'release', 'sched_release', 'p3', 'p4', 'p5', 'pop_or_cont', 'desc', 'start_book')
 SHOWN = (0, 1, 2, 6, 8)
+# inside a phase: the cycle, after the phase began, at which the slowest lane finished the sub-step (columns gp9.. of the trace; 0 when no lane reached it)
+SUBS = (('succ_id', 'sub_succ_id'), ('atomic', 'sub_atomic'), ('enqueue', 'sub_enqueue'), ('desc', 'sub_desc'), ('post', 'sub_post'), ('errv', 'sub_errv'))
 MIN_SPAN_US = 50.0   # two tasks of one block this far apart (1,024 ns ticks of %globaltimer) give the clock to better than 1%
 
 
@@ -24,7 +26,7 @@ def load(path: str):
         for r in csv.DictReader(fh):
             if int(r['gp_valid']) != 1:
                 continue
-            rows.append([float(r[f'gp{k}']) for k in range(9)] + [int(r['cont'])])
+            rows.append([float(r[f'gp{k}']) for k in range(9)] + [int(r['cont'])] + [float(r[name]) for _, name in SUBS])
             by_block[(int(r['smid']), int(r['block']))].append((float(r['start_us']), int(r['gp_cycle'])))
     return np.array(rows), by_block
 
@@ -52,6 +54,8 @@ def main() -> int:
         us = a[m, :9] / (ghz * 1e3)
         cells = '  '.join(f'{PHASES[k]}={us[:, k].mean():.2f}' for k in SHOWN)
         print(f'  {name:<13} n={m.sum():>6}  {cells}  total={us.sum(axis=1).mean():.2f} us')
+        subs = a[m, 10:] / (ghz * 1e3)
+        print('      sub-steps (us after the phase began, slowest lane, mean over tasks where the sub-step ran): ' + '  '.join(f'{label}={subs[:, j][subs[:, j] > 0].mean():.2f}' if (subs[:, j] > 0).any() else f'{label}=-' for j, (label, _) in enumerate(SUBS)))
     return 0
 
 

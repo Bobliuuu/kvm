@@ -45,6 +45,7 @@
 #define KVM_NBUCKETS   32          // priority levels 0..31; larger runs first (validated, never silently clamped)
 static_assert(KVM_NBUCKETS == 32, "kvm_pop maps one bucket to each lane of a warp");
 #define KVM_SMEM_FLOATS 1024
+#define KVM_PG_SUBS 6              // KVM_PROF_GAP: sub-steps a phase records (they go to gp[9..14])
 #define KVM_MAX_ARGS   20          // arguments per operator (3 bits each in a 64-bit type mask); slots hold KVM_ARG_STRIDE words
 #define KVM_REC_MAGIC  0x4b564d52  // "KVMR"
 #define KVM_REC_BUNDLE 0
@@ -158,7 +159,7 @@ struct KvmTrace {  // one per slot, 64 B
   int smid, block, ver0, ver1;                              // ver0/ver1: wait_var version at start / end (-1 none)
   int flags, exec_count, pad0, pad1;                        // flags bit0 = deadline missed
 #ifdef KVM_PROF_GAP
-  int gp[16];   // profiling build only: SM-clock cycles of the phases between the previous task on this block and this one (see KVM_PG)
+  int gp[18];   // profiling build only: gp[0..8] SM-clock cycles of the phases between the previous task on this block and this one (see KVM_PG); gp[9..14] sub-steps (KVM_PG_SUB); gp[15] valid; gp[16] the SM cycle counter beside start_ns
 #endif
 };
 #define KVM_TRACE_MISSED 1
@@ -197,6 +198,9 @@ struct KvmDevState {
   int trace_on;    // 1: per-task timeline and witness in trace[] (needed by --trace-csv, tests and the scheduler); 0: a run that only times keeps none of it off the task path
   int prestaged;   // 1: the host wrote the (single, one-record) run's record into device memory before the kernel started: the admitter skips its staging pass
   int warm_only;   // 1: a launch that returns at once: the kernel's code is uploaded and started before the timed launch
+#ifdef KVM_PROF_GAP
+  int noop_ops;    // profiling only (--noop-ops): the graph, the dependencies and the dispatcher run as usual but no op body does, to separate the hop's own cost from what the op bodies leave behind
+#endif
   unsigned long long timeout_ns, task_limit_ns;   // stall timeout; per-task running-time limit (0 = off, checked when the task ends)
   const KvmBuf* bufs;
   KvmTaskDesc* tasks;                               // [nslots]
@@ -436,7 +440,9 @@ KVM_OP(spin) {
 #endif
 
 // Adding an operator = one X line in kvm_ops.def + one KVM_OP(name) above; a missing KVM_OP is a compile error here.
-__device__ __forceinline__ void kvm_dispatch(int op, const KvmCtx& c, const int32_t* a) {
+// Not inlined: with every op body inlined into the worker loop, the loop's own state (the run's flags and pointers, the task it owes, its ticket) was spilled to the stack
+// around every op and reloaded one dependent load at a time on every hop. As its own function the dispatch gets the op bodies' register allocation and the loop keeps its own.
+__device__ __noinline__ void kvm_dispatch(int op, const KvmCtx c, const int32_t* a) {
   switch (op) {
 #define X(n, id, sig) case id: op_##n(c, a); break;
 #include "kvm_ops_list.inc"
@@ -525,6 +531,7 @@ struct KvmShared {
   unsigned long long start_ns;   // this task's start time: the task-limit check needs it after the op (from a register, not the trace in global memory)
 #ifdef KVM_PROF_GAP
   long long pg[16]; int pg_valid;
+  int sub[KVM_PG_SUBS];   // the slowest lane's completion of each sub-step of a phase, in SM cycles after the phase began (KVM_PG_SUB)
 #endif
   float smem[KVM_SMEM_FLOATS];
 };
@@ -533,8 +540,10 @@ struct KvmShared {
 // 5 slot freed | 6 done counted | 7 pop returned | 8 descriptor copied | 9 start bookkeeping.
 #ifdef KVM_PROF_GAP
 #define KVM_PG(k) do { if (threadIdx.x == 0) sh.pg[k] = clock64(); } while (0)
+#define KVM_PG_SUB(i, base) atomicMax(&sh.sub[i], (int)(clock64() - sh.pg[base]))   // this lane finished sub-step i of the phase that began at marker `base`
 #else
 #define KVM_PG(k) do { } while (0)
+#define KVM_PG_SUB(i, base) do { } while (0)
 #endif
 
 // Stall detector (one per thread 0 of a block): `timeout` is the longest the executor may go without a single task finishing or
@@ -599,14 +608,18 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   }
 #ifdef KVM_PROF_GAP
   if (threadIdx.x == 0) {   // gp[k] = phase k -> k+1 (markers 0..6 were stamped by the previous task of this block)
-    for (int k = 0; k < 16; ++k) tr->gp[k] = 0;
-    if (sh.pg_valid) { for (int k = 0; k < 9; ++k) tr->gp[k] = (int)(sh.pg[k + 1] - sh.pg[k]); tr->gp[15] = 1; }
-    tr->gp[14] = (int)sh.pg[9];   // the SM's cycle counter beside this task's start_ns: two tasks of one block give the clock the phases are counted at
+    for (int k = 0; k < 18; ++k) tr->gp[k] = 0;
+    if (sh.pg_valid) { for (int k = 0; k < 9; ++k) tr->gp[k] = (int)(sh.pg[k + 1] - sh.pg[k]); for (int k = 0; k < KVM_PG_SUBS; ++k) tr->gp[9 + k] = sh.sub[k]; tr->gp[15] = 1; }
+    for (int k = 0; k < KVM_PG_SUBS; ++k) sh.sub[k] = 0;
+    tr->gp[16] = (int)sh.pg[9];   // the SM's cycle counter beside this task's start_ns: two tasks of one block give the clock the phases are counted at
     sh.pg_valid = 1;
   }
 #endif
   if (!sh.skip) {
     KvmCtx c{S.bufs, S.nbufs, slot, S.cnt, S.herr, sh.smem};
+#ifdef KVM_PROF_GAP
+    if (!S.noop_ops)
+#endif
     kvm_dispatch(d.op_id, c, S.args + d.args_off);
   }
   // Every warp makes ITS OWN op stores visible GPU-wide before the barrier: bar.sync orders them only within the block, and the single
@@ -637,7 +650,10 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   if (!sh.skip && (int)threadIdx.x < d.succ_cnt) {
     for (int e = threadIdx.x; e < d.succ_cnt; e += blockDim.x) {
       int s = e < blockDim.x ? sid0 : S.succ[(unsigned)(d.succ_off + e) & (S.succ_cap - 1)];
-      if (atom_add(S.indeg + s, -1) == 1) {
+      KVM_PG_SUB(0, 1);   // the successor id is in hand
+      const int left = atom_add(S.indeg + s, -1);
+      KVM_PG_SUB(1, 1);   // the indegree atomic returned
+      if (left == 1) {
         // Continuation: one released successor of the same priority bucket whose version wait is met is run by this block directly: no enqueue,
         // no pop. Only without the scheduler (it accounts ready/running per class at enqueue and pop), and only when the queue was empty at the
         // start of this task (a chain must not starve queued tasks).
@@ -647,7 +663,7 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
         if (S.cont_on && !S.sp.on && !sh.qbusy && s_pri == d.priority && (s_wv < 0 || ld_acq(S.version + s_wv) >= s_wn) &&
             atomicCAS(&sh.cont, -1, s) == -1) {
           if (S.trace_on) S.trace[s].ready_ns = kvm_now();
-        } else { kvm_sched_pref(S, s); kvm_release_task(S, s, s_wv, s_wn); }   // SCHED: affinity = this block
+        } else { kvm_sched_pref(S, s); kvm_release_task(S, s, s_wv, s_wn); KVM_PG_SUB(2, 1); }   // SCHED: affinity = this block
       }
     }
   }
@@ -703,10 +719,10 @@ __device__ void kvm_worker(const KvmDevState& Sparam, KvmWatch& t0, KvmShared& s
     if (next >= 0) {
       cmd = next;
       if (threadIdx.x == 0) sh.how = KVM_TRACE_CONT;
-      if (threadIdx.x < KVM_TASK_WORDS) ((int*)&sh.d)[threadIdx.x] = ((const int*)(S.tasks + cmd))[threadIdx.x];
-      else if (threadIdx.x == 32 && owed >= 0) kvm_post_task(S, owed, owed_wid);
+      if (threadIdx.x < KVM_TASK_WORDS) { ((int*)&sh.d)[threadIdx.x] = ((const int*)(S.tasks + cmd))[threadIdx.x]; KVM_PG_SUB(3, 6); }
+      else if (threadIdx.x == 32 && owed >= 0) { kvm_post_task(S, owed, owed_wid); KVM_PG_SUB(4, 6); }
       owed = -1;
-      if (threadIdx.x == 16) sh.err = errv;
+      if (threadIdx.x == 16) { sh.err = errv; KVM_PG_SUB(5, 6); }
       __syncthreads();   // the descriptor and the previous task's bookkeeping are complete before the op
     } else {
       if (threadIdx.x < 32) {

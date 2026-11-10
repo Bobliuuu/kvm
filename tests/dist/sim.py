@@ -37,7 +37,7 @@ class Device:
         self.rank = shard.rank
         self.shard = shard
         self.c = pt.compile_shard(shard)
-        self.buf = {b.name: b.materialize() for b in self.c.buffers}
+        self.buf = {b.name: ref_ops.Buf(b.materialize(), b.rows, b.cols, b.dtype) for b in self.c.buffers}   # shaped: GPT ops read rows/dtype
         self.index = [b.name for b in self.c.buffers]
         self.vars = [v.name for v in self.c.variables]
         self.version = {v.name: (0 if v.name in shard.in_vars else v.base_version) for v in self.c.variables}
@@ -99,7 +99,7 @@ def run(plan, seed, max_steps=10_000_000, pump_bias=0.3, check_fresh=True, init=
     for r, bufs in (init or {}).items():
         for k, v in bufs.items():
             assert len(devs[r].buf[k]) == len(v), f'init for rank {r} buffer {k}: size mismatch'
-            devs[r].buf[k] = list(v)
+            o = devs[r].buf[k]; devs[r].buf[k] = ref_ops.Buf(v, o.rows, o.cols, o.dtype) if isinstance(o, ref_ops.Buf) else list(v)
     by_rank = {d.rank: d for d in devs}
     net = {}                                   # (src, dst) -> list of messages (in order)
     nonempty = set()                           # net keys with queued messages

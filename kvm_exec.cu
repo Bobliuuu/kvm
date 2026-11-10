@@ -171,6 +171,121 @@ struct KvmBundle {
   size_t words() const { return (KVM_REC_HDR + tasks.size() * KVM_TASK_WORDS + succ.size() + args.size() + 7) & ~(size_t)7; }
 };
 
+// ---------------- dissolve noops that only order tasks (on a longest path) ----------------
+// A noop has no work; its effect is the ordering through it and, when it publishes, a version. When no task of the bundle waits on a version, that version has no reader, so a noop is spliced out: every
+// predecessor points straight at every successor, and the noop costs no task, level or dependency hop. A noop whose fan-in times fan-out exceeds max_fan stays (a join: splicing it would explode the edge count).
+// Returns the number dissolved. Runs on a plain single-bundle run, before the first task is admitted.
+static int kvm_dissolve_noops(KvmBundle& b, long long max_fan = 65536) {
+  const int nt = (int)b.tasks.size();
+  for (const KvmTaskDesc& t : b.tasks) if (t.wait_var >= 0) return 0;
+  // Only a noop on a longest path (counted in tasks) costs the run a hop; anywhere else splicing it buys nothing and multiplies edges (a GPT step's barrier, 20-45 in by
+  // 21-81 out, lies off the path: spliced, gpt-tiny and gpt-small lost 0.5-0.9%; the MLP rows' barrier lies on it and gained 4-9%; F-07m, T-CE5).
+  std::vector<int> depth(nt, 0), height(nt, 0), pending(nt), order;
+  order.reserve(nt);
+  for (int i = 0; i < nt; ++i) { pending[i] = b.tasks[i].indegree; if (pending[i] == 0) order.push_back(i); }
+  for (size_t k = 0; k < order.size(); ++k) {
+    const KvmTaskDesc& t = b.tasks[order[k]];
+    for (int e = 0; e < t.succ_cnt; ++e) { const int s = b.succ[t.succ_off + e]; depth[s] = std::max(depth[s], depth[order[k]] + 1); if (--pending[s] == 0) order.push_back(s); }
+  }
+  if ((int)order.size() != nt) return 0;                      // not a DAG by its indegrees: leave the bundle to validation
+  int longest = 0;
+  for (int k = nt - 1; k >= 0; --k) {
+    const int i = order[k]; const KvmTaskDesc& t = b.tasks[i];
+    for (int e = 0; e < t.succ_cnt; ++e) height[i] = std::max(height[i], height[b.succ[t.succ_off + e]] + 1);
+    longest = std::max(longest, depth[i] + height[i]);
+  }
+  std::vector<char> gone(nt, 0); int ngone = 0;
+  for (int i = 0; i < nt; ++i) {
+    const KvmTaskDesc& t = b.tasks[i];
+    if (t.op_id == KVM_OP_noop && depth[i] + height[i] == longest && (long long)t.indegree * t.succ_cnt <= max_fan) { gone[i] = 1; ++ngone; }
+  }
+  if (!ngone) return 0;
+  std::vector<int> new_id(nt, -1); int m = 0;
+  for (int i = 0; i < nt; ++i) if (!gone[i]) new_id[i] = m++;
+  // A version variable whose publishers are only partly spliced out keeps the rest: they must still publish in their old order and count up by one. So each remaining
+  // publisher gets the next remaining one of its variable as an explicit successor and a renumbered version. No task waits on a version here (checked above), so the
+  // numbers carry no reader's meaning, only the executor's contiguity check.
+  std::map<int, int> first_ver;                                // a variable's first published version as written (its base + 1)
+  std::map<int, std::vector<int>> kept;                        // a variable's remaining publishers, old indices
+  for (int i = 0; i < nt; ++i) {
+    const KvmTaskDesc& t = b.tasks[i];
+    if (t.pub_var < 0) continue;
+    auto f = first_ver.find(t.pub_var);
+    if (f == first_ver.end() || t.pub_ver < f->second) first_ver[t.pub_var] = t.pub_ver;
+    if (!gone[i]) kept[t.pub_var].push_back(i);
+  }
+  std::vector<int> next_pub(nt, -1), new_ver(nt, 0);
+  for (auto& kv : kept) {
+    std::vector<int>& ix = kv.second;
+    std::sort(ix.begin(), ix.end(), [&](int x, int y) { return b.tasks[x].pub_ver < b.tasks[y].pub_ver; });
+    for (size_t r = 0; r < ix.size(); ++r) { new_ver[ix[r]] = first_ver[kv.first] + (int)r; if (r + 1 < ix.size()) next_pub[ix[r]] = ix[r + 1]; }
+  }
+  KvmBundle out; out.tasks.reserve(m);
+  std::vector<int> indeg(m, 0), stamp(nt, -1), stack;
+  for (int i = 0; i < nt; ++i) {
+    if (gone[i]) continue;
+    KvmTaskDesc t = b.tasks[i];
+    std::set<int> succs;                                      // direct successors, and those reached through spliced noops (each noop visited once for this task)
+    stack.clear();
+    for (int k = 0; k < t.succ_cnt; ++k) stack.push_back(b.succ[t.succ_off + k]);
+    while (!stack.empty()) {
+      const int v = stack.back(); stack.pop_back();
+      if (!gone[v]) { succs.insert(new_id[v]); continue; }
+      if (stamp[v] == i) continue;
+      stamp[v] = i;
+      for (int k = 0; k < b.tasks[v].succ_cnt; ++k) {
+        const int w = b.succ[b.tasks[v].succ_off + k];
+        if (gone[w] && b.tasks[v].pub_var >= 0 && b.tasks[w].pub_var == b.tasks[v].pub_var) continue;   // the token chain between two publishers of one variable only orders the publications (nobody reads them): following it would add every later step's successors
+        stack.push_back(w);
+      }
+    }
+    if (next_pub[i] >= 0) succs.insert(new_id[next_pub[i]]);
+    if (t.pub_var >= 0) t.pub_ver = new_ver[i];
+    const int old_args = t.args_off;
+    t.succ_off = (int)out.succ.size(); t.succ_cnt = (int)succs.size();
+    for (int s : succs) { out.succ.push_back(s); ++indeg[s]; }
+    t.args_off = (int)out.args.size();
+    out.args.insert(out.args.end(), b.args.begin() + old_args, b.args.begin() + old_args + t.args_words);
+    out.tasks.push_back(t);
+  }
+  for (int i = 0; i < m; ++i) out.tasks[i].indegree = indeg[i];
+  b = std::move(out);
+  return ngone;
+}
+
+// ---------------- the tape in dependency order ----------------
+// The admitter reads a record in task order and a task can be released only once it has passed it, so a task's position in the tape sets the earliest moment it can start. Replicated
+// runs concatenate R tapes, which puts run k's first task behind every task of runs 0..k-1 (R=32: run 31 became ready 18.7 ms into a 76 ms run, at 62 ns a task; F-07o). Any
+// topological order is a valid tape; this one is by dependency level, in the old order within a level (a GEMM's tiles stay consecutive).
+static bool kvm_sort_tape(KvmBundle& b) {
+  const int n = (int)b.tasks.size();
+  std::vector<int> indeg(n), order, cur, next;
+  order.reserve(n);
+  for (int i = 0; i < n; ++i) { indeg[i] = b.tasks[i].indegree; if (indeg[i] == 0) cur.push_back(i); }
+  while (!cur.empty()) {
+    for (int i : cur) {
+      order.push_back(i);
+      for (int k = 0; k < b.tasks[i].succ_cnt; ++k) { const int s = b.succ[b.tasks[i].succ_off + k]; if (--indeg[s] == 0) next.push_back(s); }
+    }
+    std::sort(next.begin(), next.end());
+    cur.swap(next); next.clear();
+  }
+  if ((int)order.size() != n) return false;                    // not a DAG by its indegrees: leave the tape alone (validation reports it)
+  std::vector<int> pos(n);
+  for (int k = 0; k < n; ++k) pos[order[k]] = k;
+  std::vector<KvmTaskDesc> tasks(n);
+  std::vector<int32_t> succ; succ.reserve(b.succ.size());
+  for (int k = 0; k < n; ++k) {
+    KvmTaskDesc t = b.tasks[order[k]];
+    const int off = (int)succ.size();
+    for (int j = 0; j < t.succ_cnt; ++j) succ.push_back(pos[b.succ[t.succ_off + j]]);
+    t.succ_off = off;
+    tasks[k] = t;
+  }
+  b.tasks.swap(tasks); b.succ.swap(succ);
+  return true;
+}
+
 class KvmBundleBuilder {
  public:
   int add(const char* op, std::vector<KvmArg> args, KvmTaskOpts o = {}) {
@@ -1178,13 +1293,15 @@ static void usage() {
     "  --golden [--golden-tol R]  compare with <bundle_dir>/golden.json (single bundle): final buffers, versions, observed versions\n"
     "  --trace-csv FILE   per-task timeline  --dump-buffers   print buffers   --quiet   errors only   --check-ops   print registry\n"
     "  --warm-ms N   keep the GPU busy N ms right before the timed launch (the SM clock runs low under sparse work; short timed runs inherit it)\n"
+    "  --no-dissolve      keep the noops that only order tasks (default: spliced out of a plain single-bundle run on the dynamic path)\n"
+    "  --no-tape-sort     admit the tape as the bundle wrote it (default on the dynamic path: dependency order, which starts every replicated run at once)\n"
     "  --dump-bin DIR i,j,..  write the listed buffers (by metadata index, widened to little-endian f32 / raw i32) to DIR/<index>.bin after the run\n"
     "  --static           (default for one bundle) run the bundle as per-worker programs compiled at load: no ready queue, no admission  --workers N  --comm-us X (scheduler's cross-worker cost)  --no-partition (independent runs share all workers)  --no-fuse (no fused MLP steps; by default a run whose steps match is fused on the static path, and --dump-buffers turns them off)\n"
     "  --dynamic          use the admission ring and ready queue even for one bundle\n");
 }
 
 int main(int argc, char** argv) {
-  KvmConfig cfg; std::vector<std::string> dirs; const char* csv = nullptr; bool dump = false, golden = false; float golden_tol = 1e-6f;
+  KvmConfig cfg; std::vector<std::string> dirs; const char* csv = nullptr; bool dump = false, golden = false, dissolve = true, tape_sort = true; float golden_tol = 1e-6f;
   std::string dump_dir; std::vector<int> dump_idx;
   bool sized = false;   // the caller gave a sizing flag: keep its live_cap/ring/slots
   bool no_fifo = false;  // --no-fifo: keep the 32-bucket ready rings even for a bundle set that qualifies for the FIFO ring
@@ -1229,6 +1346,8 @@ int main(int argc, char** argv) {
     else if (a == "--golden") golden = true;
     else if (a == "--golden-tol") { if (i + 1 >= argc) { usage(); return 2; } golden_tol = (float)atof(argv[++i]); }
     else if (a == "--quiet") g_kvm_log = 0;
+    else if (a == "--no-dissolve") dissolve = false;
+    else if (a == "--no-tape-sort") tape_sort = false;
     else if (a == "--check-ops") { for (auto& o : kKvmOps) printf("%2d %-9s arity %d  (%s)\n", o.id, o.name, o.arity, o.sig); return 0; }
     else if (a[0] == '-') { usage(); return 2; }
     else dirs.push_back(a);
@@ -1331,6 +1450,11 @@ int main(int argc, char** argv) {
       }
       resp = &ex.run_static(bundles[0], so);
     } else {
+      if (dissolve && !golden && !csv && dirs.size() == 1 && !cfg.sched.on) {   // the dynamic path only (the static planner and the fused-step matcher read the bundle as written); a trace's slots are the bundle's task indices, so a traced run keeps its noops
+        const int nd = kvm_dissolve_noops(bundles[0]);
+        if (nd) KLOG(2, "%d noops dissolved: %zu tasks, %zu edges", nd, bundles[0].tasks.size(), bundles[0].succ.size());
+      }
+      if (tape_sort && !golden && !csv && bundles.size() == 1 && kvm_sort_tape(bundles[0])) KLOG(2, "tape in dependency order");
       bool one_record = false;
       {
         bool fifo = !no_fifo && !cfg.sched.on, no_waits = true;

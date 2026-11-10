@@ -22,10 +22,10 @@ run() {
   cp "$SCR/out/observations.jsonl" "$OUT/exec_observations.jsonl"; cp "$SCR/out/run.json" "$OUT/exec_run.json" 2>/dev/null || true
   echo "== torch curves + hold-out $(date -u +%T)"
   python3 tests/gpt162/torch_ref.py "$SCR/demo" --model "$MODEL" --steps "$STEPS" --lr "$LR" --warmup "$WARMUP" --curve --obs "$OUT/exec_observations.jsonl" \
-      --holdout "$HOLD" --exec-weights "$SCR/out/buffers" --out "$OUT/curve.json" 2>&1 | tee "$OUT/curve.log"
+      --holdout "$HOLD" --curve-labels "${CURVE_LABELS:-tf32,fp32}" --exec-weights "$SCR/out/buffers" --out "$OUT/curve.json" 2>&1 | tee "$OUT/curve.log"
   echo "== done $(date -u +%T)"
 }
 if [ -n "${KVM_NO_LOCK:-}" ]; then run   # a private GPU (Modal container): no shared-box lock
-else flock -w 7200 ~/.gpu.lock bash -c "$(declare -f run); OUT='$OUT' SCR='$SCR' MODEL='$MODEL' STEPS='$STEPS' LR='$LR' WARMUP='$WARMUP' HOLD='$HOLD' run"
+else flock -w 7200 ~/.gpu.lock bash -c "$(declare -f run); CURVE_LABELS='${CURVE_LABELS:-}' OUT='$OUT' SCR='$SCR' MODEL='$MODEL' STEPS='$STEPS' LR='$LR' WARMUP='$WARMUP' HOLD='$HOLD' run"
 fi
 rm -rf "$SCR"

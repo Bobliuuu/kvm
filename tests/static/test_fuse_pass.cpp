@@ -12,26 +12,10 @@
 #include <sstream>
 #include <vector>
 #include "kvm_fuse.h"
+#include "registry.h"
 
 static std::string slurp(const std::string& p) { std::ifstream f(p, std::ios::binary); if (!f) { fprintf(stderr, "cannot read %s\n", p.c_str()); exit(2); } std::stringstream s; s << f.rdbuf(); return s.str(); }
 template <class T> static std::vector<T> load(const std::string& p) { std::string r = slurp(p); assert(r.size() % sizeof(T) == 0); std::vector<T> v(r.size() / sizeof(T)); memcpy(v.data(), r.data(), r.size()); return v; }
-
-// The registry from the .def files (X(name, id, "sig") lines).
-static std::map<int, KvmSOpInfo> g_ops; static std::map<std::string, int> g_ids;
-static int types_of(const std::string& sig, int* arity) {
-    uint64_t t = 0; int i = 0; std::stringstream ss(sig); std::string tok;
-    while (std::getline(ss, tok, ',')) { auto c = tok.find(':'); std::string ty = tok.substr(c + 1); uint64_t v = ty == "buf" ? 0 : ty == "i32" ? 1 : ty == "f32" ? 2 : ty == "buf?" ? 3 : 7; assert(v != 7); t |= v << (3 * i); ++i; }
-    *arity = i; return (int)t;
-}
-static void load_defs(const std::string& inc) {
-    for (const char* f : {"kvm_ops.def", "kvm_ops_gpt.def", "kvm_ops_extra.def", "kvm_ops_comm.def", "kvm_ops_game.def", "kvm_ops_fmlp.def"}) {
-        std::ifstream in(inc + "/" + f); std::string line; std::regex re("^\\s*X\\(\\s*(\\w+)\\s*,\\s*(\\d+)\\s*,\\s*\"([^\"]*)\"");
-        while (std::getline(in, line)) {
-            std::smatch m; if (!std::regex_search(line, m, re)) continue;
-            int id = std::stoi(m[2].str()), ar = 0; KvmSOpInfo o; o.types = (uint64_t)types_of(m[3].str(), &ar); o.arity = ar; g_ops[id] = o; g_ids[m[1].str()] = id;
-        }
-    }
-}
 
 // Pulls the buffer table out of metadata.json without a JSON library: every {"name":..., "index":N, "rows":R, "cols":C, "dtype":D ...} entry of the "buffers" array.
 static std::vector<KvmFuseBuf> load_bufs(const std::string& meta) {
@@ -56,12 +40,26 @@ static bool acyclic(const std::vector<KvmTaskDesc>& t, const std::vector<int32_t
 }
 
 int main(int argc, char** argv) {
-    if (argc < 2) { fprintf(stderr, "usage: %s BUNDLE_DIR... (run from the repo root)\n", argv[0]); return 2; }
-    load_defs("include");
-    const auto id = [&](const char* n) { auto it = g_ids.find(n); return it == g_ids.end() ? -1 : it->second; };
-    KvmFuseOps ops; ops.noop = id("noop"); ops.select_window = id("select_window"); ops.embedding_fwd = id("embedding_fwd"); ops.matmul_tile = id("matmul_tile"); ops.softmax_ce_fused = id("softmax_ce_fused"); ops.sgd_range = id("sgd_range"); ops.softmax_ce_fwd = id("softmax_ce_fwd"); ops.softmax_ce_reduce = id("softmax_ce_reduce"); ops.softmax_ce_bwd = id("softmax_ce_bwd"); ops.gelu_bwd = id("gelu_bwd"); ops.colsum = id("colsum"); ops.embedding_bwd = id("embedding_bwd"); ops.sgd = id("sgd"); ops.fmlp_slice = id("fmlp_slice"); ops.fmlp_sgd = id("fmlp_sgd");
+    if (argc < 2) { fprintf(stderr, "usage: %s BUNDLE_DIR...\n", argv[0]); return 2; }
+    const kvm_test_registry::Registry& R = kvm_test_registry::registry();
+    KvmFuseOps ops;
+    ops.noop = R.require("noop");
+    ops.select_window = R.require("select_window");
+    ops.embedding_fwd = R.require("embedding_fwd");
+    ops.matmul_tile = R.require("matmul_tile");
+    ops.softmax_ce_fused = R.require("softmax_ce_fused");
+    ops.sgd_range = R.require("sgd_range");
+    ops.softmax_ce_fwd = R.require("softmax_ce_fwd");
+    ops.softmax_ce_reduce = R.require("softmax_ce_reduce");
+    ops.softmax_ce_bwd = R.require("softmax_ce_bwd");
+    ops.gelu_bwd = R.require("gelu_bwd");
+    ops.colsum = R.require("colsum");
+    ops.embedding_bwd = R.require("embedding_bwd");
+    ops.sgd = R.require("sgd");
+    ops.fmlp_slice = R.require("fmlp_slice");
+    ops.fmlp_sgd = R.require("fmlp_sgd");
     const int slice_id = ops.fmlp_slice, sgd_id = ops.fmlp_sgd;
-    const KvmSOpLookup op_of = [](int i) { auto it = g_ops.find(i); return it == g_ops.end() ? KvmSOpInfo{} : it->second; };
+    const KvmSOpLookup op_of = R.lookup();
     int failures = 0;
     for (int ai = 1; ai < argc; ++ai) {
         const std::string dir = argv[ai];

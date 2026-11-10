@@ -220,6 +220,8 @@ struct KvmConfig {
   int num_vars = 64;
   int ring_words = 1 << 16;     // admission ring, multiple of 8
   int aging_us = 0;             // 0: strict priority; else one priority level per aging_us of waiting
+  // A bundle of `tasks` tasks and `words` record words (KvmBundle::words()) goes in as one record: else it is cut into windows that drain.
+  bool fits_one_record(long long tasks, long long words) const { return tasks <= live_cap && tasks <= max_tasks && words <= ring_words / 2; }
 #ifdef KVM_PROF_GAP
   int noop_ops = 0;             // profiling only: run the graph with every op body skipped (--noop-ops)
 #endif
@@ -1234,16 +1236,18 @@ int main(int argc, char** argv) {
   if (dirs.empty()) { usage(); return 2; }
   try {
     // Window sizing: the default live_cap / ring cut a large bundle into windows, and the host submits a window only after the windows holding its producers
-    // completed (a drain per window). When no sizing flag was given and a single bundle fits the slots, size the ring and live_cap so the bundle is one record.
+    // completed (a drain per window). When no sizing flag was given and a single bundle would be cut by any capacity (its tasks, or its words: a 9,800-task
+    // bundle of 4 replicated runs ran its runs one after another in 10 windows, x4 slower), size them so the bundle is one record.
     if (!sized && dirs.size() == 1) {
       Json m = JsonParser(read_file(dirs[0] + "/metadata.json")).parse();
       const long long nt = (long long)m.num("task_count", -1), ne = (long long)m.num("edge_count", -1), nw = (long long)m.num("args_words", -1);
-      const long long words = KVM_REC_HDR + nt * KVM_TASK_WORDS + ne + nw;
+      const long long words = (KVM_REC_HDR + nt * KVM_TASK_WORDS + ne + nw + 7) & ~7ll;   // KvmBundle::words() of the bundle once read
       auto p2 = [](long long v) { long long r = 2; while (r < v) r <<= 1; return r; };
-      if (nt > cfg.live_cap && nt <= (1 << 20) && ne >= 0 && nw >= 0 && words < (1ll << 26)) {
-        cfg.live_cap = (int)p2(nt); cfg.max_tasks = std::max(cfg.max_tasks, cfg.live_cap); cfg.ring_words = (int)std::max<long long>(cfg.ring_words, p2(2 * words + 128));
+      if (ne >= 0 && nw >= 0 && (!cfg.fits_one_record(nt, words) || ne + 2 > (long long)cfg.succ_cap) && nt <= (1 << 20) && words < (1ll << 26)) {
+        cfg.live_cap = (int)std::max<long long>(cfg.live_cap, p2(nt)); cfg.max_tasks = std::max(cfg.max_tasks, cfg.live_cap);
+        cfg.ring_words = (int)std::max<long long>(cfg.ring_words, p2(2 * words + 128));
         cfg.succ_cap = std::max<unsigned>(cfg.succ_cap, (unsigned)p2(ne + 2));
-        KLOG(2, "window sizing: %lld tasks as one record (live_cap %d, ring %d words)", nt, cfg.live_cap, cfg.ring_words);
+        KLOG(2, "window sizing: %lld tasks, %lld words as one record (live_cap %d, ring %d words, successor ring %u words)", nt, words, cfg.live_cap, cfg.ring_words, cfg.succ_cap);
       }
     }
     KvmExec ex(cfg);
@@ -1331,7 +1335,7 @@ int main(int argc, char** argv) {
       {
         bool fifo = !no_fifo && !cfg.sched.on, no_waits = true;
         for (const KvmBundle& b : bundles) for (const KvmTaskDesc& t : b.tasks) { if (t.priority != 0 || t.deadline_us != -1) fifo = false; if (t.wait_var >= 0) no_waits = false; }
-        one_record = bundles.size() == 1 && (int)bundles[0].tasks.size() <= cfg.live_cap && bundles[0].tasks.size() <= (size_t)cfg.max_tasks && bundles[0].words() <= (size_t)cfg.ring_words / 2;
+        one_record = bundles.size() == 1 && cfg.fits_one_record((long long)bundles[0].tasks.size(), (long long)bundles[0].words());
         const bool trace_on = csv != nullptr || golden || getenv("KVM_TRACE") != nullptr;
         ex.set_run_facts(fifo, one_record, no_waits, trace_on);
         KLOG(2, "ready queue: %s; slots %s; version waits %s; task trace %s", fifo ? "one FIFO ring, ticket waits" : "32 priority buckets", one_record ? "not recycled (one record)" : "recycled", no_waits ? "none" : "present", (trace_on || cfg.sched.on) ? "on" : "off");

@@ -1,5 +1,6 @@
 """gpt_162m executor-vs-PyTorch correctness check on an A100 via Modal (nothing in the file names a host or key).
-Usage (repo root):  modal run --detach tests/modal/run_gpt162.py --stage build|check --tag NAME [--n1 40 --n2 50]
+Usage (repo root):  modal run --detach tests/modal/run_gpt162.py --stage build|check|grads|learn --tag NAME [--n1 40 --n2 50] [--prec f32|bf16s]
+  [--bin-dir BIN-x]  (build writes, and the GPU stages read, /logs/<bin-dir>/kvm_run; give each tree its own)  [--gpu40] (learn on an A100-40GB)
   build: compile demo/kvm_run (no game pack) for sm_80 on a CPU container into the volume.
   check: step-1 loss/gradients vs torch (reuse none, 1 step), then loss curves vs torch for the chain stream and for a repeated batch.
 Logs and JSON land in volume 'kvm-gpt162' under /<tag>/ ; fetch with: modal volume get kvm-gpt162 /<tag> results/<dir>/raw
@@ -17,10 +18,10 @@ app = modal.App("kvm-gpt162", image=image)
 vol = modal.Volume.from_name("kvm-gpt162", create_if_missing=True)
 
 BUILD = r'''
-mkdir -p /logs/BIN
+mkdir -p /logs/$BIN
 nvcc --version | tail -1
-time nvcc -O3 -arch=sm_80 -std=c++17 -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 demo/kvm_run.cu -o /logs/BIN/kvm_run 2>&1 | tail -20
-ls -la /logs/BIN
+time nvcc -O3 -arch=sm_80 -std=c++17 -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 demo/kvm_run.cu -o /logs/$BIN/kvm_run 2>&1 | grep -v "warning #\|Remark\|^\s*\^\|^$" | tail -40
+ls -la /logs/$BIN
 '''
 
 # A: a 1-step window (reuse none keeps every gradient buffer alive) dumped for the torch comparison.
@@ -28,7 +29,7 @@ ls -la /logs/BIN
 CHECK = r'''
 set -u
 OUT=/logs/$TAG; mkdir -p $OUT
-cp /logs/BIN/kvm_run demo/kvm_run
+cp /logs/$BIN/kvm_run demo/kvm_run
 echo "== environment"; nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
 python3 - <<PY
 import torch; p = torch.cuda.get_device_properties(0)
@@ -75,14 +76,17 @@ python3 tests/gpt162/torch_ref.py /work/o2 --model "$M162R" --steps $N2 --lr 1e-
 echo "== done"
 '''
 
+# grads: stage A of `check` alone (step-1 loss and every gradient vs torch fp64 / tf32 / fp32 / autocast-bf16) for precision $PREC.
+GRADS = CHECK.split('echo "== B1:')[0].replace(
+    "M162R=", "M162='{\"name\":\"gpt_162m\",\"vocab\":50304,\"d_model\":768,\"layers\":12,\"heads\":12,\"seq\":1024,\"batch\":4,\"precision\":\"'$PREC'\"}'\nM162R=", 1) + 'echo "== done"\n'
 
 # learn: the executor and torch on a low-entropy noisy-bigram stream (tests/gpt162/learning.sh; no shared-box lock on a private GPU), then the plot.
 LEARN = r'''
-cp /logs/BIN/kvm_run demo/kvm_run
+cp /logs/$BIN/kvm_run demo/kvm_run
 OUT=/logs/$TAG; mkdir -p $OUT
-M='{"name":"gpt_162m","vocab":50304,"d_model":768,"layers":12,"heads":12,"seq":1024,"batch":4,"data_vocab":'$K',"data_noise":'$NOISE'}'
+M='{"name":"gpt_162m","vocab":50304,"d_model":768,"layers":12,"heads":12,"seq":1024,"batch":4,"data_vocab":'$K',"data_noise":'$NOISE',"precision":"'$PREC'"}'
 echo "$M" > $OUT/model.json
-KVM_NO_LOCK=1 KVM_SCRATCH=/work/scr bash tests/gpt162/learning.sh $OUT/run "$M" $STEPS $LR $WARMUP 8
+CURVE_LABELS=$CURVE_LABELS KVM_NO_LOCK=1 KVM_SCRATCH=/work/scr bash tests/gpt162/learning.sh $OUT/run "$M" $STEPS $LR $WARMUP 8
 pip list 2>/dev/null | grep -i matplotlib || pip install -q matplotlib
 python3 tests/gpt162/learning_plot.py $OUT/run --model-json "$M" --png $OUT/run/loss.png --csv $OUT/run/loss.csv
 echo "== done"
@@ -93,7 +97,7 @@ def _drive(script, tag, extra_env, logname):
     import subprocess, time
     out = f"/logs/{tag}"; os.makedirs(out, exist_ok=True)
     f = open(f"{out}/{logname}", "w")
-    env = dict(os.environ, TAG=tag, **extra_env)
+    env = dict(os.environ, TAG=tag, **{"BIN": "BIN", "PREC": "f32", "CURVE_LABELS": "tf32,fp32", **extra_env})
     p = subprocess.Popen(["bash", "-c", "cd /src && export PATH=$PATH:/usr/local/cuda/bin && mkdir -p /work && " + script],
                          stdout=f, stderr=subprocess.STDOUT, text=True, env=env)
     while p.poll() is None:   # live log: commit the volume every 30 s
@@ -101,9 +105,9 @@ def _drive(script, tag, extra_env, logname):
     f.close(); vol.commit()
 
 
-@app.function(cpu=4, memory=16384, timeout=7200, volumes={"/logs": vol})
-def build(tag: str):
-    _drive(BUILD, tag, {}, "build.log")
+@app.function(cpu=16, memory=65536, timeout=7200, volumes={"/logs": vol})
+def build(tag: str, bin_dir: str):
+    _drive(BUILD, tag, {"BIN": bin_dir}, "build.log")
 
 
 @app.function(gpu="A100-80GB", cpu=8, memory=65536, timeout=10800, volumes={"/logs": vol})
@@ -112,16 +116,34 @@ def check(tag: str, n1: int, n2: int):
 
 
 @app.function(gpu="A100-80GB", cpu=8, memory=65536, timeout=10800, volumes={"/logs": vol})
-def learn(tag: str, k: int, noise: float, steps: int, lr: str, warmup: int):
-    _drive(LEARN, tag, {"K": str(k), "NOISE": str(noise), "STEPS": str(steps), "LR": lr, "WARMUP": str(warmup)}, "learn.log")
+def grads(tag: str, prec: str = "f32", bin_dir: str = "BIN"):
+    _drive(GRADS, tag, {"PREC": prec, "BIN": bin_dir}, "grads.log")
+
+
+@app.function(gpu="A100-80GB", cpu=8, memory=65536, timeout=10800, volumes={"/logs": vol})
+def learn(tag: str, k: int, noise: float, steps: int, lr: str, warmup: int, prec: str = "f32", bin_dir: str = "BIN"):
+    _drive(LEARN, tag, _learn_env(k, noise, steps, lr, warmup, prec, bin_dir), "learn.log")
+
+
+@app.function(gpu="A100-40GB", cpu=8, memory=65536, timeout=10800, volumes={"/logs": vol})
+def learn40(tag: str, k: int, noise: float, steps: int, lr: str, warmup: int, prec: str = "bf16s", bin_dir: str = "BIN"):
+    """The same learning run on an A100-40GB (bf16s: 5 GiB of device buffers, fits; the f32 record ran on an 80 GB part)."""
+    _drive(LEARN, tag, _learn_env(k, noise, steps, lr, warmup, prec, bin_dir), "learn.log")
+
+
+def _learn_env(k, noise, steps, lr, warmup, prec, bin_dir):
+    labels = "tf32,fp32,bf16" if prec != "f32" else "tf32,fp32"
+    return {"K": str(k), "NOISE": str(noise), "STEPS": str(steps), "LR": lr, "WARMUP": str(warmup), "PREC": prec, "BIN": bin_dir, "CURVE_LABELS": labels}
 
 
 @app.local_entrypoint()
 def main(stage: str = "check", tag: str = "run", n1: int = 40, n2: int = 50, k: int = 256, noise: float = 0.1, steps: int = 300,
-         lr: str = "3e-4", warmup: int = 5):
+         lr: str = "3e-4", warmup: int = 5, prec: str = "f32", bin_dir: str = "BIN", gpu40: bool = False):
     if stage == "build":
-        build.remote(tag)
+        build.remote(tag, bin_dir)
+    elif stage == "grads":
+        grads.remote(tag, prec, bin_dir)
     elif stage == "learn":
-        learn.remote(tag, k, noise, steps, lr, warmup)
+        (learn40 if gpu40 else learn).remote(tag, k, noise, steps, lr, warmup, prec, bin_dir)
     else:
         check.remote(tag, n1, n2)

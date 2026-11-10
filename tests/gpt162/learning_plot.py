@@ -56,6 +56,15 @@ def main():
         'max_rel_gap_tf32_vs_fp32 (noise floor)': {'value': max(g_tt), 'step': g_tt.index(max(g_tt)) + 1},
         'first_step_rel_gap_over_1pct_vs_tf32': next((i + 1 for i, x in enumerate(g_tf) if x > 0.01), None),
         'holdout': d.get('holdout'), 'holdout_batches': d.get('holdout_batches')}
+    bf = c.get('bf16')   # torch autocast-bf16 curve (runs of a bf16s executor build), if the run asked for it
+    if bf:
+        g_bf, g_bt = gap(ex, bf), gap(bf, tf)
+        summ['first_loss']['torch_bf16'] = bf[0]
+        summ['last_mean']['torch_bf16'] = mean(bf[-last:])
+        summ['first_step_below_ln_K']['torch_bf16'] = first(bf, ref['ln_K'])
+        summ['first_step_below_entropy_plus_0.1']['torch_bf16'] = first(bf, h + 0.1)
+        summ['max_rel_gap_vs_bf16'] = {'value': max(g_bf), 'step': g_bf.index(max(g_bf)) + 1, 'median': sorted(g_bf)[n // 2], 'mean': mean(g_bf)}
+        summ['max_rel_gap_bf16_vs_tf32 (bf16 noise floor)'] = {'value': max(g_bt), 'step': g_bt.index(max(g_bt)) + 1, 'median': sorted(g_bt)[n // 2]}
     print(json.dumps(summ, indent=1))
     if a.run_dir:
         (Path(a.run_dir) / 'summary.json').write_text(json.dumps(summ, indent=1))
@@ -67,6 +76,8 @@ def main():
         fig, (ax, ax2) = plt.subplots(2, 1, figsize=(9, 7), sharex=True, gridspec_kw={'height_ratios': [3, 1.3]})
         ax.plot(x, fp, color='#bbbbbb', lw=3.5, label='PyTorch fp32 (highest)')
         ax.plot(x, tf, color='#d95f02', lw=1.8, label='PyTorch 1xTF32 AdamW')
+        if bf:
+            ax.plot(x, bf, color='#7570b3', lw=1.4, label='PyTorch autocast-bf16 AdamW')
         ax.plot(x, ex, color='#1b6ca8', lw=1.2, label='kvm executor 1xTF32')
         for nm, v, st in ((f'ln(vocab) = {ref["ln_vocab"]:.2f}', ref['ln_vocab'], ':'), (f'ln(K={k}) = {ref["ln_K"]:.2f}', ref['ln_K'], '--'),
                           (f'stream entropy = {h:.3f}', h, '-.')):
@@ -78,6 +89,8 @@ def main():
                      f'noisy bigram over {k} of {cfg.vocab} tokens, noise {cfg.data_noise}, batch {cfg.batch}x{cfg.seq}, A100')
         ax.legend(loc='upper right', bbox_to_anchor=(1, 0.8))
         ax2.semilogy(x, [max(v, 1e-9) for v in g_tf], color='#1b6ca8', lw=1, label='|executor - torch tf32| / torch')
+        if bf:
+            ax2.semilogy(x, [max(v, 1e-9) for v in g_bf], color='#7570b3', lw=1, label='|executor - torch bf16| / torch')
         ax2.semilogy(x, [max(v, 1e-9) for v in g_tt], color='#999999', lw=1, label='|torch tf32 - torch fp32| / torch (noise floor)')
         ax2.set_ylabel('relative gap')
         ax2.set_xlabel('optimizer step')

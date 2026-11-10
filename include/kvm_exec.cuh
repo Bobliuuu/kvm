@@ -564,7 +564,10 @@ __device__ __forceinline__ bool kvm_should_exit(const KvmDevState& S, KvmWatch& 
 #define KVM_DIST_PUMP_PHASE 1  // KVM_DIST_HOOK: remote-publish pump, after kvm_stalled and kvm_scan_parked (kvm_dist_poll / kvm_dist_pump)
 #include "kvm_dist.cuh"
 
-__device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
+// pay >= 0: completion bookkeeping (kvm_post_task) of the previous task of this block, owed because this task is its continuation: no pop to overlap
+// it with, so an otherwise idle thread pays it while the successors are released (it would sit before the barrier that starts the task).
+__device__ void kvm_post_task(const KvmDevState& S, int slot);
+__device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh, int pay) {
   KVM_PG(7); KVM_PG(8);   // sh.d was filled from the pop's prefetched words and published by the barrier that follows the pop
   const KvmTaskDesc& d = sh.d;
   KvmTrace* tr = S.trace + slot;
@@ -584,13 +587,6 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
 #endif
     sh.skip = bad || *(volatile int*)&S.cnt->err_code;
     sh.cont = -1;
-  }
-  // Continuation only while the ready queue is empty (looked at before the op, one coalesced load per lane by warp 0): a chain must not
-  // starve queued tasks of other priorities (the aging / priority rules live in the queue). Workers idle during the op take whatever arrives.
-  if (threadIdx.x < 32) {
-    const bool busy = S.cont_on && !S.sp.on && kvm_voll(&S.qctl[threadIdx.x].head) != kvm_voll(&S.qctl[threadIdx.x].tail);
-    const unsigned b = __ballot_sync(0xffffffffu, busy);
-    if (threadIdx.x == 0) sh.qbusy = b != 0;
   }
   __syncthreads();
   KVM_PG(9);
@@ -614,6 +610,10 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
 #endif
   __syncthreads();  // all op stores of the block are visible before thread 0 publishes / the successors are released
   KVM_PG(0);
+  // Continuation only while the ready queue is empty, looked at when the op ends (one coalesced load per lane of warp 0, in flight while thread 0
+  // does the end bookkeeping): a chain must not starve queued tasks of other priorities (the aging / priority rules live in the queue).
+  unsigned long long qh = 0, qt = 0;
+  if (threadIdx.x < 32 && S.cont_on && !S.sp.on) { qh = kvm_voll(&S.qctl[threadIdx.x].head); qt = kvm_voll(&S.qctl[threadIdx.x].tail); }
   if (threadIdx.x == 0) {
     unsigned long long end = kvm_now();
     tr->end_ns = end;
@@ -625,8 +625,13 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
     if (d.pub_var >= 0 && !sh.skip) kvm_publish(S, slot, d.pub_var, d.pub_ver);  // publish THEN wake successors
 #endif
   }
+  if (threadIdx.x < 32) {
+    const unsigned b = __ballot_sync(0xffffffffu, qh != qt);
+    if (threadIdx.x == 0) sh.qbusy = b != 0;
+  }
   __syncthreads();
   KVM_PG(1);
+  if (pay >= 0 && threadIdx.x == blockDim.x - 1) kvm_post_task(S, pay);
   if (!sh.skip && (int)threadIdx.x < d.succ_cnt) {
     for (int e = threadIdx.x; e < d.succ_cnt; e += blockDim.x) {
       int s = S.succ[(unsigned)(d.succ_off + e) & (S.succ_cap - 1)];
@@ -682,13 +687,13 @@ __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
     if (next >= 0) {   // the successor's descriptor is immutable (admitted, released): load it as a pop's claim would have
       if (threadIdx.x == 0) { sh.cmd = next; sh.how = KVM_TRACE_CONT; }
       if (threadIdx.x < KVM_TASK_WORDS) ((int*)&sh.d)[threadIdx.x] = __ldcg((const int*)(S.tasks + next) + threadIdx.x);
-      else if (threadIdx.x == 32 && owed >= 0) kvm_post_task(S, owed);
     } else if (threadIdx.x < 32) {
       int how, dw, r = kvm_pop(S, kvm_now(), part, how, dw);
       if (r < 0 && threadIdx.x == 0 && kvm_should_exit(S, t0)) r = KVM_POP_EXIT;
       if (threadIdx.x == 0) { sh.cmd = r; sh.how = how; }
       if (r >= 0 && threadIdx.x < KVM_TASK_WORDS) ((int*)&sh.d)[threadIdx.x] = dw;
     } else if (threadIdx.x == 32 && owed >= 0) kvm_post_task(S, owed);   // overlapped with the pop above
+    const int pay = next >= 0 ? owed : -1;   // continuation: the owed task is paid inside kvm_run_task
     owed = -1;
     __syncthreads();
     int cmd = sh.cmd;
@@ -700,7 +705,7 @@ __device__ void kvm_worker(const KvmDevState& S, KvmWatch& t0, KvmShared& sh) {
       continue;
     }
     backoff = 0;
-    kvm_run_task(S, cmd, sh);
+    kvm_run_task(S, cmd, sh, pay);
     owed = cmd;
     next = sh.cont;   // read by every thread before the next task's thread 0 resets it (the barrier after the pop)
   }

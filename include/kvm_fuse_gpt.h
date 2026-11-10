@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 #include "kvm_fuse.h"
+#include "kvm_fused_gpt.h"
 
 struct KvmFuseGptOps {   // operator ids (from the registry, by name); a missing op leaves its id at -1 and the template never matches it
   int select_window = -1, embedding_fwd = -1, layernorm_fwd = -1, matmul_tile = -1, rope_fwd = -1, attn_fwd = -1, softmax_ce_fused = -1,
@@ -41,15 +42,23 @@ struct KvmGptStep {
   float ln_eps = 0.f, theta = 0.f, scale = 0.f;   // LayerNorm epsilon, RoPE base, attention scale
   float lr = 0.f, beta1 = 0.f, beta2 = 0.f, adam_eps = 0.f, max_norm = 0.f;
   int ids = -1, tgt = -1, loss = -1, step_buf = -1, coef = -1;            // the step's inputs and outputs that live outside it
+  int ids_src = -1, ids_stride = 0, ids_off = 0, tgt_src = -1, tgt_stride = 0, tgt_off = 0;   // the data windows: element i of ids is ids_src[step * stride + off + i]
   int wte = -1, nfg = -1, nfb = -1, head = -1;
   std::vector<KvmGptLayer> layers;
   std::vector<KvmGptUpdate> updates;      // in the bundle's AdamW order
   std::vector<int> replaced;              // every task of this step the fused step takes over
   std::set<int> interior;                 // buffers only this step's replaced tasks may touch (activations and gradients)
   int barrier_end = -1;                   // the noop that ends the step, kept as the join into the next one
+  // A version the step publishes for readers of its weights (the bundle's barriers do): at most one before the updates (once every gradient
+  // is final) and one at the step's end (once every weight is updated); -1 none. No task of a step may wait on a version.
+  int pub_var = -1, pub_pre = -1, pub_end = -1;
 };
 
-struct KvmFuseGptRun { KvmGptStep shape; int steps = 0; int component = -1; };
+struct KvmFuseGptRun {
+  KvmGptStep shape; int steps = 0; int component = -1;
+  std::vector<int> losses;                // each step's loss buffer, in step order
+  int pub_first = -1;                     // the first version the run publishes (step 0's first), then one more at every publish point of every step
+};
 struct KvmFuseGptResult {
   std::vector<KvmFuseGptRun> runs;
   std::vector<std::string> report;        // one line per component
@@ -74,8 +83,17 @@ class GptParser {
     size_t c = pos;
     numerics_ = -1;
     joins_.clear();
-    // ---- data windows: select_window (src, step, dst, i0, i1, stride, off); they stay as they are and feed the step
-    while ((c = skip(comp, c)) < comp.size() && op(comp[c]) == ops_.select_window) ++c;
+    // ---- data windows: select_window (src, step, dst, i0, i1, stride, off), blocks of the step's tokens and targets; matched to the embedding's
+    // ids and the loss's targets once those are read, and to the step counter once that is
+    struct Win { int src = -1, step = -1, stride = 0, off = 0; std::vector<std::pair<int, int>> rows; };
+    std::map<int, Win> wins;                              // by destination buffer
+    for (; (c = skip(comp, c)) < comp.size() && op(comp[c]) == ops_.select_window; ++c) {
+      const int* w = argp(comp[c]);
+      Win& x = wins[w[2]];
+      if (x.src == -1) { x.src = w[0]; x.step = w[1]; x.stride = w[5]; x.off = w[6]; }
+      else if (x.src != w[0] || x.step != w[1] || x.stride != w[5] || x.off != w[6]) { why = "the data windows of one buffer disagree"; return false; }
+      x.rows.push_back({w[3], w[4]}); take(s, comp[c]);
+    }
     // ---- embedding_fwd (ids, wte, wpe, out, r0, r1, T, d): row blocks of one lookup, covering every row of its output
     if (!at(comp, c, ops_.embedding_fwd, "the embedding", why)) return false;
     const int* e = argp(comp[c]);
@@ -313,7 +331,9 @@ class GptParser {
       if (k[1] != 0 || k[2] != 1 || k[3] != 1) { why = "the step counter is not one word advanced by one"; return false; }
       s.step_buf = k[0]; take(s, comp[c]); ++c;
     }
+    const size_t pre_upd = joins_.size();
     c = skip(comp, c);                                   // the barrier before the updates (absent if ordering noops were dissolved)
+    const size_t pre_upd_end = joins_.size();
     // ---- AdamW (p, g, m, v, gscale, step, e0, e1, lr, b1, b2, eps, wd): every parameter once, over its whole extent, scaled by the clip coefficient
     std::set<int> params;
     for (int l = 0; l < s.L; ++l) {
@@ -353,12 +373,35 @@ class GptParser {
       s.updates.push_back(u);
     }
     if (norm_ranges.size() != params.size()) { why = "the grad-norm partials read a buffer that is not a gradient"; return false; }
+    // the data windows: exactly the tokens and the targets, every row of each, at the step the counter holds
+    if (wins.size() != 2 || !wins.count(s.ids) || !wins.count(s.tgt)) { why = "the data windows are not exactly the step's tokens and targets"; return false; }
+    for (const auto& kv : wins)
+      if (kv.second.step != s.step_buf || !covers(kv.second.rows, s.N)) { why = "a data window does not cover its rows at the step counter"; return false; }
+    s.ids_src = wins[s.ids].src; s.ids_stride = wins[s.ids].stride; s.ids_off = wins[s.ids].off;
+    s.tgt_src = wins[s.tgt].src; s.tgt_stride = wins[s.tgt].stride; s.tgt_off = wins[s.tgt].off;
     {                                                     // the trailing noops: every one but the last is a join; the last is the barrier that ends the step
       size_t k = c;
       while (k < comp.size() && is_join(comp[k])) ++k;
       if (k > c) { while (c + 1 < k) joins_.push_back(comp[c++]); s.barrier_end = comp[c++]; }
     }
     s.mm_numerics = numerics_ < 0 ? 0 : numerics_;
+    {
+      std::set<int> pre(joins_.begin() + pre_upd, joins_.begin() + pre_upd_end);
+      auto pub = [&](int t, int& slot) {
+        if (tasks_[t].pub_var == KVM_NO_VAR) return true;
+        if (s.pub_var != -1 && tasks_[t].pub_var != s.pub_var) { why = "the step publishes two version variables"; return false; }
+        if (slot != -1) { why = "the step publishes twice at one point"; return false; }
+        s.pub_var = tasks_[t].pub_var; slot = tasks_[t].pub_ver; return true;
+      };
+      for (int t : pre) if (!pub(t, s.pub_pre)) return false;
+      if (s.barrier_end >= 0 && !pub(s.barrier_end, s.pub_end)) return false;
+      std::vector<int> all(s.replaced); all.insert(all.end(), joins_.begin(), joins_.end()); if (s.barrier_end >= 0) all.push_back(s.barrier_end);
+      for (int t : all) {
+        if (tasks_[t].wait_var != KVM_NO_VAR) { why = "a task of the step waits on a version"; return false; }
+        if (tasks_[t].pub_var != KVM_NO_VAR && !pre.count(t) && t != s.barrier_end) { why = "a task other than the step's barriers publishes a version"; return false; }
+      }
+      if (s.pub_pre != -1 && s.pub_end != -1 && s.pub_end != s.pub_pre + 1) { why = "the step's two versions are not consecutive"; return false; }
+    }
     take_all(s, joins_);
     pos = c;
     return true;
@@ -667,11 +710,23 @@ inline KvmFuseGptResult kvm_fuse_gpt_scan(const std::vector<KvmTaskDesc>& tasks,
       KvmGptStep s;
       const size_t at = pos;
       if (!parser.parse(comp, pos, s, why)) { why = "step " + std::to_string(run.steps) + " (task " + std::to_string(comp[at]) + "): " + why; ok = false; break; }
+      run.losses.push_back(s.loss);
+      {
+        const int first = s.pub_pre != -1 ? s.pub_pre : s.pub_end;
+        const int per = (s.pub_pre != -1) + (s.pub_end != -1);
+        if (run.steps == 0) run.pub_first = first;
+        else if (s.pub_var != run.shape.pub_var || (s.pub_pre != -1) != (run.shape.pub_pre != -1) || (s.pub_end != -1) != (run.shape.pub_end != -1) ||
+                 (per && first != run.pub_first + per * run.steps)) {
+          why = "step " + std::to_string(run.steps) + "'s versions do not continue step 0's"; ok = false; break;
+        }
+      }
       if (run.steps == 0) run.shape = s;
       else {
         const KvmGptStep& f = run.shape;
         bool same = s.N == f.N && s.T == f.T && s.d == f.d && s.H == f.H && s.F == f.F && s.V == f.V && s.L == f.L && s.wte == f.wte && s.head == f.head &&
-                    s.nfg == f.nfg && s.nfb == f.nfb && s.updates.size() == f.updates.size() && s.lr == f.lr && s.max_norm == f.max_norm && s.mm_numerics == f.mm_numerics;
+                    s.nfg == f.nfg && s.nfb == f.nfb && s.updates.size() == f.updates.size() && s.lr == f.lr && s.max_norm == f.max_norm && s.mm_numerics == f.mm_numerics &&
+                    s.ids_src == f.ids_src && s.ids_stride == f.ids_stride && s.ids_off == f.ids_off && s.tgt_src == f.tgt_src && s.tgt_stride == f.tgt_stride &&
+                    s.tgt_off == f.tgt_off && s.step_buf == f.step_buf;
         for (size_t i = 0; same && i < s.updates.size(); ++i) same = s.updates[i].p == f.updates[i].p && s.updates[i].m == f.updates[i].m && s.updates[i].v == f.updates[i].v && s.updates[i].wd == f.updates[i].wd;
         if (!same) { why = "step " + std::to_string(run.steps) + " differs from step 0 in shape or parameters"; ok = false; break; }
       }
@@ -690,4 +745,89 @@ inline KvmFuseGptResult kvm_fuse_gpt_scan(const std::vector<KvmTaskDesc>& tasks,
     }
   }
   return R;
+}
+
+struct KvmFuseGptOptions {
+  int smem_floats = KVM_FGPT_SMEM_FLOATS;   // shared memory a gang member may use (the device's budget)
+  int workers = 108;                        // workers the run has: a gang wider than them cannot start together
+  std::vector<int> keep;                    // buffers read after the run (a dump): a run that would leave one of them stale is not fused
+};
+
+// The rewritten bundle, and what each fused run's gang needs (runs[i] is the run of descriptor i, the `desc` argument of its members).
+struct KvmFuseGptPlan {
+  std::vector<KvmTaskDesc> tasks;
+  std::vector<int32_t> succ, args;
+  std::vector<KvmFuseGptRun> runs;
+  std::vector<int> gang;                    // each fused run's member count G
+  std::vector<std::string> report;          // one line per component
+  int fused_runs = 0, unchanged_runs = 0, replaced_tasks = 0, new_tasks = 0;
+};
+
+// The pass: every matched run that fits a gang is replaced, all of its tasks (its data windows included: the gang reads the streams), by the G
+// members of one fgpt_step gang; every other task is copied through with its arguments, its successors renumbered. Runs are connected
+// components, so no edge crosses a fused run's boundary and the members need no predecessors.
+inline KvmFuseGptPlan kvm_fuse_gpt(const std::vector<KvmTaskDesc>& tasks, const std::vector<int32_t>& succ, const std::vector<int32_t>& args,
+                                   const std::vector<KvmFuseBuf>& bufs, const KvmFuseGptOps& ops, int fgpt_step_op, const KvmFuseGptOptions& opt) {
+  KvmFuseGptPlan P;
+  const KvmFuseGptResult scan = kvm_fuse_gpt_scan(tasks, succ, args, bufs, ops);
+  const auto comps = kvm_fuse_components(tasks, succ);
+  std::vector<int> run_of_comp(comps.size(), -1);
+  std::vector<std::string> line(comps.size());
+  for (size_t ci = 0; ci < comps.size() && ci < scan.report.size(); ++ci) line[ci] = scan.report[ci];
+  const std::set<int> keep(opt.keep.begin(), opt.keep.end());
+  for (const KvmFuseGptRun& r : scan.runs) {
+    const KvmGptStep& s = r.shape;
+    std::string why;
+    const int G = fgpt_step_op < 0 ? 0 : kvm_fgpt_gang(s.N, s.d, s.H, s.F, s.V, s.L, opt.smem_floats, opt.workers);
+    if (fgpt_step_op < 0) why = "the registry has no fgpt_step op";
+    else if (s.L > KVM_FGPT_MAXL) why = "does not fit a resident gang: " + std::to_string(s.L) + " layers, more than the " + std::to_string(KVM_FGPT_MAXL) + " the fused step holds";
+    else if (!G) why = "does not fit a resident gang: no gang of at most " + std::to_string(opt.workers) + " members holds its shards in " + std::to_string(opt.smem_floats) + " floats a member";
+    if (why.empty()) {   // the gang writes the parameters, moments, gradients, step counter and losses; activations and the windows' copies go stale
+      std::set<int> written;
+      for (const KvmGptUpdate& u : s.updates) written.insert({u.p, u.g, u.m, u.v});
+      written.insert(s.step_buf); written.insert(r.losses.begin(), r.losses.end());
+      std::set<int> stale(s.interior.begin(), s.interior.end());
+      stale.insert({s.ids, s.tgt, s.coef});
+      for (int b : keep) if (stale.count(b) && !written.count(b)) { why = "buffer " + std::to_string(b) + " is read after the run, and the fused step leaves it stale"; break; }
+    }
+    char head[96];
+    snprintf(head, sizeof head, "component %d: ", r.component);
+    if (!why.empty()) { line[r.component] = head + std::string("unchanged: a GPT run, but ") + why; continue; }
+    run_of_comp[r.component] = (int)P.runs.size();
+    P.runs.push_back(r); P.gang.push_back(G);
+    line[r.component] += ", fused as a gang of " + std::to_string(G);
+    P.replaced_tasks += (int)comps[r.component].size(); P.new_tasks += G;
+  }
+  for (size_t ci = 0; ci < comps.size(); ++ci) {
+    P.report.push_back(line[ci]);
+    if (run_of_comp[ci] >= 0) ++P.fused_runs; else ++P.unchanged_runs;
+  }
+  // the new bundle: every kept task in its order, then each fused run's members
+  std::vector<int> new_of(tasks.size(), -1);
+  std::vector<char> kept(tasks.size(), 1);
+  for (size_t ci = 0; ci < comps.size(); ++ci) if (run_of_comp[ci] >= 0) for (int t : comps[ci]) kept[t] = 0;
+  int n = 0;
+  for (size_t t = 0; t < tasks.size(); ++t) if (kept[t]) new_of[t] = n++;
+  for (size_t t = 0; t < tasks.size(); ++t) {
+    if (!kept[t]) continue;
+    KvmTaskDesc d = tasks[t];
+    d.args_off = (int)P.args.size();
+    P.args.insert(P.args.end(), args.begin() + tasks[t].args_off, args.begin() + tasks[t].args_off + tasks[t].args_words);
+    d.succ_off = (int)P.succ.size();
+    for (int k = 0; k < tasks[t].succ_cnt; ++k) P.succ.push_back(new_of[succ[tasks[t].succ_off + k]]);   // a kept task's successors are kept: same component
+    P.tasks.push_back(d);
+  }
+  for (size_t ri = 0; ri < P.runs.size(); ++ri) {
+    const int G = P.gang[ri];
+    const int wl = tasks[comps[P.runs[ri].component][0]].workload_id;
+    for (int m = 0; m < G; ++m) {
+      KvmTaskDesc d{};
+      d.op_id = fgpt_step_op; d.deadline_us = -1; d.wait_var = KVM_NO_VAR; d.pub_var = KVM_NO_VAR; d.workload_id = wl;
+      d.args_off = (int)P.args.size(); d.args_words = 4;
+      P.args.insert(P.args.end(), {(int32_t)ri, (int32_t)ri, (int32_t)m, (int32_t)G});   // desc, gang, member, members
+      d.succ_off = (int)P.succ.size(); d.succ_cnt = 0; d.indegree = 0;
+      P.tasks.push_back(d);
+    }
+  }
+  return P;
 }

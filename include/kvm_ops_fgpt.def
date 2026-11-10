@@ -1,0 +1,4 @@
+// The fused GPT step's op (include/kvm_fused_gpt.h, kvm_fuse_gpt.h): a gang op, so the static planner starts its `members` member tasks together
+// (kvm_static_plan); `desc` indexes the executor's fused-GPT descriptors (one a fused run). Each member runs the whole run, every step, on its shard.
+// Its id is in the fused-step range, 192..223 (fmlp_split is 192). Not yet in kvm_ops_list.inc: it joins the registry with its device body (kvm_fused_gpt.cuh).
+X(fgpt_step,           193, "desc:i32,gang:i32,member:i32,members:i32")

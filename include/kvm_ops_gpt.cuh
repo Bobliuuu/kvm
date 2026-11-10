@@ -52,10 +52,13 @@ static_assert(KVM_GPT_THREADS / 32 * 16 == KVM_GPT_ATTN_ROWS, "attention: one m1
 #ifndef KVM_GPT_TILE64_NST
 #define KVM_GPT_TILE64_NST 3    // pipeline stages of the 64x64 tile (a 4th stage measured no gain at the panel's shapes)
 #endif
-// TileStream (per-thread copy pointers precomputed once) against per-chunk address arithmetic: it starts a tile sooner (first-stage wait, a short K's cost) and streams slower per K slab (the long K's cost).
-// Measured, 64x64 tile: chain 9.6 against 13.6 us at K=72, 13.7 against 14.5 at K=96, 61 against 51 at K=768, 370 against 249 at K=4096; so K <= KMAX streams.
+// TileStream (per-thread copy pointers precomputed once) against per-chunk address arithmetic. In a tile of its own (A100, one block
+// per SM, Nov 10) the stream is the faster loader at every K: 1,146-1,159 against 1,545-1,578 cycles a BK-32 slab of the 64x64 tile,
+// NN, NT and TN at K 192-4096 (-25 to -27%). Inside the whole-program executor it measured slower at long K (Nov 9: 61 against 51 us at
+// K=768, 370 against 249 at K=4096 on a per-task chain), where that build's K-loop reloaded 20-26 spilled values a slab: the stream's
+// per-thread pointers are live across the loop. Every K streams now; -DKVM_GPT_TILE64_STREAM_KMAX=127 restores the short-K-only rule.
 #ifndef KVM_GPT_TILE64_STREAM_KMAX
-#define KVM_GPT_TILE64_STREAM_KMAX 127
+#define KVM_GPT_TILE64_STREAM_KMAX 0x40000000
 #endif
 #ifndef KVM_GPT_BIG_PIPE2
 #define KVM_GPT_BIG_PIPE2 1   // 1: the truncated big tile's k-step pipeline (see mm_tile_big)

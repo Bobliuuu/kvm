@@ -35,11 +35,46 @@ class RegistryTests(unittest.TestCase):
         self.assertFalse(any(a.optional for a in abi.load_ops()['copy'].args))
 
     def _dir(self, files):
+        """A temporary include directory with `files`, and the executor's real registry list unless `files` brings its own."""
         d = Path(tempfile.mkdtemp(prefix='kvm-reg-'))
         self.addCleanup(shutil.rmtree, d)
+        files = {abi.OPS_LIST: (abi.INCLUDE_DIR / abi.OPS_LIST).read_text(), **files}
         for name, text in files.items():
             (d / name).write_text(text)
         return d
+
+    def test_registry_list_is_the_executors(self):
+        listed = [line.split('"')[1] for line in (abi.INCLUDE_DIR / abi.OPS_LIST).read_text().splitlines()
+                  if line.lstrip().startswith('#include "') and line.rstrip().endswith('.def"')]
+        self.assertEqual(list(abi.registry_files()), listed)
+        self.assertEqual(listed[0], 'kvm_ops.def')
+        self.assertIn('kvm_ops_fmlp.def', listed)            # the fused MLP step's members, which a fixed list once left out
+
+    def test_every_registry_the_executor_includes_is_loaded(self):
+        ops = abi.load_ops()
+        by_id = {o.id: n for n, o in ops.items()}
+        for name in abi.registry_files():
+            path = abi.INCLUDE_DIR / name
+            if not path.exists():
+                continue
+            for line in path.read_text().splitlines():
+                if line.startswith('X('):
+                    op, op_id = (x.strip() for x in line[2:].split(',')[:2])
+                    with self.subTest(registry=name, op=op):
+                        self.assertEqual(by_id.get(int(op_id)), op)
+        self.assertEqual((ops['fmlp_slice'].id, ops['fmlp_sgd'].id), (124, 125))
+
+    def test_registry_list_required_and_well_formed(self):
+        core = (abi.INCLUDE_DIR / 'kvm_ops.def').read_text()
+        for inc, needle in [(None, 'registry list not found'), ('// nothing\n', 'includes no registry file'),
+                            ('#include "kvm_ops.def"\n#include "kvm_ops.def"\n', 'included twice')]:
+            with self.subTest(inc=inc):
+                d = self._dir({'kvm_ops.def': core} if inc is None else {'kvm_ops.def': core, abi.OPS_LIST: inc})
+                if inc is None:
+                    (d / abi.OPS_LIST).unlink()
+                with self.assertRaises(abi.AbiError) as cm:
+                    abi.load_ops(d)
+                self.assertIn(needle, str(cm.exception))
 
     def test_cross_registry_duplicates_and_bad_lines_rejected(self):
         core = (abi.INCLUDE_DIR / 'kvm_ops.def').read_text()

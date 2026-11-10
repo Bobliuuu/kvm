@@ -24,6 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'frontend'))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 TOL_TF32 = 6e-3        # matmul 1xTF32, relative to max|ref| (gptops README tolerance table); measured 7e-4 rel L2 here
 TOL_PRECISE = 2e-4     # measured 2.4e-5 (GPU 3xTF32 vs CPU f32) and 1.3e-5 (CPU f32 vs CPU f64) on 2 steps
@@ -106,7 +107,18 @@ def main():
     print(f'{a.mode}: {steps} step(s), {len(f32)} f32 buffers')
 
     if a.mode == 'precise':
-        errs = sorted(((rel_l2(gpu[n], gold[n]), n) for n in f32), reverse=True)
+        import structural_zero as sz_mod
+        sz = sz_mod.analyse(spec, gold, dtypes)
+        skip = sz_mod.names(sz)
+        errs = sorted(((rel_l2(gpu[n], gold[n]), n) for n in f32 if n not in skip), reverse=True)
+        if sz:
+            from kvmfe.refvm import Memory
+            mem = Memory(spec, False, {})
+            w0 = {n: [x for r in range(b.rows) for x in b.row(r)] for n, b in mem.bufs.items()}
+            print(f'  structurally-zero gradients (float64-confirmed), absolute bound instead of relative L2: {", ".join(sorted(skip))}')
+            for who, buf in (('GPU', gpu), ('golden', gold)):
+                for ok, what, detail in sz_mod.check(sz, buf, w0):
+                    rep.check(ok, f'{who}: {what}', detail)
         print('  worst: ' + ', '.join(f'{n} {e:.2e}' for e, n in errs[:4]))
         rep.check(errs[0][0] <= TOL_PRECISE, f'all buffers rel L2 <= {TOL_PRECISE:g}', f'worst {errs[0][1]} {errs[0][0]:.2e}')
         return finish(rep)

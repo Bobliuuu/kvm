@@ -36,13 +36,24 @@ for c in $MANIFESTS; do rsync -az -e "$SSH" "$WORK/man_$c/" "$HOST:$REMOTE/gener
 [ -n "${KVM_PREBUILT:-}" ] || $SSH "$HOST" "cd $REMOTE && NVCC=\$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc | tail -1) && \$NVCC --version | tail -1 && nvidia-smi --query-gpu=name,driver_version --format=csv,noheader && \
   FL='-O3 -arch=$ARCH -std=c++17 -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177' && \
   \$NVCC \$FL kvm_exec.cu -o kvm_exec && \$NVCC \$FL demo/kvm_run.cu -o demo/kvm_run && ls -la kvm_exec demo/kvm_run" | tee "$LOG/build.txt"
-RUN="cd $REMOTE && for n in $BUNDLES; do ./kvm_exec --blocks 4 --quiet --dump-buffers generic_bundles/\$n > generic_bundles/\$n.dump 2> generic_bundles/\$n.err; echo \"\$n exit \$?\"; done"
-for c in $MANIFESTS; do
-  RUN="$RUN; ./demo/kvm_run generic_bundles/man_$c --out generic_bundles/out_$c --observe '^loss\\.' --compile-cmd 'python3 runtime/compile_workload.py' > generic_bundles/out_$c.log 2>&1; echo \"man_$c kvm_run exit \$?\""
-done
-$SSH "$HOST" "$FLK timeout 1500 bash -c '$RUN'" | tee "$LOG/runs.txt"
+# The remote command is a script FILE, not a bash -c '...' string: the manifest lines carry their own single quotes ('^loss\\.', the
+# --compile-cmd), which closed the outer quote, cut the run after the first manifest and mangled its redirects (landing run 2026-11-09:
+# man_reg_mlp ran, then out_cnn1d never existed and the log copy failed). Every stage below must print its exit line or the run fails.
+RS="$WORK/remote_run.sh"
+{
+  echo "set -u; cd $REMOTE"
+  echo "for n in $BUNDLES; do ./kvm_exec --blocks 4 --quiet --dump-buffers generic_bundles/\$n > generic_bundles/\$n.dump 2> generic_bundles/\$n.err; echo \"\$n exit \$?\"; done"
+  for c in $MANIFESTS; do
+    echo "./demo/kvm_run generic_bundles/man_$c --out generic_bundles/out_$c --observe '^loss\\.' --compile-cmd 'python3 runtime/compile_workload.py' > generic_bundles/out_$c.log 2>&1; echo \"man_$c kvm_run exit \$?\""
+  done
+} > "$RS"
+bash -n "$RS"
+rsync -az -e "$SSH" "$RS" "$HOST:$REMOTE/generic_bundles/remote_run.sh"
+$SSH "$HOST" "$FLK timeout 1500 bash $REMOTE/generic_bundles/remote_run.sh" | tee "$LOG/runs.txt"
 fail=0
 grep -E "exit [1-9]" "$LOG/runs.txt" && fail=1
+for n in $BUNDLES; do grep -q "^$n exit 0" "$LOG/runs.txt" || { echo "MISSING exit line: $n"; fail=1; }; done
+for c in $MANIFESTS; do grep -q "^man_$c kvm_run exit 0" "$LOG/runs.txt" || { echo "MISSING exit line: man_$c"; fail=1; }; done
 for n in $BUNDLES; do
   d="$WORK/$n"
   scp -q -o BatchMode=yes ${KVM_KEY:+-i $KVM_KEY} "$HOST:$REMOTE/generic_bundles/$n.dump" "$d/dump.txt"

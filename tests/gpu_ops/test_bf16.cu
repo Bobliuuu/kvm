@@ -2,6 +2,8 @@
 //   matmul_mma_bf16: all four transpose combinations, ragged shapes (fast path and the matmul_tile_bf16 fallback), every out/res/pre storage mix.
 //   storage-aware ops: embedding_fwd, layernorm/rmsnorm fwd + bwd, norm_bwd_params, colsum, gelu_bwd, residual_add, rope fwd/bwd, softmax_ce fwd/bwd:
 //   inputs rounded to bf16, outputs fp32 (tolerance of the fp32 op) or bf16 (one bf16 ulp relative to the output scale), plus error paths.
+//   causal attention (attn_fwd, attn_bwd_delta, attn_bwd_dq, attn_bwd_dkv) with any mix of bf16 q/k/v/dO inputs and o/dq/dk/dv outputs: BITWISE equal
+//   to the fp32 kernel on the same (widened) values, a bf16 output equal to RNE of the fp32 result; plus the float64 reference.
 // Build: nvcc -O2 -arch=sm_80 -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -I../../include -I. test_bf16.cu -o test_bf16
 #include <algorithm>
 #ifndef KVM_GPT_MAX_HD
@@ -40,6 +42,10 @@ __global__ void __launch_bounds__(256, 1) k_runx(KvmCtx c, const int32_t* w, con
         case OP_rope_bwd: kvmgpt::rope_bwd(c, a); break;
         case OP_softmax_ce_fwd: kvmgpt::softmax_ce_fwd(c, a); break;
         case OP_softmax_ce_bwd: kvmgpt::softmax_ce_bwd(c, a); break;
+        case OP_attn_fwd: kvmgpt::attn_fwd(c, a); break;
+        case OP_attn_bwd_delta: kvmgpt::attn_bwd_delta(c, a); break;
+        case OP_attn_bwd_dq: kvmgpt::attn_bwd_dq(c, a); break;
+        case OP_attn_bwd_dkv: kvmgpt::attn_bwd_dkv(c, a); break;
         default: atomicCAS(c.err, 0, 99);
     }
 }
@@ -249,10 +255,90 @@ static void t_ops() {
     }
 }
 
+// ---- causal attention with bf16 storage --------------------------------------------------------------------------------------------------
+// in: bits 1 q, 2 k, 4 v, 8 dO are bf16; out: bits 1 o, 2 dq, 4 dk, 8 dv are bf16. Every variant is compared bit for bit with an all-fp32 run on the
+// same values (the kernels widen bf16 into the fp32 path, so the arithmetic must be identical) and, loosely, with the float64 reference.
+static int n_bitdiff(const std::vector<float>& a, const std::vector<float>& b) {
+    int n = 0;
+    for (size_t i = 0; i < a.size(); i++) if (memcmp(&a[i], &b[i], 4) != 0) n++;
+    return (int)(n + (a.size() != b.size() ? 1 : 0));
+}
+static std::vector<float> rne(std::vector<float> v) { for (auto& x : v) x = bf16_ref(x); return v; }
+struct AttnRun { std::vector<float> o, lse, delta, dq, dk, dv; int err; };
+static AttnRun attn_run(int B, int T, int H, int Hkv, int hd, unsigned in, unsigned out, const std::vector<float>& hq, const std::vector<float>& hk,
+                        const std::vector<float>& hv, const std::vector<float>& hdo, const std::vector<float>* o_in) {
+    // o_in: run the backward on these o values (the forward's own output otherwise), so variants with different o storage share delta's inputs
+    const int R = B * T; const float scale = 1.f / sqrtf((float)hd);
+    Dev dv;
+    int q = mk(dv, in & 1, R, H * hd, H * hd + 4), k = mk(dv, in & 2, R, Hkv * hd, Hkv * hd + 4), v = mk(dv, in & 4, R, Hkv * hd, Hkv * hd + 8);
+    int dO = mk(dv, in & 8, R, H * hd), o = mk(dv, out & 1, R, H * hd), lse = dv.addf(1, B * H * T), delta = dv.addf(1, B * H * T);
+    int dq = mk(dv, out & 2, R, H * hd, H * hd + 12), dk = mk(dv, out & 4, R, Hkv * hd, Hkv * hd + 16), dvv = mk(dv, out & 8, R, Hkv * hd);
+    put(dv, q, in & 1, hq); put(dv, k, in & 2, hk); put(dv, v, in & 4, hv); put(dv, dO, in & 8, hdo);
+    BatchX b;
+    for (int bb = 0; bb < B; bb++) for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += KVM_GPT_ATTN_ROWS)
+        b.add(OP_attn_fwd, A().b(q).b(k).b(v).b(o).b(lse).i(bb).i(h).i(q0).i(T).i(H).i(Hkv).i(hd).f(scale));
+    AttnRun r{};
+    r.err = runx(dv, b);
+    r.o = get(dv, o, out & 1); r.lse = dv.down(lse);
+    if (o_in) put(dv, o, out & 1, *o_in);
+    BatchX b2; for (int r0 = 0; r0 < R; r0 += 40) b2.add(OP_attn_bwd_delta, A().b(o).b(dO).b(delta).i(r0).i(std::min(R, r0 + 40)).i(T).i(H).i(hd));
+    r.err |= runx(dv, b2);
+    BatchX b3;
+    for (int bb = 0; bb < B; bb++) {
+        for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += KVM_GPT_ATTN_ROWS)
+            b3.add(OP_attn_bwd_dq, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dq).i(bb).i(h).i(q0).i(T).i(H).i(Hkv).i(hd).f(scale));
+        for (int h = 0; h < Hkv; h++) for (int k0 = 0; k0 < T; k0 += KVM_GPT_ATTN_ROWS)
+            b3.add(OP_attn_bwd_dkv, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dk).b(dvv).i(bb).i(h).i(k0).i(T).i(H).i(hd).f(scale));
+    }
+    r.err |= runx(dv, b3);
+    r.delta = dv.down(delta); r.dq = get(dv, dq, out & 2); r.dk = get(dv, dk, out & 4); r.dv = get(dv, dvv, out & 8);
+    return r;
+}
+static void t_attn() {
+    struct Cfg { int B, T, H, Hkv, hd; };
+    const std::vector<Cfg> cfgs = getenv("TEST_BF16_SMALL") ? std::vector<Cfg>{{1, 33, 2, 1, 32}} : std::vector<Cfg>{{2, 150, 4, 2, 64}, {1, 33, 2, 1, 32}, {1, 257, 2, 2, 16}};
+    const std::vector<std::pair<unsigned, unsigned>> masks = {{15, 0}, {0, 15}, {15, 15}, {5, 10}, {10, 5}, {2, 1}};
+    Rng r(91);
+    for (const Cfg& c : cfgs) {
+        const int R = c.B * c.T;
+        // bf16-representable inputs: the fp32 baseline and every storage variant see the same values
+        auto hq = rbf(rnd(r, R * c.H * c.hd, 1.5)), hk = rbf(rnd(r, R * c.Hkv * c.hd)), hv = rbf(rnd(r, R * c.Hkv * c.hd)), hdo = rbf(rnd(r, R * c.H * c.hd));
+        char nm[96]; snprintf(nm, sizeof nm, "attn bf16 B=%d T=%d H=%d Hkv=%d hd=%d", c.B, c.T, c.H, c.Hkv, c.hd);
+        const AttnRun base = attn_run(c.B, c.T, c.H, c.Hkv, c.hd, 0, 0, hq, hk, hv, hdo, nullptr);
+        check_true(std::string(nm) + " fp32 baseline err==0", base.err == 0);
+        D ro, rl, rdq, rdk, rdv, Dd = dbl(hdo);
+        attn_d(c.B, c.T, c.H, c.Hkv, c.hd, 1.0 / sqrt((double)c.hd), dbl(hq), dbl(hk), dbl(hv), ro, rl, &Dd, &rdq, &rdk, &rdv);
+        check(std::string(nm) + " fp32 baseline o vs f64", base.o, ro, 2e-5);
+        check(std::string(nm) + " fp32 baseline dq vs f64", base.dq, rdq, 1e-4);
+        for (auto [in, out] : masks) {
+            char tg[64]; snprintf(tg, sizeof tg, " [in %x out %x]", in, out);
+            // forward: o must equal the baseline's o (fp32 storage) or its RNE (bf16 storage); lse identical
+            const AttnRun f = attn_run(c.B, c.T, c.H, c.Hkv, c.hd, in, out, hq, hk, hv, hdo, nullptr);
+            check_true(std::string(nm) + tg + " err==0", f.err == 0);
+            check_true(std::string(nm) + tg + " fwd o bitwise", n_bitdiff(f.o, (out & 1) ? rne(base.o) : base.o) == 0);
+            check_true(std::string(nm) + tg + " fwd lse bitwise", n_bitdiff(f.lse, base.lse) == 0);
+            check(std::string(nm) + tg + " fwd o vs f64", f.o, ro, (out & 1) ? 6e-3 : 2e-5);
+            // backward on the variant's own o: compare with an fp32 run given the same o values
+            const AttnRun bref = attn_run(c.B, c.T, c.H, c.Hkv, c.hd, 0, 0, hq, hk, hv, hdo, &f.o);
+            check_true(std::string(nm) + tg + " delta bitwise", n_bitdiff(f.delta, bref.delta) == 0);
+            check_true(std::string(nm) + tg + " dq bitwise", n_bitdiff(f.dq, (out & 2) ? rne(bref.dq) : bref.dq) == 0);
+            check_true(std::string(nm) + tg + " dk bitwise", n_bitdiff(f.dk, (out & 4) ? rne(bref.dk) : bref.dk) == 0);
+            check_true(std::string(nm) + tg + " dv bitwise", n_bitdiff(f.dv, (out & 8) ? rne(bref.dv) : bref.dv) == 0);
+            check(std::string(nm) + tg + " dv vs f64", f.dv, rdv, ((out & 8) ? 6e-3 : 1e-4) + ((out & 1) ? 6e-3 : 0));
+        }
+    }
+    {   // error path: a misaligned bf16 view (ld not a multiple of 4) is rejected, nothing written
+        Dev dv;
+        int q = dv.addb(4, 34, 34), k = dv.addf(4, 32, 36), v = dv.addf(4, 32, 36), o = dv.addf(4, 32), lse = dv.addf(1, 4);
+        int e = run1x(dv, OP_attn_fwd, A().b(q).b(k).b(v).b(o).b(lse).i(0).i(0).i(0).i(4).i(1).i(1).i(32).f(0.17f));
+        check_true("attn_fwd bf16 q with ld % 4 != 0 -> E_SHAPE", e == KVM_GPT_E_SHAPE);
+    }
+}
+
 int main() {
     cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0));
     printf("device: %s, %d SMs, cc %d.%d, mma smem %d B\n", pr.name, pr.multiProcessorCount, pr.major, pr.minor, KVM_MMA_SMEM);
-    t_mma(); t_ops();
+    t_mma(); t_ops(); t_attn();
     printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

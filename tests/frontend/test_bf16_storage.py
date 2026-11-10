@@ -96,6 +96,34 @@ class Bf16Storage(unittest.TestCase):
                         continue
                     self.assertNotIn(v, bf, f"{t['op']} arg {k}")
 
+    def test_attention_reads_and_writes_bf16_storage(self):
+        # causal attention is storage-aware: no fp32 scratch (widen before / narrow after) around it, and attention_bwd reads the bf16 saved output
+        ops = build_training(GPT(dataclasses.replace(BASE, precision='bf16s')), TrainConfig(steps=1)).b.ops
+        new, _ = storage.apply(ops)
+        att = [op for op in new if op.kind in ('attention', 'attention_bwd')]
+        self.assertTrue(att)
+        for op in att:
+            for n, t in {**op.ins, **op.outs}.items():
+                self.assertFalse(t.name.endswith('.f32'), f'{op.kind} {n} goes through fp32 scratch {t.name}')
+        fwd = [op for op in att if op.kind == 'attention']
+        self.assertTrue(all(op.outs['out'].dtype == 'bf16' for op in fwd))
+        self.assertTrue(all(op.ins['o'].dtype == 'bf16' for op in att if op.kind == 'attention_bwd'))
+        names = {b['name']: b.get('dtype') for b in self.sto.spec['buffers']}
+        for g in self.sto.spec['graphs']:
+            for t in g['tasks']:
+                if t['op'] == 'attn_fwd':
+                    self.assertEqual(names[t['args']['o']], 'bf16')
+
+    def test_no_bf16_to_bf16_operand_copies(self):
+        # the output of a model cast is already bf16: an operand copy of it would be a full-tensor round trip (206M elements/step at 162M)
+        ops = build_training(GPT(dataclasses.replace(BASE, precision='bf16s')), TrainConfig(steps=1)).b.ops
+        new, st = storage.apply(ops)
+        cast_out = {op.outs['out'].uid for op in ops if op.kind == 'cast' and op.attrs.get('dtype') == 'bf16'}
+        for op in new:
+            if op.kind == 'cast' and op.name.startswith('narrow.') and op.outs['out'].name.endswith('.b16'):
+                self.assertNotIn(op.ins['x'].uid, cast_out, op.name)
+        self.assertGreater(st['redirected'], 0)
+
     def test_weights_false_has_no_shadows(self):
         ops = build_training(GPT(dataclasses.replace(BASE, precision='bf16s')), TrainConfig(steps=1)).b.ops
         new, st = storage.apply(ops, weights=False)

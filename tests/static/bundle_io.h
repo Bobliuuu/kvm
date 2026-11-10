@@ -45,12 +45,13 @@ inline int types_of(const std::string& sig, int* arity) {
 inline Registry load_registry(const std::string& inc) {
     Registry r;
     const std::regex re("^\\s*X\\(\\s*(\\w+)\\s*,\\s*(\\d+)\\s*,\\s*\"([^\"]*)\"");
-    for (const char* f : {"kvm_ops.def", "kvm_ops_gpt.def", "kvm_ops_extra.def", "kvm_ops_comm.def", "kvm_ops_game.def", "kvm_ops_fmlp.def"}) {
+    for (const char* f : {"kvm_ops.def", "kvm_ops_gpt.def", "kvm_ops_extra.def", "kvm_ops_comm.def", "kvm_ops_game.def", "kvm_ops_fmlp.def", "kvm_ops_fgpt.def"}) {
         std::ifstream in(inc + "/" + f); std::string line;
         while (std::getline(in, line)) {
             std::smatch m;
             if (!std::regex_search(line, m, re)) continue;
             int ar = 0; KvmSOpInfo o; o.types = (uint64_t)types_of(m[3].str(), &ar); o.arity = ar;
+            kvm_static_gang_args(m[3].str().c_str(), o);   // a gang op names gang, member and members
             const int id = std::stoi(m[2].str());
             r.ops[id] = o; r.ids[m[1].str()] = id;
         }

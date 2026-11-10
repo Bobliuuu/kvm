@@ -54,7 +54,7 @@ python3 -I -m unittest discover -s tests/frontend      # from the repo root
 | Generic training (`generic.py`): any traced module + `CrossEntropy`/`MSE` + `ArrayData`/`GeneratedData` + SGD/AdamW | implemented + CPU-tested: 4 never-shipped models (regression MLP, residual RMSNorm MLP, 1-D CNN, transformer encoder) vs numpy float64 oracles. **A100 run NOT yet done** (`tests/generic/run.sh`: bundles vs CPU golden at 3xTF32, 2 MANIFEST demos through `demo/kvm_run`; the box's GPU lock was held by an idle session for 3+ h); until it passes, the MSE device path (`scale_flat`/`row_dot`/`colsum`) and the gather-based conv are verified only against the CPU reference | `tests/frontend/test_generic.py`, `tests/generic/` |
 | Windows / MANIFEST runner | CPU reference runner only; the GPU CLI runs single bundles | `kvmfe.run_manifest`, `results/2026-11-04-a100-exec-recycling` |
 | `gpt_162m` | runs on the A100 (demo `large`: 6 steps, 1.8 s/step = 2,260 tokens/s, 30x its 60 ms critical path; task-throughput bound); no CPU golden at this size | `results/2026-11-06-demo-large` |
-| Not built | dynamic shapes, data-dependent control flow, MoE serving, dropout, fp16, a frontend switch for 3xTF32, 128x128 / 256x128 matmul tile stepping in the lowering (the device tiles exist) | below, `results/2026-11-04-a100-ops-perf` |
+| Not built | dynamic shapes, MoE serving, dropout, fp16, a frontend switch for 3xTF32, 128x128 / 256x128 matmul tile stepping in the lowering (the device tiles exist) | below, `results/2026-11-04-a100-ops-perf` |
 | Open test item | `norm_bwd_params` wants >= 64 tasks (16 columns each) to use the GPU; the partition here does not yet give that | `results/2026-11-04-a100-ops-perf` |
 
 Run the frontend tests: `python3 -I -m unittest discover -s tests/frontend` (repo root). Everything else: [RUNNING_TESTS.md](RUNNING_TESTS.md).
@@ -185,6 +185,20 @@ float64 oracles, any dataflow order bitwise equal, accumulation == big batch, ma
 `tests/generic/run.sh` (A100, not yet run: 4 models x {cpu, a100} tiling, 3xTF32, golden_check precise; 2 MANIFEST demos through `demo/kvm_run` and
 `demo/check_demo.py`).
 
+### Reinforcement-learning losses and attention-free models (generality step 1)
+
+| Piece | Contract |
+|---|---|
+| `PolicyGradient()` | REINFORCE: `mean(adv * -log softmax(out)[action])`. Targets `('act', 'adv')` = i32 action column + f32 advantage column (data: no gradient). New logical op `pg_loss` built from existing device ops (`softmax_ce_fwd/reduce/bwd`, `row_dot`, `colsum`, `gather_rows_scaled`); with `adv == 1` it equals `CrossEntropy` bit for bit (tested) |
+| `QLearning()` | one-step TD / DQN: `mean((Q(s,a) - y)^2)`. Targets `('mask', 'y')` = one-hot f32 action mask (`generic.one_hot`) + bootstrapped target column (computed on the host from a frozen copy: data). New logical op `row_select` (`row_dot` of each Q row with its mask; VJP = scaled `gather` of the mask) feeding `mse_loss` |
+| data | `DataSource.target` may be a tuple of stream names; `ArrayData` serves logged transitions, `GeneratedData(make(micro))` serves host-simulated rollouts |
+| on-policy loops | one bundle never samples from its own policy: the loop is on the host (roll out with the latest weights, feed the batch, run a bundle window). The device program is the update half |
+| `ModelConfig(layers=0)` | attention geometry (head dim, seq % 32) is validated only when there are attention blocks; the refusal for a bad head dim now points at the generic API. Models without attention are written as a `Module` and use `compile_training(module, loss=, data=)`, never a `ModelConfig` |
+
+The audit's four models (`xfmr_odd`, `mlp_ce`, `resmlp_rms`, `bad_dims`) now run through `compile_training` with no workaround:
+`xfmr_odd` as a `ModelConfig`, the three token MLPs as zoo cases (`tests/generic/zoo.py`: `mlp_ce`, `resmlp_rms`, `bad_dims`, plus
+`pg_policy`, `dqn_q`). CPU checks: `tests/frontend/test_generic_rl.py` (loss and finite-difference gradients vs numpy float64, learning, refusals).
+
 Limits of this layer (not fixed here): no auxiliary-loss roots from inside a generic module (use a `models.py`-style model for those),
 one `loss` root per program, no dynamic shapes or control flow, no real conv/pool kernels (the CNN is gather + matmul: correct, not
 fast; a 3-tap conv reads its input 3 times), attention shapes are still bound by the device ops (head dim 16/32/64/128, sequence a
@@ -197,6 +211,26 @@ Task time = max(FLOPs / 1.8e11, bytes / 1.4e10) + 5 us hop (one A100 SM's share 
 a dependency hop through global memory, per AGENTS.md); opaque engine ops use their declared time (Doom tick 6.7 ms, v1's
 measurement). Critical path = longest path with these times. "List schedule" = greedy simulation on 108 workers. It ranks
 designs; it does not predict a GPU run, and it ignores tensor-core speed-ups and L2 locality.
+
+## Data-dependent control (predicated ops, branches, bounded while loops)
+
+```python
+fl = b.flags('p', 3)                                   # persistent i32 predicate elements
+p = b.pred_cmp(x, '>', 0.0, index=0)                   # p = (x[0] > 0), computed on the device; AND/OR via prev=, comb='and'|'or'
+with b.when(p):            b.scale_scalar(y, 2.0)      # branch arms: exactly one runs; the task graph is the same for every input
+with b.when(p, negate=True): b.scale_scalar(y, -1.0)
+flags = b.while_loop(16, lambda b: (x, 0, '>', 1.0),   # while x[0] > 1.0 (device-evaluated), at most 16 iterations
+                     lambda b, i: b.scale_scalar(x, 0.5))
+```
+
+`when` stamps every op emitted inside with a predicate; lowering turns each tile task into a predicated task (FRAMEWORK.md "Data-dependent
+control"), adds the predicate element as a read and the op's outputs as reads too (a skipped task leaves them unchanged, so they are
+read-modify-write for dataflow). `while_loop` unrolls the bound, and returns the `i32 1 x (max_iters+1)` flags tensor (`flags[i]` = iteration
+i ran; `flags[max_iters]` = cap hit with the condition still true). Predicated ops are not differentiable (clear `FrontendError`), are not fused,
+cannot nest, and write nothing when skipped: use persistent (`state`) tensors or in-place updates for what the region changes, since a fresh
+activation tensor of a skipped op holds whatever its (possibly reused) buffer held. Checks: `tests/frontend/test_control.py` (CPU, program
+and random dataflow order, compiler ABI encoding, CPU runtime VM) and `tests/ctl/run.sh` (A100, bundles with data-dependent trip counts
+and branches against the CPU VM golden, executor skip counts).
 
 ## Windows, loops and the manifest
 
@@ -240,8 +274,8 @@ curve against the independent float64 oracle (rel. 2e-5) and served tokens again
 * **Static shapes and a static DAG, by design.** A program is a fixed set of tasks: no dynamic shapes, no data-dependent control flow
   at the frontend level. What is data-dependent lives in buffers: `select_window` (batch picked by the step counter), `lens` in decode,
   `moe_route` (expert choice and capacity are computed on the device, but the expert matmuls always run `capacity` rows, padded with
-  zero rows), `lr_schedule`. Loops are unrolled or re-admitted as windows; there is no `while`/`if` over tensor values, and no
-  early-exit decoding inside a bundle. Across bundles, a guarded admission (manifest_version 2) can skip work on a buffer value; scope, the
+  zero rows), `lr_schedule`. Loops are unrolled or re-admitted as windows; a `while`/`if` over device values is predicated (see
+  "Data-dependent control"), and there is no early-exit decoding inside a bundle. Across bundles, a guarded admission (manifest_version 2) can skip work on a buffer value; scope, the
   prototype and what is not built: FRAMEWORK.md "Dynamic shapes and data-dependent control flow".
 * MoE routing ops are single-task over all N tokens of a microbatch (O(N*E*k) serial work, fine up to a few thousand tokens); dropped tokens
   (over capacity) get no expert and keep only the residual, as in Switch Transformer.

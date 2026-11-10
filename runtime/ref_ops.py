@@ -8,6 +8,7 @@ Float32 model: every arithmetic result is rounded to float32 (IEEE round-to-near
 operation, and reductions run in ascending index order, so integer-valued data is bit-exact against the GPU.
 Multiply-add is NOT fused here: a GPU that fuses may differ by 1 ulp on non-integer data.
 """
+import sys
 from ref_gpt import GPT_OPS
 from ref_extra import EXTRA_OPS
 from ref_types import F32_MAX, Buf, RefOp, f32   # noqa: F401  (re-exported)
@@ -108,6 +109,7 @@ def _opaque(extents=lambda a: {}):
 OPAQUE_OPS = {
     'doom_tick': _opaque(), 'doom_status': _opaque(),
     'doom_present': _opaque(lambda a: {'fb': 16256}),
+    'doom_sim': _opaque(), 'doom_draw': _opaque(), 'doom_post': _opaque(), 'doom_planes': _opaque(),
     'doom_tick_n': _opaque(), 'doom_status_n': _opaque(), 'doom_present_n': _opaque(lambda a: {'fb': 16256}),
     **{n: _opaque() for n in ('put', 'put_signal', 'signal', 'reduce2', 'reduce_put_signal', 'send_proxy', 'pack_bf16', 'unpack_bf16',
                              'put_i32', 'put_signal_i32', 'send_proxy_i32')},
@@ -115,3 +117,22 @@ OPAQUE_OPS = {
 OPS.update(GPT_OPS)
 OPS.update(EXTRA_OPS)
 OPS.update(OPAQUE_OPS)
+
+
+def _load_extra_refs():
+    """Pluggable packs: $KVM_EXTRA_REFS = os.pathsep-separated python files, each defining `OPS = {name: RefOp}` (CPU reference
+    semantics of the pack's operators). Names must not collide with built-in operators."""
+    import importlib.util
+    import os
+    for i, path in enumerate(p for p in os.environ.get('KVM_EXTRA_REFS', '').split(os.pathsep) if p):
+        spec = importlib.util.spec_from_file_location(f'kvm_pack_ref_{i}', path)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = mod
+        spec.loader.exec_module(mod)
+        for name, op in mod.OPS.items():
+            if name in OPS:
+                raise ValueError(f'{path}: reference for {name!r} collides with a built-in operator')
+            OPS[name] = op
+
+
+_load_extra_refs()

@@ -745,6 +745,22 @@ KVM_GPT_DEVI void scale_flat(const KvmCtx& ctx, const int32_t* a) {
     if (k.bad) return;
     for (int i = e0 + threadIdx.x; i < e1; i += KVM_GPT_THREADS) o[i] = alpha * x[i];
 }
+KVM_GPT_DEVI void pred_cmp(const KvmCtx& ctx, const int32_t* a) {
+    Chk k(ctx);
+    int xi = a[3], oi = a[4], pi = a[5], kind = a[6], comb = a[7];
+    float th = af(a, 8);
+    k.need(xi >= 0 && oi >= 0 && kind >= 0 && kind <= 5 && comb >= 0 && comb <= 2, KVM_GPT_E_SHAPE);
+    k.need((comb == 0) == (a[2] < 0) && (comb == 0 || pi >= 0), KVM_GPT_E_SHAPE);
+    if (k.bad) return;
+    const float* x = k.fvec(a[0], (long)xi + 1);
+    int32_t* o = k.ivec(a[1], (long)oi + 1);
+    const int32_t* pv = comb ? k.ivec(a[2], (long)pi + 1) : nullptr;
+    if (k.bad || threadIdx.x != 0) return;
+    const float v = __ldcg(x + xi);
+    bool c = kind == 0 ? v < th : kind == 1 ? v <= th : kind == 2 ? v > th : kind == 3 ? v >= th : kind == 4 ? v == th : v != th;
+    if (comb) { const bool p = __ldcg(pv + pi) != 0; c = comb == 1 ? (c && p) : (c || p); }
+    o[oi] = c ? 1 : 0;
+}
 KVM_GPT_DEVI void add_rowtile(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
     int r0 = a[3], r1 = a[4], T = a[5], d = a[6], ldx, ldp, ldo;

@@ -163,6 +163,7 @@ struct KvmTrace {  // one per slot, 64 B
 };
 #define KVM_TRACE_MISSED 1
 #define KVM_TRACE_CONT   16   // started as the continuation of the task that released it (no enqueue, no pop)
+#define KVM_TRACE_PSKIP  32   // the task's predicate was false: its op body did not run
 
 struct KvmCell { unsigned long long seq, ready_ns, deadline_ns; int slot, res; };   // 32 B; deadline_ns 0 = none, res = KvmRes (SCHED)
 struct alignas(128) KvmQCtl { unsigned long long head, tail, avail; };             // own cache line; avail = published - reserved (ticket claim only)
@@ -526,7 +527,7 @@ struct KvmShared {
   KvmTaskDesc d;
   int args[KVM_ARG_STRIDE];   // the running task's argument words (copied by the pop from S.args + slot * KVM_ARG_STRIDE)
   unsigned long long cont64;   // best continuation candidate of the finishing task: (priority + 1) << 32 | slot (0 = none)
-  int cmd, skip, how, part, cont;   // cont: successor this block runs next without a pop (-1 none); how: KVM_TRACE_* start reason from kvm_pop (| KVM_HOW_BW); part: STATIC-mode class of this worker's SM
+  int cmd, skip, pskip, how, part, cont;   // pskip: predicate false, op body skipped; cont: successor this block runs next without a pop (-1 none); how: KVM_TRACE_* start reason from kvm_pop (| KVM_HOW_BW); part: STATIC-mode class of this worker's SM
 #ifdef KVM_PROF_GAP
   long long pg[16]; int pg_valid;
 #endif
@@ -567,6 +568,14 @@ __device__ __forceinline__ bool kvm_should_exit(const KvmDevState& S, KvmWatch& 
 #define KVM_DIST_PUMP_PHASE 1  // KVM_DIST_HOOK: remote-publish pump, after kvm_stalled and kvm_scan_parked (kvm_dist_poll / kvm_dist_pump)
 #include "kvm_dist.cuh"
 
+// A predicated task (KvmTaskDesc.flags, see kvm_task_abi.h) names an existing i32 buffer element; any other flag bit is reserved.
+__device__ __forceinline__ bool kvm_pred_ok(const KvmDevState& S, int flags, int buf) {
+  if ((flags & ~(KVM_TF_PRED | KVM_TF_PRED_NEG | ~((1 << KVM_TF_PRED_IDX_SHIFT) - 1))) != 0 || !(flags & KVM_TF_PRED)) return false;
+  if (buf < 0 || buf >= S.nbufs) return false;
+  const KvmBuf b = S.bufs[buf];
+  return b.dtype == 1 && b.p != nullptr && (long long)((unsigned)flags >> KVM_TF_PRED_IDX_SHIFT) < (long long)b.rows * b.cols;
+}
+
 __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
   KVM_PG(7); KVM_PG(8);   // sh.d was filled from the pop's prefetched words and published by the barrier that follows the pop
   const KvmTaskDesc& d = sh.d;
@@ -587,6 +596,14 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
 #endif
     sh.skip = bad || *(volatile int*)&S.cnt->err_code;
     sh.cont = -1; sh.cont64 = 0;
+    sh.pskip = 0;
+    if (d.flags & KVM_TF_PRED) {   // predicated task: skip the op body (but still complete, publish and release successors) when the predicate is false
+      // The predicate buffer was written by a task upstream in the DAG: the pop's acquire plus the producer's release make it visible; __ldcg bypasses L1.
+      const KvmBuf pb = S.bufs[d.reserved1];                        // index and dtype were validated at admission
+      const int pv = __ldcg(reinterpret_cast<const int*>(pb.p) + ((unsigned)d.flags >> KVM_TF_PRED_IDX_SHIFT));
+      sh.pskip = ((pv != 0) == ((d.flags & KVM_TF_PRED_NEG) != 0));
+      if (sh.pskip) tr->flags |= KVM_TRACE_PSKIP;
+    }
   }
   __syncthreads();
   KVM_PG(9);
@@ -601,7 +618,7 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
     sh.pg_valid = 1;
   }
 #endif
-  if (!sh.skip) {
+  if (!sh.skip && !sh.pskip) {
     KvmCtx c{S.bufs, S.nbufs, slot, S.cnt, S.herr, sh.smem};
     kvm_dispatch(d.op_id, c, sh.args);   // the slot's argument words, prefetched with the descriptor by the pop (== S.args + d.args_off)
   }
@@ -900,6 +917,7 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
       else if (!kvm_sched_class_ok(S, wu[12])) code = KVM_ERR_BAD_TASK;
       else if (so < 0 || sc < 0 || (long long)so + sc > ne || !arg_range || ind < 0 || ind > nt || pr < 0 || pr >= KVM_NBUCKETS || wu[5] < -1) code = KVM_ERR_BAD_TASK;
       else if (wv < -1 || wv >= S.num_vars || pv < -1 || pv >= S.num_vars) code = KVM_ERR_BAD_VAR;
+      else if (wu[13] != 0 && !kvm_pred_ok(S, wu[13], wu[15])) code = KVM_ERR_BAD_TASK;     // predicate: flags bit0, polarity bit1, element index >> 8, buffer in reserved1
       else {
         const uint64_t ty = kvm_dev_types(op);
         for (int j = 0; j < aw && !code; ++j) {

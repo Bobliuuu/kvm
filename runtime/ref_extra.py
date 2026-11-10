@@ -350,6 +350,25 @@ def _scale_flat(b, a):
         b['out'][i] = f32(a['alpha'] * b['x'][i])
 
 
+def _pred_cmp(b, a):
+    v, th = b['x'][a['xi']], a['thresh']
+    c = [v < th, v <= th, v > th, v >= th, v == th, v != th][a['kind']]
+    if a['comb']:
+        p = b['prev'][a['pi']] != 0
+        c = (c and p) if a['comb'] == 1 else (c or p)
+    b['out'][a['oi']] = 1 if c else 0
+
+
+def _pred_cmp_ext(a):
+    _need(0 <= a['kind'] <= 5 and 0 <= a['comb'] <= 2, 'pred_cmp: kind in 0..5, comb in 0..2')
+    _need(a['xi'] >= 0 and a['oi'] >= 0 and (a['comb'] == 0 or a['pi'] >= 0), 'pred_cmp: negative index')
+    _need((a['comb'] == 0) == (a['prev'] is None), 'pred_cmp: prev is required exactly when comb != 0')
+    ext = {'x': a['xi'] + 1, 'out': a['oi'] + 1}
+    if a['comb']:
+        ext['prev'] = a['pi'] + 1
+    return ext
+
+
 def _add_rowtile(b, a):
     x, pos, out, d = b['x'], b['pos'], b['out'], a['d']
     for r in range(a['r0'], a['r1']):
@@ -451,6 +470,7 @@ EXTRA_OPS = {
                                                                   'lr': 1})[1], ints=('step',)),
     'lr_schedule': _R(_lr_schedule, lambda a: (_need(a['kind'] in (0, 1, 2), 'lr_schedule: kind not in 0..2'), {'step': 1, 'lr': 1})[1],
                       ints=('step',)),
+    'pred_cmp': _R(_pred_cmp, _pred_cmp_ext, ints=('out', 'prev')),
     'scale_flat': _R(_scale_flat, _flat_ext(bufs=('x', 'out'))),
     'add_rowtile': _R(_add_rowtile, lambda a: (_rng(a['r0'], a['r1']), _need(a['T'] > 0 and a['d'] > 0, 'add_rowtile: bad T/d'),
                                                {'x': (a['r1'], a['d']), 'pos': (a['T'], a['d']), 'out': (a['r1'], a['d'])})[2]),

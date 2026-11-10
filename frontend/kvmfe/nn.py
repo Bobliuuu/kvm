@@ -33,10 +33,15 @@ class ModelConfig:
     def __post_init__(self):
         if self.precision not in ('f32', 'bf16', 'bf16s'):
             raise FrontendError(f"precision must be 'f32', 'bf16' or 'bf16s', got {self.precision!r}")
-        if self.d_model % self.heads or (self.d_model // self.heads) not in (16, 32, 64, 128):
-            raise FrontendError(f'head dim d_model/heads = {self.d_model}/{self.heads} must be 16, 32, 64 or 128 (attention ops)')
-        if self.seq % ATTN_Q:
-            raise FrontendError(f'seq {self.seq} must be a multiple of {ATTN_Q} (attention block size)')
+        if self.layers > 0:          # attention geometry matters only when there are attention blocks (layers=0: embedding -> norm -> head)
+            if self.heads < 1 or self.d_model % self.heads or (self.d_model // self.heads) not in (16, 32, 64, 128):
+                raise FrontendError(f'head dim d_model/heads = {self.d_model}/{self.heads} must be 16, 32, 64 or 128 (attention ops); '
+                                    f'for a model without attention use generic.MLP / a custom Module with compile_training(module, loss=, data=) '
+                                    f'(no ModelConfig)')
+            if self.seq % ATTN_Q:
+                raise FrontendError(f'seq {self.seq} must be a multiple of {ATTN_Q} (attention block size)')
+        elif self.layers < 0:
+            raise FrontendError(f'layers must be >= 0, got {self.layers}')
         if not 0 <= self.data_vocab <= self.vocab or not 0 <= self.data_noise <= 1:
             raise FrontendError(f'bad data stream: data_vocab {self.data_vocab} in [0, vocab {self.vocab}], data_noise {self.data_noise} in [0, 1]')
         if self.norm not in ('layernorm', 'rmsnorm'):

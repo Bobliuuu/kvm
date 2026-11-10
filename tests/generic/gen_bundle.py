@@ -49,10 +49,11 @@ def main():
         return 0
     comp = compile_training(case.module, loss=case.loss, data=case.data, optimizer=case.optimizer, steps=steps,
                             tiling=Tiling.preset(a.tiling), reuse='none')
-    if comp.low.data_files:
-        raise SystemExit('gen_bundle: file-initialised buffers are not supported here')
     spec = demo.make_precise(comp.spec) if a.precise else comp.spec
     out.mkdir(parents=True, exist_ok=True)
+    for rel, raw in comp.low.data_files.items():             # large host streams are file-initialised, relative to workload.json
+        (out / rel).parent.mkdir(parents=True, exist_ok=True)
+        (out / rel).write_bytes(raw)
     (out / 'workload.json').write_text(json.dumps(spec, separators=(',', ':')))
     opt = case.optimizer
     meta = dict(model=a.case, steps=steps, tiling=a.tiling, precise=a.precise,

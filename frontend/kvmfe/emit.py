@@ -100,6 +100,7 @@ def to_workload(low: Lowered, policies: dict[str, GraphPolicy]):
     plan, bufs = low.plan, []
     used = {plan.buf(r.t) for t in low.tasks for r in (*t.reads, *t.writes)}
     used |= {plan.buf(v) for t in low.tasks for v in t.args.values() if isinstance(v, Tensor)}
+    used |= {plan.buf(t.pred[0]) for t in low.tasks if t.pred}
     for name, b in plan.buffers.items():
         if name not in used:
             continue
@@ -126,6 +127,8 @@ def to_workload(low: Lowered, policies: dict[str, GraphPolicy]):
         dl = pol.deadline_us(t)
         if dl >= 0:
             e['deadline_us'] = dl
+        if t.pred:
+            e['when'] = {'buf': plan.buf(t.pred[0]), 'index': t.pred[1], 'negate': t.pred[2]}
         if t.publishes:
             e['publishes'] = t.publishes
         if pol.weights_read and any(plan.buf(r.t) in weight_bufs for r in t.reads):

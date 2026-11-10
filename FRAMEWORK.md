@@ -129,8 +129,8 @@ the cyclic GC is paused during compilation.
 buffers, not in the graph: `lens` (KV-cache length) in decode, `select_window` (batch picked by the step counter), `moe_route` (expert and
 capacity slot computed on the device; the expert matmuls always run `capacity` rows, zero-padded), `lr_schedule`, and the cross-entropy
 `ignore = -1` target. Shapes are dynamic **across** admissions (the host compiles a bundle per admission: a serving request with another
-prompt length is another graph), never within one. Nothing branches on a tensor value, so there is no early exit, no `while` with a
-data-dependent trip count and no skipped work for padded rows.
+prompt length is another graph), never within one. Inside a bundle, per-task predication (next section, "Data-dependent control:
+predicated tasks") gives branches and bounded loops on device values; there is still no early exit and no skipped work for padded rows.
 
 Three features would change that. Smallest first; only the first is built.
 
@@ -181,6 +181,59 @@ gain is the padded fraction of the tile work on a batch of unequal lengths, at t
 A task that admits follow-up tasks needs a producer on the admission ring that is not the host, and ordering against the admitter's pop
 and `kvm_claim`. That path is being rebuilt on `perf/admission-bottleneck`; designing against it before it lands would only be rework. The
 guard of section 1 is the contract such a feature must keep: same condition, same skip semantics, no publishes.
+
+## Operator packs (pluggable registries, one build flow)
+
+An operator is a line `X(name, id, "arg:type,...")` in a registry `.def` (ids are sparse and globally unique) plus a `KVM_OP(name)` body
+in a `.cuh`; the host compiler parses the same `.def` files, so the three sides cannot drift. Built-in packs: core, `gpt`, `extra`,
+`comm` (picked up automatically) and `game` (Doom). User packs are directories:
+
+```
+packs/my_pack/ops.def     X(my_op, 300, "x:buf,out:buf,n:i32")        ids >= 300 are free
+packs/my_pack/ops.cuh     KVM_OP(my_op) { ... }                       block-cooperative, ARG_BUF/ARG_I32/ARG_F32, c.fits(...)
+packs/my_pack/ref.py      OPS = {'my_op': RefOp(run, extents)}        CPU semantics for the compiler golden / CPU VM (optional)
+packs/my_pack/pack.conf   rdc=1 | link=obj.o | define=NAME[=V]       optional build needs
+```
+
+```
+eval "$(tools/kvm_build.sh --print-env --pack packs/my_pack)"          # python side: KVM_EXTRA_DEFS / KVM_EXTRA_REFS
+python3 runtime/compile_workload.py --emit-golden wl.json out/bundle   # compiler knows my_op, golden uses ref.py
+tools/kvm_build.sh --pack packs/my_pack -o kvm_exec kvm_exec.cu        # executor with my_op
+tools/kvm_build.sh --pack game --pack packs/my_pack -o kvm_run demo/kvm_run.cu   # game pack: -rdc, -DKVM_WITH_GAME, doom_dev.o added BY THE FLAG
+```
+
+Any number of `--pack`s combine (the script generates one aggregate `.def`/`.cuh` and passes it through the existing
+`KVM_EXTRA_OPS_DEF/CUH` hooks); duplicate names or ids are refused by `tools/check_packs.py` before nvcc starts and again by `abi.load_ops`.
+`-rdc=true` is only needed by packs that link relocatable device objects (the game engine); it is a property of the pack
+(`pack.conf` `rdc=1`, built in for `game`), not a separate hand-written recipe. Tested: `tests/test_packs.py` (CPU), `tests/packs/run.sh` (GPU).
+Not done: a pack cannot be loaded into an already-built executor (ops are a compile-time switch in one kernel); a game-pack build still
+needs `-rdc`, which costs some optimization across translation units.
+
+## Data-dependent control: predicated tasks (branch and bounded loops)
+
+The DAG stays static; control flow is *predication*. A task may carry a predicate in `KvmTaskDesc` (`include/kvm_task_abi.h`):
+`flags` bit0 `KVM_TF_PRED`, bit1 `KVM_TF_PRED_NEG`, bits 8..31 = element index, `reserved1` = buffer-table index of an `i32`
+buffer. In the workload JSON it is `"when": {"buf": "p", "index": 3, "negate": false}` (validated: buffer exists and is `i32`,
+index inside it, `negate` boolean). When the task starts the executor reads that element (`__ldcg`, after the pop's acquire
+that already orders every upstream write) and runs the op body only if `(value != 0) != NEG`. A skipped task is a normal task in
+every other respect: it publishes its version, decrements and releases its successors, returns its slot and window credit, and
+is counted done (`--trace-csv` column `pred_skipped`; CPU VM and frontend VM implement the same rule). Its outputs keep their old
+contents, so a predicated op should update state in place. Admission rejects a malformed predicate (`KVM_ERR_BAD_TASK`).
+
+Device op `pred_cmp` (id 160, `include/kvm_ops_extra.def`) computes a predicate element: `out[oi] = x[xi] <cmp> thresh`,
+optionally AND/OR with `prev[pi]`. Compare kinds `< <= > >= == !=`.
+
+* **Branch**: compute a value, `pred_cmp` it, put each arm's tasks under `when(p)` / `when(p, negate=True)`. One graph serves
+  every input; exactly one arm runs (`tests/ctl`, `tests/frontend/test_control.py`).
+* **Bounded while loop**: unroll `max_iters` iterations; iteration i is predicated on `flags[i]`, and a `pred_cmp` after each body
+  sets `flags[i+1] = cond AND flags[i]` (so the loop cannot restart). The trip count is decided on the device from the data; the
+  same `tasks.bin`/`args.bin` serves every input. Frontend: `Builder.while_loop`, see FRONTEND.md.
+* **Cost / limits**: a skipped task still occupies a dispatch slot (it is admitted, popped and completed like any task, about one
+  dispatch hop, no op time), so `max_iters` bounds the worst case and the overhead of an exited loop is `(max_iters - trips)`
+  skipped tasks per body task. Shapes stay static (no dynamic shapes); the iteration cap is a compile-time constant; predicates are
+  not nested (combine with `pred_cmp` AND/OR); a predicate must be written by an ancestor task (frontend dataflow adds that edge;
+  hand-written workloads must supply `after`). No `break` out of the middle of a body and no device-side re-submission of tasks
+  (a loop longer than the cap needs the host's windows, see FRONTEND.md "Windows, loops and the manifest").
 
 ## Honest limits
 

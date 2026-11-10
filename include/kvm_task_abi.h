@@ -22,10 +22,17 @@ struct alignas(4) KvmTaskDesc {
     int32_t pub_var;         // KVM_NO_VAR or a version variable: on completion version[pub_var] = pub_ver
     int32_t pub_ver;         //   (release store after a device-wide fence; pub_ver must be version[pub_var]+1 in program order)
     int32_t workload_id;     // which submitted graph this task came from (metrics only; scheduler never branches on it)
-    int32_t flags;           // reserved, 0
-    int32_t reserved0;
-    int32_t reserved1;
+    int32_t flags;           // 0, or a predicate (below): bit0 KVM_TF_PRED, bit1 KVM_TF_PRED_NEG, bits 8..31 element index of the predicate
+    int32_t reserved0;       // executor-internal (window id), the host writes 0
+    int32_t reserved1;       // predicate buffer-table index when KVM_TF_PRED is set, else 0
 };
+// Predicated task: when KVM_TF_PRED is set the executor reads the i32 element buffers[reserved1][flags >> 8] when the task starts and runs
+// the op body only if (value != 0) != NEG. A skipped task still counts as done: it publishes its version, releases its successors and
+// returns its slot, so the DAG stays static; its output buffers simply keep their previous contents. The predicate must be written by
+// a task that is an ancestor of this one (the usual buffer-dataflow rule); the host compiler and frontend add that edge.
+#define KVM_TF_PRED 1
+#define KVM_TF_PRED_NEG 2
+#define KVM_TF_PRED_IDX_SHIFT 8
 static_assert(sizeof(KvmTaskDesc) == 64, "KVM ABI size mismatch");
 static_assert(alignof(KvmTaskDesc) == 4, "KVM ABI alignment mismatch");
 

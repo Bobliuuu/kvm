@@ -126,6 +126,12 @@ int main(int argc, char** argv) {
             }
             for (auto& kv : members) { std::sort(kv.second.begin(), kv.second.end()); for (int m = 0; m < (int)kv.second.size(); ++m) bad_member += kv.second[m] != m; }
             if (before != after) { printf("  FAIL: the kept tasks changed\n"); ++failures; }
+            // the static path takes a bundle's final versions from its publishers: the rewrite keeps every variable's last version
+            std::map<int, int> vb, va;
+            for (const auto& t : B.tasks) if (t.pub_var >= 0) vb[t.pub_var] = std::max(vb[t.pub_var], t.pub_ver);
+            for (const auto& t : P.tasks) if (t.pub_var >= 0) va[t.pub_var] = std::max(va[t.pub_var], t.pub_ver);
+            if (vb != va) { printf("  FAIL: the rewrite changed a final version\n"); ++failures; }
+            else if (!vb.empty()) printf("  final versions kept: %zu variable(s), e.g. variable %d at %d\n", vb.size(), vb.begin()->first, vb.begin()->second);
             if (bad_member || (int)members.size() != P.fused_runs) { printf("  FAIL: %d malformed gang members, %zu gangs for %d runs\n", bad_member, members.size(), P.fused_runs); ++failures; }
             // the static planner places every task, and puts each gang's members on distinct workers
             for (int W : {8, 32, 108}) {

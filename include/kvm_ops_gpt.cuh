@@ -974,18 +974,28 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
     KVM_GPT_PROBE(2);
     cp_wait<0>();
     constexpr int CLD = BN + 8;   // row stride of the accumulator tile in shared memory (padded against bank conflicts)
-    if constexpr (BM * CLD * 4 <= kvm_gpt_smem_bytes(64)) {   // accumulators through shared memory (the register epilogue below costs one 8-byte store per accumulator pair, in instructions the block's 8 warps share)
-        __syncthreads();   // all warps done reading the last stage; shared memory now takes the accumulators
+    // Accumulators through shared memory (the register epilogue below costs one 8-byte store per accumulator pair, in instructions the
+    // block's 8 warps share): the whole tile in one pass when its rows fit the launch's shared memory, else in two passes of BM/2 rows
+    // (the 256 x 128 tile at 96 KiB: 2 x 69,632 B instead of 139,264). Each element gets the same operations in the same order either way.
+    constexpr int PASSES = BM * CLD * 4 <= kvm_gpt_smem_bytes(64) ? 1 : (WM % 2 == 0 && BM / 2 * CLD * 4 <= kvm_gpt_smem_bytes(64)) ? 2 : 0;
+    if constexpr (PASSES > 0) {
+        constexpr int PR = BM / PASSES, PW = WM / PASSES;   // rows a pass stages; warp rows (64 each) a pass holds
 #pragma unroll
-        for (int i = 0; i < 4; i++)
+        for (int pass = 0; pass < PASSES; pass++) {
+            __syncthreads();   // the last stage (or the previous pass's rows) is read by everyone; shared memory now takes this pass's accumulators
+            if (wmi / PW == pass) {
 #pragma unroll
-            for (int j = 0; j < NJ; j++) {   // c0,c1 = (row g, cols 2t,2t+1); c2,c3 = (row g+8, ...)
-                const int r = wmi * 64 + i * 16 + g, c = wni * WTN + j * 8 + 2 * t;
-                *reinterpret_cast<float2*>(sm + r * CLD + c) = make_float2(acc[i][j][0], acc[i][j][1]);
-                *reinterpret_cast<float2*>(sm + (r + 8) * CLD + c) = make_float2(acc[i][j][2], acc[i][j][3]);
+                for (int i = 0; i < 4; i++)
+#pragma unroll
+                    for (int j = 0; j < NJ; j++) {   // c0,c1 = (row g, cols 2t,2t+1); c2,c3 = (row g+8, ...)
+                        const int r = (wmi % PW) * 64 + i * 16 + g, c = wni * WTN + j * 8 + 2 * t;
+                        *reinterpret_cast<float2*>(sm + r * CLD + c) = make_float2(acc[i][j][0], acc[i][j][1]);
+                        *reinterpret_cast<float2*>(sm + (r + 8) * CLD + c) = make_float2(acc[i][j][2], acc[i][j][3]);
+                    }
             }
-        __syncthreads();
-        tile_wb<BM, BN, 1, CLD>(sm, m0, n0, M, N, out, ldo, bias, res, ldr, pre, ldp, alpha, act, accum);
+            __syncthreads();
+            tile_wb<PR, BN, 1, CLD>(sm, m0 + pass * PR, n0, M, N, out, ldo, bias, res, ldr, pre, ldp, alpha, act, accum);
+        }
         return;
     }
     // Epilogue from registers: thread holds (row g | g+8, columns 2t, 2t+1) of every fragment. Pairs of columns go out as float2

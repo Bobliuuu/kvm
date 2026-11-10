@@ -1,6 +1,6 @@
 // End-to-end adversarial scenarios against the real executor (host driver + persistent kernel), independent of tests/gpu.
 //   nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude -DKVM_EXEC_NO_MAIN tests/litmus/e2e.cu -o e2e       (-DKVM_BREAK_FENCE: negative control)
-//   ./e2e dag|versions|ring|bigrecord|probe_timeout|probe_deadlock|probe_aging|probe_spin|probe_closerace|all  [scale]
+//   ./e2e dag|versions|ring|bigrecord|lateadmit|contver|probe_timeout|probe_deadlock|probe_aging|probe_spin|probe_closerace|all  [scale]
 // Every scenario prints "E2E <name> ... PASS|FAIL|FINDING" with counts. FINDING = the executor behaved contrary to its documented
 // contract (not a crash of the harness).
 #ifndef KVM_EXEC_CU
@@ -159,6 +159,69 @@ static void s_bigrecord(int scale) {   // > glibc's non-temporal memcpy threshol
   printf("E2E bigrecord: %d tasks in one %.1f MB record, err=%s wrong=%lld  %s\n", r.done, (100000 * 64 + 100000 * 4) / 1e6, kvm_err_name(r.err_code), bad, (bad || !r.ok()) ? "FAIL" : "PASS"); g_fail += (int)bad + !r.ok();
 }
 
+// ---------- admission racing completion: a successor admitted after its predecessor finished ----------
+// One record whose second half depends, edge by edge, on its first half: the admitter decodes the record in passes and releases each pass's
+// tasks as it writes them, so first-half tasks finish while their successors are still being decoded. A finished predecessor's decrement then
+// reaches a successor whose indegree the admitter has not added yet; the admitter's add-then-check must release it exactly once
+// (KVM_BREAK_CHUNK_RELEASE, which stores the indegree instead of adding it, loses those decrements: the successors never run).
+static void s_lateadmit(int scale) {
+  long long bad = 0, runs = 0, tasks = 0;
+  for (int rep = 0; rep < 2 * scale; ++rep) {
+    KvmConfig c; c.blocks = rep % 2 ? 0 : 8; c.live_cap = 1 << 18; c.max_tasks = 1 << 18; c.ring_words = 1 << 24; c.num_vars = 2; c.succ_cap = 1 << 20;
+    c.timeout_us = 15ull * 1000000;   // a lost decrement leaves its successor waiting forever: the stall timeout ends the run with an error
+    const int N = 60000;
+    KvmExec ex(c); float* x = ex.arena(N); float* y = ex.arena(N);
+    for (int i = 0; i < N; ++i) ex.add_view(x + i, 1, 1);
+    for (int i = 0; i < N; ++i) ex.add_view(y + i, 1, 1);
+    ex.start();
+    KvmBundleBuilder bb;
+    for (int i = 0; i < N; ++i) bb.add("fill", {Bf(i), F((float)(i % 997 + 1)), I(1)});                      // first half: quick, no predecessors
+    for (int i = 0; i < N; ++i) { const int t = bb.add("scale", {Bf(i), Bf(N + i), F(2.0f), I(1)}); bb.edge(i, t); }   // second half: one edge back
+    if (ex.submit(bb.build(), 60000) != KvmSubmit::OK) { printf("  lateadmit submit failed: %s\n", ex.last_error().c_str()); ++g_fail; continue; }
+    const KvmResult& r = ex.finish();
+    EXPECT(r.ok(), "rep %d device error %s (admitted %d done %d)", rep, kvm_err_name(r.err_code), r.admitted, r.done);
+    std::vector<float> h(N); CK(cudaMemcpy(h.data(), y, N * 4, cudaMemcpyDeviceToHost));
+    for (int i = 0; i < N; ++i) if (h[i] != 2.0f * (float)(i % 997 + 1)) ++bad;
+    tasks += r.done; ++runs;
+  }
+  printf("E2E lateadmit: %lld runs, %lld tasks, successors admitted after their predecessors ran: wrong_or_missing=%lld  %s\n", runs, tasks, bad, (bad || g_fail) ? "FAIL" : "PASS");
+  g_fail += (int)bad;
+}
+
+// ---------- continuation into an unmet version wait ----------
+// Per pipeline: slow -> fill(z, 7) publishing v = 1, and quick fill(x) -> copy(z -> out) waiting for v >= 1. The quick task finishes while the
+// slow one still spins, with nothing queued, so its edge successor is offered to the continuation, whose version wait is not met yet: it must
+// park and run after the publish (out == 7). KVM_BREAK_CONT runs it at once: it copies z before the fill (out == 0).
+static void s_contver(int scale) {
+  long long bad = 0, runs = 0, tasks = 0;
+  const int P = 16;
+  for (int rep = 0; rep < 3 * scale; ++rep) {
+    KvmConfig c; c.blocks = 4 + rep % 3; c.live_cap = 1024; c.max_tasks = 1 << 14; c.ring_words = 1 << 14; c.num_vars = P; c.timeout_us = 30ull * 1000000;
+    KvmExec ex(c); float* z = ex.arena(P); float* x = ex.arena(P); float* o = ex.arena(P);
+    std::vector<int> zb(P), xb(P), ob(P);
+    for (int p = 0; p < P; ++p) { zb[p] = ex.add_view(z + p, 1, 1); xb[p] = ex.add_view(x + p, 1, 1); ob[p] = ex.add_view(o + p, 1, 1); }
+    ex.start();
+    for (int p = 0; p < P; ++p) {   // one pipeline a bundle, each submitted after the last one ran: the queue is empty when its quick task starts
+      KvmBundleBuilder bb;
+      const int slow = bb.add("spin", {I(2000)});                                           // 2 ms, then the publisher may run
+      KvmTaskOpts pub; pub.pub_var = p; pub.pub_ver = 1;
+      const int fz = bb.add("fill", {Bf(zb[p]), F(7.0f), I(1)}, pub); bb.edge(slow, fz);
+      const int q = bb.add("fill", {Bf(xb[p]), F(1.0f), I(1)});
+      KvmTaskOpts w; w.wait_var = p; w.wait_ver = 1;
+      const int cp = bb.add("copy", {Bf(zb[p]), Bf(ob[p]), I(1)}, w); bb.edge(q, cp);
+      if (ex.submit(bb.build(), 60000) != KvmSubmit::OK) { printf("  contver submit failed: %s\n", ex.last_error().c_str()); ++g_fail; }
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));   // the 2 ms spin and the rest finish before the next pipeline
+    }
+    const KvmResult& r = ex.finish();
+    EXPECT(r.ok(), "rep %d device error %s", rep, kvm_err_name(r.err_code));
+    std::vector<float> h(P); CK(cudaMemcpy(h.data(), o, P * 4, cudaMemcpyDeviceToHost));
+    for (int p = 0; p < P; ++p) if (h[p] != 7.0f) ++bad;
+    tasks += r.done; ++runs;
+  }
+  printf("E2E contver: %lld runs, %lld tasks, %d pipelines a run: copies_before_their_version=%lld  %s\n", runs, tasks, P, bad, (bad || g_fail) ? "FAIL" : "PASS");
+  g_fail += (int)bad;
+}
+
 // ---------- probes for suspected contract violations ----------
 static void s_probe_timeout() {  // healthy but IDLE for longer than timeout_s: a stall detector must not fire; a total-lifetime cap does
   KvmConfig c; c.blocks = 4; c.live_cap = 64; c.max_tasks = 1024; c.timeout_us = 2ull * 1000000; c.num_vars = 2; c.ring_words = 1024;
@@ -282,6 +345,8 @@ int main(int argc, char** argv) {
     if (all || t == "versions") s_versions(scale);
     if (all || t == "ring") s_ring(scale);
     if (all || t == "bigrecord") s_bigrecord(scale);
+    if (all || t == "lateadmit") s_lateadmit(scale);
+    if (all || t == "contver") s_contver(scale);
     if (all || t == "probe_closerace") s_probe_closerace();
     if (all || t == "probe_timeout") s_probe_timeout();
     if (all || t == "probe_timeout_busy") s_probe_timeout_busy();

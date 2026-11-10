@@ -291,6 +291,72 @@ static void run_queue(int cap, int blocks, long long budget_k, unsigned seed) {
   printf("       detail: pops=%lld (wraps/bucket ~%lld) double_pop=%d lost_updates=%lld aborts=%d drain_lost=%lld drain_dup=%lld err=%d\n", p, p / (cap ? cap : 1), d, lostupd, a, lostq, dupq, D.err());
 }
 
+// ================= Queue, FIFO mode: real kvm_enqueue (fifo branch) / kvm_fifo_pop, the one ready ring of every scheduler-off CLI run =================
+// The same token recirculation as k_queue2 on the FIFO ring: a popper's lane 0 takes a ticket and watches that cell, a producer takes a tail
+// ticket and publishes the slot with its sequence in one release store. The budget's last pop closes the run the executor's way (admit_final
+// with every admitted task done, so kvm_should_exit fires); from then on a popped token retires instead of returning to the ring, so every
+// block finds its ticket unfilled and leaves. A block may leave holding a ticket: the drain reads every position nobody consumed (each held
+// ticket below the tail, and [head, tail)) straight from the ring. Each token must end exactly once: retired, or unconsumed in the ring.
+__global__ void k_queue_fifo(KvmDevState S, long long budget, unsigned seed, int* inq, unsigned* payload, long long* pops, int* dbl, int* retired, long long* held) {
+  const int lane = threadIdx.x;
+  KvmWatch t0{}; long long ticket = -1; int dw;
+  for (;;) {
+    const int s = kvm_fifo_pop(S, t0, ticket, dw);   // warp-wide; every lane gets the same value
+    if (s < 0) break;                                // KVM_POP_EXIT: the run was closed (or an error ended it)
+    if (lane == 0) {
+      const long long n = (long long)atomicAdd((unsigned long long*)pops, 1ull);
+      if (atomicCAS(inq + s, 1, 0) != 1) atomicAdd(dbl, 1);
+      payload[s] = payload[s] + 1;
+      const unsigned h = lit_hash(seed, s, (unsigned)n);
+      if (h & 1) lit_delay((h >> 3) & 255);
+      if (ld_acq(&S.cnt->admit_final)) atomicAdd(retired + s, 1);   // closed: the token leaves the ring
+      else { atomicExch(inq + s, 1); kvm_enqueue(S, s); }           // fifo_only: a tail ticket and one release store
+      if (n + 1 == budget) st_rel(&S.cnt->admit_final, 1);         // admitted == done == 0: kvm_should_exit fires for every waiter
+    }
+    __syncwarp();
+  }
+  if (lane == 0) held[blockIdx.x] = ticket;          // -1, or the ticket this block took and found unfilled at the close
+}
+__global__ void k_queue_fifo_init(KvmDevState S, int ntok, int* inq, unsigned* payload) {
+  if (blockIdx.x || threadIdx.x) return;
+  for (int i = 0; i < ntok; ++i) { KvmTaskDesc t{}; S.tasks[i] = t; inq[i] = 1; payload[i] = 0; kvm_enqueue(S, i); }
+}
+static void run_queue_fifo(int cap, int blocks, long long budget_k, unsigned seed) {
+  // The FIFO ring never waits for a free cell: it relies on rcap (4 x live_cap) exceeding every ticket in flight plus every token, as the
+  // CLI's runs do by far (live_cap >= 16384 against a few hundred blocks). So live_cap here is the power of two at or above tokens + blocks.
+  int lc = 2; while (lc < cap + blocks) lc <<= 1;
+  Dev D; D.alloc(lc, 1, cap); D.S.fifo_only = 1; D.S.no_waits = 1; D.reset();   // fifo_only before reset: kvm_init_kernel lays out the one ring
+  int *inq, *dbl, *ret; unsigned* pay; long long *pops, *held;
+  CK(cudaMalloc(&inq, cap * 4)); CK(cudaMalloc(&pay, cap * 4)); CK(cudaMalloc(&pops, 8)); CK(cudaMalloc(&dbl, 4)); CK(cudaMalloc(&ret, cap * 4)); CK(cudaMalloc(&held, blocks * 8));
+  CK(cudaMemset(pops, 0, 8)); CK(cudaMemset(dbl, 0, 4)); CK(cudaMemset(ret, 0, cap * 4)); CK(cudaMemset(held, 0xff, blocks * 8));
+  k_queue_fifo_init<<<1, 1>>>(D.S, cap, inq, pay); CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
+  const long long budget = budget_k * 1000;
+  k_queue_fifo<<<blocks, 32>>>(D.S, budget, seed, inq, pay, pops, dbl, ret, held); CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
+  long long p; int d; std::vector<unsigned> pv(cap); std::vector<int> rv(cap); std::vector<long long> hv(blocks); KvmQCtl q;
+  CK(cudaMemcpy(&p, pops, 8, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(&d, dbl, 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(&q, D.S.qctl, sizeof q, cudaMemcpyDeviceToHost));
+  CK(cudaMemcpy(pv.data(), pay, cap * 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(rv.data(), ret, cap * 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(hv.data(), held, blocks * 8, cudaMemcpyDeviceToHost));
+  // the drain: every published position nobody consumed holds a token; read their cells (generation pos + 1, the slot in the low bits)
+  const unsigned long long rcap = (unsigned long long)D.S.rcap, mask = (1ull << KVM_FIFO_SHIFT) - 1;
+  std::vector<unsigned long long> unread;
+  for (long long h : hv) if (h >= 0 && (unsigned long long)h < q.tail) unread.push_back((unsigned long long)h);
+  for (unsigned long long pos = q.head; pos < q.tail; ++pos) unread.push_back(pos);
+  std::vector<int> seen(rv);   // retired tokens, then each unconsumed position's token
+  long long badcell = 0;
+  for (unsigned long long pos : unread) {
+    KvmCell c; CK(cudaMemcpy(&c, D.S.cells + (pos & (rcap - 1)), sizeof c, cudaMemcpyDeviceToHost));
+    if ((c.seq >> KVM_FIFO_SHIFT) != pos + 1) { ++badcell; continue; }   // a later generation overwrote it, or it was never published
+    const long long s = (long long)(c.seq & mask);
+    if (s >= 0 && s < cap) ++seen[s]; else ++badcell;
+  }
+  long long sum = 0, lostq = 0, dupq = 0;
+  for (int i = 0; i < cap; ++i) { sum += pv[i]; if (seen[i] == 0) ++lostq; else if (seen[i] > 1) ++dupq; }
+  const long long lostupd = p - sum;
+  char buf[96]; snprintf(buf, sizeof buf, "queuefifo[cap=%d,ctas=%d]", cap, blocks);
+  report(buf, p, d + (lostupd > 0 ? lostupd : -lostupd) + lostq + dupq + badcell + D.err(), "double_pop+lost_update+lost+dup+bad_cell+err");
+  printf("       detail: pops=%lld head=%llu tail=%llu unread=%zu double_pop=%d lost_updates=%lld lost=%lld dup=%lld bad_cell=%lld err=%d\n",
+         p, q.head, q.tail, unread.size(), d, lostupd, lostq, dupq, badcell, D.err());
+}
+
 int main(int argc, char** argv) {
   std::string t = argc > 1 ? argv[1] : "all"; int Rk = argc > 2 ? atoi(argv[2]) : 100, L = argc > 3 ? atoi(argv[3]) : 10; unsigned seed = argc > 4 ? (unsigned)atoi(argv[4]) : 1;
   cudaDeviceProp p; CK(cudaGetDeviceProperties(&p, 0)); printf("GPU %s sm_%d%d, %d SMs  [build:%s%s]\n", p.name, p.major, p.minor, p.multiProcessorCount,
@@ -311,6 +377,7 @@ int main(int argc, char** argv) {
   if (all || t == "dekker3") run_dekker(3, Rk / 2 > 0 ? Rk / 2 : 1, L, seed);
   if (all || t == "mp") for (int v : {0, 3, 1, 2}) run_mp(v, Rk > 200 ? 200 : Rk, L, seed);
   if (all || t == "queue") { for (int cap : {2, 4, 8, 64, 1024}) for (int b : {7, 200}) run_queue(cap, b, Rk * 20, seed); }
+  if (all || t == "queuefifo") { for (int cap : {2, 4, 8, 64, 1024}) for (int b : {7, 200}) run_queue_fifo(cap, b, Rk * 20, seed); }
   printf("TOTAL rounds=%lld violations=%lld\n", g_total_rounds, g_total_bad);
   return g_total_bad ? 1 : 0;
 }

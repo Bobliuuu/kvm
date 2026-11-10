@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build and run the GPU executor tests on a GPU box (the host comes from the environment, never from a file).
 # Usage: KVM_HOST=user@host [KVM_KEY=~/.ssh/key] [KVM_ARCH=sm_80] ./run_exec_tests.sh [mode] [suite...]
-#   mode: --litmus (R's adversarial litmus harness: real device functions + 8 mutants that must FAIL, e2e scenarios, probes that must report no FINDING)
+#   mode: --litmus (R's adversarial litmus harness: real device functions + 10 mutants that must FAIL, e2e scenarios and their negative controls, probes that must report no FINDING)
 #         --gpt (frontend gpt_tiny bundle, 544 tasks: same bytes in every scheduler mode, sanitizers)
 #         --fuzz (R's CLI fuzz corpus: 0 crashes/hangs; FC=cases FS=seed FZ=--targeted)
 #   mode: (none) functional suites | --negative (build -DKVM_BREAK_FENCE, expect the version suite to FAIL)

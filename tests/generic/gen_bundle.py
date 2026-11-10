@@ -54,6 +54,11 @@ def main():
     spec = demo.make_precise(comp.spec) if a.precise else comp.spec
     out.mkdir(parents=True, exist_ok=True)
     (out / 'workload.json').write_text(json.dumps(spec, separators=(',', ':')))
+    opt = case.optimizer
+    meta = dict(model=a.case, steps=steps, tiling=a.tiling, precise=a.precise,
+                invariant_params=sorted(n for n, sp in case.module.specs.items() if sp.invariant),  # examples/models/check.py judges them in absolute terms
+                optim=dict(kind=opt.kind, lr=opt.lr, b1=opt.b1, b2=opt.b2))
+    (out / 'meta.json').write_text(json.dumps(meta, indent=1))
     subprocess.run([sys.executable, str(ROOT / 'runtime/compile_workload.py'), '--emit-golden', '--golden-timeout', '900',
                     str(out / 'workload.json'), str(out / 'bundle')], check=True, stderr=subprocess.DEVNULL)
     print(f'{out}/bundle: {a.case}, {steps} steps, {len(comp.low.tasks)} tasks, {a.tiling} tiling, {"3xTF32" if a.precise else "1xTF32"}')

@@ -257,6 +257,9 @@ class KvmExec {
     sms_ = p.multiProcessorCount; name_ = p.name;
     if (cfg_.stack_bytes) CK(cudaDeviceSetLimit(cudaLimitStackSize, cfg_.stack_bytes));
     dyn_smem_ = KVM_DYN_SMEM_BYTES;
+#ifdef KVM_TMA_MAXB   // GPT op pack built: arm the sm_90a TMA + wgmma tiles (no-op elsewhere; KVM_NO_HOPPER=1 disables)
+    if (kvm_hopper_host_init()) { dyn_smem_ = kvm_hopper_dyn_smem(dyn_smem_); KLOG(2, "hopper: TMA + wgmma tiles armed, dynamic smem %zu B", dyn_smem_); }
+#endif
     if (dyn_smem_ > 0) CK(cudaFuncSetAttribute(kvm_exec_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)dyn_smem_));
     int occ = 0; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, kvm_exec_kernel, KVM_THREADS, dyn_smem_));
     if (occ < 1) throw std::runtime_error("kernel does not fit on an SM with " + std::to_string(dyn_smem_) + " bytes of dynamic shared memory");

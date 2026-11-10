@@ -1,0 +1,19 @@
+NVIDIA H100 80GB HBM3, 610.57.04
+== same
+device NVIDIA H100 80GB HBM3 sm_90, 132 SMs
+case                                   hopper       sm80     cuBLAS  hop/cuB
+4096^3 NN                                48.3       45.9      373.5     0.13   (TFLOP/s; hopper tiles 32768/4096, err 0)
+4096^3 NT                                74.8       60.6      381.2     0.20   (TFLOP/s; hopper tiles 32768/4096, err 0)
+4096^3 TN                                39.1       48.2      253.4     0.15   (TFLOP/s; hopper tiles 32768/4096, err 0)
+4096^3 NN big                           139.9       79.9      374.6     0.37   (TFLOP/s; hopper tiles 8192/1024, err 0)
+4096^3 NT big                           229.6       85.2      377.4     0.61   (TFLOP/s; hopper tiles 8192/1024, err 0)
+4096^3 NN huge                          188.9       86.9      375.2     0.50   (TFLOP/s; hopper tiles 4096/512, err 0)
+4096^3 NT huge                          303.1       94.6      378.2     0.80   (TFLOP/s; hopper tiles 4096/512, err 0)
+qkv 4096x2304x768 NN                     38.1       39.1      203.7     0.19   (TFLOP/s; hopper tiles 18432/2304, err 0)
+fc1 4096x3072x768 NN                     38.6       39.4      241.9     0.16   (TFLOP/s; hopper tiles 24576/3072, err 0)
+bf16 4096^3 NN                          333.6      289.6      707.3     0.47   (TFLOP/s; hopper tiles 4096/512, err 0)
+bf16 4096^3 NT                          338.5      281.6      708.4     0.48   (TFLOP/s; hopper tiles 4096/512, err 0)
+bf16 4096^3 TN                          335.7      292.2      705.9     0.48   (TFLOP/s; hopper tiles 4096/512, err 0)
+bf16 4096^3 TT                          338.5      283.4      707.9     0.48   (TFLOP/s; hopper tiles 4096/512, err 0)
+bf16 logits 4096x50304x768 NT           105.0      132.4      527.3     0.20   (TFLOP/s; hopper tiles 50432/6304, err 0)
+exit 0

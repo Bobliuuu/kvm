@@ -1,0 +1,6 @@
+tiny   main           best     841 median     845 us/step  (n=15)
+tiny   pr6            best     815 median     826 us/step  (n=15)
+tiny   pr6nc          best     865 median     875 us/step  (n=15)
+small  main           best    1777 median    1795 us/step  (n=15)
+small  pr6            best    1724 median    1740 us/step  (n=15)
+small  pr6nc          best    1734 median    1749 us/step  (n=15)

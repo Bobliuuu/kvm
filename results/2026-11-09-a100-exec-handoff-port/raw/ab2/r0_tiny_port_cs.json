@@ -1,0 +1,17 @@
+{
+ "steps": 50,
+ "tasks": 5150,
+ "extra_args": [
+  "--cont-strict"
+ ],
+ "ms_total": [
+  34.474,
+  32.502,
+  34.773
+ ],
+ "failed": [],
+ "ms_per_step_best": 0.6500400000000001,
+ "ms_per_step_median": 0.68948,
+ "ms_per_step_worst": 0.6954600000000001,
+ "tokens_per_s_best": 49227.73983139499
+}

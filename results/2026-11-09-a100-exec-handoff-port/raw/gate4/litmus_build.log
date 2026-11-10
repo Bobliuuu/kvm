@@ -1,0 +1,8 @@
+BUILD: tests/litmus/build.sh (prod + 7 mutants), e2e, e2e -DKVM_BREAK_FENCE|CHUNK_RELEASE|CONT, kvm_exec
+
+built in /src/out (sm_80)
+e2e e2e_breakchunk e2e_breakcont e2e_breakfence hdr_exchbefore hdr_nodekkerfence hdr_popplain hdr_popticket hdr_qrelax hdr_weakpub kvm_exec litmus_exchbefore litmus_nodekkerfence litmus_nofence litmus_norecheck litmus_popplain litmus_popticket litmus_prod litmus_qrelax litmus_weakpub 
+
+real	95m37.298s
+user	685m29.120s
+sys	30m7.840s

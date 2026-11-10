@@ -1,0 +1,20 @@
+{
+ "steps": 50,
+ "tasks": 5150,
+ "extra_args": [
+  "--claim",
+  "ticket"
+ ],
+ "ms_total": [
+  41.087,
+  40.977,
+  40.905,
+  41.031,
+  41.431
+ ],
+ "failed": [],
+ "ms_per_step_best": 0.8181,
+ "ms_per_step_median": 0.82062,
+ "ms_per_step_worst": 0.8286199999999999,
+ "tokens_per_s_best": 39115.02261337244
+}

@@ -1,0 +1,45 @@
+{
+ "torch": "2.7.0+cu126",
+ "cuda": "12.6",
+ "gpu": "NVIDIA A100-SXM4-40GB",
+ "sms": 108,
+ "precision": "bf16",
+ "reps": 3,
+ "modes": {
+  "eager": {
+   "steps": 1,
+   "ms_total": [
+    58.36595153808594,
+    57.34912109375,
+    57.633792877197266
+   ],
+   "ms_per_step_best": 57.34912109375,
+   "ms_per_step_median": 57.633792877197266,
+   "ms_per_step_worst": 58.36595153808594,
+   "tokens_per_s_best": 71422.19308477578,
+   "losses": [
+    10.979324340820312
+   ],
+   "setup_s": 1.0883636474609375
+  },
+  "graph": {
+   "steps": 1,
+   "ms_total": [
+    44.76620864868164,
+    44.73344039916992,
+    44.74163055419922
+   ],
+   "ms_per_step_best": 44.73344039916992,
+   "ms_per_step_median": 44.74163055419922,
+   "ms_per_step_worst": 44.76620864868164,
+   "tokens_per_s_best": 91564.60946106899,
+   "losses": [
+    10.979324340820312
+   ],
+   "setup_s": 0.8615918159484863
+  },
+  "compile_graph": {
+   "error": "IndexError: index 1 is out of bounds for dimension 0 with size 1"
+  }
+ }
+}

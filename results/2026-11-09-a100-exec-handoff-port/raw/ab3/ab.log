@@ -1,0 +1,1124 @@
+$ nvidia-smi --query-gpu=name,driver_version,clocks.max.sm --format=csv,noheader; nvcc --version | tail -1; cat /logs/ab3-final/bin/builds.txt
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+Build cuda_12.8.r12.8/compiler.35583870_0
+build 93f727c: rc=0
+build d12c206: rc=0
+build origin_perf_chunked-release: rc=0
+builds done in 1875 s (flags -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 )
+$ cp /logs/ab3-final/bin/93f727c/kvm_exec 93f727c/kvm_exec; chmod +x 93f727c/kvm_exec
+$ cp /logs/ab3-final/bin/d12c206/kvm_exec d12c206/kvm_exec; chmod +x d12c206/kvm_exec
+$ cp /logs/ab3-final/bin/origin_perf_chunked-release/kvm_exec origin_perf_chunked-release/kvm_exec; chmod +x origin_perf_chunked-release/kvm_exec
+$ cp /logs/ab3-final/bin/93f727c/kvm_exec 93f727c/kvm_exec; chmod +x 93f727c/kvm_exec
+$ cp /logs/ab3-final/bin/93f727c/kvm_exec 93f727c/kvm_exec; chmod +x 93f727c/kvm_exec
+$ python3 -I 93f727c/bench/vs_pytorch/gen.py w_tiny --model 'gpt_tiny' --steps 50 --mode tf32 --tiling a100 > /logs/ab3-final/gen_tiny.json 2>&1
+$ python3 -I 93f727c/bench/vs_pytorch/gen.py w_small --model 'gpt_small' --steps 50 --mode tf32 --tiling a100 > /logs/ab3-final/gen_small.json 2>&1
+$ python3 -I 93f727c/bench/vs_pytorch/gen.py w_b16 --model '{"name":"gpt_162m","vocab":50304,"d_model":768,"layers":12,"heads":12,"seq":1024,"batch":4,"precision":"bf16s"}' --steps 1 --mode tf32 --tiling a100 > /logs/ab3-final/gen_b16.json 2>&1
+$ python3 -I 93f727c/bench/vs_pytorch/gen.py w_f32 --model '{"name":"gpt_162m","vocab":50304,"d_model":768,"layers":12,"heads":12,"seq":1024,"batch":4,"precision":"f32"}' --steps 1 --mode tf32 --tiling a100 > /logs/ab3-final/gen_f32.json 2>&1
+$ python3 -I 93f727c/bench/vs_pytorch/torch_bench.py w_tiny --reps 3 --precision tf32 --modes eager,graph,compile_graph --out /logs/ab3-final/r0_tiny_torch.json 2>&1 | grep -v Warning
+eager: best 3439.6 us/step  median 3440.9  worst 3463.4  loss 4.1460 -> 1.2453  (setup 2s)
+graph: best 432.6 us/step  median 432.9  worst 433.1  loss 4.1460 -> 1.2453  (setup 0s)
+AUTOTUNE addmm(32x128, 32x32, 32x128)
+  triton_mm_24 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=2
+  triton_mm_25 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_26 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_30 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_36 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_38 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_27 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_28 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_31 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_32 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 1.5315 seconds and 0.0006 seconds precompiling for 17 choices
+AUTOTUNE mm(32x32, 32x32)
+  triton_mm_2 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_4 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_5 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+  triton_mm_0 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=2
+  triton_mm_1 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_3 0.0102 ms 80.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  mm 0.0113 ms 72.7% 
+SingleProcess AUTOTUNE benchmarking takes 0.3927 seconds and 0.0018 seconds precompiling for 7 choices
+AUTOTUNE addmm(32x32, 32x32, 32x32)
+  triton_mm_13 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_14 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_16 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_17 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+  triton_mm_12 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=2
+  triton_mm_15 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  bias_addmm 0.0133 ms 69.2% 
+  addmm 0.0164 ms 56.3% 
+SingleProcess AUTOTUNE benchmarking takes 0.4328 seconds and 0.0003 seconds precompiling for 8 choices
+AUTOTUNE mm(32x128, 128x32)
+  triton_mm_41 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_45 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_47 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+  triton_mm_49 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_46 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_44 0.0113 ms 81.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  mm 0.0123 ms 75.0% 
+  triton_mm_40 0.0123 ms 75.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_42 0.0123 ms 75.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_43 0.0133 ms 69.2% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 0.6591 seconds and 0.0003 seconds precompiling for 12 choices
+AUTOTUNE mm(32x32, 32x64)
+  triton_mm_51 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_55 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_57 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_52 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_53 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_54 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_56 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_59 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_60 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+  triton_mm_61 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 0.8187 seconds and 0.0004 seconds precompiling for 13 choices
+AUTOTUNE mm(32x32, 32x128)
+  triton_mm_84 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=2
+  triton_mm_85 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_86 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_87 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_89 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_90 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_91 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_95 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_96 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_88 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 0.7703 seconds and 0.0005 seconds precompiling for 16 choices
+AUTOTUNE mm(32x32, 32x64)
+  triton_mm_63 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_64 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_65 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_67 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_68 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_69 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_70 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_71 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_72 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+  triton_mm_73 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 0.2882 seconds and 0.0003 seconds precompiling for 13 choices
+AUTOTUNE mm(32x64, 64x32)
+  triton_mm_75 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_76 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_80 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_81 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_82 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+  triton_mm_83 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+  triton_mm_77 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_79 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_74 0.0102 ms 80.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=2
+  triton_mm_78 0.0102 ms 80.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 0.2321 seconds and 0.0004 seconds precompiling for 11 choices
+AUTOTUNE mm(128x32, 32x32)
+  triton_mm_99 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=2
+  triton_mm_100 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_101 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_102 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_103 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_105 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_106 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_107 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_108 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_109 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 0.3308 seconds and 0.0004 seconds precompiling for 16 choices
+AUTOTUNE mm(32x128, 128x32)
+  triton_mm_116 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_120 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_121 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_122 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+  triton_mm_124 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_115 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_117 0.0113 ms 81.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_119 0.0113 ms 81.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_123 0.0113 ms 81.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+  triton_mm_118 0.0133 ms 69.2% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 0.2484 seconds and 0.0003 seconds precompiling for 12 choices
+AUTOTUNE mm(32x32, 32x128)
+  triton_mm_125 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=2
+  triton_mm_126 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_127 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_128 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_130 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_131 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_132 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_136 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_137 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_129 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 0.3636 seconds and 0.0004 seconds precompiling for 16 choices
+AUTOTUNE mm(32x32, 32x32)
+  triton_mm_141 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_142 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_143 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_144 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_145 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+  triton_mm_140 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=2
+  mm 0.0113 ms 72.7% 
+SingleProcess AUTOTUNE benchmarking takes 0.1459 seconds and 0.0005 seconds precompiling for 7 choices
+AUTOTUNE mm_plus_mm(32x32, 32x32, 32x32, 32x32)
+  triton_mm_plus_mm_165 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=2
+  triton_mm_plus_mm_164 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  _mm_plus_mm 0.0195 ms 52.6% 
+SingleProcess AUTOTUNE benchmarking takes 0.0650 seconds and 0.0003 seconds precompiling for 3 choices
+AUTOTUNE addmm(32x32, 32x32, 32x32)
+  triton_mm_173 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_174 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_176 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_177 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+  triton_mm_172 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=2
+  triton_mm_175 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  addmm 0.0154 ms 53.3% 
+SingleProcess AUTOTUNE benchmarking takes 0.1573 seconds and 0.0003 seconds precompiling for 7 choices
+AUTOTUNE mm(32x32, 32x32)
+  triton_mm_147 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_148 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_150 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_151 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+  triton_mm_146 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=2
+  triton_mm_149 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  mm 0.0113 ms 72.7% 
+SingleProcess AUTOTUNE benchmarking takes 0.1522 seconds and 0.0004 seconds precompiling for 7 choices
+compile_graph: best 203.6 us/step  median 203.7  worst 204.2  loss 4.1461 -> 1.2462  (setup 42s)
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_tiny_port.json
+rep 1/3: 41.0 ms (0.82 ms/step), wall 0.6 s
+rep 2/3: 41.3 ms (0.83 ms/step), wall 0.5 s
+rep 3/3: 42.0 ms (0.84 ms/step), wall 0.6 s
+executor: best 821 us/step  median 826  worst 840
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny d12c206/kvm_exec --reps 3 --out /logs/ab3-final/r0_tiny_main.json
+rep 1/3: 55.8 ms (1.12 ms/step), wall 0.6 s
+rep 2/3: 44.9 ms (0.90 ms/step), wall 0.5 s
+rep 3/3: 43.3 ms (0.87 ms/step), wall 0.5 s
+executor: best 867 us/step  median 898  worst 1117
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny origin_perf_chunked-release/kvm_exec --reps 3 --out /logs/ab3-final/r0_tiny_chunk.json
+rep 1/3: 42.6 ms (0.85 ms/step), wall 0.5 s
+rep 2/3: 43.1 ms (0.86 ms/step), wall 0.5 s
+rep 3/3: 42.3 ms (0.85 ms/step), wall 0.6 s
+executor: best 846 us/step  median 852  worst 862
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_tiny_port_cas.json -- --claim cas
+rep 1/3: 42.3 ms (0.85 ms/step), wall 0.6 s
+rep 2/3: 42.3 ms (0.85 ms/step), wall 0.6 s
+rep 3/3: 42.1 ms (0.84 ms/step), wall 0.5 s
+executor: best 842 us/step  median 846  worst 846
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_tiny_port_nc.json -- --no-cont
+rep 1/3: 41.9 ms (0.84 ms/step), wall 0.5 s
+rep 2/3: 42.1 ms (0.84 ms/step), wall 0.6 s
+rep 3/3: 42.0 ms (0.84 ms/step), wall 0.6 s
+executor: best 838 us/step  median 840  worst 842
+$ python3 -I 93f727c/bench/vs_pytorch/torch_bench.py w_small --reps 3 --precision tf32 --modes eager,graph,compile_graph --out /logs/ab3-final/r0_small_torch.json 2>&1 | grep -v Warning
+eager: best 6001.7 us/step  median 6057.0  worst 6063.7  loss 4.8782 -> 0.0957  (setup 2s)
+graph: best 651.9 us/step  median 764.3  worst 835.4  loss 4.8782 -> 0.0957  (setup 0s)
+AUTOTUNE addmm(128x256, 128x64, 64x256)
+  triton_mm_74 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_75 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_76 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_73 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_78 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_79 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_80 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_72 0.0123 ms 83.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=2
+  triton_mm_77 0.0123 ms 83.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_81 0.0123 ms 83.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 1.4469 seconds and 0.0006 seconds precompiling for 21 choices
+AUTOTUNE mm(128x64, 64x64)
+  triton_mm_1 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_2 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_4 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_0 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=2
+  triton_mm_3 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_6 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_7 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_9 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_10 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_12 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 1.0123 seconds and 0.0003 seconds precompiling for 19 choices
+AUTOTUNE addmm(128x64, 128x64, 64x64)
+  triton_mm_38 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_40 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_39 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_44 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  bias_addmm 0.0113 ms 81.8% 
+  triton_mm_43 0.0113 ms 81.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_45 0.0113 ms 81.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_46 0.0113 ms 81.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_47 0.0113 ms 81.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_48 0.0113 ms 81.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 1.1644 seconds and 0.0003 seconds precompiling for 20 choices
+E1110 04:50:06.211000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 04:50:06.211000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 04:50:06.211000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 04:50:06.404000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 04:50:06.404000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 04:50:06.404000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 04:50:06.613000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 04:50:06.613000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 04:50:06.613000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 04:50:06.857000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 04:50:06.857000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 04:50:06.857000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE mm(128x256, 256x64)
+  triton_mm_94 0.0113 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_92 0.0123 ms 91.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_93 0.0123 ms 91.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_98 0.0133 ms 84.6% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_102 0.0133 ms 84.6% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  mm 0.0143 ms 78.6% 
+  triton_mm_107 0.0154 ms 73.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_105 0.0164 ms 68.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_97 0.0174 ms 64.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_104 0.0174 ms 64.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 0.9244 seconds and 0.0003 seconds precompiling for 19 choices
+AUTOTUNE mm(128x64, 64x128)
+  triton_mm_220 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_221 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_222 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_218 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=2
+  triton_mm_219 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_226 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  mm 0.0113 ms 81.8% 
+  triton_mm_224 0.0113 ms 81.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_225 0.0113 ms 81.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_227 0.0113 ms 81.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 1.0738 seconds and 0.0003 seconds precompiling for 20 choices
+AUTOTUNE mm(128x64, 64x256)
+  triton_mm_273 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_274 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_275 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_276 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_272 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=2
+  triton_mm_278 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_279 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_280 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_277 0.0113 ms 81.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_281 0.0113 ms 81.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 0.4875 seconds and 0.0006 seconds precompiling for 20 choices
+E1110 04:50:27.459000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 04:50:27.459000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 04:50:27.459000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE mm(64x128, 128x128)
+  triton_mm_239 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_240 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_241 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_238 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_244 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_245 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_250 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_251 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  mm 0.0123 ms 83.3% 
+  triton_mm_243 0.0123 ms 83.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 0.3967 seconds and 0.0003 seconds precompiling for 18 choices
+E1110 04:50:27.877000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 04:50:27.877000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 04:50:27.877000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE mm(128x128, 128x64)
+  triton_mm_256 0.0092 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_255 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_257 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_263 0.0102 ms 90.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_258 0.0113 ms 81.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_261 0.0113 ms 81.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_264 0.0113 ms 81.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_265 0.0113 ms 81.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_260 0.0123 ms 75.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_262 0.0123 ms 75.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 0.4167 seconds and 0.0005 seconds precompiling for 19 choices
+E1110 04:50:28.298000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 04:50:28.298000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 04:50:28.298000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE mm(256x128, 128x64)
+  triton_mm_293 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_294 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_300 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_302 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  mm 0.0113 ms 90.9% 
+  triton_mm_292 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_295 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_298 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_299 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_301 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 0.4209 seconds and 0.0003 seconds precompiling for 19 choices
+E1110 04:50:28.423000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 04:50:28.423000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 04:50:28.423000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 04:50:28.509000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 04:50:28.509000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 04:50:28.509000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 04:50:28.593000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 04:50:28.593000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 04:50:28.593000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 04:50:28.706000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 04:50:28.706000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 04:50:28.706000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE mm(128x256, 256x64)
+  triton_mm_310 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_311 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_312 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_320 0.0123 ms 83.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_316 0.0133 ms 76.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_318 0.0133 ms 76.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_319 0.0133 ms 76.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  mm 0.0143 ms 71.4% 
+  triton_mm_322 0.0154 ms 66.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_323 0.0154 ms 66.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 0.4073 seconds and 0.0004 seconds precompiling for 19 choices
+E1110 04:50:29.206000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 04:50:29.206000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 04:50:29.206000 2234 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE mm(64x128, 128x256)
+  triton_mm_329 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_330 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_334 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_340 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  mm 0.0113 ms 90.9% 
+  triton_mm_328 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_331 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_335 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_341 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_333 0.0123 ms 83.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 0.5001 seconds and 0.0003 seconds precompiling for 18 choices
+AUTOTUNE mm(128x64, 64x64)
+  triton_mm_345 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_347 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_344 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=2
+  triton_mm_346 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_348 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_351 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_352 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_350 0.0102 ms 80.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_353 0.0102 ms 80.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_354 0.0102 ms 80.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 0.4774 seconds and 0.0005 seconds precompiling for 19 choices
+AUTOTUNE mm(64x128, 128x64)
+  triton_mm_364 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_365 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_373 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_363 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_366 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_369 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_370 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_371 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_372 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_374 0.0113 ms 90.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=128, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 0.4159 seconds and 0.0008 seconds precompiling for 16 choices
+AUTOTUNE mm_plus_mm(128x64, 64x64, 128x64, 64x64)
+  triton_mm_plus_mm_410 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_plus_mm_411 0.0102 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_plus_mm_407 0.0123 ms 83.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_plus_mm_408 0.0123 ms 83.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_plus_mm_409 0.0123 ms 83.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=16
+  triton_mm_plus_mm_414 0.0123 ms 83.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=2
+  triton_mm_plus_mm_413 0.0154 ms 66.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_plus_mm_412 0.0184 ms 55.6% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=8
+  _mm_plus_mm 0.0225 ms 45.5% 
+SingleProcess AUTOTUNE benchmarking takes 0.2237 seconds and 0.0003 seconds precompiling for 9 choices
+AUTOTUNE addmm(128x64, 128x64, 64x64)
+  triton_mm_431 0.0082 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_432 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_433 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_434 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_430 0.0102 ms 80.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=2
+  triton_mm_437 0.0102 ms 80.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_438 0.0102 ms 80.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_439 0.0102 ms 80.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_441 0.0102 ms 80.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_442 0.0102 ms 80.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 0.4628 seconds and 0.0003 seconds precompiling for 19 choices
+compile_graph: best 429.1 us/step  median 429.3  worst 429.4  loss 4.8782 -> 0.0960  (setup 71s)
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_small_port.json
+rep 1/3: 105.3 ms (2.11 ms/step), wall 0.7 s
+rep 2/3: 92.3 ms (1.85 ms/step), wall 0.6 s
+rep 3/3: 93.9 ms (1.88 ms/step), wall 0.6 s
+executor: best 1845 us/step  median 1878  worst 2106
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small d12c206/kvm_exec --reps 3 --out /logs/ab3-final/r0_small_main.json
+rep 1/3: 112.2 ms (2.24 ms/step), wall 0.7 s
+rep 2/3: 104.1 ms (2.08 ms/step), wall 0.7 s
+rep 3/3: 96.2 ms (1.92 ms/step), wall 0.6 s
+executor: best 1923 us/step  median 2082  worst 2245
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small origin_perf_chunked-release/kvm_exec --reps 3 --out /logs/ab3-final/r0_small_chunk.json
+rep 1/3: 109.6 ms (2.19 ms/step), wall 0.6 s
+rep 2/3: 91.6 ms (1.83 ms/step), wall 0.6 s
+rep 3/3: 94.3 ms (1.89 ms/step), wall 0.6 s
+executor: best 1832 us/step  median 1886  worst 2192
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_small_port_cas.json -- --claim cas
+rep 1/3: 109.5 ms (2.19 ms/step), wall 1.4 s
+rep 2/3: 91.9 ms (1.84 ms/step), wall 1.7 s
+rep 3/3: 113.5 ms (2.27 ms/step), wall 1.5 s
+executor: best 1839 us/step  median 2191  worst 2270
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_small_port_nc.json -- --no-cont
+rep 1/3: 107.6 ms (2.15 ms/step), wall 0.7 s
+rep 2/3: 85.4 ms (1.71 ms/step), wall 0.6 s
+rep 3/3: 84.4 ms (1.69 ms/step), wall 0.6 s
+executor: best 1688 us/step  median 1708  worst 2151
+$ python3 -I 93f727c/bench/vs_pytorch/torch_bench.py w_b16 --reps 3 --precision bf16 --modes eager,graph,compile_graph --out /logs/ab3-final/r0_b16_torch.json 2>&1 | grep -v Warning
+eager: best 57349.1 us/step  median 57633.8  worst 58366.0  loss 10.9793 -> 10.9793  (setup 1s)
+graph: best 44733.4 us/step  median 44741.6  worst 44766.2  loss 10.9793 -> 10.9793  (setup 1s)
+AUTOTUNE addmm(4096x3072, 4096x768, 768x3072)
+  triton_mm_93 0.1126 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_85 0.1137 ms 99.1% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_92 0.1137 ms 99.1% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_89 0.1157 ms 97.3% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_87 0.1188 ms 94.8% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_94 0.1249 ms 90.2% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_86 0.1321 ms 85.3% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_90 0.1331 ms 84.6% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_82 0.1546 ms 72.8% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_83 0.1567 ms 71.9% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 1.3731 seconds and 0.0007 seconds precompiling for 21 choices
+AUTOTUNE mm(4096x768, 768x768)
+  mm 0.0379 ms 100.0% 
+  triton_mm_17 0.0389 ms 97.4% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_16 0.0420 ms 90.2% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_9 0.0440 ms 86.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_18 0.0451 ms 84.1% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_13 0.0461 ms 82.2% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_15 0.0512 ms 74.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=8
+  triton_mm_10 0.0522 ms 72.5% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_11 0.0522 ms 72.5% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_14 0.0522 ms 72.5% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 1.0806 seconds and 0.0003 seconds precompiling for 20 choices
+AUTOTUNE addmm(4096x768, 4096x768, 768x768)
+  bias_addmm 0.0399 ms 100.0% 
+  triton_mm_55 0.0430 ms 92.9% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_54 0.0440 ms 90.7% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_49 0.0481 ms 83.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_56 0.0481 ms 83.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_51 0.0492 ms 81.2% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_47 0.0522 ms 76.5% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  addmm 0.0543 ms 73.6% 
+  triton_mm_48 0.0543 ms 73.6% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_52 0.0543 ms 73.6% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 1.1669 seconds and 0.0005 seconds precompiling for 21 choices
+AUTOTUNE mm(4096x3072, 3072x768)
+  triton_mm_112 0.0963 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_111 0.1004 ms 95.9% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  mm 0.1065 ms 90.4% 
+  triton_mm_108 0.1096 ms 87.9% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_104 0.1106 ms 87.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_106 0.1147 ms 83.9% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_113 0.1147 ms 83.9% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_105 0.1352 ms 71.2% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_110 0.1362 ms 70.7% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=8
+  triton_mm_109 0.1454 ms 66.2% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 1.1307 seconds and 0.0004 seconds precompiling for 20 choices
+AUTOTUNE mm(4096x768, 768x50304)
+  mm 1.2421 ms 100.0% 
+  triton_mm_1385 1.3251 ms 93.7% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1384 1.4377 ms 86.4% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1377 1.4930 ms 83.2% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1381 1.5421 ms 80.5% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1386 1.6005 ms 77.6% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_1379 1.6241 ms 76.5% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1378 1.8401 ms 67.5% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1382 1.8831 ms 66.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1383 1.9702 ms 63.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 1.8909 seconds and 0.0003 seconds precompiling for 20 choices
+AUTOTUNE mm(768x4096, 4096x50304)
+  triton_mm_1404 1.3097 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1403 1.3568 ms 96.5% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  mm 1.4254 ms 91.9% 
+  triton_mm_1400 1.4592 ms 89.8% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1398 1.4848 ms 88.2% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1396 1.4889 ms 88.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1405 1.6067 ms 81.5% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_1397 1.6497 ms 79.4% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1399 1.6927 ms 77.4% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=128, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+  triton_mm_1401 1.7172 ms 76.3% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 1.2108 seconds and 0.0006 seconds precompiling for 20 choices
+AUTOTUNE mm(4096x768, 768x3072)
+  triton_mm_1442 0.0973 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  mm 0.0993 ms 97.9% 
+  triton_mm_1436 0.1034 ms 94.1% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1438 0.1065 ms 91.3% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1434 0.1075 ms 90.5% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1441 0.1085 ms 89.6% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1443 0.1188 ms 81.9% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_1440 0.1260 ms 77.2% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=8
+  triton_mm_1435 0.1270 ms 76.6% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1439 0.1290 ms 75.4% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 0.8022 seconds and 0.0006 seconds precompiling for 20 choices
+AUTOTUNE mm(4096x50304, 50304x768)
+  triton_mm_1423 1.3722 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  mm 1.4449 ms 95.0% 
+  triton_mm_1424 1.6118 ms 85.1% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_1417 1.6886 ms 81.3% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1418 1.8575 ms 73.9% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=128, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+  triton_mm_1422 2.1453 ms 64.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1413 2.2907 ms 59.9% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_1414 2.3409 ms 58.6% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=128, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_1416 3.0556 ms 44.9% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1420 3.1334 ms 43.8% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 1.2670 seconds and 0.0003 seconds precompiling for 20 choices
+AUTOTUNE mm(3072x4096, 4096x768)
+  mm 0.0922 ms 100.0% 
+  triton_mm_1455 0.1065 ms 86.5% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1457 0.1075 ms 85.7% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1453 0.1106 ms 83.3% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1456 0.1198 ms 76.9% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=128, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+  triton_mm_1454 0.1229 ms 75.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1461 0.1270 ms 72.6% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1458 0.1280 ms 72.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1460 0.1331 ms 69.2% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1452 0.1495 ms 61.6% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=128, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 0.8100 seconds and 0.0005 seconds precompiling for 20 choices
+AUTOTUNE mm(4096x3072, 3072x768)
+  mm 0.0840 ms 100.0% 
+  triton_mm_1480 0.0942 ms 89.1% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1479 0.1044 ms 80.4% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1481 0.1106 ms 75.9% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_1474 0.1126 ms 74.5% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1476 0.1167 ms 71.9% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1472 0.1290 ms 65.1% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1475 0.1321 ms 63.6% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=128, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+  triton_mm_1473 0.1341 ms 62.6% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1477 0.1382 ms 60.7% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 0.7601 seconds and 0.0004 seconds precompiling for 20 choices
+AUTOTUNE mm(768x4096, 4096x3072)
+  mm 0.0932 ms 100.0% 
+  triton_mm_1493 0.1055 ms 88.3% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1491 0.1085 ms 85.8% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1495 0.1096 ms 85.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1494 0.1198 ms 77.8% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=128, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+  triton_mm_1492 0.1229 ms 75.8% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1499 0.1260 ms 74.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1496 0.1280 ms 72.8% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1498 0.1331 ms 70.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1489 0.1505 ms 61.9% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 0.7363 seconds and 0.0004 seconds precompiling for 20 choices
+AUTOTUNE mm(4096x768, 768x768)
+  mm 0.0297 ms 100.0% 
+  triton_mm_1518 0.0307 ms 96.7% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1517 0.0338 ms 87.9% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1512 0.0348 ms 85.3% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1514 0.0348 ms 85.3% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1510 0.0358 ms 82.9% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1519 0.0358 ms 82.9% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_1511 0.0410 ms 72.5% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1515 0.0410 ms 72.5% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1516 0.0420 ms 70.7% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 0.5878 seconds and 0.0003 seconds precompiling for 20 choices
+AUTOTUNE mm(768x4096, 4096x768)
+  mm 0.0358 ms 100.0% 
+  triton_mm_1532 0.0440 ms 81.4% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=128, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
+  triton_mm_1528 0.0532 ms 67.3% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=128, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_1531 0.0532 ms 67.3% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1527 0.0563 ms 63.6% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_1530 0.0573 ms 62.5% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1534 0.0573 ms 62.5% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1524 0.0614 ms 58.3% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=128, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=4
+  triton_mm_1537 0.0707 ms 50.7% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1521 0.0717 ms 50.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=128, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 0.6174 seconds and 0.0004 seconds precompiling for 20 choices
+compile_graph: FAILED IndexError: index 1 is out of bounds for dimension 0 with size 1
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_b16_port.json
+rep 1/3: 136.4 ms (136.41 ms/step), wall 3.3 s
+rep 2/3: 126.8 ms (126.83 ms/step), wall 3.5 s
+rep 3/3: 126.8 ms (126.76 ms/step), wall 3.7 s
+executor: best 126757 us/step  median 126835  worst 136409
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 d12c206/kvm_exec --reps 3 --out /logs/ab3-final/r0_b16_main.json
+rep 1/3: FAILED rc=1 '' '[kvm_exec][E] bad buffer shape or dtype\n'
+rep 2/3: FAILED rc=1 '' '[kvm_exec][E] bad buffer shape or dtype\n'
+rep 3/3: FAILED rc=1 '' '[kvm_exec][E] bad buffer shape or dtype\n'
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 origin_perf_chunked-release/kvm_exec --reps 3 --out /logs/ab3-final/r0_b16_chunk.json
+rep 1/3: 139.0 ms (138.96 ms/step), wall 3.7 s
+rep 2/3: 138.7 ms (138.73 ms/step), wall 3.0 s
+rep 3/3: 145.1 ms (145.10 ms/step), wall 3.2 s
+executor: best 138726 us/step  median 138961  worst 145105
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_b16_port_cas.json -- --claim cas
+rep 1/3: 139.7 ms (139.70 ms/step), wall 2.4 s
+rep 2/3: 136.4 ms (136.42 ms/step), wall 2.4 s
+rep 3/3: 136.2 ms (136.22 ms/step), wall 3.3 s
+executor: best 136222 us/step  median 136424  worst 139700
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_b16_port_nc.json -- --no-cont
+rep 1/3: 133.6 ms (133.58 ms/step), wall 3.0 s
+rep 2/3: 131.9 ms (131.90 ms/step), wall 2.8 s
+rep 3/3: 134.1 ms (134.09 ms/step), wall 2.8 s
+executor: best 131897 us/step  median 133576  worst 134093
+$ python3 -I 93f727c/bench/vs_pytorch/torch_bench.py w_f32 --reps 3 --precision tf32 --modes eager,graph,compile_graph --out /logs/ab3-final/r0_f32_torch.json 2>&1 | grep -v Warning
+eager: best 70657.0 us/step  median 71222.3  worst 84838.4  loss 10.9790 -> 10.9790  (setup 1s)
+graph: best 68379.6 us/step  median 68416.5  worst 68573.2  loss 10.9790 -> 10.9790  (setup 1s)
+E1110 05:03:41.468000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:41.468000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:41.468000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:03:41.645000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:41.645000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:41.645000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:03:41.884000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:41.884000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 294912, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:41.884000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:03:42.186000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:42.186000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:42.186000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE addmm(4096x3072, 4096x768, 768x3072)
+  triton_mm_92 0.2068 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_89 0.2150 ms 96.2% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_85 0.2171 ms 95.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_86 0.2468 ms 83.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_93 0.2478 ms 83.5% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_90 0.2529 ms 81.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_82 0.2775 ms 74.5% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_83 0.3103 ms 66.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  addmm 0.3451 ms 59.9% 
+  triton_mm_91 0.3451 ms 59.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 1.0714 seconds and 0.0007 seconds precompiling for 21 choices
+E1110 05:03:46.994000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:46.994000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:46.994000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:03:47.174000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:47.174000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:47.174000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:03:47.358000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:47.358000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 294912, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:47.358000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:03:47.660000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:47.660000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:47.660000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE mm(4096x768, 768x768)
+  mm 0.0676 ms 100.0% 
+  triton_mm_16 0.0707 ms 95.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_9 0.0788 ms 85.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_13 0.0809 ms 83.5% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_15 0.0829 ms 81.5% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=8
+  triton_mm_14 0.0870 ms 77.6% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_10 0.0891 ms 75.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_11 0.0922 ms 73.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_6 0.1004 ms 67.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_7 0.1065 ms 63.5% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 0.9519 seconds and 0.0003 seconds precompiling for 20 choices
+E1110 05:03:48.003000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:48.003000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:48.003000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:03:48.193000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:48.193000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:48.193000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:03:48.377000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:48.377000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 294912, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:48.377000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:03:48.680000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:48.680000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:48.680000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE addmm(4096x768, 4096x768, 768x768)
+  bias_addmm 0.0655 ms 100.0% 
+  triton_mm_54 0.0748 ms 87.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_47 0.0829 ms 79.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_51 0.0829 ms 79.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  addmm 0.0860 ms 76.2% 
+  triton_mm_55 0.0860 ms 76.2% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_48 0.0911 ms 71.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_52 0.0911 ms 71.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_44 0.1024 ms 64.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_45 0.1116 ms 58.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 1.0168 seconds and 0.0003 seconds precompiling for 21 choices
+E1110 05:03:48.945000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:48.945000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:48.945000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:03:49.112000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:49.112000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:49.112000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:03:49.288000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:49.288000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 294912, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:49.288000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:03:49.589000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:49.589000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:49.589000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE mm(4096x3072, 3072x768)
+  triton_mm_111 0.1864 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  mm 0.1976 ms 94.3% 
+  triton_mm_112 0.2028 ms 91.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_108 0.2140 ms 87.1% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_104 0.2191 ms 85.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_110 0.2212 ms 84.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=8
+  triton_mm_105 0.2304 ms 80.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_109 0.2324 ms 80.2% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_101 0.2939 ms 63.4% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_102 0.2990 ms 62.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 0.9052 seconds and 0.0004 seconds precompiling for 20 choices
+E1110 05:03:50.086000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:50.086000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:50.086000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:03:50.321000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:50.321000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:50.321000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:03:50.543000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:50.543000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 294912, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:50.543000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:03:50.903000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:03:50.903000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:03:50.903000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE mm(4096x768, 768x50304)
+  mm 2.5108 ms 100.0% 
+  triton_mm_1384 2.8303 ms 88.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1381 3.0638 ms 82.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1377 3.1683 ms 79.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1385 3.3137 ms 75.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1383 3.3577 ms 74.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=8
+  triton_mm_1378 3.5615 ms 70.5% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1382 3.6721 ms 68.4% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1374 4.2578 ms 59.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_1373 4.4984 ms 55.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 1.2378 seconds and 0.0003 seconds precompiling for 20 choices
+E1110 05:04:42.746000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:42.746000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:42.746000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:42.910000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:42.910000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:42.910000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:43.063000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:43.063000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 294912, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:43.063000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:43.331000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:43.331000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:43.331000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE mm(4096x768, 768x3072)
+  triton_mm_1441 0.2017 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1434 0.2058 ms 98.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1438 0.2079 ms 97.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  mm 0.2263 ms 89.1% 
+  triton_mm_1435 0.2263 ms 89.1% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1439 0.2324 ms 86.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1436 0.2693 ms 74.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1431 0.2755 ms 73.2% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_1432 0.2908 ms 69.4% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_1430 0.2970 ms 67.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 0.8299 seconds and 0.0005 seconds precompiling for 20 choices
+E1110 05:04:47.857000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:47.857000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:47.857000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:48.113000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:48.113000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:48.113000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:48.313000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:48.313000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 294912, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:48.313000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:48.655000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:48.655000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:48.655000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE mm(768x4096, 4096x50304)
+  triton_mm_1403 2.5651 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1404 2.7341 ms 93.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  mm 2.9000 ms 88.5% 
+  triton_mm_1400 3.0894 ms 83.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1396 3.1478 ms 81.5% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1402 3.2102 ms 79.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=8
+  triton_mm_1398 3.3731 ms 76.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1397 3.5604 ms 72.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1401 3.8083 ms 67.4% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1393 4.0632 ms 63.1% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 1.2106 seconds and 0.0003 seconds precompiling for 20 choices
+E1110 05:04:49.189000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:49.189000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:49.189000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:49.458000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:49.458000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:49.458000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:49.673000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:49.673000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 294912, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:49.673000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:50.033000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:50.033000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:50.033000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE mm(4096x50304, 50304x768)
+  mm 2.7935 ms 100.0% 
+  triton_mm_1422 2.8887 ms 96.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1417 3.6987 ms 75.5% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1419 4.4646 ms 62.6% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1413 4.5373 ms 61.6% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_1415 4.7258 ms 59.1% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1416 5.0278 ms 55.6% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1420 5.1825 ms 53.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1421 5.4098 ms 51.6% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=8
+  triton_mm_1423 5.7856 ms 48.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 1.3779 seconds and 0.0004 seconds precompiling for 20 choices
+E1110 05:04:50.267000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:50.267000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:50.267000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:50.424000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:50.424000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:50.424000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:50.615000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:50.615000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 294912, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:50.615000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:50.857000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:50.857000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:50.857000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE mm(3072x4096, 4096x768)
+  mm 0.1679 ms 100.0% 
+  triton_mm_1457 0.2130 ms 78.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1453 0.2304 ms 72.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1455 0.2304 ms 72.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1460 0.2386 ms 70.4% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1454 0.2499 ms 67.2% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1461 0.2529 ms 66.4% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1450 0.2785 ms 60.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_1458 0.2806 ms 59.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1459 0.3021 ms 55.6% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 0.8222 seconds and 0.0004 seconds precompiling for 20 choices
+E1110 05:04:51.100000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:51.100000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:51.100000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:51.254000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:51.254000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:51.254000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:51.405000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:51.405000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 294912, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:51.405000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:51.641000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:51.641000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:51.641000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE mm(4096x3072, 3072x768)
+  mm 0.1618 ms 100.0% 
+  triton_mm_1479 0.1812 ms 89.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1472 0.2130 ms 76.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1476 0.2161 ms 74.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1477 0.2243 ms 72.1% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1473 0.2273 ms 71.2% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1474 0.2468 ms 65.6% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1469 0.2867 ms 56.4% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_1470 0.2939 ms 55.1% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_1478 0.3492 ms 46.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 0.7827 seconds and 0.0004 seconds precompiling for 20 choices
+E1110 05:04:51.881000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:51.881000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:51.881000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:52.039000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:52.039000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:52.039000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:52.197000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:52.197000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 294912, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:52.197000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:52.447000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:52.447000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:52.447000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE mm(768x4096, 4096x3072)
+  mm 0.1669 ms 100.0% 
+  triton_mm_1495 0.2130 ms 78.4% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1491 0.2294 ms 72.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1493 0.2304 ms 72.4% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1498 0.2386 ms 70.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1492 0.2499 ms 66.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1499 0.2529 ms 66.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1488 0.2806 ms 59.5% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_1496 0.2806 ms 59.5% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1497 0.2970 ms 56.2% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 0.8048 seconds and 0.0003 seconds precompiling for 20 choices
+E1110 05:04:52.635000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:52.635000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:52.635000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:52.743000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:52.743000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:52.743000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:52.845000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:52.845000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 294912, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:52.845000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:53.077000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:53.077000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:53.077000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE mm(4096x768, 768x768)
+  mm 0.0522 ms 100.0% 
+  triton_mm_1517 0.0573 ms 91.1% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1510 0.0655 ms 79.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1514 0.0655 ms 79.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1511 0.0676 ms 77.3% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1515 0.0696 ms 75.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1512 0.0778 ms 67.1% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1507 0.0799 ms 65.4% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_1508 0.0850 ms 61.4% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_1506 0.1014 ms 51.5% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 0.6294 seconds and 0.0005 seconds precompiling for 20 choices
+E1110 05:04:53.285000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:53.285000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:53.285000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:53.416000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:53.416000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:53.416000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:53.528000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:53.528000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 294912, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:53.528000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:53.725000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:53.725000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:53.725000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE mm(768x4096, 4096x768)
+  mm 0.0614 ms 100.0% 
+  triton_mm_1531 0.0819 ms 75.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1529 0.0922 ms 66.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1530 0.0922 ms 66.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1533 0.0932 ms 65.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1527 0.1085 ms 56.6% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_1534 0.1137 ms 54.1% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1522 0.1219 ms 50.4% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_1523 0.1249 ms 49.2% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=5, num_warps=8
+  triton_mm_1537 0.1311 ms 46.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+SingleProcess AUTOTUNE benchmarking takes 0.6459 seconds and 0.0004 seconds precompiling for 20 choices
+AUTOTUNE mm_plus_mm(4096x768, 768x768, 4096x768, 768x768)
+  _mm_plus_mm 0.1065 ms 100.0% 
+  triton_mm_plus_mm_1578 0.1649 ms 64.6% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_plus_mm_1577 0.1741 ms 61.2% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_plus_mm_1582 0.1956 ms 54.5% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=8
+  triton_mm_plus_mm_1585 0.1976 ms 53.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_plus_mm_1580 0.2089 ms 51.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_plus_mm_1581 0.2089 ms 51.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=32, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_plus_mm_1579 0.2150 ms 49.5% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=16
+  triton_mm_plus_mm_1583 0.2499 ms 42.6% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=8
+  triton_mm_plus_mm_1586 0.3318 ms 32.1% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=16, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=1, num_warps=2
+SingleProcess AUTOTUNE benchmarking takes 0.4939 seconds and 0.0003 seconds precompiling for 11 choices
+E1110 05:04:54.415000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:54.415000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 196608, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:54.415000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:54.533000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:54.533000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:54.533000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:54.637000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:54.637000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 294912, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:54.637000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+E1110 05:04:54.811000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Runtime error during autotuning: 
+E1110 05:04:54.811000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] No valid triton configs. OutOfResources: out of resource: shared memory, Required: 262144, Hardware limit: 166912. Reducing block sizes or `num_stages` may help.. 
+E1110 05:04:54.811000 9471 site-packages/torch/_inductor/select_algorithm.py:2100] [0/0] Ignoring this choice.
+AUTOTUNE addmm(4096x768, 4096x768, 768x768)
+  triton_mm_1622 0.0676 ms 100.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1615 0.0727 ms 93.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1619 0.0737 ms 91.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1616 0.0758 ms 89.2% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  addmm 0.0778 ms 86.8% 
+  triton_mm_1620 0.0778 ms 86.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=8
+  triton_mm_1617 0.0860 ms 78.6% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
+  triton_mm_1612 0.0891 ms 75.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
+  triton_mm_1613 0.0901 ms 75.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=8
+  triton_mm_1621 0.1096 ms 61.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 0.5826 seconds and 0.0004 seconds precompiling for 20 choices
+compile_graph: FAILED IndexError: index 1 is out of bounds for dimension 0 with size 1
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_f32_port.json
+rep 1/3: 249.1 ms (249.12 ms/step), wall 3.0 s
+rep 2/3: 249.3 ms (249.34 ms/step), wall 3.5 s
+rep 3/3: 247.0 ms (246.97 ms/step), wall 3.2 s
+executor: best 246973 us/step  median 249121  worst 249338
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 d12c206/kvm_exec --reps 3 --out /logs/ab3-final/r0_f32_main.json
+rep 1/3: 776.3 ms (776.29 ms/step), wall 3.7 s
+rep 2/3: 779.2 ms (779.24 ms/step), wall 3.9 s
+rep 3/3: 772.5 ms (772.48 ms/step), wall 3.7 s
+executor: best 772476 us/step  median 776289  worst 779239
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 origin_perf_chunked-release/kvm_exec --reps 3 --out /logs/ab3-final/r0_f32_chunk.json
+rep 1/3: 274.8 ms (274.78 ms/step), wall 2.6 s
+rep 2/3: 272.3 ms (272.30 ms/step), wall 3.7 s
+rep 3/3: 270.1 ms (270.09 ms/step), wall 2.6 s
+executor: best 270090 us/step  median 272296  worst 274784
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_f32_port_cas.json -- --claim cas
+rep 1/3: 462.1 ms (462.07 ms/step), wall 3.8 s
+rep 2/3: 462.4 ms (462.41 ms/step), wall 3.2 s
+rep 3/3: 467.4 ms (467.44 ms/step), wall 3.8 s
+executor: best 462066 us/step  median 462411  worst 467435
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_f32_port_nc.json -- --no-cont
+rep 1/3: 252.0 ms (251.97 ms/step), wall 3.5 s
+rep 2/3: 248.7 ms (248.65 ms/step), wall 3.5 s
+rep 3/3: 247.9 ms (247.90 ms/step), wall 3.5 s
+executor: best 247895 us/step  median 248651  worst 251974
+$ python3 -I 93f727c/bench/vs_pytorch/torch_bench.py w_tiny --reps 3 --precision tf32 --modes eager,graph,compile_graph --out /logs/ab3-final/r1_tiny_torch.json 2>&1 | grep -v Warning
+eager: best 3900.0 us/step  median 3924.6  worst 3944.8  loss 4.1460 -> 1.2453  (setup 1s)
+graph: best 433.0 us/step  median 433.1  worst 433.5  loss 4.1460 -> 1.2453  (setup 0s)
+compile_graph: best 203.2 us/step  median 203.2  worst 203.5  loss 4.1461 -> 1.2462  (setup 4s)
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny d12c206/kvm_exec --reps 3 --out /logs/ab3-final/r1_tiny_main.json
+rep 1/3: 43.1 ms (0.86 ms/step), wall 0.5 s
+rep 2/3: 42.8 ms (0.86 ms/step), wall 0.5 s
+rep 3/3: 43.8 ms (0.88 ms/step), wall 0.6 s
+executor: best 857 us/step  median 863  worst 876
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny origin_perf_chunked-release/kvm_exec --reps 3 --out /logs/ab3-final/r1_tiny_chunk.json
+rep 1/3: 43.2 ms (0.86 ms/step), wall 0.6 s
+rep 2/3: 44.4 ms (0.89 ms/step), wall 0.5 s
+rep 3/3: 42.5 ms (0.85 ms/step), wall 0.6 s
+executor: best 849 us/step  median 864  worst 889
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_tiny_port_cas.json -- --claim cas
+rep 1/3: 42.4 ms (0.85 ms/step), wall 0.6 s
+rep 2/3: 42.5 ms (0.85 ms/step), wall 0.5 s
+rep 3/3: 42.3 ms (0.85 ms/step), wall 0.5 s
+executor: best 846 us/step  median 848  worst 850
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_tiny_port_nc.json -- --no-cont
+rep 1/3: 41.7 ms (0.83 ms/step), wall 0.6 s
+rep 2/3: 42.1 ms (0.84 ms/step), wall 0.6 s
+rep 3/3: 42.4 ms (0.85 ms/step), wall 0.6 s
+executor: best 835 us/step  median 842  worst 848
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_tiny_port.json
+rep 1/3: 41.2 ms (0.82 ms/step), wall 0.5 s
+rep 2/3: 43.9 ms (0.88 ms/step), wall 0.6 s
+rep 3/3: 42.2 ms (0.84 ms/step), wall 0.6 s
+executor: best 823 us/step  median 844  worst 878
+$ python3 -I 93f727c/bench/vs_pytorch/torch_bench.py w_small --reps 3 --precision tf32 --modes eager,graph,compile_graph --out /logs/ab3-final/r1_small_torch.json 2>&1 | grep -v Warning
+eager: best 6319.4 us/step  median 6500.6  worst 6503.9  loss 4.8782 -> 0.0957  (setup 2s)
+graph: best 649.8 us/step  median 763.5  worst 835.5  loss 4.8782 -> 0.0957  (setup 0s)
+compile_graph: best 428.8 us/step  median 428.8  worst 429.3  loss 4.8782 -> 0.0960  (setup 5s)
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small d12c206/kvm_exec --reps 3 --out /logs/ab3-final/r1_small_main.json
+rep 1/3: 115.3 ms (2.31 ms/step), wall 0.6 s
+rep 2/3: 93.2 ms (1.86 ms/step), wall 0.6 s
+rep 3/3: 92.6 ms (1.85 ms/step), wall 0.6 s
+executor: best 1852 us/step  median 1865  worst 2306
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small origin_perf_chunked-release/kvm_exec --reps 3 --out /logs/ab3-final/r1_small_chunk.json
+rep 1/3: 105.9 ms (2.12 ms/step), wall 0.6 s
+rep 2/3: 106.7 ms (2.13 ms/step), wall 0.6 s
+rep 3/3: 104.8 ms (2.10 ms/step), wall 0.6 s
+executor: best 2097 us/step  median 2118  worst 2134
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_small_port_cas.json -- --claim cas
+rep 1/3: 107.2 ms (2.14 ms/step), wall 0.6 s
+rep 2/3: 106.0 ms (2.12 ms/step), wall 0.6 s
+rep 3/3: 121.0 ms (2.42 ms/step), wall 0.6 s
+executor: best 2121 us/step  median 2144  worst 2420
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_small_port_nc.json -- --no-cont
+rep 1/3: 107.0 ms (2.14 ms/step), wall 0.8 s
+rep 2/3: 87.6 ms (1.75 ms/step), wall 0.6 s
+rep 3/3: 86.6 ms (1.73 ms/step), wall 0.6 s
+executor: best 1732 us/step  median 1752  worst 2139
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_small_port.json
+rep 1/3: 107.8 ms (2.16 ms/step), wall 0.6 s
+rep 2/3: 87.1 ms (1.74 ms/step), wall 0.6 s
+rep 3/3: 87.5 ms (1.75 ms/step), wall 0.6 s
+executor: best 1741 us/step  median 1751  worst 2156
+$ python3 -I 93f727c/bench/vs_pytorch/torch_bench.py w_b16 --reps 3 --precision bf16 --modes eager,graph,compile_graph --out /logs/ab3-final/r1_b16_torch.json 2>&1 | grep -v Warning
+eager: best 57620.5 us/step  median 58447.9  worst 65936.4  loss 10.9793 -> 10.9793  (setup 1s)
+graph: best 44733.4 us/step  median 44786.7  worst 44817.4  loss 10.9793 -> 10.9793  (setup 1s)
+compile_graph: FAILED IndexError: index 1 is out of bounds for dimension 0 with size 1
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 d12c206/kvm_exec --reps 3 --out /logs/ab3-final/r1_b16_main.json
+rep 1/3: FAILED rc=1 '' '[kvm_exec][E] bad buffer shape or dtype\n'
+rep 2/3: FAILED rc=1 '' '[kvm_exec][E] bad buffer shape or dtype\n'
+rep 3/3: FAILED rc=1 '' '[kvm_exec][E] bad buffer shape or dtype\n'
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 origin_perf_chunked-release/kvm_exec --reps 3 --out /logs/ab3-final/r1_b16_chunk.json
+rep 1/3: 138.9 ms (138.89 ms/step), wall 3.1 s
+rep 2/3: 142.4 ms (142.39 ms/step), wall 3.0 s
+rep 3/3: 138.8 ms (138.77 ms/step), wall 2.7 s
+executor: best 138769 us/step  median 138888  worst 142392
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_b16_port_cas.json -- --claim cas
+rep 1/3: 151.5 ms (151.54 ms/step), wall 3.3 s
+rep 2/3: 139.9 ms (139.92 ms/step), wall 3.4 s
+rep 3/3: 136.3 ms (136.34 ms/step), wall 2.7 s
+executor: best 136343 us/step  median 139920  worst 151541
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_b16_port_nc.json -- --no-cont
+rep 1/3: 130.4 ms (130.36 ms/step), wall 3.5 s
+rep 2/3: 132.9 ms (132.91 ms/step), wall 3.6 s
+rep 3/3: 133.7 ms (133.68 ms/step), wall 3.2 s
+executor: best 130357 us/step  median 132913  worst 133680
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_b16_port.json
+rep 1/3: 126.2 ms (126.19 ms/step), wall 3.3 s
+rep 2/3: 127.4 ms (127.38 ms/step), wall 3.4 s
+rep 3/3: 127.9 ms (127.94 ms/step), wall 3.2 s
+executor: best 126191 us/step  median 127380  worst 127944
+$ python3 -I 93f727c/bench/vs_pytorch/torch_bench.py w_f32 --reps 3 --precision tf32 --modes eager,graph,compile_graph --out /logs/ab3-final/r1_f32_torch.json 2>&1 | grep -v Warning
+eager: best 76315.7 us/step  median 84806.7  worst 85024.8  loss 10.9790 -> 10.9790  (setup 1s)
+graph: best 68497.4 us/step  median 68521.0  worst 68605.9  loss 10.9790 -> 10.9790  (setup 1s)
+compile_graph: FAILED IndexError: index 1 is out of bounds for dimension 0 with size 1
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 d12c206/kvm_exec --reps 3 --out /logs/ab3-final/r1_f32_main.json
+rep 1/3: 781.2 ms (781.20 ms/step), wall 3.6 s
+rep 2/3: 772.4 ms (772.42 ms/step), wall 3.9 s
+rep 3/3: 767.3 ms (767.28 ms/step), wall 3.8 s
+executor: best 767285 us/step  median 772422  worst 781202
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 origin_perf_chunked-release/kvm_exec --reps 3 --out /logs/ab3-final/r1_f32_chunk.json
+rep 1/3: 269.4 ms (269.37 ms/step), wall 3.3 s
+rep 2/3: 279.6 ms (279.58 ms/step), wall 2.6 s
+rep 3/3: 274.3 ms (274.31 ms/step), wall 3.5 s
+executor: best 269373 us/step  median 274314  worst 279576
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_f32_port_cas.json -- --claim cas
+rep 1/3: 462.1 ms (462.13 ms/step), wall 3.7 s
+rep 2/3: 466.6 ms (466.64 ms/step), wall 3.4 s
+rep 3/3: 461.3 ms (461.33 ms/step), wall 3.1 s
+executor: best 461331 us/step  median 462128  worst 466643
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_f32_port_nc.json -- --no-cont
+rep 1/3: 246.3 ms (246.26 ms/step), wall 3.0 s
+rep 2/3: 252.0 ms (252.04 ms/step), wall 3.8 s
+rep 3/3: 244.7 ms (244.70 ms/step), wall 3.6 s
+executor: best 244703 us/step  median 246261  worst 252041
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_f32_port.json
+rep 1/3: 248.3 ms (248.33 ms/step), wall 3.3 s
+rep 2/3: 250.2 ms (250.19 ms/step), wall 3.2 s
+rep 3/3: 250.7 ms (250.73 ms/step), wall 3.1 s
+executor: best 248332 us/step  median 250192  worst 250728

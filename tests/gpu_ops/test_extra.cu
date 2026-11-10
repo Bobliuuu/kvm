@@ -41,7 +41,7 @@ struct BatchX {
 };
 static int g_attr = 0;
 static int runx(Dev& d, const BatchX& b, int smem = 104 * 1024) {
-    if (!g_attr) { CK(cudaFuncSetAttribute(k_runx, cudaFuncAttributeMaxDynamicSharedMemorySize, 112 * 1024)); kvm_hopper_host_init(); g_attr = 1; }
+    if (!g_attr) { CK(cudaFuncSetAttribute(k_runx, cudaFuncAttributeMaxDynamicSharedMemorySize, std::max(112 * 1024, (int)kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)))); kvm_hopper_host_init(); g_attr = 1; }
     d.sync_table();
     int32_t* w; int *op, *off;
     CK(cudaMalloc(&w, b.w.size() * 4 + 4)); CK(cudaMalloc(&op, b.op.size() * 4)); CK(cudaMalloc(&off, b.off.size() * 4));
@@ -642,7 +642,7 @@ static void t_wrappers() {
     {   // flags 4 / 8 rejected, memory untouched
         int M = 8, N = 8, K = 8; Dev dv; int ia = dv.addf(M, K), ib = dv.addf(K, N), o = dv.addf(M, N), pre = dv.addf(M, N), g = dv.addf(M, N), u = dv.addf(M, N), d1 = dv.addf(M, N), d2 = dv.addf(M, N);
         for (int t : {ia, ib, o, pre, g, u, d1, d2}) dv.up(t, rnd(r, 64));
-        for (int fl : {4, 8, 32, 12}) {
+        for (int fl : {4, 8, 96, 128, 12}) {   // 32 / 64 alone select the 128x128 / 256x128 tile; both together, or 128, are invalid
             std::vector<std::vector<float>> before; for (int t : {o, u, d1, d2}) before.push_back(dv.down(t));
             int e1 = run1x(dv, OPX_matmul_tile_dgelu, A().b(ia).b(ib).b(o).b(pre).i(0).i(0).i(M).i(N).i(K).i(fl).f(1.f));
             int e2 = run1x(dv, OPX_matmul_tile_silu_mul, A().b(ia).b(ib).b(o).b(g).b(u).i(0).i(0).i(M).i(N).i(K).i(fl).f(1.f));

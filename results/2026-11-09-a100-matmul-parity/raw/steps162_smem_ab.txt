@@ -1,0 +1,27 @@
+# gpt_162m 1-step kvm_exec, one container: main (a99fdca) vs this branch built with 144 KiB (-DKVM_GPT_MMA_SMEM=147456 equivalent) and 96 KiB (the default)
+rep 1 main m_b16 OK: 58634/58634 tasks, 230.723 ms
+rep 1 new144 n_b16 OK: 58634/58634 tasks, 272.234 ms
+rep 1 new96 n_b16 OK: 58634/58634 tasks, 256.704 ms
+rep 1 new144 n_f32 OK: 52615/52615 tasks, 248.825 ms
+rep 1 new96 n_f32 OK: 52615/52615 tasks, 229.847 ms
+rep 2 main m_b16 OK: 58634/58634 tasks, 230.258 ms
+rep 2 new144 n_b16 OK: 58634/58634 tasks, 271.334 ms
+rep 2 new96 n_b16 OK: 58634/58634 tasks, 255.587 ms
+rep 2 new144 n_f32 OK: 52615/52615 tasks, 249.231 ms
+rep 2 new96 n_f32 OK: 52615/52615 tasks, 230.059 ms
+rep 3 main m_b16 OK: 58634/58634 tasks, 232.628 ms
+rep 3 new144 n_b16 OK: 58634/58634 tasks, 268.916 ms
+rep 3 new96 n_b16 OK: 58634/58634 tasks, 258.982 ms
+rep 3 new144 n_f32 OK: 52615/52615 tasks, 248.606 ms
+rep 3 new96 n_f32 OK: 52615/52615 tasks, 228.968 ms
+rep 4 main m_b16 OK: 58634/58634 tasks, 229.043 ms
+rep 4 new144 n_b16 OK: 58634/58634 tasks, 266.926 ms
+rep 4 new96 n_b16 OK: 58634/58634 tasks, 257.183 ms
+rep 4 new144 n_f32 OK: 52615/52615 tasks, 248.101 ms
+rep 4 new96 n_f32 OK: 52615/52615 tasks, 229.272 ms
+rep 5 main m_b16 OK: 58634/58634 tasks, 225.914 ms
+rep 5 new144 n_b16 OK: 58634/58634 tasks, 267.347 ms
+rep 5 new96 n_b16 OK: 58634/58634 tasks, 257.257 ms
+rep 5 new144 n_f32 OK: 52615/52615 tasks, 254.595 ms
+rep 5 new96 n_f32 OK: 52615/52615 tasks, 229.028 ms
+finished

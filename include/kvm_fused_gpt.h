@@ -52,9 +52,6 @@ struct alignas(16) KvmFgptDesc {
   float* xch;                                 // exchange scratch in global memory: G slots of the largest partial, plus the gathered streams
   size_t xch_floats;
   unsigned* ctl;                              // the gang barrier's two words (kvm_gang.cuh), zeroed once
-  // the version the run publishes for readers of its weights (the bundle's step barriers did): -1 none; else member 0 publishes pub_first + k at
-  // the k-th publish point, a step's points being after its gradients (pub_pre) and after its updates (pub_end)
-  int pub_var, pub_first, pub_pre, pub_end;
 };
 
 // The gang's size for a shape: the smallest G whose member state fits `smem_floats`, among the G that split every column-sharded phase into

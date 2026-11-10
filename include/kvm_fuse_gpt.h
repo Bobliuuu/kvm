@@ -823,6 +823,11 @@ inline KvmFuseGptPlan kvm_fuse_gpt(const std::vector<KvmTaskDesc>& tasks, const 
     for (int m = 0; m < G; ++m) {
       KvmTaskDesc d{};
       d.op_id = fgpt_step_op; d.deadline_us = -1; d.wait_var = KVM_NO_VAR; d.pub_var = KVM_NO_VAR; d.workload_id = wl;
+      const KvmFuseGptRun& run = P.runs[ri];
+      if (m == 0 && run.shape.pub_var != -1) {   // the run's last version: the static path takes a bundle's final versions from its publishers
+        const int per = (run.shape.pub_pre != -1) + (run.shape.pub_end != -1);
+        d.pub_var = run.shape.pub_var; d.pub_ver = run.pub_first + per * run.steps - 1;
+      }
       d.args_off = (int)P.args.size(); d.args_words = 4;
       P.args.insert(P.args.end(), {(int32_t)ri, (int32_t)ri, (int32_t)m, (int32_t)G});   // desc, gang, member, members
       d.succ_off = (int)P.succ.size(); d.succ_cnt = 0; d.indegree = 0;

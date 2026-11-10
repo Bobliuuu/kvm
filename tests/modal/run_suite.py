@@ -1,7 +1,7 @@
 """Run a KVM GPU suite on a Modal A100 (no ssh box, no GPU lock, no shared disk). Nothing here names a host or a key.
 
   modal run --detach tests/modal/run_suite.py --suite exec --tag NAME            # run from the checkout under test (its tree is uploaded)
-  suites: exec | litmus | negative | negative-park | sanitize | gpt | custom (--cmd 'bash ...')
+  suites: exec | litmus | negative | negative-park | sanitize | gpt | generic | custom (--cmd 'bash ...')
   modal volume get kvm-suite /NAME results/<dir>/raw                             # fetch logs
 
 Mirrors run_exec_tests.sh: same build.sh / test_exec / litmus scripts, on a Modal container with a 96 GB host (the full-ops ptxas link
@@ -35,7 +35,8 @@ SUITES = {
     "negative": 'FLAGS="-DKVM_BREAK_FENCE"\n' + BUILD + 'timeout 2400 ./test_exec --expect-fail versions; echo "exit: $?"',
     "negative-park": 'FLAGS="-DKVM_BREAK_PARK_RECHECK"\n' + BUILD + 'timeout 2400 ./test_exec --expect-fail litmus; echo "exit: $?"',
     "sanitize": 'FLAGS=""\n' + BUILD + 'for t in memcheck racecheck synccheck; do echo "== compute-sanitizer --tool $t smoke"; timeout 1800 compute-sanitizer --tool $t --error-exitcode 9 ./test_exec smoke 2>&1 | tail -40; echo "sanitizer exit: ${PIPESTATUS[0]}"; done',
-    "litmus": 'bash tests/litmus/run_litmus.sh; echo "exit: $?"',
+    "litmus": 'KVM_JOBS=8 bash tests/litmus/run_litmus.sh; echo "exit: $?"',
+    "generic": 'bash tests/generic/run_box.sh /logs/$TAG/generic; echo "exit: $?"',
     "gpt": 'FLAGS=""\n' + BUILD + 'bash tests/gpu/run_gpt.sh; echo "exit: $?"',
 }
 

@@ -133,9 +133,25 @@ class MatmulNormTests(unittest.TestCase):
         self.assertEqual(list(b['pre']), [108, 210, 120, 222])
         self.assertEqual(list(b['o3']), [109, 211, 121, 223])
 
+    def test_matmul_tile_big_tile_flags_cover_128_and_256x128(self):
+        # 130x3 @ 3x130: a 128x128 tile (flag 32) computes rows/cols 0..127 only; a 256x128 tile (flag 64) rows 0..129, cols 0..127
+        M, N, K = 130, 130, 3
+        A = [float((i * 7) % 5) for i in range(M * K)]
+        B = [float((i * 3) % 4) for i in range(K * N)]
+        base = [vals('a', M, K, A), vals('b', K, N, B), zeros('o32', M, N), zeros('o64', M, N), zeros('o0', M, N)]
+        common = dict(a='a', b='b', bias=None, res=None, pre=None, m0=0, n0=0, M=M, N=N, K=K, alpha=1.0)
+        b = run(base, ('matmul_tile', dict(common, out='o32', flags=32)), ('matmul_tile', dict(common, out='o64', flags=64)),
+                ('matmul_tile', dict(common, out='o0', flags=0)))
+        full = [[sum(A[m * K + k] * B[k * N + n] for k in range(K)) for n in range(N)] for m in range(M)]
+        for name, tm in (('o32', 128), ('o64', 256), ('o0', 64)):
+            tn = 64 if name == 'o0' else 128
+            for m in range(M):
+                for n in range(N):
+                    self.assertEqual(b[name][m * N + n], full[m][n] if m < tm and n < tn else 0.0, (name, m, n))
+
     def test_matmul_tile_validation(self):
         bufs = [zeros('a', 2, 2), zeros('o', 2, 2)]
-        for kw, needle in [({'flags': 32}, 'flags'), ({'m0': 2}, 'bad M/N/K'), ({'K': 0}, 'bad M/N/K')]:
+        for kw, needle in [({'flags': 128}, 'flags'), ({'flags': 96}, 'flags'), ({'m0': 2}, 'bad M/N/K'), ({'K': 0}, 'bad M/N/K')]:
             args = dict(a='a', b='a', out='o', bias=None, res=None, pre=None, m0=0, n0=0, M=2, N=2, K=2, flags=0, alpha=1.0)
             args.update(kw)
             with self.subTest(kw=kw), self.assertRaises(CompileError) as cm:

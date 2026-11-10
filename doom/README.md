@@ -37,3 +37,9 @@ Everything logs at `LOG_LEVEL=debug` by default (`info`, `warn`). Frame f is the
 `-rdc=true` with `build/doom_dev.o`, a per-thread stack limit (16 KiB), one tick in flight (tick f+1 after tick f and after the present and status
 tasks that read frame f), the WAD uploaded by `kvm_doom_host_init()`. The 35 Hz pacing is `deadline_us` metadata on the tasks.
 Game state is device-global: one Doom per process.
+
+## License note
+
+The files in `doom/` are MIT like the rest of the repository. The Doom engine itself (doomgeneric, fetched by `doom/setup.sh` into the
+git-ignored `doom/third_party/`) is GPL-2.0, and the shareware WAD has its own id Software terms. Neither is committed here. Any binary
+built with the Doom pack (`doom/build.sh`, the demo's game tenant) links that GPL code and is covered by GPL-2.0 when distributed.

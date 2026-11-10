@@ -127,6 +127,9 @@ def main():
     info = json.loads(meta_file.read_text()) if meta_file.exists() else {}
     inv = [p for p in info.get('invariant_params', []) if f'w.{p}' in gold]
     inv_bufs = {b for p in inv for b in invariant_buffers(p)}
+    # their gradient buffers carry the same rounding noise (they feed only the optimizer of that parameter); judged with the moments
+    inv_grads = {t['args']['g'] for t in tasks if t['op'] in OPT_OPS and t['args'].get('p') in {f'w.{q}' for q in inv}} & set(f32)
+    inv_bufs |= inv_grads
     null = {n for n in f32 if norm(gold[n]) < NULL_ABS and not n.startswith('loss.')} | inv_bufs
     for n in list(null):
         if n.startswith('m.'):
@@ -176,6 +179,12 @@ def main():
     elif inv:
         for ok, what, detail in check_invariant(inv, gpu, gold, live, info['steps'], info['optim']):
             check(ok, what, detail)
+        amax = lambda v: max((abs(x) for x in v), default=0.0)
+        live_g = {t['args']['g'] for t in tasks if t['op'] in OPT_OPS} & set(live)
+        scale_g = max((amax(gold[n]) for n in live_g), default=0.0)
+        for n in sorted(inv_grads):
+            check(amax(gpu[n]) <= NOISE_REL * scale_g, f'{n} (gradient of a structurally-zero-gradient parameter) at the noise level',
+                  f'|g_gpu| max {amax(gpu[n]):.3e} (golden {amax(gold[n]):.3e}) vs {NOISE_REL * scale_g:.3e}')
     bad = [n for n in f32 if any(math.isnan(v) or math.isinf(v) for v in gpu[n])]
     check(not bad, 'no NaN/Inf in any GPU buffer', bad[:3])
     print('PASS' if not rep['failures'] else 'FAIL: ' + '; '.join(rep['failures']))

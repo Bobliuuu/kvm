@@ -1,0 +1,16 @@
+# gpt_162m bf16s 1-step kvm_exec, main (a99fdca) vs this branch at 144 KiB, one container
+rep 1 main OK: 58634/58634 tasks, 229.243 ms
+rep 1 new OK: 58634/58634 tasks, 267.686 ms
+rep 2 main OK: 58634/58634 tasks, 227.078 ms
+rep 2 new OK: 58634/58634 tasks, 268.472 ms
+rep 3 main OK: 58634/58634 tasks, 230.377 ms
+rep 3 new OK: 58634/58634 tasks, 269.045 ms
+rep 4 main OK: 58634/58634 tasks, 231.187 ms
+rep 4 new OK: 58634/58634 tasks, 272.644 ms
+rep 5 main OK: 58634/58634 tasks, 230.959 ms
+rep 5 new OK: 58634/58634 tasks, 264.508 ms
+rep 6 main OK: 58634/58634 tasks, 229.567 ms
+rep 6 new OK: 58634/58634 tasks, 267.643 ms
+rep 7 main OK: 58634/58634 tasks, 228.804 ms
+rep 7 new OK: 58634/58634 tasks, 266.840 ms
+finished

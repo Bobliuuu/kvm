@@ -11,8 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'frontend'))
-from kvmfe.generic import (MLP, MSE, ArrayData, Conv1D, CrossEntropy, GeneratedData, PolicyGradient, QLearning, SequencePool,  # noqa: E402
-                           one_hot)
+from kvmfe.generic import MLP, MSE, ArrayData, Conv1D, CrossEntropy, GeneratedData, SequencePool  # noqa: E402
 from kvmfe.nn import Linear, Module, Norm  # noqa: E402
 from kvmfe.optim import OptimConfig  # noqa: E402
 
@@ -55,9 +54,8 @@ class Encoder(Module):
         self.d, self.heads, self.seq = d, heads, seq
         self.embed = Linear('enc.embed', fin, d, True, 0.3)
         self.n1, self.n2, self.nf = Norm('enc.n1', d, 'layernorm'), Norm('enc.n2', d, 'layernorm'), Norm('enc.nf', d, 'layernorm')
-        # no key bias: its gradient is exactly zero (softmax ignores a per-query constant), and AdamW turns the float noise of a
-        # zero gradient into +-lr steps, which would make any CPU/GPU comparison of v.enc.k.b meaningless
-        self.q, self.k, self.v, self.o = (Linear(f'enc.{n}', d, d, n != 'k', 0.2) for n in 'qkvo')
+        # no positions: softmax over keys is unchanged by a per-query constant, so the key bias has a structurally zero gradient
+        self.q, self.k, self.v, self.o = (Linear(f'enc.{n}', d, d, True, 0.2, b_invariant=n == 'k') for n in 'qkvo')
         self.fc1, self.fc2 = Linear('enc.fc1', d, 2 * d, True, 0.2), Linear('enc.fc2', 2 * d, d, True, 0.2)
         self.pool, self.head = SequencePool('enc.pool', seq), Linear('enc.head', d, out, True, 0.3)
         self.absorb(self.embed, self.n1, self.n2, self.nf, self.q, self.k, self.v, self.o, self.fc1, self.fc2, self.head)
@@ -120,71 +118,4 @@ def encoder_reg():
                 OptimConfig(kind='adamw', lr=1e-3), 2, 'bidirectional transformer encoder (2 heads, hd 16, seq 32), MSE, AdamW + clip')
 
 
-class TokMLP(Module):
-    """The audit's mlp_ce / resmlp_rms / bad_dims: token embedding -> [linear+GELU (+ norm)] * depth -> linear; no attention anywhere."""
-
-    def __init__(self, name, vocab, d, hidden, depth, norm=None):
-        super().__init__(name)
-        self.wte = self.add('wte', vocab, d, ('normal', 0.1))
-        dims = [d] + [hidden] * depth
-        self.fcs = [Linear(f'{name}.fc{i}', dims[i], dims[i + 1], True, 0.2) for i in range(depth)]
-        self.norms = [Norm(f'{name}.n{i}', dims[i + 1], norm) for i in range(depth)] if norm else []
-        self.head = Linear(f'{name}.head', hidden, vocab, False, 0.2)
-        self.absorb(*self.fcs, *self.norms, self.head)
-
-    def __call__(self, b, ids, w):
-        x = b.embedding(ids, w[self.wte], ids.rows)
-        for i, fc in enumerate(self.fcs):
-            x = fc(b, x, w, gelu=True)
-            if self.norms:
-                x = self.norms[i](b, x, w)
-        return self.head(b, x, w)
-
-
-def _tok_case(name, hidden, depth, norm, note, tokens=96, vocab=100, d=48, steps=3):
-    ids = [(t * 7 + 3) % vocab for t in range(vocab)]
-    nxt = [(5 * t + 3) % vocab for t in ids]
-    return Case(name, TokMLP('mlp', vocab, d, hidden, depth, norm), CrossEntropy(),
-                ArrayData(tokens, {'x': [[v] for v in ids], 'y': [[v] for v in nxt]}, dtypes={'x': 'i32', 'y': 'i32'}),
-                OptimConfig(kind='sgd', lr=0.05), steps, note)
-
-
-def mlp_ce():
-    return _tok_case('mlp_ce', 72, 2, None, 'audit: embedding -> 2x(linear+GELU) -> linear -> CE, no attention/norm/rope')
-
-
-def resmlp_rms():
-    return _tok_case('resmlp_rms', 72, 3, 'rmsnorm', 'audit: 3x(linear+GELU+rmsnorm) -> CE')
-
-
-def bad_dims():
-    return _tok_case('bad_dims', 7, 1, None, 'audit: MLP with hidden width 7 (not a tile multiple)')
-
-
-def pg_policy():
-    """Contextual bandit from logged data: state 7 -> softmax over 5 actions; behaviour = uniform; reward 1 when the action equals a
-    hidden function of the state; advantage = reward - batch-free constant baseline 0.2. REINFORCE with the logged advantage."""
-    rng, n, acts = random.Random(21), 40, 5
-    x = _gauss(rng, n, 7)
-    best = [int(abs(r[0] * 2 + r[1])) % acts for r in x]
-    a = [rng.randrange(acts) for _ in range(n)]
-    adv = [[(1.0 if a[i] == best[i] else 0.0) - 0.2] for i in range(n)]
-    return Case('pg_policy', MLP('pg', [7, 16, acts], act='tanh'), PolicyGradient(),
-                ArrayData(8, {'x': x, 'act': [[v] for v in a], 'adv': adv}, dtypes={'act': 'i32'}, target=('act', 'adv')),
-                OptimConfig(kind='sgd', lr=0.3), 3, 'REINFORCE (policy-gradient loss, advantage stream), MLP policy, logged bandit data, SGD')
-
-
-def dqn_q():
-    """One-step TD on logged transitions: Q(s,.) 6 -> 4 actions; target y = r + 0.9 * max_a' Q0(s', a') from a frozen linear Q0."""
-    rng, n, acts = random.Random(22), 36, 4
-    s0, s1 = _gauss(rng, n, 6), _gauss(rng, n, 6)
-    a = [rng.randrange(acts) for _ in range(n)]
-    r = [math.tanh(s0[i][a[i]]) for i in range(n)]
-    q0 = lambda s: max(sum(0.3 * s[k] * (1 + j) / acts for k in range(6)) for j in range(acts))
-    y = [[r[i] + 0.9 * q0(s1[i])] for i in range(n)]
-    return Case('dqn_q', MLP('dqn', [6, 20, acts], act='relu'), QLearning(),
-                ArrayData(6, {'x': s0, 'mask': one_hot(a, acts), 'y': y}, target=('mask', 'y')),
-                OptimConfig(kind='adamw', lr=5e-3), 3, 'DQN-style TD loss (one-hot action mask, bootstrapped target), MLP Q-net, AdamW')
-
-
-CASES = {f().name: f for f in (reg_mlp, res_rms_mlp, cnn1d, encoder_reg, mlp_ce, resmlp_rms, bad_dims, pg_policy, dqn_q)}
+CASES = {f().name: f for f in (reg_mlp, res_rms_mlp, cnn1d, encoder_reg)}

@@ -1,0 +1,33 @@
+# suite=exec tag=mm-exec-1 2026-11-10T03:20:51Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 1024 GB, cores: 16
+initgen vectors identical
+== checker
+== checker: PASS (0.0s, 0 new failures)
+== ops
+== ops: PASS (0.2s, 0 new failures)
+== types
+== types: PASS (0.0s, 0 new failures)
+== init
+== init: PASS (0.1s, 0 new failures)
+== errors
+== errors: PASS (0.4s, 0 new failures)
+== dag
+== dag: PASS (2.6s, 0 new failures)
+== sched
+== sched: PASS (0.1s, 0 new failures)
+== admission
+== admission: PASS (1.7s, 0 new failures)
+== front
+== front: PASS (0.0s, 0 new failures)
+== versions
+== versions: PASS (2.5s, 0 new failures)
+== recycle
+== recycle: PASS (13.0s, 0 new failures)
+== litmus
+== litmus: PASS (22.0s, 0 new failures)
+8609 checks, 0 failed, 0 suites failed
+PASS
+exit: 0

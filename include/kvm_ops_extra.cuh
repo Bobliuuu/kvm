@@ -678,6 +678,15 @@ KVM_GPT_DEVI void matmul_mma_bf16(const KvmCtx& ctx, const int32_t* a) {
                       (((uintptr_t)A | (uintptr_t)B) & 15) == 0 && (m0 & 7) == 0 && (n0 & 7) == 0;
     if (fast) {
         const float alpha = af(a, 12);
+#ifdef KVM_HOPPER_DEVICE
+        {   // sm_90a: TMA + wgmma m64n256k16 (kvm_hopper.cuh); a decline falls through to the mma.sync tile
+#define KVM_HOP_CALL(TA, TB) kvmhop::mm_bf16<TA, TB>((const uint16_t*)A, lda, (const uint16_t*)B, ldb, out, ldo, fo, bias, res, ldr, fr, pre, ldp, fp, m0, n0, M, N, K, alpha, gelu, accum, kvm_gpt_smem)
+            const bool done = (!ta && !tb) ? KVM_HOP_CALL(false, false) : (ta && !tb) ? KVM_HOP_CALL(true, false) : (!ta && tb) ? KVM_HOP_CALL(false, true) : KVM_HOP_CALL(true, true);
+#undef KVM_HOP_CALL
+            if (threadIdx.x == 0) atomicAdd(&kvm_hop_count[done ? 1 : 3], 1ull);
+            if (done) return;
+        }
+#endif
 #define KVM_MMA_CALL(TA, TB) kvmgpt::mma_bf16_tile<TA, TB>((const uint16_t*)A, lda, (const uint16_t*)B, ldb, out, ldo, fo, bias, res, ldr, fr, pre, ldp, fp, m0, n0, M, N, K, alpha, gelu, accum)
         if (!ta && !tb) KVM_MMA_CALL(false, false); else if (ta && !tb) KVM_MMA_CALL(true, false);
         else if (!ta && tb) KVM_MMA_CALL(false, true); else KVM_MMA_CALL(true, true);
@@ -768,12 +777,12 @@ KVM_GPT_DEVI void add_rowtile(const KvmCtx& ctx, const int32_t* a) {
 }
 
 // ---- matmul epilogue wrappers ---------------------------------------------------------------------------------------------------------
-// Validate like matmul_tile (flags 4 / 8 rejected), run kvmgpt::matmul_tile into `target`, barrier, then the elementwise second pass
+// Validate like matmul_tile (flags 4 / 8 rejected; 32 / 64 select the 128x128 / 256x128 tile), run kvmgpt::matmul_tile into `target`, barrier, then the elementwise second pass
 // over the same tile. Each element is read and rewritten by the same thread.
 KVM_GPT_DEVI bool mm_wrap_check(Chk& k, int abuf, int bbuf, int tbuf, int m0, int n0, int M, int N, int K, int fl, int32_t* w) {
     bool ta = fl & 1, tb = fl & 2;
     k.need(M > 0 && N > 0 && K > 0 && m0 >= 0 && m0 < M && n0 >= 0 && n0 < N);
-    k.need((fl & ~(1 | 2 | 16)) == 0, KVM_GPT_E_SHAPE);
+    k.need((fl & ~(1 | 2 | 16 | 32 | 64)) == 0 && !((fl & 32) && (fl & 64)), KVM_GPT_E_SHAPE);   // 32 / 64: 128x128 / 256x128 tile of matmul_tile
     if (k.bad) return false;
     int ld;
     k.mat(abuf, ta ? K : M, ta ? M : K, &ld);
@@ -795,8 +804,9 @@ KVM_GPT_DEVI void matmul_tile_dgelu(const KvmCtx& ctx, const int32_t* a) {
     w[12] = a[10];
     kvmgpt::matmul_tile(ctx, w);
     __syncthreads();
-    for (int e = threadIdx.x; e < 64 * 64; e += KVM_GPT_THREADS) {
-        int gm = m0 + e / 64, gn = n0 + e % 64;
+    const int TW = (fl & 96) ? 128 : 64, TH = (fl & 64) ? 256 : (fl & 32) ? 128 : 64;   // the wrapped matmul tile is TH x TW
+    for (int e = threadIdx.x; e < TH * TW; e += KVM_GPT_THREADS) {
+        int gm = m0 + e / TW, gn = n0 + e % TW;
         if (gm >= M || gn >= N) continue;
         float* o = out + (size_t)gm * ldo + gn;
         *o = *o * kvmgpt::gelu_grad(pre[(size_t)gm * ldp + gn]);
@@ -814,8 +824,9 @@ KVM_GPT_DEVI void matmul_tile_silu_mul(const KvmCtx& ctx, const int32_t* a) {
     w[12] = a[11];
     kvmgpt::matmul_tile(ctx, w);
     __syncthreads();
-    for (int e = threadIdx.x; e < 64 * 64; e += KVM_GPT_THREADS) {
-        int gm = m0 + e / 64, gn = n0 + e % 64;
+    const int TW = (fl & 96) ? 128 : 64, TH = (fl & 64) ? 256 : (fl & 32) ? 128 : 64;   // the wrapped matmul tile is TH x TW
+    for (int e = threadIdx.x; e < TH * TW; e += KVM_GPT_THREADS) {
+        int gm = m0 + e / TW, gn = n0 + e % TW;
         if (gm >= M || gn >= N) continue;
         out[(size_t)gm * ldo + gn] = silu_f(gate[(size_t)gm * ldg + gn]) * up[(size_t)gm * ldu + gn];
     }
@@ -833,8 +844,9 @@ KVM_GPT_DEVI void matmul_tile_silu_mul_bwd(const KvmCtx& ctx, const int32_t* a) 
     w[12] = a[12];
     kvmgpt::matmul_tile(ctx, w);
     __syncthreads();
-    for (int e = threadIdx.x; e < 64 * 64; e += KVM_GPT_THREADS) {
-        int gm = m0 + e / 64, gn = n0 + e % 64;
+    const int TW = (fl & 96) ? 128 : 64, TH = (fl & 64) ? 256 : (fl & 32) ? 128 : 64;   // the wrapped matmul tile is TH x TW
+    for (int e = threadIdx.x; e < TH * TW; e += KVM_GPT_THREADS) {
+        int gm = m0 + e / TW, gn = n0 + e % TW;
         if (gm >= M || gn >= N) continue;
         float* pg = dgate + (size_t)lddg * gm + gn;
         float vg, vu;

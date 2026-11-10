@@ -60,9 +60,15 @@ static void t_embedding() {
 }
 
 static void t_matmul() {
-    Rng r(21);
-    struct S { int M, N, K; } shapes[] = {{1, 1, 1}, {5, 7, 3}, {64, 64, 32}, {65, 63, 33}, {130, 70, 100}, {1, 300, 17}, {70, 1, 90}, {129, 131, 47}, {256, 128, 64}, {300, 140, 50}};
-    for (int big = 0; big < 3; big++) for (int prec = 0; prec < 2; prec++) for (int ta = 0; ta < 2; ta++) for (int tb = 0; tb < 2; tb++) for (auto s : shapes) for (int full = 0; full < 2; full++) {
+    Rng r_main(21), r_fast(22);
+    struct S { int M, N, K; };
+    const std::vector<S> shapes = {{1, 1, 1}, {5, 7, 3}, {64, 64, 32}, {65, 63, 33}, {130, 70, 100}, {1, 300, 17}, {70, 1, 90}, {129, 131, 47}, {256, 128, 64}, {300, 140, 50}};
+    // the mm_tf32_tile fast path (all extents aligned) on partial tiles, and K long enough to cycle its stages; own random stream, so the
+    // cases above keep their data (a 1x1 output with gelu+res+acc can cancel to near zero, which a relative bound cannot absorb)
+    const std::vector<S> fast_shapes = {{260, 132, 36}, {196, 260, 1000}};
+    for (int set = 0; set < 2; set++)
+    for (int big = 0; big < 3; big++) for (int prec = 0; prec < 2; prec++) for (int ta = 0; ta < 2; ta++) for (int tb = 0; tb < 2; tb++) for (auto s : set ? fast_shapes : shapes) for (int full = 0; full < 2; full++) {
+        Rng& r = set ? r_fast : r_main;
         int M = s.M, N = s.N, K = s.K;
         Dev dv;
         int ar = ta ? K : M, ac = ta ? M : K, br = tb ? N : K, bc = tb ? K : N;
@@ -101,19 +107,20 @@ static void t_matmul() {
             for (int i = m0; i < std::min(M, m0 + extm); i++) for (int j = n0; j < std::min(N, n0 + extn); j++) { gsub.push_back(go[i * N + j]); rsub.push_back(C[i * N + j]); }
             check(std::string("matmul_tile odd origin (2,6) ") + (big == 1 ? "128x128" : big == 2 ? "256x128" : "64x64") + " ta=" + std::to_string(ta) + " tb=" + std::to_string(tb), std::vector<float>(gsub.begin(), gsub.end()), rsub, 2e-5);
         }
-        for (int prec = 0; prec < 2; prec++) {
+        for (int big = 0; big < 3; big++) for (int prec = 0; prec < 2; prec++) for (uint32_t qn : {0x7fffffffu, 0xffffffffu}) {
             int M = 8, N = 8, K = 8; Dev dv; int ia = dv.addf(M, K), ib = dv.addf(K, N), io = dv.addf(M, N);
             auto ha = rnd(r2, M * K), hb = rnd(r2, K * N); dv.up(ib, hb);
-            uint32_t qn = 0x7fffffffu; memcpy(&ha[1], &qn, 4); dv.up(ia, ha);   // the canonical hardware NaN must survive the rounding carry
-            run1(dv, OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(0).i(0).i(M).i(N).i(K).i(prec << 4).f(1.f));
+            memcpy(&ha[1], &qn, 4); dv.up(ia, ha);   // the canonical hardware NaN (and its negation) must survive the rounding carry
+            run1(dv, OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(0).i(0).i(M).i(N).i(K).i((prec << 4) | (big == 1 ? 32 : big == 2 ? 64 : 0)).f(1.f));
             auto go = dv.down(io); bool ok = std::isnan(go[0]) && std::isnan(go[1]);
-            check_true(std::string("matmul_tile NaN input propagates ") + (prec ? "3xTF32" : "TF32"), ok);
+            check_true(std::string("matmul_tile NaN input propagates ") + (big == 1 ? "128x128 " : big == 2 ? "256x128 " : "") + (prec ? "3xTF32" : "TF32") +
+                       (qn >> 31 ? " (-NaN)" : ""), ok);
         }
     }
     {   // in-place residual: res aliases out, accumulate off
         int M = 33, N = 40, K = 20; Dev dv;
         int ia = dv.addf(M, K), ib = dv.addf(K, N), io = dv.addf(M, N);
-        auto ha = rnd(r, M * K), hb = rnd(r, K * N), ho = rnd(r, M * N);
+        auto ha = rnd(r_main, M * K), hb = rnd(r_main, K * N), ho = rnd(r_main, M * N);
         dv.up(ia, ha); dv.up(ib, hb); dv.up(io, ho);
         run1(dv, OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(io).b(-1).i(0).i(0).i(M).i(N).i(K).i(16).f(1.f));
         D C = mm_d(dbl(ha), dbl(hb), M, N, K, 0, 0); for (int i = 0; i < M * N; i++) C[i] += ho[i];
@@ -569,6 +576,7 @@ int main(int argc, char** argv) {
     cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0));
     printf("device: %s, %d SMs, cc %d.%d\n", pr.name, pr.multiProcessorCount, pr.major, pr.minor);
     if (getenv("TEST_ONLY") && !strcmp(getenv("TEST_ONLY"), "attention")) t_attention();   // TEST_ONLY=attention: the attention cases alone (sanitizer runs)
+    else if (getenv("TEST_ONLY") && !strcmp(getenv("TEST_ONLY"), "matmul")) t_matmul();   // TEST_ONLY=matmul: the matmul_tile cases alone
     else { t_philox(); t_embedding(); t_matmul(); t_norms(); t_elementwise(); t_rope(); t_attention(); t_decode(); t_ce(); t_adamw(); t_sample(); t_batch(); t_errors(); }
     if (g_vec) fclose(g_vec);
     printf("\n%d passed, %d failed\n", g_pass, g_fail);

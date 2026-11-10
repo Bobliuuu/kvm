@@ -1,0 +1,11 @@
+PASS: 2 checks, 0 failed, 0 skipped stage(s)
+test_dist: 1 GPU(s); device 0 = NVIDIA A100-SXM4-40GB, 108 SMs, sm_80
+== plan out/v2_d1024_L16_r4/plans/P1: 1 ranks on 1 GPU(s), net loopback
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 4 (1 admitter + 3 workers)
+  MEM rank 0: 206 local buffers, 554958884 bytes
+  MEM total local buffer bytes 554958884
+  MEM device used after allocation (cudaMemGetInfo, whole device incl. other users) 1066270720 bytes
+[kvm_exec][I] kernel launched: grid 4 x 256 threads, live_cap 4096, slots 65536, succ ring 2097152 words, ring 1048576 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 387/387 tasks in 1583.613 ms, 1 records, 0 ring wraps, 0 backpressure waits
+  rank 0: 387 tasks, 1582.00 ms kernel, device 0
+  0 values compared, 0 bitwise equal, worst relative difference 0

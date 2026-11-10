@@ -16,17 +16,16 @@ nv() {  # name, nvcc args...: run in the background; build number i first waits 
   if [ "$i" -ge "$JOBS" ]; then wait "${PIDS[$((i - JOBS))]}" && RC[$((i - JOBS))]=0 || RC[$((i - JOBS))]=1; fi
   "$NVCC" "$@" & PIDS+=($!); NAMES+=("$name"); RC+=(-)
 }
-nv prod $B -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_prod"
-nv nofence $B -DLIT_NOFENCE -DLIT_MUTANT='"nofence(all __threadfence)"' -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_nofence"
-# the executor's own mutant: a waiter that never re-checks the version after parking (classic lost wakeup)
-nv norecheck $B -DKVM_BREAK_PARK_RECHECK -DLIT_MUTANT='"norecheck(KVM_BREAK_PARK_RECHECK)"' -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_norecheck"
 mut() {  # name, header file, sed-expression: a header copy with exactly one step removed
-  if [ -n "${KVM_ONLY:-}" ] && [[ " $KVM_ONLY " != *" $1 "* ]]; then return 0; fi
   local d="$OUT/hdr_$1"; rm -rf "$d"; mkdir -p "$d"; cp "$ROOT"/include/* "$d/"
   sed -E "$3" "$ROOT/include/$2" > "$d/$2"
   if cmp -s "$d/$2" "$ROOT/include/$2"; then echo "mutant $1: sed matched nothing" >&2; exit 1; fi
   nv "$1" $B -DLIT_MUTANT="\"$1\"" -I"$d" "$HERE/litmus.cu" -o "$OUT/litmus_$1"
 }
+nv prod $B -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_prod"
+nv nofence $B -DLIT_NOFENCE -DLIT_MUTANT='"nofence(all __threadfence)"' -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_nofence"
+# the executor's own mutant: a waiter that never re-checks the version after parking (classic lost wakeup)
+nv norecheck $B -DKVM_BREAK_PARK_RECHECK -DLIT_MUTANT='"norecheck(KVM_BREAK_PARK_RECHECK)"' -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_norecheck"
 # Dekker: drop the two fences that implement the argument (waiter: push->fence->load; publisher: store->fence->detach)
 mut nodekkerfence kvm_exec.cuh 's#^(\s*)__threadfence\(\);  // seq_cst fence: push.*#\1/* mutant */#; s#^(\s*)__threadfence\(\);( +)// version store -> fence.*#\1/* mutant */#'
 # Dekker: publisher detaches the list BEFORE storing the version (and not after)

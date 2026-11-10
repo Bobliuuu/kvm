@@ -1,0 +1,26 @@
+GATE base: single run matches golden; 4 replicated copies bitwise equal to the single run (79 buffers each)
+GATE chain: single run matches golden; 4 replicated copies bitwise equal to the single run (79 buffers each)
+torch 2.7.0 NVIDIA A100-SXM4-40GB
+{"runs": 1, "steps": 50, "best_us_per_step": {"batched": 124.7, "seq_graph": 109.2, "multi_graph": 109.9, "eager": 604.6, "vm_base": 399.5, "vm_chain": 376.7}, "all": {"batched": [151.9, 152.3, 125.2, 124.7, 151.9], "seq_graph": [132.8, 133.0, 109.3, 109.2, 132.7], "multi_graph": [133.6, 133.7, 109.9, 110.0, 133.6], "eager": [604.6, 777.6, 684.9, 662.2, 668.8], "vm_base": [465.4, 399.5, 400.2, 452.6, 427.0], "vm_chain": [442.6, 377.1, 376.7, 441.2, 404.7]}}
+{"runs": 2, "steps": 50, "best_us_per_step": {"batched": 106.2, "seq_graph": 205.8, "multi_graph": 115.1, "eager": 1162.2, "vm_base": 417.5, "vm_chain": 379.4}, "all": {"batched": [120.8, 135.5, 112.7, 106.2, 137.2], "seq_graph": [235.3, 263.8, 219.0, 205.8, 263.7], "multi_graph": [131.5, 122.4, 116.7, 115.1, 147.0], "eager": [1210.1, 1346.6, 1177.8, 1192.6, 1162.2], "vm_base": [468.8, 442.4, 417.5, 419.7, 501.6], "vm_chain": [465.2, 403.9, 382.8, 379.4, 430.9]}}
+{"runs": 4, "steps": 50, "best_us_per_step": {"batched": 114.2, "seq_graph": 412.1, "multi_graph": 150.8, "eager": 2635.5, "vm_base": 494.2, "vm_chain": 426.4}, "all": {"batched": [132.8, 148.4, 114.3, 114.2, 146.9], "seq_graph": [478.9, 522.1, 412.1, 412.2, 530.0], "multi_graph": [154.9, 158.6, 150.8, 153.2, 160.1], "eager": [2761.9, 2710.8, 2725.6, 2757.0, 2635.5], "vm_base": [562.6, 495.4, 494.2, 497.0, 501.4], "vm_chain": [512.9, 426.4, 426.5, 513.4, 431.0]}}
+{"runs": 8, "steps": 50, "best_us_per_step": {"batched": 131.4, "seq_graph": 821.9, "multi_graph": 285.3, "vm_base": 754.0, "vm_chain": 617.4}, "all": {"batched": [132.7, 168.8, 131.4, 131.5, 131.7], "seq_graph": [830.9, 1057.3, 821.9, 822.0, 822.4], "multi_graph": [288.4, 285.3, 297.1, 290.6, 423.7], "vm_base": [939.4, 757.2, 754.0, 758.7, 761.6], "vm_chain": [736.0, 626.1, 624.0, 617.4, 625.2]}}
+{"runs": 16, "steps": 50, "best_us_per_step": {"batched": 156.2, "seq_graph": 1665.3, "multi_graph": 570.2, "vm_base": 1452.7, "vm_chain": 1038.8}, "all": {"batched": [201.1, 204.1, 156.2, 156.3, 156.4], "seq_graph": [2144.1, 1665.9, 1665.3, 1689.0, 1718.3], "multi_graph": [604.6, 761.1, 570.2, 639.3, 1791.2], "vm_base": [1467.2, 1465.0, 1452.7, 1499.9, 1745.4], "vm_chain": [1104.8, 1064.8, 1078.6, 1423.2, 1038.8]}}
+{"runs": 32, "steps": 50, "best_us_per_step": {"batched": 237.8, "seq_graph": 3435.2, "multi_graph": 1105.7, "vm_base": 2896.1, "vm_chain": 2125.1}, "all": {"batched": [304.4, 237.9, 237.8, 238.2, 237.8], "seq_graph": [3786.0, 3435.2, 3435.7, 3435.7, 3435.7], "multi_graph": [1114.3, 1105.7, 1111.8, 1133.9, 1390.1], "vm_base": [2948.6, 2964.7, 2947.6, 2975.8, 2896.1], "vm_chain": [2134.3, 2125.1, 2142.8, 2292.9, 2150.6]}}
+
+best-of-5 us per step (all R runs advance one step); ratio = variant / vm_base  (>1: VM faster)
+   R      batched    seq_graph  multi_graph        eager      vm_base     vm_chain
+   1        124.7        109.2        109.9        604.6        399.5        376.7
+   2        106.2        205.8        115.1       1162.2        417.5        379.4
+   4        114.2        412.1        150.8       2635.5        494.2        426.4
+   8        131.4        821.9        285.3            -        754.0        617.4
+  16        156.2       1665.3        570.2            -       1452.7       1038.8
+  32        237.8       3435.2       1105.7            -       2896.1       2125.1
+ratio vs vm_base
+   1        0.31x        0.27x        0.28x        1.51x        1.00x        0.94x
+   2        0.25x        0.49x        0.28x        2.78x        1.00x        0.91x
+   4        0.23x        0.83x        0.31x        5.33x        1.00x        0.86x
+   8        0.17x        1.09x        0.38x            -        1.00x        0.82x
+  16        0.11x        1.15x        0.39x            -        1.00x        0.72x
+  32        0.08x        1.19x        0.38x            -        1.00x        0.73x
+exit 0

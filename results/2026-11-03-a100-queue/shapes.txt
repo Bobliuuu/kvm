@@ -1,0 +1,49 @@
+=== shapes: ./kvm --runs 4 --steps 50 --B 256 --D 256 --H 512 --nb 3 --reps 5 ===
+model B=256 D=256 H=512 O=64  runs=4 steps=50  tile=32 kc=64 stg=4  tape=86400 instrs executed, 1728-entry step template (0.13 MB)
+[queue] lowered 86400 tasks, 8415232 edges (97.4/task), 512 initially ready, 35.0 MB device, 306 ms host
+NVIDIA A100-SXM4-40GB  SMs=108  driver CUDA 13.0  runtime 12.8  vm grid=216 (occ 2)  queue grid=216 (occ 2)  watchdog 5000 ms
+[pass -1] sequential, launch-per-op                   14.140 ms  weight words differing from 'seq': 0
+[pass -1] sequential, CUDA graph/run                  12.654 ms  weight words differing from 'seq': 0
+[pass -1] batched across runs (vmap-like graph)        6.140 ms  weight words differing from 'seq': 0
+[pass -1] KVM: claim-and-wait                          4.850 ms  weight words differing from 'seq': 0
+[pass -1] KVM: ready queue                             5.043 ms  weight words differing from 'seq': 0
+[pass  0] sequential, launch-per-op                   14.133 ms  weight words differing from 'seq': 0
+[pass  0] sequential, CUDA graph/run                  12.572 ms  weight words differing from 'seq': 0
+[pass  0] batched across runs (vmap-like graph)        6.071 ms  weight words differing from 'seq': 0
+[pass  0] KVM: claim-and-wait                          4.891 ms  weight words differing from 'seq': 0
+[pass  0] KVM: ready queue                             5.111 ms  weight words differing from 'seq': 0
+[pass  1] sequential, launch-per-op                   14.137 ms  weight words differing from 'seq': 0
+[pass  1] sequential, CUDA graph/run                  12.583 ms  weight words differing from 'seq': 0
+[pass  1] batched across runs (vmap-like graph)        6.081 ms  weight words differing from 'seq': 0
+[pass  1] KVM: claim-and-wait                          4.866 ms  weight words differing from 'seq': 0
+[pass  1] KVM: ready queue                             5.109 ms  weight words differing from 'seq': 0
+[pass  2] sequential, launch-per-op                   14.134 ms  weight words differing from 'seq': 0
+[pass  2] sequential, CUDA graph/run                  12.585 ms  weight words differing from 'seq': 0
+[pass  2] batched across runs (vmap-like graph)        6.081 ms  weight words differing from 'seq': 0
+[pass  2] KVM: claim-and-wait                          4.871 ms  weight words differing from 'seq': 0
+[pass  2] KVM: ready queue                             5.000 ms  weight words differing from 'seq': 0
+[pass  3] sequential, launch-per-op                   14.137 ms  weight words differing from 'seq': 0
+[pass  3] sequential, CUDA graph/run                  12.577 ms  weight words differing from 'seq': 0
+[pass  3] batched across runs (vmap-like graph)        6.072 ms  weight words differing from 'seq': 0
+[pass  3] KVM: claim-and-wait                          4.425 ms  weight words differing from 'seq': 0
+[pass  3] KVM: ready queue                             4.038 ms  weight words differing from 'seq': 0
+[pass  4] sequential, launch-per-op                   10.965 ms  weight words differing from 'seq': 0
+[pass  4] sequential, CUDA graph/run                   9.777 ms  weight words differing from 'seq': 0
+[pass  4] batched across runs (vmap-like graph)        4.713 ms  weight words differing from 'seq': 0
+[pass  4] KVM: claim-and-wait                          3.800 ms  weight words differing from 'seq': 0
+[pass  4] KVM: ready queue                             3.961 ms  weight words differing from 'seq': 0
+
+mode                                         min ms  median ms     max ms    us/step/run run-steps/s
+sequential, launch-per-op                    10.965     14.134     14.137          54.82       18240
+sequential, CUDA graph/run                    9.777     12.577     12.585          48.89       20456
+batched across runs (vmap-like graph)         4.713      6.072      6.081          23.57       42432
+KVM: claim-and-wait                           3.800      4.866      4.891          19.00       52631
+KVM: ready queue                              3.961      5.000      5.111          19.80       50494
+claim vs batched: 1.25x  [min 1.24x, max 1.37x] over 5 passes
+queue vs batched: 1.19x  [min 1.19x, max 1.50x] over 5 passes
+queue vs claim: 0.96x  [min 0.95x, max 1.10x] over 5 passes
+
+loss run0: 0.32117 -> 0.25876 (lr 0.0125)   run3: 0.32117 -> 0.20738 (lr 0.0875)
+max rel loss err vs cpu fp32 (runs 0 and 3, first 50 steps, all modes): 3.32e-05
+final weights, 5 modes x 6 passes vs 'seq': 0 differing words, max |dW| 0.00e+00 (must be exactly 0)
+PASS

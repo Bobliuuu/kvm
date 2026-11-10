@@ -1,0 +1,10 @@
+# suite=custom tag=main-exec-build 2026-11-07T06:12:53Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 1009 GB, cores: 16
+total 22177
+drwxr-xr-x 1 root root       23 Nov  7 06:41 .
+drwxr-xr-x 1 root root       97 Nov  7 06:12 ..
+-rw-r--r-- 1 root root      217 Nov  7 06:12 custom.log
+-rwxr-xr-x 1 root root 22707168 Nov  7 06:41 kvm_exec_main

@@ -1,0 +1,163 @@
+mlp_f32 exit 0
+mlp_tf32 exit 0
+vit_f32 exit 0
+vit_tf32 exit 0
+llama_f32 exit 0
+llama_tf32 exit 0
+llama_fused exit 0
+gqa_tied exit 0
+moe_f32 exit 0
+moe_tf32 exit 0
+moe_fused exit 0
+llama_accum exit 0
+llama_remat exit 0
+llama_bf16 exit 0
+mlp_bf16 exit 0
+gpt_fused exit 0
+san_llama exit 0
+== compute-sanitizer memcheck san_llama
+========= COMPUTE-SANITIZER
+OK: 1660/1660 tasks, 274.419 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_llama
+========= COMPUTE-SANITIZER
+OK: 1660/1660 tasks, 6663.799 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_llama
+========= COMPUTE-SANITIZER
+OK: 1660/1660 tasks, 121.502 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+san_gqa_fused exit 0
+== compute-sanitizer memcheck san_gqa_fused
+========= COMPUTE-SANITIZER
+OK: 1564/1564 tasks, 236.779 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_gqa_fused
+========= COMPUTE-SANITIZER
+OK: 1564/1564 tasks, 6412.419 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_gqa_fused
+========= COMPUTE-SANITIZER
+OK: 1564/1564 tasks, 115.469 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+san_moe exit 0
+== compute-sanitizer memcheck san_moe
+========= COMPUTE-SANITIZER
+OK: 1998/1998 tasks, 311.620 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_moe
+========= COMPUTE-SANITIZER
+OK: 1998/1998 tasks, 7255.916 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_moe
+========= COMPUTE-SANITIZER
+OK: 1998/1998 tasks, 133.550 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+san_moe_fused exit 0
+== compute-sanitizer memcheck san_moe_fused
+========= COMPUTE-SANITIZER
+OK: 1918/1918 tasks, 283.997 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_moe_fused
+========= COMPUTE-SANITIZER
+OK: 1918/1918 tasks, 7016.456 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_moe_fused
+========= COMPUTE-SANITIZER
+OK: 1918/1918 tasks, 129.070 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+san_vit exit 0
+== compute-sanitizer memcheck san_vit
+========= COMPUTE-SANITIZER
+OK: 848/848 tasks, 139.142 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_vit
+========= COMPUTE-SANITIZER
+OK: 848/848 tasks, 4176.550 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_vit
+========= COMPUTE-SANITIZER
+OK: 848/848 tasks, 54.969 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+san_mlp exit 0
+== compute-sanitizer memcheck san_mlp
+========= COMPUTE-SANITIZER
+OK: 207/207 tasks, 38.789 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_mlp
+========= COMPUTE-SANITIZER
+OK: 207/207 tasks, 964.346 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_mlp
+========= COMPUTE-SANITIZER
+OK: 207/207 tasks, 18.130 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+san_bf16 exit 0
+== compute-sanitizer memcheck san_bf16
+========= COMPUTE-SANITIZER
+OK: 1918/1918 tasks, 285.707 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_bf16
+========= COMPUTE-SANITIZER
+OK: 1918/1918 tasks, 7453.519 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_bf16
+========= COMPUTE-SANITIZER
+OK: 1918/1918 tasks, 133.032 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+san_remat exit 0
+== compute-sanitizer memcheck san_remat
+========= COMPUTE-SANITIZER
+OK: 2340/2340 tasks, 333.547 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_remat
+========= COMPUTE-SANITIZER
+OK: 2340/2340 tasks, 10005.220 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_remat
+========= COMPUTE-SANITIZER
+OK: 2340/2340 tasks, 157.275 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+llama_bf16s exit 0
+mlp_bf16s exit 0
+vit_bf16s exit 0
+san_bf16s exit 0
+== compute-sanitizer memcheck san_bf16s
+========= COMPUTE-SANITIZER
+OK: 2294/2294 tasks, 348.403 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0
+== compute-sanitizer racecheck san_bf16s
+========= COMPUTE-SANITIZER
+OK: 2294/2294 tasks, 8291.601 ms
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit 0
+== compute-sanitizer synccheck san_bf16s
+========= COMPUTE-SANITIZER
+OK: 2294/2294 tasks, 151.009 ms
+========= ERROR SUMMARY: 0 errors
+sanitizer exit 0

@@ -1,0 +1,8 @@
+GATE base: single run matches golden; 4 replicated copies bitwise equal to the single run (79 buffers each)
+GATE chain: single run matches golden; 4 replicated copies bitwise equal to the single run (79 buffers each)
+torch 2.7.0 NVIDIA A100-SXM4-40GB
+{"runs": 1, "steps": 50, "best_us_per_step": {"batched": 139.1, "seq_graph": 121.7, "multi_graph": 122.5, "eager": 674.6, "vm_base": 440.8, "vm_chain": 418.6}, "all": {"batched": [152.1, 152.2, 152.0, 139.1, 139.3], "seq_graph": [132.9, 132.9, 132.9, 121.7, 12
+{"runs": 2, "steps": 50, "best_us_per_step": {"batched": 105.5, "seq_graph": 205.2, "multi_graph": 114.6, "eager": 1374.1, "vm_base": 689.1, "vm_chain": 648.3}, "all": {"batched": [135.7, 135.7, 134.0, 133.9, 105.5], "seq_graph": [264.2, 264.1, 261.1, 260.4, 2
+{"runs": 4, "steps": 50, "best_us_per_step": {"batched": 114.5, "seq_graph": 412.5, "multi_graph": 152.1, "eager": 2726.6, "vm_base": 1345.6, "vm_chain": 1260.6}, "all": {"batched": [147.2, 114.5, 114.8, 114.7, 114.5], "seq_graph": [531.1, 412.5, 413.4, 413.0,
+{"runs": 8, "steps": 50, "best_us_per_step": {"batched": 131.4, "seq_graph": 822.4, "multi_graph": 289.0, "vm_base": 2607.8, "vm_chain": 2437.2}, "all": {"batched": [131.5, 131.8, 131.5, 131.4, 131.4], "seq_graph": [823.6, 822.4, 822.4, 822.4, 823.1], "multi_g
+{"runs": 16, "steps": 50, "best_us_per_step": {"batched": 155.9, "seq_graph": 1663.7, "multi_graph": 565.9, "vm_base": 5118.4, "vm_chain": 4794.8}, "all": {"batched": [156.5, 155.9, 156.5, 156.3, 156.2], "seq_graph": [1665.2, 1663.7, 1664.4, 1664.9, 1664.5], "

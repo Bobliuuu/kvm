@@ -1,0 +1,137 @@
+# suite=sanitize tag=adm-g1-sanitize 2026-11-07T07:00:51Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
+host RAM: 1024 GB, cores: 16
+BUILD: tests/gpu/build.sh 
+
+real	20m4.554s
+user	19m42.540s
+sys	0m6.430s
+-rwxr-xr-x 1 root root 23258080 Nov  7 07:20 test_exec
+== compute-sanitizer --tool memcheck smoke
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 256, slots 4096, succ ring 2097152 words, ring 4096 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 180/180 tasks in 29.515 ms, 3 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, slots 32768, succ ring 2097152 words, ring 16384 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 35/35 tasks in 10.679 ms, 11 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, slots 32768, succ ring 2097152 words, ring 16384 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 34/34 tasks in 10.514 ms, 6 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 64, slots 128, succ ring 1024 words, ring 4096 words, aging 0 us, sched off
+[kvm_exec][I] stream: host prep (validate, order check, 10 windows, cross-window needs) 0.0 ms
+[kvm_exec][D] ring wrap: 1248 pad words
+[kvm_exec][D] ring wrap: 1232 pad words
+[kvm_exec][D] ring wrap: 1232 pad words
+[kvm_exec][D] ring wrap: 1232 pad words
+[kvm_exec][D] stream: 640 tasks in 10 windows
+[kvm_exec][I] kernel done: 640/640 tasks in 100.224 ms, 10 records, 4 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, slots 8192, succ ring 16384 words, ring 32768 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 1200/1200 tasks in 442.806 ms, 150 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 32, slots 32768, succ ring 2097152 words, ring 256 words, aging 0 us, sched off
+[kvm_exec][D] ring wrap: 40 pad words
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring wrap: 40 pad words
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring wrap: 40 pad words
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring wrap: 40 pad words
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring wrap: 40 pad words
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring wrap: 40 pad words
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][I] kernel done: 60/60 tasks in 14.208 ms, 20 records, 6 ring wraps, 6 backpressure waits
+== smoke: PASS (1.0s, 0 new failures)
+63 checks, 0 failed, 0 suites failed
+PASS
+========= ERROR SUMMARY: 0 errors
+sanitizer exit: 0
+== compute-sanitizer --tool racecheck smoke
+[kvm_exec][I] stream: host prep (validate, order check, 10 windows, cross-window needs) 0.0 ms
+[kvm_exec][D] ring wrap: 1248 pad words
+[kvm_exec][D] ring wrap: 1232 pad words
+[kvm_exec][D] ring wrap: 1232 pad words
+[kvm_exec][D] ring wrap: 1232 pad words
+[kvm_exec][D] stream: 640 tasks in 10 windows
+[kvm_exec][I] kernel done: 640/640 tasks in 2138.677 ms, 10 records, 4 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, slots 8192, succ ring 16384 words, ring 32768 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 1200/1200 tasks in 3607.048 ms, 150 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 32, slots 32768, succ ring 2097152 words, ring 256 words, aging 0 us, sched off
+[kvm_exec][D] ring wrap: 40 pad words
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring wrap: 40 pad words
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring wrap: 40 pad words
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring wrap: 40 pad words
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring wrap: 40 pad words
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring wrap: 40 pad words
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][I] kernel done: 60/60 tasks in 544.844 ms, 20 records, 6 ring wraps, 17 backpressure waits
+== smoke: PASS (7.8s, 0 new failures)
+63 checks, 0 failed, 0 suites failed
+PASS
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+sanitizer exit: 0
+== compute-sanitizer --tool synccheck smoke
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 256, slots 4096, succ ring 2097152 words, ring 4096 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 180/180 tasks in 14.143 ms, 3 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, slots 32768, succ ring 2097152 words, ring 16384 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 35/35 tasks in 5.316 ms, 11 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, slots 32768, succ ring 2097152 words, ring 16384 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 34/34 tasks in 4.232 ms, 6 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 64, slots 128, succ ring 1024 words, ring 4096 words, aging 0 us, sched off
+[kvm_exec][I] stream: host prep (validate, order check, 10 windows, cross-window needs) 0.0 ms
+[kvm_exec][D] ring wrap: 1248 pad words
+[kvm_exec][D] ring wrap: 1232 pad words
+[kvm_exec][D] ring wrap: 1232 pad words
+[kvm_exec][D] ring wrap: 1232 pad words
+[kvm_exec][D] stream: 640 tasks in 10 windows
+[kvm_exec][I] kernel done: 640/640 tasks in 43.901 ms, 10 records, 4 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 3 (1 admitter + 2 workers)
+[kvm_exec][I] kernel launched: grid 3 x 256 threads, live_cap 4096, slots 8192, succ ring 16384 words, ring 32768 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 1200/1200 tasks in 86.167 ms, 150 records, 0 ring wraps, 0 backpressure waits
+[kvm_exec][I] device NVIDIA A100-SXM4-40GB, 108 SMs, 1 resident blocks/SM with 73728 B dynamic smem -> grid 2 (1 admitter + 1 workers)
+[kvm_exec][I] kernel launched: grid 2 x 256 threads, live_cap 32, slots 32768, succ ring 2097152 words, ring 256 words, aging 0 us, sched off
+[kvm_exec][D] ring wrap: 40 pad words
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring wrap: 40 pad words
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring wrap: 40 pad words
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring wrap: 40 pad words
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring wrap: 40 pad words
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][D] ring wrap: 40 pad words
+[kvm_exec][D] ring full (256/256 words used): backpressure
+[kvm_exec][I] kernel done: 60/60 tasks in 10.638 ms, 20 records, 6 ring wraps, 6 backpressure waits
+== smoke: PASS (0.5s, 0 new failures)
+63 checks, 0 failed, 0 suites failed
+PASS
+========= ERROR SUMMARY: 0 errors
+sanitizer exit: 0

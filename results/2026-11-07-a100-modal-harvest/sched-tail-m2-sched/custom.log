@@ -1,0 +1,126 @@
+# suite=custom tag=sched-tail-m2-sched 2026-11-07T08:04:48Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-80GB, 610.57.04, 1410 MHz
+host RAM: 1024 GB, cores: 16
+  static std::string env_or(const char* k, const char* d) { const char* v = getenv(k); return v ? v : d; }
+                     ^
+
+
+real	34m33.862s
+user	33m54.210s
+sys	0m8.570s
+      constexpr int BK = 16, NST = 3, BM = 64 * WM, BN = WTN * WN, NJ = WTN / 8, ATILE = BM * BK, TILE = ATILE, STAGE = (BM + BN) * BK;
+                                                                                                  ^
+
+
+real	34m46.990s
+user	34m7.690s
+sys	0m8.020s
+GPU NVIDIA A100-SXM4-80GB, 108 SMs, sm_80
+== express
+  first express task ready at 49 us, first root of the big record at 1182 us
+== express: PASS (0.4s, 0 new failures)
+== admit_gran
+  latency bundle (1 noop, class 0) submitted right behind a K-task record (K noops, class 1); end-to-end latency of the small bundle
+  K=   500: small bundle p50      151 us  max     1615 us   (record fully done: 0.89 us per task)
+  K=  2000: small bundle p50      387 us  max     1814 us   (record fully done: 0.82 us per task)
+  K=  8000: small bundle p50     1309 us  max     2307 us   (record fully done: 0.80 us per task)
+  K= 32000: small bundle p50     4253 us  max     4948 us   (record fully done: 0.65 us per task)
+  K= 64000: small bundle p50     8465 us  max     8613 us   (record fully done: 0.65 us per task)
+  latency bundle (1 noop, class 0, express) submitted right behind a K-task record (K noops, class 1); end-to-end latency of the small bundle
+  K=   500: small bundle p50       63 us  max     1386 us   (record fully done: 0.76 us per task)
+  K=  2000: small bundle p50       75 us  max     1288 us   (record fully done: 0.67 us per task)
+  K=  8000: small bundle p50      106 us  max      953 us   (record fully done: 0.64 us per task)
+  K= 32000: small bundle p50      234 us  max      246 us   (record fully done: 0.64 us per task)
+  K= 64000: small bundle p50      397 us  max      415 us   (record fully done: 0.63 us per task)
+== admit_gran: PASS (2.4s, 0 new failures)
+273 checks, 0 failed, 0 suites failed
+PASS
+GPU NVIDIA A100-SXM4-80GB, 108 SMs, sm_80, driver CUDA 13.3, runtime 12.8
+== baselines
+  scripted load: 7 phases (idle/low/BURST/low/idle/BURST/idle) over 1600 ms, 106 workers (108 blocks: 1 admitter, 1 policy, the rest workers), best-of-5, median [min,max]
+    [global queue, flat] chain hop run p50 459.8 us, stream CTA gap p50 15.4 us
+  global queue, flat         req p50   27473 [26065,28414] p99    31573 [30819,32199] us | hop-wait p99 30928.9 [30202.9,31579.1] | miss 100.0% [100.0,100.0] | train   82.8 [82.2,83.9] kt/s  268.9 [268.5,272.2] GB/s burst   58.4 [57.3,61.0] kt/s | util 98.0% [98.0,98.0]
+    [global queue, serve prio 20] chain hop run p50 475.1 us, stream CTA gap p50 15.4 us
+  global queue, serve prio 20 req p50     990 [984,1002] p99     1651 [1542,1740] us | hop-wait p99  1101.8 [1000.4,1202.2] | miss   0.0% [0.0,0.0] | train   82.1 [80.3,83.0] kt/s  265.7 [261.2,269.4] GB/s burst   52.1 [49.7,55.1] kt/s | util 98.0% [98.0,98.1]
+    [static split 25% serve] chain hop run p50 448.5 us, stream CTA gap p50 14.3 us
+  static split 25% serve     req p50  281268 [279723,289912] p99   375079 [373863,375815] us | hop-wait p99 373824.5 [372933.6,374519.8] | miss  97.6% [97.3,98.0] | train   52.4 [48.2,55.2] kt/s  169.6 [157.4,178.7] GB/s burst   48.4 [42.7,52.2] kt/s | util 64.2% [60.9,66.7]
+    [static split 50% serve] chain hop run p50 534.5 us, stream CTA gap p50 14.3 us
+  static split 50% serve     req p50   36832 [30751,43810] p99    82306 [78822,89227] us | hop-wait p99 81464.3 [78039.0,88311.8] | miss  93.2% [92.5,94.5] | train   61.8 [61.7,61.9] kt/s  201.0 [200.6,201.3] GB/s burst   62.4 [62.3,62.5] kt/s | util 79.8% [79.2,80.2]
+    [dynamic + controller] chain hop run p50 514.0 us, stream CTA gap p50 18.4 us
+  dynamic + controller       req p50    2183 [2180,2223] p99     2881 [2790,3090] us | hop-wait p99  2337.8 [2234.4,2546.7] | miss   0.3% [0.1,1.6] | train   80.8 [79.3,81.4] kt/s  263.1 [258.7,264.2] GB/s burst   51.7 [47.8,51.9] kt/s | util 97.5% [97.5,97.5]
+    [dynamic + ctl + arbiter] chain hop run p50 428.0 us, stream CTA gap p50 19.5 us
+  dynamic + ctl + arbiter    req p50     486 [482,488] p99     1438 [1411,1495] us | hop-wait p99   867.3 [771.1,915.5] | miss   0.0% [0.0,0.0] | train   47.2 [46.0,48.5] kt/s  154.0 [149.9,158.2] GB/s burst    4.8 [3.2,6.6] kt/s | util 66.5% [64.4,67.9]
+    [dynamic strict serve] chain hop run p50 478.2 us, stream CTA gap p50 19.5 us
+  dynamic strict serve       req p50     999 [991,1006] p99     1656 [1552,1741] us | hop-wait p99  1110.0 [999.4,1186.8] | miss   0.0% [0.0,0.0] | train   81.6 [81.5,82.3] kt/s  265.2 [264.6,267.3] GB/s burst   52.5 [51.7,53.3] kt/s | util 97.5% [97.5,97.5]
+    [dynamic strict, train floor 8] chain hop run p50 482.3 us, stream CTA gap p50 19.5 us
+  dynamic strict, train floor 8 req p50    1025 [1017,1027] p99     1885 [1814,2012] us | hop-wait p99  1295.4 [1230.8,1413.1] | miss   0.0% [0.0,0.0] | train   81.5 [80.6,82.2] kt/s  264.6 [261.7,267.6] GB/s burst   52.2 [50.5,53.8] kt/s | util 97.5% [97.5,97.5]
+    [dynamic strict + controller] chain hop run p50 480.3 us, stream CTA gap p50 18.4 us
+  dynamic strict + controller req p50     989 [976,1009] p99     1597 [1528,1638] us | hop-wait p99  1039.4 [965.6,1088.5] | miss   0.0% [0.0,0.0] | train   82.1 [80.6,82.7] kt/s  267.1 [263.1,270.4] GB/s burst   53.4 [51.0,55.0] kt/s | util 97.5% [97.5,97.6]
+  ratios (dynamic + controller vs): serve p99 / train ktask/s / utilization
+    vs global queue, flat           p99 10.96x lower, train 0.98x, utilization 0.99x
+    vs global queue, serve prio 20  p99 0.57x lower, train 0.98x, utilization 0.99x
+    vs static split 25% serve       p99 130.21x lower, train 1.54x, utilization 1.52x
+    vs static split 50% serve       p99 28.57x lower, train 1.31x, utilization 1.22x
+  ratios against the global queue with serve priority 20 (>1 = dynamic is better): serve p99 / train ktask/s
+    dynamic + controller         p99 0.57x, train 0.98x
+    dynamic + ctl + arbiter      p99 1.15x, train 0.57x
+    dynamic strict serve         p99 1.00x, train 0.99x
+    dynamic strict, train floor 8 p99 0.88x, train 0.99x
+    dynamic strict + controller  p99 1.03x, train 1.00x
+== baselines: PASS (80.5s, 0 new failures)
+== overload
+  serve flood: 9000 req/s x 48 matmul tasks (~115 CTAs of demand on 106 workers) for 300 ms, train saturating; train reservation 26 CTAs (25%) in the dynamic row
+    [global queue, serve prio 20] chain hop run p50 428.0 us, stream CTA gap p50 15.4 us
+  global queue, serve prio 20 req p50   62023 [61917,62239] p99    62466 [62224,62523] us | hop-wait p99 61937.7 [61711.4,62018.6] | miss  98.2% [97.9,98.7] | train    0.4 [0.4,0.5] kt/s    1.5 [1.4,1.8] GB/s burst    0.5 [0.4,0.5] kt/s | util 97.0% [97.0,97.0]
+    [dynamic, train min 26 CTAs] chain hop run p50 452.6 us, stream CTA gap p50 20.5 us
+  dynamic, train min 26 CTAs req p50   84910 [80967,86164] p99    92472 [90740,92683] us | hop-wait p99 91778.0 [90130.4,92065.8] | miss  99.3% [99.1,99.3] | train   19.1 [18.0,20.6] kt/s   61.7 [57.4,67.3] GB/s burst   20.8 [19.8,21.9] kt/s | util 96.5% [96.5,96.5]
+  train throughput under the flood: global-prio 0.4 ktask/s, dynamic with reservation 19.1 ktask/s (44.4x); 
+== overload: PASS (7.3s, 0 new failures)
+11 checks, 0 failed, 0 suites failed
+PASS
+== rand
+  50 runs (GLOBAL / STATIC / DYNAMIC, 2 grid sizes, random weights, reservations, caps, BW caps, deadline windows), 119500 tasks: exactly-once, edges ordered by timestamps, node values bitwise vs CPU
+== rand: PASS (1.3s, 0 new failures)
+499 checks, 0 failed, 0 suites failed
+PASS
+  inheritance DISABLED: serve finished within 400 ms: no (stalled, released by the host afterwards)
+== inherit_neg: FAIL (0.4s, 1 new failures)
+62 checks, 3 failed, 2 suites failed
+NEGATIVE TEST PASS: the harness detected the injected violation
+  sustained overload by a weight-100 class against a weight-1 batch class: batch SM-time share 0.217 with the controller's 20% floor
+== floor: PASS (0.5s, 0 new failures)
+15 checks, 1 failed, 1 suites failed
+FAIL
+    [global queue, flat] chain hop run p50 21.5 us, stream CTA gap p50 26.6 us
+  global queue, flat         req p50  113697 [113149,114138] p99   116470 [116103,116846] us | hop-wait p99  7527.4 [7517.2,7545.9] | miss 100.0% [100.0,100.0] | train  139.2 [139.1,139.4] kt/s  875.6 [875.0,877.3] GB/s burst  139.3 [139.1,139.5] kt/s | util 97.1% [97.1,97.2]
+    [global queue, chain prio 20] chain hop run p50 21.5 us, stream CTA gap p50 27.6 us
+  global queue, chain prio 20 req p50     856 [855,858] p99      937 [929,941] us | hop-wait p99    36.9 [35.8,36.9] | miss 100.0% [100.0,100.0] | train  138.4 [138.2,138.6] kt/s  871.0 [869.5,871.8] GB/s burst  138.4 [138.2,138.5] kt/s | util 96.9% [96.9,97.0]
+    [dynamic, arbiter OFF] chain hop run p50 22.5 us, stream CTA gap p50 35.8 us
+  dynamic, arbiter OFF       req p50     904 [903,906] p99      998 [988,1005] us | hop-wait p99    42.0 [42.0,43.0] | miss 100.0% [100.0,100.0] | train  137.6 [137.5,137.9] kt/s  865.8 [864.9,867.5] GB/s burst  137.6 [137.5,137.9] kt/s | util 96.3% [96.2,96.3]
+    [dynamic, arbiter ON (60us)] chain hop run p50 22.5 us, stream CTA gap p50 38.9 us
+  dynamic, arbiter ON (60us) req p50     906 [902,907] p99      999 [998,1002] us | hop-wait p99    42.0 [42.0,43.0] | miss 100.0% [100.0,100.0] | train  137.4 [137.2,137.6] kt/s  864.7 [863.5,865.5] GB/s burst  137.4 [137.2,137.5] kt/s | util 96.1% [96.0,96.1]
+    [dynamic, arbiter ON (25us)] chain hop run p50 18.4 us, stream CTA gap p50 171.0 us
+  dynamic, arbiter ON (25us) req p50     664 [657,685] p99      964 [931,975] us | hop-wait p99    29.7 [27.6,30.7] | miss 100.0% [100.0,100.0] | train  108.1 [105.7,112.1] kt/s  680.3 [665.2,705.5] GB/s burst  107.9 [105.8,112.1] kt/s | util 72.8% [71.4,76.0]
+  sweep of a static cap on concurrent stream (BW-bound) CTAs, arbiter flag off (the curve the adaptive limit searches):
+    [stream BW cap 320] chain hop run p50 22.5 us, stream CTA gap p50 37.9 us
+  stream BW cap 320          req p50     906 [902,907] p99     1002 [998,1009] us | hop-wait p99    42.0 [42.0,43.0] | miss 100.0% [100.0,100.0] | train  137.5 [137.3,137.8] kt/s  864.9 [864.0,867.1] GB/s burst  137.4 [137.3,137.8] kt/s | util 96.1% [96.0,96.2]
+    [stream BW cap 256] chain hop run p50 22.5 us, stream CTA gap p50 37.9 us
+  stream BW cap 256          req p50     904 [902,904] p99     1001 [993,1007] us | hop-wait p99    42.0 [42.0,43.0] | miss 100.0% [100.0,100.0] | train  137.4 [137.2,137.7] kt/s  864.2 [863.5,866.2] GB/s burst  137.4 [137.2,137.6] kt/s | util 96.1% [96.0,96.2]
+    [stream BW cap 192] chain hop run p50 22.5 us, stream CTA gap p50 105.5 us
+  stream BW cap 192          req p50     777 [777,779] p99      837 [835,837] us | hop-wait p99    25.6 [25.6,25.6] | miss 100.0% [100.0,100.0] | train  129.4 [129.3,129.5] kt/s  814.1 [813.4,814.8] GB/s burst  129.4 [129.3,129.5] kt/s | util 89.2% [89.1,89.2]
+    [stream BW cap 128] chain hop run p50 17.4 us, stream CTA gap p50 501.8 us
+  stream BW cap 128          req p50     640 [629,645] p99      730 [729,754] us | hop-wait p99    21.5 [20.5,22.5] | miss 100.0% [100.0,100.0] | train   89.4 [89.3,89.7] kt/s  562.4 [562.1,564.6] GB/s burst   89.4 [89.4,89.8] kt/s | util 59.7% [59.6,59.7]
+    [stream BW cap 96] chain hop run p50 16.4 us, stream CTA gap p50 1071.1 us
+  stream BW cap 96           req p50     595 [581,595] p99      708 [677,715] us | hop-wait p99    20.5 [19.5,20.5] | miss 100.0% [100.0,100.0] | train   68.7 [68.7,69.1] kt/s  432.4 [432.1,434.7] GB/s burst   68.7 [68.7,69.1] kt/s | util 44.9% [44.8,44.9]
+    [stream BW cap 64] chain hop run p50 15.4 us, stream CTA gap p50 1531.9 us
+  stream BW cap 64           req p50     558 [557,560] p99      645 [642,647] us | hop-wait p99    19.5 [19.5,19.5] | miss 100.0% [100.0,100.0] | train   47.9 [47.8,48.0] kt/s  301.1 [300.5,301.7] GB/s burst   47.8 [47.7,48.0] kt/s | util 30.1% [30.0,30.1]
+    [stream BW cap 32] chain hop run p50 14.3 us, stream CTA gap p50 3013.6 us
+  stream BW cap 32           req p50     520 [513,523] p99      591 [581,595] us | hop-wait p99    18.4 [17.4,18.4] | miss 100.0% [100.0,100.0] | train   25.4 [25.4,25.6] kt/s  160.0 [159.9,160.9] GB/s burst   25.4 [25.4,25.6] kt/s | util 15.2% [15.2,15.3]
+  dynamic, arbiter ON (60us) vs OFF: chain request p99 998 -> 999 us (1.00x), stream throughput retained 99.9% (865.8 -> 864.7 GB/s)
+  dynamic, arbiter ON (25us) vs OFF: chain request p99 998 -> 964 us (1.04x), stream throughput retained 78.6% (865.8 -> 680.3 GB/s)
+== arbiter: PASS (18.6s, 0 new failures)
+12 checks, 0 failed, 0 suites failed
+PASS
+exit: 0

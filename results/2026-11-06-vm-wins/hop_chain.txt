@@ -1,0 +1,7 @@
+# hop_bench: NVIDIA A100-SXM4-40GB, 108 SMs, executor KVM_CHAIN, n=256 floats per run, best of 5
+#               R     L |         vm     per_op  graph_seq  graph_par    batched | us per dependent step (whole set / L)
+                1  1000 |       9.11       2.63       1.23       1.23       1.23 | ratio vs vm: per_op 0.29x graph_seq 0.14x graph_par 0.14x batched 0.14x
+                4   250 |       9.93      10.48       4.94       2.30       1.31 | ratio vs vm: per_op 1.06x graph_seq 0.50x graph_par 0.23x batched 0.13x
+               16   250 |      13.24      41.78      18.77       3.16       1.37 | ratio vs vm: per_op 3.16x graph_seq 1.42x graph_par 0.24x batched 0.10x
+              108   100 |      47.49     285.36     131.43      20.23       1.56 | ratio vs vm: per_op 6.01x graph_seq 2.77x graph_par 0.43x batched 0.03x
+GATE PASS: every final buffer of every variant was exactly L

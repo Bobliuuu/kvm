@@ -1,0 +1,37 @@
+# suite=custom tag=combined-bisect 2026-11-07T08:21:09Z
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+NVIDIA A100-SXM4-80GB, 610.57.04, 1410 MHz
+host RAM: 1024 GB, cores: 16
+attn 0
+main 0
+comb 0
+bf16 0
+rep 1 main OK: 318139/318139 tasks, 1070.846 ms
+rep 1 attn OK: 318139/318139 tasks, 1089.139 ms
+rep 1 bf16 OK: 318139/318139 tasks, 1123.391 ms
+rep 1 comb OK: 318139/318139 tasks, 1141.556 ms
+rep 2 main OK: 318139/318139 tasks, 1071.429 ms
+rep 2 attn OK: 318139/318139 tasks, 1089.688 ms
+rep 2 bf16 OK: 318139/318139 tasks, 1126.856 ms
+rep 2 comb OK: 318139/318139 tasks, 1136.238 ms
+rep 3 main OK: 318139/318139 tasks, 1082.287 ms
+rep 3 attn OK: 318139/318139 tasks, 1096.461 ms
+rep 3 bf16 OK: 318139/318139 tasks, 1111.867 ms
+rep 3 comb OK: 318139/318139 tasks, 1138.747 ms
+rep 4 main OK: 318139/318139 tasks, 1077.627 ms
+rep 4 attn OK: 318139/318139 tasks, 1097.481 ms
+rep 4 bf16 OK: 318139/318139 tasks, 1119.280 ms
+rep 4 comb OK: 318139/318139 tasks, 1135.949 ms
+rep 5 main OK: 318139/318139 tasks, 1069.670 ms
+rep 5 attn OK: 318139/318139 tasks, 1091.355 ms
+rep 5 bf16 OK: 318139/318139 tasks, 1120.869 ms
+rep 5 comb OK: 318139/318139 tasks, 1139.065 ms
+rep 6 main OK: 318139/318139 tasks, 1085.528 ms
+rep 6 attn OK: 318139/318139 tasks, 1088.527 ms
+rep 6 bf16 OK: 318139/318139 tasks, 1119.257 ms
+rep 6 comb OK: 318139/318139 tasks, 1137.377 ms
+rep 7 main OK: 318139/318139 tasks, 1073.646 ms
+rep 7 attn OK: 318139/318139 tasks, 1097.621 ms
+rep 7 bf16 OK: 318139/318139 tasks, 1117.502 ms
+rep 7 comb OK: 318139/318139 tasks, 1132.670 ms

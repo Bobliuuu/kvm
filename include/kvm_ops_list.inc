@@ -4,6 +4,7 @@
 #if __has_include("kvm_ops_comm.def") && !defined(KVM_LEAN)  // KVM_DIST_HOOK: ids 64..95 (-DKVM_LEAN skips the comm and extra packs for fast builds)
 #include "kvm_ops_comm.def"
 #endif
+#include "kvm_ops_fmlp.def"
 #if __has_include("kvm_ops_gpt.def")
 #include "kvm_ops_gpt.def"
 #endif

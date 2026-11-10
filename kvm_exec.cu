@@ -24,6 +24,8 @@
 #include <thread>
 #include <vector>
 #include "kvm_exec.cuh"
+#include "kvm_static.h"
+#include "kvm_fuse.h"
 
 // ---------------- logging (levels 0 error .. 3 debug; everything is shown by default) ----------------
 static int g_kvm_log = 3;
@@ -68,6 +70,32 @@ static int kvm_op_by_name(const std::string& n) {
   for (const KvmOpInfo& o : kKvmOps) if (n == o.name) return o.id;
   return -1;
 }
+
+// MFLOPs of one GEMM tile (tile extent clipped to the GEMM's edge); 0 for every other op. The work term of the static schedule compiler's cost.
+static double kvm_tile_mflop(int op, const int32_t* a) {
+  const KvmOpInfo* o = kvm_op(op);
+  if (!o || strcmp(o->name, "matmul_tile")) return 0.0;
+  const double m0 = (unsigned)a[6], n0 = (unsigned)a[7], M = (unsigned)a[8], N = (unsigned)a[9], K = (unsigned)a[10];
+  return std::min(64.0, M - m0) * std::min(64.0, N - n0) * K * 2.0 / 1e6;
+}
+
+// Scheduler weights (microseconds, relative only) of the static schedule compiler: per-op means of the Nov 9 executor traces (gpt_tiny) with the
+// dynamic path's fixed overhead taken out, plus the FLOPs of a GEMM tile at an SM's TF32 rate.
+static double kvm_static_cost(int op, const int32_t* a) {
+  static const std::map<std::string, double> base = {{"noop", 0.1}, {"matmul_tile", 4.0}, {"adamw", 5.0}, {"gradnorm_partial", 2.0}, {"gradnorm_finish", 2.0}, {"colsum", 2.0},
+    {"layernorm_fwd", 7.0}, {"layernorm_bwd_dx", 8.0}, {"norm_bwd_params", 5.0}, {"attn_fwd", 8.0}, {"attn_bwd_dq", 9.0}, {"attn_bwd_dkv", 10.0}, {"attn_bwd_delta", 6.0},
+    {"rope_fwd", 4.0}, {"rope_bwd", 4.0}, {"embedding_fwd", 3.0}, {"embedding_bwd", 3.0}, {"softmax_ce_fwd", 3.0}, {"softmax_ce_bwd", 3.0}, {"softmax_ce_reduce", 2.0}, {"gelu_bwd", 3.0}, {"gelu_fwd", 3.0}, {"select_window", 2.0}, {"counter_inc", 1.0}, {"fmlp_slice", 60.0}, {"fmlp_sgd", 8.0}};
+  const KvmOpInfo* o = kvm_op(op);
+  auto it = o ? base.find(o->name) : base.end();
+  double us = it != base.end() ? it->second : 4.0;
+  return us + kvm_tile_mflop(op, a) / 1.4;
+}
+
+// A bundle whose mean estimated task cost (kvm_static_cost) is at most this runs on the static path by default; above it, on the dynamic path (main()). The crossover measured on
+// frontend GPTs outside the panel (R-21, Nov 10, A100, fusion off, static against dynamic on one binary): mean 4.7-5.6 us static x1.26-1.28, 5.7 us even, 6.6-8.3 us static x0.62-0.71.
+#ifndef KVM_STATIC_MAX_MEAN_US
+#define KVM_STATIC_MAX_MEAN_US 6.0
+#endif
 
 // ---------------- bundles ----------------
 struct KvmArg {
@@ -580,6 +608,154 @@ class KvmExec {
     return KvmSubmit::OK;
   }
 
+  // ---- fused MLP steps (kvm_fuse.h): the rewritten bundle's runs, their device state
+  // Runs the fusion pass over a closed bundle: what it fuses, and why it left each other run alone, goes to the log. The caller swaps the rewritten bundle in when something fused.
+  // The shared memory a fused block may use on this device: the static kernel's opt-in maximum less its own static shared memory, in floats (16-float multiples).
+  int fused_smem_floats() const {
+    int dev; CK(cudaGetDevice(&dev));
+    cudaDeviceProp p; CK(cudaGetDeviceProperties(&p, dev));
+    cudaFuncAttributes fa; CK(cudaFuncGetAttributes(&fa, kvm_static_kernel));
+    const long long bytes = (long long)p.sharedMemPerBlockOptin - (long long)fa.sharedSizeBytes;
+    return bytes > 0 ? (int)(bytes / 4) & ~15 : 0;
+  }
+  KvmFuseResult fuse_bundle(const KvmBundle& b, int workers, const std::vector<int>& keep) const {
+    KvmFuseOps ops;
+    ops.noop = kvm_op_by_name("noop"); ops.select_window = kvm_op_by_name("select_window"); ops.embedding_fwd = kvm_op_by_name("embedding_fwd"); ops.matmul_tile = kvm_op_by_name("matmul_tile");
+    ops.softmax_ce_fwd = kvm_op_by_name("softmax_ce_fwd"); ops.softmax_ce_reduce = kvm_op_by_name("softmax_ce_reduce"); ops.softmax_ce_bwd = kvm_op_by_name("softmax_ce_bwd"); ops.softmax_ce_fused = kvm_op_by_name("softmax_ce_fused");
+    ops.gelu_bwd = kvm_op_by_name("gelu_bwd"); ops.colsum = kvm_op_by_name("colsum"); ops.embedding_bwd = kvm_op_by_name("embedding_bwd"); ops.sgd = kvm_op_by_name("sgd"); ops.sgd_range = kvm_op_by_name("sgd_range");
+    ops.fmlp_slice = kvm_op_by_name("fmlp_slice"); ops.fmlp_sgd = kvm_op_by_name("fmlp_sgd");
+    std::vector<KvmFuseBuf> infos(bufs_.size());
+    for (size_t i = 0; i < bufs_.size(); ++i) infos[i] = KvmFuseBuf{bufs_[i].rows, bufs_[i].cols, bufs_[i].ld, bufs_[i].dtype};
+    const KvmSOpLookup op_of = [](int id) { const KvmOpInfo* i = kvm_op(id); KvmSOpInfo v; if (i) { v.arity = i->arity; v.types = i->types; } return v; };
+    KvmFuseOptions opts; opts.workers = workers; opts.keep = keep; opts.smem_floats = fused_smem_floats();
+    KvmFuseResult r = kvm_fuse_mlp(b.tasks, b.succ, b.args, infos, ops, op_of, opts);
+    for (const std::string& line : r.report) KLOG(2, "fuse: %s", line.c_str());
+    if (r.fused_runs) KLOG(2, "fuse: shared-memory budget %d floats (%d bytes) a fused block", opts.smem_floats, opts.smem_floats * 4);
+    KLOG(2, "fuse: %d run(s) fused, %d unchanged; %d tasks replaced by %d", r.fused_runs, r.unchanged_runs, r.replaced_tasks, r.new_tasks);
+    return r;
+  }
+
+  struct FusedState { KvmFusedDesc* desc = nullptr; std::vector<void*> allocs; int smem_bytes = 0; };
+  // One descriptor per fused run, with its partial-gradient scratch (zeroed), and the shared memory the largest run's slice needs. Buffers are already device-allocated (after prepare()).
+  FusedState make_fused_state(const std::vector<KvmFuseRun>& runs) {
+    FusedState st;
+    std::vector<KvmFusedDesc> descs(runs.size());
+    const auto scratch = [&](size_t floats) { float* p; CK(cudaMalloc(&p, floats * sizeof(float))); CK(cudaMemset(p, 0, floats * sizeof(float))); st.allocs.push_back(p); return p; };
+    const auto param = [&](int idx) { return static_cast<float*>(bufs_[idx].p); };
+    for (size_t i = 0; i < runs.size(); ++i) {
+      const KvmFuseRun& r = runs[i]; KvmFusedDesc& d = descs[i];
+      d.R = r.slice_rows; d.V = r.V; d.E = r.E; d.L = r.L; d.nsl = r.nsl; d.T = r.T; d.lr = r.lr; d.groups = r.groups;
+      for (int l = 0; l < r.L; ++l) d.H[l] = r.H[l];
+      st.smem_bytes = std::max(st.smem_bytes, kvm_fmlp_layout(d, r.smem_floats) * (int)sizeof(float));
+      d.we = param(r.wte); d.wh = param(r.head);
+      d.ge = scratch((size_t)r.nsl * r.V * r.E);
+      d.loss_part = scratch(r.nsl);
+      for (int l = 0; l < r.L; ++l) {
+        const int K = l ? r.H[l - 1] : r.E;
+        d.w[l] = param(r.w[l]); d.b[l] = param(r.b[l]);
+        d.gwld[l] = kvm_fmlp_pad16(r.H[l]);
+        d.gw[l] = scratch((size_t)r.nsl * kvm_fmlp_pad16(K) * d.gwld[l]);
+        d.gb[l] = scratch((size_t)r.nsl * r.H[l]);
+      }
+      d.ghld = kvm_fmlp_pad16(r.V);
+      d.gh = scratch((size_t)r.nsl * kvm_fmlp_pad16(r.H[r.L - 1]) * d.ghld);
+    }
+    CK(cudaMalloc(&st.desc, descs.size() * sizeof(KvmFusedDesc)));
+    CK(cudaMemcpy(st.desc, descs.data(), descs.size() * sizeof(KvmFusedDesc), cudaMemcpyHostToDevice));
+    st.allocs.push_back(st.desc);
+    return st;
+  }
+
+  // STATIC SCHEDULE: compile `b` (kvm_static.h) into one program per worker and run them all in one launch (kvm_static.cuh), instead of start()/submit():
+  // no admission, no ready queue, no per-edge atomics. Fills the same KvmResult (no per-task trace; final versions from the plan).
+  struct StaticOptions { int workers = 0; double comm_us = 1.5; const char* trace_csv = nullptr; bool spin_idle = false, partition = true, fuse_phases = false; const std::vector<KvmFuseRun>* fused = nullptr; };
+  const KvmResult& run_static(const KvmBundle& b, const StaticOptions& o) {
+    if (started_ || finished_) throw std::logic_error("run_static replaces start()");
+    std::string why = b.validate(nbufs(), cfg_.num_vars, 0);
+    if (!why.empty()) { res_.err_code = -1; last_error_ = why; throw std::runtime_error("bundle rejected: " + why); }
+    prepare();   // buffers and the host mirrors are in place before anything launches
+    KvmSConfig sc; sc.workers = o.workers ? std::min(o.workers, grid_) : grid_; sc.comm_us = o.comm_us; sc.partition = o.partition;
+    const KvmSOpLookup op_of = [](int id) { const KvmOpInfo* i = kvm_op(id); KvmSOpInfo v; if (i) { v.arity = i->arity; v.types = i->types; } return v; };
+    const auto t0 = std::chrono::steady_clock::now();
+    const KvmSCostFn cost_fn = kvm_static_cost;
+    const KvmSPlan plan = kvm_static_plan(b.tasks, b.succ, b.args, sc, op_of, cost_fn);
+    const KvmSLayout layout = kvm_static_layout(plan);
+    int nrec = 0, used = 0;
+    std::vector<int> offs(sc.workers + 1, 0);
+    for (int w = 0; w < sc.workers; ++w) { offs[w] = nrec; nrec += layout.nrecs[w]; used += layout.nrecs[w] > 0; }
+    offs[sc.workers] = nrec;
+    std::vector<KvmSRec> host(nrec);
+    for (int w = 0; w < sc.workers; ++w) if (layout.nrecs[w]) kvm_static_emit(plan, layout, w, b.tasks, b.args, bufs_.data(), nbufs(), op_of, host.data() + offs[w]);
+    KLOG(2, "static schedule: %d tasks -> %d records on %d/%d workers, %d of %d edges cross workers, %d records publish; runs partitioned: %s; plan %.1f us, work %.1f us (compiled in %.3f s)", plan.nt, nrec, used, sc.workers, plan.cross_edges, plan.edges, plan.publishing, plan.partitioned ? "yes" : "no", plan.makespan_us, plan.total_work_us,
+         std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
+    FusedState fused;
+    if (o.fused && !o.fused->empty()) fused = make_fused_state(*o.fused);   // the buffers' device pointers exist since prepare()
+    const size_t static_smem = std::max(dyn_smem_, (size_t)fused.smem_bytes);
+    long long* dphases = nullptr;
+    if (o.fuse_phases && fused.desc) { const size_t bytes = (size_t)sc.workers * KVM_FMLP_NPHASES * sizeof(long long); CK(cudaMalloc(&dphases, bytes)); CK(cudaMemset(dphases, 0, bytes)); }
+    KvmStaticDev S{};
+    S.fuse_phases = dphases;
+    KvmSRec* drecs; int* doffs; int* dprog; KvmCounters* dcnt; unsigned long long* dtrace = nullptr; int* dfinished;
+    CK(cudaMalloc(&drecs, (size_t)nrec * sizeof(KvmSRec))); CK(cudaMemcpy(drecs, host.data(), (size_t)nrec * sizeof(KvmSRec), cudaMemcpyHostToDevice));
+    CK(cudaMalloc(&doffs, offs.size() * sizeof(int))); CK(cudaMemcpy(doffs, offs.data(), offs.size() * sizeof(int), cudaMemcpyHostToDevice));
+    CK(cudaMalloc(&dprog, (size_t)sc.workers * KVM_S_LINE_WORDS * sizeof(int))); CK(cudaMemset(dprog, 0, (size_t)sc.workers * KVM_S_LINE_WORDS * sizeof(int)));
+    CK(cudaMalloc(&dcnt, sizeof(KvmCounters))); CK(cudaMemset(dcnt, 0, sizeof(KvmCounters)));
+    if (o.trace_csv) { CK(cudaMalloc(&dtrace, (size_t)nrec * KVM_S_TRACE_WORDS * 8)); CK(cudaMemset(dtrace, 0, (size_t)nrec * KVM_S_TRACE_WORDS * 8)); }
+    CK(cudaMalloc(&dfinished, sizeof(int))); CK(cudaMemset(dfinished, 0, sizeof(int)));
+    S.recs = drecs; S.offs = doffs; S.progress = dprog; S.nworkers = sc.workers; S.nactive = used; S.spin_idle = o.spin_idle; S.finished = dfinished; S.timeout_ns = cfg_.timeout_us * 1000ull; S.cnt = dcnt; S.herr = S_.herr; S.fused = fused.desc; S.trace = dtrace; S.trace_on = dtrace != nullptr;
+    CK(cudaStreamSynchronize(0));
+    if (static_smem > 0) CK(cudaFuncSetAttribute(kvm_static_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)static_smem));
+    int occ = 0; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, kvm_static_kernel, KVM_THREADS, static_smem));
+    if (occ < 1) throw std::runtime_error("static kernel does not fit on an SM");
+    KLOG(2, "static kernel: %d resident blocks/SM, %zu bytes of dynamic shared memory, launching %d workers", occ, static_smem, sc.workers);
+    // Warm-up launch with nworkers = 0: every block returns at once, but the union kernel's code is uploaded and started outside the timed window (like a graph captured
+    // before timing): the very first launch of this kernel costs ~1.5 ms before any record runs.
+    { KvmStaticDev warm = S; warm.nworkers = 0; kvm_static_kernel<<<1, KVM_THREADS, static_smem, stream_>>>(warm); CK(cudaGetLastError()); CK(cudaStreamSynchronize(stream_)); }
+    clock_warmup();
+    CK(cudaEventRecord(e0_, stream_));
+    kvm_static_kernel<<<sc.workers, KVM_THREADS, static_smem, stream_>>>(S);
+    CK(cudaGetLastError());
+    CK(cudaEventRecord(e1_, stream_));
+    started_ = true;
+    CK(cudaStreamSynchronize(stream_));
+    CK(cudaGetLastError());
+    KvmCounters c; CK(cudaMemcpy(&c, dcnt, sizeof c, cudaMemcpyDeviceToHost));
+    res_.err_code = c.err_code; res_.err_slot = c.err_slot; res_.err_a = c.err_a; res_.err_b = c.err_b;
+    res_.admitted = plan.nt; res_.done = c.err_code ? 0 : plan.nt; res_.grid = sc.workers;
+    CK(cudaEventElapsedTime(&res_.kernel_ms, e0_, e1_));
+    res_.version.assign(cfg_.num_vars, 0);
+    CK(cudaMemcpy(res_.version.data(), S_.version, cfg_.num_vars * 4, cudaMemcpyDeviceToHost));
+    for (const KvmTaskDesc& d : b.tasks) if (d.pub_var >= 0) res_.version[d.pub_var] = std::max(res_.version[d.pub_var], d.pub_ver);   // versions are ordering only here: the plan's final values
+    finished_ = true;
+    if (o.trace_csv) {
+      std::vector<unsigned long long> tr((size_t)nrec * KVM_S_TRACE_WORDS);
+      CK(cudaMemcpy(tr.data(), dtrace, tr.size() * 8, cudaMemcpyDeviceToHost));
+      FILE* f = fopen(o.trace_csv, "w");
+      if (!f) throw std::runtime_error(std::string("cannot open ") + o.trace_csv);
+      fprintf(f, "worker,pc,task,op,start_ns,ready_ns,done_ns,published_ns,nwait,flags\n");
+      unsigned long long t00 = ~0ull; for (size_t i = 0; i < tr.size(); i += KVM_S_TRACE_WORDS) if (tr[i]) t00 = std::min(t00, tr[i]);
+      for (int w = 0; w < sc.workers; ++w) for (int k = offs[w]; k < offs[w + 1]; ++k) {
+        const KvmSRec& r = host[k]; const unsigned long long* x = tr.data() + (size_t)k * KVM_S_TRACE_WORDS;
+        fprintf(f, "%d,%d,%d,%s,%llu,%llu,%llu,%llu,%d,%d\n", w, k - offs[w], r.task, (r.flags & KVM_S_WAITONLY) ? "(wait)" : kvm_op(r.op)->name, x[0] - t00, x[1] - t00, x[2] - t00, x[3] - t00, r.nwait, r.flags);
+      }
+      fclose(f); KLOG(2, "static trace: %d records -> %s", nrec, o.trace_csv);
+    }
+    CK(cudaFree(drecs)); CK(cudaFree(doffs)); CK(cudaFree(dprog)); CK(cudaFree(dcnt)); CK(cudaFree(dfinished)); if (dtrace) CK(cudaFree(dtrace));
+    for (void* p : fused.allocs) CK(cudaFree(p));
+    if (dphases) {   // per-phase cycles of the slice bodies, summed over the workers that ran them, per slice task
+      static const char* names[KVM_FMLP_NPHASES] = {"load weights+ids", "embedding gather", "forward GEMMs (+gelu)", "head GEMM", "softmax CE", "head backward GEMMs", "dZ gelu' (+sync)", "bias colsum", "gelu_f again (l>0)", "weight gradient GEMM", "activation gradient GEMM"};
+      std::vector<long long> tot((size_t)sc.workers * KVM_FMLP_NPHASES);
+      CK(cudaMemcpy(tot.data(), dphases, tot.size() * sizeof(long long), cudaMemcpyDeviceToHost)); CK(cudaFree(dphases));
+      long long nslice = 0; for (const KvmTaskDesc& d : b.tasks) nslice += d.op_id == kvm_op_by_name("fmlp_slice");
+      long long total = 0;
+      for (int i = 0; i < KVM_FMLP_NPHASES; ++i) { long long sum = 0; for (int w = 0; w < sc.workers; ++w) sum += tot[(size_t)w * KVM_FMLP_NPHASES + i]; total += sum; if (sum && names[i]) KLOG(2, "fuse phase %-34s %8.0f cycles per slice", names[i], (double)sum / nslice); }
+      KLOG(2, "fuse phases: %.0f cycles per slice in total, over %lld slices", (double)total / nslice, nslice);
+    }
+    if (res_.ok()) KLOG(2, "static run done: %d tasks in %.3f ms on %d workers", plan.nt, res_.kernel_ms, sc.workers);
+    else KLOG(0, "DEVICE ERROR %s (%s): task %d, a=%d, b=%d", kvm_err_name(res_.err_code), kvm_err_text(res_.err_code), res_.err_slot, res_.err_a, res_.err_b);
+    return res_;
+  }
+
   // No more bundles: the kernel exits once everything admitted has finished.
   void close() {
     std::lock_guard<std::mutex> lk(mu_);
@@ -1000,7 +1176,9 @@ static void usage() {
     "  --golden [--golden-tol R]  compare with <bundle_dir>/golden.json (single bundle): final buffers, versions, observed versions\n"
     "  --trace-csv FILE   per-task timeline  --dump-buffers   print buffers   --quiet   errors only   --check-ops   print registry\n"
     "  --warm-ms N   keep the GPU busy N ms right before the timed launch (the SM clock runs low under sparse work; short timed runs inherit it)\n"
-    "  --dump-bin DIR i,j,..  write the listed buffers (by metadata index, widened to little-endian f32 / raw i32) to DIR/<index>.bin after the run\n");
+    "  --dump-bin DIR i,j,..  write the listed buffers (by metadata index, widened to little-endian f32 / raw i32) to DIR/<index>.bin after the run\n"
+    "  --static           (default for one bundle) run the bundle as per-worker programs compiled at load: no ready queue, no admission  --workers N  --comm-us X (scheduler's cross-worker cost)  --no-partition (independent runs share all workers)  --no-fuse (no fused MLP steps; by default a run whose steps match is fused on the static path, and --dump-buffers turns them off)\n"
+    "  --dynamic          use the admission ring and ready queue even for one bundle\n");
 }
 
 int main(int argc, char** argv) {
@@ -1008,6 +1186,7 @@ int main(int argc, char** argv) {
   std::string dump_dir; std::vector<int> dump_idx;
   bool sized = false;   // the caller gave a sizing flag: keep its live_cap/ring/slots
   bool no_fifo = false;  // --no-fifo: keep the 32-bucket ready rings even for a bundle set that qualifies for the FIFO ring
+  bool opt_static = false, opt_dynamic = false, static_spin = false, static_partition = true, opt_fuse = true, fuse_phases = false; int static_workers = 0; double static_comm = 1.5;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto val = [&](long long lo = 0, long long hi = 1ll << 30) -> long long {   // strict integer in [lo, hi]
@@ -1030,6 +1209,15 @@ int main(int argc, char** argv) {
     else if (a == "--timeout-s") cfg.timeout_us = (unsigned long long)val(1, 86400) * 1000000ull;
     else if (int r = kvm_cli_sched_option(cfg, i, argc, argv)) { if (r < 0) { usage(); return 2; } }
     else if (a == "--trace-csv") { if (i + 1 >= argc) { usage(); return 2; } csv = argv[++i]; }
+    else if (a == "--static") opt_static = true;
+    else if (a == "--dynamic") opt_dynamic = true;
+    else if (a == "--workers") static_workers = (int)val(1, 1 << 20);
+    else if (a == "--static-spin") static_spin = true;
+    else if (a == "--no-partition") static_partition = false;
+    else if (a == "--fuse") opt_fuse = true;
+    else if (a == "--no-fuse") opt_fuse = false;
+    else if (a == "--fuse-phases") fuse_phases = true;
+    else if (a == "--comm-us") { if (i + 1 >= argc) { usage(); return 2; } static_comm = atof(argv[++i]); }
     else if (a == "--dump-buffers") dump = true;
     else if (a == "--dump-bin") {
       if (i + 2 >= argc) { usage(); return 2; }
@@ -1062,6 +1250,7 @@ int main(int argc, char** argv) {
     std::vector<KvmBundle> bundles;
     std::vector<std::pair<int, int>> shapes;
     std::vector<std::string> buf_names, var_names; std::map<int, std::string> var_by_id;
+    std::map<int, int> version_base;   // per variable: its base version (metadata), the static path's feasibility check
     Json meta0;
     for (auto& dir : dirs) {
       Json m = JsonParser(read_file(dir + "/metadata.json")).parse();
@@ -1086,46 +1275,97 @@ int main(int argc, char** argv) {
           shapes.push_back({rows, cols});
         }
       }
-      if (auto* vs = m.get("variables")) for (auto& jv : vs->a) ex.set_version((int)jv.num("id", -1), (int)jv.num("base_version", 0));
+      if (auto* vs = m.get("variables")) for (auto& jv : vs->a) { int id = (int)jv.num("id", -1), base = (int)jv.num("base_version", 0); ex.set_version(id, base); version_base[id] = base; }
       KLOG(2, "%s: %d tasks, %d edges, %d arg words", dir.c_str(), nt, ne, nw);
       bundles.push_back(std::move(b));
     }
-    bool one_record = false;
-    {
-      bool fifo = !no_fifo && !cfg.sched.on, no_waits = true;
-      for (const KvmBundle& b : bundles) for (const KvmTaskDesc& t : b.tasks) { if (t.priority != 0 || t.deadline_us != -1) fifo = false; if (t.wait_var >= 0) no_waits = false; }
-      one_record = bundles.size() == 1 && (int)bundles[0].tasks.size() <= cfg.live_cap && bundles[0].tasks.size() <= (size_t)cfg.max_tasks && bundles[0].words() <= (size_t)cfg.ring_words / 2;
-      const bool trace_on = csv != nullptr || golden || getenv("KVM_TRACE") != nullptr;
-      ex.set_run_facts(fifo, one_record, no_waits, trace_on);
-      KLOG(2, "ready queue: %s; slots %s; version waits %s; task trace %s", fifo ? "one FIFO ring, ticket waits" : "32 priority buckets", one_record ? "not recycled (one record)" : "recycled", no_waits ? "none" : "present", (trace_on || cfg.sched.on) ? "on" : "off");
-    }
-    if (one_record) {                   // the whole input is one record: written and validated before the kernel starts, so no host work sits inside the kernel's timed window
-      ex.prestart();
-      const KvmSubmit st = ex.submit(bundles[0]);
-      if (st != KvmSubmit::OK) { KLOG(0, "bundle 0: %s (%s)", kvm_submit_name(st), ex.last_error().c_str()); return 1; }
-      ex.close();
-      ex.prestage();
-      ex.start();
-    } else {
-      ex.start();
-      for (size_t i = 0; i < bundles.size(); ++i) {
-        const KvmBundle& bi = bundles[i];
-        KvmSubmit st = (bi.tasks.size() > (size_t)cfg.live_cap || bi.words() > (size_t)cfg.ring_words / 2) ? ex.submit_stream(bi) : ex.submit(bi);
-        if (st != KvmSubmit::OK) { KLOG(0, "bundle %zu: %s (%s)", i, kvm_submit_name(st), ex.last_error().c_str()); ex.close(); ex.finish(); return 1; }
+    // The static schedule is the default for one closed bundle (a compiled DAG, no streaming, no scheduling classes): the ring path remains for several bundles, the per-class scheduler, or an explicit --dynamic.
+    if (opt_static && opt_dynamic) throw std::runtime_error("--static and --dynamic exclude each other");
+    // A bundle can run on the static path only if everything it waits for is ordered inside it: a wait on a version no task of the bundle publishes
+    // (and its base version does not cover) needs the dynamic path's parking and an external publisher.
+    auto static_feasible = [&](const KvmBundle& b) {
+      for (const KvmTaskDesc& d : b.tasks) {   // every buffer a task names must fit its record (the planner would refuse otherwise)
+        const KvmOpInfo* o = kvm_op(d.op_id);
+        if (!o || d.args_words > KVM_S_ARGS) return false;
+        std::set<int> seen;
+        for (int j = 0; j < d.args_words; ++j) { const int ty = (int)((o->types >> (3 * j)) & 7u); if ((ty == KVM_A_BUF || ty == KVM_A_BUF_OPT) && b.args[d.args_off + j] != -1) seen.insert(b.args[d.args_off + j]); }
+        if (seen.size() > KVM_S_BUFS) return false;
       }
+      std::map<int, int> newest;
+      for (const KvmTaskDesc& d : b.tasks) if (d.pub_var >= 0) newest[d.pub_var] = std::max(newest[d.pub_var], d.pub_ver);
+      for (const KvmTaskDesc& d : b.tasks) if (d.wait_var >= 0) {
+        auto it = newest.find(d.wait_var);
+        if (it == newest.end() ? d.wait_ver > version_base[d.wait_var] : d.wait_ver > it->second) return false;
+      }
+      return true;
+    };
+    // The static path pays where tasks are short. A precompiled order saves the dynamic path's per-task scheduling (claim, admission, successor counts: about 1-2 us of an SM per task) and
+    // gives up its ready queue's balancing, which a plan from the cost model cannot replace when tasks are long and the model is far off (R-20: gpt-162m's ~80 us tiles ran x0.70 static).
+    // Decided from the bundle alone: the planner's own mean estimated cost per task against KVM_STATIC_MAX_MEAN_US, the crossover measured on bundles outside the panel (R-21).
+    auto static_mean_us = [&](const KvmBundle& b) {
+      double work = 0.0;
+      for (const KvmTaskDesc& d : b.tasks) work += kvm_static_cost(d.op_id, b.args.data() + d.args_off);
+      return b.tasks.empty() ? 0.0 : work / (double)b.tasks.size();
+    };
+    if (!opt_dynamic && !opt_static && bundles.size() == 1 && !cfg.sched.on && static_feasible(bundles[0])) {
+      const double mean = static_mean_us(bundles[0]);
+      opt_static = mean <= KVM_STATIC_MAX_MEAN_US;
+      KLOG(2, "path: %s (mean estimated task %.2f us %s %.1f)", opt_static ? "static" : "dynamic", mean, opt_static ? "<=" : ">", (double)KVM_STATIC_MAX_MEAN_US);
     }
-    const KvmResult& r = ex.finish();
-    if (r.ok()) kvm_print_class_report(r);
+    if (opt_static && !static_feasible(bundles[0])) throw std::runtime_error("--static: a task waits for a version no task of this bundle publishes");
+    const KvmResult* resp = nullptr;
+    KvmFuseResult fused;            // outside the branch: the golden check below skips what the fused runs no longer write
+    if (opt_static) {
+      if (bundles.size() != 1) throw std::runtime_error("--static takes exactly one bundle directory");
+      KvmExec::StaticOptions so; so.workers = static_workers ? static_workers : cfg.blocks; so.comm_us = static_comm; so.trace_csv = csv; csv = nullptr; so.spin_idle = static_spin; so.partition = static_partition; so.fuse_phases = fuse_phases; so.fuse_phases = fuse_phases;
+      if (opt_fuse) {
+        // the pass sizes slices and owners for the workers the schedule will have (run_static's own count: --workers, at most the grid; the grid when unset). R-23: given 0, it took the
+        // widest slice that fits, so a single run chose 32-row slices and the same run inside a merged bundle 16, and their rounding differed.
+        const int workers = so.workers ? std::min(so.workers, ex.grid()) : ex.grid();
+        fused = ex.fuse_bundle(bundles[0], workers, dump_idx);   // --dump-buffers keeps the fused path: a gate must read the path that is timed; the buffers no fused run writes dump as they started
+        if (fused.fused_runs) { bundles[0].tasks = fused.tasks; bundles[0].succ = fused.succ; bundles[0].args = fused.args; so.fused = &fused.runs; }
+      }
+      resp = &ex.run_static(bundles[0], so);
+    } else {
+      bool one_record = false;
+      {
+        bool fifo = !no_fifo && !cfg.sched.on, no_waits = true;
+        for (const KvmBundle& b : bundles) for (const KvmTaskDesc& t : b.tasks) { if (t.priority != 0 || t.deadline_us != -1) fifo = false; if (t.wait_var >= 0) no_waits = false; }
+        one_record = bundles.size() == 1 && (int)bundles[0].tasks.size() <= cfg.live_cap && bundles[0].tasks.size() <= (size_t)cfg.max_tasks && bundles[0].words() <= (size_t)cfg.ring_words / 2;
+        const bool trace_on = csv != nullptr || golden || getenv("KVM_TRACE") != nullptr;
+        ex.set_run_facts(fifo, one_record, no_waits, trace_on);
+        KLOG(2, "ready queue: %s; slots %s; version waits %s; task trace %s", fifo ? "one FIFO ring, ticket waits" : "32 priority buckets", one_record ? "not recycled (one record)" : "recycled", no_waits ? "none" : "present", (trace_on || cfg.sched.on) ? "on" : "off");
+      }
+      if (one_record) {                   // the whole input is one record: written and validated before the kernel starts, so no host work sits inside the kernel's timed window
+        ex.prestart();
+        const KvmSubmit st = ex.submit(bundles[0]);
+        if (st != KvmSubmit::OK) { KLOG(0, "bundle 0: %s (%s)", kvm_submit_name(st), ex.last_error().c_str()); return 1; }
+        ex.close();
+        ex.prestage();
+        ex.start();
+      } else {
+        ex.start();
+        for (size_t i = 0; i < bundles.size(); ++i) {
+          const KvmBundle& bi = bundles[i];
+          KvmSubmit st = (bi.tasks.size() > (size_t)cfg.live_cap || bi.words() > (size_t)cfg.ring_words / 2) ? ex.submit_stream(bi) : ex.submit(bi);
+          if (st != KvmSubmit::OK) { KLOG(0, "bundle %zu: %s (%s)", i, kvm_submit_name(st), ex.last_error().c_str()); ex.close(); ex.finish(); return 1; }
+        }
+      }
+      resp = &ex.finish();
+    }
+    const KvmResult& r = *resp;
+    if (r.ok() && !opt_static) kvm_print_class_report(r);
     if (csv) kvm_write_trace_csv(r, csv);
     int golden_bad = 0;
     if (golden) {
       if (dirs.size() != 1) throw std::runtime_error("--golden needs exactly one bundle directory");
       Json g = JsonParser(read_file(dirs[0] + "/golden.json")).parse();
       if (!r.ok()) { KLOG(0, "golden: skipped, the run failed"); return 1; }
-      int nb = 0, exact = 0; float worst = 0;
+      int nb = 0, exact = 0, golden_interior = 0; float worst = 0;
       if (const Json* gb = g.get("buffers")) for (auto& kv : gb->o) {
         auto it = std::find(buf_names.begin(), buf_names.end(), kv.first);
         if (it == buf_names.end()) { KLOG(0, "golden: unknown buffer %s", kv.first.c_str()); ++golden_bad; continue; }
+        if (fused.interior.count((int)(it - buf_names.begin()))) { ++golden_interior; continue; }   // an activation or gradient a fused step keeps in shared memory: the run's numerics are the weights and losses
         std::vector<float> got = ex.read_buffer((int)(it - buf_names.begin()));
         if (got.size() != kv.second.a.size()) { KLOG(0, "golden: buffer %s has %zu values, golden %zu", kv.first.c_str(), got.size(), kv.second.a.size()); ++golden_bad; continue; }
         const bool is_int = ex.buffer_dtype((int)(it - buf_names.begin())) == 1;
@@ -1142,7 +1382,7 @@ int main(int argc, char** argv) {
         float rel = (float)(std::sqrt(num) / std::max(1e-30, std::sqrt(den))); worst = std::max(worst, rel);
         if (rel > golden_tol) { KLOG(0, "golden: buffer %s: relative L2 error %.3g > %.3g (%zu of %zu elements differ)", kv.first.c_str(), rel, golden_tol, ndiff, got.size()); ++golden_bad; }
       }
-      KLOG(2, "golden: %d buffer values compared, %d bitwise equal, worst buffer relative L2 error %.3g (tolerance %.3g)", nb, exact, worst, golden_tol);
+      KLOG(2, "golden: %d buffer values compared, %d bitwise equal, %d buffers interior to fused steps not compared, worst buffer relative L2 error %.3g (tolerance %.3g)", nb, exact, golden_interior, worst, golden_tol);
       std::map<std::string, int> var_id;
       if (const Json* vs = meta0.get("variables")) for (auto& jv : vs->a) var_id[jv.need("name").s] = (int)jv.num("id", -1);
       if (const Json* gv = g.get("versions")) for (auto& kv : gv->o) {
@@ -1150,7 +1390,7 @@ int main(int argc, char** argv) {
         if (got != want) { KLOG(0, "golden: version %s = %d, golden %d", kv.first.c_str(), got, want); ++golden_bad; }
       }
       int nreads = 0;
-      if (const Json* rs = meta0.get("reads")) for (auto& jr : rs->a) {
+      if (const Json* rs = meta0.get("reads")) if (!opt_static) for (auto& jr : rs->a) {   // the per-read version checks need the per-task trace (the dynamic path's)
         const Json* gate = jr.get("gate");
         int slot = (int)jr.num("task", -1); if (gate && gate->t == Json::N) slot = (int)gate->n;  // the task carrying the wait
         const Json* pol = jr.get("policy"); int need = (int)jr.num("version", 0);

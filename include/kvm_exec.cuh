@@ -427,6 +427,11 @@ KVM_OP(spin) {
 #include KVM_EXTRA_OPS_CUH
 #endif
 
+// The fused MLP ops run only through the static-schedule path (kvm_static.cuh calls kvm_fused_mlp.cuh directly, with the run's descriptor): the generic dispatch refuses them.
+#define X(n, id, sig) KVM_OP(n) { (void)a; c.fail(KVM_ERR_BAD_OP, KVM_SELF); }
+#include "kvm_ops_fmlp.def"
+#undef X
+
 // Dynamic shared memory every launched block must provide: the maximum any operator pack asks for (static_cast: the packs
 // define these as constant expressions). Host code passes it at launch and raises the per-function limit when above 48 KiB.
 #if defined(KVM_GPT_SMEM_BYTES) && defined(KVM_EXTRA_SMEM_BYTES)
@@ -1025,6 +1030,8 @@ __global__ void __launch_bounds__(KVM_THREADS, KVM_MIN_BLOCKS) kvm_exec_kernel(c
   else if (S.sp.on && blockIdx.x == 1) kvm_policy(S, t0, pol);  // SCHED: block 1 is the policy block when the scheduler is on
   else kvm_worker(S, t0, sh);
 }
+
+#include "kvm_static.cuh"
 
 // ---------------- initial values ----------------
 // Counter-based generator, bit-identical to runtime/initgen.py: draw j of seed s is SplitMix64 at counter j.

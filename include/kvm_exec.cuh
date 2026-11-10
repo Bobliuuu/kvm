@@ -396,13 +396,13 @@ KVM_OP(spin) {
 
 // Optional operator packs: each defines KVM_OP(name) for every X line of its .def.
 #include "kvm_dist.cuh"  // KVM_DIST_HOOK: phase 1 (types, primitives); phase 2 (inbox pump) follows kvm_publish
-#if __has_include("kvm_ops_comm.cuh")
+#if __has_include("kvm_ops_comm.cuh") && !defined(KVM_LEAN)
 #include "kvm_ops_comm.cuh"  // KVM_DIST_HOOK
 #endif
 #if __has_include("kvm_ops_gpt.cuh")
 #include "kvm_ops_gpt.cuh"
 #endif
-#if __has_include("kvm_ops_extra.cuh")      // KVM_MODELS_HOOK: extra generic pack (needs the gpt pack's helpers and dynamic smem)
+#if __has_include("kvm_ops_extra.cuh") && !defined(KVM_LEAN)      // KVM_MODELS_HOOK: extra generic pack (needs the gpt pack's helpers and dynamic smem)
 #include "kvm_ops_extra.cuh"
 #endif
 #if defined(KVM_WITH_GAME) && __has_include("kvm_ops_game.cuh")

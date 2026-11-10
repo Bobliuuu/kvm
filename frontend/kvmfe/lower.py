@@ -28,6 +28,7 @@ class Tiling:
     mm_huge_min_k: int = 1        # ... and this much K: below it the tile's fixed cost outweighs its output (a 128x128 tile beats a 256x128 one at K=96, 1.14x against 0.76x of cuBLAS; a100 asks 256)
     mm_min_eff: float = 0.75 # ... and so does one whose padded tiles would waste more than 1 - this of their area
     join_min: int = 32       # a predecessor set of at least this many tasks that two tasks need is replaced by a join (dataflow.py)
+    row_tasks: int = 1       # a norm, rope or attention delta splits into at least this many blocks of whole warps, none above `rows` (row_blocks)
     precise: bool = False    # GEMM tiles use 3xTF32 (matmul_tile flag 16, fp32 accuracy) instead of the default 1xTF32
     ew_elems: int = 1 << 40   # flat elementwise ops and the sgd update: target elements of one task, so a wide matrix is not streamed through one SM (a single task's stream is bound by one SM's bandwidth)
     ew_max_tasks: int = 128   # ... but never more tasks than this for one operation (the executor's parallelism)
@@ -36,7 +37,7 @@ class Tiling:
 
     PRESETS = {
         'cpu': dict(rows=8, ew_rows=8, cols=32, vocab=16, opt_elems=256),
-        'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256),   # 256x128 tiles stepping down by shape, TF32 operands rounded to nearest in the tiles
+        'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, row_tasks=16),   # 256x128 tiles stepping down by shape, TF32 operands rounded to nearest in the tiles
         'a100_pre': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, tf32_preround=True),   # a100 with the 256x128-tile GEMMs reading round_tf32 copies of their operands (tf32.py: the same products, rounded once per value, the 162M step 6% faster), at the copies' memory: the 162M bundle's buffers grow 9.4 -> 12.6 GB, more than a 40 GB A100 holds beside PyTorch's resident models
         'a100_mm128': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=128, ew_elems=16384),   # 128x128 tiles, rounded (the previous a100)
         'a100_trunc': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, tf32_trunc=True, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256),   # a100's tiles with the operands truncated by the tensor core and the output scaled to remove the mean bias (KVM_GPT_RZ_GAIN): inside the panel's numerics gates, but after 1000 SGD steps the weights end about 2x further from float64 than rounding's (six MLP widths)
@@ -96,6 +97,19 @@ def lowers(kind):
 
 def blocks(n, size):
     return [(a, min(a + size, n)) for a in range(0, n, size)]
+
+
+ROW_WARPS = 8   # warps of a row-wise device op (KVM_GPT_THREADS / 32), one row per warp at a time: the finest block worth a task
+
+
+def row_blocks(n, size, tc):
+    """Blocks of an op whose rows are computed independently of each other (a norm's forward and dx, rope, the attention delta):
+    none above `size` rows, and at least tc.row_tasks of them while each keeps a whole warp's rows (ROW_WARPS), so a short op runs
+    on several SMs instead of one (R-37: each of gpt-small's ten layernorms was one task over its 128 rows, 16 rows a warp in
+    sequence, 32% of its critical path). No arithmetic depends on the split."""
+    want = -(-n // tc.row_tasks)
+    want = -(-want // ROW_WARPS) * ROW_WARPS
+    return blocks(n, min(size, max(ROW_WARPS, want)))
 
 
 def lower_op(op: LogicalOp, tc: Tiling) -> list[TileTask]:
@@ -216,7 +230,7 @@ def _(op, tc):
 def _norm(op, tc):
     x, out, rstd = op.ins['x'], op.outs['out'], op.outs['rstd']
     ln = op.kind == 'layernorm'
-    for r0, r1 in blocks(x.rows, tc.rows):
+    for r0, r1 in row_blocks(x.rows, tc.rows, tc):
         reads = [_rows(x, r0, r1), _full(op.ins['g'])] + ([_full(op.ins['beta'])] if ln else [])
         writes = [_rows(out, r0, r1), _rows(rstd, r0, r1)] + ([_rows(op.outs['mean'], r0, r1)] if ln else [])
         if ln:
@@ -235,7 +249,7 @@ def _norm_bwd(op, tc):
     ln = op.kind == 'layernorm_bwd'
     x, g, dy, rstd, dx = op.ins['x'], op.ins['g'], op.ins['dy'], op.ins['rstd'], op.outs['dx']
     mean = op.ins.get('mean')
-    for r0, r1 in blocks(x.rows, tc.rows):
+    for r0, r1 in row_blocks(x.rows, tc.rows, tc):            # dx only: dgamma and dbeta are column tasks over all rows, below
         reads = [_rows(x, r0, r1), _rows(dy, r0, r1), _rows(rstd, r0, r1), _full(g), _rows(mean, r0, r1) if ln else None,
                  _rows(dx, r0, r1) if op.attrs['acc_x'] else None]
         a = dict(x=x, dy=dy, gamma=g, rstd=rstd, dx=dx, r0=r0, r1=r1, d=x.cols, acc=int(op.attrs['acc_x']))
@@ -260,7 +274,7 @@ lowers('rmsnorm_bwd')(_norm_bwd)
 def _(op, tc):
     x, out, pos = op.ins['x'], op.outs['out'], op.ins.get('pos')
     H, hd = op.attrs['heads'], x.cols // op.attrs['heads']
-    for r0, r1 in blocks(x.rows, tc.rows):
+    for r0, r1 in row_blocks(x.rows, tc.rows, tc):
         yield _task('rope_fwd', [_rows(x, r0, r1), _full(pos) if pos else None], [_rows(out, r0, r1)],
                     x=x, out=out, pos=pos, r0=r0, r1=r1, T=op.attrs['seq'], H=H, hd=hd, theta=op.attrs['theta'])
 
@@ -269,7 +283,7 @@ def _(op, tc):
 def _(op, tc):
     dy, out = op.ins['dy'], op.outs['out']
     H, hd = op.attrs['heads'], dy.cols // op.attrs['heads']
-    for r0, r1 in blocks(dy.rows, tc.rows):
+    for r0, r1 in row_blocks(dy.rows, tc.rows, tc):
         yield _task('rope_bwd', [_rows(dy, r0, r1)], [_rows(out, r0, r1)], x=dy, out=out, pos=None, r0=r0, r1=r1,
                     T=op.attrs['seq'], H=H, hd=hd, theta=op.attrs['theta'])
 
@@ -336,7 +350,7 @@ def _(op, tc):
     T, H, Hkv, hd, G, causal = _attn_geom(op)
     B = q.rows // T
     for b in range(B):                                            # delta = rowsum(do * o), per sequence, all heads
-        for t0, t1 in blocks(T, tc.rows):
+        for t0, t1 in row_blocks(T, tc.rows, tc):
             yield _task('attn_bwd_delta', [o.region(b * T + t0, b * T + t1), do.region(b * T + t0, b * T + t1)],
                         [delta.region(b * H, (b + 1) * H, t0, t1)], o=o, do=do, delta=delta, r0=b * T + t0, r1=b * T + t1,
                         T=T, H=H, hd=hd)

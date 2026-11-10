@@ -28,6 +28,8 @@ KC(gradnorm_partial, BW, 4ull * (U(4) - U(3)), 2ull * (U(4) - U(3)))            
 KC(residual_add,     BW, 12ull * (U(4) - U(3)), U(4) - U(3))                    // a,b read; out written
 KC(gelu_fwd,         BW, 8ull * (U(3) - U(2)), 8ull * (U(3) - U(2)))
 KC(gelu_bwd,         BW, 12ull * (U(4) - U(3)), 10ull * (U(4) - U(3)))
+KC(sgd_range,        BW, 12ull * (U(4) - U(3)), 2ull * (U(4) - U(3)))     // w,g read; w written over [e0,e1)
+KC(round_tf32,       BW, 8ull * (U(3) - U(2)), U(3) - U(2))               // x read, out written over [e0,e1)
 KC(zero_buf,         BW, 4ull * (U(2) - U(1)), 0)
 KC(embedding_fwd,    BW, 8ull * (U(5) - U(4)) * U(7), 0)                        // rows (r1-r0) of width d: gather + write
 KC(softmax_ce_fwd,   BW, 4ull * (U(5) - U(4)) * U(6), 5ull * (U(5) - U(4)) * U(6))

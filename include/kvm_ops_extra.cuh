@@ -777,25 +777,6 @@ KVM_GPT_DEVI bool mm_wrap_check(Chk& k, int abuf, int bbuf, int tbuf, int m0, in
     w[6] = m0; w[7] = n0; w[8] = M; w[9] = N; w[10] = K; w[11] = fl;
     return true;
 }
-KVM_GPT_DEVI void matmul_tile_dgelu(const KvmCtx& ctx, const int32_t* a) {
-    Chk k(ctx);
-    int m0 = a[4], n0 = a[5], M = a[6], N = a[7], K = a[8], fl = a[9], ldo, ldp;
-    int32_t w[13];
-    if (!mm_wrap_check(k, a[0], a[1], a[2], m0, n0, M, N, K, fl, w)) return;
-    float* out = k.mat(a[2], M, N, &ldo);
-    const float* pre = k.mat(a[3], M, N, &ldp);
-    if (k.bad) return;
-    w[12] = a[10];
-    kvmgpt::matmul_tile(ctx, w);
-    __syncthreads();
-    const int TW = (fl & 96) ? 128 : 64, TH = (fl & 64) ? 256 : (fl & 32) ? 128 : 64;   // the wrapped matmul tile is TH x TW
-    for (int e = threadIdx.x; e < TH * TW; e += KVM_GPT_THREADS) {
-        int gm = m0 + e / TW, gn = n0 + e % TW;
-        if (gm >= M || gn >= N) continue;
-        float* o = out + (size_t)gm * ldo + gn;
-        *o = *o * kvmgpt::gelu_grad(pre[(size_t)gm * ldp + gn]);
-    }
-}
 KVM_GPT_DEVI void matmul_tile_silu_mul(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
     int m0 = a[5], n0 = a[6], M = a[7], N = a[8], K = a[9], fl = a[10], ldo, ldg, ldu;

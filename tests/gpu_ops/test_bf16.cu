@@ -56,7 +56,7 @@ struct BatchX {
 static int g_attr = 0;
 static int runx(Dev& d, const BatchX& b) {
     const int smem = std::max(kvm_gpt_smem_bytes(KVM_GPT_MAX_HD), KVM_MMA_SMEM);
-    if (!g_attr) { CK(cudaFuncSetAttribute(k_runx, cudaFuncAttributeMaxDynamicSharedMemorySize, std::max(112 * 1024, (int)kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)))); kvm_hopper_host_init(); g_attr = 1; }
+    if (!g_attr) { CK(cudaFuncSetAttribute(k_runx, cudaFuncAttributeMaxDynamicSharedMemorySize, kvm_test_smem_cap())); kvm_hopper_host_init(); g_attr = 1; }
     d.sync_table();
     int32_t* w; int *op, *off;
     CK(cudaMalloc(&w, b.w.size() * 4 + 4)); CK(cudaMalloc(&op, b.op.size() * 4)); CK(cudaMalloc(&off, b.off.size() * 4));
@@ -339,6 +339,5 @@ int main() {
     cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0));
     printf("device: %s, %d SMs, cc %d.%d, mma smem %d B\n", pr.name, pr.multiProcessorCount, pr.major, pr.minor, KVM_MMA_SMEM);
     t_mma(); t_ops(); t_attn();
-    printf("\n%d passed, %d failed\n", g_pass, g_fail);
-    return g_fail ? 1 : 0;
+    return summary();
 }

@@ -1,6 +1,8 @@
 // Per-op unit tests for the GPT operator library against CPU double references, plus edge cases and error codes.
 // Build: nvcc -O2 -arch=sm_80 -std=c++17 -I../../include -I. test_ops.cu -o test_ops    Run: ./test_ops
 #include <algorithm>
+#include <cstring>
+#include <limits>
 #include <map>
 #ifndef KVM_GPT_MAX_HD
 #define KVM_GPT_MAX_HD 128   // these tests and benchmarks cover hd=128 attention (-DKVM_GPT_MAX_HD=64 builds the hd<=64 union)
@@ -62,12 +64,14 @@ static void t_embedding() {
 static void t_matmul() {
     Rng r_main(21), r_fast(22);
     struct S { int M, N, K; };
-    const std::vector<S> shapes = {{1, 1, 1}, {5, 7, 3}, {64, 64, 32}, {65, 63, 33}, {130, 70, 100}, {1, 300, 17}, {70, 1, 90}, {129, 131, 47}, {256, 128, 64}, {300, 140, 50}};
-    // the mm_tf32_tile fast path (all extents aligned) on partial tiles, and K long enough to cycle its stages; own random stream, so the
-    // cases above keep their data (a 1x1 output with gelu+res+acc can cancel to near zero, which a relative bound cannot absorb)
+    const std::vector<S> shapes = {{1, 1, 1}, {5, 7, 3}, {64, 64, 32}, {65, 63, 33}, {130, 70, 100}, {1, 300, 17}, {70, 1, 90}, {129, 131, 47}, {256, 128, 64}, {300, 140, 50}, {256, 256, 128}, {384, 256, 96}};   // the last four reach the full-tile cp.async fast path (K % 16 == 0, whole tiles);
+    // aligned extents on partial tiles, with K long enough to cycle the pipeline stages (the fast path of the #16 tile set, and the
+    // spread-copy pipeline of the 256x128 tile); own random stream, so the cases above keep their data (a 1x1 output with gelu+res+acc
+    // can cancel to near zero, which a relative bound cannot absorb)
     const std::vector<S> fast_shapes = {{260, 132, 36}, {196, 260, 1000}};
     for (int set = 0; set < 2; set++)
-    for (int big = 0; big < 3; big++) for (int prec = 0; prec < 2; prec++) for (int ta = 0; ta < 2; ta++) for (int tb = 0; tb < 2; tb++) for (auto s : set ? fast_shapes : shapes) for (int full = 0; full < 2; full++) {
+    for (int big = 0; big < 3; big++) for (int prec = 0; prec < 4; prec++) for (int ta = 0; ta < 2; ta++) for (int tb = 0; tb < 2; tb++) for (auto s : set ? fast_shapes : shapes) for (int full = 0; full < 2; full++) {
+        // prec 3: TF32 with truncated operands (flag 256), every tile size
         Rng& r = set ? r_fast : r_main;
         int M = s.M, N = s.N, K = s.K;
         Dev dv;
@@ -77,7 +81,7 @@ static void t_matmul() {
         auto ha = rnd(r, ar * ac), hb = rnd(r, br * bc), ho = rnd(r, M * N), hbias = rnd(r, N), hres = rnd(r, M * N);
         dv.up(ia, ha); dv.up(ib, hb); dv.up(io, ho); dv.up(ibias, hbias); dv.up(ires, hres);
         float alpha = full ? 0.7f : 1.f;
-        int fl = ta | (tb << 1) | (prec << 4) | (big == 1 ? 32 : big == 2 ? 64 : 0) | (full ? (4 | 8) : 0), step = big ? 128 : 64, stepm = big == 2 ? 256 : step;
+        int fl = ta | (tb << 1) | ((prec == 1) << 4) | ((prec == 2) << 7) | ((prec == 3) << 8) | (big == 1 ? 32 : big == 2 ? 64 : 0) | (full ? (4 | 8) : 0), step = big ? 128 : 64, stepm = big == 2 ? 256 : step;
         Batch b;
         for (int m0 = 0; m0 < M; m0 += stepm) for (int n0 = 0; n0 < N; n0 += step)
             b.add(OP_matmul_tile, A().b(ia).b(ib).b(io).b(full ? ibias : -1).b(full ? ires : -1).b(full ? ipre : -1).i(m0).i(n0).i(M).i(N).i(K).i(fl).f(alpha));
@@ -88,11 +92,36 @@ static void t_matmul() {
             if (full) { v += hbias[i % N]; pre[i] = v; v = gelu_d(v) + hres[i]; v += ho[i]; }
             ref[i] = v;
         }
-        char nm[128]; snprintf(nm, sizeof nm, "matmul_tile %s%s ta=%d tb=%d %dx%dx%d %s", big == 1 ? "128x128 " : big == 2 ? "256x128 " : "", prec ? "3xTF32" : "TF32", ta, tb, M, N, K, full ? "bias+gelu+res+acc" : "plain");
-        double tol = prec ? 2e-5 : 6e-3;
+        char nm[128]; snprintf(nm, sizeof nm, "matmul_tile %s%s ta=%d tb=%d %dx%dx%d %s", big == 1 ? "128x128 " : big == 2 ? "256x128 " : "", prec == 3 ? "TF32-trunc" : prec == 2 ? "bf16" : prec ? "3xTF32" : "TF32", ta, tb, M, N, K, full ? "bias+gelu+res+acc" : "plain");
+        double tol = prec == 1 ? 2e-5 : prec == 2 ? 3e-2 : prec == 3 ? 1.2e-2 : 6e-3;   // truncation costs ~2.4x the rounding error of TF32
         check(nm, dv.down(io), ref, tol);
         if (full) check(std::string(nm) + " pre", dv.down(ipre), pre, tol);
         if (e) check_true(std::string(nm) + " err", false);
+    }
+    {   // the dgelu epilogue (flag 512), every tile size, transpose and plain/3xTF32/truncated precision, on its own random stream: out = alpha*C*gelu'(pre), pre only read.
+        // The scale floor keeps a lone output near gelu''s zero crossing (x ~ -0.75, where gelu_grad's fp32 cancellation limits the relative accuracy of any fp32 implementation) from dominating the error measure.
+        Rng rp(29);
+        for (int big = 0; big < 3; big++) for (int prec = 0; prec < 4; prec++) for (int ta = 0; ta < 2; ta++) for (int tb = 0; tb < 2; tb++) for (auto s : shapes) {
+            if (prec == 2) continue;   // no bf16 form
+            int M = s.M, N = s.N, K = s.K;
+            Dev dv;
+            int ar = ta ? K : M, ac = ta ? M : K, br = tb ? N : K, bc = tb ? K : N;
+            int ia = dv.addf(ar, ac, ac + ((M + N) & 1 ? 1 : 4)), ib = dv.addf(br, bc, bc + 4), io = dv.addf(M, N, N + 1), ipre = dv.addf(M, N, N + 4);
+            auto ha = rnd(rp, ar * ac), hb = rnd(rp, br * bc), hpre = rnd(rp, M * N, 2.0);
+            dv.up(ia, ha); dv.up(ib, hb); dv.up(io, rnd(rp, M * N)); dv.up(ipre, hpre);
+            const float alpha = 0.7f;
+            int fl = 512 | ta | (tb << 1) | ((prec == 1) << 4) | ((prec == 3) << 8) | (big == 1 ? 32 : big == 2 ? 64 : 0), step = big ? 128 : 64, stepm = big == 2 ? 256 : step;
+            Batch b;
+            for (int m0 = 0; m0 < M; m0 += stepm) for (int n0 = 0; n0 < N; n0 += step)
+                b.add(OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(ipre).i(m0).i(n0).i(M).i(N).i(K).i(fl).f(alpha));
+            int e = run(dv, b);
+            D C = mm_d(dbl(ha), dbl(hb), M, N, K, ta, tb), ref(M * N);
+            for (int i = 0; i < M * N; i++) ref[i] = alpha * C[i] * gelu_grad_d(hpre[i]);
+            char nm[128]; snprintf(nm, sizeof nm, "matmul_tile dgelu %s%s ta=%d tb=%d %dx%dx%d", big == 1 ? "128x128 " : big == 2 ? "256x128 " : "", prec == 3 ? "TF32-trunc" : prec ? "3xTF32" : "TF32", ta, tb, M, N, K);
+            check(nm, dv.down(io), ref, prec == 1 ? 2e-5 : prec == 3 ? 1.2e-2 : 6e-3, 0.1);
+            check_true(std::string(nm) + " pre is only read", dv.down(ipre) == hpre);
+            if (e) check_true(std::string(nm) + " err", false);
+        }
     }
     {   // tile origins that are not multiples of 4 (cp.async sources would be misaligned) and NaN propagation
         Rng r2(77);
@@ -107,15 +136,32 @@ static void t_matmul() {
             for (int i = m0; i < std::min(M, m0 + extm); i++) for (int j = n0; j < std::min(N, n0 + extn); j++) { gsub.push_back(go[i * N + j]); rsub.push_back(C[i * N + j]); }
             check(std::string("matmul_tile odd origin (2,6) ") + (big == 1 ? "128x128" : big == 2 ? "256x128" : "64x64") + " ta=" + std::to_string(ta) + " tb=" + std::to_string(tb), std::vector<float>(gsub.begin(), gsub.end()), rsub, 2e-5);
         }
-        for (int big = 0; big < 3; big++) for (int prec = 0; prec < 2; prec++) for (uint32_t qn : {0x7fffffffu, 0xffffffffu}) {
+        for (int big = 0; big < 3; big++) for (int prec = 0; prec < 4; prec++) for (uint32_t qn : {0x7fffffffu, 0xffffffffu}) {
+            if (prec == 3 && !big) continue;
             int M = 8, N = 8, K = 8; Dev dv; int ia = dv.addf(M, K), ib = dv.addf(K, N), io = dv.addf(M, N);
             auto ha = rnd(r2, M * K), hb = rnd(r2, K * N); dv.up(ib, hb);
             memcpy(&ha[1], &qn, 4); dv.up(ia, ha);   // the canonical hardware NaN (and its negation) must survive the rounding carry
-            run1(dv, OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(0).i(0).i(M).i(N).i(K).i((prec << 4) | (big == 1 ? 32 : big == 2 ? 64 : 0)).f(1.f));
+            run1(dv, OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(0).i(0).i(M).i(N).i(K).i(((prec == 1) << 4) | ((prec == 2) << 7) | ((prec == 3) << 8) | (big == 1 ? 32 : big == 2 ? 64 : 0)).f(1.f));
             auto go = dv.down(io); bool ok = std::isnan(go[0]) && std::isnan(go[1]);
-            check_true(std::string("matmul_tile NaN input propagates ") + (big == 1 ? "128x128 " : big == 2 ? "256x128 " : "") + (prec ? "3xTF32" : "TF32") +
+            check_true(std::string("matmul_tile NaN input propagates ") + (big == 1 ? "128x128 " : big == 2 ? "256x128 " : "") + (prec == 3 ? "TF32-trunc" : prec == 2 ? "bf16" : prec ? "3xTF32" : "TF32") +
                        (qn >> 31 ? " (-NaN)" : ""), ok);
         }
+    }
+    {   // flag 512 needs pre and excludes the rest of the epilogue and bf16 (pre, out untouched)
+        int M = 16, N = 16, K = 16; Dev dv; int ia = dv.addf(M, K), ib = dv.addf(K, N), io = dv.addf(M, N), ipre = dv.addf(M, N), ibias = dv.addf(1, N), ires = dv.addf(M, N);
+        dv.up(ia, rnd(r_main, M * K)); dv.up(ib, rnd(r_main, K * N)); dv.up(io, rnd(r_main, M * N)); dv.up(ipre, rnd(r_main, M * N)); dv.up(ibias, rnd(r_main, N)); dv.up(ires, rnd(r_main, M * N));
+        struct { int fl, bias, res, pre; } bad[] = {{512, -1, -1, -1}, {512, ibias, -1, ipre}, {512, -1, ires, ipre}, {512 | 4, -1, -1, ipre}, {512 | 8, -1, -1, ipre}, {512 | 128, -1, -1, ipre}};
+        for (auto& c : bad) {
+            auto o0 = dv.down(io), p0 = dv.down(ipre);
+            int e = run1(dv, OP_matmul_tile, A().b(ia).b(ib).b(io).b(c.bias).b(c.res).b(c.pre).i(0).i(0).i(M).i(N).i(K).i(c.fl).f(1.f));
+            check_true("matmul_tile dgelu flags " + std::to_string(c.fl) + " bias " + std::to_string(c.bias) + " res " + std::to_string(c.res) + " pre " + std::to_string(c.pre) + " -> shape error, memory untouched", e == KVM_GPT_E_SHAPE && dv.down(io) == o0 && dv.down(ipre) == p0);
+        }
+    }
+    for (int fl : {256 | 16, 256 | 128, 256 | 32 | 16, 256 | 32 | 128, 256 | 32 | 64, 2048 | 32}) {   // flag 256 needs at most one big tile and plain 1xTF32; bits above 1024 are unknown
+        int M = 16, N = 16, K = 16; Dev dv; int ia = dv.addf(M, K), ib = dv.addf(K, N), io = dv.addf(M, N);
+        dv.up(ia, rnd(r_main, M * K)); dv.up(ib, rnd(r_main, K * N));
+        check_true("matmul_tile flags " + std::to_string(fl) + " -> shape error",
+                   run1(dv, OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(0).i(0).i(M).i(N).i(K).i(fl).f(1.f)) == KVM_GPT_E_SHAPE);
     }
     {   // in-place residual: res aliases out, accumulate off
         int M = 33, N = 40, K = 20; Dev dv;
@@ -129,7 +175,7 @@ static void t_matmul() {
 }
 
 // ld_pad = 0: dense rows (16-byte vector fast paths when d%4==0); otherwise the leading dimensions are d+2 / d+1 (scalar paths).
-static void norm_case(bool rms, int R, int d, int ld_pad) {
+static void norm_case(bool rms, int R, int d, int ld_pad, int step = 5) {
     Rng r(31 + d);
     Dev dv;
     int x = dv.addf(R, d, d + (ld_pad ? 2 : 0)), g = dv.addf(1, d), be = dv.addf(1, d), o = dv.addf(R, d), mean = dv.addf(1, R), rstd = dv.addf(1, R);
@@ -140,9 +186,9 @@ static void norm_case(bool rms, int R, int d, int ld_pad) {
     const float eps = 1e-5f;
     std::string nm = std::string(rms ? "rmsnorm" : "layernorm") + " R=" + std::to_string(R) + " d=" + std::to_string(d) + (ld_pad ? " ld>d" : " dense");
     Batch b;
-    for (int r0 = 0; r0 < R; r0 += 5) {
-        if (rms) b.add(OP_rmsnorm_fwd, A().b(x).b(g).b(o).b(rstd).i(r0).i(std::min(R, r0 + 5)).i(d).f(eps));
-        else b.add(OP_layernorm_fwd, A().b(x).b(g).b(be).b(o).b(mean).b(rstd).i(r0).i(std::min(R, r0 + 5)).i(d).f(eps));
+    for (int r0 = 0; r0 < R; r0 += step) {
+        if (rms) b.add(OP_rmsnorm_fwd, A().b(x).b(g).b(o).b(rstd).i(r0).i(std::min(R, r0 + step)).i(d).f(eps));
+        else b.add(OP_layernorm_fwd, A().b(x).b(g).b(be).b(o).b(mean).b(rstd).i(r0).i(std::min(R, r0 + step)).i(d).f(eps));
     }
     int e = run(dv, b);
     D rm, rr, ro = norm_fwd_d(dbl(hx), dbl(hg), rms ? D() : dbl(hb), R, d, eps, rms, rm, rr);
@@ -153,9 +199,9 @@ static void norm_case(bool rms, int R, int d, int ld_pad) {
         dv.up(dx, rnd(r, R * d)); dv.up(dg, rnd(r, d)); dv.up(db, rnd(r, d));
         auto dx0 = dv.down(dx), dg0 = dv.down(dg), db0 = dv.down(db);
         Batch b2;
-        for (int r0 = 0; r0 < R; r0 += 5) {
-            if (rms) b2.add(OP_rmsnorm_bwd_dx, A().b(x).b(dy).b(g).b(rstd).b(dx).i(r0).i(std::min(R, r0 + 5)).i(d).i(acc));
-            else b2.add(OP_layernorm_bwd_dx, A().b(x).b(dy).b(g).b(mean).b(rstd).b(dx).i(r0).i(std::min(R, r0 + 5)).i(d).i(acc));
+        for (int r0 = 0; r0 < R; r0 += step) {
+            if (rms) b2.add(OP_rmsnorm_bwd_dx, A().b(x).b(dy).b(g).b(rstd).b(dx).i(r0).i(std::min(R, r0 + step)).i(d).i(acc));
+            else b2.add(OP_layernorm_bwd_dx, A().b(x).b(dy).b(g).b(mean).b(rstd).b(dx).i(r0).i(std::min(R, r0 + step)).i(d).i(acc));
         }
         for (int c0 = 0; c0 < d; c0 += 100) b2.add(OP_norm_bwd_params, A().b(x).b(dy).b(rms ? -1 : mean).b(rstd).b(dg).b(rms ? -1 : db).i(R).i(d).i(c0).i(std::min(d, c0 + 100)).i(acc));
         e |= run(dv, b2);
@@ -168,7 +214,11 @@ static void norm_case(bool rms, int R, int d, int ld_pad) {
     }
     if (e) check_true(nm + " err", false);
 }
-static void t_norms() { for (int rms = 0; rms < 2; rms++) for (int R : {1, 13}) for (int d : {1, 7, 32, 100, 1000, 1024, 1028, 4}) for (int pad : {0, 1}) norm_case(rms, R, d, pad); }
+static void t_norms() {
+    for (int rms = 0; rms < 2; rms++) for (int R : {1, 13}) for (int d : {1, 7, 32, 100, 1000, 1024, 1028, 4}) for (int pad : {0, 1}) norm_case(rms, R, d, pad);
+    // whole-matrix tasks at narrow d: the rows-per-warp grouping over many rows, ragged last group included
+    for (int rms = 0; rms < 2; rms++) for (int R : {13, 131}) for (int d : {4, 16, 32, 64}) norm_case(rms, R, d, 0, R);
+}
 
 static void t_elementwise() {
     Rng r(41);
@@ -193,6 +243,13 @@ static void t_elementwise() {
         run(dv, b5); for (int i = 0; i < n; i++) ref[i] = (double)hx[i] + hy[i];
         check("residual_add in place ragged slices", dv.down(x), ref, 1e-6);
         dv.up(x, hx);
+        {   // sgd_range: w[i] = w[i] - lr * g[i] over ragged slices (head/tail scalar path, in place), against a double reference
+            const float lr = 0.0625f;
+            Batch b6; for (int e0 = 0; e0 < n; e0 += 301) b6.add(OP_sgd_range, A().b(x).b(y).f(lr).i(e0).i(std::min(n, e0 + 301)));
+            run(dv, b6); for (int i = 0; i < n; i++) ref[i] = (double)(float)(hx[i] - (float)(lr * hy[i]));
+            check("sgd_range ragged slices", dv.down(x), ref, 1e-6);
+            dv.up(x, hx);
+        }
     }
     // gelu derivative vs central finite difference of gelu_d (reference self-check)
     double md = 0; for (int i = 0; i < 50; i++) { double h = 1e-6, fd = (gelu_d(hx[i] + h) - gelu_d(hx[i] - h)) / (2 * h); md = std::max(md, fabs(fd - gelu_grad_d(hx[i]))); }
@@ -214,23 +271,89 @@ static void t_elementwise() {
     check("colsum acc", d3.down(co), cs, 1e-6);
 }
 
+static uint32_t f2u(float x) { uint32_t u; memcpy(&u, &x, 4); return u; }
+static float tf32_host(float x) {   // f2tf32 in kvm_ops_gpt.cuh: to nearest, ties away, low 13 bits cleared; a NaN keeps its high bits
+    uint32_t u = f2u(x);
+    if ((u & 0x7fffffffu) <= 0x7f800000u) u += 0x1000u;
+    u &= 0xffffe000u;
+    float y; memcpy(&y, &u, 4); return y;
+}
+// round_tf32 copies read with matmul_tile flag 1024 give the rounding tile's (flag 0) output bit for bit, at every tile size and transpose,
+// edge tiles and ragged K included; the copies are f2tf32's values, from vector bodies and scalar tails (a task ending at an odd offset).
+static void t_tf32_exact() {
+    Rng r(73);
+    struct S { int M, N, K; } shapes[] = {{65, 63, 33}, {256, 128, 64}, {300, 140, 50}, {384, 256, 96}, {512, 256, 256}};
+    for (int big = 0; big < 3; big++) for (int ta = 0; ta < 2; ta++) for (int tb = 0; tb < 2; tb++) for (auto s : shapes) {
+        const int M = s.M, N = s.N, K = s.K;
+        Dev dv;
+        const int ar = ta ? K : M, ac = ta ? M : K, br = tb ? N : K, bc = tb ? K : N;
+        const int ia = dv.addf(ar, ac), ib = dv.addf(br, bc), ra = dv.addf(ar, ac), rb = dv.addf(br, bc), o1 = dv.addf(M, N), o2 = dv.addf(M, N);
+        auto ha = rnd(r, (size_t)ar * ac), hb = rnd(r, (size_t)br * bc);
+        dv.up(ia, ha); dv.up(ib, hb);
+        Batch b0;
+        b0.add(OP_round_tf32, A().b(ia).b(ra).i(0).i(ar * ac / 2 + 1));
+        b0.add(OP_round_tf32, A().b(ia).b(ra).i(ar * ac / 2 + 1).i(ar * ac));
+        b0.add(OP_round_tf32, A().b(ib).b(rb).i(0).i(br * bc));
+        const int e0 = run(dv, b0);
+        auto ca = dv.down(ra), cb = dv.down(rb);
+        bool copies_ok = true;
+        for (size_t i = 0; i < ha.size(); i++) copies_ok = copies_ok && f2u(ca[i]) == f2u(tf32_host(ha[i]));
+        for (size_t i = 0; i < hb.size(); i++) copies_ok = copies_ok && f2u(cb[i]) == f2u(tf32_host(hb[i]));
+        const int fl = ta | (tb << 1) | (big == 1 ? 32 : big == 2 ? 64 : 0), step = big ? 128 : 64, stepm = big == 2 ? 256 : step;
+        Batch b;
+        for (int m0 = 0; m0 < M; m0 += stepm) for (int n0 = 0; n0 < N; n0 += step) {
+            b.add(OP_matmul_tile, A().b(ia).b(ib).b(o1).b(-1).b(-1).b(-1).i(m0).i(n0).i(M).i(N).i(K).i(fl).f(1.f));
+            b.add(OP_matmul_tile, A().b(ra).b(rb).b(o2).b(-1).b(-1).b(-1).i(m0).i(n0).i(M).i(N).i(K).i(fl | 1024).f(1.f));
+        }
+        const int e = run(dv, b);
+        auto c1 = dv.down(o1), c2 = dv.down(o2);
+        bool same = c1.size() == c2.size();
+        for (size_t i = 0; same && i < c1.size(); i++) same = f2u(c1[i]) == f2u(c2[i]);
+        char nm[160]; snprintf(nm, sizeof nm, "round_tf32 copies + matmul_tile 1024 == rounding tile, bitwise: %s ta=%d tb=%d %dx%dx%d", big == 1 ? "128x128" : big == 2 ? "256x128" : "64x64", ta, tb, M, N, K);
+        check_true(nm, copies_ok && same && e == 0 && e0 == 0);
+    }
+    {   // NaN and Inf: a NaN stays NaN in the copy, an Inf stays Inf (the largest float rounds up to Inf, as round-to-nearest does)
+        Dev dv; const int n = 8;
+        int ix = dv.addf(1, n), io = dv.addf(1, n);
+        const float big = 3.4028235e38f, nan = std::numeric_limits<float>::quiet_NaN(), inf = std::numeric_limits<float>::infinity();
+        std::vector<float> hx = {nan, -nan, inf, -inf, big, -big, 1.f + 1.f / 4096, -0.f};
+        dv.up(ix, hx);
+        run1(dv, OP_round_tf32, A().b(ix).b(io).i(0).i(n));
+        auto o = dv.down(io);
+        check_true("round_tf32: NaN stays NaN, Inf stays Inf, the largest float becomes Inf, -0 stays -0",
+                   std::isnan(o[0]) && std::isnan(o[1]) && o[2] == inf && o[3] == -inf && o[4] == inf && o[5] == -inf && o[6] == tf32_host(hx[6]) && f2u(o[7]) == 0x80000000u);
+    }
+    {   // refusals: 1024 with 256 (truncation), 16 (3xTF32) or 128 (bf16), and an unknown bit
+        Dev dv; const int M = 64, N = 64, K = 32;
+        int ia = dv.addf(M, K), ib = dv.addf(K, N), io = dv.addf(M, N);
+        for (int fl : {1024 | 256, 1024 | 16, 1024 | 128, 2048})
+            check_true("matmul_tile flags " + std::to_string(fl) + " -> shape error", run1(dv, OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(0).i(0).i(M).i(N).i(K).i(fl).f(1.f)) == KVM_GPT_E_SHAPE);
+    }
+}
+
 static void t_rope() {
     Rng r(51);
-    int R = 24, T = 8, H = 3, hd = 16; Dev dv;
-    int x = dv.addf(R, H * hd), o = dv.addf(R, H * hd), o2 = dv.addf(R, H * hd), pos = dv.addi(1);
-    auto hx = rnd(r, R * H * hd); dv.up(x, hx); dv.upi(pos, {5});
-    for (int use_pos = 0; use_pos < 2; use_pos++) {
-        Batch b; for (int r0 = 0; r0 < R; r0 += 7) b.add(OP_rope_fwd, A().b(x).b(o).b(use_pos ? pos : -1).i(r0).i(std::min(R, r0 + 7)).i(T).i(H).i(hd).f(10000.f));
-        run(dv, b);
-        D ref(R * H * hd);
-        for (int i = 0; i < R; i++) for (int h = 0; h < H; h++) for (int j = 0; j < hd / 2; j++) {
-            double ang = (i % T + (use_pos ? 5 : 0)) * pow(10000.0, -2.0 * j / hd), c = cos(ang), s = sin(ang);
-            double x1 = hx[i * H * hd + h * hd + j], x2 = hx[i * H * hd + h * hd + j + hd / 2];
-            ref[i * H * hd + h * hd + j] = x1 * c - x2 * s; ref[i * H * hd + h * hd + j + hd / 2] = x1 * s + x2 * c;
+    // vector path: half-rows of 4k floats (hd 8, 16, 32, 64, 128), several heads in flight, heads beyond a multiple of the group (H 3, 5, 12);
+    // the general path: hd 12 (half not a multiple of 4)
+    struct C { int R, T, H, hd; } cs[] = {{24, 8, 3, 16}, {130, 64, 12, 64}, {40, 16, 5, 32}, {33, 33, 2, 128}, {17, 8, 1, 8}, {21, 7, 3, 12}};
+    for (C cf : cs) {
+        const int R = cf.R, T = cf.T, H = cf.H, hd = cf.hd; Dev dv;
+        int x = dv.addf(R, H * hd), o = dv.addf(R, H * hd), o2 = dv.addf(R, H * hd), pos = dv.addi(1);
+        auto hx = rnd(r, R * H * hd); dv.up(x, hx); dv.upi(pos, {5});
+        const std::string shape = " R" + std::to_string(R) + " T" + std::to_string(T) + " H" + std::to_string(H) + " hd" + std::to_string(hd);
+        for (int use_pos = 0; use_pos < 2; use_pos++) {
+            Batch b; for (int r0 = 0; r0 < R; r0 += 7) b.add(OP_rope_fwd, A().b(x).b(o).b(use_pos ? pos : -1).i(r0).i(std::min(R, r0 + 7)).i(T).i(H).i(hd).f(10000.f));
+            run(dv, b);
+            D ref(R * H * hd);
+            for (int i = 0; i < R; i++) for (int h = 0; h < H; h++) for (int j = 0; j < hd / 2; j++) {
+                double ang = (i % T + (use_pos ? 5 : 0)) * pow(10000.0, -2.0 * j / hd), c = cos(ang), s = sin(ang);
+                double x1 = hx[i * H * hd + h * hd + j], x2 = hx[i * H * hd + h * hd + j + hd / 2];
+                ref[i * H * hd + h * hd + j] = x1 * c - x2 * s; ref[i * H * hd + h * hd + j + hd / 2] = x1 * s + x2 * c;
+            }
+            check(std::string("rope_fwd pos=") + (use_pos ? "buf" : "none") + shape, dv.down(o), ref, 2e-6);
+            Batch b2; b2.add(OP_rope_bwd, A().b(o).b(o2).b(use_pos ? pos : -1).i(0).i(R).i(T).i(H).i(hd).f(10000.f));
+            run(dv, b2); check("rope_bwd inverts rope_fwd" + shape, dv.down(o2), dbl(hx), 2e-6);
         }
-        check(std::string("rope_fwd pos=") + (use_pos ? "buf" : "none"), dv.down(o), ref, 2e-6);
-        Batch b2; b2.add(OP_rope_bwd, A().b(o).b(o2).b(use_pos ? pos : -1).i(0).i(R).i(T).i(H).i(hd).f(10000.f));
-        run(dv, b2); check("rope_bwd inverts rope_fwd", dv.down(o2), dbl(hx), 2e-6);
     }
 }
 
@@ -244,6 +367,7 @@ static void attn_case(AttnCfg c) {
     double scale = 1.0 / sqrt((double)hd);
     int smem = kvm_gpt_smem_bytes(hd);
     char nm[96]; snprintf(nm, sizeof nm, "attn B=%d T=%d H=%d Hkv=%d hd=%d", B, T, H, Hkv, hd);
+    if (hd > KVM_GPT_MAX_HD) { skip(nm, "head size above this build's KVM_GPT_MAX_HD (not compiled)"); return; }
     Dev dv;
     int q = dv.addf(R, H * hd, H * hd + 4), k = dv.addf(R, Hkv * hd, Hkv * hd + 4), v = dv.addf(R, Hkv * hd, Hkv * hd + 8), o = dv.addf(R, H * hd);
     int lse = dv.addf(1, B * H * T), dO = dv.addf(R, H * hd), delta = dv.addf(1, B * H * T), dq = dv.addf(R, H * hd, H * hd + 12);   // outputs get different leading dimensions than q/k/v
@@ -319,7 +443,8 @@ static void t_attention() {
         for (int sd = 1; sd <= seeds; sd++) for (int hd : {16, 32, 64, 128}) attn_case(AttnCfg{1, 1, 4, 2, hd, sd});
         g_quiet = false;
         char d[128]; snprintf(d, sizeof d, "worst |noise|/bound %.3f, max |dq|,|dk| %.2e", g_t1_ratio, g_t1_abs);
-        char nmv[96]; snprintf(nmv, sizeof nmv, "attn T=1 backward noise sweep (%d seeds x hd 16/32/64/128)", seeds);
+        std::string hds; for (int hd : {16, 32, 64, 128}) if (hd <= KVM_GPT_MAX_HD) hds += (hds.empty() ? "" : "/") + std::to_string(hd);
+        char nmv[96]; snprintf(nmv, sizeof nmv, "attn T=1 backward noise sweep (%d seeds x hd %s)", seeds, hds.c_str());
         check_true(nmv, g_fail == f0 && g_t1_ratio < 1.0, d);
     }
     for (int T : {2, 3, 15, 31, 33, 63, 95, 97}) attn_case(AttnCfg{1, T, 2, 1, 32});   // prefill with a clipped final partial q block
@@ -385,7 +510,7 @@ static void t_decode() {
 }
 
 // ---- loss -------------------------------------------------------------------------------------------------------------
-static void ce_case(int N, int V, double lscale, int mode /*0 none ignored,1 some,2 all*/, int ign, float gs, bool dense = false, bool ninf = false) {
+static void ce_case(int N, int V, double lscale, int mode /*0 none ignored,1 some,2 all*/, int ign, float gs, bool dense = false, bool ninf = false, int step = 4) {
     Rng r(81 + N + V);
     Dev dv;
     int lg = dv.addf(N, V, V + !dense), tg = dv.addi(N), rl = dv.addf(1, N), ls = dv.addf(1, N), loss = dv.addf(1, 2), dl = dv.addf(N, V, V + 2 * !dense);
@@ -395,10 +520,10 @@ static void ce_case(int N, int V, double lscale, int mode /*0 none ignored,1 som
     if (ninf) for (int rr = 0; rr < N; rr++) for (int c = 0; c < 4 && c < V - 1; c++) hl[(size_t)rr * V + c] = -INFINITY;   // banned tokens
     if (ninf) for (int rr = 0; rr < N; rr++) if (ht[rr] != ign && ht[rr] < 4) ht[rr] = 4 % V;
     dv.up(lg, hl); dv.upi(tg, ht);
-    Batch b; for (int r0 = 0; r0 < N; r0 += 4) b.add(OP_softmax_ce_fwd, A().b(lg).b(tg).b(rl).b(ls).i(r0).i(std::min(N, r0 + 4)).i(V).i(ign));
+    Batch b; for (int r0 = 0; r0 < N; r0 += step) b.add(OP_softmax_ce_fwd, A().b(lg).b(tg).b(rl).b(ls).i(r0).i(std::min(N, r0 + step)).i(V).i(ign));
     int e = run(dv, b);
     e |= run1(dv, OP_softmax_ce_reduce, A().b(rl).b(tg).b(loss).i(N).i(ign));
-    Batch b2; for (int r0 = 0; r0 < N; r0 += 4) b2.add(OP_softmax_ce_bwd, A().b(lg).b(tg).b(ls).b(loss).b(dl).i(r0).i(std::min(N, r0 + 4)).i(V).i(ign).f(gs));
+    Batch b2; for (int r0 = 0; r0 < N; r0 += step) b2.add(OP_softmax_ce_bwd, A().b(lg).b(tg).b(ls).b(loss).b(dl).i(r0).i(std::min(N, r0 + step)).i(V).i(ign).f(gs));
     e |= run(dv, b2);
     std::vector<int> it(ht.begin(), ht.end()); D rdl; double rloss = ce_d(dbl(hl), it, N, V, ign, &rdl);
     for (auto& x : rdl) x *= gs;
@@ -407,11 +532,21 @@ static void ce_case(int N, int V, double lscale, int mode /*0 none ignored,1 som
     check(std::string(nm) + " loss", {gl[0]}, {rloss}, 1e-5);
     check(std::string(nm) + " dlogits", dv.down(dl), rdl, 1e-5);
     check_true(std::string(nm) + " err==0", e == 0);
+    if (mode == 0) {   // softmax_ce_fused (one task per row block; the frontend never fuses a row block with ignored targets): bitwise what the three ops wrote
+        int rl2 = dv.addf(1, N), ls2 = dv.addf(1, N), dl2 = dv.addf(N, V, V + 2 * !dense);
+        Batch bf; for (int r0 = 0; r0 < N; r0 += step) bf.add(OP_softmax_ce_fused, A().b(lg).b(tg).b(rl2).b(ls2).b(dl2).i(r0).i(std::min(N, r0 + step)).i(V).i(-1).i(N).f(gs));    // ignore = -1: the fused op's contract (no target is ignored)
+        const int ef = run(dv, bf);
+        check_true(std::string(nm) + " fused err==0", ef == 0);
+        check_true(std::string(nm) + " fused rowloss bitwise", dv.down(rl2) == dv.down(rl));
+        check_true(std::string(nm) + " fused lse bitwise", dv.down(ls2) == dv.down(ls));
+        check_true(std::string(nm) + " fused dlogits bitwise", dv.down(dl2) == dv.down(dl));
+    }
 }
 static void t_ce() {
     ce_case(8, 1024, 2.0, 1, -100, 1.f, true); ce_case(8, 50304, 3.0, 0, -100, 1.f, true); ce_case(6, 4096, 2.0, 0, -100, 1.f, true, true); ce_case(5, 70, 2.0, 0, 0, 1.f, true, true);
     ce_case(13, 1000, 1.0, 0, -100, 1.f); ce_case(1, 1, 1.0, 0, -100, 1.f); ce_case(9, 7, 80.0, 0, -100, 1.f);
     ce_case(12, 50, 1.0, 1, -100, 0.5f); ce_case(6, 33, 1.0, 2, -1, 1.f); ce_case(5, 40000, 20.0, 0, -100, 1.f);
+    ce_case(97, 100, 2.0, 1, -100, 1.f, true, false, 97); ce_case(97, 128, 3.0, 0, -100, 1.f, true, true, 97); ce_case(64, 64, 2.0, 0, -100, 1.f, true, false, 5); ce_case(33, 16, 2.0, 2, -1, 0.5f, true, false, 33);   // narrow vocabulary, multi-row path (one task over all rows, ragged last group)
     // reference self-check: dlogits vs central finite differences of the mean loss
     int N = 4, V = 6; Rng r(5); D lg(N * V); for (auto& x : lg) x = r.nrm() * 3; std::vector<int> tg = {1, 2, -100, 5}; D dl; ce_d(lg, tg, N, V, -100, &dl);
     double me = 0, h = 1e-6; for (int i = 0; i < N * V; i++) { D a = lg, b = lg; a[i] += h; b[i] -= h; me = std::max(me, fabs((ce_d(a, tg, N, V, -100, nullptr) - ce_d(b, tg, N, V, -100, nullptr)) / (2 * h) - dl[i])); }
@@ -575,10 +710,11 @@ int main(int argc, char** argv) {
     if (argc > 2 && !strcmp(argv[1], "--emit-vectors")) g_vec = fopen(argv[2], "w");
     cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0));
     printf("device: %s, %d SMs, cc %d.%d\n", pr.name, pr.multiProcessorCount, pr.major, pr.minor);
-    if (getenv("TEST_ONLY") && !strcmp(getenv("TEST_ONLY"), "attention")) t_attention();   // TEST_ONLY=attention: the attention cases alone (sanitizer runs)
+    if (getenv("TEST_ONLY") && !strcmp(getenv("TEST_ONLY"), "ce")) t_ce();   // TEST_ONLY=ce: the cross-entropy cases alone, fused op included
+    else if (getenv("TEST_ONLY") && !strcmp(getenv("TEST_ONLY"), "attention")) t_attention();   // TEST_ONLY=attention: the attention cases alone (sanitizer runs)
     else if (getenv("TEST_ONLY") && !strcmp(getenv("TEST_ONLY"), "matmul")) t_matmul();   // TEST_ONLY=matmul: the matmul_tile cases alone
-    else { t_philox(); t_embedding(); t_matmul(); t_norms(); t_elementwise(); t_rope(); t_attention(); t_decode(); t_ce(); t_adamw(); t_sample(); t_batch(); t_errors(); }
+    else if (getenv("TEST_ONLY") && !strcmp(getenv("TEST_ONLY"), "tf32")) t_tf32_exact();   // TEST_ONLY=tf32: round_tf32 and matmul_tile flag 1024 alone
+    else { t_philox(); t_embedding(); t_matmul(); t_tf32_exact(); t_norms(); t_elementwise(); t_rope(); t_attention(); t_decode(); t_ce(); t_adamw(); t_sample(); t_batch(); t_errors(); }
     if (g_vec) fclose(g_vec);
-    printf("\n%d passed, %d failed\n", g_pass, g_fail);
-    return g_fail ? 1 : 0;
+    return summary();
 }

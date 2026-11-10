@@ -25,7 +25,10 @@ X(embedding_fwd,        32, "ids:buf,wte:buf,wpe:buf?,out:buf,r0:i32,r1:i32,T:i3
 X(embedding_bwd,        33, "ids:buf?,dout:buf,dtab:buf,N:i32,mod:i32,v0:i32,v1:i32,d:i32,acc:i32")
 // Output tile at (m0,n0) of C[M,N] = alpha*op(A)*op(B) with K reduction: 64x64, or 128x128 with flag 32 (a quarter of the L2->SM
 // traffic per FLOP: ~1.4x faster per FLOP; the caller steps m0,n0 by 128 and gets a quarter of the tasks). flags: 1 transA (A stored
-// [K,M]), 2 transB (B stored [N,K]), 4 accumulate into out, 8 gelu, 16 precise (3xTF32, ~fp32 accuracy; default 1xTF32), 32 big tile, 64 huge tile (256x128: m0 steps by 256, n0 by 128; 72 KiB smem; ~1.1x the 128x128 tile; do not combine with a 128-register cap).
+// [K,M]), 2 transB (B stored [N,K]), 4 accumulate into out, 8 gelu, 16 precise (3xTF32, ~fp32 accuracy; default 1xTF32), 32 big tile, 64 huge tile (256x128: m0 steps by 256, n0 by 128; 72 KiB smem; ~1.1x the 128x128 tile; do not combine with a 128-register cap),
+// 512 dgelu (the backward of a GELU layer in the tile's own epilogue, no second pass: out[m,n] = alpha*acc*gelu'(pre[m,n]); pre is then a required input, and bias, res, flags 4, 8 and 128 are refused).
+// 1024 exact operands (a and b already hold TF32 values, e.g. from round_tf32: the tile skips its own rounding and gives the products of
+// a rounding GEMM on the unrounded operands, bit for bit); refused with 16, 128 and 256.
 // Epilogue: v=alpha*acc; +bias[n] (bias!=-1); pre[m,n]=v (pre!=-1, before gelu); gelu(v) if flag 8; +res[m,n] (res!=-1);
 // out = v or out + v.
 X(matmul_tile,          34, "a:buf,b:buf,out:buf,bias:buf?,res:buf?,pre:buf?,m0:i32,n0:i32,M:i32,N:i32,K:i32,flags:i32,alpha:f32")
@@ -39,6 +42,7 @@ X(norm_bwd_params,      39, "x:buf,dy:buf,mean:buf?,rstd:buf,dgamma:buf,dbeta:bu
 X(gelu_fwd,             40, "x:buf,out:buf,e0:i32,e1:i32")                       // tanh approximation (GPT-2)
 X(gelu_bwd,             41, "x:buf,dy:buf,dx:buf,e0:i32,e1:i32,acc:i32")         // x = pre-activation
 X(residual_add,         42, "a:buf,b:buf,out:buf,e0:i32,e1:i32")                 // out may alias a or b
+X(sgd_range,           123, "w:buf,g:buf,lr:f32,e0:i32,e1:i32")                  // w[i] -= lr * g[i] over the flat range [e0,e1): one weight buffer updated by many tasks
 // Rotary embedding on x[R, H*hd], pairs (i, i+hd/2); position = (r%T) + pos[0] (pos optional int buf, serving offset).
 // rope_bwd is the inverse rotation. out may alias x.
 X(rope_fwd,             43, "x:buf,out:buf,pos:buf?,r0:i32,r1:i32,T:i32,H:i32,hd:i32,theta:f32")
@@ -63,6 +67,10 @@ X(attn_decode,          50, "q:buf,kc:buf,vc:buf,lens:buf,o:buf,b:i32,h:i32,H:i3
 X(softmax_ce_fwd,       51, "logits:buf,tgt:buf,rowloss:buf,lse:buf,r0:i32,r1:i32,V:i32,ignore:i32")
 X(softmax_ce_reduce,    52, "rowloss:buf,tgt:buf,loss:buf,N:i32,ignore:i32")
 X(softmax_ce_bwd,       53, "logits:buf,tgt:buf,lse:buf,loss:buf,dlogits:buf,r0:i32,r1:i32,V:i32,ignore:i32,scale:f32")
+// One step of cross-entropy for rows [r0,r1): softmax_ce_fwd then softmax_ce_bwd in one task (the block runs both, with no dependency hop between them); rowloss, lse and dlogits come out bitwise equal to the separate ops'.
+// No ignored targets (ignore = -1), so the reciprocal count the backward needs is known: 1/N for an N-row loss (softmax_ce_reduce still runs, off the critical path, for the loss itself).
+// Id 127, the last of 32..127: ids from 128 up are the game pack's (append-only).
+X(softmax_ce_fused,    127, "logits:buf,tgt:buf,rowloss:buf,lse:buf,dlogits:buf,r0:i32,r1:i32,V:i32,ignore:i32,N:i32,scale:f32")
 // AdamW on flat [e0,e1): g' = g*gscale[0] (gscale optional); t = step[0] (int buf, 1-based); fp32 master p; decoupled wd.
 X(adamw,                54, "p:buf,g:buf,m:buf,v:buf,gscale:buf?,step:buf,e0:i32,e1:i32,lr:f32,b1:f32,b2:f32,eps:f32,wd:f32")
 // partial[slot] = sum g^2 over [e0,e1) (double accumulate, fixed order). finish (single task): out[0]=min(1, max_norm/(norm+1e-6))
@@ -82,3 +90,5 @@ X(colsum,               61, "x:buf,out:buf,R:i32,c0:i32,c1:i32,acc:i32")        
 X(select_window,        62, "src:buf,step:buf,dst:buf,i0:i32,i1:i32,stride:i32,off:i32")
 // dst[r,:] = src[idx[r],:] for r in [r0,r1) (idx int32 [R]; bad index -> err 5 and a zero row).
 X(gather_rows,          63, "src:buf,idx:buf,dst:buf,r0:i32,r1:i32,d:i32")
+// out[e] = x[e] rounded to a TF32 value (to nearest, ties away, low 13 bits cleared) over [e0,e1): the operand copy of a pre-rounded GEMM (matmul_tile flag 1024).
+X(round_tf32,          126, "x:buf,out:buf,e0:i32,e1:i32")

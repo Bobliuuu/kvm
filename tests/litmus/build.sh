@@ -9,16 +9,16 @@ NVCC="$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc | tail -1)"
 mkdir -p "$OUT"
 ARCH="${KVM_ARCH:-sm_80}"; JOBS="${KVM_JOBS:-2}"
 B="-O3 -arch=$ARCH -std=c++17 -lineinfo -Wno-deprecated-gpu-targets"
-nv prod $B -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_prod"
-nv nofence $B -DLIT_NOFENCE -DLIT_MUTANT='"nofence(all __threadfence)"' -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_nofence"
-# the executor's own mutant: a waiter that never re-checks the version after parking (classic lost wakeup)
-nv norecheck $B -DKVM_BREAK_PARK_RECHECK -DLIT_MUTANT='"norecheck(KVM_BREAK_PARK_RECHECK)"' -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_norecheck"
 PIDS=(); NAMES=(); RC=()
 nv() {  # name, nvcc args...: run in the background; build number i first waits for build i-JOBS, so at most JOBS run at once
   local name="$1" i=${#PIDS[@]}; shift
   if [ "$i" -ge "$JOBS" ]; then wait "${PIDS[$((i - JOBS))]}" && RC[$((i - JOBS))]=0 || RC[$((i - JOBS))]=1; fi
   "$NVCC" "$@" & PIDS+=($!); NAMES+=("$name"); RC+=(-)
 }
+nv prod $B -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_prod"
+nv nofence $B -DLIT_NOFENCE -DLIT_MUTANT='"nofence(all __threadfence)"' -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_nofence"
+# the executor's own mutant: a waiter that never re-checks the version after parking (classic lost wakeup)
+nv norecheck $B -DKVM_BREAK_PARK_RECHECK -DLIT_MUTANT='"norecheck(KVM_BREAK_PARK_RECHECK)"' -I"$ROOT/include" "$HERE/litmus.cu" -o "$OUT/litmus_norecheck"
 mut() {  # name, header file, sed-expression: a header copy with exactly one step removed
   local d="$OUT/hdr_$1"; rm -rf "$d"; mkdir -p "$d"; cp "$ROOT"/include/* "$d/"
   sed -E "$3" "$ROOT/include/$2" > "$d/$2"

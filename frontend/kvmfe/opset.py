@@ -21,6 +21,12 @@ MM_TILE = 64        # matmul_tile computes a 64 x 64 output tile (flags: 1 trans
 ATTN_Q = 32         # bidirectional attn_full_*: 32 query rows (or keys) per task; also the sequence-length granularity of the model configs
 ATTN_BLOCK = 128    # causal attn_fwd / attn_bwd_dq: 128 query rows per task; attn_bwd_dkv: 128 keys per task (KVM_GPT_ATTN_ROWS in kvm_ops_gpt.cuh)
 F_TA, F_TB, F_ACC, F_GELU, F_PRECISE = 1, 2, 4, 8, 16
+F_BIG, F_HUGE = 32, 64   # matmul_tile flags: 32 = 128x128 output tile, 64 = 256x128 (rows x cols; two 128x128 passes). Default 64x64.
+
+
+def mm_dims(fl):
+    """(rows, cols) of the output tile a matmul_tile* task with flags `fl` computes."""
+    return (256, 128) if fl & F_HUGE else (128, 128) if fl & F_BIG else (MM_TILE, MM_TILE)
 
 
 class Buf:
@@ -133,7 +139,8 @@ def _argmax(b, a):
 
 # ------------------------------------------------------------------------------------------------ matmul
 def _mm_flops(a):
-    return 2.0 * max(0, min(MM_TILE, a['M'] - a['m0'])) * max(0, min(MM_TILE, a['N'] - a['n0'])) * a['K']
+    tm, tn = mm_dims(a['flags'])
+    return 2.0 * max(0, min(tm, a['M'] - a['m0'])) * max(0, min(tn, a['N'] - a['n0'])) * a['K']
 
 
 def _mm_acc(A, B, fl, m0, m1, n0, n1, K):
@@ -158,7 +165,8 @@ def _mm_acc(A, B, fl, m0, m1, n0, n1, K):
 def _matmul_tile(b, a):
     M, N, K, fl = a['M'], a['N'], a['K'], a['flags']
     A, B, out = b['a'], b['b'], b['out']
-    m1, n1 = min(a['m0'] + MM_TILE, M), min(a['n0'] + MM_TILE, N)
+    tm, tn = mm_dims(fl)
+    m1, n1 = min(a['m0'] + tm, M), min(a['n0'] + tn, N)
     prod = _mm_acc(A, B, fl, a['m0'], m1, a['n0'], n1, K)
     for i, m in enumerate(range(a['m0'], m1)):
         vals = []
@@ -773,14 +781,15 @@ def _add_rowtile(b, a):
 
 def _tile_nofx(b, a, out):
     """matmul_tile without epilogue into `out` (flags 1, 2 only)."""
-    _matmul_tile({'a': b['a'], 'b': b['b'], 'out': out, 'bias': None, 'res': None, 'pre': None}, {**a, 'flags': a['flags'] & 3})
+    _matmul_tile({'a': b['a'], 'b': b['b'], 'out': out, 'bias': None, 'res': None, 'pre': None}, {**a, 'flags': a['flags'] & (3 | F_BIG | F_HUGE)})
 
 
 def _tile_cells(a):
-    return [(m, n) for m in range(a['m0'], min(a['m0'] + MM_TILE, a['M'])) for n in range(a['n0'], min(a['n0'] + MM_TILE, a['N']))]
+    tm, tn = mm_dims(a['flags'])
+    return [(m, n) for m in range(a['m0'], min(a['m0'] + tm, a['M'])) for n in range(a['n0'], min(a['n0'] + tn, a['N']))]
 
 
-@impl('matmul_tile_dgelu', lambda a: _mm_flops(a) + 20.0 * MM_TILE * MM_TILE)
+@impl('matmul_tile_dgelu', lambda a: _mm_flops(a) + 20.0 * (lambda d: d[0] * d[1])(mm_dims(a['flags'])))
 def _matmul_tile_dgelu(b, a):
     out, pre = b['out'], b['pre']
     _tile_nofx(b, a, out)
@@ -788,7 +797,7 @@ def _matmul_tile_dgelu(b, a):
         out.a[m * out.cols + n] *= _gelu_d(pre.a[m * pre.cols + n])
 
 
-@impl('matmul_tile_silu_mul', lambda a: _mm_flops(a) + 10.0 * MM_TILE * MM_TILE)
+@impl('matmul_tile_silu_mul', lambda a: _mm_flops(a) + 10.0 * (lambda d: d[0] * d[1])(mm_dims(a['flags'])))
 def _matmul_tile_silu_mul(b, a):
     out, up, gate = b['out'], b['up'], b['gate']
     _tile_nofx(b, a, up)
@@ -796,7 +805,7 @@ def _matmul_tile_silu_mul(b, a):
         out.a[m * out.cols + n] = _silu(gate.a[m * gate.cols + n]) * up.a[m * up.cols + n]
 
 
-@impl('matmul_tile_silu_mul_bwd', lambda a: _mm_flops(a) + 20.0 * MM_TILE * MM_TILE)
+@impl('matmul_tile_silu_mul_bwd', lambda a: _mm_flops(a) + 20.0 * (lambda d: d[0] * d[1])(mm_dims(a['flags'])))
 def _matmul_tile_silu_mul_bwd(b, a):
     dg, du, gate, up = b['dgate'], b['dup'], b['gate'], b['up']
     _tile_nofx(b, a, dg)

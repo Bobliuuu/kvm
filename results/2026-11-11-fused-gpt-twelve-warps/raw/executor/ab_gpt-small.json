@@ -1,0 +1,47 @@
+[
+ {
+  "row": "gpt-small",
+  "control": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_small/bundle",
+  "cand": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_small/bundle",
+  "tasks": {
+   "control": 28858,
+   "cand": 28858
+  },
+  "ms": {
+   "control": {
+    "median": 14.323,
+    "best": 14.315,
+    "all": [
+     14.331,
+     14.315,
+     14.399,
+     14.322,
+     14.334,
+     14.32,
+     14.327,
+     14.322,
+     14.323
+    ]
+   },
+   "cand": {
+    "median": 13.812,
+    "best": 13.799,
+    "all": [
+     13.813,
+     13.816,
+     13.812,
+     13.84,
+     13.809,
+     13.807,
+     13.799,
+     13.802,
+     13.816
+    ]
+   }
+  },
+  "paired_ratio_median": 1.0375009049446173,
+  "best_ratio": 1.0373940140589897,
+  "gate_max_rel": 4.763953343630825e-05,
+  "gate_tol": 0.002
+ }
+]

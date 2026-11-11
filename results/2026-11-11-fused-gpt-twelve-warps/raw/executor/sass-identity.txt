@@ -1,0 +1,3 @@
+functions: 19 in A, 19 in B; identical 18; differ 1; in one only 0
+excluding names with 'kvm_fgpt_kernel': identical 18, differ 0, in one only 0
+  DIFFERS _Z15kvm_fgpt_kernelPK11KvmFgptDescP11KvmCountersP10KvmHostErri: 41120 -> 38256 instructions

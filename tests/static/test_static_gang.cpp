@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 #include "kvm_static.h"
+#include "replay.h"
 
 namespace {
 
@@ -114,52 +115,12 @@ std::vector<int> gangs_of(const Bundle& b) {
     return g;
 }
 
-// Replays the emitted records as the device runs them. Returns false on a deadlock or a broken edge.
+// Replays the emitted records as the device runs them (tests/static/replay.h). Returns false on a deadlock or a broken edge.
 bool replay(const Bundle& b, const KvmSPlan& p, int W, std::string& why) {
-    const std::vector<int> gang_of = gangs_of(b);
-    const KvmSLayout l = kvm_static_layout(p);
-    std::vector<std::vector<KvmSRec>> st(W);
-    for (int w = 0; w < W; ++w) { st[w].resize(l.nrecs[w]); if (l.nrecs[w]) kvm_static_emit(p, l, w, b.tasks, b.args, nullptr, 0, op_info, st[w].data()); }
-    std::vector<int> head(W, 0), progress(W, 0);
-    std::vector<long> start(b.tasks.size(), -1), done(b.tasks.size(), -1);
-    std::map<int, std::set<int>> arrived;   // gang -> workers whose member is at the barrier
-    long clock = 0;
-    size_t total = 0; for (int w = 0; w < W; ++w) total += st[w].size();
-    size_t finished = 0;
-    auto complete = [&](int w) {
-        const KvmSRec& r = st[w][head[w]];
-        if (!(r.flags & KVM_S_WAITONLY)) done[r.task] = clock;
-        if (r.flags & KVM_S_PUBLISH) progress[w] = r.pos1;
-        ++head[w]; ++finished;
-    };
-    for (bool moved = true; moved;) {
-        moved = false;
-        for (int w = 0; w < W; ++w) {
-            if (head[w] >= (int)st[w].size()) continue;
-            const KvmSRec& r = st[w][head[w]];
-            bool ready = true;
-            for (int k = 0; k < r.nwait; ++k) if (progress[r.waits[k].worker] < r.waits[k].need) ready = false;
-            if (!ready) continue;
-            const bool gang_rec = !(r.flags & KVM_S_WAITONLY) && gang_of[r.task] >= 0;
-            if (!gang_rec) { start[r.task] = ++clock; complete(w); moved = true; continue; }
-            const int g = gang_of[r.task];
-            if (arrived[g].insert(w).second) { start[r.task] = ++clock; moved = true; }
-            const int n = b.args[b.tasks[r.task].args_off + 2];
-            if ((int)arrived[g].size() == n) {   // the barrier opens: every member completes
-                ++clock;
-                for (int x : arrived[g]) complete(x);
-                arrived.erase(g);
-            }
-        }
-    }
-    if (finished != total) { why = "deadlock: " + std::to_string(total - finished) + " of " + std::to_string(total) + " records never ran"; return false; }
-    for (size_t u = 0; u < b.out.size(); ++u)
-        for (int v : b.out[u])
-            if (!(done[u] >= 0 && start[v] >= 0 && done[u] < start[v])) {
-                why = "edge " + std::to_string(u) + " -> " + std::to_string(v) + " broken (done " + std::to_string(done[u]) + ", start " + std::to_string(start[v]) + ")";
-                return false;
-            }
-    return true;
+    if (p.workers != W) { why = "the plan has " + std::to_string(p.workers) + " workers, not " + std::to_string(W); return false; }
+    const kvm_test_replay::Result r = kvm_test_replay::replay(b.tasks, b.args, b.out, p, op_info);
+    why = r.why;
+    return r.ok;
 }
 
 bool distinct_workers(const KvmSPlan& p, const Bundle& b, std::string& why) {

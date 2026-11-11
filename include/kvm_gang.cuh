@@ -30,11 +30,12 @@ __device__ __forceinline__ unsigned atom_add_acq_rel(unsigned* p, unsigned v) { 
 // `abort` (optional) is the run's error word: a member waiting at the barrier reads it every 4,096 polls and gives up once it is set, so a member
 // that failed and never arrives ends the gang's run instead of hanging it. Returns false then (every thread of the block gets the same answer),
 // and the caller must return without another crossing: the words are left mid-crossing, and the failed run's buffers are not reused.
+// The answer is the block's OR at the exit barrier (__syncthreads_or), so neither barrier holds static shared memory: every kernel entry
+// that calls one keeps the static shared memory its worker declares, which the fused steps' budget assumes.
 __device__ __forceinline__ bool barrier(unsigned* ctl, int members, const int* abort = nullptr) {
-    __shared__ int gave_up;
+    int gave = 0;
     __syncthreads();
     if (threadIdx.x == 0) {
-        gave_up = 0;
         __threadfence();
         unsigned* count = ctl;
         unsigned* gen = ctl + 1;
@@ -44,11 +45,10 @@ __device__ __forceinline__ bool barrier(unsigned* ctl, int members, const int* a
             st_release(gen, g0 + 1u);
         } else {
             for (unsigned spin = 1; ld_acquire(gen) == g0; ++spin)
-                if (abort && (spin & 4095u) == 0 && *(const volatile int*)abort) { gave_up = 1; break; }
+                if (abort && (spin & 4095u) == 0 && *(const volatile int*)abort) { gave = 1; break; }
         }
     }
-    __syncthreads();
-    return !gave_up;
+    return !__syncthreads_or(gave);
 }
 
 // The flag-line form, for gangs whose barrier is on their critical path. Member m's thread 0 publishes its epoch, the count of its
@@ -62,8 +62,6 @@ __device__ __forceinline__ bool barrier(unsigned* ctl, int members, const int* a
 __host__ __device__ constexpr int line_words(int members) { return (members + 31) / 32 * 32; }
 __device__ __forceinline__ unsigned lines_epoch(const unsigned* lines, int member) { return *(const volatile unsigned*)(lines + member); }
 __device__ __forceinline__ bool barrier_lines(unsigned* lines, int member, int members, unsigned& epoch, const int* abort = nullptr) {
-    __shared__ int gave_up;
-    if (threadIdx.x == 0) gave_up = 0;   // before the entry barrier: a crossing that returned false is never followed by another
     __syncthreads();
     ++epoch;
     if (threadIdx.x == 0) {
@@ -71,19 +69,19 @@ __device__ __forceinline__ bool barrier_lines(unsigned* lines, int member, int m
         st_release(lines + member, epoch);
     }
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
+    int gave = 0;
     if (warp < (members + 31) / 32) {
         const int m = warp * 32 + lane;
         for (unsigned spin = 1;; ++spin) {
             const unsigned v = m < members ? ld_acquire(lines + m) : epoch;
             if (__all_sync(0xffffffffu, (int)(v - epoch) >= 0)) break;
             if ((spin & 4095u) == 0 && __any_sync(0xffffffffu, abort != nullptr && *(const volatile int*)abort != 0)) {
-                if (lane == 0) gave_up = 1;
+                gave = 1;
                 break;
             }
         }
     }
-    __syncthreads();
-    return !gave_up;
+    return !__syncthreads_or(gave);
 }
 
 }  // namespace kvm_gang

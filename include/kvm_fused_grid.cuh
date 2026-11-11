@@ -219,19 +219,19 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
 #pragma unroll
       for (int j = 0; j < KVM_GRID_MAXN / 32; ++j) { const int v = lane + 32 * j; x[j] = v < V ? lrow[v] : -INFINITY; mx = fmaxf(mx, x[j]); }
       for (int o = 16; o; o >>= 1) mx = fmaxf(mx, __shfl_xor_sync(0xffffffffu, mx, o));
-      float z = 0.f;
-#pragma unroll
-      for (int j = 0; j < KVM_GRID_MAXN / 32; ++j) if (lane + 32 * j < V) z += expf(x[j] - mx);
-      for (int o = 16; o; o >>= 1) z += __shfl_xor_sync(0xffffffffu, z, o);
       const int t = stg[r];
       float lt = 0.f;
 #pragma unroll
       for (int j = 0; j < KVM_GRID_MAXN / 32; ++j) if (lane + 32 * j == t) lt = x[j];
       for (int o = 16; o; o >>= 1) lt += __shfl_xor_sync(0xffffffffu, lt, o);   // only the target's lane holds a non-zero term
+      float z = 0.f;   // each exponential once, kept for the gradient: the same operations and order, so the same bits
+#pragma unroll
+      for (int j = 0; j < KVM_GRID_MAXN / 32; ++j) if (lane + 32 * j < V) { x[j] = expf(x[j] - mx); z += x[j]; }
+      for (int o = 16; o; o >>= 1) z += __shfl_xor_sync(0xffffffffu, z, o);
 #pragma unroll
       for (int j = 0; j < KVM_GRID_MAXN / 32; ++j) {
         const int v = lane + 32 * j;
-        if (v < VP) d.dlog[(size_t)r * VP + v] = v < V ? (expf(x[j] - mx) / z - (v == t ? 1.f : 0.f)) * inv_t : 0.f;
+        if (v < VP) d.dlog[(size_t)r * VP + v] = v < V ? (x[j] / z - (v == t ? 1.f : 0.f)) * inv_t : 0.f;
       }
       if (lane == 0) d.rloss[r] = mx + logf(z) - lt;
     }

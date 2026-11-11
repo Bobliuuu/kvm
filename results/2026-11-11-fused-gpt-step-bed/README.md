@@ -35,8 +35,9 @@ The default 1xTF32 numerics, as the panel runs them:
 
 After the first AdamW update the trajectories part from the VM's, in either numerics. The update is about lr x sign(g), and rounding
 flips its sign where a gradient is near zero, float32's as well as TF32's. On these two rows precise mode stayed within the bars over 2
-steps; a d128 GPT did not (within 3.8e-6 of scale after one step, 9.2e-4 after two: Reach, below). So the bed judges gradients, moments
-and the gang sizes against each other after one step, and a longer run by its losses; after more steps they are reported.
+steps; a d128 GPT did not (within 3.8e-6 of scale after one step, 9.21e-4 after two: Reach, below), and whether AdamW's first update
+alone explains that is under test. This branch changed the bed to judge gradients, moments and the gang sizes against each other after
+one step, and a longer run by its losses, reporting the rest; the d128 run that printed FAIL under the old rule reads "reported" under it.
 
 ## Time
 
@@ -147,7 +148,7 @@ The rest need the weights themselves streamed: at d 512 a member's MLP slices al
 | the same, the executor, 1xTF32, 3 steps | fused, losses within 7.0e-5 of the VM's |
 | the executor on the panel rows, us a step (8 paired rounds, against the previous head) | gpt-tiny 78.3 to 75.9 (x1.032), gpt-small 179.2 to 177.4 (x1.010); with the bias corrections' table, now filled once a run |
 | chunks whose last one is shorter (N not a multiple of the chunk, as a hold-out d128 on an A100: 128 + 64 rows), precise, against the VM (`raw/row-chunks-shorter-last.log`) | gpt-small at 96, 80, 48 and 112 rows, the batch-4 at 96 and 112: losses within 1.1e-7 over 2 steps |
-| a d128 GPT (4 layers, 4 heads of 32, T 64, B 2: N 128, V 256; 64-row chunks by the fit), the widest the draw makes that fits this card (`raw/d128.log`) | bed, precise: after one step, gradients within 3.8e-6 of scale and moments within 6.7e-6; losses within 1.8e-7 over 2 steps. After two steps the gradients read 9.21e-4 of scale (`w.gpt.h0.mlp.fc1.w`): the bed's 3e-4 bar failed it, where gpt-tiny and gpt-small had passed it (6.1e-6, 6.1e-5), and the bar now applies after one step only (Correctness, above). The executor, 1xTF32, 3 steps: fused, losses within 2.6e-4 of the VM's |
+| a d128 GPT (4 layers, 4 heads of 32, T 64, B 2: N 128, V 256; 64-row chunks by the fit), the widest the draw makes that fits this card (`raw/d128.log`) | correct at step 1; step 2 disclosed, its cause under test. Bed, precise, after one step: gradients within 3.8e-6 of scale, moments within 6.7e-6. After two: losses within 1.8e-7, but gradients 9.21e-4 of scale (`w.gpt.h0.mlp.fc1.w`): the bed printed FAIL against its 3e-4 bar, which gpt-tiny and gpt-small pass (6.1e-6, 6.1e-5), and this branch's change to the bed relabels that run "reported". The executor, 1xTF32, 3 steps: fused, losses within 2.6e-4 of the VM's |
 | the same d128, time (`raw/d128-time.log`) | the executor 790-808 us a step over 30 steps in the fast clock state (1,000-1,021 in the slow); the bed's phase clock 827 us at 2.40 GHz, of which the MLP's backward 21%, AdamW 14%, the attention's and the replicated parameters' sums 10% |
 
 ## Limits

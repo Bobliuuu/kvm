@@ -2402,6 +2402,8 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
     }
 }
 
+#include "kvm_attn_bf16.cuh"   // bf16-storage attention on bf16 tensor-core tiles (head size 64); namespace kvmgpt
+
 // Head sizes above KVM_GPT_MAX_HD are not compiled at all (they would fix the persistent kernel's registers at the hd=128 level and
 // need a 104 KiB launch); a task asking for one fails with KVM_GPT_E_SHAPE.
 template <int HD> KVM_GPT_DEVI void attn_fwd_g(const AttnArgs& A) { if constexpr (HD <= KVM_GPT_MAX_HD) attn_fwd_t<HD>(A); }
@@ -2446,6 +2448,7 @@ KVM_GPT_DEVI void attn_fwd(const KvmCtx& ctx, const int32_t* a) {
     if (obf) A.sd |= KVM_ATT_O;
     A.lsew = k.fvec(a[4], (long)(A.b + 1) * A.H * A.T);
     if (k.bad) return;
+    if (ab_ok(A, hd, false)) { attn_fwd_b(A); return; }
     KVM_GPT_HD_SWITCH(hd, attn_fwd_g, A)
 }
 KVM_GPT_DEVI void attn_bwd_delta(const KvmCtx& ctx, const int32_t* a) {
@@ -2510,6 +2513,7 @@ KVM_GPT_DEVI void attn_bwd_dq(const KvmCtx& ctx, const int32_t* a) {
     A.dq = (float*)k.mat_s(a[6], R, (long)A.H * hd, &A.lddq, &qbf);
     if (qbf) A.sd |= KVM_ATT_DQ;
     if (k.bad) return;
+    if (ab_ok(A, hd, true)) { attn_dq_b(A); return; }
     KVM_GPT_HD_SWITCH(hd, attn_dq_g, A)
 }
 KVM_GPT_DEVI void attn_bwd_dkv(const KvmCtx& ctx, const int32_t* a) {
@@ -2534,6 +2538,7 @@ KVM_GPT_DEVI void attn_bwd_dkv(const KvmCtx& ctx, const int32_t* a) {
     if (kbf) A.sd |= KVM_ATT_DK;
     if (vbf) A.sd |= KVM_ATT_DV;
     if (k.bad) return;
+    if (ab_ok(A, hd, true)) { attn_dkv_b(A); return; }
     KVM_GPT_HD_SWITCH(hd, attn_dkv_g, A)
 }
 

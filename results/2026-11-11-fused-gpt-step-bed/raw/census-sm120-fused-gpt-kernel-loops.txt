@@ -1,0 +1,33 @@
+_Z15kvm_fgpt_kernelPK11KvmFgptDescP11KvmCountersP10KvmHostErri: every block, 36424 instructions in 2675 blocks
+  72 MMA loops; by kind (HMMA a pass, LDGSTS a pass):
+    HMMA   6 LDGSTS   0:  14 loops; registers used in the loop median 55, passengers median 78 (range 52-86), LDL a pass median 0 (range 0-0)
+    HMMA   8 LDGSTS   0:  34 loops; registers used in the loop median 49, passengers median 68 (range 46-85), LDL a pass median 0 (range 0-0)
+    HMMA   8 LDGSTS   6:   1 loops; registers used in the loop median 71, passengers median 39 (range 39-39), LDL a pass median 0 (range 0-0)
+    HMMA   8 LDGSTS  14:   1 loops; registers used in the loop median 84, passengers median 39 (range 39-39), LDL a pass median 1 (range 1-1)
+    HMMA  16 LDGSTS   6:   2 loops; registers used in the loop median 79, passengers median 39 (range 36-39), LDL a pass median 0 (range 0-0)
+    HMMA  16 LDGSTS  10:   1 loops; registers used in the loop median 78, passengers median 43 (range 43-43), LDL a pass median 0 (range 0-0)
+    HMMA  20 LDGSTS   8:   1 loops; registers used in the loop median 88, passengers median 39 (range 39-39), LDL a pass median 0 (range 0-0)
+    HMMA  32 LDGSTS  10:   1 loops; registers used in the loop median 82, passengers median 43 (range 43-43), LDL a pass median 0 (range 0-0)
+    HMMA  44 LDGSTS  32:   1 loops; registers used in the loop median 103, passengers median 26 (range 26-26), LDL a pass median 1 (range 1-1)
+    HMMA  62 LDGSTS  18:   1 loops; registers used in the loop median 99, passengers median 36 (range 36-36), LDL a pass median 0 (range 0-0)
+    HMMA  78 LDGSTS  26:   2 loops; registers used in the loop median 133, passengers median 3 (range 3-3), LDL a pass median 0 (range 0-0)
+    HMMA 110 LDGSTS  34:   1 loops; registers used in the loop median 108, passengers median 28 (range 28-28), LDL a pass median 0 (range 0-0)
+    HMMA 110 LDGSTS  36:   2 loops; registers used in the loop median 133, passengers median 3 (range 3-3), LDL a pass median 0 (range 0-0)
+    HMMA 126 LDGSTS  42:   1 loops; registers used in the loop median 133, passengers median 3 (range 3-3), LDL a pass median 0 (range 0-0)
+    HMMA 134 LDGSTS  48:   2 loops; registers used in the loop median 133, passengers median 3 (range 3-3), LDL a pass median 0 (range 0-0)
+    HMMA 150 LDGSTS  58:   2 loops; registers used in the loop median 133, passengers median 3 (range 3-3), LDL a pass median 0 (range 0-0)
+    HMMA 164 LDGSTS  58:   2 loops; registers used in the loop median 133, passengers median 3 (range 3-3), LDL a pass median 0 (range 0-0)
+    HMMA 178 LDGSTS  80:   3 loops; registers used in the loop median 135, passengers median 1 (range 1-1), LDL a pass median 1 (range 1-1)
+  the loop with the most reloads, at 0x00e2c0 (HMMA 8, LDL 1): 39 passengers
+      R2   defined by IADD3 R2, PT, PT, R68, 0x1, RZ                                                                 ?
+      R3   defined by S2R R3, SR_CTAID.X                                                &wr=0x2                      ?
+      R5   defined by MOV R5, R0                                                                                     ?
+      R7   defined by IADD.64 R6, R6, 0x20                                                                           ?
+      R9   defined by FADD R9, -R0, 1                                                                                ?
+      R10  defined by IADD.64 R10, R6, R10                                                                           ?
+      R11  defined by IADD3 R11, PT, PT, R0, R0, RZ                                     &req={2}                     ?
+      R12  defined by LDC.64 R12, c[0x0][0x380]                                         &wr=0x3                      ?
+      R13  defined by LDC.64 R12, c[0x0][0x380]                                         &wr=0x3                      ?
+      R14  defined by IMAD.WIDE.U32 R14, R16, 0x4, R14                                  &req={2}                     ?
+      R15  defined by IMAD.WIDE.U32 R14, R16, 0x4, R14                                  &req={2}                     ?
+      R16  defined by IADD3 R16, PT, PT, R16, 0x100, RZ                                                              ?

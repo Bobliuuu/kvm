@@ -1,0 +1,17 @@
+_Z15kvm_fgpt_kernelPK11KvmFgptDescP11KvmCountersP10KvmHostErri: every block, 36424 instructions in 2675 blocks
+  10 functions (cubin symbols; 7 are ptxas's internal helpers, folded below), 74 calls between functions, 0 CALLs inside their own function; registers R0-R140, R1 aside
+  function                         instr  HMMA   LDL   STL touched avoided  avoided registers held across a call by
+  (kernel)                            17     0     0     0       5     135  _ZN8kvm_fgpt3runIZ15kvm_fgpt_kernelPK11KvmFgptDescP11KvmCountersP10KvmHostErriEUliE_NS_8NoPhasesEEEbRS2_iPfiPKiT_RT0_ 116; held by none 19
+  kvm_fail                            40     0     0     0      14     126  _ZN8kvm_fgpt3runIZ15kvm_fgpt_kernelPK11KvmFgptDescP11KvmCountersP10KvmHostErriEUliE_NS_8NoPhasesEEEbRS2_iPfiPKiT_RT0_ 108; held by none 18
+  _ZN8kvm_fgpt3runIZ15kvm_fgpt_k   35408   178     4     5     138       2  ; held by none 2
+  (7 internal helpers: 959 instructions, at most 23 registers each)
+  calls: caller -> callee, sites, registers live across them (min-max, R1 aside), the widest site
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_5_$__cuda_sm3x_div_rn_noftz_f32_s   27 site(s)   60- 99 live, widest at 0x01be20
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_3_$__cuda_sm20_rcp_rn_f32_slowpat    3 site(s)   90- 94 live, widest at 0x022510
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_4_$__cuda_sm20_sqrt_rn_f32_slowpa    8 site(s)   70- 92 live, widest at 0x022430
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> kvm_fail                                       15 site(s)    1- 91 live, widest at 0x058520
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_2_$__cuda_sm20_div_s64              16 site(s)   39- 73 live, widest at 0x0839f0
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_1_$__cuda_sm20_div_rn_f64_full       1 site(s)   71- 71 live, widest at 0x0381a0
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_0_$__cuda_sm20_dblrcp_rn_slowpath    2 site(s)   54- 68 live, widest at 0x038430
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_accurate_pow                         1 site(s)   64- 64 live, widest at 0x00a8a0
+    (kernel)                     -> _ZN8kvm_fgpt3runIZ15kvm_fgpt_kernelPK11KvmFg    1 site(s)    0-  0 live, widest at 0x0000e0

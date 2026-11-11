@@ -7,7 +7,9 @@
   in place. mlp1024 at 107-108 members needs 37,104 floats a member.
 - **Correct on a GPU:** on an RTX 5070 Laptop (sm_120, 36 SMs) the step checks against float64 at four shapes, and at h96-d2 its errors equal the
   split step's on the same model and data.
-- **Not yet measured:** mlp1024 itself (it needs 107-108 members: an A100) and every A100 time. The executor op is not wired yet.
+- **In the executor:** `fmlp_grid` (op 194). The fusion pass takes the panel's mlp1024 in this form at 107-108 workers, and the plan's records replay
+  through every gang's barrier.
+- **Not yet measured:** mlp1024 itself (it needs 107-108 members: an A100) and every A100 time.
 
 ## The step
 
@@ -40,9 +42,20 @@ The 5070's times are sm_120 at a laptop's clocks: they show where the step's tim
   grid's 4 L + 2.
 - **The check's bound** is the split bed's: the loss within 1e-3 and every update within 2e-2 relative L2 of float64.
 
+## The executor op
+
+- **The fusion pass** offers the grid form to a run that the one-block and split forms both refuse: one gang of every worker a step, when that member fits
+  the budget. `fuse_pass.log` (CPU, gen_mlp bundles): the panel's mlp1024 (h1024-d2) becomes one gang of 108 members a step (layer 0 1 x 64, hidden
+  13 x 8, head 64 x 1, 37,104 floats a member). Every other bundle keeps its form (split, one-block), and every gang's records replay through its
+  barriers.
+- **The static worker** prefetches a grid run's descriptor during the record's waits and runs `grid_run` with the run's error word.
+  `make_fused_state` builds each run's descriptor and scratch.
+- **The executor's PTX compile** with all of it (`ptx_check.log`): rc 0 at `aea86f0` (sm_80, LEAN, nvcc 12.8), with the same warnings as the base,
+  none of them in this change. ptxas has not run on the executor.
+
 ## Not yet done
 
 - **The A100 read of mlp1024** (h1024-d2) at 108 members: `grid_bed --hidden 1024 --depth 2 --members 108`, beside today's 304.7 us a step for
-  the row (block 1's final panel) and PyTorch's 104.6.
-- **The executor op** (`fmlp_grid`), the fusion pass's grid form for runs the split form refuses, and its descriptors.
+  the row (block 1's final panel) and PyTorch's 104.6. Then the executor build, `KVM_CHECK_MLP_HIDDEN=1024 tests/static/run_check.sh 107 108`, and the row's
+  paired read.
 - **Depth 4:** every hidden block stays resident through the step, so h1024-d4 needs 60,528 floats a member; streaming the blocks per layer lifts it.

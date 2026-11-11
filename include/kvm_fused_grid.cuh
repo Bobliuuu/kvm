@@ -17,6 +17,15 @@ constexpr int NPH = 8;   // the phases `ph(i)` marks, once a step in this order 
 // 0 load, 1 forward (layer 0 and the hidden layers), 2 head partials, 3 cross-entropy, 4 head backward, 5 hidden layers backward, 6 layer 0 backward,
 // 7 embedding rows, write-back and the last barrier
 
+// A model block into shared memory whose first vrows rows and vcols columns lie inside the model (vcols a multiple of 4): those by cp.async, the
+// rest, past the hidden width H into its granule's padding (kvm_fused_grid.h), as zeros. The block's write-back stores only the inside part.
+__device__ __forceinline__ void copy_rows_padded(float* dst, int dst_ld, const float* src, size_t src_ld, int rows, int cols, int vrows, int vcols) {
+  kvm_fmlp::for_cells(rows, cols >> 2, [&](int r, int c4) {
+    float* t = dst + (size_t)r * dst_ld + 4 * c4;
+    if (r < vrows && 4 * c4 < vcols) kvm_fmlp::cp_async16(t, src + (size_t)r * src_ld + 4 * c4);
+    else *reinterpret_cast<float4*>(t) = make_float4(0.f, 0.f, 0.f, 0.f);
+  });
+}
 // rows x cols floats between global memory and shared memory (cols a multiple of 4, 16-byte aligned rows): plain stores back to global
 __device__ __forceinline__ void store_rows(float* dst, size_t dst_ld, const float* src, int src_ld, int rows, int cols) {
   kvm_fmlp::for_cells(rows, cols >> 2, [&](int r, int c4) {
@@ -134,7 +143,7 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
   kvm_fmlp::cp_commit_wait();
   __syncthreads();
   const KvmGridDesc& d = *reinterpret_cast<const KvmGridDesc*>(sm);
-  const int tid = threadIdx.x, warp = tid >> 5, lane = tid & 31, m = member, P = d.P, T = T96, E = d.E, H = d.H, V = d.V, VP = d.VP, L = d.L;
+  const int tid = threadIdx.x, warp = tid >> 5, lane = tid & 31, m = member, P = d.P, T = T96, E = d.E, H = d.H, Hp = d.Hp, V = d.V, VP = d.VP, L = d.L;
   const int pA = d.pA, pB = d.pB;
   const float lr = d.lr, inv_t = 1.f / (float)T;
   unsigned* const ctl = d.ctl;
@@ -145,14 +154,16 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
   float* const B = sm + d.sB;   // [T][pB]: the other one (a layer's dZ columns, the logit gradients)
   // ---- this member's roles: layer 0's column block, the hidden layers' block (a, b) with its reduce rows, the head's row block, embedding rows
   const bool in0 = m < d.nb0;
-  const int c0 = in0 ? kvm_grid_off(H, d.nb0, m) : 0, w0 = in0 ? kvm_grid_off(H, d.nb0, m + 1) - c0 : 0;
+  const int c0 = in0 ? kvm_grid_off(Hp, d.nb0, m) : 0, w0 = in0 ? kvm_grid_off(Hp, d.nb0, m + 1) - c0 : 0;
   const bool inh = L > 1 && m < d.ka * d.nb;
   const int ha = inh ? m / d.nb : 0, hb = inh ? m % d.nb : 0;
-  const int k0 = inh ? kvm_grid_off(H, d.ka, ha) : 0, wk = inh ? kvm_grid_off(H, d.ka, ha + 1) - k0 : 0;
-  const int n0 = inh ? kvm_grid_off(H, d.nb, hb) : 0, wn = inh ? kvm_grid_off(H, d.nb, hb + 1) - n0 : 0;
+  const int k0 = inh ? kvm_grid_off(Hp, d.ka, ha) : 0, wk = inh ? kvm_grid_off(Hp, d.ka, ha + 1) - k0 : 0;
+  const int n0 = inh ? kvm_grid_off(Hp, d.nb, hb) : 0, wn = inh ? kvm_grid_off(Hp, d.nb, hb + 1) - n0 : 0;
   const int r0 = inh ? kvm_grid_off(T, d.ka, ha, 1) : 0, wr = inh ? kvm_grid_off(T, d.ka, ha + 1, 1) - r0 : 0;
   const bool inhd = m < d.kah;
-  const int kh0 = inhd ? kvm_grid_off(H, d.kah, m) : 0, wkh = inhd ? kvm_grid_off(H, d.kah, m + 1) - kh0 : 0;
+  const int kh0 = inhd ? kvm_grid_off(Hp, d.kah, m) : 0, wkh = inhd ? kvm_grid_off(Hp, d.kah, m + 1) - kh0 : 0;
+  // the parts of this member's blocks inside the model (every block starts inside it: the padding is less than a granule)
+  const int vc0 = H - c0 < w0 ? H - c0 : w0, vk = H - k0 < wk ? H - k0 : wk, vn = H - n0 < wn ? H - n0 : wn, vkh = H - kh0 < wkh ? H - kh0 : wkh;
   const int e0 = (int)((long long)m * V / P), e1 = (int)((long long)(m + 1) * V / P);
   auto cross = [&]() { return kvm_gang::barrier_lines(ctl, m, P, epoch, abort); };
 
@@ -160,16 +171,16 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
   for (int i = tid; i < T; i += NT) { sid[i] = ids[i]; stg[i] = tgt[i]; }
   __syncthreads();
   if (in0) {
-    kvm_fsplit::copy_rows(sm + d.sW0, d.pW0, d.w[0] + c0, H, E, w0);
-    kvm_fsplit::copy_rows(sm + d.sb0, w0, d.b[0] + c0, H, 1, w0);
+    copy_rows_padded(sm + d.sW0, d.pW0, d.w[0] + c0, H, E, w0, E, vc0);
+    copy_rows_padded(sm + d.sb0, w0, d.b[0] + c0, H, 1, w0, 1, vc0);
     kvm_fmlp::for_cells(T, E >> 2, [&](int r, int c4) { kvm_fmlp::cp_async16(A + r * pA + 4 * c4, d.emb + (size_t)sid[r] * E + 4 * c4); });
   }
   if (inh)
     for (int l = 1; l < L; ++l) {
-      kvm_fsplit::copy_rows(sm + d.sW[l], d.pW, d.w[l] + (size_t)k0 * H + n0, H, wk, wn);
-      kvm_fsplit::copy_rows(sm + d.sb[l], wn, d.b[l] + n0, H, 1, wn);
+      copy_rows_padded(sm + d.sW[l], d.pW, d.w[l] + (size_t)k0 * H + n0, H, wk, wn, vk, vn);
+      copy_rows_padded(sm + d.sb[l], wn, d.b[l] + n0, H, 1, wn, 1, vn);
     }
-  if (inhd) kvm_fsplit::copy_rows(sm + d.sWh, d.pWh, d.wh + (size_t)kh0 * V, V, wkh, V);
+  if (inhd) copy_rows_padded(sm + d.sWh, d.pWh, d.wh + (size_t)kh0 * V, V, wkh, V, vkh, V);
   kvm_fmlp::cp_commit_wait();
   if (inhd && VP > V) kvm_fmlp::for_cells(wkh, VP - V, [&](int r, int c) { sm[d.sWh + r * d.pWh + V + c] = 0.f; });   // the head's pad columns: zero logits, zero gradients
   __syncthreads();
@@ -180,29 +191,29 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
     gemm_tall<false, false>(A, pA, sm + d.sW0, d.pW0, B, pB, T, w0, E);
     __syncthreads();
     const float* b0 = sm + d.sb0; float* g0 = sm + d.sg0; float* Y0 = d.Y[0];
-    kvm_fmlp::for_cells(T, w0, [&](int r, int c) { float f, g; kvm_fmlp::gelu_fg(B[r * pB + c] + b0[c], f, g); g0[r * w0 + c] = g; Y0[(size_t)r * H + c0 + c] = f; });
+    kvm_fmlp::for_cells(T, w0, [&](int r, int c) { float f, g; kvm_fmlp::gelu_fg(B[r * pB + c] + b0[c], f, g); g0[r * w0 + c] = g; Y0[(size_t)r * Hp + c0 + c] = f; });
   }
   if (!cross()) return;
   // ---- forward, hidden layers: the partial to L2, then this member's piece summed over the Ka partials
   for (int l = 1; l < L; ++l) {
     if (inh) {
-      kvm_fsplit::load_rows(A, pA, d.Y[l - 1] + k0, H, T, wk);
+      kvm_fsplit::load_rows(A, pA, d.Y[l - 1] + k0, Hp, T, wk);
       __syncthreads();
-      kvm_fmlp::gemm<false, false, NRB, false, NRB>(A, pA, sm + d.sW[l], d.pW, d.part + (size_t)ha * T * H + n0, H, T, wn, wk);
+      kvm_fmlp::gemm<false, false, NRB, false, NRB>(A, pA, sm + d.sW[l], d.pW, d.part + (size_t)ha * T * Hp + n0, Hp, T, wn, wk);
     }
     if (!cross()) return;
     if (inh) {
       const float* bl = sm + d.sb[l]; float* gl = sm + d.sg[l]; float* Yl = d.Y[l];
       kvm_fmlp::for_cells(wr, wn, [&](int r, int c) {
-        const size_t i = (size_t)(r0 + r) * H + n0 + c;
-        float f, g; kvm_fmlp::gelu_fg(sum_cg(d.part + i, (size_t)T * H, d.ka) + bl[c], f, g); gl[r * wn + c] = g; Yl[i] = f; });
+        const size_t i = (size_t)(r0 + r) * Hp + n0 + c;
+        float f, g; kvm_fmlp::gelu_fg(sum_cg(d.part + i, (size_t)T * Hp, d.ka) + bl[c], f, g); gl[r * wn + c] = g; Yl[i] = f; });
     }
     if (!cross()) return;
   }
   ph(1);
   // ---- head: partial logits over this member's rows of the head (A keeps the top layer's columns for the head's dW below)
   if (inhd) {
-    kvm_fsplit::load_rows(A, pA, d.Y[L - 1] + kh0, H, T, wkh);
+    kvm_fsplit::load_rows(A, pA, d.Y[L - 1] + kh0, Hp, T, wkh);
     __syncthreads();
     kvm_fmlp::gemm<false, false, NRB, false, NRB>(A, pA, sm + d.sWh, d.pWh, d.hpart + (size_t)m * T * VP, VP, T, VP, wkh);
   }
@@ -245,7 +256,7 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
   if (inhd) {
     kvm_fsplit::load_rows(B, pB, d.dlog, VP, T, VP);
     __syncthreads();
-    gemm_tall<false, true>(B, pB, sm + d.sWh, d.pWh, d.dyp + kh0, H, T, wkh, VP);                         // dlogits Wh_block^T
+    gemm_tall<false, true>(B, pB, sm + d.sWh, d.pWh, d.dyp + kh0, Hp, T, wkh, VP);                         // dlogits Wh_block^T
     __syncthreads();
     kvm_fmlp::gemm_m<true, false, true>(A, pA, B, pB, sm + d.sWh, d.pWh, wkh, VP, T, lr);                    // Wh_block -= lr H^T dlogits
   }
@@ -257,15 +268,15 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
     if (inh) {
       const float* gl = sm + d.sg[l];
       kvm_fmlp::for_cells(wr, wn, [&](int r, int c) {
-        const size_t i = (size_t)(r0 + r) * H + n0 + c;
-        d.dz[i] = sum_cg(d.dyp + i, (size_t)T * H, nparts) * gl[r * wn + c]; });
+        const size_t i = (size_t)(r0 + r) * Hp + n0 + c;
+        d.dz[i] = sum_cg(d.dyp + i, (size_t)T * Hp, nparts) * gl[r * wn + c]; });
     }
     if (!cross()) return;
     if (inh) {
-      kvm_fsplit::load_rows(B, pB, d.dz + n0, H, T, wn);
-      kvm_fsplit::load_rows(A, pA, d.Y[l - 1] + k0, H, T, wk);
+      kvm_fsplit::load_rows(B, pB, d.dz + n0, Hp, T, wn);
+      kvm_fsplit::load_rows(A, pA, d.Y[l - 1] + k0, Hp, T, wk);
       __syncthreads();
-      kvm_fmlp::gemm<false, true, NRB, false, NRB>(B, pB, sm + d.sW[l], d.pW, d.dyp + (size_t)hb * T * H + k0, H, T, wk, wn);   // dZ W_block^T
+      kvm_fmlp::gemm<false, true, NRB, false, NRB>(B, pB, sm + d.sW[l], d.pW, d.dyp + (size_t)hb * T * Hp + k0, Hp, T, wk, wn);   // dZ W_block^T
       __syncthreads();
       kvm_fmlp::gemm_m<true, false, true>(A, pA, B, pB, sm + d.sW[l], d.pW, wk, wn, T, lr);                                  // W_block -= lr X^T dZ
       float* bl = sm + d.sb[l];
@@ -279,8 +290,8 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
     const int nparts = L == 1 ? 1 : d.nb;
     const float* g0 = sm + d.sg0;
     kvm_fmlp::for_cells(T, w0, [&](int r, int c) {
-      const size_t i = (size_t)r * H + c0 + c;
-      B[r * pB + c] = sum_cg(d.dyp + i, (size_t)T * H, nparts) * g0[r * w0 + c]; });
+      const size_t i = (size_t)r * Hp + c0 + c;
+      B[r * pB + c] = sum_cg(d.dyp + i, (size_t)T * Hp, nparts) * g0[r * w0 + c]; });
     kvm_fmlp::for_cells(T, E >> 2, [&](int r, int c4) { kvm_fmlp::cp_async16(A + r * pA + 4 * c4, d.emb + (size_t)sid[r] * E + 4 * c4); });   // X0 again: rows not yet updated
     kvm_fmlp::cp_commit_wait();
     __syncthreads();
@@ -311,13 +322,13 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
       }
   }
   // ---- every block and bias back to the model (a hidden bias by its column's first member)
-  if (in0) { store_rows(d.w[0] + c0, H, sm + d.sW0, d.pW0, E, w0); store_rows(d.b[0] + c0, H, sm + d.sb0, w0, 1, w0); }
+  if (in0) { store_rows(d.w[0] + c0, H, sm + d.sW0, d.pW0, E, vc0); store_rows(d.b[0] + c0, H, sm + d.sb0, w0, 1, vc0); }
   if (inh)
     for (int l = 1; l < L; ++l) {
-      store_rows(d.w[l] + (size_t)k0 * H + n0, H, sm + d.sW[l], d.pW, wk, wn);
-      if (ha == 0) store_rows(d.b[l] + n0, H, sm + d.sb[l], wn, 1, wn);
+      store_rows(d.w[l] + (size_t)k0 * H + n0, H, sm + d.sW[l], d.pW, vk, vn);
+      if (ha == 0) store_rows(d.b[l] + n0, H, sm + d.sb[l], wn, 1, vn);
     }
-  if (inhd) store_rows(d.wh + (size_t)kh0 * V, V, sm + d.sWh, d.pWh, wkh, V);
+  if (inhd) store_rows(d.wh + (size_t)kh0 * V, V, sm + d.sWh, d.pWh, vkh, V);
   if (!cross()) return;
   ph(7);
 }

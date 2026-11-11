@@ -97,6 +97,10 @@ for an atomic's round trip, then a release, then a poll.
 | the executor, gpt-tiny, us a step (8 rounds in alternating order, `raw/exec-barrier-ab.log`) | 87.3 | 82.3 | x1.06 |
 | the executor, gpt-small | 187.7 | 178.7 | x1.05 |
 
+With crossings this cheap, gpt-tiny's attention also runs in 2 query blocks a unit: 4 items over its 2 heads, which its 30 idle members
+had waited on. The executor's step went from 82.2 to 78.3 us (x1.046, 8 rounds, `raw/exec-qb-ab.log`); gpt-small already ran 4 blocks.
+Under the counter barrier, 2 blocks had made gpt-tiny 10% slower.
+
 **Correctness:**
 - The bench's ordering check is clean at every G: after each crossing, every block reads every other block's value.
 - The bed's outputs are bitwise equal over five 50-step runs of each shape (`raw/bed-determinism.log`).

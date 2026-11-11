@@ -92,9 +92,9 @@ The executor's kernel now holds 195 registers on sm_80 with 10 local reloads in 
 shapes, and the gang's abort still ends every faulted run (`raw/sm80-fix-bed.log`); the executor runs four GPT workloads fused, with the
 same losses (`raw/sm80-fix-exec.log`). On this card, against the form before the third change, the best runs read gpt-small x0.987,
 gpt-tiny x1.017 and the d128 x0.993 (9 rotating rounds, 3 for the d128; `raw/sm80-fix-timing.log`), and the medians x0.812, x0.910 and
-x1.004. The card has a slow mode: a run takes 1.2-1.4x the cycles a step of a fast one, at the same SM clock. This change ran in it in 7
+x1.004. The card has a slow mode: a run takes 1.1-1.5x the cycles a step of a fast one, at the same SM clock. This change ran in it in 7
 of 9 gpt-small rounds against the form before's 1 of 9 (Fisher's exact test, two-sided p = 0.015), 6 against 4 of 9 on gpt-tiny (p =
-0.64) and 2 against 2 of 3 on the d128; where both arms ran fast, it is within about 1% in cycles a step. Whether the slow mode is the
+0.64) and 2 against 2 of 3 on the d128; where both arms ran fast, it is within about 1.5%. Whether the slow mode is the
 card's or the code's is open, so the A100 read, which holds one SM clock, judges by medians and slow-run counts. On sm_120 the census
 read 129 local loads, 242 local stores and a worst loop of 69 before the three changes, and 4, 5 and 1 after.
 
@@ -105,9 +105,11 @@ result is the rolled loop's, bit for bit: every output stays bitwise equal on fi
 four GPT workloads fused with the same losses as before it (`raw/partial-sums-exec.log`). On this card, best runs, medians and paired
 by round: gpt-small x1.049 (168.2 against 176.5 us), x1.131 and x1.060, slow in 3 rounds of 9 against 4 before it; a d128 x1.022,
 x1.002 and x1.036 (4 rounds, 1 and 1 slow); gpt-tiny x0.996, x1.167 and x1.191, slow in 2 rounds against 5. Over the rounds where both
-arms ran fast: x1.060 (3 rounds), x1.036 (2) and x0.979 (2) (`raw/partial-sums.log`; unverified). The executor's kernel holds 203 registers on sm_80 (195 before), its 10 local
+arms ran fast: x1.060 (3 rounds), x1.036 (2) and x0.979 (2) (`raw/partial-sums.log`). In cycles a step over the fast runs, which neither
+the slow mode nor the SM clock moves, it takes 4.6% fewer on gpt-small, 1.6% fewer on the d128 and 1.6% more on gpt-tiny: gpt-tiny's
+median comes from its control's slow rounds, not from the code. The executor's kernel holds 203 registers on sm_80 (195 before), its 10 local
 reloads and worst MMA loop of 7 unchanged, and 145 on sm_120 with 4 and 1 (`raw/census-sm80-partial-sums-fused-gpt-kernel-*.txt`,
-`raw/census-sm120-partial-sums-fused-gpt-kernel-*.txt`; unverified).
+`raw/census-sm120-partial-sums-fused-gpt-kernel-*.txt`).
 
 These runs use a test build of the executor: the GPT pack's op bodies are stubs (a fused bundle dispatches none of them), the comm and
 extra packs are left out, and the split step's share list is cut to 2, so it compiles within the laptop's memory.
@@ -117,8 +119,8 @@ extra packs are left out, and the split step's share list is cut to 2, so it com
 | gpt-tiny, all 50 steps' losses against the VM (`fgpt_bed.py --exec`; `raw/sm80-fix-exec.log`, `raw/partial-sums-exec.log`) | worst 6.90e-4 relative (first 4.146049 against 4.146039, last 1.245289 against 1.244709) |
 | gpt-small, its first 3 steps' losses against the VM | worst 7.39e-5 relative |
 
-**Time**, us a step over 50 steps. Three arms in rotating order, six rounds a row (`raw/exec-timing-three-arms.log`). This card runs in
-a slow mode (a run takes 1.2-1.4x the cycles a step; the SM clock does not explain it), so the table pairs the rounds where both
+**Time**, us a step over 50 steps. Three arms in rotating order, six rounds a row (`raw/exec-timing-three-arms.log`). This card has
+a slow mode (a run takes about 1.2x the time a step; this log prints no clock), so the table pairs the rounds where both
 executor arms ran fast:
 
 | row | inside the static kernel | its own kernel | ratio |
@@ -127,7 +129,7 @@ executor arms ran fast:
 | gpt-small | 211.9, 211.8, 212.1 | 188.1, 188.1, 188.0 | x1.13 |
 
 Over all six rounds, the median ratio is x1.12 (gpt-tiny) and x1.13 (gpt-small); the own kernel ran slow in 2 rounds of 6 against 2
-inside the static kernel (gpt-tiny) and 2 against 1 (gpt-small) (unverified).
+inside the static kernel (gpt-tiny) and 2 against 1 (gpt-small).
 
 ## The gang's barrier
 

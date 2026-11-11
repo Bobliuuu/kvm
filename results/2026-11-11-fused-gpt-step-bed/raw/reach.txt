@@ -1,0 +1,18 @@
+# the hold-out's GPT shapes that fuse on an A100, on the CPU: raw/reach.cpp built against the tree before row chunks (-DBEFORE) and against this branch
+before row chunks: 816 of 2304 hold-out GPT shapes fuse on an A100 (35%)
+  d  48: 160 of 192 (83.3%)
+  d  96: 256 of 384 (66.7%)
+  d 128: 304 of 576 (52.8%)
+  d 192:  48 of 384 (12.5%)
+  d 256:  48 of 384 (12.5%)
+  d 384:   0 of 192 (0.0%)
+  d 512:   0 of 192 (0.0%)
+row chunks: 1088 of 2304 hold-out GPT shapes fuse on an A100 (47%)
+  d  48: 192 of 192 (100.0%)
+  d  96: 352 of 384 (91.7%)
+  d 128: 400 of 576 (69.4%)
+  d 192:  80 of 384 (20.8%)
+  d 256:  64 of 384 (16.7%)
+  d 384:   0 of 192 (0.0%)
+  d 512:   0 of 192 (0.0%)
+the hold-out's d128 draw (N 192, T 96, 4 heads, V 256): G 32, 2 query blocks, 128-row chunks, 40856 floats a member of 41,216

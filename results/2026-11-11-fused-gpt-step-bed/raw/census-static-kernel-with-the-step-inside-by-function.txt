@@ -1,0 +1,5 @@
+# the step compiled as a function inside the static kernel (the build before it got a kernel of its own): each MMA loop attributed to the function whose address range holds it (results/2026-11-11-gang-entries/raw/probe/loops_by_function.py), LDL a pass
+  kvm_fgpt::run (the GPT step)  66 MMA loops; LDL a pass median 0, max 179; loops of <= 64 HMMA a pass: max 33
+  kvm_s_fmlp_grid               70 MMA loops; LDL a pass median 0, max 226; loops of <= 64 HMMA a pass: max 48
+  kvm_s_fmlp_slice              40 MMA loops; LDL a pass median 0, max 45; loops of <= 64 HMMA a pass: max 7
+  kvm_s_fmlp_split              16 MMA loops; LDL a pass median 2, max 275; loops of <= 64 HMMA a pass: max 56

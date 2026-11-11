@@ -29,7 +29,7 @@ def main():
     n = int(ok.sum()); S, E, R, A, B = tr['start'][ok], tr['end'][ok], tr['ready'][ok], tr['admit'][ok], tr['block'][ok]
     t0, t1 = S.min(), E.max(); span = t1 - t0
     print(f'{n} tasks, span {span / 1e3:.2f} ms ({span / steps / 1e3:.2f} ms/step), admission of the last task at {A.max() / 1e3:.2f} ms '
-          f'(first at {A.min() / 1e3:.2f}), admit rate {n / max(A.max() - A.min(), 1e-9):.2f} tasks/us')
+          f'(first at {A.min() / 1e3:.2f}; 0 = the run was one record, tasks admitted before the first start)')
     blocks = np.unique(B); nb = len(blocks)
     run = (E - S).sum()
     hop = starved = head = tail = 0.0

@@ -4,7 +4,7 @@ The stack's one-block, split and grid steps all read the loss through the same m
 frontend's `Tiling.ce_rows`; #39 sets 16 rows in the a100 preset) left every one of them unfused. This branch carries the matcher change
 of the `main` PR to the stack's pass.
 
-- **`fuse_pass.log`** (CPU, this branch's `tests/static/test_fuse_pass.cpp` at `b540932`, g++ -O2; its first line names the build): MLP bundles from `main`'s frontend (`4bbdaab`) and
+- **`fuse_pass.log`** (CPU, this branch's `tests/static/test_fuse_pass.cpp` at `6bef55c`, g++ -O2; its first line names the build): MLP bundles from `main`'s frontend (`4bbdaab`) and
   from `main` + #39's two frontend commits, each with the form the pass must make at 108 workers.
   - `gen_mlp.py` bundles at 3 steps: h72-d2 and h48-d2 (one-block); h256-d4, h224-d2, h200-d1, h576-d1 and h128-d4 (split, 18 shares);
     h1024-d2 (grid).

@@ -1,4 +1,4 @@
-# Built from this branch's code at b540932 (g++ -std=c++17 -O2 -Iinclude tests/static/test_fuse_pass.cpp; binary md5 ccc81a00), run 14:30Z Nov 11.
+# Built from this branch's code at 6bef55c (g++ -std=c++17 -O2 -Iinclude tests/static/test_fuse_pass.cpp; binary md5 85c8e5eb); every section reads byte for byte as b540932's run of 14:30Z Nov 11.
 # tests/static/test_fuse_pass.cpp of this branch (g++ -O2, CPU) on MLP bundles from two frontends: main = 4bbdaab;
 # pr39 = 4bbdaab + a6b0fea + 5e20289 (#39's two frontend commits: Tiling.ce_rows, and ce_rows=16 in the a100 preset).
 # gen_mlp.py bundles (--steps 3 --no-golden, the a100 tiling) and the panel's own bundles (its generator, 50-200 steps), each with the form

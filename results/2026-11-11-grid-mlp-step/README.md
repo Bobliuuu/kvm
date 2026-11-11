@@ -5,8 +5,8 @@
   member, so mlp1024, h1024-d2, needs 99,292 floats a member at best against a 38,400 budget). The grid step keeps one copy of the model: each
   weight matrix is cut into its own Ka x Nb grid of blocks over the gang's members, every member works on all 96 rows, and SGD updates each block
   in place. mlp1024 at 107-108 members needs 37,104 floats a member.
-- **Correct on a GPU:** on an RTX 5070 Laptop (sm_120, 36 SMs) the step checks against float64 at four shapes, and at h96-d2 its errors equal the
-  split step's on the same model and data.
+- **Correct on a GPU:** on an RTX 5070 Laptop (sm_120, 36 SMs) the step checks against float64 at four shapes, and at h96-d2 its update errors equal the
+  split step's on the same model and data (its loss error is 3.57e-7 against the split step's 2.52e-7).
 - **In the executor:** `fmlp_grid` (op 194). The fusion pass takes the panel's mlp1024 in this form at 107-108 workers, and the plan's records replay
   through every gang's barrier.
 - **Not yet measured:** mlp1024 itself (it needs 107-108 members: an A100) and every A100 time.
@@ -23,10 +23,10 @@
 | write-back | the step's end |
 
 4 L + 2 barriers a step. Sums over many partials run as 8 chains added in a fixed tree, so a run is deterministic and 8 loads are in flight
-instead of one (on the 5070, h512-d1 went from 91.7 to 43.7 us a step with that change and the same errors). The cross-entropy's and the embedding
+instead of one (on the 5070, h512-d1 went from 91.7 to 43.7 us a step with that change and the same errors; unverified: those runs' logs were not kept). The cross-entropy's and the embedding
 owners' sums then spread over the whole block (35.8 us), and the narrow GEMMs (layer 0's three, the head's output gradient) run on warps over row
 blocks instead of one warp a 16-column block (31.9 us). Both keep every sum and its order, so the check lines repeat digit for digit: h512-d1 runs
-2.9x faster than the first version with the same numerics.
+2.9x faster than the first version with the same numerics (unverified: the first version's logs were not kept; the logs kept hold the fixed version's 31.89 us).
 
 ## Results: RTX 5070 Laptop, 36 members, 20 steps, the first 3 checked against float64
 

@@ -1,0 +1,34 @@
+GPU NVIDIA GeForce RTX 3080 Ti sm_86, 80 SMs  [build: production header]
+LITMUS queuefifo[cap=6,ctas=7,live_cap=2] rounds=400009  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=400009 head=400016 tail=400009 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=6,ctas=200,live_cap=2] rounds=42124  double_pop+lost_update+lost+dup+bad_cell+err=3  VIOLATIONS
+       detail: pops=42124 head=42324 tail=42130 unread=6 double_pop=0 lost_updates=0 lost=1 dup=0 bad_cell=1 err=16(QUEUE_OVERFLOW)
+LITMUS queuefifo[cap=12,ctas=7,live_cap=4] rounds=400015  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=400015 head=400022 tail=400015 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=12,ctas=200,live_cap=4] rounds=400015  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=400015 head=400215 tail=400015 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=24,ctas=7,live_cap=8] rounds=400028  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=400028 head=400035 tail=400028 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=24,ctas=200,live_cap=8] rounds=400042  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=400042 head=400242 tail=400042 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=48,ctas=7,live_cap=16] rounds=400052  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=400052 head=400059 tail=400052 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=48,ctas=200,live_cap=16] rounds=400059  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=400059 head=400259 tail=400071 unread=12 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=96,ctas=7,live_cap=32] rounds=400101  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=400101 head=400108 tail=400101 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=96,ctas=200,live_cap=32] rounds=400156  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=400156 head=400356 tail=400156 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=192,ctas=7,live_cap=64] rounds=400195  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=400195 head=400202 tail=400195 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=192,ctas=200,live_cap=64] rounds=400266  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=400266 head=400466 tail=400266 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=384,ctas=7,live_cap=128] rounds=400388  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=400388 head=400395 tail=400388 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=384,ctas=200,live_cap=128] rounds=400479  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=400479 head=400679 tail=400479 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=768,ctas=7,live_cap=256] rounds=400774  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=400774 head=400781 tail=400774 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+LITMUS queuefifo[cap=768,ctas=200,live_cap=256] rounds=400860  double_pop+lost_update+lost+dup+bad_cell+err=0  none
+       detail: pops=400860 head=401060 tail=400860 unread=0 double_pop=0 lost_updates=0 lost=0 dup=0 bad_cell=0 err=0(OK)
+TOTAL rounds=6045563 violations=3

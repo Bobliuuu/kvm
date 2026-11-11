@@ -280,6 +280,24 @@ static bool suite_dag(bool quick) {
     long long t = 0; dag_run(4242, quick ? 20 : 150, 40, 10, c, 0, &t, &d); total += t; dupes += d;
     printf("  wraparound: %lld tasks through 32 rings of 64 cells (one ring took all of them: %lld wraps)\n", t, t / 64); }
   { KvmConfig c = small_cfg(8); c.live_cap = 64; c.max_tasks = 1 << 16; c.ring_words = 4096; long long t = 0; dag_run(99, quick ? 10 : 60, 40, 10, c, 31, &t, &d); total += t; }
+  // FIFO ring capacity (KvmExec::fifo_fits): it is used only while workers < live_cap. Asked for outside that, through the config or
+  // set_run_facts, the executor keeps the bucket rings, and the request still sets the contract: priority 0 only, on every grid
+  { auto kept = [](int blocks, int live_cap) { KvmConfig c = small_cfg(blocks); c.live_cap = live_cap; c.max_tasks = 1 << 16; c.ring_words = 4096; c.fifo_only = 1;
+                                               KvmExec ex(c); return ex.fifo_only(); };
+    CHECK(!kept(9, 8), "FIFO ring kept at 8 workers and live_cap 8: workers == live_cap must refuse it");
+    CHECK(kept(8, 8), "FIFO ring refused at 7 workers and live_cap 8: one under the bound must keep it");
+    CHECK(!kept(16, 8) && kept(4, 1 << 12), "FIFO ring decided wrongly at 15 workers / live_cap 8 or 3 workers / live_cap 4096");
+    { KvmConfig q = small_cfg(16); q.live_cap = 8; q.max_tasks = 1 << 16; q.ring_words = 4096; q.fifo_only = 0; KvmExec ex(q); ex.set_run_facts(true, false, true, false);
+      CHECK(!ex.fifo_only() && ex.config().fifo_only, "set_run_facts: FIFO ring kept at 15 workers and live_cap 8, or its request lost"); }
+    for (int blocks : {16, 4}) {   // refused and kept: a priority-3 task is the caller's error either way
+      KvmConfig c = small_cfg(blocks); c.live_cap = blocks == 16 ? 8 : 1 << 12; c.fifo_only = 1;
+      KvmExec ex(c); float* a = ex.arena(8); ex.add_view(a, 1, 8); ex.start();
+      KvmBundleBuilder bb; bb.add("noop", {}, [] { KvmTaskOpts o; o.priority = 3; return o; }());
+      CHECK(ex.submit(bb.build()) == KvmSubmit::INVALID, "FIFO request with %d workers and live_cap %d accepted a priority-3 task", ex.workers(), c.live_cap);
+      ex.close(); CHECK(ex.finish().ok(), "run after the rejected bundle failed"); }
+    KvmConfig c = small_cfg(16); c.live_cap = 8; c.max_tasks = 1 << 16; c.ring_words = 4096; c.fifo_only = 1;
+    long long t = 0; dag_run(77, quick ? 20 : 80, 8, 4, c, 0, &t, &d); total += t; dupes += d;   // the refused request runs on the bucket rings
+    printf("  FIFO capacity: refused at 8 and 15 workers with live_cap 8, kept at 7 with 8 and 3 with 4096; a refused request ran %lld tasks on the bucket rings\n", t); }
   printf("  dag: %lld tasks over seeds x grids {1,2,15,auto workers}, all exactly-once, edges ordered by timestamps, values bitwise vs CPU; %d duplicate edges removed by the builder\n", total, dupes);
   return g_fail == before;
 }

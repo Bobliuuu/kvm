@@ -473,7 +473,7 @@ class KvmExec {
 #ifdef KVM_PROF_GAP
     S_.noop_ops = cfg_.noop_ops;
 #endif
-    S_.fifo_only = cfg_.fifo_only;
+    set_fifo(cfg_.fifo_only);
     S_.no_recycle = cfg_.no_recycle; S_.no_waits = cfg_.no_waits; S_.trace_on = cfg_.trace_on;
     S_.prestaged = 0; S_.warm_only = 0;
     S_.timeout_ns = cfg_.timeout_us * 1000ull; S_.task_limit_ns = cfg_.task_limit_us * 1000ull;
@@ -531,6 +531,17 @@ class KvmExec {
   const KvmSchedTele* telemetry() const { return ht_; }
   int num_classes() const { return nc_; }
   int workers() const { return grid_ - 1 - (cfg_.sched.on ? 1 : 0); }
+  // The FIFO ring (KvmDevState::fifo_only) never waits for a free cell: kvm_publish_cell stores a slot and its generation in one release store,
+  // and each idle worker watches the cell of its own ticket. Its 4 x live_cap cells must exceed every position in flight: the ready tasks
+  // (at most 2 x live_cap, the header's budgets) plus one ticket per worker. workers < live_cap keeps them under 3 x live_cap, so a worker
+  // that stalls between taking its ticket and reading its cell is overrun only after more than live_cap further enqueues; past the bound
+  // waiting workers share cells. Either way the worker finds a later generation and stops the run with QUEUE_OVERFLOW (the litmus probe
+  // `queuefifo_cap` overruns it at live_cap 2 with 200 CTAs). The cell holds a slot in its low KVM_FIFO_SHIFT bits and the generation above
+  // them, so the slots must fit those bits, and a run has 2^(64 - KVM_FIFO_SHIFT) enqueues before the generation wraps (the stall timeout
+  // reports that). The bucket rings wait for a free cell, so they serve any live_cap. CLI runs sit far inside the bound (live_cap >= 16,384
+  // against a few hundred workers).
+  bool fifo_fits() const { return workers() < cfg_.live_cap && cfg_.max_tasks <= (1 << KVM_FIFO_SHIFT); }
+  bool fifo_only() const { return S_.fifo_only != 0; }   // the ring in use; config().fifo_only stays the caller's request, which submit() holds to
   void static_split(KvmSchedParams& p, const std::vector<double>& shares) const { kvm_static_split(p, shares, sms_); }
 
   // KVM_DIST_HOOK: the allocation half of start(). cudaMalloc and cudaHostAlloc may synchronise with EVERY kernel running on the
@@ -564,7 +575,7 @@ class KvmExec {
   // Per-run facts the CLI learns from its bundles, set before start(): see KvmDevState::fifo_only, no_recycle and no_waits.
   void set_run_facts(bool fifo_only, bool no_recycle, bool no_waits, bool trace_on) {
     if (started_ || prepared_) throw std::logic_error("set_run_facts before start()");
-    S_.fifo_only = cfg_.fifo_only = fifo_only; S_.no_recycle = cfg_.no_recycle = no_recycle; S_.no_waits = cfg_.no_waits = no_waits;
+    set_fifo(fifo_only); S_.no_recycle = cfg_.no_recycle = no_recycle; S_.no_waits = cfg_.no_waits = no_waits;
     S_.trace_on = cfg_.trace_on = trace_on || cfg_.sched.on;   // the scheduler's statistics read the trace
   }
   // Write records into the ring BEFORE the kernel starts (submit after prestart(), then close() and start()): the host's validation and copy then sit outside the
@@ -957,6 +968,15 @@ class KvmExec {
   const std::string& device_name() const { return name_; }
 
  private:
+  // The FIFO ring only where it fits (fifo_fits); refused, the run takes the 32 bucket rings. The request stays in cfg_.fifo_only: it is the
+  // caller's contract (priority 0 and no deadlines, which submit() enforces), the same on every grid whichever ring serves it.
+  void set_fifo(bool want) {
+    cfg_.fifo_only = want;
+    S_.fifo_only = want && fifo_fits();
+    if (want && !S_.fifo_only)
+      KLOG(1, "ready queue: the FIFO ring does not fit (%d workers, live_cap %d, max_tasks %d; it needs workers < live_cap and max_tasks <= %d): using the 32 bucket rings",
+           workers(), cfg_.live_cap, cfg_.max_tasks, 1 << KVM_FIFO_SHIFT);
+  }
   void validate_sched(const KvmSchedParams& p) const {
     for (int c = 0; c < nc_; ++c) {
       const KvmClassParams& q = p.cls[c];
@@ -1546,7 +1566,7 @@ int main(int argc, char** argv) {
         one_record = bundles.size() == 1 && cfg.fits_one_record((long long)bundles[0].tasks.size(), (long long)bundles[0].words());
         const bool trace_on = csv != nullptr || golden || getenv("KVM_TRACE") != nullptr;
         ex.set_run_facts(fifo, one_record, no_waits, trace_on);
-        KLOG(2, "ready queue: %s; slots %s; version waits %s; task trace %s", fifo ? "one FIFO ring, ticket waits" : "32 priority buckets", one_record ? "not recycled (one record)" : "recycled", no_waits ? "none" : "present", (trace_on || cfg.sched.on) ? "on" : "off");
+        KLOG(2, "ready queue: %s; slots %s; version waits %s; task trace %s", ex.fifo_only() ? "one FIFO ring, ticket waits" : "32 priority buckets", one_record ? "not recycled (one record)" : "recycled", no_waits ? "none" : "present", (trace_on || cfg.sched.on) ? "on" : "off");
       }
       if (one_record) {                   // the whole input is one record: written and validated before the kernel starts, so no host work sits inside the kernel's timed window
         ex.prestart();

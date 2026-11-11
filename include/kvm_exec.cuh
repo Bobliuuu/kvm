@@ -11,8 +11,9 @@
 //  * The ready queue has KVM_NBUCKETS FIFO rings per class (Vyukov bounded MPMC cells), each rcap = 4 * live_cap deep. Two budgets keep
 //    every ring from filling: admission waits while (admitted - done - parked + n) > live_cap (the runnable window) or
 //    parked > live_cap (version-waiting tasks have their own budget, so a bundle that publishes a version is never blocked behind
-//    waiters of an earlier bundle), hence at most live_cap + (live_cap + n) + n <= 3 * live_cap tasks are ever in flight and enqueue
-//    never finds a full ring. More than live_cap parked at once is the explicit error PARK_STALL. Rings wrap (index = ticket & (rcap-1)).
+//    waiters of an earlier bundle), hence at most 2 * live_cap tasks are ever in flight (a record is admitted only into room in the
+//    runnable window, its n tasks included, while at most live_cap are parked; parking moves a task between the two) and enqueue never
+//    finds a full ring. More than live_cap parked at once is the explicit error PARK_STALL. Rings wrap (index = ticket & (rcap-1)).
 //  * `timeout` is a STALL detector, not a lifetime cap: pending work and no task finished or admitted for that long. Idle waiting
 //    for the host never counts. It must exceed the longest task; task_limit reports (after the fact) a task that ran longer.
 //  * Task slots are a bounded pool WITHOUT recycling: max_tasks per launch (also succ_cap/args_cap words). Exceeding it is

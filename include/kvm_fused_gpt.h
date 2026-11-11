@@ -102,7 +102,7 @@ KVM_FGPT_HD inline long long kvm_fgpt_own_stride(int B, int T, int d, int H, int
 struct KvmFgptScratch {
   long long x[KVM_FGPT_MAXL + 1], h[KVM_FGPT_MAXL], m1[KVM_FGPT_MAXL], r1[KVM_FGPT_MAXL], q[KVM_FGPT_MAXL], k[KVM_FGPT_MAXL], v[KVM_FGPT_MAXL],
       o[KVM_FGPT_MAXL], lse[KVM_FGPT_MAXL], xm[KVM_FGPT_MAXL], h2[KVM_FGPT_MAXL], m2[KVM_FGPT_MAXL], r2[KVM_FGPT_MAXL], pre[KVM_FGPT_MAXL];
-  long long hf, mf, rf, logits, ce, tl, gx, part, lnp, rpart, hgp, dkv, olist, osrc, gn, dy, total;
+  long long hf, mf, rf, logits, ce, tl, gx, gxk, du, part, lnp, rpart, hgp, dkv, olist, osrc, gn, dy, total;
 };
 // The layout written into `s` in place (the program's thread 0 builds the block's shared copy this way, with no local copy to spill); every
 // offset is a long long, so the zeroing loop clears the arrays past L as KvmFgptScratch{} would.
@@ -118,7 +118,9 @@ KVM_FGPT_HD inline void kvm_fgpt_scratch_into(KvmFgptScratch& s, int N, int T, i
     s.lse[l] = take((long long)N * H); s.xm[l] = take(Nd); s.h2[l] = take(Nd); s.m2[l] = take(N); s.r2[l] = take(N); s.pre[l] = take(NF);
   }
   s.hf = take(Nd); s.mf = take(N); s.rf = take(N); s.logits = take((long long)N * V);
-  s.ce = take((long long)G * N * 2); s.tl = take(N); s.gx = take(Nd); s.part = take((long long)(G > H ? G : H) * Nd);
+  s.ce = take((long long)G * N * 2); s.tl = take(N); s.gx = take(Nd);
+  s.gxk = take(Nd); s.du = take(NF);   // ZBW's (kvm_fused_gpt.cuh, the MLP backward): fc2's output gradient kept, and the owners' dU
+  s.part = take((long long)(G > H ? G : H) * Nd);
   s.lnp = take((long long)(2 * L + 1) * G * 2 * d); s.rpart = take((long long)2 * L * G * d);
   const int hd = H > 0 ? d / H : 0, items = (int)B * H * QB;
   s.hgp = take((long long)L * items * kvm_fgpt_unit_grads(d, hd)); s.dkv = take((long long)items * T * 2 * hd);
@@ -139,6 +141,32 @@ KVM_FGPT_HD inline int kvm_fgpt_ldmn(int cols) { return ((cols + 15) & ~15) + 8;
 KVM_FGPT_HD inline int kvm_fgpt_r16(int n) { return (n + 15) & ~15; }
 KVM_FGPT_HD inline int kvm_fgpt_r8(int n) { return (n + 7) & ~7; }
 KVM_FGPT_HD inline long long kvm_fgpt_r4(long long n) { return (n + 3) & ~3LL; }
+// ZBW (kvm_fused_gpt.cuh, the MLP backward): a member without an attention item runs the MLP's weight gradients of up to
+// KVM_FGPT_ZBW_OWNERS owners' fc1 columns in the attention backward's waits (0 turns it off). Four: on an RTX 5070 one pass over four
+// owners' columns cost 2.13x one owner's weight gradients (d 128, w 8 a member), which the hold-out's d128 at G 64 (16 such members for
+// 64 owners) needs to fit their waits; a doer of more owners would overrun them.
+#ifndef KVM_FGPT_ZBW_OWNERS
+#define KVM_FGPT_ZBW_OWNERS 4
+#endif
+// A doer pass's shared memory: wb fc1 columns' pre, gelu(pre) and dU over a row chunk of RC16 rows, and db columns of gx or h2's rows.
+KVM_FGPT_HD inline long long kvm_fgpt_zbw_floats(int RC16, int wb, int db) {
+  const int ldx = kvm_fgpt_ldk(db) > kvm_fgpt_ldmn(db) ? kvm_fgpt_ldk(db) : kvm_fgpt_ldmn(db);
+  return 2 * kvm_fgpt_r4((long long)RC16 * kvm_fgpt_ldk(wb)) + kvm_fgpt_r4((long long)RC16 * kvm_fgpt_ldmn(wb)) + kvm_fgpt_r4((long long)RC16 * ldx);
+}
+// ZBW's plan for a gang of G members whose attention has W items (the run decides with it at its start; a bed prints it): engaged when
+// G - W members have no item and none of them covers more than KVM_FGPT_ZBW_OWNERS of the nf owners (fc1 columns fp an owner), in passes
+// of zg owners' columns and blocks of zdb of gx's or h2's d columns, the widest that fit `room` floats of a member's arena (more owners a
+// pass first: one wide pass costs less than two narrow ones). zg 0: not engaged.
+struct KvmFgptZbw { int zg = 0, zdb = 0, doers = 0; };
+KVM_FGPT_HD inline KvmFgptZbw kvm_fgpt_zbw_plan(int G, int W, int nf, int fp, int d, int RC16, long long room) {
+  KvmFgptZbw z;
+  const int idle = G - W, most = idle > 0 ? (nf + idle - 1) / idle : 0;
+  if (idle <= 0 || most < 1 || most > KVM_FGPT_ZBW_OWNERS) return z;
+  for (int g = most; g >= 1; --g)
+    for (int db = d; db >= 8; db = db > 8 ? kvm_fgpt_r8(db / 2) : 0)
+      if (kvm_fgpt_zbw_floats(RC16, g * fp, db) <= room) { z.zg = g; z.zdb = db; z.doers = idle; return z; }
+  return z;
+}
 #define KVM_FGPT_NT 384                       // threads of a member's block: 12 warps, three to each SM sub-partition, which hide the step's latency-bound tile loops better than two
 #define KVM_FGPT_MAXBLK 16                    // a member's block rectangles: fc1's columns, b1, fc2's rows a layer, wte's rows, the head's columns
 // The scratch layout in floats, rounded to 16 bytes: one copy a block heads its shared memory, so a thread never holds the offsets itself.

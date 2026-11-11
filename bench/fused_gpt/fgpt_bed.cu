@@ -71,8 +71,8 @@ static const char* const kMarks[kvm_fgpt::MK_COUNT] = {
     "final LN", "  wait: all-gather hf", "logits + CE stats", "  wait: CE exchange", "lse, loss", "head backward", "  wait: reduce-scatter dhf",
     "dhf sum + LNf backward", "  wait: all-gather gx (fc2)", "MLP backward", "  wait: reduce-scatter dh2", "dh2 sum + LN2 backward",
     "  wait: all-gather gx (proj)", "  item: stage gx, Wo, o, q, k, v", "  item: dWo, do, delta", "  item: q side: dWq, q's dh rows",
-    "  item: P", "  item: dV, dS", "  item: dQ, dK, partials kept", "  item: RoPE back, dbq", "  wait: dK dV partials",
-    "  item: key side: sums, RoPE, dbk dbv", "  item: dWk dWv, k v dh rows", "attention backward, rest", "  wait: reduce-scatter dh",
+    "  item: P", "  item: dV, dS", "  item: dQ, dK, partials kept", "  item: RoPE back, dbq", "  doer: dW2, db1 of its owners", "  wait: dK dV partials",
+    "  item: key side: sums, RoPE, dbk dbv", "  item: dWk dWv, k v dh rows", "  doer: dW1 of its owners", "attention backward, rest", "  wait: reduce-scatter dh",
     "dh sum + LN1 backward", "  wait: all-gather gx (emb)", "embedding gradient", "attention + replicated sums, squares", "norm partial",
     "  wait: norm", "AdamW", "  wait: step end"};
 
@@ -246,6 +246,14 @@ int main(int argc, char** argv) {
   printf("fgpt_bed: %s (sm_%d%d, %d SMs), G %d, %d steps, attention in %d query block(s) a unit, rows in chunks of %d of %d, shared memory %zu B a "
          "member, scratch %.2f MB, %d member(s) an SM at most\n", prop.name, prop.major, prop.minor, sms, G, h.steps, h.qb, h.rows, h.N, smem, sc.total * 4.0 / 1e6, per_sm);
   if ((long long)per_sm * sms < G) die("the gang does not fit the GPU at once");
+  {   // ZBW (kvm_fused_gpt.cuh, the MLP backward): the plan the run will take, from the same rule
+    const int fp = (h.F + G - 1) / G, nf = (h.F + fp - 1) / fp, W = (h.N / h.T) * h.H * h.qb;
+    const KvmFgptZbw z = kvm_fgpt_zbw_plan(G, W, nf, fp, h.d, kvm_fgpt_r16(h.rows < h.N ? h.rows : h.N),
+                                           smem_floats - kvm_fgpt_smem_head(h.N, h.T, h.d / h.H));
+    if (z.zg) printf("fgpt_bed: ZBW: %d doers (members without an attention item) for %d owners, %d owner(s) a pass, %d of %d columns a block\n",
+                     z.doers, nf, z.zg, z.zdb, h.d);
+    else printf("fgpt_bed: ZBW: off (%d attention items for %d members, %d owners)\n", W, G, nf);
+  }
   unsigned long long* dacc = nullptr;
   const size_t acc_words = clocked ? (size_t)G * (kvm_fgpt::MK_COUNT + 2) : 1;
   CK(cudaMalloc(&dacc, acc_words * 8)); CK(cudaMemset(dacc, 0, acc_words * 8));

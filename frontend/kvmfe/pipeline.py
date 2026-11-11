@@ -69,9 +69,11 @@ def compile_training(model, tc: TrainConfig | None = None, tiling: Tiling | None
         from . import storage
         ops, _ = storage.apply(ops)
     tiling = tiling or Tiling.preset('a100')
+    local = frozenset()
     if tiling.tf32_preround:
         from . import tf32
-        ops, _ = tf32.apply(ops, tiling)
-    low = lower_program(ops, tiling, reuse, gap, prefix='act')
+        ops, info = tf32.apply(ops, tiling)
+        local = info['copy_uids']             # short-lived: they reuse slots inside a step (plan.py)
+    low = lower_program(ops, tiling, reuse, gap, prefix='act', local=local)
     spec = to_workload(low, {'train': GraphPolicy()}) if with_spec else None
     return Compiled(low, spec, prog)

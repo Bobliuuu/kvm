@@ -15,6 +15,8 @@ from .ir import Builder, FrontendError, LogicalOp, Tensor
 from .opset import ATTN_BLOCK, ATTN_Q, F_ACC, F_BIG, F_DGELU, F_EXACT, F_GELU, F_HUGE, F_PRECISE, F_TA, F_TB, F_TRUNC, MM_TILE, MMA_TILE, mm_dims, op as device_op
 
 
+_A100 = dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, row_tasks=16)   # a100_pre and a100_trunc are this tiling plus one change each, so neither can drift from it
+
 @dataclass(frozen=True)
 class Tiling:
     rows: int = 64           # row block of row-wise ops (norms, rope, embedding, cross-entropy, argmax, attention delta)
@@ -33,14 +35,16 @@ class Tiling:
     ew_elems: int = 1 << 40   # flat elementwise ops and the sgd update: target elements of one task, so a wide matrix is not streamed through one SM (a single task's stream is bound by one SM's bandwidth)
     ew_max_tasks: int = 128   # ... but never more tasks than this for one operation (the executor's parallelism)
     tf32_preround: bool = False   # 256x128-tile GEMMs read TF32 copies of their operands, made once per value (tf32.py), instead of rounding them in every tile
+    tf32_copy_scope: str = 'value'   # ... a copy is shared by every GEMM that reads its value ('value': fewest copies, but a forward activation stays copied until its weight-gradient GEMM), or by the GEMMs of one phase ('phase': less memory, more rounding)
+    tf32_copy_max_bytes: int = 256 << 20   # ... a GEMM whose operand copy would be larger than this keeps rounding in its tiles (gpt-162m's 786 MiB logits gradient)
     tf32_trunc: bool = False # 1xTF32 GEMM tiles skip the operand rounding (flag 256) and scale out the truncation's mean bias: ~25% faster big tile, but outside 2x of eager's float64 error on some rows (cuBLAS rounds)
 
     PRESETS = {
         'cpu': dict(rows=8, ew_rows=8, cols=32, vocab=16, opt_elems=256),
-        'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, row_tasks=16),   # 256x128 tiles stepping down by shape, TF32 operands rounded to nearest in the tiles
-        'a100_pre': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, tf32_preround=True),   # a100 with the 256x128-tile GEMMs reading round_tf32 copies of their operands (tf32.py: the same products, rounded once per value, the 162M step 6% faster), at the copies' memory: the 162M bundle's buffers grow 9.4 -> 12.6 GB, more than a 40 GB A100 holds beside PyTorch's resident models
+        'a100': _A100,   # 256x128 tiles stepping down by shape, TF32 operands rounded to nearest in the tiles
+        'a100_pre': {**_A100, 'tf32_preround': True},   # a100 with the 256x128-tile GEMMs reading round_tf32 copies of their operands (tf32.py: the same products, rounded once per value; the 162M step 6% faster with uncapped copies). The copies reuse slots inside a step and the 256 MiB cap leaves out the logits gradient: one 162M step plans 10.1 GB against a100's 8.8 (uncapped and step-planned: 12.6, more than a 40 GB A100 held beside PyTorch's resident models); tf32_copy_scope='phase' plans 9.1
         'a100_mm128': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=128, ew_elems=16384),   # 128x128 tiles, rounded (the previous a100)
-        'a100_trunc': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, tf32_trunc=True, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256),   # a100's tiles with the operands truncated by the tensor core and the output scaled to remove the mean bias (KVM_GPT_RZ_GAIN): inside the panel's numerics gates, but after 1000 SGD steps the weights end about 2x further from float64 than rounding's (six MLP widths)
+        'a100_trunc': {**_A100, 'tf32_trunc': True},   # a100's tiles with the operands truncated by the tensor core and the output scaled to remove the mean bias (KVM_GPT_RZ_GAIN): inside the panel's numerics gates, but after 1000 SGD steps the weights end about 2x further from float64 than rounding's (six MLP widths)
         'a100_mm64': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, ew_elems=16384),   # 64x64 GEMM tiles
         'a100_mm256': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384),
         'b200': dict(rows=128, ew_rows=256, cols=512, vocab=4096, opt_elems=524288, join_min=8),
@@ -56,10 +60,12 @@ class Tiling:
         if self.mm_tile not in (64, 128, 256):
             raise FrontendError(f'Tiling.mm_tile must be 64, 128 or 256, got {self.mm_tile!r}')
         for k, v in vars(self).items():
-            if k in ('precise', 'mm_min_eff', 'tf32_trunc', 'tf32_preround'):
+            if k in ('precise', 'mm_min_eff', 'tf32_trunc', 'tf32_preround', 'tf32_copy_scope'):
                 continue
             if not isinstance(v, int) or v < 1:
                 raise FrontendError(f'Tiling.{k} must be a positive int, got {v!r}')
+        if self.tf32_copy_scope not in ('phase', 'value'):
+            raise FrontendError(f"Tiling.tf32_copy_scope must be 'phase' or 'value', got {self.tf32_copy_scope!r}")
         if self.tf32_preround and (self.tf32_trunc or self.precise):
             raise FrontendError('Tiling.tf32_preround makes rounded operand copies; it does not combine with tf32_trunc or precise')
 
@@ -706,7 +712,8 @@ def _(op, tc):
     for m0, m1, n0, n1, ra, rb in _mm_grid(a, b, M, N, K, ta, tb, big):
         tile = out.region(m0, m1, n0, n1)
         yield _task('matmul_tile', [ra, rb, pre.region(m0, m1, n0, n1)], [tile], a=a, b=b, out=out, bias=None, res=None, pre=pre, m0=m0, n0=n0,
-                    M=M, N=N, K=K, flags=F_DGELU | (F_TA if ta else 0) | (F_TB if tb else 0) | (F_PRECISE if tc.precise else (F_TRUNC if tc.tf32_trunc else 0)) | big, alpha=1.0)
+                    M=M, N=N, K=K, flags=F_DGELU | (F_TA if ta else 0) | (F_TB if tb else 0) | (F_PRECISE if tc.precise else (F_TRUNC if tc.tf32_trunc else 0))
+                    | (F_EXACT if op.attrs.get('tf32_exact') else 0) | big, alpha=1.0)   # exact: the fused mm read tf32.py's copies
 
 
 @lowers('linear_silu_mul')

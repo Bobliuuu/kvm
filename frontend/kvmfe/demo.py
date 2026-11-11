@@ -26,6 +26,7 @@ from .emit import Lowered
 from .game import GameConfig, compile_game
 from .inspect import add_common
 from .ir import FrontendError
+from .ir import FrontendError
 from .lower import Tiling
 from .nn import GPT, ModelConfig
 from .pipeline import compile_training
@@ -148,10 +149,15 @@ def build_manifest(root: Path, workloads: dict[str, Workload], admissions: list[
 
 
 def make_precise(spec):
-    """3xTF32 on every GEMM (the exactness mode of tests/gptdiff: fp32-accurate, so CPU and GPU trajectories stay comparable)."""
+    """3xTF32 on every GEMM (the exactness mode of tests/gptdiff: fp32-accurate, so CPU and GPU trajectories stay comparable). A tile that
+    already reads TF32 operands (flag 1024, pre-rounded copies; 256, truncation) has no 3xTF32 form, and the device rejects the pair, so
+    such a tiling is refused here rather than on the GPU."""
     for g in spec['graphs']:
         for t in g['tasks']:
             if t['op'] == 'matmul_tile':
+                if t['args']['flags'] & (256 | 1024):
+                    raise FrontendError('--precise needs a tiling whose GEMMs round their own operands: this one pre-rounds (tf32_preround) '
+                                        'or truncates (tf32_trunc) them, which has no 3xTF32 form')
                 t['args']['flags'] |= F_PRECISE
     return spec
 

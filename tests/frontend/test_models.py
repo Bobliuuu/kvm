@@ -189,6 +189,64 @@ class Features(unittest.TestCase):
         with self.assertRaises(Exception):
             Tiling.preset('cpu', tf32_preround=True, tf32_trunc=True)
 
+    def test_tf32_preround_scopes_copies_by_phase_and_caps_their_size(self):
+        # 'phase': a value read by forward and backward GEMMs gets one copy in each phase; 'value' (the default) shares one copy across
+        # phases. The same GEMMs read copies either way. A GEMM with an operand copy above
+        # tf32_copy_max_bytes keeps rounding in its tiles: no flag 1024 and no copy for it.
+        wide = models.LlamaConfig(**{**SMALL.__dict__, 'vocab': 256, 'd_model': 256, 'heads': 4, 'kv_heads': 2, 'ffn': 256, 'batch': 8, 'seq': 32})
+        base = dict(mm_tile=256, mm_min_tiles=1, mm_min_eff=0.0, mm_huge_min_tiles=1, mm_huge_min_k=1, tf32_preround=True)
+
+        def tasks(**kw):
+            return compile_training(wide, TrainConfig(steps=1), Tiling.preset('cpu', **base, **kw)).spec['graphs'][0]['tasks']
+
+        def rounds(ts):
+            return sum(t['op'] == 'round_tf32' for t in ts)
+
+        def exact(ts):
+            return sum(1 for t in ts if t['op'] == 'matmul_tile' and t['args']['flags'] & 1024)
+
+        phase, value = tasks(tf32_copy_scope='phase'), tasks()
+        self.assertTrue(exact(phase))
+        self.assertEqual(exact(phase), exact(value))
+        self.assertGreater(rounds(phase), rounds(value))
+        capped = tasks(tf32_copy_max_bytes=4096)   # below every operand of this model
+        self.assertEqual((exact(capped), rounds(capped)), (0, 0))
+        with self.assertRaises(Exception):
+            Tiling.preset('cpu', tf32_copy_scope='step')
+
+    def test_tf32_preround_reaches_the_fused_dgelu_gemm(self):
+        # the default fusion turns a GELU MLP's backward mm into mm_dgelu after tf32.apply; it keeps the mm's copies, so its tiles must
+        # read them as exact operands (flag 1024 beside 512), or every copy it reads is wasted rounding
+        from kvmfe.nn import ModelConfig
+        cfg = ModelConfig('gpt_wide', vocab=256, d_model=256, layers=1, heads=4, seq=32, batch=8)   # 256 tokens: the MLP's GEMMs take 256x128 tiles
+        tiling = Tiling.preset('cpu', mm_tile=256, mm_min_tiles=1, mm_min_eff=0.0, mm_huge_min_tiles=1, mm_huge_min_k=1, tf32_preround=True)
+        tasks = compile_training(cfg, TrainConfig(steps=1), tiling).spec['graphs'][0]['tasks']
+        dgelu = [t['args']['flags'] for t in tasks if t['op'] == 'matmul_tile' and t['args']['flags'] & 512]
+        self.assertTrue(dgelu)
+        self.assertTrue(all(f & 1024 for f in dgelu if f & 64), dgelu)
+        huge = [t['args']['flags'] for t in tasks if t['op'] == 'matmul_tile' and t['args']['flags'] & 64]
+        self.assertTrue(huge and all(f & 1024 for f in huge), huge)
+        from kvmfe.demo import make_precise
+        with self.assertRaises(Exception):
+            make_precise(compile_training(cfg, TrainConfig(steps=1), tiling).spec)
+
+    def test_tf32_copies_share_slots_without_changing_a_bit(self):
+        # the copies reuse slots inside a step (plan.py `local`). Run in a random topological order, the program gives the bits it gives
+        # in program order, and the weights after two steps are the bits of a plan where no tensor shares a slot (reuse 'none').
+        wide = models.LlamaConfig(**{**SMALL.__dict__, 'vocab': 256, 'd_model': 256, 'heads': 4, 'kv_heads': 2, 'ffn': 256, 'batch': 8, 'seq': 32})
+        for scope in ('value', 'phase'):
+            tiling = Tiling.preset('cpu', mm_tile=256, mm_min_tiles=1, mm_min_eff=0.0, mm_huge_min_tiles=1, mm_huge_min_k=1, tf32_preround=True,
+                                   tf32_copy_scope=scope)
+            shared = compile_training(wide, TrainConfig(steps=2), tiling, reuse='step')
+            alone = compile_training(wide, TrainConfig(steps=2), tiling, reuse='none')
+            copies = sum(1 for t in shared.spec['graphs'][0]['tasks'] if t['op'] == 'round_tf32')
+            self.assertTrue(copies)
+            self.assertLess(shared.low.plan.stats['slots'], alone.low.plan.stats['slots'])
+            a, b, c = shared.run(), shared.run(order='random', seed=7), alone.run()
+            for k in a.bufs:
+                self.assertEqual(a.bufs[k].a, b.bufs[k].a, (scope, k))
+            self.assertEqual(weights(a), weights(c), scope)
+
     def test_remat_same_result_less_memory(self):
         base = models.LlamaConfig(**{**SMALL.__dict__, 'layers': 3})
         rm = models.LlamaConfig(**{**base.__dict__, 'remat': True})

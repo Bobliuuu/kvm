@@ -61,7 +61,7 @@ each loss row is one warp's. `raw/job_a.txt` holds the `cmp` lines.
 
 Only `frontend/kvmfe/lower.py` (new `Tiling.ce_rows`, `a100` preset values) and `bench/` changed; `include/`, `kvm_exec.cu` and `kvm_sched*` are untouched, so the
 device suites (core 8,613 checks, `-DKVM_BREAK_FENCE` negative, memcheck/racecheck on `smoke`) read as on main and were not re-run. Run here: CPU suites `tests` 157 OK and
-`tests/frontend` 133 OK; bitwise comparison above; every timed run ended `OK: n/n tasks`.
+`tests/frontend` 137 OK after the rebase onto main `4bbdaab` (157 / 133 before; one `tests` run out of four showed 1 failure that did not reproduce in the next three runs, not investigated); bitwise comparison above; every timed run ended `OK: n/n tasks`.
 
 ## Not done, and why
 

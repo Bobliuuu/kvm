@@ -1,4 +1,4 @@
-tree: aea86f0 (code identical to the branch head), worktree clean: yes
+tree: 2722a41 (code identical to the branch head), worktree clean: yes
 nvcc: Build cuda_12.8.r12.8/compiler.35583870_0
 command: nvcc -std=c++17 -O3 -DKVM_LEAN -Iinclude -gencode arch=compute_80,code=compute_80 -c kvm_exec.cu -o /tmp/kvm_exec.ptxonly.o
   include/kvm_ops_gpt.cuh(836): warning #177-D: variable "TILE" was declared but never referenced
@@ -31,4 +31,4 @@ command: nvcc -std=c++17 -O3 -DKVM_LEAN -Iinclude -gencode arch=compute_80,code=
     static void kvm_seeded_reference(float* out, size_t n, unsigned long long seed, int draws, float bias, float coef) {
                 ^
   
-ptx-check rc=0 in 104 s (code=compute_80 only: PTX, ptxas not run)
+ptx-check rc=0 in 98 s (code=compute_80 only: PTX, ptxas not run)

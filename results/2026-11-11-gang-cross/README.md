@@ -5,8 +5,8 @@
 barriers with the same ordering and abort contract, so the choice changes cost only, never a result: every check line below repeats digit
 for digit across the arms.
 
-Every figure here is (unverified) until the team's verifier names it. In `raw/`, the host's working folder reads `/root/work/` and the
-GPU lock's own lines are removed; everything else is as the runs wrote it.
+Every figure here was re-derived from these raw files by the team's verifier (Nov 11). In `raw/`, the host's working folder reads
+`/root/work/` and the GPU lock's own lines are removed; everything else is as the runs wrote it.
 
 ## Why: on 108 members the flag lines lost every bed
 

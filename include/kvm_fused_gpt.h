@@ -76,11 +76,10 @@ struct alignas(16) KvmFgptDesc {
 //  * dy: a member's own rows of the reduce-scatter's sum.
 KVM_FGPT_HD inline int kvm_fgpt_unit_grads(int d, int hd) { return 4 * d * hd + 3 * hd; }   // dWq, dWk, dWv [d][hd]; dbq, dbk, dbv [hd]; dWo [hd][d]
 // Attention's work items: each (sequence, head) unit cut into QB query blocks of T / QB rows, so that up to G members share it. Blocks cost
-// two more gang barriers a layer (q, k, v gathered; dK and dV partials summed), so they pay only where a unit's attention outweighs them:
-// the default is the largest power of two with B H QB <= G, T a multiple of 16 QB (a block is whole mma row tiles) and blocks of at least
-// 16 rows out of sequences of at least 64; 1 otherwise (gpt-tiny's T = 32 ran 10% slower with 2 blocks on an RTX 5070).
+// two more gang barriers a layer (q, k, v gathered; dK and dV partials summed); on the flag-line barrier they pay wherever a block is whole
+// mma row tiles. The default is the largest power of two with B H QB <= G and T a multiple of 16 QB. On an RTX 5070, gpt-tiny (T = 32) ran
+// x1.06 faster with 2 blocks than with 1 (and 10% slower under the counter barrier, whose crossings cost 1.7x as much).
 KVM_FGPT_HD inline int kvm_fgpt_qblocks(int B, int H, int T, int G) {
-  if (T < 64) return 1;
   int q = 1;
   while ((long long)B * H * q * 2 <= G && T % (16 * q * 2) == 0) q *= 2;
   return q;

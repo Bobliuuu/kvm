@@ -90,6 +90,16 @@ same losses (`raw/sm80-fix-exec.log`). On this card the step is within about 1% 
 gpt-tiny x1.017, the d128 x0.993, best of 9 rotating rounds (3 for the d128; `raw/sm80-fix-timing.log`; unverified). sm_120 never spilled,
 so the gain this is for shows only on sm_80; the A100 read decides it.
 
+**The gang's partial sums.** A member summed the gang's partials (each row's G member partials, an attention element's item partials, a
+replicated parameter's member partials, the gradient norm's G partials) in rolled loops of dependent adds, so most of a sum's round trips
+to L2 ran one after another. `sum_l2` issues up to 4 to 32 loads before its first add (by site) and adds them in the same order, so the
+result is the rolled loop's, bit for bit: every output stays bitwise equal on five shapes (`raw/partial-sums.log`), and the executor runs
+four GPT workloads fused with the same losses as before it (`raw/partial-sums-exec.log`). On this card gpt-small's step reads x1.05
+(168.2 against 176.5 us, best of 9 rotating rounds), a d128's x1.02 (629.4 against 643.2 us, best of 4) and gpt-tiny's unchanged (78.2
+against 77.9 us) (`raw/partial-sums.log`; unverified). The executor's kernel holds 203 registers on sm_80 (195 before), its 10 local
+reloads and worst MMA loop of 7 unchanged, and 145 on sm_120 with 4 and 1 (`raw/census-sm80-partial-sums-fused-gpt-kernel-*.txt`,
+`raw/census-sm120-partial-sums-fused-gpt-kernel-*.txt`; unverified).
+
 These runs use a test build of the executor: the GPT pack's op bodies are stubs (a fused bundle dispatches none of them), the comm and
 extra packs are left out, and the split step's share list is cut to 2, so it compiles within the laptop's memory.
 

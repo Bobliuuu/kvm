@@ -7,6 +7,8 @@
 // replay as the device runs them (tests/static/replay.h): no deadlock through any gang's barrier, every edge of the DAG honoured.
 #include <cassert>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -44,7 +46,10 @@ static bool acyclic(const std::vector<KvmTaskDesc>& t, const std::vector<int32_t
 }
 
 int main(int argc, char** argv) {
-    if (argc < 2) { fprintf(stderr, "usage: %s BUNDLE_DIR[@none|block|split|grid]...\n", argv[0]); return 2; }
+    // --smem FLOATS: the shared-memory budget of a fused block (default: the pass's, an A100's); a smaller GPU's budget changes the forms
+    int smem_floats = KvmFuseOptions{}.smem_floats, first_arg = 1;
+    if (argc > 2 && !strcmp(argv[1], "--smem")) { smem_floats = atoi(argv[2]); first_arg = 3; }
+    if (argc <= first_arg || smem_floats <= 0) { fprintf(stderr, "usage: %s [--smem FLOATS] BUNDLE_DIR[@none|block|split|grid]...\n", argv[0]); return 2; }
     const kvm_test_registry::Registry& R = kvm_test_registry::registry();
     KvmFuseOps ops;
     ops.noop = R.require("noop");
@@ -69,7 +74,7 @@ int main(int argc, char** argv) {
     const KvmSOpLookup op_of = R.lookup();
     static constexpr int kWorkers[] = {1, 4, 8, 48, 107, 108};   // 108: the A100's grid, the executor's default worker count
     int failures = 0;
-    for (int ai = 1; ai < argc; ++ai) {
+    for (int ai = first_arg; ai < argc; ++ai) {
         // BUNDLE_DIR[@FORM]: the form follows the last @, unless a / follows it (a directory name with an @ in it)
         const std::string spec = argv[ai]; const size_t at = spec.rfind('@');
         const bool has_form = at != std::string::npos && spec.find('/', at) == std::string::npos;
@@ -80,12 +85,13 @@ int main(int argc, char** argv) {
         const auto bufs = load_bufs(meta);
         // the pass sizes its runs for the workers the plan will have (a split step's gang must fit them), so each worker count runs the pass afresh
         for (int W : kWorkers) {
-        KvmFuseOptions opts; opts.workers = W;
+        KvmFuseOptions opts; opts.workers = W; opts.smem_floats = smem_floats;
         const KvmFuseResult r = kvm_fuse_mlp(tasks, succ, args, bufs, ops, op_of, opts);
         printf("%s W=%d: %zu tasks, %zu buffers -> fused runs %d, unchanged runs %d, replaced tasks %d, new tasks %d\n", dir.c_str(), W, tasks.size(), bufs.size(), r.fused_runs, r.unchanged_runs, r.replaced_tasks, r.new_tasks);
         std::map<std::string, int> counts;
         for (const auto& line : r.report) { auto cut = line.find(": unchanged: "); ++counts[cut == std::string::npos ? line.substr(line.find(": ") + 2) : line.substr(cut + 2)]; }
         for (const auto& kv : counts) printf("  [%d runs] %s\n", kv.second, kv.first.c_str());
+        if (!r.dropped.empty()) printf("  nothing fused: %s\n", r.dropped.c_str());
         if (!expect.empty() && W == kWorkers[sizeof kWorkers / sizeof kWorkers[0] - 1]) {
             int block = 0, split = 0, grid = 0;
             for (const auto& d : r.tasks) { block += d.op_id == slice_id || d.op_id == sgd_id; split += d.op_id == split_id; grid += d.op_id == grid_id; }
@@ -94,13 +100,18 @@ int main(int argc, char** argv) {
             else printf("  expected %s at W=%d: ok\n", expect.c_str(), W);
             // the static kernel entry the executor launches (kvm_fuse_entry): each fused form on its own entry, an unfused bundle on the generic one
             const KvmFuseEntry::Kind want = expect == "split" ? KvmFuseEntry::split : expect == "grid" ? KvmFuseEntry::grid : expect == "block" ? KvmFuseEntry::block : KvmFuseEntry::generic;
-            int S = 0; for (const auto& run : r.runs) if (run.split) S = run.S;
-            if (r.entry.kind != want || (want == KvmFuseEntry::split && r.entry.S != S)) { printf("  FAIL: entry at W=%d is %s\n", W, kvm_fuse_entry_name(r.entry).c_str()); ++failures; }
+            if (r.entry.kind != want) { printf("  FAIL: entry at W=%d is %s\n", W, kvm_fuse_entry_name(r.entry).c_str()); ++failures; }
             else printf("  entry at W=%d: %s: ok\n", W, kvm_fuse_entry_name(r.entry).c_str());
         }
         if (!r.fused_runs) continue;
-        // no bundle given here mixes fused runs with other work: the executor would turn their forms off (kvm_fuse_entry)
-        if (r.entry.kind == KvmFuseEntry::mixed) { printf("  FAIL: W=%d: the fused runs share the bundle (%s)\n", W, r.entry.why.c_str()); ++failures; }
+        // a fused bundle runs on one entry: never `mixed` (the pass leaves such a bundle unfused), and a split entry's share count is every split
+        // member's own: its `members` argument is Q x the entry's S
+        if (r.entry.kind == KvmFuseEntry::mixed) { printf("  FAIL: W=%d: a fused bundle with no entry (%s)\n", W, r.entry.why.c_str()); ++failures; }
+        if (r.entry.kind == KvmFuseEntry::split) {
+            int bad = 0;
+            for (const auto& d : r.tasks) if (d.op_id == split_id && r.args[d.args_off + 3] != KVM_SPLIT_Q * r.entry.S) ++bad;
+            if (bad) { printf("  FAIL: W=%d: %d split member(s) in gangs other than %d x %d\n", W, bad, KVM_SPLIT_Q, r.entry.S); ++failures; }
+        }
         // structural checks of the rewritten bundle
         if (!acyclic(r.tasks, r.succ)) { printf("  FAIL: the rewritten bundle has a cycle\n"); ++failures; continue; }
         // kept tasks keep their op and arguments: the multiset of (op, args) over tasks that are not fused equals the original minus the replaced tasks

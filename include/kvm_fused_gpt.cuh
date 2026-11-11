@@ -122,6 +122,7 @@ __device__ void gemm(const float* A, int lda, const float* B, int ldb, int M, in
     const float* pa0 = base_a(m0); const float* pb0 = base_b(n0);
     const float* pa1 = base_a(m1); const float* pb1 = base_b(n1);
     float c0[4] = {0.f, 0.f, 0.f, 0.f}, c1[4] = {0.f, 0.f, 0.f, 0.f};
+#pragma unroll 1
     for (int k = 0; k < ks; ++k) {
       Frag<TA, TB> f0;
       f0.load(pa0, pb0, lda, ldb);
@@ -414,6 +415,39 @@ struct NoPhases { __device__ __forceinline__ void operator()(int) const {} };
 // atomic's, a release and a poll). A run starts from the member's own word, so the lines need no reset between runs.
 static_assert(KVM_FGPT_MAX_GANG <= 32 * (KVM_FGPT_NT / 32), "kvm_gang::barrier_lines polls each line of 32 members with a warp of the block");
 
+// The run's constants: thread 0 builds one copy a block after the scratch layout, and the program reads them by reference (run, below).
+struct Ctx {
+  Plan p;
+  int QB, TQ, W, TQ16, hgsz, RC, RC16, base, ldq, ldd, ldh, np;
+  int nblk, nb, na, nq, n_own;                // the member's owned elements: its blocks, then its attention and replicated slices
+  bool prec, ok;
+  float inv_n;
+  long long a0, a1, q0, q1, ostride;
+  size_t Nd;
+  int *ids, *tgt, *flag, *blk;
+  float *lse_ce, *rtab, *scr, *wdt;
+  double* red;
+  float** ptab;
+  float *X, *part, *gx, *dy;
+  uint32_t *olist, *osrc;
+};
+static_assert(sizeof(Ctx) <= KVM_FGPT_CTX_FLOATS * sizeof(float) && alignof(Ctx) <= 16, "the run's constants outgrow their head slot");
+static_assert(KVM_FGPT_LAYOUT_FLOATS % 4 == 0, "the constants after the layout are 16-byte aligned");
+// A phase that loops (an attention item, a row chunk) takes the sizes, strides, plan and pointers it uses as values for its own body, shadowing run()'s
+// references to the block's copy: read there at every use, each one was read again after every store to shared memory (gpt-small's step
+// 5% slower on an RTX 5070), and held for the whole program they crowded sm_80's registers. Those a body does not use cost nothing.
+#define KVM_FGPT_PHASE_CONSTS                                                                                                       \
+  [[maybe_unused]] const int N = c.p.N, T = c.p.T, D = c.p.d, H = c.p.H, hd = c.p.hd, F = c.p.F, V = c.p.V, L = c.p.L, G = c.p.G,      \
+      B = c.p.B, b = c.p.b, QB = c.QB, TQ = c.TQ, W = c.W, TQ16 = c.TQ16, hgsz = c.hgsz, RC = c.RC, RC16 = c.RC16, ldq = c.ldq,         \
+      ldd = c.ldd, ldh = c.ldh;                                                                                                       \
+  [[maybe_unused]] const size_t Nd = c.Nd;                                                                                           \
+  [[maybe_unused]] const bool prec = c.prec;                                                                                         \
+  [[maybe_unused]] const Plan p = c.p;                                                                                               \
+  [[maybe_unused]] float* const X = c.X;                                                                                             \
+  [[maybe_unused]] float* const part = c.part;                                                                                       \
+  [[maybe_unused]] float* const gx = c.gx;                                                                                           \
+  [[maybe_unused]] float* const dy = c.dy
+
 // ---- the program -------------------------------------------------------------------------------------------------------------------------
 // Every step of the run as member `member` of the gang. `smem` is the member's shared memory, `smem_floats` floats (at least
 // kvm_fgpt_smem_floats of the shape: every phase checks, and fails the run with KVM_FGPT_E_SCRATCH rather than overrun). `abort` is the run's
@@ -422,43 +456,70 @@ static_assert(KVM_FGPT_MAX_GANG <= 32 * (KVM_FGPT_NT / 32), "kvm_gang::barrier_l
 // next crossing. Returns false when the run failed. Every thread of the block calls it.
 template <class FAIL, class PH>
 __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floats, const int* abort, FAIL fail, PH& ph) {
-  const Plan p = plan_of(d, member);
-  const int tid = threadIdx.x, N = p.N, T = p.T, D = p.d, H = p.H, hd = p.hd, F = p.F, V = p.V, L = p.L, b = p.b, G = p.G, B = p.B;
-  // attention's work items: (sequence, head, query block), QB blocks of TQ rows a unit, item w = (s H + h) QB + qb on member w % G
-  const int QB = d.qb, TQ = QB > 0 ? T / QB : 0, W = B * H * QB, TQ16 = kvm_fgpt_r16(TQ);
-  const int T16 = kvm_fgpt_r16(T), hgsz = kvm_fgpt_unit_grads(D, hd);
-  const size_t Nd = (size_t)N * D;
-  // the scratch layout, one copy a block at the head of shared memory (KVM_FGPT_LAYOUT_FLOATS), written once by thread 0
-  if (smem_floats < KVM_FGPT_LAYOUT_FLOATS) {
+  const int tid = threadIdx.x;
+  // the scratch layout and the run's constants, one copy a block at the head of shared memory, written once by thread 0
+  if (smem_floats < KVM_FGPT_LAYOUT_FLOATS + KVM_FGPT_CTX_FLOATS) {
     if (tid == 0) fail(KVM_FGPT_E_SCRATCH);
     return false;
   }
   KvmFgptScratch& s = *reinterpret_cast<KvmFgptScratch*>(smem);
-  if (tid == 0) s = kvm_fgpt_scratch(N, T, D, H, F, V, L, G, d.qb);
+  Ctx& c = *reinterpret_cast<Ctx*>(smem + KVM_FGPT_LAYOUT_FLOATS);
+  if (tid == 0) {
+    const Plan pl = plan_of(d, member);
+    c.p = pl;
+    const int N = pl.N, T = pl.T, D = pl.d, H = pl.H, hd = pl.hd, F = pl.F, V = pl.V, L = pl.L, b = pl.b, G = pl.G, B = pl.B;
+    // attention's work items: (sequence, head, query block), QB blocks of TQ rows a unit, item w = (s H + h) QB + qb on member w % G
+    c.QB = d.qb; c.TQ = c.QB > 0 ? T / c.QB : 0; c.W = B * H * c.QB; c.TQ16 = kvm_fgpt_r16(c.TQ);
+    c.hgsz = kvm_fgpt_unit_grads(D, hd); c.Nd = (size_t)N * D;
+    // the N-wide phases' row chunk (kvm_fgpt_fit): the MLP's, the logits' and the head's backward walk N in chunks of RC rows, their
+    // weight slices resident; RC is N where the whole fits, and then each phase runs as one chunk
+    c.RC = d.rows < N ? d.rows : N; c.RC16 = kvm_fgpt_r16(c.RC);
+    c.prec = (d.mm_numerics & 16) != 0;                                                  // matmul_tile's 3xTF32 flag
+    c.ok = hd <= 128 && hd % 8 == 0 && D == H * hd && L >= 1 && L <= KVM_FGPT_MAXL && T > 0 && N % T == 0 && B == N / T &&
+           (d.mm_numerics & ~16) == 0 && D % 4 == 0 && d.qb >= 1 && T % d.qb == 0 && (d.qb == 1 || (T / d.qb) % 16 == 0) &&
+           d.rows >= 1 && d.rows <= N && (d.rows == N || d.rows % 16 == 0);
+    if (c.ok) kvm_fgpt_scratch_into(s, N, T, D, H, F, V, L, G, d.qb);                     // only a shape it holds: L indexes its arrays
+    else s.total = 0;
+    // the fixed head of shared memory (kvm_fgpt_smem_head), then one phase's buffers at a time from `base`
+    c.ids = reinterpret_cast<int*>(smem + KVM_FGPT_LAYOUT_FLOATS + KVM_FGPT_CTX_FLOATS);  // after the layout and these constants (16-byte aligned)
+    c.tgt = c.ids + kvm_fgpt_r4(N);
+    c.lse_ce = reinterpret_cast<float*>(c.tgt + kvm_fgpt_r4(N));
+    c.rtab = c.lse_ce + kvm_fgpt_r4(N);                                                 // RoPE's cos and sin, T x hd / 2 each
+    c.red = reinterpret_cast<double*>(c.rtab + kvm_fgpt_r4((long long)T * hd));        // NW partials (8-byte aligned: the offsets are multiples of 4 floats)
+    c.flag = reinterpret_cast<int*>(c.red + NW);
+    c.scr = reinterpret_cast<float*>(c.flag + 4);                                       // one float a thread
+    c.ptab = reinterpret_cast<float**>(c.scr + NT);                                     // [4][MAXP]: p, m, v, g of every slot
+    c.wdt = reinterpret_cast<float*>(c.ptab + 4 * KVM_FGPT_MAXP);                       // [MAXP] weight decay
+    c.blk = reinterpret_cast<int*>(c.wdt + kvm_fgpt_r4(KVM_FGPT_MAXP));                 // [MAXBLK][8]: slot, first row, first column, width, row length, count, first index
+    c.base = (int)kvm_fgpt_smem_head(N, T, hd);
+    c.X = d.xch;
+    c.part = c.X + s.part + (size_t)b * c.Nd;                                          // this member's N x d partial (MLP, head)
+    c.gx = c.X + s.gx;
+    c.dy = c.X + s.dy;
+    c.inv_n = (float)(1.0 / N);
+    // row strides: q | k | v, a d-wide block and a head-wide block (read transposed: whole 16-row tiles)
+    c.ldq = kvm_fgpt_ldk(3 * hd); c.ldd = kvm_fgpt_ldk(D); c.ldh = kvm_fgpt_ldk(kvm_fgpt_r16(hd));
+    slice_of((long long)L * H * c.hgsz, b, G, c.a0, c.a1);                              // this member's attention and replicated slices
+    slice_of((long long)(2 * L + 1) * 2 * D + (long long)2 * L * D, b, G, c.q0, c.q1);
+    c.np = kvm_fgpt_nparams(L);
+    c.ostride = kvm_fgpt_own_stride(B, T, D, H, F, V, L, G);
+    c.olist = reinterpret_cast<uint32_t*>(d.xch + s.olist) + (size_t)b * c.ostride;
+    c.osrc = reinterpret_cast<uint32_t*>(d.xch + s.osrc) + (size_t)b * c.ostride;
+  }
   __syncthreads();
-  // the N-wide phases' row chunk (kvm_fgpt_fit): the MLP's, the logits' and the head's backward walk N in chunks of RC rows, their weight
-  // slices resident; RC is N where the whole fits, and then each phase runs as one chunk
-  const int RC = d.rows < N ? d.rows : N, RC16 = kvm_fgpt_r16(RC);
-  const bool prec = (d.mm_numerics & 16) != 0;                                        // matmul_tile's 3xTF32 flag
-  const bool shape_ok = hd <= 128 && hd % 8 == 0 && D == H * hd && L >= 1 && L <= KVM_FGPT_MAXL && T > 0 && N % T == 0 && B == N / T &&
-                        (d.mm_numerics & ~16) == 0 && D % 4 == 0 && d.qb >= 1 && T % d.qb == 0 && (d.qb == 1 || (T / d.qb) % 16 == 0) &&
-                        d.rows >= 1 && d.rows <= N && (d.rows == N || d.rows % 16 == 0);
-  if ((size_t)s.total > d.xch_floats || !shape_ok) {
+  // Every constant below is a reference into that copy, so a phase reads what it uses there: a value read through shared memory is not held
+  // across a __syncthreads, where held in registers for the whole program they rode through every phase (sm_120: 114 registers of values a
+  // loop did not use; sm_80, whose phases need more of their own, spilled hundreds a pass).
+  const Plan& p = c.p;
+  const int &N = p.N, &T = p.T, &D = p.d, &H = p.H, &hd = p.hd, &V = p.V, &L = p.L, &b = p.b, &G = p.G, &B = p.B;
+  const int &QB = c.QB, &W = c.W, &hgsz = c.hgsz, &RC = c.RC, &RC16 = c.RC16, &base = c.base;
+  const size_t& Nd = c.Nd;
+  if ((size_t)s.total > d.xch_floats || !c.ok) {
     if (tid == 0) fail((size_t)s.total > d.xch_floats ? KVM_FGPT_E_SCRATCH : KVM_FGPT_E_SHAPE);
     return false;
   }
-  // the fixed head of shared memory (kvm_fgpt_smem_head), then one phase's buffers at a time from `base`
-  int* const ids = reinterpret_cast<int*>(smem + KVM_FGPT_LAYOUT_FLOATS);                // after the scratch layout (16-byte aligned)
-  int* const tgt = ids + kvm_fgpt_r4(N);
-  float* const lse_ce = reinterpret_cast<float*>(tgt + kvm_fgpt_r4(N));
-  float* const rtab = lse_ce + kvm_fgpt_r4(N);                                          // RoPE's cos and sin, T x hd / 2 each
-  double* const red = reinterpret_cast<double*>(rtab + kvm_fgpt_r4((long long)T * hd)); // NW partials (8-byte aligned: the offsets are multiples of 4 floats, the arena 16-byte aligned)
-  int* const flag = reinterpret_cast<int*>(red + NW);
-  float* const scr = reinterpret_cast<float*>(flag + 4);                                // one float a thread
-  float** const ptab = reinterpret_cast<float**>(scr + NT);                             // [4][MAXP]: p, m, v, g of every slot
-  float* const wdt = reinterpret_cast<float*>(ptab + 4 * KVM_FGPT_MAXP);                // [MAXP] weight decay
-  int* const blk = reinterpret_cast<int*>(wdt + kvm_fgpt_r4(KVM_FGPT_MAXP));            // [MAXBLK][8]: slot, first row, first column, width, row length, count, first index
-  const int base = (int)kvm_fgpt_smem_head(N, T, hd);
+  int* const& ids = c.ids; int* const& tgt = c.tgt; float* const& lse_ce = c.lse_ce; float* const& rtab = c.rtab; double* const& red = c.red;
+  int* const& flag = c.flag; float* const& scr = c.scr; float** const& ptab = c.ptab; float* const& wdt = c.wdt; int* const& blk = c.blk;
   Arena ar{smem, smem_floats, base, smem_floats < base};
   auto phase = [&]() { ar.top = base; };
   auto check = [&]() {   // after a phase's takes: every thread agrees
@@ -467,25 +528,22 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
     return false;
   };
   if (!check()) return false;
-  float* const X = d.xch;
+  float* const& X = c.X;
   auto P = [&](int slot) { return d.p[slot]; };
   auto Gr = [&](int slot) { return d.g[slot]; };
   auto lay = [&](int l, int role) { return kvm_fgpt_slot_layer(l, role); };
-  float* const part = X + s.part + (size_t)b * Nd;   // this member's N x d partial (MLP, head)
-  float* const gx = X + s.gx;
-  float* const dy = X + s.dy;
-  const float inv_n = (float)(1.0 / N);
+  float* const& gx = c.gx;
+  float* const& dy = c.dy;
+  const float& inv_n = c.inv_n;
   unsigned epoch = kvm_gang::lines_epoch(d.ctl, member);                             // this member's crossings so far (the gang's words are equal)
   auto cross = [&]() { return kvm_gang::barrier_lines(d.ctl, member, G, epoch, abort); };
   // row strides: q | k | v, a d-wide block, the T x T scores and a head-wide block (the last two are read transposed: whole 16-row tiles)
-  const int ldq = kvm_fgpt_ldk(3 * hd), ldd = kvm_fgpt_ldk(D), ldT = kvm_fgpt_ldk(T16), ldh = kvm_fgpt_ldk(kvm_fgpt_r16(hd));
+  const int& ldd = c.ldd;
   rope_table(rtab, T, hd, d.theta);
-  long long a0, a1, q0, q1;                                                             // this member's attention and replicated slices
-  slice_of((long long)L * H * hgsz, b, G, a0, a1);
-  slice_of((long long)(2 * L + 1) * 2 * D + (long long)2 * L * D, b, G, q0, q1);
+  const long long &a0 = c.a0, &q0 = c.q0, &q1 = c.q1;                                   // this member's attention slice's start, its replicated slice
   // every slot's pointers and weight decay, and this member's block rectangles in one flat index (fc1's columns, b1, fc2's rows a layer,
   // then wte's rows and the head's columns), so the end of a step reads no descriptor field per element
-  const int np = kvm_fgpt_nparams(L);
+  const int& np = c.np;
   for (int i = tid; i < np; i += NT) { ptab[i] = d.p[i]; ptab[KVM_FGPT_MAXP + i] = d.m[i]; ptab[2 * KVM_FGPT_MAXP + i] = d.v[i]; ptab[3 * KVM_FGPT_MAXP + i] = d.g[i]; wdt[i] = d.wd[i]; }
   if (tid == 0) {
     int k = 0, at = 0;
@@ -500,10 +558,10 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
     for (int l = 0; l < L; ++l) { add(kvm_fgpt_slot_layer(l, KVM_FGPT_R_W1)); add(kvm_fgpt_slot_layer(l, KVM_FGPT_R_B1)); add(kvm_fgpt_slot_layer(l, KVM_FGPT_R_W2)); }
     add(0);
     add(kvm_fgpt_slot_head(L));
-    flag[1] = k; flag[2] = at;
+    c.nblk = k; c.nb = at; c.na = (int)(c.a1 - c.a0); c.nq = (int)(c.q1 - c.q0); c.n_own = c.nb + c.na + c.nq;
   }
   __syncthreads();
-  const int nblk = flag[1], nb = flag[2], na = (int)(a1 - a0), nq = (int)(q1 - q0);
+  const int &nblk = c.nblk, &nb = c.nb, &na = c.na;
   // element i of this member's owned list: its blocks [0, nb), its attention slice [nb, nb + na), its replicated slice after
   auto own = [&](int i, int& slot, size_t& off) {
     if (i < nb) {
@@ -520,10 +578,10 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
     }
   };
   // the owned elements decoded once a run: slot << 25 | offset, and an attention element's first item partial in hgp
-  const int n_own = nb + na + nq;
-  const long long ostride = kvm_fgpt_own_stride(B, T, D, H, F, V, L, G);
-  uint32_t* const olist = reinterpret_cast<uint32_t*>(d.xch + s.olist) + (size_t)b * ostride;
-  uint32_t* const osrc = reinterpret_cast<uint32_t*>(d.xch + s.osrc) + (size_t)b * ostride;
+  const int& n_own = c.n_own;
+  const long long& ostride = c.ostride;
+  uint32_t* const& olist = c.olist;
+  uint32_t* const& osrc = c.osrc;
   {
     bool fits = n_own <= ostride;
     for (int sl = 0; sl < np; ++sl) fits = fits && (long long)d.prows[sl] * d.pcols[sl] < (1LL << 25);
@@ -581,6 +639,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
       // ---- attention, forward. Each item first projects its own TQ rows to q, k and v (RoPE'd) and keeps them; one exchange; then its queries
       // attend over the gathered keys and values of their prefix, and it writes proj's partial of its rows.
       for (int w = b; w < W; w += G) {
+        KVM_FGPT_PHASE_CONSTS;
         const int u = w / QB, qb = w % QB, sq = u / H, hh = u % H, c0 = hh * hd, r0 = sq * T + qb * TQ;
         phase();
         float* const HS = ar.take((long long)TQ16 * ldd);
@@ -619,6 +678,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
       else __syncthreads();
       ph(MK_X_KV);
       for (int w = b; w < W; w += G) {
+        KVM_FGPT_PHASE_CONSTS;
         const int u = w / QB, qb = w % QB, sq = u / H, hh = u % H, c0 = hh * hd, r0 = sq * T + qb * TQ, q0 = qb * TQ;
         const int KE = q0 + TQ, KE16 = kvm_fgpt_r16(KE), ldS = kvm_fgpt_ldk(KE16);   // the prefix's keys
         phase();
@@ -685,6 +745,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
         if (!check()) return false;
         float* const pre = X + s.pre[l];
         for (int c0 = 0; c0 < N; c0 += RC) {                                          // the weights stage with the first chunk and stay
+          KVM_FGPT_PHASE_CONSTS;
           const int rc = N - c0 < RC ? N - c0 : RC, rc16 = kvm_fgpt_r16(rc);
           const Copy rows = {H2, h2 + (size_t)c0 * D, ldd, (size_t)D, rc, D, rc16, kvm_fgpt_r8(D)};
           zero(Us, ldu, rc16, kvm_fgpt_r8(w));
@@ -726,6 +787,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
       float* const WH = ar.take((long long)kvm_fgpt_r8(D) * ldw);
       if (!check()) return false;
       for (int c0 = 0; c0 < N; c0 += RC) {                                            // the head's columns stage with the first chunk and stay
+        KVM_FGPT_PHASE_CONSTS;
         const int rc = N - c0 < RC ? N - c0 : RC, rc16 = kvm_fgpt_r16(rc);
         const Copy rows = {HF, hf + (size_t)c0 * D, ldd, (size_t)D, rc, D, rc16, kvm_fgpt_r8(D)};
         if (c0 == 0) {
@@ -783,6 +845,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
       if (!check()) return false;
       float* const gh = Gr(head);
       for (int c0 = 0; c0 < N; c0 += RC) {                                            // the head's gradient sums over the rows: first chunk writes, later add
+        KVM_FGPT_PHASE_CONSTS;
         const int rc = N - c0 < RC ? N - c0 : RC, rc16 = kvm_fgpt_r16(rc);
         const bool add = c0 > 0;
         zero(DL, ldl, rc16, kvm_fgpt_r8(w));
@@ -829,6 +892,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
         // the rows in chunks: dW2, db1 and dW1 sum over the rows, so the first chunk writes them and each later one adds, in order (each element
         // by the thread that wrote it: a GEMM's tiles map to threads by its M and N, the same every chunk)
         for (int c0 = 0; c0 < N; c0 += RC) {
+          KVM_FGPT_PHASE_CONSTS;
           const int rc = N - c0 < RC ? N - c0 : RC, rc16 = kvm_fgpt_r16(rc);
           const bool add = c0 > 0;
           {
@@ -866,6 +930,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
       // q's dh rows; one exchange; then each item as a key block sums its keys' dK and dV partials over the query blocks at and after it, in
       // order, and adds dbk, dbv, dWk, dWv and k's and v's dh rows. An item's head-gradient partial is whole after both.
       for (int w = b; w < W; w += G) {
+        KVM_FGPT_PHASE_CONSTS;
         const int u = w / QB, qb = w % QB, sq = u / H, hh = u % H, c0 = hh * hd, r0 = sq * T + qb * TQ, q0 = qb * TQ;
         const int KE = q0 + TQ, KE16 = kvm_fgpt_r16(KE), ldS = kvm_fgpt_ldk(KE16);
         float* const hg = X + s.hgp + ((size_t)l * W + w) * hgsz;
@@ -945,6 +1010,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
       else __syncthreads();
       ph(MK_X_DKV);
       for (int w = b; w < W; w += G) {                                                // each item as a key block
+        KVM_FGPT_PHASE_CONSTS;
         const int u = w / QB, kb = w % QB, sq = u / H, hh = u % H, c0 = hh * hd, r0 = sq * T + kb * TQ, k0 = kb * TQ, ldv = kvm_fgpt_ldk(2 * hd);
         float* const hg = X + s.hgp + ((size_t)l * W + w) * hgsz;
         phase();
@@ -995,6 +1061,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
       float* const ge = ptab[3 * KVM_FGPT_MAXP + 0];
       if (w > 0)
         for (int c0 = 0; c0 < N; c0 += RC) {
+          KVM_FGPT_PHASE_CONSTS;
           const int rc = N - c0 < RC ? N - c0 : RC;
           const Copy cs[1] = {{GXS, gx + (size_t)c0 * D, D, (size_t)D, rc, D, rc, D}};
           stage_all(cs);

@@ -45,6 +45,33 @@ class Golden(unittest.TestCase):
             self.assertAlmostEqual(mem.matrix(f'loss.{s}')[0][0], want[s], delta=1e-9)
 
 
+class BigTiles(unittest.TestCase):
+    """128x128 / 256x128 GEMM tiles and multi-block attention tasks give the independent reference's result on the CPU golden VM,
+    in program order and in random dependency-respecting orders (their edges are complete)."""
+    cfg = ModelConfig(name='t', vocab=32, d_model=32, layers=1, heads=2, seq=128, batch=2)   # 256 tokens, ffn 128: 128/256 tiles apply
+
+    def check(self, **kw):
+        tiling = Tiling.preset('cpu', mm_min_tiles=1, mm_min_eff=0.5, **kw)
+        c = compile_training(self.cfg, TrainConfig(steps=2), tiling)
+        flags = {t['args'].get('flags', 0) & 96 for g in c.spec['graphs'] for t in g['tasks'] if t['op'] == 'matmul_tile'}
+        want, _ = ref_gpt.train_reference(self.cfg, 2, OptimConfig())
+        for order in ('program', 'random'):
+            mem = execute(c.spec, order=order, seed=3)
+            for s in range(2):
+                self.assertAlmostEqual(mem.matrix(f'loss.{s}')[0][0], want[s], delta=1e-9, msg=f'{kw} {order} step {s}')
+        return c, flags
+
+    def test_mm128(self):
+        _, flags = self.check(mm_tile=128)
+        self.assertIn(32, flags)
+
+    def test_mm256(self):
+        c, flags = self.check(mm_tile=256)
+        self.assertIn(64, flags)
+        base = compile_training(self.cfg, TrainConfig(steps=2), Tiling.preset('cpu'))
+        self.assertLess(len(c.low.tasks), len(base.low.tasks))
+
+
 class Dataflow(unittest.TestCase):
     """Edges found by the analysis are complete: any topological order gives bitwise identical state."""
 

@@ -1,9 +1,10 @@
 // The one X-macro list of every operator registry file. Optional registries (GPT, game) are picked up when present.
 // Ids are sparse and globally unique: 0-31 core, 32-127 gpt, 128+ game. Include this wherever X(name, id, sig) is expanded.
 #include "kvm_ops.def"
-#if __has_include("kvm_ops_comm.def") && !defined(KVM_LEAN)  // KVM_DIST_HOOK: ids 64..95
+#if __has_include("kvm_ops_comm.def") && !defined(KVM_LEAN)  // KVM_DIST_HOOK: ids 64..95 (-DKVM_LEAN skips the comm and extra packs for fast builds)
 #include "kvm_ops_comm.def"
 #endif
+#include "kvm_ops_fmlp.def"
 #if __has_include("kvm_ops_gpt.def")
 #include "kvm_ops_gpt.def"
 #endif

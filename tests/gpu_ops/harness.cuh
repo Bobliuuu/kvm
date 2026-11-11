@@ -16,6 +16,16 @@
 
 #define CK(x) do { cudaError_t e_ = (x); if (e_ != cudaSuccess) { printf("CUDA error %s at %s:%d\n", cudaGetErrorString(e_), __FILE__, __LINE__); exit(2); } } while (0)
 
+// The dynamic shared memory a test kernel may launch with: what the executor would ask for (at least 112 KiB), capped at what this device
+// can opt into (99 KiB on sm_86/sm_89/sm_120, 163 KiB on an A100). A launch above the cap then fails at that launch, by name, instead of the
+// whole program failing at the attribute call. A small-memory device runs a reduced-tile build (-DKVM_GPT_BIG_BK=16 -DKVM_GPT_MAX_HD=64: 96 KiB);
+// its cases above KVM_GPT_MAX_HD (hd=128 attention, whose variant that build does not compile) are skipped and counted, not run.
+static int kvm_test_smem_cap() {
+    int dev = 0, optin = 0;
+    CK(cudaGetDevice(&dev));
+    CK(cudaDeviceGetAttribute(&optin, cudaDevAttrMaxSharedMemoryPerBlockOptin, dev));
+    return std::min(optin, std::max(112 * 1024, (int)kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)));
+}
 struct OpInfo { const char* name; int id; const char* sig; };
 static const OpInfo OPS[] = {
 #define X(n, id, s) {#n, id, s},
@@ -109,7 +119,7 @@ struct Batch {   // independent tasks, one block each
 static int g_smem_attr = 0;
 // Runs the batch (one block of 256 threads per task) and returns the device error word (0 = ok).
 static int run(Dev& d, const Batch& b, int smem = kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)) {   // what the executor would launch with
-    if (!g_smem_attr) { CK(cudaFuncSetAttribute(k_run, cudaFuncAttributeMaxDynamicSharedMemorySize, std::max(112 * 1024, (int)kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)))); kvm_hopper_host_init(); g_smem_attr = 1; }
+    if (!g_smem_attr) { CK(cudaFuncSetAttribute(k_run, cudaFuncAttributeMaxDynamicSharedMemorySize, kvm_test_smem_cap())); kvm_hopper_host_init(); g_smem_attr = 1; }
     d.sync_table();
     int32_t* w; int *op, *off;
     CK(cudaMalloc(&w, b.w.size() * 4 + 4)); CK(cudaMalloc(&op, b.op.size() * 4)); CK(cudaMalloc(&off, b.off.size() * 4));
@@ -126,11 +136,22 @@ static int run1(Dev& d, int id, const A& a, int smem = kvm_gpt_smem_bytes(KVM_GP
 #endif  // KVM_HARNESS_NO_FULL
 
 // ---- accounting / comparison ------------------------------------------------------------------------------------------
-static int g_pass = 0, g_fail = 0;
+static int g_pass = 0, g_fail = 0, g_skip = 0;
 static bool g_quiet = false;   // sweeps: passing checks are counted but not printed (failures always are)
 static void verdict(const std::string& name, bool ok, const char* detail) {
     if (!ok || !g_quiet) printf("%s  %s  %s\n", ok ? "PASS" : "FAIL", name.c_str(), detail);
     (ok ? g_pass : g_fail)++;
+}
+// A case outside what this build compiles (an attention head size above KVM_GPT_MAX_HD): listed and counted, never passed, so a reduced
+// build's total says what it left out. Quiet sweeps count it without a line.
+static void skip(const std::string& name, const char* why) {
+    if (!g_quiet) printf("SKIP  %s  %s\n", name.c_str(), why);
+    g_skip++;
+}
+static int summary() {   // the suite's last line and exit code; the line is unchanged when nothing was skipped
+    if (g_skip) printf("\n%d passed, %d failed, %d skipped (outside this build)\n", g_pass, g_fail, g_skip);
+    else printf("\n%d passed, %d failed\n", g_pass, g_fail);
+    return g_fail ? 1 : 0;
 }
 // max |got-ref| / (max|ref| + tiny) <= tol (relative to the reference's scale); also fails on NaN/Inf.
 static double relerr(const std::vector<float>& got, const std::vector<double>& ref, double floor_ = 1e-30) {

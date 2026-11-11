@@ -53,6 +53,9 @@ lock itself. Any non-empty value counts.
 ## Not in the table on purpose
 
 The multi-GPU and multi-node stages of `dist/run_multigpu_tests.sh` have never run (no such hardware): their SKIP lines are the honest result.
+A GPU that opts into less than 104 KiB of shared memory a block (sm_86, sm_89, sm_120) builds `test_ops` and `test_extra` in a reduced key,
+`-DKVM_GPT_BIG_BK=16 -DKVM_GPT_MMA_SMEM=90112 -DKVM_GPT_MAX_HD=64` (`test_extra` also `-DKVM_MMA_NST=3`): that build does not compile hd=128
+attention, so those cases print SKIP and the summary counts them; the A100 runs them.
 `results/*/README.md` name the command, commit, GPU and flags of each recorded run; a number without them is not a result.
 Scripts still using `rsync --delete` into a fixed directory can destroy a concurrent run on the same box (it happened once, disclosed in
 `results/2026-11-04-a100-ops-perf/README.md`): give such a script its own `KVM_REMOTE`.

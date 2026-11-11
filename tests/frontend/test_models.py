@@ -1,5 +1,6 @@
 """Model zoo on the CPU golden VM: loss and autodiff gradients against independent float64 numpy oracles (finite differences),
 dataflow completeness, and the frontend features (fusion, rematerialization, accumulation, schedules, loss scaling, bf16)."""
+import importlib
 import unittest
 
 import numpy as np
@@ -123,9 +124,29 @@ class Features(unittest.TestCase):
 
     def test_fusion_gpt_gelu_backward(self):
         from kvmfe.nn import PRESETS as GPT
-        a, b = compiled(GPT['gpt_tiny'], 1, reuse='shape'), compiled(GPT['gpt_tiny'], 1, reuse='shape', fuse=True)
+        fuse_mod = importlib.import_module('kvmfe.fuse')
+        defaults, fuse_mod.DEFAULT_PATTERNS = fuse_mod.DEFAULT_PATTERNS, ()      # the same model with the default fusions off
+        try:
+            a = compiled(GPT['gpt_tiny'], 1, reuse='shape')
+        finally:
+            fuse_mod.DEFAULT_PATTERNS = defaults
+        b = compiled(GPT['gpt_tiny'], 1, reuse='shape')
         self.assertLess(len(b.low.tasks), len(a.low.tasks))
         self.assertEqual(weights(a.run()), weights(b.run()))
+
+    def test_fused_gelu_backward_is_a_matmul_tile_epilogue(self):
+        from kvmfe.nn import PRESETS as GPT
+        tiling = Tiling.preset('cpu', mm_tile=128, mm_min_tiles=1, mm_min_eff=0.0, tf32_trunc=True)
+        spec = compile_training(GPT['gpt_tiny'], TrainConfig(steps=1), tiling, reuse='shape', fuse=True).spec
+        fused = [t for t in spec['graphs'][0]['tasks'] if t['op'] == 'matmul_tile' and t['args']['flags'] & 512]
+        self.assertTrue(fused)
+        for t in fused:
+            self.assertTrue(t['args']['flags'] & 256, t)   # the preset's truncated operands reach the fused tile too
+            self.assertFalse(t['args']['flags'] & (4 | 8), t)
+            self.assertIn(t['args']['bias'], (None, -1), t)
+            self.assertIn(t['args']['res'], (None, -1), t)
+            self.assertNotIn(t['args']['pre'], (None, -1), t)
+        self.assertNotIn('matmul_tile_dgelu', {t['op'] for t in spec['graphs'][0]['tasks']})
 
     def test_precise_tiling_sets_gemm_flag_on_every_matmul_variant(self):
         for fuse in (False, True):
@@ -134,6 +155,39 @@ class Features(unittest.TestCase):
             self.assertTrue(gemms and all(t['args']['flags'] & 16 for t in gemms), fuse)
         plain = compile_training(SMALL, TrainConfig(steps=1), CPU).spec
         self.assertFalse(any(t.get('args', {}).get('flags', 0) & 16 for t in plain['graphs'][0]['tasks']))
+
+    def test_tf32_trunc_flags_every_plain_1xtf32_tile(self):
+        # flag 256 (operands truncated, not rounded) goes on every plain 1xTF32 matmul_tile task, whatever its tile size, never on 3xTF32 or other variants
+        wide = models.LlamaConfig(**{**SMALL.__dict__, 'vocab': 256, 'd_model': 256, 'heads': 4, 'kv_heads': 2, 'ffn': 256, 'batch': 8, 'seq': 32})
+        for tiling in (Tiling.preset('cpu', mm_tile=128, mm_min_tiles=1, mm_min_eff=0.0, tf32_trunc=True),
+                       Tiling.preset('cpu', mm_tile=256, mm_min_tiles=1, mm_min_eff=0.0, tf32_trunc=True)):
+            tasks = compile_training(wide, TrainConfig(steps=1), tiling).spec['graphs'][0]['tasks']
+            gemms = [t['args']['flags'] for t in tasks if t['op'] == 'matmul_tile']
+            self.assertTrue(gemms and all(f & 256 for f in gemms))
+            self.assertTrue(any(f & (32 | 64) for f in gemms))
+        small = compile_training(SMALL, TrainConfig(steps=1), Tiling.preset('cpu', tf32_trunc=True)).spec['graphs'][0]['tasks']
+        self.assertTrue(all(t['args']['flags'] & 256 for t in small if t['op'] == 'matmul_tile'))
+        prec = compile_training(wide, TrainConfig(steps=1), Tiling.preset('cpu', mm_tile=128, mm_min_tiles=1, mm_min_eff=0.0, tf32_trunc=True,
+                                                                           precise=True)).spec['graphs'][0]['tasks']
+        self.assertFalse(any(t.get('args', {}).get('flags', 0) & 256 for t in prec))
+
+    def test_tf32_preround_gives_big_gemms_shared_operand_copies(self):
+        # tf32_preround: every GEMM on the 256x128 tile reads round_tf32 copies (flag 1024), each copy made once per value of its tensor and
+        # shared by the GEMMs that read that value; GEMMs on smaller tiles keep rounding their own operands (no flag 1024, no copy)
+        wide = models.LlamaConfig(**{**SMALL.__dict__, 'vocab': 256, 'd_model': 256, 'heads': 4, 'kv_heads': 2, 'ffn': 256, 'batch': 8, 'seq': 32})
+        tiling = Tiling.preset('cpu', mm_tile=256, mm_min_tiles=1, mm_min_eff=0.0, mm_huge_min_tiles=1, mm_huge_min_k=1, tf32_preround=True)
+        tasks = compile_training(wide, TrainConfig(steps=2), tiling).spec['graphs'][0]['tasks']
+        gemms = [t['args']['flags'] for t in tasks if t['op'] == 'matmul_tile']
+        huge = [f for f in gemms if f & 64]
+        self.assertTrue(huge and all(f & 1024 for f in huge))
+        self.assertFalse(any(f & 1024 for f in gemms if not f & 64))
+        rounds = [t for t in tasks if t['op'] == 'round_tf32']
+        self.assertTrue(rounds)
+        plain = compile_training(wide, TrainConfig(steps=2), Tiling.preset('cpu', mm_tile=256, mm_min_tiles=1, mm_min_eff=0.0, mm_huge_min_tiles=1,
+                                                                            mm_huge_min_k=1)).spec['graphs'][0]['tasks']
+        self.assertFalse(any(t['op'] == 'round_tf32' for t in plain) or any(t['args']['flags'] & 1024 for t in plain if t['op'] == 'matmul_tile'))
+        with self.assertRaises(Exception):
+            Tiling.preset('cpu', tf32_preround=True, tf32_trunc=True)
 
     def test_remat_same_result_less_memory(self):
         base = models.LlamaConfig(**{**SMALL.__dict__, 'layers': 3})

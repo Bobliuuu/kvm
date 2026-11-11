@@ -1,0 +1,6 @@
+// Fused MLP steps (bundle pass: kvm_fuse.h; device code: kvm_fused_mlp.cuh). The static-schedule path runs them directly (kvm_static.cuh); the generic dispatch fails them, so a bundle that
+// reached the dynamic path with one is an error, not silence.
+//   fmlp_slice: forward and backward of one row slice of one step; the partial gradients go to the run's scratch (descriptor `desc`).
+//   fmlp_sgd: one owner's share of the reduction and update; owner 0 also writes the step's loss.
+X(fmlp_slice,          124, "desc:i32,sc:i32,ids:buf,tgt:buf")
+X(fmlp_sgd,            125, "desc:i32,owner:i32,loss:buf")

@@ -1,0 +1,10 @@
+GPU NVIDIA A100-SXM4-40GB sm_80, 108 SMs  [build: production header mutant=weakpub]
+LITMUS mp[PROD kvm_publish + acquire]     rounds=400000  stale_rounds+aborts=63  VIOLATIONS
+       detail: stale_words=7776 stale_rounds=63 aborts=0 (grid 648 CTAs x 256 thr, 1024 words/round)
+LITMUS mp[MUTANT reader relaxed version]  rounds=400000  stale_rounds+aborts=22971  CONTROL: failure detected (harness is sensitive)
+       detail: stale_words=17011968 stale_rounds=22971 aborts=0 (grid 648 CTAs x 256 thr, 1024 words/round)
+LITMUS mp[MUTANT relaxed CAS no fence]    rounds=400000  stale_rounds+aborts=64  CONTROL: failure detected (harness is sensitive)
+       detail: stale_words=7808 stale_rounds=64 aborts=0 (grid 648 CTAs x 256 thr, 1024 words/round)
+LITMUS mp[NEGATIVE publish-before-stores] rounds=400000  stale_rounds+aborts=377137  CONTROL: failure detected (harness is sensitive)
+       detail: stale_words=11114614 stale_rounds=377137 aborts=0 (grid 648 CTAs x 256 thr, 1024 words/round)
+TOTAL rounds=1600000 violations=63

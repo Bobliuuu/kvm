@@ -11,7 +11,7 @@ M='{"name":"gpt_162m","vocab":50304,"d_model":768,"layers":12,"heads":12,"seq":1
 { date -u +%FT%TZ; nvidia-smi --query-gpu=name,driver_version,clocks.max.sm --format=csv,noheader; nvcc --version | tail -n 1
   python3 -c "import torch;p=torch.cuda.get_device_properties(0);print('torch',torch.__version__,'cuda',torch.version.cuda,p.name,'SMs',p.multi_processor_count)"
   echo "commit: ${KVM_COMMIT:-unknown}"; } | tee "$OUT/env.txt"
-( cd frontend && python3 -m kvmfe.demo --out "$WORK/g1" --model "$M" --train-steps 1 --window 1 --serve-every 0 --game-frames 0 --tiling a100 \
+( cd frontend && python3 -m kvmfe.demo --out "$WORK/g1" --model "$M" --train-steps 1 --window 1 --serve-every 0 --game-frames 0 --tiling "${TILING:-a100}" \
     --lr 3e-4 --warmup 2 --reuse none --max-bundles 8 ) 2>&1 | tail -n 3
 DUMP=$(python3 - "$WORK/g1" <<'PY'
 import json, re, sys

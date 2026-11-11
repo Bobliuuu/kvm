@@ -92,8 +92,7 @@ X(add_rowtile,         118, "x:buf,pos:buf,out:buf,r0:i32,r1:i32,T:i32,d:i32")
 // ---- matmul epilogue wrappers (fusion): the 64x64 tile of C = alpha*op(A)*op(B) as in matmul_tile (flags 1 transA, 2 transB,
 // 16 precise; 4 and 8 are rejected), then a second pass over the same tile inside the same task. Result identical (bitwise) to
 // running matmul_tile and the elementwise op as two tasks. -----------------------------------------------------------------
-// out[m,n] = C[m,n] * gelu'(pre[m,n])   (fused gelu_bwd; pre = the forward pre-activation)
-X(matmul_tile_dgelu,   119, "a:buf,b:buf,out:buf,pre:buf,m0:i32,n0:i32,M:i32,N:i32,K:i32,flags:i32,alpha:f32")
+// id 119 is retired (matmul_tile_dgelu, now matmul_tile flag 512, in the GPT pack's epilogue).
 // up[m,n] = C[m,n];  out[m,n] = silu(gate[m,n]) * C[m,n]   (SwiGLU forward fused into the up-projection)
 X(matmul_tile_silu_mul, 120, "a:buf,b:buf,out:buf,gate:buf,up:buf,m0:i32,n0:i32,M:i32,N:i32,K:i32,flags:i32,alpha:f32")
 // dh = C[m,n] (the SwiGLU output gradient, not stored);  dgate[m,n] = dh * up * silu'(gate);  dup[m,n] = dh * silu(gate)

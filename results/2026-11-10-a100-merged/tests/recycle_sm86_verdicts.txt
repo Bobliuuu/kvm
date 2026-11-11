@@ -1,0 +1,40 @@
+== B_recycle_1.log: 29809 lines
+== recycle: PASS (4.0s, 0 new failures)
+15 checks, 0 failed, 0 suites failed
+PASS
+== B_recycle_10.log: 30200 lines
+== recycle: PASS (4.0s, 0 new failures)
+15 checks, 0 failed, 0 suites failed
+PASS
+== B_recycle_2.log: 30287 lines
+== recycle: PASS (4.0s, 0 new failures)
+15 checks, 0 failed, 0 suites failed
+PASS
+== B_recycle_3.log: 31237 lines
+== recycle: PASS (4.1s, 0 new failures)
+15 checks, 0 failed, 0 suites failed
+PASS
+== B_recycle_4.log: 30900 lines
+== recycle: PASS (4.0s, 0 new failures)
+15 checks, 0 failed, 0 suites failed
+PASS
+== B_recycle_5.log: 30872 lines
+== recycle: PASS (4.0s, 0 new failures)
+15 checks, 0 failed, 0 suites failed
+PASS
+== B_recycle_6.log: 30840 lines
+== recycle: PASS (4.0s, 0 new failures)
+15 checks, 0 failed, 0 suites failed
+PASS
+== B_recycle_7.log: 29525 lines
+== recycle: PASS (3.9s, 0 new failures)
+15 checks, 0 failed, 0 suites failed
+PASS
+== B_recycle_8.log: 29830 lines
+== recycle: PASS (3.9s, 0 new failures)
+15 checks, 0 failed, 0 suites failed
+PASS
+== B_recycle_9.log: 30386 lines
+== recycle: PASS (4.0s, 0 new failures)
+15 checks, 0 failed, 0 suites failed
+PASS

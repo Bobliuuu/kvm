@@ -41,7 +41,7 @@ struct BatchX {
 };
 static int g_attr = 0;
 static int runx(Dev& d, const BatchX& b, int smem = 104 * 1024) {
-    if (!g_attr) { CK(cudaFuncSetAttribute(k_runx, cudaFuncAttributeMaxDynamicSharedMemorySize, std::max(112 * 1024, (int)kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)))); kvm_hopper_host_init(); g_attr = 1; }
+    if (!g_attr) { CK(cudaFuncSetAttribute(k_runx, cudaFuncAttributeMaxDynamicSharedMemorySize, kvm_test_smem_cap())); kvm_hopper_host_init(); g_attr = 1; }
     d.sync_table();
     int32_t* w; int *op, *off;
     CK(cudaMalloc(&w, b.w.size() * 4 + 4)); CK(cudaMalloc(&op, b.op.size() * 4)); CK(cudaMalloc(&off, b.off.size() * 4));
@@ -373,6 +373,7 @@ static void attn_case(int B, int T, int H, int Hkv, int hd) {
     float scale = (float)(1.0 / sqrt((double)hd));
     int smem = kvm_gpt_smem_bytes(hd);
     std::string nm = "attn_full B=" + S(B) + " T=" + S(T) + " H=" + S(H) + " Hkv=" + S(Hkv) + " hd=" + S(hd);
+    if (hd > KVM_GPT_MAX_HD) { skip(nm, "head size above this build's KVM_GPT_MAX_HD (not compiled)"); return; }
     Dev dv;
     int q = dv.addf(R, H * hd, H * hd + 4), k = dv.addf(R, Hkv * hd, Hkv * hd + 4), v = dv.addf(R, Hkv * hd), o = dv.addf(R, H * hd, H * hd + 4);
     int lse = dv.addf(1, B * H * T), dlt = dv.addf(1, B * H * T), dO = dv.addf(R, H * hd), dq = dv.addf(R, H * hd, H * hd + 4), dk = dv.addf(R, Hkv * hd, Hkv * hd + 4), dvv = dv.addf(R, Hkv * hd);
@@ -602,7 +603,7 @@ static void t_wrappers() {
         BatchX bw, bs, bb;   // wrapper batches
         BatchX ref1, ref2, ref3;   // two-task path
         for (int m0 = 0; m0 < M; m0 += 64) for (int n0 = 0; n0 < N; n0 += 64) {
-            bw.add(OPX_matmul_tile_dgelu, A().b(ia).b(ib).b(o1).b(pre).i(m0).i(n0).i(M).i(N).i(K).i(fl).f(alpha));
+            bw.add(OP_matmul_tile, A().b(ia).b(ib).b(o1).b(-1).b(-1).b(pre).i(m0).i(n0).i(M).i(N).i(K).i(fl | 512).f(alpha));
             bs.add(OPX_matmul_tile_silu_mul, A().b(ia).b(ib).b(o2).b(gate).b(up2).i(m0).i(n0).i(M).i(N).i(K).i(fl).f(alpha));
             bb.add(OPX_matmul_tile_silu_mul_bwd, A().b(ia).b(ib).b(gate).b(up).b(dg1).b(du1).i(m0).i(n0).i(M).i(N).i(K).i(fl).f(alpha));
             ref1.add(OP_matmul_tile, A().b(ia).b(ib).b(c).b(-1).b(-1).b(-1).i(m0).i(n0).i(M).i(N).i(K).i(fl).f(alpha));
@@ -615,7 +616,7 @@ static void t_wrappers() {
         int cd = dv.addf(1, M * N), pd = dv.addf(1, M * N), gd = dv.addf(1, M * N), ud = dv.addf(1, M * N), od = dv.addf(1, M * N), dgd = dv.addf(1, M * N), dud = dv.addf(1, M * N);
         dv.up(cd, dv.down(c)); dv.up(pd, hpre); dv.up(gd, hgate); dv.up(ud, hup);
         run1x(dv, OP_gelu_bwd, A().b(pd).b(cd).b(od).i(0).i(M * N).i(0));
-        check_true("matmul_tile_dgelu bitwise == matmul_tile + gelu_bwd " + nm, dv.down(o1) == dv.down(od));
+        check_true("matmul_tile flag 512 (dgelu epilogue) bitwise == matmul_tile + gelu_bwd " + nm, dv.down(o1) == dv.down(od));
         auto Cv = dv.down(c);
         // silu_mul: up2 = C, out = silu(gate) * C
         dv.up(od, std::vector<float>(M * N, 0.f)); dv.up(ud, Cv);
@@ -644,7 +645,7 @@ static void t_wrappers() {
         for (int t : {ia, ib, o, pre, g, u, d1, d2}) dv.up(t, rnd(r, 64));
         for (int fl : {4, 8, 96, 128, 12}) {   // 32 / 64 alone select the 128x128 / 256x128 tile; both together, or 128, are invalid
             std::vector<std::vector<float>> before; for (int t : {o, u, d1, d2}) before.push_back(dv.down(t));
-            int e1 = run1x(dv, OPX_matmul_tile_dgelu, A().b(ia).b(ib).b(o).b(pre).i(0).i(0).i(M).i(N).i(K).i(fl).f(1.f));
+            int e1 = run1x(dv, OP_matmul_tile, A().b(ia).b(ib).b(o).b(-1).b(-1).b(pre).i(0).i(0).i(M).i(N).i(K).i(fl | 512).f(1.f));
             int e2 = run1x(dv, OPX_matmul_tile_silu_mul, A().b(ia).b(ib).b(o).b(g).b(u).i(0).i(0).i(M).i(N).i(K).i(fl).f(1.f));
             int e3 = run1x(dv, OPX_matmul_tile_silu_mul_bwd, A().b(ia).b(ib).b(g).b(u).b(d1).b(d2).i(0).i(0).i(M).i(N).i(K).i(fl).f(1.f));
             bool same = true; int k = 0; for (int t : {o, u, d1, d2}) same &= dv.down(t) == before[k++];
@@ -687,7 +688,6 @@ static void t_errors() {
         {OPX_adamw_lr, A().b(fx).b(fy).b(fz).b(fw).b(-1).b(stp).i(0).i(64).b(lr).f(.9f).f(.99f).f(1e-8f).f(0.f)},
         {OPX_lr_schedule, A().b(stp).b(lr).i(1).f(1e-3f).i(2).i(10).f(.1f)}, {OPX_scale_flat, A().b(fx).b(fy).f(2.f).i(0).i(64)},
         {OPX_add_rowtile, A().b(mat).b(mat2).b(mat3).i(0).i(N).i(4).i(d)},
-        {OPX_matmul_tile_dgelu, A().b(ma).b(mb).b(mo).b(mpre).i(0).i(0).i(8).i(8).i(8).i(0).f(1.f)},
         {OPX_matmul_tile_silu_mul, A().b(ma).b(mb).b(mo).b(mg).b(mu).i(0).i(0).i(8).i(8).i(8).i(0).f(1.f)},
         {OPX_matmul_tile_silu_mul_bwd, A().b(ma).b(mb).b(mg).b(mu).b(mo).b(mpre).i(0).i(0).i(8).i(8).i(8).i(0).f(1.f)},
     };
@@ -753,7 +753,7 @@ static void t_errors() {
         {"matmul_bf16 flags", OPX_matmul_tile_bf16, A().b(ma).b(mb).b(mo).b(-1).b(-1).b(-1).i(0).i(0).i(8).i(8).i(8).i(64).f(1.f), KVM_GPT_E_SHAPE},
         {"matmul_bf16 m0 >= M", OPX_matmul_tile_bf16, A().b(ma).b(mb).b(mo).b(-1).b(-1).b(-1).i(8).i(0).i(8).i(8).i(8).i(0).f(1.f), KVM_GPT_E_RANGE},
         {"matmul_bf16 K beyond A", OPX_matmul_tile_bf16, A().b(ma).b(mb).b(mo).b(-1).b(-1).b(-1).i(0).i(0).i(8).i(8).i(9).i(0).f(1.f), KVM_GPT_E_RANGE},
-        {"matmul_dgelu M beyond", OPX_matmul_tile_dgelu, A().b(ma).b(mb).b(mo).b(mpre).i(0).i(0).i(9).i(8).i(8).i(0).f(1.f), KVM_GPT_E_RANGE},
+        {"matmul_tile dgelu M beyond", OP_matmul_tile, A().b(ma).b(mb).b(mo).b(-1).b(-1).b(mpre).i(0).i(0).i(9).i(8).i(8).i(512).f(1.f), KVM_GPT_E_RANGE},
         {"lr_schedule bad kind", OPX_lr_schedule, A().b(stp).b(lr).i(3).f(1e-3f).i(2).i(10).f(.1f), KVM_GPT_E_SHAPE},
         {"lr_schedule step buffer wrong size", OPX_lr_schedule, A().b(fx).b(lr).i(1).f(1e-3f).i(2).i(10).f(.1f), KVM_GPT_E_DTYPE},
         {"adamw_lr e1 beyond", OPX_adamw_lr, A().b(fx).b(fy).b(fz).b(fw).b(-1).b(stp).i(0).i(65).b(lr).f(.9f).f(.99f).f(1e-8f).f(0.f), KVM_GPT_E_RANGE},
@@ -775,6 +775,5 @@ int main() {
     cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0));
     printf("device: %s, %d SMs, cc %d.%d\n", pr.name, pr.multiProcessorCount, pr.major, pr.minor);
     t_elementwise(); t_softmax(); t_gather(); t_moe(); t_bf16(); t_matmul_bf16(); t_bf16_storage(); t_sched(); t_wrappers(); t_attn(); t_errors();
-    printf("\n%d passed, %d failed\n", g_pass, g_fail);
-    return g_fail ? 1 : 0;
+    return summary();
 }

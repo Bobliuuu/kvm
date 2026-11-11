@@ -55,6 +55,7 @@ class LlamaConfig:
     rope_theta: float = 10000.0
     init_std: float = 0.02
     seed: int = 0
+    repeat_batch: bool = False       # every step trains on step 0's batch (train.batch_tokens reads it from any model config)
     precision: str = 'f32'
     remat: bool = False
     experts: int = 0

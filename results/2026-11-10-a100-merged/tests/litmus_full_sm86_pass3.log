@@ -1,0 +1,48 @@
+== properties on the production headers (must be 0 violations)
+property sb(controls included): TOTAL rounds=2500000 violations=0 (exit 0)
+property dekker1: TOTAL rounds=500000 violations=0 (exit 0)
+property dekker3: TOTAL rounds=250000 violations=0 (exit 0)
+property mp: TOTAL rounds=2000000 violations=1 (exit 1)
+LITMUS mp[MUTANT relaxed CAS no fence]    rounds=500000  stale_rounds+aborts=0  CONTROL: NOT DETECTED (harness too weak!)
+       detail: stale_words=0 stale_rounds=0 aborts=0 (grid 480 CTAs x 256 thr, 1024 words/round)
+LITMUS mp[NEGATIVE publish-before-stores] rounds=500000  stale_rounds+aborts=484958  CONTROL: failure detected (harness is sensitive)
+       detail: stale_words=20856984 stale_rounds=484958 aborts=0 (grid 480 CTAs x 256 thr, 1024 words/round)
+TOTAL rounds=2000000 violations=1
+property queue: TOTAL rounds=1000057 violations=0 (exit 0)
+== mutants (each must report violations)
+mutant exchbefore/dekker1: TOTAL rounds=500000 violations=66802 (exit 1)
+mutant exchbefore/dekker3: TOTAL rounds=125000 violations=165808 (exit 1)
+mutant norecheck/dekker1: TOTAL rounds=500000 violations=171436 (exit 1)
+mutant norecheck/dekker3: TOTAL rounds=125000 violations=50811 (exit 1)
+mutant weakpub/mp: TOTAL rounds=1600000 violations=1 (exit 1)
+mutant nodekkerfence/dekker1 (informational, expected NOT detected on A100): TOTAL rounds=500000 violations=0
+mutant nodekkerfence/dekker3 (informational, expected NOT detected on A100): TOTAL rounds=125000 violations=0
+mutant nofence/mp (informational, expected NOT detected on A100): TOTAL rounds=1600000 violations=1
+mutant popplain/queue: TOTAL rounds=14812 violations=3368 (exit 1)
+mutant popticket/queue: TOTAL rounds=244931 violations=2392 (exit 1)
+mutant qrelax/queue (S4, expected NOT detected on A100: the release store is required by the model, not observable here): TOTAL rounds=1000067 violations=0
+== e2e scenarios with slot recycling and windows (each must pass), and the KVM_BREAK_FENCE control (must report stale reads)
+e2e dag: E2E summary: failures=0 findings=0 (exit 0)
+e2e versions: E2E summary: failures=0 findings=0 (exit 0)
+e2e ring: E2E summary: failures=0 findings=0 (exit 0)
+e2e bigrecord: E2E summary: failures=0 findings=0 (exit 0)
+e2e probe_closerace: E2E summary: failures=0 findings=0 (exit 0)
+e2e_breakfence versions: E2E summary: failures=580 findings=0 (exit 1)
+e2e_breakchunk dag (control): E2E summary: failures=0 findings=0 (exit 0)
+  not detected
+e2e_breakchunk bigrecord (control): E2E summary: failures=0 findings=0 (exit 0)
+  not detected
+e2e_breakcont versions (control): E2E summary: failures=0 findings=0 (exit 0)
+  not detected
+== probes (R's reproductions of C1, C2, C5, C6: each must print ok)
+E2E probe_timeout: first submit OK, healthy executor idle 3.5s with timeout_s=2, second submit OK, final err=OK done=2/2  ok
+E2E probe_timeout_busy: steady stream (a 100ms task every 100ms, always progressing), timeout_s=2: submitted 40/40 over 4.0s, err=OK done=40/40  ok
+E2E probe_deadlock: 8 waiters (one full live_cap) then the publisher bundle, live_cap=8: err=OK done=9/9 after 0.0s  ok
+E2E probe_aging: aging_us=0: err=OK done=13/13 in 0.00s, run order of priorities 0..11: 11 10 9 8 7 6 5 4 3 2 1 0 
+E2E probe_aging: aging_us=1000000: err=OK done=13/13 in 0.00s, run order of priorities 0..11: 11 10 9 8 7 6 5 4 3 2 1 0 
+E2E probe_aging: aging_us=-5: rejected by the constructor  ok
+E2E probe_aging: aging_us=-2000000: rejected by the constructor  ok
+E2E probe_spin: spin(2e9 us): finish() after 0.00 s, err=BOUNDS  ok
+E2E probe_spin: 1.5 s task with task_limit 0.5 s: err=TASK_LIMIT  ok
+SUMMARY: 14 properties/scenarios/probes passed, 8 mutants/controls detected, 1 failures
+LITMUS FAIL

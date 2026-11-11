@@ -1,0 +1,5 @@
+kvm green run a100-suites  tree 8bd4357f5723a830  2026-11-10T23:34:33Z  wall 24s  (green_all.py jobs, run by green_local.py)
+
+ops  PASS  test_ops (5403 passed, 0 failed), test_e2e (7 passed, 0 failed), attention memcheck clean  (24 s)
+
+OVERALL: ALL GREEN

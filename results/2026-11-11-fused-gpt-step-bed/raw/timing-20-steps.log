@@ -1,0 +1,30 @@
+== t20f-small-G32-r1.log
+fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 20 steps, shared memory 96224 B a member, scratch 2.45 MB, 1 member(s) an SM at most
+fgpt_bed: run 8.846 ms with its launch; in the kernel 234.2 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 20
+== t20f-small-G32-r2.log
+fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 20 steps, shared memory 96224 B a member, scratch 2.45 MB, 1 member(s) an SM at most
+fgpt_bed: run 9.093 ms with its launch; in the kernel 252.3 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 20
+== t20f-small-G32-r3.log
+fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 20 steps, shared memory 96224 B a member, scratch 2.45 MB, 1 member(s) an SM at most
+fgpt_bed: run 9.078 ms with its launch; in the kernel 230.4 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 20
+== t20f-tiny-G4-r1.log
+fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 4, 20 steps, shared memory 41568 B a member, scratch 0.11 MB, 1 member(s) an SM at most
+fgpt_bed: run 6.522 ms with its launch; in the kernel 118.4 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 4 of 4 members finished, step counter 0 -> 20
+== t20f-tiny-G4-r2.log
+fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 4, 20 steps, shared memory 41568 B a member, scratch 0.11 MB, 1 member(s) an SM at most
+fgpt_bed: run 6.930 ms with its launch; in the kernel 118.7 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 4 of 4 members finished, step counter 0 -> 20
+== t20f-tiny-G4-r3.log
+fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 4, 20 steps, shared memory 41568 B a member, scratch 0.11 MB, 1 member(s) an SM at most
+fgpt_bed: run 5.984 ms with its launch; in the kernel 103.5 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 4 of 4 members finished, step counter 0 -> 20
+== t20g-w_small_p-r1.log
+fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 20 steps, shared memory 96224 B a member, scratch 2.45 MB, 1 member(s) an SM at most
+fgpt_bed: run 9.142 ms with its launch; in the kernel 257.7 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 20
+== t20g-w_small_p-r2.log
+fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 20 steps, shared memory 96224 B a member, scratch 2.45 MB, 1 member(s) an SM at most
+fgpt_bed: run 9.289 ms with its launch; in the kernel 264.7 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 20
+== t20g-w_small_wl-r1.log
+fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 20 steps, shared memory 96224 B a member, scratch 2.45 MB, 1 member(s) an SM at most
+fgpt_bed: run 8.396 ms with its launch; in the kernel 221.0 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 20
+== t20g-w_small_wl-r2.log
+fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 20 steps, shared memory 96224 B a member, scratch 2.45 MB, 1 member(s) an SM at most
+fgpt_bed: run 8.576 ms with its launch; in the kernel 240.0 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 20

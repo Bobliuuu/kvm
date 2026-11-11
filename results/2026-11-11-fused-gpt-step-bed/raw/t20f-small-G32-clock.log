@@ -1,0 +1,54 @@
+fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 20 steps, shared memory 96224 B a member, scratch 2.45 MB, 1 member(s) an SM at most
+fgpt_bed: warmed the GPU for 504 ms
+fgpt_bed: run 9.023 ms with its launch; in the kernel 0.0 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 20
+fgpt_bed: phase clock (globaltimer), 236.0 us a step in all; the SMs ran at 2654 MHz (cycles over nanoseconds, members' mean)
+  phase                                   mean us    largest   share
+  input + embedding                          2.36       2.52    1.0%
+  LN1                                        2.26       2.43    1.0%
+    wait: all-gather h                       2.79       2.96    1.2%
+    unit: stage h, W                         1.84       7.48    0.8%
+    unit: q k v GEMM                         1.51       6.06    0.6%
+    unit: RoPE + keep q k v                  0.26       1.04    0.1%
+    unit: scores                             1.56       6.33    0.7%
+    unit: softmax                            2.27       9.12    1.0%
+    unit: P V                                0.72       2.94    0.3%
+    unit: proj partial                       0.90       3.62    0.4%
+  attention, rest                            0.20       0.40    0.1%
+    wait: reduce-scatter proj               29.82      38.97   12.6%
+  proj sum + LN2                             3.39       3.49    1.4%
+    wait: all-gather h2                      2.58       2.70    1.1%
+  fc1 + GELU + fc2                          12.09      12.33    5.1%
+    wait: reduce-scatter fc2                 2.80       2.94    1.2%
+  fc2 sum                                    3.50       3.65    1.5%
+  final LN                                   1.30       1.37    0.6%
+    wait: all-gather hf                      1.32       1.48    0.6%
+  logits + CE stats                          4.36       4.51    1.8%
+    wait: CE exchange                        1.43       1.55    0.6%
+  lse, loss                                  3.64       6.38    1.5%
+  head backward                              6.96       7.10    2.9%
+    wait: reduce-scatter dhf                 3.19       3.39    1.4%
+  dhf sum + LNf backward                     3.35       3.56    1.4%
+    wait: all-gather gx (fc2)                2.82       3.01    1.2%
+  MLP backward                              26.13      27.31   11.1%
+    wait: reduce-scatter dh2                 3.68       4.40    1.6%
+  dh2 sum + LN2 backward                     6.51       6.82    2.8%
+    wait: all-gather gx (proj)               2.75       3.02    1.2%
+    unit: stage gx, Wo, o                    2.07       8.34    0.9%
+    unit: dWo, do, delta                     1.48       5.94    0.6%
+    unit: stage q k v, lse                   0.05       0.25    0.0%
+    unit: P                                  1.24       4.98    0.5%
+    unit: dv, dS                             1.58       6.39    0.7%
+    unit: dq, dk                             1.14       4.61    0.5%
+    unit: RoPE back, db                      0.56       2.26    0.2%
+    unit: dWq dWk dWv                        2.69      10.76    1.1%
+    unit: dh partial                         1.56       6.26    0.7%
+  attention backward, rest                   0.21       0.40    0.1%
+    wait: reduce-scatter dh                 39.61      52.06   16.8%
+  dh sum + LN1 backward                      4.00       4.29    1.7%
+    wait: all-gather gx (emb)                1.36       1.46    0.6%
+  embedding gradient                         6.42       6.53    2.7%
+  attention + replicated sums, squares       7.49       7.64    3.2%
+  norm partial                               0.95       0.96    0.4%
+    wait: norm                               1.33       1.55    0.6%
+  AdamW                                     22.45      22.79    9.5%
+    wait: step end                           1.53       1.99    0.6%

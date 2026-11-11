@@ -1,0 +1,32 @@
+[fgpt_bed 00:32:28Z] VM reference: cached vm-5888874cb26b3d90-k2.json
+[fgpt_bed 00:32:28Z] model: L 1, d 32, heads 2 x 16, MLP 128, V 64, 1 x 32 rows; 2 steps; work <work>/fgpt-bed-w_tiny_p-k2
+[fgpt_bed 00:32:28Z] G 1: <work>/bin/fgpt_bed_sm120 <work>/fgpt-bed-w_tiny_p-k2 1
+[fgpt_bed 00:32:29Z]   fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 1, 2 steps, shared memory 81248 B a member, scratch 0.10 MB, 1 member(s) an SM at most
+[fgpt_bed 00:32:29Z]   fgpt_bed: warmed the GPU for 506 ms
+[fgpt_bed 00:32:29Z]   fgpt_bed: run 4.661 ms with its launch; in the kernel 259.6 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 1 of 1 members finished, step counter 0 -> 2
+[fgpt_bed 00:32:29Z] G 1: losses: 4.146039, 3.993824 (VM 4.146039, 3.993824): worst 0.00e+00 relative, 1/count off by 0.0e+00: ok
+[fgpt_bed 00:32:29Z] G 1: gradients (last step): worst 6.08e-06 of its tensor's scale (w.gpt.h0.n1.b): ok
+[fgpt_bed 00:32:29Z] G 1: first moments (last step): worst 6.30e-06 of its tensor's scale (w.gpt.h0.n1.b): ok
+[fgpt_bed 00:32:29Z] G 1: second moments (last step): worst 4.41e-06 of its tensor's scale (w.gpt.h0.attn.q.b): ok
+[fgpt_bed 00:32:29Z] G 1: weights (reported): largest difference 0.00 x lr (w.gpt.h0.attn.v.w)
+[fgpt_bed 00:32:29Z] G 2: <work>/bin/fgpt_bed_sm120 <work>/fgpt-bed-w_tiny_p-k2 2
+[fgpt_bed 00:32:30Z]   fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 2, 2 steps, shared memory 47456 B a member, scratch 0.10 MB, 1 member(s) an SM at most
+[fgpt_bed 00:32:30Z]   fgpt_bed: warmed the GPU for 505 ms
+[fgpt_bed 00:32:30Z]   fgpt_bed: run 4.371 ms with its launch; in the kernel 193.2 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 2 of 2 members finished, step counter 0 -> 2
+[fgpt_bed 00:32:30Z] G 2: losses: 4.146039, 3.993824 (VM 4.146039, 3.993824): worst 0.00e+00 relative, 1/count off by 0.0e+00: ok
+[fgpt_bed 00:32:30Z] G 2: gradients (last step): worst 4.94e-06 of its tensor's scale (w.gpt.h0.mlp.fc2.b): ok
+[fgpt_bed 00:32:30Z] G 2: first moments (last step): worst 5.39e-06 of its tensor's scale (w.gpt.h0.attn.proj.b): ok
+[fgpt_bed 00:32:30Z] G 2: second moments (last step): worst 3.51e-06 of its tensor's scale (w.gpt.h0.attn.q.b): ok
+[fgpt_bed 00:32:30Z] G 2: weights (reported): largest difference 0.00 x lr (w.gpt.h0.attn.k.b)
+[fgpt_bed 00:32:30Z] G 4: <work>/bin/fgpt_bed_sm120 <work>/fgpt-bed-w_tiny_p-k2 4
+[fgpt_bed 00:32:31Z]   fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 4, 2 steps, shared memory 41568 B a member, scratch 0.11 MB, 1 member(s) an SM at most
+[fgpt_bed 00:32:31Z]   fgpt_bed: warmed the GPU for 505 ms
+[fgpt_bed 00:32:31Z]   fgpt_bed: run 4.661 ms with its launch; in the kernel 142.4 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 4 of 4 members finished, step counter 0 -> 2
+[fgpt_bed 00:32:31Z] G 4: losses: 4.146039, 3.993824 (VM 4.146039, 3.993824): worst 0.00e+00 relative, 1/count off by 0.0e+00: ok
+[fgpt_bed 00:32:31Z] G 4: gradients (last step): worst 5.62e-06 of its tensor's scale (w.gpt.h0.n1.b): ok
+[fgpt_bed 00:32:31Z] G 4: first moments (last step): worst 5.80e-06 of its tensor's scale (w.gpt.h0.n1.b): ok
+[fgpt_bed 00:32:31Z] G 4: second moments (last step): worst 3.25e-06 of its tensor's scale (w.gpt.h0.attn.q.b): ok
+[fgpt_bed 00:32:31Z] G 4: weights (reported): largest difference 0.00 x lr (w.gpt.h0.attn.v.w)
+[fgpt_bed 00:32:31Z] decomposition G 2 against G 1: losses 0.00e+00, gradients 8.13e-06 of scale: ok
+[fgpt_bed 00:32:31Z] decomposition G 4 against G 1: losses 0.00e+00, gradients 3.48e-06 of scale: ok
+[fgpt_bed 00:32:31Z] OK

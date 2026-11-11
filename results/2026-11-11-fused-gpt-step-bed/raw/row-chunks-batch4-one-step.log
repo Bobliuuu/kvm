@@ -1,0 +1,12 @@
+# the batch-4 gpt-small, precise, one step (before any AdamW update parts the trajectories)
+[fgpt_bed 02:33:02Z] VM reference: cached vm-6f282415f06f5b7f-k1.json
+[fgpt_bed 02:33:02Z] model: L 2, d 64, heads 4 x 16, MLP 256, V 128, 4 x 64 rows; 1 steps; work <work>/s1-b4-precise-k1
+[fgpt_bed 02:33:03Z]   fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 1 steps, attention in 2 query block(s) a unit, rows in chunks of 128 of 256, shared memory 75744 B a member, scratch 6.52 MB, 1 member(s) an SM at most
+[fgpt_bed 02:33:03Z]   fgpt_bed: warmed the GPU for 501 ms
+[fgpt_bed 02:33:03Z]   fgpt_bed: run 4.267 ms with its launch; in the kernel 365.8 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 1
+[fgpt_bed 02:33:03Z] G 32: losses: 4.874084 (VM 4.874084): worst of 1 0.00e+00 relative, 1/count off by 0.0e+00: ok
+[fgpt_bed 02:33:03Z] G 32: gradients (last step): worst 2.27e-06 of its tensor's scale (w.gpt.h1.attn.k.w): ok
+[fgpt_bed 02:33:03Z] G 32: first moments (last step): worst 1.75e-06 of its tensor's scale (w.gpt.h1.attn.k.w): ok
+[fgpt_bed 02:33:03Z] G 32: second moments (last step): worst 2.97e-06 of its tensor's scale (w.gpt.h1.attn.k.w): ok
+[fgpt_bed 02:33:03Z] G 32: weights (reported): largest difference 0.03 x lr (w.gpt.h1.mlp.fc2.w)
+[fgpt_bed 02:33:03Z] OK

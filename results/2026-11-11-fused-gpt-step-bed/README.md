@@ -106,6 +106,36 @@ Under the counter barrier, 2 blocks had made gpt-tiny 10% slower.
 - The bed's outputs are bitwise equal over five 50-step runs of each shape (`raw/bed-determinism.log`).
 - Every bar against the VM above holds, unchanged.
 
+## Reach: the hold-out's shapes
+
+A run fuses only where a gang's phases fit shared memory. The MLP's forward and backward, the logits, the head's backward and the
+embedding's gradient used to stage all N rows of a d-wide stream next to the member's weight slices, so past a small N x d no gang fit.
+They now walk N in chunks of R rows, with the weights resident:
+- `kvm_fgpt_fit` picks the gang G and the largest chunk that fits: all of N, else 128 rows, else 64.
+- A weight gradient, a GEMM over the rows, is written by the first chunk and added to by each later one, in order. The embedding's
+  gradient resumes each running sum, so its result is bitwise the whole N's.
+- The attention backward's h rows and Wq columns now go below DQ, over its dead buffers, where they fit there.
+
+A seeded hold-out panel draws GPTs with d from 48 to 512, T from 32 to 128, B from 1 to 4 and V up to 512. Over every shape it can draw, on
+an A100 (163 KB a block; `kvm_fgpt_fit`, computed on the CPU):
+
+| d | 48 | 96 | 128 | 192 | 256 | 384 | 512 | all |
+|---|---|---|---|---|---|---|---|---|
+| before | 83% | 67% | 53% | 12.5% | 12.5% | 0% | 0% | 35% (816 of 2,304) |
+| row chunks | 100% | 92% | 69% | 21% | 17% | 0% | 0% | 47% (1,088 of 2,304) |
+
+The rest need the weights themselves streamed: at d 512 a member's MLP slices alone exceed its shared memory.
+
+**Checks on an RTX 5070** (`raw/row-chunks-checks.log`, `raw/row-chunks-batch4-one-step.log`):
+
+| check | result |
+|---|---|
+| the panel's shapes (one chunk each), the bed against the previous head's | bitwise equal: gpt-tiny at G 32 and 8, gpt-small at G 32 |
+| forced chunks, precise, against the VM | gpt-small at 64 rows (G 16, 32) and 32 rows: losses within 1.1e-7, gradients within 4.3e-5 of scale; gpt-tiny at 16 rows: bit-identical losses, gradients within 7.3e-6 |
+| a batch-4 gpt-small (N 256: 128-row chunks by the fit), bed, precise | losses within 1.1e-7 of the VM's; after one step, gradients within 2.3e-6 of scale |
+| the same, the executor, 1xTF32, 3 steps | fused, losses within 7.0e-5 of the VM's |
+| the executor on the panel rows, us a step (8 paired rounds, against the previous head) | gpt-tiny 78.3 to 75.9 (x1.032), gpt-small 179.2 to 177.4 (x1.010); with the bias corrections' table, now filled once a run |
+
 ## Limits
 
 - **A laptop GPU, not an A100.** The A100 runs instruction-bound code at a lower clock (1.41 GHz) and tensor math much faster, and its

@@ -554,6 +554,11 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
   }
   __syncthreads();
   const int t0 = __ldcg(d.step);
+  // every step's AdamW bias corrections, in the expression the step used to evaluate (the float of the double pow, subtracted from 1 in
+  // float): one pow a thread, all at once, by member 0; the gang's first crossing orders them before any member's first AdamW
+  if (b == 0)
+    for (int k = tid; k < 2 * d.steps; k += NT)
+      d.bc[k] = __fsub_rn(1.f, (float)pow((double)((k & 1) ? d.beta2 : d.beta1), (double)((long long)t0 + (k >> 1) + 1)));
   for (int step = 0; step < d.steps; ++step) {
     const long long t = (long long)t0 + step;
     // ---- the step's tokens and targets (the bundle's data windows), checked as the bundle's ops check them
@@ -1036,12 +1041,8 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
     // ---- AdamW on the owned elements, in the bundle's float32 operation order, with the counter after its increment: one flat index over
     // the blocks, the attention slice and the replicated slice, four elements a thread in flight
     {
-      const long long t1 = t + 1;
       const float b1 = d.beta1, b2 = d.beta2, lr = d.lr, eps = d.adam_eps;
-      if (tid == 0) { scr[0] = __fsub_rn(1.f, (float)pow((double)b1, (double)t1)); scr[1] = __fsub_rn(1.f, (float)pow((double)b2, (double)t1)); }
-      __syncthreads();
-      const float bc1 = scr[0], bc2 = scr[1];                                        // once a block: a double pow is slow where FP64 is
-      __syncthreads();
+      const float bc1 = ld(d.bc + 2 * step), bc2 = ld(d.bc + 2 * step + 1);          // member 0's table (above), for t + 1
       const float ob1 = __fsub_rn(1.f, b1), ob2 = __fsub_rn(1.f, b2);
       for (int i0 = tid; i0 < n_own; i0 += 4 * NT) {
         int sl[4];

@@ -806,7 +806,7 @@ class KvmExec {
         for (int l = 0; l < r.L; ++l) { d.w[l] = param(r.w[l]); d.b[l] = param(r.b[l]); d.Y[l] = scratch(TH); }
         d.part = scratch(d.L > 1 ? (size_t)d.ka * TH : 1); d.hpart = scratch((size_t)d.kah * d.T * d.VP); d.dlog = scratch((size_t)d.T * d.VP);
         d.dyp = scratch((size_t)std::max(d.nb, 1) * TH); d.dz = scratch(TH); d.dx0 = scratch((size_t)d.nb0 * d.T * d.E); d.rloss = scratch(d.T);
-        d.ctl = reinterpret_cast<unsigned*>(scratch(kvm_gang::line_words(d.P)));   // the gang's flag lines, zeroed once (cudaMalloc: 256-byte aligned)
+        d.ctl = reinterpret_cast<unsigned*>(scratch(kvm_gang::line_words(d.P)));   // the gang's control words (kvm_gang::cross), zeroed once (cudaMalloc: 256-byte aligned)
         continue;
       }
       if (r.split) {   // the split form: Q x S members, their partials, the exchanges, the gang's barrier words (kvm_fused_split.h)
@@ -825,7 +825,7 @@ class KvmExec {
         for (int k = 0; k < 2; ++k) d.XD[k] = r.L > 1 ? scratch((size_t)nslot * R * d.HR) : nullptr;
         d.P = scratch((size_t)nslot * R * d.VP); d.dWh = scratch((size_t)nslot * d.HP * d.VP); d.dX0 = scratch((size_t)nslot * R * d.E);
         d.loss_part = scratch(d.Q);
-        d.ctl = reinterpret_cast<unsigned*>(scratch(kvm_gang::line_words(nslot)));   // the gang's flag lines, zeroed once (cudaMalloc: 256-byte aligned)
+        d.ctl = reinterpret_cast<unsigned*>(scratch(kvm_gang::line_words(nslot)));   // the gang's control words (kvm_gang::cross), zeroed once (cudaMalloc: 256-byte aligned)
         continue;
       }
       KvmFusedDesc& d = descs[i];

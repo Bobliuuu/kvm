@@ -5,10 +5,12 @@
   every layer.
 - **Speed:** at depth 1-4 its bed checks against float64 at every shape that fits, and on the A100 the h576-d1 step takes 52.1 us at S = 5
   (light-load clock 1,093 MHz; 40.4 us at 1,410) and 34.2 us at S = 12.
-- **Reach:** the fusion pass now takes the panel's mlp256 (h256-d2) and the hold-out's wide MLPs (h576-d1, h224-d2, h200-d3, h128-d4) in this
-  form, and leaves the one-block runs as they were.
+- **Reach:** the fusion pass takes the panel's mlp256 (h256-d4) and the hold-out's four MLP draws (h576-d1, h200-d1 x 16 runs, h128-d4,
+  h224-d2 x 8 runs) in this form, and leaves the one-block runs as they were. Every rewritten bundle's records replay through its gangs'
+  barriers without deadlock.
 - **Not yet measured:** the executor compiles with all of it to PTX, but its GPU checks against the unfused path and its timing wait for the
-  next build.
+  next build. At an A100's default 108 workers the split shapes take 18 shares (108 members), a gang no GPU has run yet: the A100 bed ran 5 to
+  12 shares.
 
 ## The step
 
@@ -73,24 +75,33 @@ Every sum has a fixed order, so a run is deterministic. GEMMs are the fused MLP 
   panel's gate judges the weights themselves.
 - **`split0_3080ti.log`:** the first depth-1 bed. Its per-phase split predates the per-warp phase clock, but its step time stands. Its three GPU-lock lines show the queue as `split-bed`.
 
-**Fusion pass** (`fuse_pass.log`, CPU, gen_mlp bundles, the pass run afresh at each worker count, and each bundle's expected form checked at
-107 workers):
+**Fusion pass** (`fuse_pass.log`, CPU, gen_mlp bundles, the pass run afresh at 1, 4, 8, 48, 107 and 108 workers, and each bundle's expected
+form checked at 108, an A100's default):
 
-| bundle | at 107 workers |
+| bundle | at 108 workers |
 |---|---|
-| h576-d1, h256-d2, h224-d2, h200-d3, h128-d4 | split form: gangs of 6 x 12 = 72 members (12.9k-27.3k floats a member) |
+| h256-d4 (the panel's mlp256), h576-d1, h128-d4, h256-d2, h224-d2, h200-d3 | split form: one gang a step of 6 x 18 = 108 members (12.9k-23.5k floats a member); at 107 workers, 6 x 16 = 96 |
+| h200-d1 x 16 runs | split form: 48 gangs of 6 x 2 = 12, in waves over the workers |
+| h224-d2 x 8 runs | split form: 24 gangs of 6 x 4 = 24 |
 | h48-d2, h72-d2, mlp72 x 8 runs | the one-block form, as before |
-| h1024-d2 | unchanged: no share count fits (179k floats a member at the fewest) |
+| h1024-d2 | unchanged: no share count fits (at best 99,292 floats a member, at 16 shares, against 38,400) |
 
-Every rewritten bundle is acyclic, keeps its other tasks as they were, and plans with every gang's members on distinct workers. At 48 workers the
-same five take gangs of 6 x 8 = 48.
+- **Every rewritten bundle** is acyclic, keeps its other tasks as they were, and plans with every gang's members on distinct workers.
+- **Its emitted records replay as the device runs them** (`tests/static/replay.h`): every gang's barrier is crossed, nothing deadlocks, and
+  every edge of the DAG (successors and versions) is honoured. A mutant planner that puts a gang's members on one worker deadlocks the replay of
+  every split bundle.
+- **16 shares** (`fix(fused)`): at 8 to 15 shares h256-d4's widest share is 24 units, padded to 32 columns, so a member needs 39,900 floats
+  against 38,400. Without 16, the panel's mlp256 split only at 108 workers.
 
 **Executor** (`ptx_check.log`): `kvm_exec.cu` with every change above, LEAN, compiles to PTX (`-gencode arch=compute_80,code=compute_80`) with
-rc 0. That checks every changed line of C++. ptxas has not run on it.
+rc 0. That checks every changed line of C++. ptxas has not run on the executor.
+
+**The op body's registers** (`bed_regs.log`, the bed's full sm_80 build, 22 s): all 11 `split_run` instantiations (2 to 18 shares) use 227-234
+registers, with no spill.
 
 ## Not yet done
 
-- **The executor build** and `tests/static/run_check.sh` on the split form: `KVM_CHECK_MLP_HIDDEN=256 tests/static/run_check.sh 16 48 107`, then
-  `KVM_CHECK_MLP_DEPTH=4` with 128. That compares split runs with the CPU golden and with float64 and eager PyTorch, and checks that they repeat
-  bitwise.
+- **The executor build** and `tests/static/run_check.sh` on the split form: `KVM_CHECK_MLP_HIDDEN=256 KVM_CHECK_MLP_DEPTH=4
+  tests/static/run_check.sh 16 48 107 108` (the panel's mlp256), then width 128 at depth 4. That compares split runs with the CPU golden and with
+  float64 and eager PyTorch, and checks that they repeat bitwise.
 - **The A100 read** of mlp256-r1 and the hold-out's MLP draws against today's executor.

@@ -62,39 +62,46 @@ __device__ __forceinline__ void mma_tf32(float (&c)[4], const unsigned (&a)[4], 
                : "+f"(c[0]), "+f"(c[1]), "+f"(c[2]), "+f"(c[3])
                : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b0), "r"(b1));
 }
-// matmul_tile's operand rounding: to nearest by the half-ulp bias, the tensor core dropping the low 13 bits (NaN keeps its bits); its 3xTF32
-// split: hi rounded and masked, lo the rest (x = hi + lo exactly).
-__device__ __forceinline__ unsigned tf32_op(float x) { const unsigned u = __float_as_uint(x); return ((u & 0x7fffffffu) > 0x7f800000u) ? u : u + 0x1000u; }
-__device__ __forceinline__ void tf32_split(float x, unsigned& hi, unsigned& lo) {
-  const unsigned u = __float_as_uint(x), h = (((u & 0x7fffffffu) > 0x7f800000u) ? u : u + 0x1000u) & 0xffffe000u;
-  hi = h;
-  lo = __float_as_uint(x - __uint_as_float(h));
-}
 
 // C(M x N) = sum over k of A(m, k) B(k, n), with A(m, k) = A[TA ? k lda + m : m lda + k] and B(k, n) = B[TB ? n ldb + k : k ldb + n], both in
 // shared memory and readable (finite, zero past K) over whole tiles: M rounded up to 16, N to 8, K to 8. `prec` takes 3xTF32 (lo hi + hi lo
 // + hi hi), else 1xTF32. Warps take the 16 x 8 output tiles round robin, two at a time (two independent accumulators in flight); a tile
-// accumulates in increasing k. epi(m, n, value) runs once for every m < M, n < N. Every thread calls it; it ends with __syncthreads.
-template <bool TA, bool TB>
-__device__ __forceinline__ void frags(const float* pa, const float* pb, int lda, int ldb, float (&x)[4], float (&y)[2]) {
-  x[0] = pa[0];
-  x[1] = TA ? pa[8] : pa[8 * lda];
-  x[2] = TA ? pa[4 * lda] : pa[4];
-  x[3] = TA ? pa[4 * lda + 8] : pa[8 * lda + 4];
-  y[0] = pb[0];
-  y[1] = TB ? pb[4] : pb[4 * ldb];
+// accumulates in increasing k. An operand contiguous in k (A not
+// transposed, B transposed) loads its fragments with ldmatrix (its rows 16-byte aligned: a row stride of 4 mod 8 floats keeps them
+// conflict-free); the other kind by scalar loads. epi(m, n, value) runs once for every m < M, n < N. Every thread calls it; it ends with
+// __syncthreads.
+__device__ __forceinline__ unsigned tf32_rna(float x) { unsigned u; asm("cvt.rna.tf32.f32 %0, %1;\n" : "=r"(u) : "f"(x)); return u; }
+__device__ __forceinline__ void ldm_x4(unsigned (&r)[4], const float* p) {
+  asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0,%1,%2,%3}, [%4];\n" : "=r"(r[0]), "=r"(r[1]), "=r"(r[2]), "=r"(r[3]) : "r"((unsigned)__cvta_generic_to_shared(p)));
 }
-__device__ __forceinline__ void mma_step(float (&c)[4], const float (&x)[4], const float (&y)[2], bool prec) {
+__device__ __forceinline__ void ldm_x2(unsigned (&r)[2], const float* p) {
+  asm volatile("ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%0,%1}, [%2];\n" : "=r"(r[0]), "=r"(r[1]) : "r"((unsigned)__cvta_generic_to_shared(p)));
+}
+// One tile's fragments at one k step, as raw float bits: A's four (rows g and g + 8, columns t and t + 4) and B's two (rows t and t + 4,
+// column g). pa/pb: the lane's ldmatrix row address (k-contiguous operand) or its scalar base (the other kind).
+template <bool TA, bool TB>
+struct Frag {
+  unsigned a[4], b[2];
+  __device__ __forceinline__ void load(const float* pa, const float* pb, int lda, int ldb) {
+    if (!TA) ldm_x4(a, pa);
+    else { a[0] = __float_as_uint(pa[0]); a[1] = __float_as_uint(pa[8]); a[2] = __float_as_uint(pa[4 * lda]); a[3] = __float_as_uint(pa[4 * lda + 8]); }
+    if (TB) ldm_x2(b, pb);
+    else { b[0] = __float_as_uint(pb[0]); b[1] = __float_as_uint(pb[4 * ldb]); }
+  }
+};
+__device__ __forceinline__ void mma_frag(float (&c)[4], const unsigned (&a)[4], const unsigned (&b)[2], bool prec) {
   if (prec) {
-    unsigned ah[4], al[4], bh0, bl0, bh1, bl1;
-    tf32_split(x[0], ah[0], al[0]); tf32_split(x[1], ah[1], al[1]); tf32_split(x[2], ah[2], al[2]); tf32_split(x[3], ah[3], al[3]);
-    tf32_split(y[0], bh0, bl0); tf32_split(y[1], bh1, bl1);
-    mma_tf32(c, al, bh0, bh1);
-    mma_tf32(c, ah, bl0, bl1);
-    mma_tf32(c, ah, bh0, bh1);
+    unsigned ah[4], al[4], bh[2], bl[2];
+#pragma unroll
+    for (int i = 0; i < 4; ++i) { const float x = __uint_as_float(a[i]); ah[i] = tf32_rna(x); al[i] = __float_as_uint(x - __uint_as_float(ah[i])); }
+#pragma unroll
+    for (int i = 0; i < 2; ++i) { const float x = __uint_as_float(b[i]); bh[i] = tf32_rna(x); bl[i] = __float_as_uint(x - __uint_as_float(bh[i])); }
+    mma_tf32(c, al, bh[0], bh[1]);
+    mma_tf32(c, ah, bl[0], bl[1]);
+    mma_tf32(c, ah, bh[0], bh[1]);
   } else {
-    const unsigned a[4] = {tf32_op(x[0]), tf32_op(x[1]), tf32_op(x[2]), tf32_op(x[3])};
-    mma_tf32(c, a, tf32_op(y[0]), tf32_op(y[1]));
+    const unsigned a2[4] = {tf32_rna(__uint_as_float(a[0])), tf32_rna(__uint_as_float(a[1])), tf32_rna(__uint_as_float(a[2])), tf32_rna(__uint_as_float(a[3]))};
+    mma_tf32(c, a2, tf32_rna(__uint_as_float(b[0])), tf32_rna(__uint_as_float(b[1])));
   }
 }
 template <bool TA, bool TB, class Epi>
@@ -102,26 +109,27 @@ __device__ void gemm(const float* A, int lda, const float* B, int ldb, int M, in
   const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3;
   const int tn = (N + 7) >> 3, tiles = ((M + 15) >> 4) * tn, ks = (K + 7) >> 3;
   const int sa = TA ? 8 * lda : 8, sb = TB ? 8 : 8 * ldb;              // pointer steps a k8 step
+  // the lane's ldmatrix rows: A's x4 (rows 0-7 and 8-15 of the tile at k and k + 4), B's x2 (rows 0-7 of the tile at k and k + 4)
+  const int ar = (lane & 7) + ((lane >> 3) & 1) * 8, ak = (lane >> 4) * 4, br = lane & 7, bk = ((lane >> 3) & 1) * 4;
+  auto base_a = [&](int m0) { return A + (TA ? t * lda + m0 + g : (m0 + ar) * lda + ak); };
+  auto base_b = [&](int n0) { return B + (TB ? (n0 + br) * ldb + bk : t * ldb + n0 + g); };
   for (int tile = warp; tile < tiles; tile += 2 * NW) {
     const int t1 = tile + NW;
     const bool two = t1 < tiles;
     const int m0 = (tile / tn) << 4, n0 = (tile % tn) << 3, m1 = two ? (t1 / tn) << 4 : m0, n1 = two ? (t1 % tn) << 3 : n0;
-    // fragment bases of both tiles at k = 0: A row m0 + g (column t), B column n0 + g (row t)
-    const float* pa0 = A + (TA ? t * lda + m0 + g : (m0 + g) * lda + t);
-    const float* pb0 = B + (TB ? (n0 + g) * ldb + t : t * ldb + n0 + g);
-    const float* pa1 = A + (TA ? t * lda + m1 + g : (m1 + g) * lda + t);
-    const float* pb1 = B + (TB ? (n1 + g) * ldb + t : t * ldb + n1 + g);
+    const float* pa0 = base_a(m0); const float* pb0 = base_b(n0);
+    const float* pa1 = base_a(m1); const float* pb1 = base_b(n1);
     float c0[4] = {0.f, 0.f, 0.f, 0.f}, c1[4] = {0.f, 0.f, 0.f, 0.f};
     for (int k = 0; k < ks; ++k) {
-      float x0[4], y0[2];
-      frags<TA, TB>(pa0, pb0, lda, ldb, x0, y0);
+      Frag<TA, TB> f0;
+      f0.load(pa0, pb0, lda, ldb);
       if (two) {
-        float x1[4], y1[2];
-        frags<TA, TB>(pa1, pb1, lda, ldb, x1, y1);
-        mma_step(c1, x1, y1, prec);
+        Frag<TA, TB> f1;
+        f1.load(pa1, pb1, lda, ldb);
+        mma_frag(c1, f1.a, f1.b, prec);
         pa1 += sa; pb1 += sb;
       }
-      mma_step(c0, x0, y0, prec);
+      mma_frag(c0, f0.a, f0.b, prec);
       pa0 += sa; pb0 += sb;
     }
     const int ma = m0 + g, mb = ma + 8, cc = n0 + 2 * t;

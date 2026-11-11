@@ -17,12 +17,12 @@ order alternating. A row would take 4 more rounds if either arm ran slow (above 
 
 | bed | members | counter, µs a step | flag lines, µs a step | counter / flag lines, paired median |
 |---|---|---|---|---|
-| grid h1024-d2 | 108 | 133.97 | 159.93 | x0.838 |
-| grid h496-d3 | 108 | 156.41 | 180.36 | x0.871 |
-| grid h512-d4 | 108 | 202.41 | 230.56 | x0.878 |
-| split h256-d4, 18 shares | 108 | 108.52 | 130.34 | x0.833 |
-| split h256-d4, 16 shares | 96 | 101.70 | 116.29 | x0.875 |
-| split h576-d1, 18 shares | 108 | 39.81 | 42.83 | x0.930 |
+| grid h1024-d2 | 108 | 133.97 | 159.93 | x1.172 |
+| grid h496-d3 | 108 | 156.41 | 180.36 | x1.125 |
+| grid h512-d4 | 108 | 202.41 | 230.56 | x1.103 |
+| split h256-d4, 18 shares | 108 | 108.52 | 130.34 | x1.196 |
+| split h256-d4, 16 shares | 96 | 101.70 | 116.29 | x1.140 |
+| split h576-d1, 18 shares | 108 | 39.81 | 42.83 | x1.053 |
 | grid h600-d3 (padded to 608) | 108 | (refuses: no padding) | 188.74 | |
 
 Every run printed `check ok`, and round 1's check lines match across the arms. This includes depth 3-4 and the padded width, which no GPU
@@ -64,24 +64,24 @@ below 8 shares, do not fit a member's shared memory; the sweep's verdict lists t
 - **Beds, the cross build against each arm** (same host, 5 rounds a row, arms alternating, no slow runs, every check line identical to
   the other arm's). Each cell is the other arm's time over cross's, the paired median, so above x1 means cross is faster:
 
-| bed | members | cross takes | against the counter build (`7fd7d4a`) | against the flag-line build (`bba414c`), first cross build |
+| bed | members | cross takes | against the counter build (`7fd7d4a`) | against the flag-line build (`bba414c`) |
 |---|---|---|---|---|
 | split h256-d4, 8 shares | 48 | flag lines | x1.058 | x1.001 |
-| split h256-d4, 10 shares | 60 | flag lines | x1.021 | x1.000 |
-| split h256-d4, 12 shares | 72 | counter | x0.992 | x1.001 |
-| split h256-d4, 16 shares | 96 | counter | x0.994 | x1.139 |
-| split h256-d4, 18 shares | 108 | counter | x0.993 | x1.187 |
-| split h576-d1, 18 shares | 108 | counter | x0.992 | x1.043 |
-| grid h1024-d2 | 96 | counter | x0.972 | x1.064 |
-| grid h1024-d2 | 108 | counter | x0.981 | x1.170 |
-| grid h496-d3 | 108 | counter | x0.976 | x1.124 |
-| grid h512-d4 | 108 | counter | x0.977 | x1.109 |
-| grid h600-d3 (padded) | 108 | counter | (refuses) | x1.124 |
+| split h256-d4, 10 shares | 60 | flag lines | x1.021 | x0.999 |
+| split h256-d4, 12 shares | 72 | counter | x0.992 | x1.013 |
+| split h256-d4, 16 shares | 96 | counter | x0.994 | x1.140 |
+| split h256-d4, 18 shares | 108 | counter | x0.993 | x1.196 |
+| split h576-d1, 18 shares | 108 | counter | x0.992 | x1.053 |
+| grid h1024-d2 | 96 | counter | x0.972 | x1.062 |
+| grid h1024-d2 | 108 | counter | x0.981 | x1.172 |
+| grid h496-d3 | 108 | counter | x0.976 | x1.125 |
+| grid h512-d4 | 108 | counter | x0.977 | x1.103 |
+| grid h600-d3 (padded) | 108 | counter | (refuses) | x1.122 |
 
 - **Reading it:**
   - Below 64 members cross keeps the flag lines' gain over the counter, and it is the flag-line code there (x1.000 against it).
-  - From 96 members up it recovers the flag lines' whole loss: the flag lines take x1.04-1.19 its time. At 72 the forms sit within 1% of
-    each other.
+  - From 96 members up it recovers the flag lines' whole loss: the flag lines take x1.05-1.20 its time. At 72 the three forms sit within
+    1.3% of each other.
   - Against the counter build `7fd7d4a`, the counter-path rows read x0.972-0.994: cross takes 1.006-1.029x its time. That tree differs in more than the barrier's form:
     `bba414c` adds the grid's padding, and both barriers answer the abort through `__syncthreads_or` instead of static shared memory. Which
     of these costs what is not measured here.
@@ -91,4 +91,5 @@ below 8 shares, do not fit a member's shared memory; the sweep's verdict lists t
   start, a volatile load, even on the counter path (`raw/cross1-vs-counter/`, `raw/cross1-vs-lines/`).
   - The shipped build reads it only on the flag-line path (`cross_epoch`). Against the counter build (`raw/cross-vs-counter/`) its
     counter-path split rows moved from x0.987-0.993 to x0.992-0.994; the grid's stayed within 0.5%.
-  - The flag-line column is the first build's. The two builds' code is identical up to 64 members, and past 64 they differ by that load.
+  - Against the flag lines (`raw/cross-vs-lines/`) the shipped build reads x0.999-1.001 up to 60 members (the same code) and x1.013 at 72,
+    where the first read x1.001 (`raw/cross1-vs-lines/`).

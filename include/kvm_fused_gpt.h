@@ -20,7 +20,7 @@
 #define KVM_FGPT_PER_LAYER 16                 // parameters a layer: n1 (g, b), q, k, v, proj (w, b each), n2 (g, b), fc1, fc2 (w, b each)
 #define KVM_FGPT_MAXP (4 + KVM_FGPT_PER_LAYER * KVM_FGPT_MAXL)   // + wte, nf (g, b), head
 #define KVM_FGPT_SMEM_FLOATS 38400            // the pass's default budget of shared memory a member, in floats (the executor passes the device's)
-#define KVM_FGPT_MAX_GANG 32                  // the widest gang the policy picks (kvm_fgpt_gang)
+#define KVM_FGPT_MAX_GANG 32                  // the widest gang the policy picks (kvm_fgpt_fit)
 
 // Parameter slots, in one fixed order: 0 wte; 1 + 16 l + r for layer l's role r (KVM_FGPT_R_*); then nf's g and b; then the head.
 enum KvmFgptRole {
@@ -37,6 +37,8 @@ struct alignas(16) KvmFgptDesc {
   // shape: rows (B sequences of T), width, heads x head width, MLP width, vocabulary, layers; the gang's size; the run's steps
   int N, T, B, d, H, hd, F, V, L, G, steps;
   int mm_numerics;                            // the bundle's GEMM numerics bits (matmul_tile flags: precise, trunc, exact), which the fused GEMMs reproduce
+  int rows;                                   // the N-wide phases' row chunk (the MLP's, the logits', the head's backward): N, or a multiple
+                                              // of 16 below it (kvm_fgpt_fit)
   int qb;                                     // attention's query blocks a (sequence, head) unit (kvm_fgpt_qblocks gives the default); T a multiple of 16 qb
   float ln_eps, theta, scale;                 // LayerNorm epsilon, RoPE base, attention scale
   float lr, beta1, beta2, adam_eps, max_norm; // AdamW and the grad-norm clip
@@ -140,8 +142,8 @@ KVM_FGPT_HD inline long long kvm_fgpt_smem_head(int N, int T, int hd) {
 // block reduction's partials and a flag), then the largest phase's buffers, as kvm_fused_gpt.cuh takes them. The device checks every phase
 // against the shared memory its caller gives it and fails the run (KVM_FGPT_E_SCRATCH) instead of overrunning, so a bound too small shows
 // at once.
-KVM_FGPT_HD inline long long kvm_fgpt_smem_floats(int N, int T, int d, int H, int F, int V, int G, int QB) {
-  const int hd = H > 0 ? d / H : 0, T16 = kvm_fgpt_r16(T), N16 = kvm_fgpt_r16(N), wf = (F + G - 1) / G, wv = (V + G - 1) / G;
+KVM_FGPT_HD inline long long kvm_fgpt_smem_floats(int N, int T, int d, int H, int F, int V, int G, int QB, int R) {
+  const int hd = H > 0 ? d / H : 0, T16 = kvm_fgpt_r16(T), N16 = kvm_fgpt_r16(R < N ? R : N), wf = (F + G - 1) / G, wv = (V + G - 1) / G;   // N16: a row chunk's
   const int ldq = kvm_fgpt_ldk(3 * hd), ldd = kvm_fgpt_ldk(d), ldh = kvm_fgpt_ldk(kvm_fgpt_r16(hd)), ldm = kvm_fgpt_ldmn(d);
   auto r4 = [](long long n) { return kvm_fgpt_r4(n); };
   auto mx = [](long long a, long long b) { return a > b ? a : b; };
@@ -152,8 +154,10 @@ KVM_FGPT_HD inline long long kvm_fgpt_smem_floats(int N, int T, int d, int H, in
   const long long qrow = r4((long long)TQ16 * ldh), krow = r4((long long)T16 * ldh);
   const long long attn_qkv = r4((long long)TQ16 * ldd) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldmn(3 * hd)) + r4(3 * hd) + r4((long long)TQ16 * ldq);
   const long long attn_f = qrow + 2 * krow + r4(TQ) + r4((long long)TQ16 * ldS) + qrow + r4((long long)kvm_fgpt_r8(hd) * ldm);
-  const long long attn_b = qrow + r4(TQ) + qrow + 2 * krow + r4(TQ) + r4((long long)TQ16 * ldS) + qrow + 2 * krow + qrow +
-                           mx(r4((long long)TQ16 * ldd) + r4((long long)kvm_fgpt_r8(hd) * ldd), r4((long long)TQ16 * ldm) + r4((long long)kvm_fgpt_r8(d) * ldh));
+  // (h's rows and Wq's columns go below DQ, over the dead do..scores, where they fit there)
+  const long long below_dq = qrow + r4(TQ) + qrow + 2 * krow + r4(TQ) + r4((long long)TQ16 * ldS);
+  const long long gx_wo = r4((long long)TQ16 * ldd) + r4((long long)kvm_fgpt_r8(hd) * ldd), h_wq = r4((long long)TQ16 * ldm) + r4((long long)kvm_fgpt_r8(d) * ldh);
+  const long long attn_b = below_dq + qrow + 2 * krow + qrow + (h_wq <= below_dq ? gx_wo : mx(gx_wo, h_wq));
   const long long attn_k = r4((long long)TQ16 * ldkv) + r4((long long)TQ16 * ldm) + r4((long long)kvm_fgpt_r8(d) * ldkv);
   // the MLP, forward: h2, W1's columns, u, W2's rows, b1; backward: pre, gelu(pre), du, gx then h2, W2's rows then W1's columns
   const long long mlp_f = r4((long long)N16 * ldd) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldmn(wf)) + r4((long long)N16 * kvm_fgpt_ldk(wf)) +
@@ -163,19 +167,34 @@ KVM_FGPT_HD inline long long kvm_fgpt_smem_floats(int N, int T, int d, int H, in
   // the head: hf and its columns (logits); dlogits, hf, its columns again (backward)
   const long long logit = r4((long long)N16 * ldd) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldmn(wv));
   const long long headb = r4((long long)N16 * kvm_fgpt_ldk(wv)) + r4((long long)N16 * ldm) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldk(wv));
-  return kvm_fgpt_smem_head(N, T, hd) + mx(mx(mx(mx(attn_qkv, attn_f), mx(attn_b, attn_k)), mx(mlp_f, mlp_b)), mx(logit, headb));
+  // the embedding's gradient: gx, a row chunk of it (unpadded)
+  const long long emb = r4((long long)(R < N ? R : N) * d);
+  return kvm_fgpt_smem_head(N, T, hd) + mx(mx(mx(mx(attn_qkv, attn_f), mx(attn_b, attn_k)), mx(mlp_f, mlp_b)), mx(mx(logit, headb), emb));
 }
 
-// The gang's size for a shape: the largest power of two up to min(KVM_FGPT_MAX_GANG, max_g, N) whose members fit `smem_floats` (the fast
-// form's phases, kvm_fgpt_smem_floats, with the default query blocks); 0 when none does (the run is not fused). On an RTX 5070, gpt-small ran
-// faster at 32 members than at 16, and gpt-tiny was flat from 8 to 32 (20 steps each, bench/fused_gpt/fgpt_bed.cu).
-KVM_FGPT_HD inline int kvm_fgpt_gang(int N, int T, int d, int H, int F, int V, int smem_floats, int max_g) {
-  if (T <= 0 || N % T) return 0;
+// The row chunk of the N-wide phases at gang G: the whole N when its buffers fit `smem_floats`, else 128 rows, else 64 (whole mma row tiles a
+// warp); 0 when none fits. A chunk keeps the phase's weight slices resident and walks the rows, so its buffers no longer grow with N; a
+// weight gradient (a GEMM over the rows) is written by the first chunk and added to by each later one, in order.
+KVM_FGPT_HD inline int kvm_fgpt_rows_for(int N, int T, int d, int H, int F, int V, int G, int QB, long long smem_floats) {
+  const int cand[3] = {N, 128, 64};
+  for (int i = 0; i < 3; ++i)
+    if ((i == 0 || cand[i] < N) && kvm_fgpt_smem_floats(N, T, d, H, F, V, G, QB, cand[i]) <= smem_floats) return cand[i];
+  return 0;
+}
+// A shape's fit: the largest power of two G up to min(KVM_FGPT_MAX_GANG, max_g, N) whose members fit `smem_floats` (the fast form's phases,
+// kvm_fgpt_smem_floats) with the default query blocks and the largest row chunk that fits; G 0 when none does (the run is not fused). On an
+// RTX 5070, gpt-small ran faster at 32 members than at 16, and gpt-tiny was flat from 8 to 32 (20 steps each, bench/fused_gpt/fgpt_bed.cu).
+struct KvmFgptFit { int G = 0, qb = 1, rows = 0; };
+KVM_FGPT_HD inline KvmFgptFit kvm_fgpt_fit(int N, int T, int d, int H, int F, int V, int smem_floats, int max_g) {
+  KvmFgptFit f;
+  if (T <= 0 || N % T) return f;
   int G = 1;
   while (G * 2 <= KVM_FGPT_MAX_GANG && G * 2 <= max_g && G * 2 <= N) G *= 2;
-  for (; G >= 1; G /= 2)
-    if (kvm_fgpt_smem_floats(N, T, d, H, F, V, G, kvm_fgpt_qblocks(N / T, H, T, G)) <= smem_floats) return G;
-  return 0;
+  for (; G >= 1; G /= 2) {
+    const int qb = kvm_fgpt_qblocks(N / T, H, T, G), rows = kvm_fgpt_rows_for(N, T, d, H, F, V, G, qb, smem_floats);
+    if (rows > 0) { f.G = G; f.qb = qb; f.rows = rows; return f; }
+  }
+  return f;
 }
 // Why the device program cannot run a matched shape, or "" when it can (the conditions kvm_fused_gpt.cuh's run checks; its layer count is a
 // question of fit, which the pass asks separately).

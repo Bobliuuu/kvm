@@ -2,9 +2,10 @@
 // and data that fgpt_bed.py writes from a workload. It writes the per-step losses, the final parameters and AdamW moments, the last step's
 // gradients and the step counter, for fgpt_bed.py to judge against the workload VM.
 //
-//   fgpt_bed DIR G [clock] [qb=Q]   (reads DIR/meta.txt, DIR/{p,m,v}.bin, DIR/{ids,tgt}.bin; writes DIR/out-G<G>/, or DIR/out-G<G>-clock/)
+//   fgpt_bed DIR G [clock] [qb=Q] [rows=R]   (reads DIR/meta.txt, DIR/{p,m,v}.bin, DIR/{ids,tgt}.bin; writes DIR/out-G<G>/, or DIR/out-G<G>-clock/)
 //
-// qb=Q sets attention's query blocks a unit (default: kvm_fgpt_qblocks).
+// qb=Q sets attention's query blocks a unit (default: kvm_fgpt_qblocks). rows=R sets the N-wide phases' row chunk (default: the largest of N,
+// 128 and 64 that fits this GPU's shared memory, kvm_fgpt_rows_for).
 //
 // `clock` runs the program with its phase marks: every phase and every barrier's wait ends in a __syncthreads and a clock64() read by
 // thread 0 of each member, summed over steps and layers, and the bed prints the cycles a step of each, the members' mean and their
@@ -123,10 +124,11 @@ int main(int argc, char** argv) {
   const std::string dir = argv[1];
   const int G = atoi(argv[2]);
   bool clocked = false;
-  int qb_arg = 0;
+  int qb_arg = 0, rows_arg = 0;
   for (int i = 3; i < argc; ++i) {
     if (!strcmp(argv[i], "clock")) clocked = true;
     else if (!strncmp(argv[i], "qb=", 3)) qb_arg = atoi(argv[i] + 3);
+    else if (!strncmp(argv[i], "rows=", 5)) rows_arg = atoi(argv[i] + 5);
     else { fprintf(stderr, "fgpt_bed: unknown argument %s\n", argv[i]); return 2; }
   }
   // ---- meta.txt: `key value` lines; `slot i rows cols wd` a parameter
@@ -201,24 +203,31 @@ int main(int argc, char** argv) {
   CK(cudaMalloc(&dok, G * 4)); CK(cudaMemset(dok, 0, G * 4));
   float* dbc; CK(cudaMalloc(&dbc, 2 * (size_t)h.steps * sizeof(float)));   // the bias corrections' table, filled by member 0
   h.ids_src = dids; h.tgt_src = dtgt; h.step = dstep; h.loss = dlossp; h.xch = dx; h.xch_floats = (size_t)sc.total; h.ctl = dctl; h.bc = dbc;
-  // the member's shared memory: the program's bound for the shape (the device checks every phase against it)
-  const long long smem_floats = kvm_fgpt_smem_floats(h.N, h.T, h.d, h.H, h.F, h.V, G, h.qb);
-  const size_t smem = (size_t)smem_floats * 4;
-  int smem_arg = (int)smem_floats;
-  KvmFgptDesc* dd;
-  CK(cudaMalloc(&dd, sizeof(KvmFgptDesc)));
-  CK(cudaMemcpy(dd, &h, sizeof(KvmFgptDesc), cudaMemcpyHostToDevice));
-  // ---- one cooperative launch: the driver refuses it unless all G blocks are resident at once, which the gang barrier needs
+  // ---- the member's shared memory: the program's bound for the shape and the row chunk (the device checks every phase against it), within
+  // this GPU's opt-in shared memory a block less the kernel's static share
   void* kern = clocked ? (void*)fgpt_kernel<true> : (void*)fgpt_kernel<false>;
+  long long budget = 0;
   {
     int dev0 = 0, optin = 0;
     CK(cudaGetDevice(&dev0));
     CK(cudaDeviceGetAttribute(&optin, cudaDevAttrMaxSharedMemoryPerBlockOptin, dev0));
-    if (smem > (size_t)optin) {
-      fprintf(stderr, "fgpt_bed: a member of a gang of %d needs %zu B of shared memory, above this GPU's %d B a block: a larger gang fits\n", G, smem, optin);
-      return 3;
-    }
+    cudaFuncAttributes fa; CK(cudaFuncGetAttributes(&fa, kern));
+    budget = ((long long)optin - (long long)fa.sharedSizeBytes) / 4;
   }
+  h.rows = rows_arg > 0 ? rows_arg : kvm_fgpt_rows_for(h.N, h.T, h.d, h.H, h.F, h.V, G, h.qb, budget);
+  if (h.rows <= 0) { fprintf(stderr, "fgpt_bed: no row chunk (N, 128 or 64) fits a member of a gang of %d in this GPU's %lld floats a block: a larger gang may\n", G, budget); return 3; }
+  if (h.rows > h.N || (h.rows < h.N && h.rows % 16)) die("rows must be N or a multiple of 16 below it");
+  const long long smem_floats = kvm_fgpt_smem_floats(h.N, h.T, h.d, h.H, h.F, h.V, G, h.qb, h.rows);
+  const size_t smem = (size_t)smem_floats * 4;
+  int smem_arg = (int)smem_floats;
+  if (smem_floats > budget) {
+    fprintf(stderr, "fgpt_bed: a member of a gang of %d needs %lld floats of shared memory at %d-row chunks, above this GPU's %lld a block\n", G, smem_floats, h.rows, budget);
+    return 3;
+  }
+  KvmFgptDesc* dd;
+  CK(cudaMalloc(&dd, sizeof(KvmFgptDesc)));
+  CK(cudaMemcpy(dd, &h, sizeof(KvmFgptDesc), cudaMemcpyHostToDevice));
+  // ---- one cooperative launch: the driver refuses it unless all G blocks are resident at once, which the gang barrier needs
   CK(cudaFuncSetAttribute(kern, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)smem));
   int dev = 0, sms = 0, per_sm = 0;
   CK(cudaGetDevice(&dev));
@@ -226,8 +235,8 @@ int main(int argc, char** argv) {
   CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&per_sm, kern, KVM_FGPT_NT, smem));
   cudaDeviceProp prop;
   CK(cudaGetDeviceProperties(&prop, dev));
-  printf("fgpt_bed: %s (sm_%d%d, %d SMs), G %d, %d steps, attention in %d query block(s) a unit, shared memory %zu B a member, scratch %.2f MB, "
-         "%d member(s) an SM at most\n", prop.name, prop.major, prop.minor, sms, G, h.steps, h.qb, smem, sc.total * 4.0 / 1e6, per_sm);
+  printf("fgpt_bed: %s (sm_%d%d, %d SMs), G %d, %d steps, attention in %d query block(s) a unit, rows in chunks of %d of %d, shared memory %zu B a "
+         "member, scratch %.2f MB, %d member(s) an SM at most\n", prop.name, prop.major, prop.minor, sms, G, h.steps, h.qb, h.rows, h.N, smem, sc.total * 4.0 / 1e6, per_sm);
   if ((long long)per_sm * sms < G) die("the gang does not fit the GPU at once");
   unsigned long long* dacc = nullptr;
   const size_t acc_words = clocked ? (size_t)G * (kvm_fgpt::MK_COUNT + 2) : 1;

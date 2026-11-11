@@ -201,10 +201,11 @@ __device__ __forceinline__ void zero(float* p, int ld, int rows, int cols) { for
 
 // Column sums of an R x C block of shared memory (row stride ld) into out[c] (global). With C < NT, NT / C threads share a column, each
 // summing a contiguous chunk of rows in order, then one thread a column sums the chunks in order (`scr`: NT floats of shared memory), so the
-// order is fixed for a given R and C. Ends with __syncthreads.
-__device__ void colsum_smem(const float* X, int ld, int R, int C, float* out, float* scr) {
+// order is fixed for a given R and C. With `add`, each sum is added to out[c] (a later row chunk's, by the thread that wrote it before).
+// Ends with __syncthreads.
+__device__ void colsum_smem(const float* X, int ld, int R, int C, float* out, float* scr, bool add = false) {
   if (C >= NT) {
-    for (int c = threadIdx.x; c < C; c += NT) { float a = 0.f; for (int r = 0; r < R; ++r) a += X[r * ld + c]; out[c] = a; }
+    for (int c = threadIdx.x; c < C; c += NT) { float a = 0.f; for (int r = 0; r < R; ++r) a += X[r * ld + c]; out[c] = add ? out[c] + a : a; }
     __syncthreads();
     return;
   }
@@ -216,7 +217,7 @@ __device__ void colsum_smem(const float* X, int ld, int R, int C, float* out, fl
     scr[k * C + c] = a;
   }
   __syncthreads();
-  if (threadIdx.x < C) { float a = 0.f; for (int j = 0; j < K; ++j) a += scr[j * C + threadIdx.x]; out[threadIdx.x] = a; }
+  if (threadIdx.x < C) { float a = 0.f; for (int j = 0; j < K; ++j) a += scr[j * C + threadIdx.x]; out[threadIdx.x] = add ? out[threadIdx.x] + a : a; }
   __syncthreads();
 }
 
@@ -450,12 +451,16 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
   const int tid = threadIdx.x, N = p.N, T = p.T, D = p.d, H = p.H, hd = p.hd, F = p.F, V = p.V, L = p.L, b = p.b, G = p.G, B = p.B;
   // attention's work items: (sequence, head, query block), QB blocks of TQ rows a unit, item w = (s H + h) QB + qb on member w % G
   const int QB = d.qb, TQ = QB > 0 ? T / QB : 0, W = B * H * QB, TQ16 = kvm_fgpt_r16(TQ);
-  const int T16 = kvm_fgpt_r16(T), N16 = kvm_fgpt_r16(N), hgsz = kvm_fgpt_unit_grads(D, hd);
+  const int T16 = kvm_fgpt_r16(T), hgsz = kvm_fgpt_unit_grads(D, hd);
   const size_t Nd = (size_t)N * D;
   const KvmFgptScratch s = kvm_fgpt_scratch(N, T, D, H, F, V, L, G, d.qb);
+  // the N-wide phases' row chunk (kvm_fgpt_fit): the MLP's, the logits' and the head's backward walk N in chunks of RC rows, their weight
+  // slices resident; RC is N where the whole fits, and then each phase runs as one chunk
+  const int RC = d.rows < N ? d.rows : N, RC16 = kvm_fgpt_r16(RC);
   const bool prec = (d.mm_numerics & 16) != 0;                                        // matmul_tile's 3xTF32 flag
   const bool shape_ok = hd <= 128 && hd % 8 == 0 && D == H * hd && L >= 1 && L <= KVM_FGPT_MAXL && T > 0 && N % T == 0 && B == N / T &&
-                        (d.mm_numerics & ~16) == 0 && D % 4 == 0 && d.qb >= 1 && T % d.qb == 0 && (d.qb == 1 || (T / d.qb) % 16 == 0);
+                        (d.mm_numerics & ~16) == 0 && D % 4 == 0 && d.qb >= 1 && T % d.qb == 0 && (d.qb == 1 || (T / d.qb) % 16 == 0) &&
+                        d.rows >= 1 && d.rows <= N && (d.rows == N || d.rows % 16 == 0);
   if ((size_t)s.total > d.xch_floats || !shape_ok) {
     if (tid == 0) fail((size_t)s.total > d.xch_floats ? KVM_FGPT_E_SCRATCH : KVM_FGPT_E_SHAPE);
     return false;
@@ -690,27 +695,34 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
       if (p.f1 > p.f0) {                                                              // fc1 owners: their columns, GELU, fc2's partial
         const int f0 = p.f0, w = p.f1 - p.f0, ldw = kvm_fgpt_ldmn(w), ldu = kvm_fgpt_ldk(w);
         phase();
-        float* const H2 = ar.take((long long)N16 * ldd);
+        float* const H2 = ar.take((long long)RC16 * ldd);
         float* const W1 = ar.take((long long)kvm_fgpt_r8(D) * ldw);
-        float* const Us = ar.take((long long)N16 * ldu);
+        float* const Us = ar.take((long long)RC16 * ldu);
         float* const W2 = ar.take((long long)kvm_fgpt_r8(w) * kvm_fgpt_ldmn(D));
         float* const b1 = ar.take(w);
         if (!check()) return false;
-        {
-          const Copy cs[4] = {{H2, h2, ldd, (size_t)D, N, D, N16, kvm_fgpt_r8(D)},
-                              {W1, P(lay(l, KVM_FGPT_R_W1)) + f0, ldw, (size_t)F, D, w, kvm_fgpt_r8(D), kvm_fgpt_r8(w)},
-                              {W2, P(lay(l, KVM_FGPT_R_W2)) + (size_t)f0 * D, kvm_fgpt_ldmn(D), (size_t)D, w, D, kvm_fgpt_r8(w), D},
-                              {b1, P(lay(l, KVM_FGPT_R_B1)) + f0, 0, 0, 1, w, 1, w}};
-          zero(Us, ldu, N16, kvm_fgpt_r8(w));
-          stage_all(cs);
-        }
         float* const pre = X + s.pre[l];
-        gemm<false, false>(H2, ldd, W1, ldw, N, w, D, prec, [&](int m, int n, float a) {
-          const float z = a + b1[n];
-          pre[(size_t)m * F + f0 + n] = z;
-          Us[m * ldu + n] = gelu(z);
-        });
-        gemm<false, false>(Us, ldu, W2, kvm_fgpt_ldmn(D), N, D, w, prec, [&](int m, int n, float a) { part[(size_t)m * D + n] = a; });
+        for (int c0 = 0; c0 < N; c0 += RC) {                                          // the weights stage with the first chunk and stay
+          const int rc = N - c0 < RC ? N - c0 : RC, rc16 = kvm_fgpt_r16(rc);
+          const Copy rows = {H2, h2 + (size_t)c0 * D, ldd, (size_t)D, rc, D, rc16, kvm_fgpt_r8(D)};
+          zero(Us, ldu, rc16, kvm_fgpt_r8(w));
+          if (c0 == 0) {
+            const Copy cs[4] = {rows,
+                                {W1, P(lay(l, KVM_FGPT_R_W1)) + f0, ldw, (size_t)F, D, w, kvm_fgpt_r8(D), kvm_fgpt_r8(w)},
+                                {W2, P(lay(l, KVM_FGPT_R_W2)) + (size_t)f0 * D, kvm_fgpt_ldmn(D), (size_t)D, w, D, kvm_fgpt_r8(w), D},
+                                {b1, P(lay(l, KVM_FGPT_R_B1)) + f0, 0, 0, 1, w, 1, w}};
+            stage_all(cs);
+          } else {
+            const Copy cs[1] = {rows};
+            stage_all(cs);
+          }
+          gemm<false, false>(H2, ldd, W1, ldw, rc, w, D, prec, [&](int m, int n, float a) {
+            const float z = a + b1[n];
+            pre[(size_t)(c0 + m) * F + f0 + n] = z;
+            Us[m * ldu + n] = gelu(z);
+          });
+          gemm<false, false>(Us, ldu, W2, kvm_fgpt_ldmn(D), rc, D, w, prec, [&](int m, int n, float a) { part[(size_t)(c0 + m) * D + n] = a; });
+        }
       }
       ph(MK_MLP);
       if (!cross()) return false;                                                     // reduce-scatter fc2
@@ -728,14 +740,21 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
     if (p.v1 > p.v0) {
       const int v0 = p.v0, w = p.v1 - p.v0, ldw = kvm_fgpt_ldmn(w);
       phase();
-      float* const HF = ar.take((long long)N16 * ldd);
+      float* const HF = ar.take((long long)RC16 * ldd);
       float* const WH = ar.take((long long)kvm_fgpt_r8(D) * ldw);
       if (!check()) return false;
-      {
-        const Copy cs[2] = {{HF, hf, ldd, (size_t)D, N, D, N16, kvm_fgpt_r8(D)}, {WH, P(head) + v0, ldw, (size_t)V, D, w, kvm_fgpt_r8(D), kvm_fgpt_r8(w)}};
-        stage_all(cs);
+      for (int c0 = 0; c0 < N; c0 += RC) {                                            // the head's columns stage with the first chunk and stay
+        const int rc = N - c0 < RC ? N - c0 : RC, rc16 = kvm_fgpt_r16(rc);
+        const Copy rows = {HF, hf + (size_t)c0 * D, ldd, (size_t)D, rc, D, rc16, kvm_fgpt_r8(D)};
+        if (c0 == 0) {
+          const Copy cs[2] = {rows, {WH, P(head) + v0, ldw, (size_t)V, D, w, kvm_fgpt_r8(D), kvm_fgpt_r8(w)}};
+          stage_all(cs);
+        } else {
+          const Copy cs[1] = {rows};
+          stage_all(cs);
+        }
+        gemm<false, false>(HF, ldd, WH, ldw, rc, w, D, prec, [&](int m, int n, float a) { logits[(size_t)(c0 + m) * V + v0 + n] = a; });
       }
-      gemm<false, false>(HF, ldd, WH, ldw, N, w, D, prec, [&](int m, int n, float a) { logits[(size_t)m * V + v0 + n] = a; });
       for (int r = tid; r < N; r += NT) {
         const float* const lr = logits + (size_t)r * V;
         float mx = -INFINITY;
@@ -776,23 +795,31 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
     if (p.v1 > p.v0) {
       const int v0 = p.v0, w = p.v1 - p.v0, ldl = kvm_fgpt_ldk(w);
       phase();
-      float* const DL = ar.take((long long)N16 * ldl);
-      float* const HF = ar.take((long long)N16 * kvm_fgpt_ldmn(D));
+      float* const DL = ar.take((long long)RC16 * ldl);
+      float* const HF = ar.take((long long)RC16 * kvm_fgpt_ldmn(D));
       float* const WT = ar.take((long long)kvm_fgpt_r8(D) * ldl);
       if (!check()) return false;
-      zero(DL, ldl, N16, kvm_fgpt_r8(w));
-      __syncthreads();
-      for (int e = tid; e < N * w; e += NT) {
-        const int r = e / w, c = e % w, tg = tgt[r];
-        DL[r * ldl + c] = tg == -1 ? 0.f : (expf(ld(logits + (size_t)r * V + v0 + c) - lse_ce[r]) - (v0 + c == tg ? 1.f : 0.f)) * inv_n;
-      }
-      {
-        const Copy cs[2] = {{HF, hf, kvm_fgpt_ldmn(D), (size_t)D, N, D, N16, D}, {WT, P(head) + v0, ldl, (size_t)V, D, w, kvm_fgpt_r8(D), kvm_fgpt_r8(w)}};
-        stage_all(cs);
-      }
       float* const gh = Gr(head);
-      gemm<true, false>(HF, kvm_fgpt_ldmn(D), DL, ldl, D, w, N, prec, [&](int m, int n, float a) { gh[(size_t)m * V + v0 + n] = a; });
-      gemm<false, true>(DL, ldl, WT, ldl, N, D, w, prec, [&](int m, int n, float a) { part[(size_t)m * D + n] = a; });
+      for (int c0 = 0; c0 < N; c0 += RC) {                                            // the head's gradient sums over the rows: first chunk writes, later add
+        const int rc = N - c0 < RC ? N - c0 : RC, rc16 = kvm_fgpt_r16(rc);
+        const bool add = c0 > 0;
+        zero(DL, ldl, rc16, kvm_fgpt_r8(w));
+        __syncthreads();
+        for (int e = tid; e < rc * w; e += NT) {
+          const int i = e / w, r = c0 + i, c = e % w, tg = tgt[r];
+          DL[i * ldl + c] = tg == -1 ? 0.f : (expf(ld(logits + (size_t)r * V + v0 + c) - lse_ce[r]) - (v0 + c == tg ? 1.f : 0.f)) * inv_n;
+        }
+        const Copy rows = {HF, hf + (size_t)c0 * D, kvm_fgpt_ldmn(D), (size_t)D, rc, D, rc16, D};
+        if (c0 == 0) {
+          const Copy cs[2] = {rows, {WT, P(head) + v0, ldl, (size_t)V, D, w, kvm_fgpt_r8(D), kvm_fgpt_r8(w)}};
+          stage_all(cs);
+        } else {
+          const Copy cs[1] = {rows};
+          stage_all(cs);
+        }
+        gemm<true, false>(HF, kvm_fgpt_ldmn(D), DL, ldl, D, w, rc, prec, [&](int m, int n, float a) { float* const o = gh + (size_t)m * V + v0 + n; *o = add ? ld(o) + a : a; });
+        gemm<false, true>(DL, ldl, WT, ldl, rc, D, w, prec, [&](int m, int n, float a) { part[(size_t)(c0 + m) * D + n] = a; });
+      }
     }
     ph(MK_HEADB);
     if (!cross()) return false;                                                       // reduce-scatter dhf
@@ -809,33 +836,39 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
       if (p.f1 > p.f0) {                                                              // fc1 owners: fc2's rows and fc1's columns of their units
         const int f0 = p.f0, w = p.f1 - p.f0, ldu = kvm_fgpt_ldk(w), ldum = kvm_fgpt_ldmn(w);
         phase();
-        float* const PRE = ar.take((long long)N16 * ldu);
-        float* const Ut = ar.take((long long)N16 * ldum);                              // gelu(pre), the A operand of dW2 (transposed)
-        float* const DU = ar.take((long long)N16 * ldu);
-        float* const XS = ar.take((long long)N16 * (ldd > kvm_fgpt_ldmn(D) ? ldd : kvm_fgpt_ldmn(D)));   // gx, then h2
+        float* const PRE = ar.take((long long)RC16 * ldu);
+        float* const Ut = ar.take((long long)RC16 * ldum);                             // gelu(pre), the A operand of dW2 (transposed)
+        float* const DU = ar.take((long long)RC16 * ldu);
+        float* const XS = ar.take((long long)RC16 * (ldd > kvm_fgpt_ldmn(D) ? ldd : kvm_fgpt_ldmn(D)));   // gx, then h2
         float* const WS = ar.take((long long)kvm_fgpt_r8(w) * ldd > (long long)kvm_fgpt_r8(D) * ldu ? (long long)kvm_fgpt_r8(w) * ldd
                                                                                                      : (long long)kvm_fgpt_r8(D) * ldu);
         if (!check()) return false;
-        {
-          const Copy cs[3] = {{PRE, X + s.pre[l] + f0, ldu, (size_t)F, N, w, N16, kvm_fgpt_r8(w)},
-                              {XS, gx, ldd, (size_t)D, N, D, N16, kvm_fgpt_r8(D)},
-                              {WS, P(lay(l, KVM_FGPT_R_W2)) + (size_t)f0 * D, ldd, (size_t)D, w, D, kvm_fgpt_r8(w), kvm_fgpt_r8(D)}};
-          zero(DU, ldu, N16, kvm_fgpt_r8(w));
-          stage_all(cs);
-        }
-        for (int e = tid; e < N16 * kvm_fgpt_r8(w); e += NT) { const int r = e / kvm_fgpt_r8(w), c = e % kvm_fgpt_r8(w); Ut[r * ldum + c] = r < N && c < w ? gelu(PRE[r * ldu + c]) : 0.f; }
-        __syncthreads();
         float* const gw2 = Gr(lay(l, KVM_FGPT_R_W2)); float* const gw1 = Gr(lay(l, KVM_FGPT_R_W1)); float* const gb1 = Gr(lay(l, KVM_FGPT_R_B1));
-        gemm<true, false>(Ut, ldum, XS, ldd, w, D, N, prec, [&](int m, int n, float a) { gw2[(size_t)(f0 + m) * D + n] = a; });
-        gemm<false, true>(XS, ldd, WS, ldd, N, w, D, prec, [&](int m, int n, float a) { DU[m * ldu + n] = a * gelu_grad(PRE[m * ldu + n]); });
-        colsum_smem(DU, ldu, N, w, gb1 + f0, scr);
-        {
-          const Copy cs[2] = {{XS, h2, kvm_fgpt_ldmn(D), (size_t)D, N, D, N16, D},
-                              {WS, P(lay(l, KVM_FGPT_R_W1)) + f0, ldu, (size_t)F, D, w, kvm_fgpt_r8(D), kvm_fgpt_r8(w)}};
-          stage_all(cs);
+        // the rows in chunks: dW2, db1 and dW1 sum over the rows, so the first chunk writes them and each later one adds, in order (each element
+        // by the thread that wrote it: a GEMM's tiles map to threads by its M and N, the same every chunk)
+        for (int c0 = 0; c0 < N; c0 += RC) {
+          const int rc = N - c0 < RC ? N - c0 : RC, rc16 = kvm_fgpt_r16(rc);
+          const bool add = c0 > 0;
+          {
+            const Copy cs[3] = {{PRE, X + s.pre[l] + (size_t)c0 * F + f0, ldu, (size_t)F, rc, w, rc16, kvm_fgpt_r8(w)},
+                                {XS, gx + (size_t)c0 * D, ldd, (size_t)D, rc, D, rc16, kvm_fgpt_r8(D)},
+                                {WS, P(lay(l, KVM_FGPT_R_W2)) + (size_t)f0 * D, ldd, (size_t)D, w, D, kvm_fgpt_r8(w), kvm_fgpt_r8(D)}};
+            zero(DU, ldu, rc16, kvm_fgpt_r8(w));
+            stage_all(cs);
+          }
+          for (int e = tid; e < rc16 * kvm_fgpt_r8(w); e += NT) { const int r = e / kvm_fgpt_r8(w), c = e % kvm_fgpt_r8(w); Ut[r * ldum + c] = r < rc && c < w ? gelu(PRE[r * ldu + c]) : 0.f; }
+          __syncthreads();
+          gemm<true, false>(Ut, ldum, XS, ldd, w, D, rc, prec, [&](int m, int n, float a) { float* const o = gw2 + (size_t)(f0 + m) * D + n; *o = add ? ld(o) + a : a; });
+          gemm<false, true>(XS, ldd, WS, ldd, rc, w, D, prec, [&](int m, int n, float a) { DU[m * ldu + n] = a * gelu_grad(PRE[m * ldu + n]); });
+          colsum_smem(DU, ldu, rc, w, gb1 + f0, scr, add);
+          {
+            const Copy cs[2] = {{XS, h2 + (size_t)c0 * D, kvm_fgpt_ldmn(D), (size_t)D, rc, D, rc16, D},
+                                {WS, P(lay(l, KVM_FGPT_R_W1)) + f0, ldu, (size_t)F, D, w, kvm_fgpt_r8(D), kvm_fgpt_r8(w)}};
+            stage_all(cs);
+          }
+          gemm<true, false>(XS, kvm_fgpt_ldmn(D), DU, ldu, D, w, rc, prec, [&](int m, int n, float a) { float* const o = gw1 + (size_t)m * F + f0 + n; *o = add ? ld(o) + a : a; });
+          gemm<false, true>(DU, ldu, WS, ldu, rc, D, w, prec, [&](int m, int n, float a) { part[(size_t)(c0 + m) * D + n] = a; });
         }
-        gemm<true, false>(XS, kvm_fgpt_ldmn(D), DU, ldu, D, w, N, prec, [&](int m, int n, float a) { gw1[(size_t)m * F + f0 + n] = a; });
-        gemm<false, true>(DU, ldu, WS, ldu, N, D, w, prec, [&](int m, int n, float a) { part[(size_t)m * D + n] = a; });
       }
       ph(MK_MLPB);
       if (!cross()) return false;                                                     // reduce-scatter dh2
@@ -908,7 +941,11 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
         rope(DQ, ldh, TQ, q0, T, hd, rtab, -1.f);
         colsum_smem(DQ, ldh, TQ, hd, hg + 3 * D * hd, scr);                                                                         // dbq
         ph(MK_UB_DB);
-        ar.top = mark;
+        {   // h's rows and Wq's columns: below DQ where they fit (every buffer before DQ is dead now), else where gx's rows and Wo's rows were
+          const long long need = kvm_fgpt_r4((long long)TQ16 * kvm_fgpt_ldmn(D)) + kvm_fgpt_r4((long long)kvm_fgpt_r8(D) * ldh);
+          const int lo = (int)(DO - ar.base);
+          ar.top = (long long)(DQ - ar.base) - lo >= need ? lo : mark;
+        }
         float* const HQ = ar.take((long long)TQ16 * kvm_fgpt_ldmn(D));
         float* const WQ = ar.take((long long)kvm_fgpt_r8(D) * ldh);
         if (!check()) return false;
@@ -966,23 +1003,28 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
     }
     if (!cross()) return false;                                                       // all-gather gx (the embedding's output gradient)
     ph(MK_X_GEMB);
-    // ---- the embedding's gradient: each owned vocabulary row sums the gradients of its tokens' rows, in row order, from gx staged once
+    // ---- the embedding's gradient: each owned vocabulary row sums the gradients of its tokens' rows, in row order, from gx staged a row
+    // chunk at a time; a later chunk resumes each running sum from the one the earlier left, so the order (and every bit) is the whole N's
     {
       const int v0 = p.v0, w = p.v1 - p.v0;
       phase();
-      float* const GXS = ar.take((long long)N * D);
+      float* const GXS = ar.take((long long)RC * D);
       if (!check()) return false;
-      if (w > 0) {
-        const Copy cs[1] = {{GXS, gx, D, (size_t)D, N, D, N, D}};
-        stage_all(cs);
-      }
       float* const ge = ptab[3 * KVM_FGPT_MAXP + 0];
-      for (int e = tid; e < w * D; e += NT) {
-        const int row = v0 + e / D, c = e % D;
-        float a = 0.f;
-        for (int r = 0; r < N; ++r) if (ids[r] == row) a += GXS[r * D + c];
-        ge[(size_t)row * D + c] = a;                                                   // its square is counted with the blocks' below
-      }
+      if (w > 0)
+        for (int c0 = 0; c0 < N; c0 += RC) {
+          const int rc = N - c0 < RC ? N - c0 : RC;
+          const Copy cs[1] = {{GXS, gx + (size_t)c0 * D, D, (size_t)D, rc, D, rc, D}};
+          stage_all(cs);
+          for (int e = tid; e < w * D; e += NT) {
+            const int row = v0 + e / D, c = e % D;
+            float* const o = ge + (size_t)row * D + c;                                 // its square is counted with the blocks' below
+            float a = c0 == 0 ? 0.f : ld(o);
+            for (int r = 0; r < rc; ++r) if (ids[c0 + r] == row) a += GXS[r * D + c];
+            *o = a;
+          }
+          __syncthreads();
+        }
       __syncthreads();
     }
     ph(MK_EMBB);

@@ -131,11 +131,15 @@ KVM_FGPT_HD inline int kvm_fgpt_r8(int n) { return (n + 7) & ~7; }
 KVM_FGPT_HD inline long long kvm_fgpt_r4(long long n) { return (n + 3) & ~3LL; }
 #define KVM_FGPT_NT 256                       // threads of a member's block
 #define KVM_FGPT_MAXBLK 16                    // a member's block rectangles: fc1's columns, b1, fc2's rows a layer, wte's rows, the head's columns
-// The fixed head of a member's shared memory: the step's tokens and targets and the cross-entropy's log-sum-exp a row (N each), RoPE's cos
+// The scratch layout in floats, rounded to 16 bytes: one copy a block heads its shared memory, so a thread never holds the offsets itself.
+// Read with a runtime layer index, a thread's own copy would live in local memory, 592 bytes a thread (on an A100, beside this kernel's
+// shared memory, its L1 keeps little of that), and on sm_80 the struct's 74 offsets crowded every phase's registers.
+#define KVM_FGPT_LAYOUT_FLOATS ((long long)((sizeof(KvmFgptScratch) + 15) / 16 * 4))
+// The fixed head of a member's shared memory: the scratch layout, the step's tokens and targets and the cross-entropy's log-sum-exp a row (N each), RoPE's cos
 // and sin table (T x hd / 2 each), a block reduction's partials (one double a warp), a flag, a scratch of one float a thread, every
 // parameter slot's four pointers (p, m, v, g) and weight decay, and the member's block table (8 ints an entry).
 KVM_FGPT_HD inline long long kvm_fgpt_smem_head(int N, int T, int hd) {
-  return 3 * kvm_fgpt_r4(N) + kvm_fgpt_r4((long long)T * hd) + 2 * (KVM_FGPT_NT / 32) + 4 + KVM_FGPT_NT + 4LL * KVM_FGPT_MAXP * 2 +
+  return KVM_FGPT_LAYOUT_FLOATS + 3 * kvm_fgpt_r4(N) + kvm_fgpt_r4((long long)T * hd) + 2 * (KVM_FGPT_NT / 32) + 4 + KVM_FGPT_NT + 4LL * KVM_FGPT_MAXP * 2 +
          kvm_fgpt_r4(KVM_FGPT_MAXP) + 8LL * KVM_FGPT_MAXBLK;
 }
 // A bound on the program's shared memory, in floats: a fixed head (the step's tokens and targets, the cross-entropy's log-sum-exp a row, a

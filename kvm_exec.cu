@@ -779,21 +779,19 @@ class KvmExec {
     const long long bytes = (long long)p.sharedMemPerBlockOptin - (long long)fa.sharedSizeBytes;
     return bytes > 0 ? (int)(bytes / 4) & ~15 : 0;
   }
-  // `forms`: 2 every fused form; 1 the one-block form only (the gang forms off); 0 none. Fewer forms are for a bundle whose fused runs
-  // share it with other work, which no static kernel entry runs (kvm_fuse_entry).
-  KvmFuseResult fuse_bundle(const KvmBundle& b, int workers, const std::vector<int>& keep, int forms = 2) const {
+  KvmFuseResult fuse_bundle(const KvmBundle& b, int workers, const std::vector<int>& keep) const {
     KvmFuseOps ops;
     ops.noop = kvm_op_by_name("noop"); ops.select_window = kvm_op_by_name("select_window"); ops.embedding_fwd = kvm_op_by_name("embedding_fwd"); ops.matmul_tile = kvm_op_by_name("matmul_tile");
     ops.softmax_ce_fwd = kvm_op_by_name("softmax_ce_fwd"); ops.softmax_ce_reduce = kvm_op_by_name("softmax_ce_reduce"); ops.softmax_ce_bwd = kvm_op_by_name("softmax_ce_bwd"); ops.softmax_ce_fused = kvm_op_by_name("softmax_ce_fused");
     ops.gelu_bwd = kvm_op_by_name("gelu_bwd"); ops.colsum = kvm_op_by_name("colsum"); ops.embedding_bwd = kvm_op_by_name("embedding_bwd"); ops.sgd = kvm_op_by_name("sgd"); ops.sgd_range = kvm_op_by_name("sgd_range");
-    ops.fmlp_slice = forms >= 1 ? kvm_op_by_name("fmlp_slice") : -1; ops.fmlp_sgd = forms >= 1 ? kvm_op_by_name("fmlp_sgd") : -1;
-    ops.fmlp_split = forms >= 2 ? kvm_op_by_name("fmlp_split") : -1; ops.fmlp_grid = forms >= 2 ? kvm_op_by_name("fmlp_grid") : -1;
+    ops.fmlp_slice = kvm_op_by_name("fmlp_slice"); ops.fmlp_sgd = kvm_op_by_name("fmlp_sgd"); ops.fmlp_split = kvm_op_by_name("fmlp_split"); ops.fmlp_grid = kvm_op_by_name("fmlp_grid");
     std::vector<KvmFuseBuf> infos(bufs_.size());
     for (size_t i = 0; i < bufs_.size(); ++i) infos[i] = KvmFuseBuf{bufs_[i].rows, bufs_[i].cols, bufs_[i].ld, bufs_[i].dtype};
     const KvmSOpLookup op_of = [](int id) { const KvmOpInfo* i = kvm_op(id); KvmSOpInfo v; if (i) { v.arity = i->arity; v.types = i->types; kvm_static_gang_args(i->sig, v); } return v; };
     KvmFuseOptions opts; opts.workers = workers; opts.keep = keep; opts.smem_floats = fused_smem_floats();
     KvmFuseResult r = kvm_fuse_mlp(b.tasks, b.succ, b.args, infos, ops, op_of, opts);
     for (const std::string& line : r.report) KLOG(2, "fuse: %s", line.c_str());
+    if (!r.dropped.empty()) KLOG(1, "fuse: nothing fused: %s, and each fused form runs on a static-kernel entry of its own", r.dropped.c_str());
     if (r.fused_runs) KLOG(2, "fuse: shared-memory budget %d floats (%d bytes) a fused block", opts.smem_floats, opts.smem_floats * 4);
     KLOG(2, "fuse: %d run(s) fused, %d unchanged; %d tasks replaced by %d; static kernel entry: %s", r.fused_runs, r.unchanged_runs, r.replaced_tasks, r.new_tasks, kvm_fuse_entry_name(r.entry).c_str());
     return r;
@@ -926,12 +924,16 @@ class KvmExec {
           throw std::logic_error("static kernel: task " + std::to_string(t) + " is a fused op (" + kvm_op(b.tasks[t].op_id)->name + "), which the generic entry refuses");
     {
       cudaFuncAttributes fe, fg; CK(cudaFuncGetAttributes(&fe, entry)); CK(cudaFuncGetAttributes(&fg, kvm_static_kernel));
-      if (fe.sharedSizeBytes != fg.sharedSizeBytes) throw std::logic_error("static kernel: entry " + kvm_fuse_entry_name(o.entry) + " holds " + std::to_string(fe.sharedSizeBytes) + " bytes of static shared memory, the generic one " + std::to_string(fg.sharedSizeBytes) + ": the fused budget assumed the generic one's");
+      if (fe.sharedSizeBytes > fg.sharedSizeBytes) throw std::logic_error("static kernel: entry " + kvm_fuse_entry_name(o.entry) + " holds " + std::to_string(fe.sharedSizeBytes) + " bytes of static shared memory, the generic one " + std::to_string(fg.sharedSizeBytes) + ": the fused budget assumed at most the generic one's");
     }
     CK(cudaStreamSynchronize(0));
     if (static_smem > 0) CK(cudaFuncSetAttribute(entry, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)static_smem));
     int occ = 0; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, entry, KVM_THREADS, static_smem));
     if (occ < 1) throw std::runtime_error("static kernel does not fit on an SM");
+    // A static schedule assumes every worker resident at once: a worker that never starts would hang a gang at its barrier (which has no timeout).
+    if ((long long)occ * sms_ < sc.workers)
+      throw std::runtime_error("static kernel: entry " + kvm_fuse_entry_name(o.entry) + " holds " + std::to_string(occ) + " block(s) an SM at " + std::to_string(static_smem) + " bytes of dynamic shared memory, " +
+                               std::to_string((long long)occ * sms_) + " resident in all, fewer than the plan's " + std::to_string(sc.workers) + " workers");
     KLOG(2, "static kernel: entry %s, %d resident blocks/SM, %zu bytes of dynamic shared memory, launching %d workers", kvm_fuse_entry_name(o.entry).c_str(), occ, static_smem, sc.workers);
     // Warm-up launch with nworkers = 0: every block returns at once, but the entry's code is uploaded and started outside the timed window (like a graph captured
     // before timing): the very first launch of a kernel costs ~1.5 ms before any record runs.

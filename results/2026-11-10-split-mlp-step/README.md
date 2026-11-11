@@ -37,8 +37,10 @@ Every sum has a fixed order, so a run is deterministic. GEMMs are the fused MLP 
 * `include/kvm_fuse.h` decides from the DAG alone:
   - **The split form:** a run the one-block form cannot take (a width past 128, or no slice inside the budget) takes the split form when it has
     one hidden width, at most 4 layers, 96 rows a step, and a share count whose member layout fits the budget.
-  - **Share count:** the pass picks the largest share count every split run takes whose gangs fit the workers at once, and otherwise each run
-    its fewest.
+  - **Share count:** each run takes the largest share count its shape fits (a member within the budget, one gang of 6 x S members within the
+    workers). The count never depends on how many runs share the bundle: the logits' and the reduce-scatter's sums run over a run's shares, so S
+    is part of the run's arithmetic, and the MLP bench's gate 2 asserts four replicated copies of a run bitwise equal to the run alone. Runs of
+    one shape take turns when their gangs pass the workers.
   - **Edges:**
     - a step's in-edges reach every member, and its out-edges leave from member 0 (a gang finishes together);
     - consecutive steps join member to member.
@@ -81,8 +83,8 @@ form checked at 108, an A100's default):
 | bundle | at 108 workers |
 |---|---|
 | h256-d4 (the panel's mlp256), h576-d1, h128-d4, h256-d2, h224-d2, h200-d3 | split form: one gang a step of 6 x 18 = 108 members (12.9k-23.5k floats a member); at 107 workers, 6 x 16 = 96 |
-| h200-d1 x 16 runs | split form: 48 gangs of 6 x 2 = 12, in waves over the workers |
-| h224-d2 x 8 runs | split form: 24 gangs of 6 x 4 = 24 |
+| h200-d1 x 16 runs | split form: 48 gangs of 6 x 18 = 108, the runs' gangs in turns (the single run's share count) |
+| h224-d2 x 8 runs | split form: 24 gangs of 6 x 18 = 108, the runs' gangs in turns |
 | h48-d2, h72-d2, mlp72 x 8 runs | the one-block form, as before |
 | h1024-d2 | unchanged: no share count fits (at best 99,292 floats a member, at 16 shares, against 38,400) |
 

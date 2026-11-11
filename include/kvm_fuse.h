@@ -428,23 +428,12 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
       if (common) { p.run.slice_rows = common; continue; }
       for (int rows : kvm_fuse_slice_choices) if (fits(p.run, rows)) { p.run.slice_rows = rows; break; }
     }
-    // the split runs' share count: the largest every split run takes whose gangs all fit the workers at once (wider shares ran faster, measured:
-    // h576-d1 on the A100, 52.1 us a step at S = 5 against 34.2 at S = 12); if none does, each run its fewest shares (gangs then take turns)
-    {
-      std::vector<int> common_s;
-      bool first = true; int nsplit = 0;
-      for (const Plan& p : plans) {
-        if (!p.run.split) continue;
-        ++nsplit;
-        if (first) { common_s = p.split_fit; first = false; continue; }
-        std::vector<int> both;
-        std::set_intersection(common_s.begin(), common_s.end(), p.split_fit.begin(), p.split_fit.end(), std::back_inserter(both));
-        common_s = both;
-      }
-      int pick = 0;
-      for (int S : common_s) if (nsplit * KVM_SPLIT_Q * S <= opts.workers) pick = S;
-      for (Plan& p : plans) if (p.run.split) p.run.S = pick ? pick : p.split_fit.front();
-    }
+    // the split runs' share count: each run's own, the largest its shape takes (kvm_fuse_split_fits: a member within the budget, one gang of
+    // Q x S members within the workers; wider shares ran faster, measured: h576-d1 on the A100, 52.1 us a step at S = 5 against 34.2 at S = 12).
+    // Never chosen by how many runs share the bundle: the logits' and the reduce-scatter's sums run over a run's S shares, so S is part of the
+    // run's arithmetic, and a run's arithmetic must depend on its shape alone (the MLP bench's gate 2, bench/exec_vs_torch/run_mlp.py, asserts
+    // four replicated copies of a run bitwise equal to the run alone). Runs of one shape take one S; their gangs take turns past the workers.
+    for (Plan& p : plans) if (p.run.split) p.run.S = p.split_fit.back();
     for (size_t i = 0; i < plans.size(); ++i) {
       KvmFuseRun& r = plans[i].run;
       if (r.split) {

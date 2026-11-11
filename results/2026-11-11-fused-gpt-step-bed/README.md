@@ -105,6 +105,9 @@ Under the counter barrier, 2 blocks had made gpt-tiny 10% slower.
 - The bench's ordering check is clean at every G: after each crossing, every block reads every other block's value.
 - The bed's outputs are bitwise equal over five 50-step runs of each shape (`raw/bed-determinism.log`).
 - Every bar against the VM above holds, unchanged.
+- A member's fault ends the gang (`fgpt_bed ... fault=M:F`, `raw/abort.log`): one member given too little shared memory fails a phase
+  before the first crossing, or after about ten. Every other member then leaves at its next crossing: error word 5, no member
+  finished, no hang. On gpt-small and gpt-tiny, each faulted run ends within 0.1 s of a clean run's wall time.
 
 ## Reach: the hold-out's shapes
 

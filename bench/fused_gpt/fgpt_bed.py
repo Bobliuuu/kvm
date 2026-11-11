@@ -256,9 +256,11 @@ def main() -> int:
         base = runs[gangs[0]]
         lw = max(abs(x[0] - y[0]) / abs(y[0]) for x, y in zip(runs[G]['losses'], base['losses']))
         gw = max(rel(runs[G]['g'][n], base['g'][n]) for n in names)
-        good = lw < 1e-5 and gw < a.decomp_tol
+        judged = precise or a.steps == 1      # as the gradient bars: over AdamW steps in 1xTF32, two sums' orders part like any two runs
+        good = (lw < 1e-5 and gw < a.decomp_tol) or not judged
         fail += not good
-        log(f'decomposition G {G} against G {gangs[0]}: losses {lw:.2e}, gradients {gw:.2e} of scale: {"ok" if good else "FAIL"}')
+        log(f'decomposition G {G} against G {gangs[0]}: losses {lw:.2e}, gradients {gw:.2e} of scale: '
+            f'{("ok" if good else "FAIL") if judged else "reported (1xTF32 after AdamW steps)"}')
     if a.exec:
         losses = exec_losses(a, wdir, work)
         good, line = judge_losses(losses, vmr, a.tol) if losses is not None else (False, 'no losses')

@@ -2,10 +2,12 @@
 // and data that fgpt_bed.py writes from a workload. It writes the per-step losses, the final parameters and AdamW moments, the last step's
 // gradients and the step counter, for fgpt_bed.py to judge against the workload VM.
 //
-//   fgpt_bed DIR G [clock] [qb=Q] [rows=R]   (reads DIR/meta.txt, DIR/{p,m,v}.bin, DIR/{ids,tgt}.bin; writes DIR/out-G<G>/, or DIR/out-G<G>-clock/)
+//   fgpt_bed DIR G [clock] [qb=Q] [rows=R] [fault=M:F]   (reads DIR/meta.txt, DIR/{p,m,v}.bin, DIR/{ids,tgt}.bin; writes DIR/out-G<G>/, or DIR/out-G<G>-clock/)
 //
 // qb=Q sets attention's query blocks a unit (default: kvm_fgpt_qblocks). rows=R sets the N-wide phases' row chunk (default: the largest of N,
-// 128 and 64 that fits this GPU's shared memory, kvm_fgpt_rows_for).
+// 128 and 64 that fits this GPU's shared memory, kvm_fgpt_rows_for). fault=M:F gives member M only F floats of shared memory, so it fails
+// the first phase that needs more (KVM_FGPT_E_SCRATCH) while the others go on: a test of the gang's abort, which must end every member at its
+// next crossing (the run reports error word 5 and no member finished), not hang.
 //
 // `clock` runs the program with its phase marks: every phase and every barrier's wait ends in a __syncthreads and a clock64() read by
 // thread 0 of each member, summed over steps and layers, and the bed prints the cycles a step of each, the members' mean and their
@@ -76,20 +78,22 @@ static const char* const kMarks[kvm_fgpt::MK_COUNT] = {
 
 // `acc` (plain run): member 0's in-kernel nanoseconds, start to end, so the run's time excludes the launch.
 template <bool CLOCK>
-__global__ void __launch_bounds__(KVM_FGPT_NT, 1) fgpt_kernel(const KvmFgptDesc* d, int smem_floats, int* err, int* ok, unsigned long long* acc) {
+__global__ void __launch_bounds__(KVM_FGPT_NT, 1) fgpt_kernel(const KvmFgptDesc* d, int smem_floats, int* err, int* ok, unsigned long long* acc,
+                                                              int fault_member, int fault_floats) {
   extern __shared__ float sm[];
   bool r;
+  const int sf = (int)blockIdx.x == fault_member ? fault_floats : smem_floats;   // fault=M:F (a test of the abort): member M's smaller arena
   // the bed's report: the first code wins, in the word the barrier reads (the executor's kvm_fail does the same with its own codes)
   const auto fail = [err](int code) { atomicCAS(err, 0, code); };
   if constexpr (CLOCK) {
     __shared__ unsigned long long sacc[kvm_fgpt::MK_COUNT];
     PhaseClock ph{acc, sacc, 0, 0, 0};
     ph.start();
-    r = kvm_fgpt::run(*d, blockIdx.x, sm, smem_floats, err, fail, ph);
+    r = kvm_fgpt::run(*d, blockIdx.x, sm, sf, err, fail, ph);
     ph.stop(d->G);
   } else {
     const unsigned long long t0 = gtimer();
-    r = kvm_fgpt::run(*d, blockIdx.x, sm, smem_floats, err, fail);
+    r = kvm_fgpt::run(*d, blockIdx.x, sm, sf, err, fail);
     if (threadIdx.x == 0 && blockIdx.x == 0 && acc) acc[0] = gtimer() - t0;
   }
   if (threadIdx.x == 0) ok[blockIdx.x] = r ? 1 : 0;
@@ -124,11 +128,12 @@ int main(int argc, char** argv) {
   const std::string dir = argv[1];
   const int G = atoi(argv[2]);
   bool clocked = false;
-  int qb_arg = 0, rows_arg = 0;
+  int qb_arg = 0, rows_arg = 0, fault_member = -1, fault_floats = 0;
   for (int i = 3; i < argc; ++i) {
     if (!strcmp(argv[i], "clock")) clocked = true;
     else if (!strncmp(argv[i], "qb=", 3)) qb_arg = atoi(argv[i] + 3);
     else if (!strncmp(argv[i], "rows=", 5)) rows_arg = atoi(argv[i] + 5);
+    else if (!strncmp(argv[i], "fault=", 6)) { if (sscanf(argv[i] + 6, "%d:%d", &fault_member, &fault_floats) != 2) die("fault=M:F, a member and its floats"); }
     else { fprintf(stderr, "fgpt_bed: unknown argument %s\n", argv[i]); return 2; }
   }
   // ---- meta.txt: `key value` lines; `slot i rows cols wd` a parameter
@@ -258,7 +263,7 @@ int main(int argc, char** argv) {
     printf("fgpt_bed: warmed the GPU for %.0f ms\n", spent);
     CK(cudaEventDestroy(w0)); CK(cudaEventDestroy(w1));
   }
-  void* args[] = {&dd, &smem_arg, &derr, &dok, &dacc};
+  void* args[] = {&dd, &smem_arg, &derr, &dok, &dacc, &fault_member, &fault_floats};
   cudaEvent_t e0, e1;
   CK(cudaEventCreate(&e0)); CK(cudaEventCreate(&e1));
   CK(cudaEventRecord(e0));

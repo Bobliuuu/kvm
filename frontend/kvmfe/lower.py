@@ -712,7 +712,8 @@ def _(op, tc):
     for m0, m1, n0, n1, ra, rb in _mm_grid(a, b, M, N, K, ta, tb, big):
         tile = out.region(m0, m1, n0, n1)
         yield _task('matmul_tile', [ra, rb, pre.region(m0, m1, n0, n1)], [tile], a=a, b=b, out=out, bias=None, res=None, pre=pre, m0=m0, n0=n0,
-                    M=M, N=N, K=K, flags=F_DGELU | (F_TA if ta else 0) | (F_TB if tb else 0) | (F_PRECISE if tc.precise else (F_TRUNC if tc.tf32_trunc else 0)) | big, alpha=1.0)
+                    M=M, N=N, K=K, flags=F_DGELU | (F_TA if ta else 0) | (F_TB if tb else 0) | (F_PRECISE if tc.precise else (F_TRUNC if tc.tf32_trunc else 0))
+                    | (F_EXACT if op.attrs.get('tf32_exact') else 0) | big, alpha=1.0)   # exact: the fused mm read tf32.py's copies
 
 
 @lowers('linear_silu_mul')

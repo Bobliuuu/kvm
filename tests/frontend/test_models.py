@@ -214,6 +214,22 @@ class Features(unittest.TestCase):
         with self.assertRaises(Exception):
             Tiling.preset('cpu', tf32_copy_scope='step')
 
+    def test_tf32_preround_reaches_the_fused_dgelu_gemm(self):
+        # the default fusion turns a GELU MLP's backward mm into mm_dgelu after tf32.apply; it keeps the mm's copies, so its tiles must
+        # read them as exact operands (flag 1024 beside 512), or every copy it reads is wasted rounding
+        from kvmfe.nn import ModelConfig
+        cfg = ModelConfig('gpt_wide', vocab=256, d_model=256, layers=1, heads=4, seq=32, batch=8)   # 256 tokens: the MLP's GEMMs take 256x128 tiles
+        tiling = Tiling.preset('cpu', mm_tile=256, mm_min_tiles=1, mm_min_eff=0.0, mm_huge_min_tiles=1, mm_huge_min_k=1, tf32_preround=True)
+        tasks = compile_training(cfg, TrainConfig(steps=1), tiling).spec['graphs'][0]['tasks']
+        dgelu = [t['args']['flags'] for t in tasks if t['op'] == 'matmul_tile' and t['args']['flags'] & 512]
+        self.assertTrue(dgelu)
+        self.assertTrue(all(f & 1024 for f in dgelu if f & 64), dgelu)
+        huge = [t['args']['flags'] for t in tasks if t['op'] == 'matmul_tile' and t['args']['flags'] & 64]
+        self.assertTrue(huge and all(f & 1024 for f in huge), huge)
+        from kvmfe.demo import make_precise
+        with self.assertRaises(Exception):
+            make_precise(compile_training(cfg, TrainConfig(steps=1), tiling).spec)
+
     def test_tf32_copies_share_slots_without_changing_a_bit(self):
         # the copies reuse slots inside a step (plan.py `local`). Run in a random topological order, the program gives the bits it gives
         # in program order, and the weights after two steps are the bits of a plan where no tensor shares a slot (reuse 'none').

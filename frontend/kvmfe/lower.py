@@ -15,6 +15,8 @@ from .ir import Builder, FrontendError, LogicalOp, Tensor
 from .opset import ATTN_BLOCK, ATTN_Q, F_ACC, F_BIG, F_DGELU, F_EXACT, F_GELU, F_HUGE, F_PRECISE, F_TA, F_TB, F_TRUNC, MM_TILE, MMA_TILE, mm_dims, op as device_op
 
 
+_A100 = dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, row_tasks=16)   # the a100 presets below are this tiling plus one change each, so none can drift from it
+
 @dataclass(frozen=True)
 class Tiling:
     rows: int = 64           # row block of row-wise ops (norms, rope, embedding, cross-entropy, argmax, attention delta)
@@ -39,10 +41,10 @@ class Tiling:
 
     PRESETS = {
         'cpu': dict(rows=8, ew_rows=8, cols=32, vocab=16, opt_elems=256),
-        'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, row_tasks=16),   # 256x128 tiles stepping down by shape, TF32 operands rounded to nearest in the tiles
-        'a100_pre': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, tf32_preround=True),   # a100 with the 256x128-tile GEMMs reading round_tf32 copies of their operands (tf32.py: the same products, rounded once per value; the 162M step 6% faster with uncapped copies). The copies reuse slots inside a step and the 256 MiB cap leaves out the logits gradient: one 162M step plans 10.1 GB against a100's 8.8 (uncapped and step-planned: 12.6, more than a 40 GB A100 held beside PyTorch's resident models); tf32_copy_scope='phase' plans 9.1
+        'a100': _A100,   # 256x128 tiles stepping down by shape, TF32 operands rounded to nearest in the tiles
+        'a100_pre': {**_A100, 'tf32_preround': True},   # a100 with the 256x128-tile GEMMs reading round_tf32 copies of their operands (tf32.py: the same products, rounded once per value; the 162M step 6% faster with uncapped copies). The copies reuse slots inside a step and the 256 MiB cap leaves out the logits gradient: one 162M step plans 10.1 GB against a100's 8.8 (uncapped and step-planned: 12.6, more than a 40 GB A100 held beside PyTorch's resident models); tf32_copy_scope='phase' plans 9.1
         'a100_mm128': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=128, ew_elems=16384),   # 128x128 tiles, rounded (the previous a100)
-        'a100_trunc': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, tf32_trunc=True, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256),   # a100's tiles with the operands truncated by the tensor core and the output scaled to remove the mean bias (KVM_GPT_RZ_GAIN): inside the panel's numerics gates, but after 1000 SGD steps the weights end about 2x further from float64 than rounding's (six MLP widths)
+        'a100_trunc': {**_A100, 'tf32_trunc': True},   # a100's tiles with the operands truncated by the tensor core and the output scaled to remove the mean bias (KVM_GPT_RZ_GAIN): inside the panel's numerics gates, but after 1000 SGD steps the weights end about 2x further from float64 than rounding's (six MLP widths)
         'a100_mm64': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, ew_elems=16384),   # 64x64 GEMM tiles
         'a100_mm256': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384),
         'b200': dict(rows=128, ew_rows=256, cols=512, vocab=4096, opt_elems=524288, join_min=8),

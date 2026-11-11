@@ -96,7 +96,7 @@ barrier (`kvm_gang::barrier`) waits for an atomic's round trip, then a release, 
 
 | read (RTX 5070) | counter barrier | flag line | ratio |
 |---|---|---|---|
-| one crossing alone, 32 members (`bench/gang/barrier_bench.cu`, `results/2026-11-10-static-gang-tasks/flag-lines/`) | 1,203 ns | 728 ns | x1.65 |
+| one crossing alone, 32 members (`bench/gang/barrier_bench.cu`, `results/2026-11-10-static-gang-tasks/flag-lines/`; unverified) | 1,173 ns | 721 ns | x1.63 |
 | the executor, gpt-tiny, us a step (8 rounds in alternating order, `raw/exec-barrier-ab.log`) | 87.3 | 82.3 | x1.06 |
 | the executor, gpt-small | 187.7 | 178.7 | x1.05 |
 

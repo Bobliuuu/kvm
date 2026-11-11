@@ -28,7 +28,7 @@ the team's SASS census (`sass_check.sh`, then `raw/probe/loops_by_function.py` t
 | **entry: grid alone** (the panel's flags) | `kvm_s_fmlp_grid` | 219 | 1 / 0 | **0** |
 | **entry: split at 18 shares** (the panel's flags) | `kvm_s_fmlp_split<18>` | 229 | 4 / 30 | **3** (0 in loops of up to 64 HMMA) |
 
-The first three rows use nvcc's default flags. The entries use the panel's: `--fmad=false -Xcompiler -ffp-contract=off -DKVM_LEAN`. All figures (unverified) until the team's verifier names them.
+The first three rows use nvcc's default flags. The entries use the panel's: `--fmad=false -Xcompiler -ffp-contract=off -DKVM_LEAN`. The team's verifier confirmed every figure in this table from the raw files (03:30Z).
 The split beds, with one share count a kernel, held 227-234 registers and no spill (#30's `results/2026-11-10-split-mlp-step/bed_regs.log`).
 
 ## What changed
@@ -83,7 +83,7 @@ The grid bed on the counter barrier (the code of `5c56c90`, "old") against `kvm_
 - 20 steps, the first 3 against float64.
 - Two rounds, the arms in alternating order (`raw/flag-lines/`).
 
-Every figure in this section is (unverified) until the team's verifier names it.
+The team's verifier confirmed every figure in this section from the raw files (03:30Z).
 
 | shape | check lines, old against new | µs a step, old (rounds 1, 2) | new (rounds 1, 2) |
 |---|---|---|---|

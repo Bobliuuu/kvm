@@ -38,7 +38,7 @@ class Tiling:
 
     PRESETS = {
         'cpu': dict(rows=8, ew_rows=8, cols=32, vocab=16, opt_elems=256),
-        'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, row_tasks=16),   # 256x128 tiles stepping down by shape, TF32 operands rounded to nearest in the tiles
+        'a100': dict(rows=128, ew_rows=128, cols=256, vocab=128, ce_rows=16, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, row_tasks=16),   # 256x128 tiles stepping down by shape, TF32 operands rounded to nearest in the tiles
         'a100_pre': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, tf32_preround=True),   # a100 with the 256x128-tile GEMMs reading round_tf32 copies of their operands (tf32.py: the same products, rounded once per value, the 162M step 6% faster), at the copies' memory: the 162M bundle's buffers grow 9.4 -> 12.6 GB, more than a 40 GB A100 holds beside PyTorch's resident models
         'a100_mm128': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=128, ew_elems=16384),   # 128x128 tiles, rounded (the previous a100)
         'a100_trunc': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, tf32_trunc=True, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256),   # a100's tiles with the operands truncated by the tensor core and the output scaled to remove the mean bias (KVM_GPT_RZ_GAIN): inside the panel's numerics gates, but after 1000 SGD steps the weights end about 2x further from float64 than rounding's (six MLP widths)

@@ -2,8 +2,10 @@
 //   g++ -std=c++17 -O2 -Iinclude tests/static/test_fuse_pass.cpp -o /tmp/test_fuse_pass && /tmp/test_fuse_pass BUNDLE_DIR...   (run from the repo root)
 // Checks on a fired bundle: the DAG is acyclic; every kept task keeps its op and arguments; every replaced step became its slices and groups, each slice before every group; the static
 // planner accepts the result on the bundle's registry signatures, with the fused ops' signatures added.
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -197,6 +199,22 @@ int main(int argc, char** argv) {
                        q.warnings.empty() ? "" : (" (" + q.warnings[0].substr(q.warnings[0].find('(') + 1, q.warnings[0].rfind(')') - q.warnings[0].find('(') - 1) + ")").c_str(),
                        ok ? "refused, with a warning" : "FAIL: expected every run refused with a warning");
                 failures += !ok;
+            }
+            // A softmax CE task one word short of its op's arity, or one word long (its words moved to the argument array's end), must leave the
+            // bundle as it came, with no warning: the pass never reads past a task's words, nor fuses a malformed task away into a bundle that
+            // then passes validation. Prints only on failure.
+            for (int delta : {-1, 1}) {
+                int ce = -1;
+                for (int i = 0; i < (int)orig.tasks.size() && ce < 0; ++i) if (orig.tasks[i].op_id == ops.softmax_ce_fused) ce = i;
+                if (ce < 0) break;
+                Bundle wb = orig; KvmTaskDesc& t = wb.tasks[ce];
+                const std::vector<int32_t> words(wb.args.begin() + t.args_off, wb.args.begin() + t.args_off + t.args_words);
+                t.args_off = (int32_t)wb.args.size(); t.args_words += delta;
+                for (int k = 0; k < t.args_words; ++k) wb.args.push_back(k < (int)words.size() ? words[k] : 0);
+                const KvmFuseResult q = kvm_fuse_mlp(wb.tasks, wb.succ, wb.args, bufs, ops, op_of);
+                const bool alone = q.fused_runs == 0 && q.warnings.empty() && q.args == wb.args && q.succ == wb.succ && q.tasks.size() == wb.tasks.size() &&
+                                   std::equal(q.tasks.begin(), q.tasks.end(), wb.tasks.begin(), [](const KvmTaskDesc& a, const KvmTaskDesc& b) { return std::memcmp(&a, &b, sizeof a) == 0; });
+                if (!alone) { printf("  FAIL: a softmax CE task with %d argument words (its op takes %d) was not left alone: fused runs %d, %zu warning(s)\n", t.args_words, t.args_words - delta, q.fused_runs, q.warnings.size()); ++failures; }
             }
         }
         // structural checks of the rewritten bundle

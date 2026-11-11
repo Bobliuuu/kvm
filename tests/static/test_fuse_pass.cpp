@@ -92,8 +92,15 @@ int main(int argc, char** argv) {
             const char* got = !r.fused_runs ? "none" : r.unchanged_runs || (block > 0) + (split > 0) + (grid > 0) > 1 ? "mixed" : block ? "block" : split ? "split" : "grid";
             if (expect != got) { printf("  FAIL: expected %s at W=%d, got %s (%d of %d runs fused)\n", expect.c_str(), W, got, r.fused_runs, r.fused_runs + r.unchanged_runs); ++failures; }
             else printf("  expected %s at W=%d: ok\n", expect.c_str(), W);
+            // the static kernel entry the executor launches (kvm_fuse_entry): a gang form on its own entry, everything else on the generic one
+            const KvmFuseEntry::Kind want = expect == "split" ? KvmFuseEntry::split : expect == "grid" ? KvmFuseEntry::grid : KvmFuseEntry::generic;
+            int S = 0; for (const auto& run : r.runs) if (run.split) S = run.S;
+            if (r.entry.kind != want || (want == KvmFuseEntry::split && r.entry.S != S)) { printf("  FAIL: entry at W=%d is %s\n", W, kvm_fuse_entry_name(r.entry).c_str()); ++failures; }
+            else printf("  entry at W=%d: %s: ok\n", W, kvm_fuse_entry_name(r.entry).c_str());
         }
         if (!r.fused_runs) continue;
+        // no bundle given here mixes gangs with other work: the executor would turn its gang forms off (kvm_fuse_entry)
+        if (r.entry.kind == KvmFuseEntry::mixed) { printf("  FAIL: W=%d: the gangs share the bundle (%s)\n", W, r.entry.why.c_str()); ++failures; }
         // structural checks of the rewritten bundle
         if (!acyclic(r.tasks, r.succ)) { printf("  FAIL: the rewritten bundle has a cycle\n"); ++failures; continue; }
         // kept tasks keep their op and arguments: the multiset of (op, args) over tasks that are not fused equals the original minus the replaced tasks

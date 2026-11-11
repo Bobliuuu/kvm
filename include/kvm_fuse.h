@@ -72,6 +72,16 @@ struct KvmFuseRun {
 inline bool kvm_fuse_gang(const KvmFuseRun& r) { return r.split || r.grid; }
 inline int kvm_fuse_members(const KvmFuseRun& r) { return r.split ? r.Q * r.S : r.grid ? r.P : 0; }
 
+// The static kernel entry a rewritten bundle runs on (kvm_static.cuh). A gang step runs only on an entry of its own: ptxas sets an
+// out-of-line function's registers by what every other function of its kernel holds across calls, and beside the one-block form's
+// functions the grid member lost 35 of its 219 registers and reloaded in its MMA loops (sm_80 SASS, Nov 11). So a bundle with gangs
+// must hold one gang form at one share count, and besides its members only the steps' data windows and ordering noops; `mixed` names
+// what else it holds (the executor then runs the pass again with the gang forms off). No gang: the generic entry, which refuses gang ops.
+struct KvmFuseEntry {
+  enum Kind { generic, split, grid, mixed } kind = generic;
+  int S = 0;           // the split entry's share count
+  std::string why;     // mixed: what keeps the bundle off a gang entry
+};
 struct KvmFuseResult {
   std::vector<KvmTaskDesc> tasks;
   std::vector<int32_t> succ, args;
@@ -79,7 +89,36 @@ struct KvmFuseResult {
   std::vector<std::string> report;     // one line per component (and per reason it did not fire)
   int fused_runs = 0, unchanged_runs = 0, replaced_tasks = 0, new_tasks = 0;
   std::set<int> interior;              // buffers no longer written by a fused run (its activations and gradients): a reader of them after the run reads their initial values
+  KvmFuseEntry entry;                  // the static kernel entry the rewritten bundle runs on (kvm_fuse_entry)
 };
+
+inline KvmFuseEntry kvm_fuse_entry(const KvmFuseResult& r, const KvmFuseOps& ops) {
+  KvmFuseEntry e;
+  int nsplit = 0, ngrid = 0;
+  for (const KvmFuseRun& run : r.runs) {
+    if (run.split) { if (nsplit++ && run.S != e.S) { e.kind = KvmFuseEntry::mixed; e.why = "split runs at " + std::to_string(e.S) + " and " + std::to_string(run.S) + " shares"; return e; } e.S = run.S; }
+    ngrid += run.grid != 0;
+  }
+  if (!nsplit && !ngrid) return e;
+  if (nsplit && ngrid) { e.kind = KvmFuseEntry::mixed; e.why = std::to_string(nsplit) + " split and " + std::to_string(ngrid) + " grid run(s)"; return e; }
+  const int gang_op = nsplit ? ops.fmlp_split : ops.fmlp_grid;
+  for (size_t t = 0; t < r.tasks.size(); ++t) {
+    const int op = r.tasks[t].op_id;
+    if (op != gang_op && op != ops.select_window && op != ops.noop) {
+      e.kind = KvmFuseEntry::mixed; e.why = "task " + std::to_string(t) + " (op " + std::to_string(op) + ") beside the gangs"; return e;
+    }
+  }
+  e.kind = nsplit ? KvmFuseEntry::split : KvmFuseEntry::grid;
+  return e;
+}
+inline std::string kvm_fuse_entry_name(const KvmFuseEntry& e) {
+  switch (e.kind) {
+    case KvmFuseEntry::generic: return "generic";
+    case KvmFuseEntry::split: return "split, " + std::to_string(e.S) + " shares";
+    case KvmFuseEntry::grid: return "grid";
+    default: return "mixed (" + e.why + ")";
+  }
+}
 
 namespace kvm_fuse {
 
@@ -584,5 +623,6 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
     R.tasks[id] = d;
   }
   for (const Plan& p : plans) { R.runs.push_back(p.run); for (const Step& st : p.steps) R.interior.insert(st.interior.begin(), st.interior.end()); }
+  R.entry = kvm_fuse_entry(R, ops);
   return R;
 }

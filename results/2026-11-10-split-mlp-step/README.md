@@ -100,9 +100,13 @@ rc 0. That checks every changed line of C++. ptxas has not run on the executor.
 **The op body's registers** (`bed_regs.log`, the bed's full sm_80 build, 22 s): all 11 `split_run` instantiations (2 to 18 shares) use 227-234
 registers, with no spill.
 
-## Not yet done
+## On the A100 (Nov 11), after the share-count fix
 
-- **The executor build** and `tests/static/run_check.sh` on the split form: `KVM_CHECK_MLP_HIDDEN=256 KVM_CHECK_MLP_DEPTH=4
-  tests/static/run_check.sh 107 108` (the panel's mlp256, which splits only where 96 members fit), then width 128 at depth 4 at 48 107 108. That
-  compares split runs with the CPU golden and with float64 and eager PyTorch, and checks that they repeat bitwise.
-- **The A100 read** of mlp256-r1 and the hold-out's MLP draws against today's executor.
+- **The read** (`read-2026-11-11/`): the gang stack with the fix against `main` (`4bbdaab`). `ab_bench`'s paired rows (`ab_*.json`), each
+  binary's fusion report (`report_*_cand.log`, `report_*_ctrl.log`), each row's gate and bar (`gates.txt`) and `tests/static/run_check.sh`
+  (`rc_*.log`, `rc.txt`). The figures are in the PR's body.
+- **Replicated copies** (`replicated-copies/`): `run_mlp.py`'s gates 1 to 3 on five split shapes (`h*.log`, `h*.json`), and `rep_check.py`'s
+  every-buffer comparison at 4 to 32 copies (`rep-*.log`).
+- **Python tests** (`python_tests.log`): the three unittest suites on this branch.
+
+Paths on the host are shown as `/root/reads/`.

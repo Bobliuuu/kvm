@@ -1,0 +1,37 @@
+[
+ {
+  "row": "mlp1024-r1",
+  "control": "/root/reads/panel-count1/h1024/bundle",
+  "cand": "/root/reads/panel-count1/h1024/bundle",
+  "tasks": {
+   "control": 17117,
+   "cand": 17117
+  },
+  "ms": {
+   "control": {
+    "median": 15.424,
+    "best": 15.41,
+    "all": [
+     15.42,
+     15.43,
+     15.43,
+     15.41,
+     15.42
+    ]
+   },
+   "cand": {
+    "median": 6.79,
+    "best": 6.777,
+    "all": [
+     6.79,
+     6.79,
+     6.81,
+     6.78,
+     6.78
+    ]
+   }
+  },
+  "paired_ratio_median": 2.2720848056537104,
+  "best_ratio": 2.2738674929909988
+ }
+]

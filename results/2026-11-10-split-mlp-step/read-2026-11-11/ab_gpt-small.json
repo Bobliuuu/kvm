@@ -1,0 +1,37 @@
+[
+ {
+  "row": "gpt-small",
+  "control": "/root/reads/panel-count1/w_small/bundle",
+  "cand": "/root/reads/panel-count1/w_small/bundle",
+  "tasks": {
+   "control": 28858,
+   "cand": 28858
+  },
+  "ms": {
+   "control": {
+    "median": 28.433,
+    "best": 28.41,
+    "all": [
+     28.44,
+     28.41,
+     28.41,
+     28.43,
+     28.46
+    ]
+   },
+   "cand": {
+    "median": 15.807,
+    "best": 15.8,
+    "all": [
+     15.81,
+     15.81,
+     15.81,
+     15.8,
+     15.81
+    ]
+   }
+  },
+  "paired_ratio_median": 1.799063646716437,
+  "best_ratio": 1.7981012658227848
+ }
+]

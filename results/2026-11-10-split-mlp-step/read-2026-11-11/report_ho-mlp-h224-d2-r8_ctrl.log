@@ -1,0 +1,16 @@
+OK: 35184/35184 tasks, 10.260 ms
+[kvm_exec][I] device NVIDIA A100-SXM4-80GB, 108 SMs, 1 resident blocks/SM with 147456 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] /root/reads/gangfix/bundles-ddf9d6b225d9c667/ho224_r8: 35184 tasks, 206144 edges, 386800 arg words
+[kvm_exec][I] path: static (mean estimated task 4.08 us <= 6.0)
+[kvm_exec][I] fuse: component 0 (4398 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 1 (4398 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 2 (4398 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 3 (4398 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 4 (4398 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 5 (4398 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 6 (4398 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 7 (4398 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: 0 run(s) fused, 8 unchanged; 0 tasks replaced by 0
+[kvm_exec][I] static schedule: 35184 tasks -> 35184 records on 108/108 workers, 175636 of 206144 edges cross workers, 31168 records publish; runs partitioned: yes; plan 2834.3 us, work 143471.8 us (compiled in 0.043 s)
+[kvm_exec][I] static kernel: 1 resident blocks/SM, 147456 bytes of dynamic shared memory, launching 108 workers
+[kvm_exec][I] static run done: 35184 tasks in 10.260 ms on 108 workers

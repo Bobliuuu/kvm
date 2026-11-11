@@ -1,0 +1,24 @@
+OK: 38400/38400 tasks, 9.342 ms
+[kvm_exec][I] device NVIDIA A100-SXM4-80GB, 108 SMs, 1 resident blocks/SM with 147456 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] /root/reads/gangfix/bundles-ddf9d6b225d9c667/ho200_r16: 38400 tasks, 182432 edges, 416000 arg words
+[kvm_exec][I] path: static (mean estimated task 3.88 us <= 6.0)
+[kvm_exec][I] fuse: component 0 (2400 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 1 (2400 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 2 (2400 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 3 (2400 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 4 (2400 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 5 (2400 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 6 (2400 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 7 (2400 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 8 (2400 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 9 (2400 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 10 (2400 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 11 (2400 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 12 (2400 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 13 (2400 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 14 (2400 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: component 15 (2400 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: 0 run(s) fused, 16 unchanged; 0 tasks replaced by 0
+[kvm_exec][I] static schedule: 38400 tasks -> 38560 records on 108/108 workers, 167164 of 182432 edges cross workers, 36023 records publish; runs partitioned: no; plan 2275.5 us, work 149102.6 us (compiled in 0.066 s)
+[kvm_exec][I] static kernel: 1 resident blocks/SM, 147456 bytes of dynamic shared memory, launching 108 workers
+[kvm_exec][I] static run done: 38400 tasks in 9.342 ms on 108 workers

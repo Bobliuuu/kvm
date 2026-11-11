@@ -1,0 +1,10 @@
+OK: 160566/160566 tasks, 348.622 ms
+[kvm_exec][I] window sizing: 161316 tasks, 11078432 words as one record (live_cap 262144, ring 33554432 words, successor ring 8388608 words)
+[kvm_exec][I] device NVIDIA A100-SXM4-80GB, 108 SMs, 1 resident blocks/SM with 147456 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] /root/reads/panel-count1/w_162m_3/bundle: 161316 tasks, 6498924 edges, 1998438 arg words
+[kvm_exec][I] path: dynamic (mean estimated task 10.67 us > 6.0)
+[kvm_exec][I] 750 noops dissolved: 160566 tasks, 6643733 edges
+[kvm_exec][I] tape in dependency order
+[kvm_exec][I] ready queue: one FIFO ring, ticket waits; slots not recycled (one record); version waits none; task trace off
+[kvm_exec][I] kernel launched: grid 108 x 256 threads, live_cap 262144, slots 262144, succ ring 8388608 words, ring 33554432 words, aging 0 us, sched off
+[kvm_exec][I] kernel done: 160566/160566 tasks in 348.622 ms, 1 records, 0 ring wraps, 0 backpressure waits

@@ -1,0 +1,208 @@
+# 2026-11-11T12:19:10Z head 76d7e8a (feat/split-mlp-step), Python 3.12.3, numpy: absent
+
+## python3 -I -m unittest discover -s tests
+.............................................................................................................................................................
+----------------------------------------------------------------------
+Ran 157 tests in 3.095s
+
+OK
+rc 0
+
+## python3 -I -m unittest discover -s tests/dist
+..........................................................................
+----------------------------------------------------------------------
+Ran 74 tests in 117.402s
+
+OK
+rc 0
+
+## python3 -I -m unittest discover -s tests/frontend
+...........................................E..............INFO model gpt_tiny: 0.02M parameters, 20 tensors
+INFO fusion: 140 logical ops -> 136 ({'ce_fused': 2, 'mm_dgelu': 2})
+INFO memory plan: persistent 0.2 MiB, activation pool 0.2 MiB in 60 slots (120 tensors; 0.4 MiB without reuse)
+INFO dataflow: 528 tasks + 0 joins, 3715 edges
+INFO lowered 136 logical ops -> 528 tile tasks (+0 joins), 3715 edges
+INFO serve serve_s0: prompt 3 tokens, 3 new, weights at_least version 0
+INFO fusion: 65 logical ops -> 65 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 20 slots (81 tensors; 0.0 MiB without reuse)
+INFO dataflow: 73 tasks + 0 joins, 231 edges
+INFO lowered 65 logical ops -> 73 tile tasks (+0 joins), 231 edges
+INFO serve serve_s2: prompt 3 tokens, 3 new, weights at_least version 4
+INFO fusion: 65 logical ops -> 65 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 20 slots (81 tensors; 0.0 MiB without reuse)
+INFO dataflow: 73 tasks + 0 joins, 231 edges
+INFO lowered 65 logical ops -> 73 tile tasks (+0 joins), 231 edges
+INFO serve serve_s4: prompt 3 tokens, 3 new, weights at_least version 8
+INFO fusion: 65 logical ops -> 65 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 20 slots (81 tensors; 0.0 MiB without reuse)
+INFO dataflow: 73 tasks + 0 joins, 231 edges
+INFO lowered 65 logical ops -> 73 tile tasks (+0 joins), 231 edges
+INFO fusion: 32 logical ops -> 32 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 0 slots (0 tensors; 0.0 MiB without reuse)
+INFO dataflow: 64 tasks + 0 joins, 232 edges
+INFO lowered 32 logical ops -> 64 tile tasks (+0 joins), 232 edges
+INFO game: 8 frames at 35 Hz (period 28571 us): 64 tasks, 232 edges
+INFO wrote /tmp/tmptczs48a6/workloads/train.json (0.18 MiB, 0 data files)
+INFO wrote /tmp/tmptczs48a6/workloads/serve_s0.json (0.03 MiB, 0 data files)
+INFO wrote /tmp/tmptczs48a6/workloads/serve_s2.json (0.03 MiB, 0 data files)
+INFO wrote /tmp/tmptczs48a6/workloads/serve_s4.json (0.03 MiB, 0 data files)
+INFO wrote /tmp/tmptczs48a6/workloads/game.json (0.01 MiB, 0 data files)
+INFO compiled 64 tasks (0 gates), 232 edges, 5 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO wrote bundle to /tmp/tmptczs48a6/bundles/game
+INFO bundle game: 64 tasks, 232 edges (base {'frame': 0})
+INFO compiled 73 tasks (0 gates), 231 edges, 48 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO wrote bundle to /tmp/tmptczs48a6/bundles/serve_s0
+INFO bundle serve_s0: 73 tasks, 231 edges (base {'weights': 0})
+INFO compiled 528 tasks (0 gates), 3715 edges, 127 buffers, 1 variables in 0.01s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO wrote bundle to /tmp/tmptczs48a6/bundles/train_w0
+INFO bundle train_w0: 528 tasks, 3715 edges (base {'weights': 0})
+INFO compiled 73 tasks (0 gates), 231 edges, 48 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO wrote bundle to /tmp/tmptczs48a6/bundles/serve_s2
+INFO bundle serve_s2: 73 tasks, 231 edges (base {'weights': 4})
+INFO compiled 528 tasks (0 gates), 3715 edges, 127 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO wrote bundle to /tmp/tmptczs48a6/bundles/train_w1
+INFO bundle train_w1: 528 tasks, 3715 edges (base {'weights': 4})
+INFO compiled 73 tasks (0 gates), 231 edges, 48 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO wrote bundle to /tmp/tmptczs48a6/bundles/serve_s4
+INFO bundle serve_s4: 73 tasks, 231 edges (base {'weights': 8})
+INFO demo: {'train': (528, 3715), 'serve_s0': (73, 231), 'serve_s2': (73, 231), 'serve_s4': (73, 231), 'game': (64, 232)}
+INFO manifest: 6 admissions, 216 buffers (20 shared) -> /tmp/tmptczs48a6/MANIFEST.json
+INFO compiled 64 tasks (0 gates), 232 edges, 5 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO compiled 73 tasks (0 gates), 231 edges, 48 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO compiled 73 tasks (0 gates), 231 edges, 48 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO compiled 73 tasks (0 gates), 231 edges, 48 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO compiled 528 tasks (0 gates), 3715 edges, 127 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO compiled 64 tasks (0 gates), 232 edges, 5 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO admitted batch 0: 64 tasks
+INFO ran game -> versions {'frame': 8}
+INFO compiled 73 tasks (0 gates), 231 edges, 48 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO admitted batch 1: 73 tasks
+INFO ran serve_s0 -> versions {'frame': 8, 'weights': 0}
+INFO compiled 528 tasks (0 gates), 3715 edges, 127 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO admitted batch 2: 528 tasks
+INFO ran train_w0 -> versions {'frame': 8, 'weights': 4}
+INFO compiled 73 tasks (0 gates), 231 edges, 48 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO admitted batch 3: 73 tasks
+INFO ran serve_s2 -> versions {'frame': 8, 'weights': 4}
+INFO compiled 528 tasks (0 gates), 3715 edges, 127 buffers, 1 variables in 0.01s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO admitted batch 4: 528 tasks
+INFO ran train_w1 -> versions {'frame': 8, 'weights': 8}
+INFO compiled 73 tasks (0 gates), 231 edges, 48 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO admitted batch 5: 73 tasks
+INFO ran serve_s4 -> versions {'frame': 8, 'weights': 8}
+...E.......INFO serve al: prompt 2 tokens, 1 new, weights at_least version 4
+INFO fusion: 55 logical ops -> 55 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 10 slots (72 tensors; 0.0 MiB without reuse)
+INFO dataflow: 63 tasks + 0 joins, 224 edges
+INFO lowered 55 logical ops -> 63 tile tasks (+0 joins), 224 edges
+.INFO model t: 0.03M parameters, 36 tensors
+INFO fusion: 242 logical ops -> 236 ({'ce_fused': 2, 'mm_dgelu': 4})
+INFO memory plan: persistent 0.3 MiB, activation pool 0.4 MiB in 103 slots (206 tensors; 0.7 MiB without reuse)
+INFO dataflow: 874 tasks + 0 joins, 6290 edges
+INFO lowered 236 logical ops -> 874 tile tasks (+0 joins), 6290 edges
+INFO serve sv0: prompt 3 tokens, 3 new, weights exact version 0
+INFO fusion: 113 logical ops -> 113 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 19 slots (146 tensors; 0.0 MiB without reuse)
+INFO dataflow: 129 tasks + 0 joins, 464 edges
+INFO lowered 113 logical ops -> 129 tile tasks (+0 joins), 464 edges
+INFO serve sv1: prompt 3 tokens, 3 new, weights exact version 2
+INFO fusion: 113 logical ops -> 113 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 19 slots (146 tensors; 0.0 MiB without reuse)
+INFO dataflow: 129 tasks + 0 joins, 464 edges
+INFO lowered 113 logical ops -> 129 tile tasks (+0 joins), 464 edges
+INFO serve sv2: prompt 3 tokens, 3 new, weights exact version 4
+INFO fusion: 113 logical ops -> 113 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 19 slots (146 tensors; 0.0 MiB without reuse)
+INFO dataflow: 129 tasks + 0 joins, 464 edges
+INFO lowered 113 logical ops -> 129 tile tasks (+0 joins), 464 edges
+INFO refvm: executed 1261 tasks (random order, f64)
+INFO refvm: executed 1261 tasks (random order, f64)
+INFO refvm: executed 1261 tasks (random order, f64)
+.INFO model t: 0.03M parameters, 36 tensors
+INFO fusion: 363 logical ops -> 354 ({'ce_fused': 3, 'mm_dgelu': 6})
+INFO memory plan: persistent 0.3 MiB, activation pool 0.4 MiB in 103 slots (309 tensors; 1.1 MiB without reuse)
+INFO dataflow: 1311 tasks + 0 joins, 10525 edges
+INFO lowered 354 logical ops -> 1311 tile tasks (+0 joins), 10525 edges
+INFO serve sv0: prompt 3 tokens, 4 new, weights exact version 0
+INFO fusion: 142 logical ops -> 142 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 19 slots (183 tensors; 0.0 MiB without reuse)
+INFO dataflow: 162 tasks + 0 joins, 593 edges
+INFO lowered 142 logical ops -> 162 tile tasks (+0 joins), 593 edges
+INFO serve sv3: prompt 3 tokens, 4 new, weights exact version 6
+INFO fusion: 142 logical ops -> 142 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 19 slots (183 tensors; 0.0 MiB without reuse)
+INFO dataflow: 162 tasks + 0 joins, 593 edges
+INFO lowered 142 logical ops -> 162 tile tasks (+0 joins), 593 edges
+INFO refvm: executed 1635 tasks (random order, f64)
+.INFO serve one: prompt 1 tokens, 2 new, weights exact version 0
+INFO fusion: 58 logical ops -> 58 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 9 slots (74 tensors; 0.0 MiB without reuse)
+INFO dataflow: 66 tasks + 0 joins, 224 edges
+INFO lowered 58 logical ops -> 66 tile tasks (+0 joins), 224 edges
+INFO refvm: executed 66 tasks (program order, f64)
+.EE
+======================================================================
+ERROR: test_generic (unittest.loader._FailedTest.test_generic)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_generic
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/unittest/loader.py", line 394, in _find_test_path
+    module = self._get_module_from_name(name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/loader.py", line 337, in _get_module_from_name
+    __import__(name)
+  File "./tests/frontend/test_generic.py", line 12, in <module>
+    import numpy as np
+ModuleNotFoundError: No module named 'numpy'
+
+
+======================================================================
+ERROR: test_models (unittest.loader._FailedTest.test_models)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_models
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/unittest/loader.py", line 394, in _find_test_path
+    module = self._get_module_from_name(name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/loader.py", line 337, in _get_module_from_name
+    __import__(name)
+  File "./tests/frontend/test_models.py", line 6, in <module>
+    import numpy as np
+ModuleNotFoundError: No module named 'numpy'
+
+
+======================================================================
+ERROR: test_serve_golden (unittest.loader._FailedTest.test_serve_golden)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_serve_golden
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/unittest/loader.py", line 394, in _find_test_path
+    module = self._get_module_from_name(name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/loader.py", line 337, in _get_module_from_name
+    __import__(name)
+  File "./tests/frontend/test_serve_golden.py", line 10, in <module>
+    import numpy as np
+ModuleNotFoundError: No module named 'numpy'
+
+
+======================================================================
+ERROR: test_torch_models (unittest.loader._FailedTest.test_torch_models)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_torch_models
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/unittest/loader.py", line 394, in _find_test_path
+    module = self._get_module_from_name(name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/loader.py", line 337, in _get_module_from_name
+    __import__(name)
+  File "./tests/frontend/test_torch_models.py", line 13, in <module>
+    import numpy as np
+ModuleNotFoundError: No module named 'numpy'
+
+
+----------------------------------------------------------------------
+Ran 75 tests in 65.182s
+
+FAILED (errors=4)
+rc 1

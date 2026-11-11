@@ -426,7 +426,14 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
   const int QB = d.qb, TQ = QB > 0 ? T / QB : 0, W = B * H * QB, TQ16 = kvm_fgpt_r16(TQ);
   const int T16 = kvm_fgpt_r16(T), hgsz = kvm_fgpt_unit_grads(D, hd);
   const size_t Nd = (size_t)N * D;
-  const KvmFgptScratch s = kvm_fgpt_scratch(N, T, D, H, F, V, L, G, d.qb);
+  // the scratch layout, one copy a block at the head of shared memory (KVM_FGPT_LAYOUT_FLOATS), written once by thread 0
+  if (smem_floats < KVM_FGPT_LAYOUT_FLOATS) {
+    if (tid == 0) fail(KVM_FGPT_E_SCRATCH);
+    return false;
+  }
+  KvmFgptScratch& s = *reinterpret_cast<KvmFgptScratch*>(smem);
+  if (tid == 0) s = kvm_fgpt_scratch(N, T, D, H, F, V, L, G, d.qb);
+  __syncthreads();
   // the N-wide phases' row chunk (kvm_fgpt_fit): the MLP's, the logits' and the head's backward walk N in chunks of RC rows, their weight
   // slices resident; RC is N where the whole fits, and then each phase runs as one chunk
   const int RC = d.rows < N ? d.rows : N, RC16 = kvm_fgpt_r16(RC);
@@ -439,7 +446,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
     return false;
   }
   // the fixed head of shared memory (kvm_fgpt_smem_head), then one phase's buffers at a time from `base`
-  int* const ids = reinterpret_cast<int*>(smem);
+  int* const ids = reinterpret_cast<int*>(smem + KVM_FGPT_LAYOUT_FLOATS);                // after the scratch layout (16-byte aligned)
   int* const tgt = ids + kvm_fgpt_r4(N);
   float* const lse_ce = reinterpret_cast<float*>(tgt + kvm_fgpt_r4(N));
   float* const rtab = lse_ce + kvm_fgpt_r4(N);                                          // RoPE's cos and sin, T x hd / 2 each

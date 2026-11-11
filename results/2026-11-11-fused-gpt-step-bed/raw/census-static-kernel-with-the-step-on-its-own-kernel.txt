@@ -1,0 +1,32 @@
+_Z17kvm_static_kernel12KvmStaticDev: every block, 62080 instructions in 2757 blocks
+  10 functions (cubin symbols; 3 are ptxas's internal helpers, folded below), 184 calls between functions, 0 CALLs inside their own function; registers R0-R252, R1 aside
+  function                         instr  HMMA   LDL   STL touched avoided  avoided registers held across a call by
+  (kernel)                           488     0    23    24      36     216  kvm_s_fmlp_slice 59, kvm_s_fmlp_grid 55, kvm_s_fmlp_sgd 46; held by none 93
+  kvm_dispatch                      3510     0     1     0      60     192  kvm_s_fmlp_slice 48, kvm_s_fmlp_sgd 33, kvm_s_fmlp_grid 33; held by none 89
+  kvm_s_fmlp_sgd                    1048     0    49    49     123     129  kvm_s_fmlp_slice 40, kvm_s_fmlp_grid 23, kvm_s_fmlp_split 1; held by none 73
+  kvm_s_fmlp_grid                  28796  1390   389   135     128     124  kvm_s_fmlp_slice 32, kvm_s_fmlp_sgd 32; held by none 60
+  kvm_s_fmlp_slice                 15624   916   105    61     191      61  kvm_s_fmlp_sgd 33, kvm_s_fmlp_split 1, kvm_s_fmlp_grid 1; held by none 28
+  kvm_s_fmlp_split                 12320   498   346    90     156      96  kvm_s_fmlp_slice 32, kvm_s_fmlp_sgd 32; held by none 32
+  kvm_fail                            31     0     0     0      16     236  kvm_s_fmlp_slice 71, kvm_s_fmlp_grid 69, kvm_s_fmlp_sgd 56; held by none 93
+  (3 internal helpers: 263 instructions, at most 9 registers each)
+  calls: caller -> callee, sites, registers live across them (min-max, R1 aside), the widest site
+    kvm_s_fmlp_grid              -> __internal_7_$__cuda_sm20_rcp_rn_f32_slowpat    4 site(s)   56- 82 live, widest at 0x02b0a0
+    kvm_s_fmlp_grid              -> __internal_8_$__cuda_sm3x_div_rn_noftz_f32_s    9 site(s)   47- 81 live, widest at 0x02b000
+    kvm_s_fmlp_slice             -> __internal_7_$__cuda_sm20_rcp_rn_f32_slowpat    4 site(s)   15- 75 live, widest at 0x08dc10
+    kvm_s_fmlp_slice             -> __internal_8_$__cuda_sm3x_div_rn_noftz_f32_s    3 site(s)   16- 74 live, widest at 0x08db70
+    kvm_s_fmlp_slice             -> kvm_fail                                        5 site(s)   68- 71 live, widest at 0x087080
+    kvm_s_fmlp_sgd               -> __internal_8_$__cuda_sm3x_div_rn_noftz_f32_s    1 site(s)   70- 70 live, widest at 0x010020
+    kvm_s_fmlp_sgd               -> __internal_7_$__cuda_sm20_rcp_rn_f32_slowpat    1 site(s)   70- 70 live, widest at 0x010100
+    kvm_s_fmlp_grid              -> __internal_6_$__cuda_sm20_div_s64              12 site(s)   49- 54 live, widest at 0x016670
+    kvm_s_fmlp_split             -> __internal_8_$__cuda_sm3x_div_rn_noftz_f32_s    7 site(s)   17- 35 live, widest at 0x0c8df0
+    kvm_s_fmlp_split             -> __internal_7_$__cuda_sm20_rcp_rn_f32_slowpat    4 site(s)   11- 35 live, widest at 0x0c8e90
+    kvm_dispatch                 -> kvm_fail                                      123 site(s)    1- 23 live, widest at 0x009cc0
+    kvm_dispatch                 -> __internal_8_$__cuda_sm3x_div_rn_noftz_f32_s    2 site(s)    4-  9 live, widest at 0x00abd0
+    (kernel)                     -> kvm_fail                                        1 site(s)    3-  3 live, widest at 0x0011d0
+    (kernel)                     -> kvm_s_fmlp_split                                1 site(s)    1-  1 live, widest at 0x001940
+    (kernel)                     -> kvm_s_fmlp_slice                                1 site(s)    1-  1 live, widest at 0x001690
+    (kernel)                     -> kvm_s_fmlp_sgd                                  1 site(s)    1-  1 live, widest at 0x0015d0
+    (kernel)                     -> kvm_s_fmlp_grid                                 1 site(s)    1-  1 live, widest at 0x001800
+    (kernel)                     -> kvm_dispatch                                    1 site(s)    1-  1 live, widest at 0x001990
+    kvm_s_fmlp_split             -> kvm_fail                                        2 site(s)    0-  0 live, widest at 0x0f1060
+    kvm_s_fmlp_grid              -> kvm_fail                                        1 site(s)    0-  0 live, widest at 0x013d90

@@ -1,4 +1,4 @@
-# The fused GPT step on its bed: correctness against the workload VM, and its time
+# The fused GPT step on its bed and in the executor: correctness against the workload VM, and its time
 
 GPU: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs; the SMs ran at 2.5-2.8 GHz, measured as cycles over globaltimer
 nanoseconds), CUDA 12.8, `nvcc -O3 -std=c++17 -arch=sm_120`. **Not an A100**: these runs give correctness, the shares of a step, and a
@@ -15,8 +15,7 @@ the bundle's own tasks for the same steps on the workload VM (float32 a op), and
 - every step's loss;
 - the last step's gradients and AdamW moments, each tensor's largest difference over its largest magnitude.
 
-The executor's dispatch of the op, the pass in `fuse_bundle` and the executor's descriptors are not in this branch yet: the bed runs the
-program alone.
+The executor runs the same program on a kernel of its own: [In the executor](#in-the-executor).
 
 ## Correctness
 
@@ -55,6 +54,36 @@ In-kernel time a step (member 0's globaltimer, 20 steps, the GPU warmed first), 
 Precise mode, three tensor-core products for one on the linear layers, adds only 25-35 us. So the step is bound by instruction and latency
 chains (dependent shared-memory loads, conversions, synchronizations, round trips to L2), not by tensor-core throughput.
 
+## In the executor
+
+`kvm_exec` takes the fused path by itself when every task of a bundle belongs to a GPT training run that fuses (its log says
+`path: fused GPT kernel`). The pass (`include/kvm_fuse_gpt.h`) rewrites each run into the G members of one gang, and `KvmExec::run_fgpt`
+launches each gang as one kernel of G blocks (`include/kvm_fgpt_kernel.cuh`). `--no-fuse` runs the same bundle unfused, on the path it
+took before.
+
+**Why a kernel of its own:** ptxas allocates registers per kernel. Compiled as a function inside the static kernel, the program got 153
+registers, and up to 149 local reloads a pass in its staging loops. Alone, it gets 237, with at most 69, as on its bed (240 and 75). Alone,
+it also leaves the static kernel as it was: every fused function there compiles exactly as in a build without the step. In place, the
+step had moved theirs (the split member 156 → 147 registers). `raw/census-*.txt`, read from each build's SASS.
+
+These runs use a test build of the executor: the GPT pack's op bodies are stubs (a fused bundle dispatches none of them), the comm and
+extra packs are left out, and the split step's share list is cut to 2, so it compiles within the laptop's memory.
+
+| check, 1xTF32, gang of 32 | result |
+|---|---|
+| gpt-tiny, all 50 steps' losses against the VM (`fgpt_bed.py --exec`) | worst 6.89e-4 relative (first 4.146049 against 4.146039, last 1.245304 against 1.244709) |
+| gpt-small, its first 3 steps' losses against the VM | worst 7.39e-5 relative |
+
+**Time**, us a step over 50 steps. Three arms in rotating order, six rounds a row (`raw/exec-timing-three-arms.log`). This card runs in
+two clock states about 1.2x apart, so the table pairs the rounds where both executor arms ran in the fast state:
+
+| row | inside the static kernel | its own kernel | ratio |
+|---|---|---|---|
+| gpt-tiny | 97.4, 97.8 | 87.5, 87.2 | x1.12 |
+| gpt-small | 211.9, 212.1 | 188.1, 188.0 | x1.13 |
+
+Over all six rounds, the median ratio is x1.12 (gpt-tiny) and x1.13 (gpt-small).
+
 ## Limits
 
 - **A laptop GPU, not an A100.** The A100 runs instruction-bound code at a lower clock (1.41 GHz) and tensor math much faster, and its
@@ -69,6 +98,9 @@ python3 bench/vs_pytorch/gen.py W/w_tiny --model gpt_tiny --steps 50 --mode tf32
 nvcc -O3 -std=c++17 -arch=sm_120 -Iinclude bench/fused_gpt/fgpt_bed.cu -o fgpt_bed
 python3 -I bench/fused_gpt/fgpt_bed.py W/w_tiny --bed ./fgpt_bed --steps 2 --gangs 1,2,4               # judges against the VM
 ./fgpt_bed W/fgpt-bed-w_tiny-k2 4 clock                                                                  # the phase table
+nvcc -O3 -arch=sm_120 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off kvm_exec.cu -o kvm_exec  # the executor
+python3 -I bench/fused_gpt/fgpt_bed.py W/w_tiny --exec ./kvm_exec --steps 50 --tol 2e-3                  # its own path: the fused GPT kernel
+./kvm_exec --no-fuse W/w_tiny/bundle                                                                     # the same bundle, unfused
 ```
 
 Files: `raw/`, the runs above (paths replaced by `<work>`).

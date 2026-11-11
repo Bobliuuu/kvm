@@ -1,0 +1,45 @@
+_Z17kvm_static_kernel12KvmStaticDev: every block, 94424 instructions in 4981 blocks
+  16 functions (cubin symbols; 7 are ptxas's internal helpers, folded below), 259 calls between functions, 0 CALLs inside their own function; registers R0-R252, R1 aside
+  function                         instr  HMMA   LDL   STL touched avoided  avoided registers held across a call by
+  (kernel)                           490     0    23    24      44     208  _ZN8kvm_fgpt3runIZ15kvm_s_fgpt_stepiiPK11KvmFgptDescPfP6KvmCtxEUliE_NS_8NoPhasesEEEbRS2_iS4_iPKiT_RT0_ 83, kvm_s_fmlp_grid 60, kvm_s_fmlp_slice 59; held by none 44
+  kvm_dispatch                      3518     0     1     0      73     179  _ZN8kvm_fgpt3runIZ15kvm_s_fgpt_stepiiPK11KvmFgptDescPfP6KvmCtxEUliE_NS_8NoPhasesEEEbRS2_iS4_iPKiT_RT0_ 54, kvm_s_fmlp_slice 48, kvm_s_fmlp_grid 37; held by none 44
+  kvm_s_fmlp_sgd                    1055     0    49    49     123     129  kvm_s_fmlp_slice 39, kvm_s_fmlp_grid 33, _ZN8kvm_fgpt3runIZ15kvm_s_fgpt_stepiiPK11KvmFgptDescPfP6KvmCtxEUliE_NS_8NoPhasesEEEbRS2_iS4_iPKiT_RT0_ 32; held by none 45
+  kvm_s_fgpt_step                     59     0     7     2      19     233  _ZN8kvm_fgpt3runIZ15kvm_s_fgpt_stepiiPK11KvmFgptDescPfP6KvmCtxEUliE_NS_8NoPhasesEEEbRS2_iS4_iPKiT_RT0_ 107, kvm_s_fmlp_grid 84, kvm_s_fmlp_slice 79; held by none 44
+  kvm_s_fmlp_grid                  28622  1390   376   126     146     106  kvm_s_fmlp_slice 32, kvm_s_fmlp_sgd 32, _ZN8kvm_fgpt3runIZ15kvm_s_fgpt_stepiiPK11KvmFgptDescPfP6KvmCtxEUliE_NS_8NoPhasesEEEbRS2_iS4_iPKiT_RT0_ 8; held by none 32
+  kvm_s_fmlp_slice                 15588   916   123    61     194      58  kvm_s_fmlp_sgd 33, _ZN8kvm_fgpt3runIZ15kvm_s_fgpt_stepiiPK11KvmFgptDescPfP6KvmCtxEUliE_NS_8NoPhasesEEEbRS2_iS4_iPKiT_RT0_ 17, kvm_s_fmlp_grid 7; held by none 6
+  kvm_s_fmlp_split                 12618   498   405   106     147     105  kvm_s_fmlp_slice 32, kvm_s_fmlp_sgd 32, _ZN8kvm_fgpt3runIZ15kvm_s_fgpt_stepiiPK11KvmFgptDescPfP6KvmCtxEUliE_NS_8NoPhasesEEEbRS2_iS4_iPKiT_RT0_ 8; held by none 33
+  kvm_fail                            27     0     0     0      14     238  _ZN8kvm_fgpt3runIZ15kvm_s_fgpt_stepiiPK11KvmFgptDescPfP6KvmCtxEUliE_NS_8NoPhasesEEEbRS2_iS4_iPKiT_RT0_ 111, kvm_s_fmlp_grid 93, kvm_s_fmlp_slice 87; held by none 44
+  _ZN8kvm_fgpt3runIZ15kvm_s_fgpt   31486   178   317   314     153      99  kvm_s_fmlp_slice 32, kvm_s_fmlp_sgd 32, kvm_s_fmlp_split 2; held by none 33
+  (7 internal helpers: 961 instructions, at most 23 registers each)
+  calls: caller -> callee, sites, registers live across them (min-max, R1 aside), the widest site
+    _ZN8kvm_fgpt3runIZ15kvm_s_fg -> __internal_5_$__cuda_sm3x_div_rn_noftz_f32_s   27 site(s)   49- 95 live, widest at 0x10fb30
+    _ZN8kvm_fgpt3runIZ15kvm_s_fg -> __internal_3_$__cuda_sm20_rcp_rn_f32_slowpat    3 site(s)   85- 94 live, widest at 0x102300
+    _ZN8kvm_fgpt3runIZ15kvm_s_fg -> __internal_4_$__cuda_sm20_sqrt_rn_f32_slowpa    8 site(s)   73- 93 live, widest at 0x102220
+    kvm_s_fmlp_grid              -> __internal_3_$__cuda_sm20_rcp_rn_f32_slowpat    4 site(s)   65- 92 live, widest at 0x02b270
+    kvm_s_fmlp_grid              -> __internal_5_$__cuda_sm3x_div_rn_noftz_f32_s    9 site(s)   51- 92 live, widest at 0x02b1d0
+    _ZN8kvm_fgpt3runIZ15kvm_s_fg -> __internal_1_$__cuda_sm20_div_rn_f64_full       1 site(s)   88- 88 live, widest at 0x124d70
+    _ZN8kvm_fgpt3runIZ15kvm_s_fg -> __internal_0_$__cuda_sm20_dblrcp_rn_slowpath    2 site(s)   66- 87 live, widest at 0x124fe0
+    _ZN8kvm_fgpt3runIZ15kvm_s_fg -> kvm_fail                                       14 site(s)    1- 86 live, widest at 0x13e3a0
+    _ZN8kvm_fgpt3runIZ15kvm_s_fg -> __internal_accurate_pow                         2 site(s)   83- 84 live, widest at 0x166e70
+    _ZN8kvm_fgpt3runIZ15kvm_s_fg -> __internal_2_$__cuda_sm20_div_s64              15 site(s)   16- 79 live, widest at 0x164d40
+    kvm_s_fmlp_sgd               -> __internal_5_$__cuda_sm3x_div_rn_noftz_f32_s    1 site(s)   74- 74 live, widest at 0x0100d0
+    kvm_s_fmlp_sgd               -> __internal_3_$__cuda_sm20_rcp_rn_f32_slowpat    1 site(s)   73- 73 live, widest at 0x0101d0
+    kvm_s_fmlp_slice             -> __internal_3_$__cuda_sm20_rcp_rn_f32_slowpat    4 site(s)   18- 72 live, widest at 0x08d490
+    kvm_s_fmlp_slice             -> __internal_5_$__cuda_sm3x_div_rn_noftz_f32_s    3 site(s)   13- 72 live, widest at 0x08d3f0
+    kvm_s_fmlp_slice             -> kvm_fail                                        5 site(s)   69- 71 live, widest at 0x086e60
+    kvm_s_fmlp_grid              -> __internal_2_$__cuda_sm20_div_s64              12 site(s)   52- 61 live, widest at 0x016950
+    kvm_s_fmlp_split             -> __internal_3_$__cuda_sm20_rcp_rn_f32_slowpat    4 site(s)   22- 46 live, widest at 0x0c89f0
+    kvm_s_fmlp_split             -> __internal_5_$__cuda_sm3x_div_rn_noftz_f32_s    7 site(s)   19- 46 live, widest at 0x0c8950
+    kvm_dispatch                 -> kvm_fail                                      123 site(s)    1- 24 live, widest at 0x009cc0
+    kvm_dispatch                 -> __internal_5_$__cuda_sm3x_div_rn_noftz_f32_s    2 site(s)    4-  9 live, widest at 0x00abe0
+    (kernel)                     -> kvm_fail                                        1 site(s)    4-  4 live, widest at 0x001180
+    (kernel)                     -> kvm_s_fmlp_split                                1 site(s)    2-  2 live, widest at 0x001900
+    (kernel)                     -> kvm_s_fmlp_slice                                1 site(s)    2-  2 live, widest at 0x001650
+    (kernel)                     -> kvm_s_fmlp_sgd                                  1 site(s)    2-  2 live, widest at 0x001580
+    (kernel)                     -> kvm_s_fmlp_grid                                 1 site(s)    2-  2 live, widest at 0x0017c0
+    (kernel)                     -> kvm_s_fgpt_step                                 1 site(s)    2-  2 live, widest at 0x001990
+    (kernel)                     -> kvm_dispatch                                    1 site(s)    2-  2 live, widest at 0x0019e0
+    kvm_s_fmlp_split             -> kvm_fail                                        2 site(s)    0-  0 live, widest at 0x0f1aa0
+    kvm_s_fmlp_grid              -> kvm_fail                                        1 site(s)    0-  0 live, widest at 0x014250
+    kvm_s_fgpt_step              -> kvm_fail                                        1 site(s)    0-  0 live, widest at 0x013e50
+    ... 1 more caller -> callee rows (--show)

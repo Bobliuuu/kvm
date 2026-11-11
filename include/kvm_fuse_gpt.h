@@ -759,6 +759,7 @@ struct KvmFuseGptPlan {
   std::vector<int32_t> succ, args;
   std::vector<KvmFuseGptRun> runs;
   std::vector<int> gang;                    // each fused run's member count G
+  std::vector<int> rows;                    // each fused run's row chunk for its N-wide phases (kvm_fgpt_fit: N, or 128 or 64 below it)
   std::vector<std::string> report;          // one line per component
   int fused_runs = 0, unchanged_runs = 0, replaced_tasks = 0, new_tasks = 0;
 };
@@ -778,7 +779,8 @@ inline KvmFuseGptPlan kvm_fuse_gpt(const std::vector<KvmTaskDesc>& tasks, const 
   for (const KvmFuseGptRun& r : scan.runs) {
     const KvmGptStep& s = r.shape;
     std::string why;
-    const int G = fgpt_step_op < 0 ? 0 : kvm_fgpt_gang(s.N, s.T, s.d, s.H, s.F, s.V, opt.smem_floats, opt.workers);
+    const KvmFgptFit fit = fgpt_step_op < 0 ? KvmFgptFit{} : kvm_fgpt_fit(s.N, s.T, s.d, s.H, s.F, s.V, opt.smem_floats, opt.workers);
+    const int G = fit.G;
     const std::string unrun = kvm_fgpt_unrunnable(s.d, s.H, s.L, s.mm_numerics);
     if (fgpt_step_op < 0) why = "the registry has no fgpt_step op";
     else if (!unrun.empty()) why = "the fused step cannot run it: " + unrun;
@@ -796,8 +798,9 @@ inline KvmFuseGptPlan kvm_fuse_gpt(const std::vector<KvmTaskDesc>& tasks, const 
     snprintf(head, sizeof head, "component %d: ", r.component);
     if (!why.empty()) { line[r.component] = head + std::string("unchanged: a GPT run, but ") + why; continue; }
     run_of_comp[r.component] = (int)P.runs.size();
-    P.runs.push_back(r); P.gang.push_back(G);
+    P.runs.push_back(r); P.gang.push_back(G); P.rows.push_back(fit.rows);
     line[r.component] += ", fused as a gang of " + std::to_string(G);
+    if (fit.rows < s.N) line[r.component] += " (its N-wide phases in chunks of " + std::to_string(fit.rows) + " of " + std::to_string(s.N) + " rows)";
     P.replaced_tasks += (int)comps[r.component].size(); P.new_tasks += G;
   }
   for (size_t ci = 0; ci < comps.size(); ++ci) {

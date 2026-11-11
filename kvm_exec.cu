@@ -905,7 +905,7 @@ class KvmExec {
       const KvmGptStep& s = run.shape;
       KvmFgptDesc& d = descs[i];
       d.N = s.N; d.T = s.T; d.B = s.B; d.d = s.d; d.H = s.H; d.hd = s.hd; d.F = s.F; d.V = s.V; d.L = s.L; d.G = plan.gang[i]; d.steps = run.steps;
-      d.mm_numerics = s.mm_numerics; d.qb = kvm_fgpt_qblocks(s.B, s.H, s.T, d.G);
+      d.mm_numerics = s.mm_numerics; d.qb = kvm_fgpt_qblocks(s.B, s.H, s.T, d.G); d.rows = plan.rows[i];
       d.ln_eps = s.ln_eps; d.theta = s.theta; d.scale = s.scale; d.lr = s.lr; d.beta1 = s.beta1; d.beta2 = s.beta2; d.adam_eps = s.adam_eps; d.max_norm = s.max_norm;
       // the parameters in slot order (kvm_fused_gpt.h), each with its gradient, moments and weight decay: the run's AdamW updates
       std::vector<int> slot(kvm_fgpt_nparams(s.L), -1);
@@ -937,9 +937,9 @@ class KvmExec {
       d.xch = static_cast<float*>(alloc((size_t)sc.total * sizeof(float))); d.xch_floats = (size_t)sc.total;
       d.bc = static_cast<float*>(alloc(2 * (size_t)run.steps * sizeof(float)));     // filled by member 0 at the run's start
       d.ctl = static_cast<unsigned*>(alloc(KVM_FGPT_MAX_GANG * sizeof(unsigned)));   // the barrier's flag line, zeroed once (cudaMalloc: 256-byte aligned)
-      const int smem = (int)(kvm_fgpt_smem_floats(d.N, d.T, d.d, d.H, d.F, d.V, d.G, d.qb) * sizeof(float));
+      const int smem = (int)(kvm_fgpt_smem_floats(d.N, d.T, d.d, d.H, d.F, d.V, d.G, d.qb, d.rows) * sizeof(float));
       st.smem_bytes = std::max(st.smem_bytes, smem);
-      KLOG(2, "fuse gpt: run %zu: a gang of %d, %d steps, attention in %d query block(s) a unit, %.2f MB of scratch, %d bytes of shared memory a member", i, d.G, d.steps, d.qb, sc.total * 4.0 / 1e6, smem);
+      KLOG(2, "fuse gpt: run %zu: a gang of %d, %d steps, attention in %d query block(s) a unit, rows in chunks of %d of %d, %.2f MB of scratch, %d bytes of shared memory a member", i, d.G, d.steps, d.qb, d.rows, d.N, sc.total * 4.0 / 1e6, smem);
     }
     if (!descs.empty()) {
       st.desc = static_cast<KvmFgptDesc*>(alloc(descs.size() * sizeof(KvmFgptDesc)));

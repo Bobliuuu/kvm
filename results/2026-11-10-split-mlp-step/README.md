@@ -107,6 +107,10 @@ registers, with no spill.
   (`rc_*.log`, `rc.txt`). The figures are in the PR's body.
 - **Replicated copies** (`replicated-copies/`): `run_mlp.py`'s gates 1 to 3 on five split shapes (`h*.log`, `h*.json`), and `rep_check.py`'s
   every-buffer comparison at 4 to 32 copies (`rep-*.log`).
-- **Python tests** (`python_tests.log`): the three unittest suites on this branch.
+- **Float64 distances on `run_check`'s h256 d4 bundle** (`float64-distance/`): the fused runs at 107, 96, 108, 72, 48 and 36 workers, `main`'s
+  per-op path (`--no-fuse` at 107 and 108, `--dynamic`), each dump judged by `tests/static/fused_vs_fp64.py` (`fused_vs_fp64.log`). Read on the
+  stack before the share-count fix: a single run's share count is unchanged by it, and the fixed read's `run_check` repeats 5.12e-4 and 1.59e-4.
+- **Python tests** (`python_tests.log`): the three unittest suites on this branch, on the A100 host's Python (numpy and torch present, no GPU
+  visible to the tests).
 
 Paths on the host are shown as `/root/reads/`.

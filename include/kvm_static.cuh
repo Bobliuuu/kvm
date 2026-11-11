@@ -13,6 +13,7 @@
 #include "kvm_static.h"
 #include "kvm_fused_mlp.cuh"
 #include "kvm_fused_split.cuh"
+#include "kvm_fused_grid.cuh"
 
 // The dynamic shared-memory arena every op takes from offset 0 (the same declaration as kvm_ops_gpt.cuh's, repeated so a build without the gpt pack, like tests/gpu/build_core.sh, still has it).
 extern __shared__ __align__(128) unsigned char kvm_gpt_smem[];
@@ -31,6 +32,7 @@ struct KvmStaticDev {
   unsigned long long* trace;      // [nrecs * KVM_S_TRACE_WORDS]: start, waits done, op done, published (nullptr when off)
   const KvmFusedDesc* fused;      // the fused runs of this bundle (kvm_fuse.h); nullptr when it has none
   const KvmSplitDesc* split;      // the split fused runs of this bundle (kvm_fuse.h's split form); nullptr when it has none
+  const KvmGridDesc* grid;        // the grid fused runs of this bundle (kvm_fuse.h's grid form); nullptr when it has none
   long long* fuse_phases;         // [nworkers * KVM_FMLP_NPHASES]: per worker, cycles in each phase of its slices (--fuse-phases; nullptr when off)
 };
 #define KVM_S_LINE_WORDS 32         // one watermark per 128-byte line: one writer, a few pollers, no false sharing
@@ -88,6 +90,16 @@ __device__ __noinline__ void kvm_s_fmlp_split(int member, int members, const int
   }
 }
 
+// One member of a grid step (a gang op, like fmlp_split). A member count that disagrees with the descriptor fails the run before any barrier;
+// any other failure ends the gang at its next crossing, as for the split step.
+__device__ __noinline__ void kvm_s_fmlp_grid(int member, int members, const int32_t* ids, const int32_t* tgt, float* loss, float* arena, KvmCtx* c) {
+  kvm_fmlp::cp_commit_wait();
+  __syncthreads();
+  const KvmGridDesc& d = *reinterpret_cast<const KvmGridDesc*>(arena);
+  if (members != d.P || member < 0 || member >= members) { c->fail(KVM_ERR_BAD_OP, KVM_OP_fmlp_grid); return; }
+  kvm_fgrid::grid_run(member, ids, tgt, loss, arena, &c->cnt->err_code, kvm_fgrid::NoPhases{});
+}
+
 __device__ void kvm_static_worker(const KvmStaticDev& Sref, KvmSShared& sh) {
   const KvmStaticDev S = Sref;   // a register copy of the launch state: fields then read from registers, not through the __grid_constant__ reference (the same copy measured x1.04-1.09 on the dynamic worker)
   const int w = blockIdx.x;
@@ -108,6 +120,7 @@ __device__ void kvm_static_worker(const KvmStaticDev& Sref, KvmSShared& sh) {
     if (pc + 1 < n) kvm_s_fetch(prog + pc + 1, &sh.rec[(pc + 1) & 1]);   // the next record is copied beside this one's waits and op body
     if (r->op == KVM_OP_fmlp_slice || r->op == KVM_OP_fmlp_sgd) kvm_fmlp::prefetch_desc(S.fused + r->args[0], reinterpret_cast<float*>(kvm_gpt_smem));   // a fused op's descriptor: its round trip overlaps this record's waits
     else if (r->op == KVM_OP_fmlp_split) kvm_fsplit::prefetch_desc(S.split + r->args[0], reinterpret_cast<float*>(kvm_gpt_smem));
+    else if (r->op == KVM_OP_fmlp_grid) kvm_fgrid::prefetch_desc(S.grid + r->args[0], reinterpret_cast<float*>(kvm_gpt_smem));
     const int nw = r->nwait;
     if (nw) {   // only a record with waits needs the hand-over barrier (a plain chain continues directly)
       if (threadIdx.x < nw) {   // one lane of warp 0 per wait: a fan-in of up to KVM_S_WAITS costs one poll, not one per source
@@ -124,6 +137,7 @@ __device__ void kvm_static_worker(const KvmStaticDev& Sref, KvmSShared& sh) {
       if (r->op == KVM_OP_fmlp_slice) kvm_s_fmlp_slice(r->args[1], reinterpret_cast<const int32_t*>(r->bufs[r->args[2]].p), reinterpret_cast<const int32_t*>(r->bufs[r->args[3]].p), arena, S.fuse_phases ? S.fuse_phases + (size_t)w * KVM_FMLP_NPHASES : nullptr, &sh.t_phase, &c);
       else if (r->op == KVM_OP_fmlp_sgd) kvm_s_fmlp_sgd(r->args[1], reinterpret_cast<float*>(r->bufs[r->args[2]].p), arena);
       else if (r->op == KVM_OP_fmlp_split) kvm_s_fmlp_split(r->args[2], r->args[3], reinterpret_cast<const int32_t*>(r->bufs[r->args[4]].p), reinterpret_cast<const int32_t*>(r->bufs[r->args[5]].p), reinterpret_cast<float*>(r->bufs[r->args[6]].p), arena, &c);
+      else if (r->op == KVM_OP_fmlp_grid) kvm_s_fmlp_grid(r->args[2], r->args[3], reinterpret_cast<const int32_t*>(r->bufs[r->args[4]].p), reinterpret_cast<const int32_t*>(r->bufs[r->args[5]].p), reinterpret_cast<float*>(r->bufs[r->args[6]].p), arena, &c);
       else kvm_dispatch(r->op, c, r->args);
     }
     if (threadIdx.x == 0 && ((pc & 63) == 63) && *(volatile int*)&S.cnt->err_code) sh.stop = 1;   // a failure elsewhere ends the run within 64 records

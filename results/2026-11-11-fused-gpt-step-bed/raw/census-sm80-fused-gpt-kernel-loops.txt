@@ -1,0 +1,25 @@
+_Z15kvm_fgpt_kernelPK11KvmFgptDescP11KvmCountersP10KvmHostErri: every block, 61400 instructions in 3858 blocks
+  102 MMA loops; by kind (HMMA a pass, LDGSTS a pass):
+    HMMA   6 LDGSTS   0:  14 loops; registers used in the loop median 61, passengers median 22 (range 0-78), LDL a pass median 0 (range 0-0)
+    HMMA   8 LDGSTS   0:  34 loops; registers used in the loop median 57, passengers median 21 (range 0-28), LDL a pass median 0 (range 0-0)
+    HMMA   8 LDGSTS  42:   1 loops; registers used in the loop median 79, passengers median 0 (range 0-0), LDL a pass median 0 (range 0-0)
+    HMMA   8 LDGSTS  98:   1 loops; registers used in the loop median 87, passengers median 2 (range 2-2), LDL a pass median 7 (range 7-7)
+    HMMA  16 LDGSTS  42:   2 loops; registers used in the loop median 153, passengers median 2 (range 0-2), LDL a pass median 0 (range 0-0)
+    HMMA  16 LDGSTS  56:   2 loops; registers used in the loop median 194, passengers median 2 (range 2-2), LDL a pass median 0 (range 0-0)
+    HMMA  16 LDGSTS  70:   1 loops; registers used in the loop median 99, passengers median 0 (range 0-0), LDL a pass median 0 (range 0-0)
+    HMMA  20 LDGSTS  56:   1 loops; registers used in the loop median 102, passengers median 2 (range 2-2), LDL a pass median 0 (range 0-0)
+    HMMA  32 LDGSTS  70:   1 loops; registers used in the loop median 108, passengers median 0 (range 0-0), LDL a pass median 0 (range 0-0)
+    HMMA  44 LDGSTS 224:   1 loops; registers used in the loop median 138, passengers median 0 (range 0-0), LDL a pass median 7 (range 7-7)
+    HMMA  62 LDGSTS 126:   1 loops; registers used in the loop median 142, passengers median 2 (range 2-2), LDL a pass median 0 (range 0-0)
+    HMMA  78 LDGSTS 182:   6 loops; registers used in the loop median 194, passengers median 2 (range 0-2), LDL a pass median 0 (range 0-0)
+    HMMA 110 LDGSTS 238:   1 loops; registers used in the loop median 168, passengers median 28 (range 28-28), LDL a pass median 0 (range 0-0)
+    HMMA 110 LDGSTS 252:   6 loops; registers used in the loop median 194, passengers median 2 (range 0-2), LDL a pass median 0 (range 0-0)
+    HMMA 126 LDGSTS 294:   5 loops; registers used in the loop median 194, passengers median 2 (range 2-2), LDL a pass median 0 (range 0-0)
+    HMMA 134 LDGSTS 336:   7 loops; registers used in the loop median 194, passengers median 2 (range 0-2), LDL a pass median 0 (range 0-0)
+    HMMA 150 LDGSTS 406:   7 loops; registers used in the loop median 194, passengers median 2 (range 0-2), LDL a pass median 0 (range 0-0)
+    HMMA 164 LDGSTS 406:   3 loops; registers used in the loop median 194, passengers median 0 (range 0-0), LDL a pass median 0 (range 0-0)
+    HMMA 170 LDGSTS 462:   2 loops; registers used in the loop median 194, passengers median 2 (range 2-2), LDL a pass median 0 (range 0-0)
+    HMMA 178 LDGSTS 560:   6 loops; registers used in the loop median 196, passengers median 0 (range 0-0), LDL a pass median 7 (range 7-7)
+  the loop with the most reloads, at 0x00e2c0 (HMMA 8, LDL 7): 2 passengers
+      R0   defined by MOV R0, 0xe0
+      R64  defined by S2R R64, SR_CTAID.X

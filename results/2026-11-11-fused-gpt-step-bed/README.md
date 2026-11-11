@@ -68,9 +68,26 @@ took before.
 
 **Why a kernel of its own:** ptxas allocates registers per kernel. Compiled as a function inside the static kernel, the program got 153
 registers, and its MMA loops reloaded up to 179 values a pass (`raw/census-static-kernel-with-the-step-inside-by-function.txt`, each loop
-attributed to its function). Alone, it gets 239, with at most 69 (`raw/census-fused-gpt-kernel*.txt`); on its bed, 243 and 75
-(`raw/census-bed.txt`). In place, it had also moved the other fused functions' allocation (the split member 156 → 147
+attributed to its function). Alone, before the sm_80 changes below, it got 239, with at most 69 (`raw/census-fused-gpt-kernel*.txt`); on its
+bed, 243 and 75 (`raw/census-bed.txt`). In place, it had also moved the other fused functions' allocation (the split member 156 → 147
 registers), read on the base before #31 gave every fused form a kernel entry of its own (`raw/census-static-kernel-*.txt`).
+
+**On sm_80 (the A100's architecture) the same program spilled:** 252 registers, 517 local reloads, and a worst MMA loop reloading 430 values
+a pass, where sm_120 reloaded 75. Its long-lived state rode in registers through every phase: the scratch layout, which a runtime layer
+index put in each thread's local memory, then the sizes, slices and pointers into shared memory (sm_120's census: 114 registers no loop
+used), and sm_80's phases need more registers of their own. Three changes, each bitwise on five shapes on an RTX 5070:
+- the scratch layout in shared memory, one copy a block (sm_120's reloads 140 → 61, and this card's d128 step x1.13);
+- `ld()` as a volatile load: `__ldcg`'s `asm volatile` was a memory barrier to the compiler, which read every value it kept in memory
+  again after each load (x1.00-1.03);
+- the run's long-lived state in that shared copy, read in place, each looping phase taking the values it uses for its own body, and the
+  GEMM's k-loop kept rolled as before (with registers free the front end had unrolled it four times).
+
+The executor's kernel now holds 195 registers on sm_80 with 10 local reloads in all and a worst MMA loop of 7
+(`raw/census-sm80-fused-gpt-kernel-*.txt`), and 138 on sm_120 with 4 and 1 (`raw/census-sm120-*`). Every output stays bitwise equal and the
+gang's abort still ends every faulted run (`raw/sm80-fix-bed.log`); the executor runs four GPT workloads fused, with the same losses
+(`raw/sm80-fix-exec.log`). On this card the step is within about 1% of the form before it: gpt-small x0.987, gpt-tiny x1.017, the d128
+x0.993, best of 9 rotating rounds (3 for the d128; `raw/sm80-fix-timing.log`). sm_120 never spilled, so the gain this is for shows only on
+sm_80; the A100 read decides it (unverified).
 
 These runs use a test build of the executor: the GPT pack's op bodies are stubs (a fused bundle dispatches none of them), the comm and
 extra packs are left out, and the split step's share list is cut to 2, so it compiles within the laptop's memory.

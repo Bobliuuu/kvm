@@ -23,7 +23,9 @@
 | write-back | the step's end |
 
 4 L + 2 barriers a step. Sums over many partials run as 8 chains added in a fixed tree, so a run is deterministic and 8 loads are in flight
-instead of one (on the 5070, h512-d1 went from 91.7 to 43.7 us a step with that change and the same errors).
+instead of one (on the 5070, h512-d1 went from 91.7 to 43.7 us a step with that change and the same errors). The cross-entropy's and the embedding
+owners' sums then spread over the whole block, with the same sums in the same order: the check lines repeat digit for digit, and h512-d1 runs
+35.8 us.
 
 ## Results: RTX 5070 Laptop, 36 members, 20 steps, the first 3 checked against float64
 
@@ -31,14 +33,14 @@ The 5070's times are sm_120 at a laptop's clocks: they show where the step's tim
 
 | shape | grids (layer 0, hidden, head) | loss, max relative | worst update, relative L2 | us a step |
 |---|---|---|---|---|
-| h96-d2 | 1 x 6, 6 x 1, 6 x 1 | 3.6e-7 | 1.44e-3 (the embedding) | 56.7 |
-| h192-d2 | 1 x 12, 12 x 2, 12 x 1 | 4.0e-7 | 1.39e-3 (the embedding) | 59.4 |
-| h256-d1 | 1 x 16, -, 16 x 1 | 7.7e-7 | 5.8e-4 (the embedding) | 39.2 |
-| h512-d1 | 1 x 32, -, 32 x 1 | 8.7e-7 | 6.0e-4 (the embedding) | 42.2 |
+| h96-d2 | 1 x 6, 6 x 1, 6 x 1 | 3.6e-7 | 1.44e-3 (the embedding) | 51.7 |
+| h192-d2 | 1 x 12, 12 x 2, 12 x 1 | 4.0e-7 | 1.39e-3 (the embedding) | 52.9 |
+| h256-d1 | 1 x 16, -, 16 x 1 | 7.7e-7 | 5.8e-4 (the embedding) | 33.7 |
+| h512-d1 | 1 x 32, -, 32 x 1 | 8.7e-7 | 6.0e-4 (the embedding) | 35.8 |
 | h256-d2 | refused: 101,312 bytes dynamic + 128 static > 101,376 a block | | | |
 
 - **Against the split step on the same model and data** (`split_h96-d2_s6_5070.log`, h96-d2, 6 shares): the same update errors (W 5.49e-4,
-  b 4.75e-4, Wh 4.37e-4, emb 1.43e-3) at 20.5 us a step. At widths the split step holds, it is the faster form: it crosses 2 L + 1 barriers to the
+  b 4.75e-4, Wh 4.37e-4, emb 1.43e-3) at 20.5 us a step, against the grid step's 51.7. At widths the split step holds, it is the faster form: it crosses 2 L + 1 barriers to the
   grid's 4 L + 2.
 - **The check's bound** is the split bed's: the loss within 1e-3 and every update within 2e-2 relative L2 of float64.
 

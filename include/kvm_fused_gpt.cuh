@@ -31,7 +31,9 @@ namespace kvm_fgpt {
 constexpr int NT = KVM_FGPT_NT;
 constexpr int NW = NT / 32;
 
-__device__ __forceinline__ float ld(const float* p) { return __ldcg(p); }
+// A load another member may have written, from L2 (a strong load: L1 never serves it stale). A volatile access rather than __ldcg, whose
+// `asm volatile` the compiler must treat as a write to any memory: after each one it read every value it keeps in shared memory again.
+__device__ __forceinline__ float ld(const float* p) { return *reinterpret_cast<const volatile float*>(p); }
 __device__ __forceinline__ float warp_sum(float v) { for (int o = 16; o; o >>= 1) v += __shfl_xor_sync(0xffffffffu, v, o); return v; }
 __device__ __forceinline__ float warp_max(float v) { for (int o = 16; o; o >>= 1) v = fmaxf(v, __shfl_xor_sync(0xffffffffu, v, o)); return v; }
 

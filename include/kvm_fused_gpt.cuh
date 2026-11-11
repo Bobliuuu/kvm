@@ -34,6 +34,13 @@ constexpr int NW = NT / 32;
 // A load another member may have written, from L2 (a strong load: L1 never serves it stale). A volatile access rather than __ldcg, whose
 // `asm volatile` the compiler must treat as a write to any memory: after each one it read every value it keeps in shared memory again.
 __device__ __forceinline__ float ld(const float* p) { return *reinterpret_cast<const volatile float*>(p); }
+// ld's four-wide form: the four floats at p (16-byte aligned) in one request, from L2 as ld's. It is an `asm volatile`, so after each one
+// the compiler reads shared memory again: a loop around it takes the constants it uses as values first (KVM_FGPT_PHASE_CONSTS).
+__device__ __forceinline__ float4 ld4(const float* p) {
+  float4 r;
+  asm volatile("ld.volatile.global.v4.f32 {%0,%1,%2,%3}, [%4];" : "=f"(r.x), "=f"(r.y), "=f"(r.z), "=f"(r.w) : "l"(__cvta_generic_to_global(p)));
+  return r;
+}
 // a + p(0) + p(1) + ... + p(n-1), the terms read from L2 and added in that order (the rolled loop's float result, bit for bit), with up to
 // MAXN loads in flight before the first add: a sum waits for about one round trip to L2 per MAXN terms, where a rolled loop of dependent
 // adds waits for each load in turn (ptxas unrolls one at most 4 deep). `addr(m)` is term m's address. Terms past n are never added.
@@ -560,7 +567,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
   // across a __syncthreads, where held in registers for the whole program they rode through every phase (sm_120: 114 registers of values a
   // loop did not use; sm_80, whose phases need more of their own, spilled hundreds a pass).
   const Plan& p = c.p;
-  const int &N = p.N, &T = p.T, &D = p.d, &H = p.H, &hd = p.hd, &V = p.V, &L = p.L, &b = p.b, &G = p.G, &B = p.B;
+  const int &N = p.N, &T = p.T, &D = p.d, &H = p.H, &hd = p.hd, &V = p.V, &L = p.L, &b = p.b, &G = p.G;
   const int &QB = c.QB, &W = c.W, &hgsz = c.hgsz, &RC = c.RC, &RC16 = c.RC16, &base = c.base;
   const size_t& Nd = c.Nd;
   if ((size_t)s.total > d.xch_floats || !c.ok) {
@@ -1126,52 +1133,93 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
       __syncthreads();
     }
     ph(MK_EMBB);
-    // ---- the gradients' squares over this member's blocks (written by its epilogues) and its attention slice (each element the sum of its
-    // B units' partials, in sequence order, stored first): one flat index, four elements a thread in flight, each thread's squares added in
-    // index order. No branch per element: a slot is a block element (its own gradient, one load), an attention element (its partials, all
-    // four slots' loaded together, eight at a time, each element adding its own in index order, as sum_l2 does) or past the end (no load);
-    // the loads are predicated, so a trip's index loads, then its value loads, issue together.
+    // ---- the attention slice's gradients, then the squares of every gradient this member owns, in two passes a barrier apart.
+    // Pass 1: each attention element is the sum of its nu = B QB item partials (sequence, then query block) from hgp, added in that order
+    // from +0 (sum_l2's float, bit for bit), stored to its gradient. A run of 4 flat attention indices from a multiple of 4 is 4 consecutive
+    // floats of each item's partial and 4 consecutive gradients of one slot, both at offsets that are multiples of 4: every block of the
+    // unit-gradient layout (dWq, dWk, dWv rows of hd; the biases' hd; dWo's [hd][d]) holds a multiple of 4 floats (c.ok: hd % 8, d % 4), so no
+    // run crosses one. A run loads each partial as one 16-byte request (ld4) where its elements made four, and reads one olist and one osrc
+    // word where they read four of each; its sums leave as one 16-byte store where the gradient buffer is 16-byte aligned. A thread holds two
+    // runs' partials in flight: on an RTX 5070 four ran slower on both bed shapes and took the kernel from 144 registers to 213 on sm_120
+    // (from 182, the one loop's, to 198 on sm_80). The slice's ragged ends (at most 3 elements each) are summed one element at a time.
+    // Pass 2: the squares in the order each thread always added them, its elements i = tid, tid + NT, ... in index order, each read from its
+    // gradient (a block's written by this member's epilogues, an attention element's by pass 1), so every thread's sq keeps every bit. With
+    // no partials to hold, a thread reads 16 elements before its adds where the one loop read 4: any count keeps the order, and on an RTX
+    // 5070 16 cut a d128's phase by 3.3 us against 4 (32, or pass 1's words loaded a trip ahead, bought nothing more).
     float sq = 0.f;
     {
-      const int nu = B * QB;                                                          // partials an attention element
-      for (int i0 = tid; i0 < nb + na; i0 += 4 * NT) {
-        float v[4];
-        float* gp[4];
-        const float* src[4];
-        bool ok[4], att[4];
+      KVM_FGPT_PHASE_CONSTS;                                                          // values: ld4 would make each a shared-memory read again
+      const int nu = B * QB, hq = H * QB, nbv = nb, nav = na, n = nbv + nav;           // partials an attention element; owned block + attention
+      const long long a0v = a0, a1v = a0v + nav;
+      const long long up = (a0v + 3) & ~3LL, r0 = up < a1v ? up : a1v, dn = a1v & ~3LL, r1 = dn > r0 ? dn : r0;   // the runs: [r0, r1)
+      const int ng = (int)((r1 - r0) >> 2), ir = nbv + (int)(r0 - a0v);               // runs, and the owned index of the first one's first element
+      const int nhead = (int)(r0 - a0v), nedge = nhead + (int)(a1v - r1);            // the ragged ends: [a0, r0) and [r1, a1)
+      const uint32_t* const ol = olist;
+      const uint32_t* const os = osrc;
+      float* const* const gt = ptab + 3 * KVM_FGPT_MAXP;                              // every slot's gradient
+      const float* const hg = X + s.hgp;                                              // 16-byte aligned, as every array of the layout
+      constexpr uint32_t OFF = (1u << 25) - 1;
+      constexpr int KG = 2, CH = 8;                                                   // runs a thread has in flight; partials a run loads before its adds
+      for (int g0 = tid; g0 < ng; g0 += KG * NT) {
+        float* gp[KG];
+        const float* src[KG];
+        bool ok[KG];
 #pragma unroll
-        for (int u = 0; u < 4; ++u) {
-          const int i = i0 + u * NT;
-          ok[u] = i < nb + na;
-          att[u] = ok[u] && i >= nb;
-          const uint32_t e = ok[u] ? olist[i] : 0u;
-          gp[u] = ptab[3 * KVM_FGPT_MAXP + (int)(e >> 25)] + (e & ((1u << 25) - 1));
-          v[u] = ok[u] && !att[u] ? *gp[u] : 0.f;                                     // a block's gradient is this member's own
-          src[u] = X + s.hgp + (att[u] ? osrc[i] : 0u);                               // the head's items: sequence, then query block
+        for (int u = 0; u < KG; ++u) {
+          const int g = g0 + u * NT, i = ir + 4 * g;
+          ok[u] = g < ng;
+          const uint32_t e = ok[u] ? ol[i] : 0u;
+          gp[u] = gt[e >> 25] + (e & OFF);
+          src[u] = hg + (ok[u] ? os[i] : 0u);                                         // the head's items: sequence, then query block
         }
-        if (att[0] || att[1] || att[2] || att[3])                                     // a thread with no attention slot skips the partials
-          for (int m0 = 0, bq = 0, qq = 0; m0 < nu; m0 += 8) {                         // partial m is sequence bq, query block qq
-            size_t offk[8];                                                           // the same for every element: one chunk's offsets
+        float4 v[KG];
 #pragma unroll
-            for (int k = 0; k < 8; ++k) {
-              offk[k] = ((size_t)bq * H * QB + qq) * hgsz;
-              if (++qq == QB) { qq = 0; ++bq; }
-            }
-            float pv[4][8];
+        for (int u = 0; u < KG; ++u) v[u] = make_float4(0.f, 0.f, 0.f, 0.f);
+        for (int m0 = 0, bq = 0, qq = 0; m0 < nu; m0 += CH) {                          // partial m is sequence bq, query block qq
+          size_t offk[CH];                                                            // the same for every run: one chunk's offsets
 #pragma unroll
-            for (int u = 0; u < 4; ++u)
-#pragma unroll
-              for (int k = 0; k < 8; ++k) pv[u][k] = att[u] && m0 + k < nu ? ld(src[u] + offk[k]) : 0.f;
-#pragma unroll
-            for (int u = 0; u < 4; ++u)
-#pragma unroll
-              for (int k = 0; k < 8; ++k)
-                if (att[u] && m0 + k < nu) v[u] += pv[u][k];
+          for (int k = 0; k < CH; ++k) {
+            offk[k] = ((size_t)bq * hq + qq) * hgsz;
+            if (++qq == QB) { qq = 0; ++bq; }
           }
+          float4 pv[KG][CH];
 #pragma unroll
-        for (int u = 0; u < 4; ++u) if (att[u]) *gp[u] = v[u];                        // after the trip's sums: no store between their loads
+          for (int u = 0; u < KG; ++u)
 #pragma unroll
-        for (int u = 0; u < 4; ++u) if (ok[u]) sq += v[u] * v[u];
+            for (int k = 0; k < CH; ++k) pv[u][k] = ok[u] && m0 + k < nu ? ld4(src[u] + offk[k]) : make_float4(0.f, 0.f, 0.f, 0.f);
+#pragma unroll
+          for (int u = 0; u < KG; ++u)
+#pragma unroll
+            for (int k = 0; k < CH; ++k)
+              if (ok[u] && m0 + k < nu) { v[u].x += pv[u][k].x; v[u].y += pv[u][k].y; v[u].z += pv[u][k].z; v[u].w += pv[u][k].w; }
+        }
+#pragma unroll
+        for (int u = 0; u < KG; ++u)                                                  // after the trip's sums: no store between their loads
+          if (ok[u]) {
+            if ((reinterpret_cast<size_t>(gp[u]) & 15) == 0) *reinterpret_cast<float4*>(gp[u]) = v[u];
+            else { gp[u][0] = v[u].x; gp[u][1] = v[u].y; gp[u][2] = v[u].z; gp[u][3] = v[u].w; }
+          }
+      }
+      if (NT - 1 - tid < nedge) {                                                     // a ragged end's element, on the last threads
+        const int j = NT - 1 - tid, i = j < nhead ? nbv + j : ir + 4 * ng + (j - nhead);
+        const uint32_t e = ol[i];
+        const float* const src = hg + os[i];
+        gt[e >> 25][e & OFF] = sum_l2<8>(nu, [&](int m) { return src + ((size_t)(m / QB) * hq + m % QB) * hgsz; });
+      }
+      __syncthreads();                                                                // pass 2 reads sums other threads stored
+      constexpr int SQ = 16;                                                          // elements a thread reads before its adds
+      for (int i0 = tid; i0 < n; i0 += SQ * NT) {
+        float v[SQ];
+        bool ok[SQ];
+#pragma unroll
+        for (int u = 0; u < SQ; ++u) {
+          const int i = i0 + u * NT;
+          ok[u] = i < n;
+          const uint32_t e = ok[u] ? ol[i] : 0u;
+          v[u] = ok[u] ? gt[e >> 25][e & OFF] : 0.f;
+        }
+#pragma unroll
+        for (int u = 0; u < SQ; ++u) if (ok[u]) sq += v[u] * v[u];
       }
     }
     // ---- the replicated slice: each element's G member partials, summed by 8 threads over fixed member chunks, the chunks in order

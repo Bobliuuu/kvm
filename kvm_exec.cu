@@ -796,6 +796,7 @@ class KvmExec {
     KvmFuseOptions opts; opts.workers = workers; opts.keep = keep; opts.smem_floats = fused_smem_floats();
     KvmFuseResult r = kvm_fuse_mlp(b.tasks, b.succ, b.args, infos, ops, op_of, opts);
     for (const std::string& line : r.report) KLOG(2, "fuse: %s", line.c_str());
+    for (const std::string& line : r.warnings) KLOG(1, "fuse: %s", line.c_str());
     if (!r.dropped.empty()) KLOG(1, "fuse: nothing fused: %s, and each fused form runs on a static-kernel entry of its own", r.dropped.c_str());
     if (r.fused_runs) KLOG(2, "fuse: shared-memory budget %d floats (%d bytes) a fused block", opts.smem_floats, opts.smem_floats * 4);
     KLOG(2, "fuse: %d run(s) fused, %d unchanged; %d tasks replaced by %d; static kernel entry: %s", r.fused_runs, r.unchanged_runs, r.replaced_tasks, r.new_tasks, kvm_fuse_entry_name(r.entry).c_str());

@@ -46,5 +46,8 @@ mm = op == 'matmul_mma_bf16'; at_ = np.char.startswith(op.astype(str), 'attn_')
 print('list schedule (greedy, tape order), same tasks and measured run times:')
 for hop, pop in ((0, 0), (7, 0), (28, 0), (0, 1.6), (0, 2.2)):
     print(f'  {W} workers, hop {hop} us, one start per {pop} us: {sched(W, run, hop, pop)/1e3:.1f} ms')
-for lab, sc in (('matmul tiles x0.45 (cuBLAS-class efficiency)', np.where(mm, 0.45, 1.0)), ('matmul x0.45, attention x0.5', np.where(mm, 0.45, np.where(at_, 0.5, 1.0)))):
+mem = ~(mm | at_)
+for lab, sc in (('matmul x0.44 (cuBLAS rate at the step\'s shapes, floors_bench.py)', np.where(mm, 0.44, 1.0)),
+                ('matmul x0.44, attention x0.19 (SDPA-class)', np.where(mm, 0.44, np.where(at_, 0.19, 1.0))),
+                ('matmul x0.44, attention x0.19, memory-bound classes x0.5', np.where(mm, 0.44, np.where(at_, 0.19, 0.5)))):
     print(f'  {lab}: zero overhead {sched(W, run*sc)/1e3:.1f} ms, one start per 1.6 us {sched(W, run*sc, 0, 1.6)/1e3:.1f} ms')

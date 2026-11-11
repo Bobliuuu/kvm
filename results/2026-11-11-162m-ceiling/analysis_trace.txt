@@ -25,5 +25,6 @@ list schedule (greedy, tape order), same tasks and measured run times:
   107 workers, hop 28 us, one start per 0 us: 116.0 ms
   107 workers, hop 0 us, one start per 1.6 us: 130.8 ms
   107 workers, hop 0 us, one start per 2.2 us: 159.6 ms
-  matmul tiles x0.45 (cuBLAS-class efficiency): zero overhead 92.7 ms, one start per 1.6 us 128.0 ms
-  matmul x0.45, attention x0.5: zero overhead 81.1 ms, one start per 1.6 us 124.5 ms
+  matmul x0.44 (cuBLAS rate at the step's shapes, floors_bench.py): zero overhead 91.1 ms, one start per 1.6 us 127.7 ms
+  matmul x0.44, attention x0.19 (SDPA-class): zero overhead 74.1 ms, one start per 1.6 us 123.4 ms
+  matmul x0.44, attention x0.19, memory-bound classes x0.5: zero overhead 44.9 ms, one start per 1.6 us 105.4 ms

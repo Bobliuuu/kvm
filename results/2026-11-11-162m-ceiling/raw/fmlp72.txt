@@ -1,0 +1,32 @@
+fused_mlp_bed: tokens=96 V=100 E=48 hidden=72,72 slices=3 (R=32), steps=200; shared memory 146 KB, 1 resident block(s)/SM
+warm-up (rep 0): 8.257 ms
+rep 1: 8.232 ms = 41.16 us/step
+rep 2: 8.234 ms = 41.17 us/step
+rep 3: 8.233 ms = 41.16 us/step
+best: 41.16 us/step
+phase breakdown (slice 0, cycles per step, 200 steps x4 runs):
+  load weights+ids                       3307  (5.8%)
+  embedding gather                        930  (1.6%)
+  forward GEMMs (+gelu)                  9087  (15.9%)
+  head GEMM                              1504  (2.6%)
+  softmax CE                             3549  (6.2%)
+  head backward GEMMs                    4500  (7.9%)
+  dZ gelu' (+sync)                       2217  (3.9%)
+  bias colsum                            1439  (2.5%)
+  gelu_f again (l>0)                      210  (0.4%)
+  weight gradient GEMM (A^T dZ)          3514  (6.1%)
+  activation gradient GEMM (dZ W^T)      2364  (4.1%)
+  publish partials (atomics, fence)      7110  (12.4%)
+  wait partials (hop)                     877  (1.5%)
+  reduce + SGD + fence                  15582  (27.2%)
+  wait updates (hop 2)                   1090  (1.9%)
+  total 57278 cycles per step
+step 0: loss device 4.605809, cpu 4.605808 (rel 1.04e-07)
+step 1: loss device 4.604464, cpu 4.604463 (rel 1.04e-07)
+step 2: loss device 4.607190, cpu 4.607191 (rel 3.45e-08)
+step 3: loss device 4.602838, cpu 4.602838 (rel 1.38e-07)
+step 4: loss device 4.604830, cpu 4.604831 (rel 6.90e-08)
+step 5: loss device 4.603269, cpu 4.603269 (rel 0.00e+00)
+step 6: loss device 4.604791, cpu 4.604791 (rel 3.45e-08)
+step 7: loss device 4.605453, cpu 4.605453 (rel 6.90e-08)
+after 8 steps: head weights relative L2 to the fp32 reference: 1.97e-07; worst per-step loss difference 1.38e-07

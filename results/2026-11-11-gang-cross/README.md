@@ -15,14 +15,14 @@ step on one gang, check 3 steps against float64 and time 50. The two arms are th
 (`7fd7d4a`), built on the host with nvcc 12.8.93 and the panel's numerics flags (`raw/builds/`). Each row was read in 5 rounds, the arms'
 order alternating. A row would take 4 more rounds if either arm ran slow (above 1.10x its own fastest run); none did.
 
-| bed | members | counter, µs a step | flag lines, µs a step | counter / flag lines, paired median |
+| bed | members | counter, µs a step | flag lines, µs a step | flag lines / counter, paired median |
 |---|---|---|---|---|
-| grid h1024-d2 | 108 | 133.97 | 159.93 | x1.172 |
-| grid h496-d3 | 108 | 156.41 | 180.36 | x1.125 |
-| grid h512-d4 | 108 | 202.41 | 230.56 | x1.103 |
-| split h256-d4, 18 shares | 108 | 108.52 | 130.34 | x1.196 |
-| split h256-d4, 16 shares | 96 | 101.70 | 116.29 | x1.140 |
-| split h576-d1, 18 shares | 108 | 39.81 | 42.83 | x1.053 |
+| grid h1024-d2 | 108 | 133.97 | 159.93 | x1.194 |
+| grid h496-d3 | 108 | 156.41 | 180.36 | x1.149 |
+| grid h512-d4 | 108 | 202.41 | 230.56 | x1.139 |
+| split h256-d4, 18 shares | 108 | 108.52 | 130.34 | x1.201 |
+| split h256-d4, 16 shares | 96 | 101.70 | 116.29 | x1.142 |
+| split h576-d1, 18 shares | 108 | 39.81 | 42.83 | x1.075 |
 | grid h600-d3 (padded to 608) | 108 | (refuses: no padding) | 188.74 | |
 
 Every run printed `check ok`, and round 1's check lines match across the arms. This includes depth 3-4 and the padded width, which no GPU

@@ -901,8 +901,8 @@ class KvmExec {
     CK(cudaMalloc(&dfinished, sizeof(int))); CK(cudaMemset(dfinished, 0, sizeof(int)));
     S.recs = drecs; S.offs = doffs; S.progress = dprog; S.nworkers = sc.workers; S.nactive = used; S.spin_idle = o.spin_idle; S.finished = dfinished; S.timeout_ns = cfg_.timeout_us * 1000ull; S.cnt = dcnt; S.herr = S_.herr; S.fused = fused.desc; S.split = fused.split; S.grid = fused.grid; S.trace = dtrace; S.trace_on = dtrace != nullptr;
     // The entry the pass chose (kvm_fuse_entry): every fused form runs on an entry of its own, and the generic one refuses the fused ops, so
-    // a fused task bound for it is a host bug, caught here before any launch. The entries declare the same worker state, so their static shared
-    // memory, which the fused budget subtracted (fused_smem_floats), must agree.
+    // a fused task bound for it is a host bug, caught here before any launch. The fused budget subtracted the generic entry's static shared
+    // memory (fused_smem_floats), so the chosen entry may hold no more than that.
     const KvmStaticEntryFn entry = kvm_static_entry_fn(o.entry);
     if (!entry) throw std::logic_error("static kernel: no entry for " + kvm_fuse_entry_name(o.entry));
     if (o.entry.kind == KvmFuseEntry::generic)
@@ -1607,10 +1607,6 @@ int main(int argc, char** argv) {
         // widest slice that fits, so a single run chose 32-row slices and the same run inside a merged bundle 16, and their rounding differed.
         const int workers = so.workers ? std::min(so.workers, ex.grid()) : ex.grid();
         fused = ex.fuse_bundle(bundles[0], workers, dump_idx);   // --dump-buffers keeps the fused path: a gate must read the path that is timed; the buffers no fused run writes dump as they started
-        for (int forms = 1; fused.entry.kind == KvmFuseEntry::mixed && forms >= 0; --forms) {   // fused runs beside other work: no entry runs them (kvm_fuse_entry)
-          KLOG(1, "fuse: %s: the pass runs again with %s", fused.entry.why.c_str(), forms ? "the gang forms off" : "every fused form off");
-          fused = ex.fuse_bundle(bundles[0], workers, dump_idx, forms);
-        }
         if (fused.fused_runs) { bundles[0].tasks = fused.tasks; bundles[0].succ = fused.succ; bundles[0].args = fused.args; so.fused = &fused.runs; }
         so.entry = fused.entry;
       }

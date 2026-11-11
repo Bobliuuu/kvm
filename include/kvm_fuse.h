@@ -44,7 +44,7 @@ struct KvmFuseBuf { int rows = 0, cols = 0, ld = 0, dtype = 0; };   // what the 
 
 struct KvmFuseOps {   // operator ids (from the registry, by name); a missing op leaves its id at -1 and the template never matches it
   int noop = -1, select_window = -1, embedding_fwd = -1, matmul_tile = -1, softmax_ce_fwd = -1, softmax_ce_reduce = -1, softmax_ce_bwd = -1, softmax_ce_fused = -1, gelu_bwd = -1, colsum = -1, embedding_bwd = -1, sgd = -1, sgd_range = -1;
-  int fmlp_slice = -1, fmlp_sgd = -1;   // the one-block form's ops (-1: the form is off)
+  int fmlp_slice = -1, fmlp_sgd = -1;   // the fused ops the pass emits
   int fmlp_split = -1;                  // the split form's gang op (-1: the split form is off)
   int fmlp_grid = -1;                   // the grid form's gang op (-1: the grid form is off)
 };
@@ -91,6 +91,7 @@ struct KvmFuseResult {
   int fused_runs = 0, unchanged_runs = 0, replaced_tasks = 0, new_tasks = 0;
   std::set<int> interior;              // buffers no longer written by a fused run (its activations and gradients): a reader of them after the run reads their initial values
   KvmFuseEntry entry;                  // the static kernel entry the rewritten bundle runs on (kvm_fuse_entry)
+  std::string dropped;                 // non-empty: runs fused, but no single entry runs them with the rest of the bundle, so nothing was (why)
 };
 
 inline KvmFuseEntry kvm_fuse_entry(const KvmFuseResult& r, const KvmFuseOps& ops) {
@@ -448,7 +449,6 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
     if (why.empty()) {
       const Step& s = pl.steps[0];
       std::string one;   // why the one-block form cannot take the run (empty: it can)
-      if (ops.fmlp_slice < 0 || ops.fmlp_sgd < 0) one = "one-block form off (no fmlp_slice or fmlp_sgd op)";
       for (int l = 0; l < s.L; ++l) if (s.H[l] % 8 || s.H[l] > 128) { one = "layer width not a multiple of 8 up to 128"; break; }
       if (one.empty() && (s.E % 8 || s.E == 0)) one = "embedding width not a multiple of 8";
       if (one.empty() && (s.V % 4 || s.V == 0 || s.V > 128)) one = "vocabulary not a multiple of 4 up to 128";
@@ -478,6 +478,24 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
     ++R.fused_runs; plans.push_back(std::move(pl)); plan_comp.push_back((int)ci);
   }
   if (plans.empty()) { R.tasks = tasks; R.succ = succ; R.args = args; return R; }
+  // ---- one form for the bundle: each fused form runs on a static-kernel entry of its own (kvm_fuse_entry), so runs that took different forms
+  // move to the widest form among them when each fits it (a one-block run to the split or the grid form, a split run to the grid form)
+  {
+    bool any_block = false, any_split = false, any_grid = false;
+    for (const Plan& p : plans) { any_split |= p.run.split != 0; any_grid |= p.run.grid != 0; any_block |= !kvm_fuse_gang(p.run); }
+    if (any_block + any_split + any_grid > 1)
+      for (Plan& p : plans) {
+        const Step& s = p.steps[0];
+        std::string w;
+        if (any_grid && !p.run.grid) {
+          const int P = kvm_fuse_grid_fits(s.L, s.E, s.V, s.H, s.T, ops, opts, w);
+          if (P) { p.run.split = p.run.S = p.run.Q = 0; p.split_fit.clear(); p.run.grid = 1; p.run.P = P; p.split_why = "one form for the bundle: grid"; }
+        } else if (!any_grid && !p.run.split) {
+          const std::vector<int> fit = kvm_fuse_split_fits(s.L, s.E, s.V, s.H, s.T, ops, opts, w);
+          if (!fit.empty()) { p.run.split = 1; p.run.Q = KVM_SPLIT_Q; p.run.S = fit.back(); p.split_fit = fit; p.split_why = "one form for the bundle: split"; }
+        }
+      }
+  }
   // ---- slice size: one size for all runs, the smallest that fits every run and gives each slice a worker; if none does, the largest that fits every run (slices then share workers);
   // runs that fit no common size each take their own smallest
   {
@@ -497,8 +515,9 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
       if (common) { p.run.slice_rows = common; continue; }
       for (int rows : kvm_fuse_slice_choices) if (fits(p.run, rows)) { p.run.slice_rows = rows; break; }
     }
-    // the split runs' share count: the largest every split run takes whose gangs all fit the workers at once (wider shares ran faster, measured:
-    // h576-d1 on the A100, 52.1 us a step at S = 5 against 34.2 at S = 12); if none does, each run its fewest shares (gangs then take turns)
+    // the split runs' share count, one for all of them (a split entry runs one): the largest every split run takes whose gangs all fit the workers
+    // at once (wider shares ran faster, measured: h576-d1 on the A100, 52.1 us a step at S = 5 against 34.2 at S = 12); if none does, the fewest
+    // every run takes (gangs then take turns). Runs with no count in common keep their own, and the bundle is left unfused (kvm_fuse_entry)
     {
       std::vector<int> common_s;
       bool first = true; int nsplit = 0;
@@ -512,7 +531,7 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
       }
       int pick = 0;
       for (int S : common_s) if (nsplit * KVM_SPLIT_Q * S <= opts.workers) pick = S;
-      for (Plan& p : plans) if (p.run.split) p.run.S = pick ? pick : p.split_fit.front();
+      for (Plan& p : plans) if (p.run.split) p.run.S = pick ? pick : !common_s.empty() ? common_s.front() : p.split_fit.front();
     }
     for (size_t i = 0; i < plans.size(); ++i) {
       KvmFuseRun& r = plans[i].run;
@@ -630,5 +649,13 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
   }
   for (const Plan& p : plans) { R.runs.push_back(p.run); for (const Step& st : p.steps) R.interior.insert(st.interior.begin(), st.interior.end()); }
   R.entry = kvm_fuse_entry(R, ops);
+  if (R.entry.kind == KvmFuseEntry::mixed) {   // fused runs beside other work, or forms that would not unify: no entry runs the bundle
+    KvmFuseResult U;
+    U.tasks = tasks; U.succ = succ; U.args = args; U.report = R.report;
+    U.unchanged_runs = R.fused_runs + R.unchanged_runs;
+    U.dropped = R.entry.why;
+    U.report.push_back("every run left unchanged: " + R.entry.why + " (each fused form runs on a static-kernel entry of its own)");
+    return U;
+  }
   return R;
 }

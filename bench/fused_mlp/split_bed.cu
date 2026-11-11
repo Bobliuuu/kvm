@@ -107,7 +107,9 @@ int main(int argc, char** argv) {
   const int nslot = d.Q * d.S, T = d.T;
   printf("%s, %d SMs, %zu KB shared memory a block (opt-in); model E %d V %d H %d depth %d, T %d (%d slices of %d), S %d shares (width <= %d, padded %d): %d blocks, %.1f KB a block, %d barriers a step\n",
          prop.name, prop.multiProcessorCount, (size_t)prop.sharedMemPerBlockOptin / 1024, d.E, d.V, d.H, d.L, T, d.Q, R, d.S, wmax, d.HP, nslot, smem_bytes / 1024.0, 2 * d.L + 1);
-  if (smem_bytes > prop.sharedMemPerBlockOptin) { printf("does not fit: %zu > %zu bytes a block; raise --shares\n", smem_bytes, (size_t)prop.sharedMemPerBlockOptin); return 3; }
+  cudaFuncAttributes fa; CK(cudaFuncGetAttributes(&fa, (const void*)kern));   // the kernel's static shared memory (the phase stamps) counts against the same limit
+  if (smem_bytes + fa.sharedSizeBytes > prop.sharedMemPerBlockOptin) {
+    printf("does not fit: %zu dynamic + %zu static > %zu bytes a block; raise --shares\n", smem_bytes, (size_t)fa.sharedSizeBytes, (size_t)prop.sharedMemPerBlockOptin); return 3; }
   CK(cudaFuncSetAttribute((const void*)kern, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)smem_bytes));
   int occ = 0; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, kern, NT, smem_bytes));
   if (occ * prop.multiProcessorCount < nslot) { printf("the grid (%d blocks) cannot be co-resident: %d a SM x %d SMs\n", nslot, occ, prop.multiProcessorCount); return 3; }

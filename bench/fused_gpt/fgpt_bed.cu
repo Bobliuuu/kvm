@@ -204,7 +204,7 @@ int main(int argc, char** argv) {
   CK(cudaMemcpy(dlossp, lp.data(), h.steps * sizeof(float*), cudaMemcpyHostToDevice));
   unsigned* dctl; int *derr, *dok;
   const size_t ctl_bytes = kvm_gang::line_words(KVM_FGPT_MAX_GANG) * sizeof(unsigned);
-  CK(cudaMalloc(&dctl, ctl_bytes)); CK(cudaMemset(dctl, 0, ctl_bytes));   // the gang's flag lines (kvm_gang::barrier_lines)
+  CK(cudaMalloc(&dctl, ctl_bytes)); CK(cudaMemset(dctl, 0, ctl_bytes));   // the gang's control words (kvm_gang::cross)
   CK(cudaMalloc(&derr, 4)); CK(cudaMemset(derr, 0, 4));
   CK(cudaMalloc(&dok, G * 4)); CK(cudaMemset(dok, 0, G * 4));
   float* dbc; CK(cudaMalloc(&dbc, 2 * (size_t)h.steps * sizeof(float)));   // the bias corrections' table, filled by member 0

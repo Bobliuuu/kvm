@@ -147,7 +147,7 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
   const int pA = d.pA, pB = d.pB;
   const float lr = d.lr, inv_t = 1.f / (float)T;
   unsigned* const ctl = d.ctl;
-  unsigned epoch = kvm_gang::cross_epoch(ctl, m, P);   // this member's crossings so far on the flag lines (consecutive steps join member to member, kvm_fuse.h)
+  unsigned long long at = kvm_gang::cross_start(ctl, m, P);   // this member's place in the gang's crossings (consecutive steps join member to member, kvm_fuse.h)
   int* sid = reinterpret_cast<int*>(sm + d.sints);
   int* stg = sid + T;
   float* const A = sm + d.sA;   // [T][pA]: a GEMM's row operand (the embedding rows, a layer's input columns)
@@ -165,7 +165,7 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
   // the parts of this member's blocks inside the model (every block starts inside it: the padding is less than a granule)
   const int vc0 = H - c0 < w0 ? H - c0 : w0, vk = H - k0 < wk ? H - k0 : wk, vn = H - n0 < wn ? H - n0 : wn, vkh = H - kh0 < wkh ? H - kh0 : wkh;
   const int e0 = (int)((long long)m * V / P), e1 = (int)((long long)(m + 1) * V / P);
-  auto cross = [&]() { return kvm_gang::cross(ctl, m, P, epoch, abort); };
+  auto cross = [&]() { return kvm_gang::cross(ctl, m, P, at, abort); };
 
   // ---- load: the step's tokens and targets, then every block and bias this member holds and (layer 0) the step's embedding rows, behind one wait
   for (int i = tid; i < T; i += NT) { sid[i] = ids[i]; stg[i] = tgt[i]; }

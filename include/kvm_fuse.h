@@ -390,8 +390,8 @@ inline std::vector<int> kvm_fuse_split_fits(int L, int E, int V, const std::arra
   return fit;
 }
 
-// The grid form's gang for the shape: every worker a member (more members make every member's blocks smaller), up to the KVM_GRID_MAXP members
-// the flag-line barrier's polling warps cover, when that member fits the budget. Returns the member count, or 0 with the reason in `why`. The
+// The grid form's gang for the shape: every worker a member (more members make every member's blocks smaller), up to KVM_GRID_MAXP members,
+// when that member fits the budget. Returns the member count, or 0 with the reason in `why`. The
 // pass offers it to a run the split form refused, and to every run of a bundle where one needs it (one form a bundle).
 inline int kvm_fuse_grid_fits(int L, int E, int V, const std::array<int, KVM_FUSE_MAXL>& H, int T, const KvmFuseOps& ops, const KvmFuseOptions& opts, std::string& why) {
   if (ops.fmlp_grid < 0) { why = "off (no fmlp_grid op)"; return 0; }

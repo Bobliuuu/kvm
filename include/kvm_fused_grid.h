@@ -32,7 +32,7 @@
 #define KVM_GRID_MAXL 4     // hidden layers
 #define KVM_GRID_G 16       // granule of a block's rows and columns
 #define KVM_GRID_MAXN 128   // widest column block (the GEMM: one 16-column block a warp, 8 warps)
-#define KVM_GRID_MAXP 256   // members of a gang: the flag-line barrier polls each 32 with one warp of the block's 8
+#define KVM_GRID_MAXP 256   // members of a gang, at most (kvm_gang::cross itself takes any size)
 
 struct alignas(16) KvmGridDesc {   // copied to shared memory with 16-byte cp.async
   int V, VP, E, H, Hp, L, T, P;    // vocabulary (padded to VP), embedding width, hidden width (the model's: its arrays' leading dimension) and it

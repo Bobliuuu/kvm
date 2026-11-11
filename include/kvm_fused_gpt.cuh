@@ -466,10 +466,9 @@ enum KvmFgptMark : int {
 struct NoPhases { __device__ __forceinline__ void operator()(int) const {} };
 
 // ---- the gang's barrier -------------------------------------------------------------------------------------------------------------------
-// kvm_gang::barrier_lines: each member publishes its count of crossings in its own word of the gang's flag lines (d.ctl), and a warp polls
-// each line, one member a lane. One round trip to L2 a crossing and no atomic (the counter barrier, kvm_gang::barrier, waits for an
-// atomic's, a release and a poll). A run starts from the member's own word, so the lines need no reset between runs.
-static_assert(KVM_FGPT_MAX_GANG <= 32 * (KVM_FGPT_NT / 32), "kvm_gang::barrier_lines polls each line of 32 members with a warp of the block");
+// kvm_gang::cross on the gang's control words (d.ctl): the flag lines up to KVM_GANG_LINES_MAX members, the counted barrier past them. A run
+// starts from the words as the last run left them (kvm_gang::cross_start), so they need no reset between runs.
+static_assert(KVM_GANG_LINES_MAX <= 32 * (KVM_FGPT_NT / 32), "kvm_gang::cross polls each flag line of 32 members with a warp of the block");
 
 // The run's constants: thread 0 builds one copy a block after the scratch layout, and the program reads them by reference (run, below).
 struct Ctx {
@@ -591,8 +590,8 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
   float* const& gx = c.gx;
   float* const& dy = c.dy;
   const float& inv_n = c.inv_n;
-  unsigned epoch = kvm_gang::lines_epoch(d.ctl, member);                             // this member's crossings so far (the gang's words are equal)
-  auto cross = [&]() { return kvm_gang::barrier_lines(d.ctl, member, G, epoch, abort); };
+  unsigned long long at = kvm_gang::cross_start(d.ctl, member, G);                   // this member's place in the gang's crossings, read before its first
+  auto cross = [&]() { return kvm_gang::cross(d.ctl, member, G, at, abort); };
   // row strides: q | k | v, a d-wide block, the T x T scores and a head-wide block (the last two are read transposed: whole 16-row tiles)
   const int& ldd = c.ldd;
   rope_table(rtab, T, hd, d.theta);

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the fused GPT step's device program (include/kvm_fused_gpt.cuh) alone on a GPU and judge it against the workload VM.
 
-  python3 -I bench/fused_gpt/fgpt_bed.py WORKLOAD_DIR --bed BINARY [--steps 2] [--gangs 1,4] [--work DIR] [--tol 3e-4]
+  python3 -I bench/fused_gpt/fgpt_bed.py WORKLOAD_DIR --bed BINARY [--steps 2] [--gangs 1,4] [--work DIR] [--tol 3e-4] [--launcher CMD]
 
 BINARY is bench/fused_gpt/fgpt_bed.cu built for the GPU at hand (nvcc -O3 -std=c++17 -arch=sm_XX -Iinclude). The workload is a GPT
 bundle's workload directory (workload.json and its data/). This script:
@@ -12,7 +12,11 @@ bundle's workload directory (workload.json and its data/). This script:
      difference over its largest magnitude (a float32 GEMM's error scales with its operands); the weights are reported, not judged
      (AdamW's first update is about lr x sign(g), so float32 noise flips it where a gradient is near zero);
   4. compares each gang size with the first (the decomposition: only the order of a few sums changes with G).
-Exit 0 when every check passes.
+Under the bundle's default 1xTF32 GEMMs, run one step for the gradient bars: after the first AdamW update the trajectories part (its
+update is about lr x sign(g), and TF32 noise flips the sign where a gradient is near zero), so later steps' gradients are not comparable
+element by element. A precise-mode bundle (gen.py --mode precise, 3xTF32) holds the tight bars over several steps.
+Exit 0 when every check passes. --launcher is a command prefix for each bed run (a GPU lock or a memory guard), split on spaces; the bed
+itself refuses a run above 1 GiB of device memory.
 """
 from __future__ import annotations
 
@@ -84,11 +88,15 @@ def write_inputs(model: ref.Model, spec: dict, work: Path) -> tuple[list[str], l
     tgt = [int(x) for x in model.init[wt['src']]]
     assert all(float(x) == int(x) for x in model.init[wi['src']]), 'token stream is not integral'
     step0 = int(model.init[model.step_buf][0])
+    # the GEMM tiles' numerics bits (16 precise = 3xTF32, 256 truncated, 1024 exact): one value on every tile, as the matcher requires
+    bits = {t['args'].get('flags', 0) & (16 | 256 | 1024) for g in spec['graphs'] for t in g['tasks'] if t['op'] == 'matmul_tile'}
+    assert len(bits) == 1, f'GEMM numerics differ between tiles: {sorted(bits)}'
+    mm_numerics = bits.pop()
     lines = [f'N {model.N}', f'T {model.T}', f'B {model.B}', f'd {model.d}', f'H {model.H}', f'hd {model.hd}', f'F {model.F}',
              f'V {model.V}', f'L {model.L}', f'steps {model.steps}', f'ln_eps {model.ln_eps!r}', f'theta {model.theta!r}',
              f'scale {model.scale!r}', f'lr {model.lr!r}', f'beta1 {model.b1!r}', f'beta2 {model.b2!r}', f'adam_eps {model.eps!r}',
              f'max_norm {model.max_norm!r}', f'ids_stride {wi["stride"]}', f'ids_off {wi["off"]}', f'tgt_stride {wt["stride"]}',
-             f'tgt_off {wt["off"]}', f'ids_len {len(ids)}', f'tgt_len {len(tgt)}', f'step0 {step0}']
+             f'tgt_off {wt["off"]}', f'ids_len {len(ids)}', f'tgt_len {len(tgt)}', f'step0 {step0}', f'mm_numerics {mm_numerics}']
     sizes = []
     for i, n in enumerate(names):
         r, c = model.shape[n]
@@ -124,7 +132,9 @@ def rel(mine: list[float], theirs: list[float]) -> float:
     return worst / scale
 
 
-def judge(run: dict, vmr: dict, names: list[str], tol: float, lr: float) -> tuple[bool, list[str]]:
+def judge(run: dict, vmr: dict, names: list[str], tol: float, lr: float, grads_judged: bool) -> tuple[bool, list[str]]:
+    """Every step's loss against the VM; the last step's gradients and moments too where they are comparable element by element
+    (grads_judged: precise numerics, or a single step), else reported only."""
     lines, ok = [], True
     lw = max(abs(a[0] - b[0]) / abs(b[0]) for a, b in zip(run['losses'], vmr['losses']))
     inv = max(abs(a[1] - b[1]) for a, b in zip(run['losses'], vmr['losses']))
@@ -140,8 +150,11 @@ def judge(run: dict, vmr: dict, names: list[str], tol: float, lr: float) -> tupl
             if e > worst:
                 worst, wname = e, n
         good = worst < limit
-        ok &= good
-        lines.append(f'{what} (last step): worst {worst:.2e} of its tensor\'s scale ({wname}): {"ok" if good else "FAIL"}')
+        if grads_judged:
+            ok &= good
+            lines.append(f'{what} (last step): worst {worst:.2e} of its tensor\'s scale ({wname}): {"ok" if good else "FAIL"}')
+        else:
+            lines.append(f'{what} (last step): worst {worst:.2e} of its tensor\'s scale ({wname}): reported (1xTF32 after AdamW steps)')
     wl = 0.0
     wname = ''
     for n in names:
@@ -156,6 +169,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('workload'); ap.add_argument('--bed', required=True); ap.add_argument('--steps', type=int, default=2)
     ap.add_argument('--gangs', default='1,4'); ap.add_argument('--work', default=None); ap.add_argument('--tol', type=float, default=3e-4)
+    ap.add_argument('--launcher', default='', help='command prefix for each bed run, e.g. a GPU lock')
+    ap.add_argument('--decomp-tol', type=float, default=1e-4, help='gradients of each gang size against the first, of each tensor\'s scale')
     a = ap.parse_args()
     wdir = Path(a.workload).resolve()
     work = Path(a.work).resolve() if a.work else wdir.parent / f'fgpt-bed-{wdir.name}-k{a.steps}'
@@ -167,10 +182,12 @@ def main() -> int:
     log(f'model: L {model.L}, d {model.d}, heads {model.H} x {model.hd}, MLP {model.F}, V {model.V}, {model.B} x {model.T} rows; '
         f'{a.steps} steps; work {work}')
     names, sizes = write_inputs(model, spec, work)
+    precise = any(l.split() == ['mm_numerics', '16'] for l in (work / 'meta.txt').read_text().splitlines())
     runs, fail = {}, 0
     for G in [int(x) for x in a.gangs.split(',')]:
-        log(f'G {G}: {a.bed} {work} {G}')
-        p = subprocess.run([a.bed, str(work), str(G)], capture_output=True, text=True, timeout=600)
+        cmd = a.launcher.split() + [a.bed, str(work), str(G)]
+        log(f'G {G}: {" ".join(cmd)}')
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
         (work / f'bed-G{G}.log').write_text(p.stdout + p.stderr)
         for line in (p.stdout + p.stderr).splitlines():
             log(f'  {line}')
@@ -184,7 +201,7 @@ def main() -> int:
         for key in ('p', 'm', 'v', 'g'):
             run[key] = split(read_f32(out / f'{key}.bin'), names, sizes)
         runs[G] = run
-        ok, lines = judge(run, vmr, names, a.tol, model.lr)
+        ok, lines = judge(run, vmr, names, a.tol, model.lr, grads_judged=precise or a.steps == 1)
         for line in lines:
             log(f'G {G}: {line}')
         fail += not ok
@@ -193,7 +210,7 @@ def main() -> int:
         base = runs[gangs[0]]
         lw = max(abs(x[0] - y[0]) / abs(y[0]) for x, y in zip(runs[G]['losses'], base['losses']))
         gw = max(rel(runs[G]['g'][n], base['g'][n]) for n in names)
-        good = lw < 1e-5 and gw < 1e-4
+        good = lw < 1e-5 and gw < a.decomp_tol
         fail += not good
         log(f'decomposition G {G} against G {gangs[0]}: losses {lw:.2e}, gradients {gw:.2e} of scale: {"ok" if good else "FAIL"}')
     log('OK' if not fail else f'FAILED: {fail}')

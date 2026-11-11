@@ -101,8 +101,11 @@ struct KvmFgptScratch {
       o[KVM_FGPT_MAXL], lse[KVM_FGPT_MAXL], xm[KVM_FGPT_MAXL], h2[KVM_FGPT_MAXL], m2[KVM_FGPT_MAXL], r2[KVM_FGPT_MAXL], pre[KVM_FGPT_MAXL];
   long long hf, mf, rf, logits, ce, tl, gx, part, lnp, rpart, hgp, dkv, olist, osrc, gn, dy, total;
 };
-KVM_FGPT_HD inline KvmFgptScratch kvm_fgpt_scratch(int N, int T, int d, int H, int F, int V, int L, int G, int QB) {
-  KvmFgptScratch s{};
+// The layout written into `s` in place (the program's thread 0 builds the block's shared copy this way, with no local copy to spill); every
+// offset is a long long, so the zeroing loop clears the arrays past L as KvmFgptScratch{} would.
+KVM_FGPT_HD inline void kvm_fgpt_scratch_into(KvmFgptScratch& s, int N, int T, int d, int H, int F, int V, int L, int G, int QB) {
+  static_assert(sizeof(KvmFgptScratch) % sizeof(long long) == 0, "the layout is long long offsets");
+  for (size_t i = 0; i < sizeof(KvmFgptScratch) / sizeof(long long); ++i) reinterpret_cast<long long*>(&s)[i] = 0;
   long long at = 0;
   const long long Nd = (long long)N * d, NF = (long long)N * F, B = T > 0 ? N / T : 0;
   auto take = [&at](long long n) { const long long o = at; at += (n + 3) & ~3LL; return o; };
@@ -119,6 +122,10 @@ KVM_FGPT_HD inline KvmFgptScratch kvm_fgpt_scratch(int N, int T, int d, int H, i
   const long long os = kvm_fgpt_own_stride(T > 0 ? N / T : 0, T, d, H, F, V, L, G);
   s.olist = take((long long)G * os); s.osrc = take((long long)G * os); s.gn = take(G); s.dy = take(Nd);
   s.total = at;
+}
+KVM_FGPT_HD inline KvmFgptScratch kvm_fgpt_scratch(int N, int T, int d, int H, int F, int V, int L, int G, int QB) {
+  KvmFgptScratch s;
+  kvm_fgpt_scratch_into(s, N, T, d, H, F, V, L, G, QB);
   return s;
 }
 
@@ -135,11 +142,13 @@ KVM_FGPT_HD inline long long kvm_fgpt_r4(long long n) { return (n + 3) & ~3LL; }
 // Read with a runtime layer index, a thread's own copy would live in local memory, 592 bytes a thread (on an A100, beside this kernel's
 // shared memory, its L1 keeps little of that), and on sm_80 the struct's 74 offsets crowded every phase's registers.
 #define KVM_FGPT_LAYOUT_FLOATS ((long long)((sizeof(KvmFgptScratch) + 15) / 16 * 4))
-// The fixed head of a member's shared memory: the scratch layout, the step's tokens and targets and the cross-entropy's log-sum-exp a row (N each), RoPE's cos
+// The run's constants (kvm_fused_gpt.cuh's Ctx) after it, in a fixed slot of 384 bytes (a static_assert there checks it fits).
+#define KVM_FGPT_CTX_FLOATS 96LL
+// The fixed head of a member's shared memory: the scratch layout, the run's constants, the step's tokens and targets and the cross-entropy's log-sum-exp a row (N each), RoPE's cos
 // and sin table (T x hd / 2 each), a block reduction's partials (one double a warp), a flag, a scratch of one float a thread, every
 // parameter slot's four pointers (p, m, v, g) and weight decay, and the member's block table (8 ints an entry).
 KVM_FGPT_HD inline long long kvm_fgpt_smem_head(int N, int T, int hd) {
-  return KVM_FGPT_LAYOUT_FLOATS + 3 * kvm_fgpt_r4(N) + kvm_fgpt_r4((long long)T * hd) + 2 * (KVM_FGPT_NT / 32) + 4 + KVM_FGPT_NT + 4LL * KVM_FGPT_MAXP * 2 +
+  return KVM_FGPT_LAYOUT_FLOATS + KVM_FGPT_CTX_FLOATS + 3 * kvm_fgpt_r4(N) + kvm_fgpt_r4((long long)T * hd) + 2 * (KVM_FGPT_NT / 32) + 4 + KVM_FGPT_NT + 4LL * KVM_FGPT_MAXP * 2 +
          kvm_fgpt_r4(KVM_FGPT_MAXP) + 8LL * KVM_FGPT_MAXBLK;
 }
 // A bound on the program's shared memory, in floats: a fixed head (the step's tokens and targets, the cross-entropy's log-sum-exp a row, a

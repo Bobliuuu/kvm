@@ -49,6 +49,25 @@ __device__ __forceinline__ float sum_l2(int n, const Addr& addr, float a = 0.f) 
   }
   return a;
 }
+// sum_l2's sum, bit for bit, of n <= 32 MAXK terms at consecutive words, for a sum every thread needs: lane l loads terms l, l + 32, ...,
+// so a warp makes ceil(n / 32) requests of a line each where every thread loading every term made n of one word, and every lane adds the
+// terms in index order through shuffles, so each lane returns the rolled loop's sum.
+template <int MAXK, class Addr>
+__device__ __forceinline__ float warp_sum_l2(int n, const Addr& addr) {
+  const int lane = threadIdx.x & 31;
+  float v[MAXK];
+#pragma unroll
+  for (int k = 0; k < MAXK; ++k) v[k] = 32 * k + lane < n ? ld(addr(32 * k + lane)) : 0.f;
+  float a = 0.f;
+#pragma unroll
+  for (int k = 0; k < MAXK; ++k)
+#pragma unroll
+    for (int l = 0; l < 32; ++l) {
+      const float t = __shfl_sync(0xffffffffu, v[k], l);                            // every lane runs every shuffle: the warp stays converged
+      if (32 * k + l < n) a += t;
+    }
+  return a;
+}
 __device__ __forceinline__ float warp_sum(float v) { for (int o = 16; o; o >>= 1) v += __shfl_xor_sync(0xffffffffu, v, o); return v; }
 __device__ __forceinline__ float warp_max(float v) { for (int o = 16; o; o >>= 1) v = fmaxf(v, __shfl_xor_sync(0xffffffffu, v, o)); return v; }
 
@@ -1178,7 +1197,9 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
     ph(MK_SQUARES);
     if (!cross()) return false;                                                       // the grad norm's partials
     ph(MK_X_NORM);
-    const float norm2 = sum_l2<32>(G, [&](int m) { return X + s.gn + m; });   // 32 in flight (sum_l2 adds in index order at any width)
+    // The G partials in index order, read once a warp, a line a request (warp_sum_l2): with every thread reading every partial, each
+    // member sent 8 G one-word requests to the same few lines, so the gang's grew as G squared.
+    const float norm2 = warp_sum_l2<(KVM_FGPT_MAX_GANG + 31) / 32>(G, [&](int m) { return X + s.gn + m; });
     const float norm = sqrtf(norm2);
     const float coef = d.max_norm > 0.f ? fminf(1.f, d.max_norm / (norm + 1e-6f)) : 1.f;
     // ---- AdamW on the owned elements, in the bundle's float32 operation order, with the counter after its increment: one flat index over

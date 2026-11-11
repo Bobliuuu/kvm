@@ -801,7 +801,7 @@ class KvmExec {
         const int floats = kvm_grid_layout(d);
         if (floats < 0 || floats > r.smem_floats) throw std::runtime_error("fuse: a grid run's layout does not fit what the pass sized it for");
         st.smem_bytes = std::max(st.smem_bytes, floats * (int)sizeof(float));
-        const size_t TH = (size_t)d.T * d.H;
+        const size_t TH = (size_t)d.T * d.Hp;   // the step's activations and partials, at the padded width
         d.emb = param(r.wte); d.wh = param(r.head);
         for (int l = 0; l < r.L; ++l) { d.w[l] = param(r.w[l]); d.b[l] = param(r.b[l]); d.Y[l] = scratch(TH); }
         d.part = scratch(d.L > 1 ? (size_t)d.ka * TH : 1); d.hpart = scratch((size_t)d.kah * d.T * d.VP); d.dlog = scratch((size_t)d.T * d.VP);

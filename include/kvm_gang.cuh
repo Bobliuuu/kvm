@@ -84,4 +84,27 @@ __device__ __forceinline__ bool barrier_lines(unsigned* lines, int member, int m
     return !__syncthreads_or(gave);
 }
 
+// The gang's crossing: the flag-line form up to LinesMax members, the counter form past them. Both are exact barriers with the same
+// ordering and abort contract, so the choice is cost alone:
+//  * a flag-line crossing is one round trip to L2, but every member's warps poll every line, 4 sectors a line a poll, all on the lines'
+//    L2 slices, so its cost grows with members x lines;
+//  * the counter form polls one word with one thread a member, and costs an atomic's round trip more.
+// On the A100 (sm_80, 108 SMs; bench/gang/barrier_bench.cu, results/2026-11-11-gang-cross/) a crossing alone took 1,350 ns at 32 members
+// on flag lines against the counter's 2,202, even at 64 (2,171 against 2,216), and 3,465 against 2,355 at 108. Inside the fused steps, the
+// polls of the members that wait also slow the ones still working: on flag lines the 108-member split and grid steps took 1.08-1.20x
+// the counter's time.
+// One allocation serves both forms: line_words(members) words, zeroed once (the counter form uses the first two). `epoch` comes from
+// cross_epoch, which reads the member's word (a volatile load) only when the gang takes the flag lines: the counter path never uses it.
+#ifndef KVM_GANG_LINES_MAX
+#define KVM_GANG_LINES_MAX 64
+#endif
+template <int LinesMax = KVM_GANG_LINES_MAX>
+__device__ __forceinline__ unsigned cross_epoch(const unsigned* ctl, int member, int members) {
+    return members <= LinesMax ? lines_epoch(ctl, member) : 0u;
+}
+template <int LinesMax = KVM_GANG_LINES_MAX>
+__device__ __forceinline__ bool cross(unsigned* ctl, int member, int members, unsigned& epoch, const int* abort = nullptr) {
+    return members <= LinesMax ? barrier_lines(ctl, member, members, epoch, abort) : barrier(ctl, members, abort);
+}
+
 }  // namespace kvm_gang

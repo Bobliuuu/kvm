@@ -4,7 +4,7 @@
 // A split run trains one MLP whose step one block cannot hold (kvm_fused_mlp.h's slices, past their budget), as one gang op a step: Q x S
 // members (kvm_static_plan's gangs), member q * S + s taking row slice q (KVM_SPLIT_R rows) and share s, the hidden units
 // [share0[s], share0[s + 1]) of every layer: those columns of each layer's weights and bias, and those rows of the head. The members meet
-// at kvm_gang::barrier_lines, 2 x L + 1 times a step:
+// at kvm_gang::cross, 2 x L + 1 times a step:
 //  * an all-gather of each hidden layer below the top (its columns written to XH, then the slice's whole layer read back);
 //  * the logits' S partials (P);
 //  * a reduce-scatter of each activation gradient above layer 0 (full-width partials in XD, each member summing its own columns);
@@ -46,7 +46,7 @@ struct alignas(16) KvmSplitDesc {   // copied to shared memory with 16-byte cp.a
   // from this one. With layers alternating, a slot is rewritten only after another reduce-scatter's barrier, which every reader must reach first.
   float *XH[KVM_SPLIT_MAXL], *XD[2];
   float* loss_part;                  // [Q]: each slice's sum of row losses
-  // the gang's flag lines (kvm_gang::barrier_lines: line_words(Q x S) words, 128-byte aligned), zeroed once when the run's buffers are made. One
+  // the gang's control words (kvm_gang::cross: line_words(Q x S) words, 128-byte aligned), zeroed once when the run's buffers are made. One
   // set serves every step: the words need no reset, and a run's gangs never overlap in time (a step's members start after the last step's final
   // barrier, and member m's next step waits on its last, so it reads its own word as that step left it)
   unsigned* ctl;

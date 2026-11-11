@@ -1,0 +1,16 @@
+grid_h1024_d2_p16 grid_bed --hidden 1024 --depth 2 --members 16
+grid_h1024_d2_p32 grid_bed --hidden 1024 --depth 2 --members 32
+grid_h1024_d2_p48 grid_bed --hidden 1024 --depth 2 --members 48
+grid_h1024_d2_p64 grid_bed --hidden 1024 --depth 2 --members 64
+grid_h1024_d2_p80 grid_bed --hidden 1024 --depth 2 --members 80
+grid_h1024_d2_p96 grid_bed --hidden 1024 --depth 2 --members 96
+grid_h1024_d2_p108 grid_bed --hidden 1024 --depth 2 --members 108
+split_h256_d4_s2 split_bed --hidden 256 --depth 4 --shares 2
+split_h256_d4_s4 split_bed --hidden 256 --depth 4 --shares 4
+split_h256_d4_s5 split_bed --hidden 256 --depth 4 --shares 5
+split_h256_d4_s6 split_bed --hidden 256 --depth 4 --shares 6
+split_h256_d4_s8 split_bed --hidden 256 --depth 4 --shares 8
+split_h256_d4_s10 split_bed --hidden 256 --depth 4 --shares 10
+split_h256_d4_s12 split_bed --hidden 256 --depth 4 --shares 12
+split_h256_d4_s16 split_bed --hidden 256 --depth 4 --shares 16
+split_h256_d4_s18 split_bed --hidden 256 --depth 4 --shares 18

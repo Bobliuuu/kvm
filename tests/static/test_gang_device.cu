@@ -1,4 +1,5 @@
-// Device test of the gang barriers (include/kvm_gang.cuh), the counter form (`barrier`) and the flag-line form (`barrier_lines`): gangs of
+// Device test of the gang barriers (include/kvm_gang.cuh), the counter form (`barrier`), the flag-line form (`barrier_lines`) and the crossing
+// that picks one by the gang's size (`cross`: at LinesMax 8, so every GPU's gangs take both forms, and at the shipped KVM_GANG_LINES_MAX): gangs of
 // several sizes on disjoint blocks of one co-resident grid exchange slots through global memory for many rounds, and every member checks
 // every value it reads. Each form runs twice: the gangs of a fused step's widths side by side, then one gang of every block (more than 32
 // members on most GPUs, so the flag line polls several lines).
@@ -27,7 +28,10 @@ __device__ __forceinline__ float ld_cg(const float* p) { float v; asm volatile("
 
 struct Gangs { const int* first; const int* size; int n; };   // gang g: blocks [first[g], first[g] + size[g])
 
-// The gang's control words: two for the counter form, line_words(size) for the flag line, at `ctl + words * g` (a multiple of 32 words).
+// FORM 0: the counter; 1: the flag lines; 2: cross<8>; 3: cross<KVM_GANG_LINES_MAX>. A gang of `members` takes the flag lines when
+// members <= lines_max(FORM). The gang's control words: two for the counter form, line_words(size) otherwise, at `ctl + words * g` (a multiple of 32 words).
+constexpr int lines_max(int form) { return form == 0 ? 0 : form == 1 ? 1 << 30 : form == 2 ? 8 : KVM_GANG_LINES_MAX; }
+constexpr const char* form_name(int form) { return form == 0 ? "counter" : form == 1 ? "flag-line" : form == 2 ? "cross<8>" : "cross<KVM_GANG_LINES_MAX>"; }
 template <int FORM> __host__ __device__ constexpr int ctl_words(int max_members) { return FORM == 0 ? 2 : kvm_gang::line_words(max_members); }
 
 template <int FORM>
@@ -36,10 +40,14 @@ __global__ void __launch_bounds__(NT, 1) gang_kernel(Gangs gs, unsigned* ctl, in
     while (g + 1 < gs.n && (int)blockIdx.x >= gs.first[g + 1]) ++g;   // this block's gang (first[] ascending)
     const int member = blockIdx.x - gs.first[g], members = gs.size[g];
     unsigned* const words_g = ctl + (size_t)words * g;
-    unsigned epoch = FORM == 0 ? 0u : kvm_gang::lines_epoch(words_g, member);
+    unsigned epoch = FORM == 0 ? 0u : FORM == 1 ? kvm_gang::lines_epoch(words_g, member)
+                   : FORM == 2 ? kvm_gang::cross_epoch<8>(words_g, member, members) : kvm_gang::cross_epoch(words_g, member, members);
+    const int* const ab = abort_test ? abort_word : nullptr;
     const auto cross = [&]() {
-        return FORM == 0 ? kvm_gang::barrier(words_g, members, abort_test ? abort_word : nullptr)
-                         : kvm_gang::barrier_lines(words_g, member, members, epoch, abort_test ? abort_word : nullptr);
+        return FORM == 0 ? kvm_gang::barrier(words_g, members, ab)
+             : FORM == 1 ? kvm_gang::barrier_lines(words_g, member, members, epoch, ab)
+             : FORM == 2 ? kvm_gang::cross<8>(words_g, member, members, epoch, ab)
+                         : kvm_gang::cross(words_g, member, members, epoch, ab);
     };
     float* mine = slots + (size_t)blockIdx.x * SLOT;
     const float* gang_slots = slots + (size_t)gs.first[g] * SLOT;
@@ -62,7 +70,7 @@ __global__ void __launch_bounds__(NT, 1) gang_kernel(Gangs gs, unsigned* ctl, in
 template <int FORM>
 int run_form(const char* layout, const std::vector<int>& first, const std::vector<int>& size, int W, int rounds) {
     const int ng = (int)first.size(), maxm = *std::max_element(size.begin(), size.end()), words = ctl_words<FORM>(maxm);
-    printf("%s barrier, %s: %d blocks in %d gang(s) (sizes", FORM == 0 ? "counter" : "flag-line", layout, W, ng);
+    printf("%s barrier, %s: %d blocks in %d gang(s) (sizes", form_name(FORM), layout, W, ng);
     for (int s : size) printf(" %d", s);
     printf("), %d words a gang, %d rounds of two crossings\n", words, rounds);
     int *dfirst, *dsize; unsigned* ctl; float* slots; unsigned long long* err; int *abort_word, *gave_up;
@@ -84,7 +92,7 @@ int run_form(const char* layout, const std::vector<int>& first, const std::vecto
         int ctl_bad = 0;
         for (int g = 0; g < ng; ++g) {
             const unsigned* w = h.data() + (size_t)words * g;
-            if (FORM == 0) ctl_bad += w[0] != 0u || w[1] != want;
+            if (size[g] > lines_max(FORM)) ctl_bad += w[0] != 0u || w[1] != want;   // the counter form's words
             else { bool ok = true; for (int m = 0; m < words; ++m) ok = ok && w[m] == (m < size[g] ? want : 0u); ctl_bad += !ok; }
         }
         printf("  launch %d: %llu wrong values read, %d gang(s) whose words are not as a clean run of %u crossings leaves them\n", launch, bad, ctl_bad, want);
@@ -109,8 +117,10 @@ int main(int argc, char** argv) {
     const int rounds = argc > 1 ? atoi(argv[1]) : 2000;
     cudaDeviceProp prop; CK(cudaGetDeviceProperties(&prop, 0));
     int occ0 = 0, occ1 = 0;
+    int occ2 = 0, occ3 = 0;
     CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ0, gang_kernel<0>, NT, 0)); CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ1, gang_kernel<1>, NT, 0));
-    const int W = std::min(prop.multiProcessorCount, std::min(occ0, occ1) * prop.multiProcessorCount);
+    CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ2, gang_kernel<2>, NT, 0)); CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ3, gang_kernel<3>, NT, 0));
+    const int W = std::min(prop.multiProcessorCount, std::min(std::min(occ0, occ1), std::min(occ2, occ3)) * prop.multiProcessorCount);
     printf("%s: %d co-resident blocks of %d threads\n", prop.name, W, NT);
     // gang sizes 1, 2, 3, 5, 8, 13, then one gang of what is left: gangs of a fused step's widths side by side; then one gang of every block
     std::vector<int> first, size;
@@ -123,6 +133,10 @@ int main(int argc, char** argv) {
     fails += run_form<0>("one gang", one_first, one_size, W, rounds);
     fails += run_form<1>("side by side", first, size, W, rounds);
     fails += run_form<1>("one gang", one_first, one_size, W, rounds);
-    printf("%s\n", fails ? "FAIL" : "PASS: in both forms every member read every slot of its round, every gang's control words are as a clean run leaves them, and an aborted gang ends");
+    fails += run_form<2>("side by side", first, size, W, rounds);
+    fails += run_form<2>("one gang", one_first, one_size, W, rounds);
+    fails += run_form<3>("side by side", first, size, W, rounds);
+    fails += run_form<3>("one gang", one_first, one_size, W, rounds);
+    printf("%s\n", fails ? "FAIL" : "PASS: in every form (counter, flag lines, cross at 8 and at KVM_GANG_LINES_MAX) every member read every slot of its round, every gang's control words are as a clean run leaves them, and an aborted gang ends");
     return fails ? 1 : 0;
 }

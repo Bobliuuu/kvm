@@ -1,0 +1,24 @@
+### fgpt_bed.py W/w_tiny --exec kvm_exec --steps 50 --tol 2e-3
+[fgpt_bed 01:29:24Z] VM reference: cached vm-bf1de47c5338fe7f-k50.json
+[fgpt_bed 01:29:24Z] model: L 1, d 32, heads 2 x 16, MLP 128, V 64, 1 x 32 rows; 50 steps; work <work>/W/fgpt-bed-w_tiny-k50
+[fgpt_bed 01:29:25Z]   OK: 32/32 tasks, 4.384 ms
+[fgpt_bed 01:29:25Z]   [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang)
+[fgpt_bed 01:29:25Z]   [kvm_exec][I] fuse gpt: component 0: GPT run of 50 steps, 6749 tasks: L 1, d 32, heads 2 x 16, MLP 128, vocabulary 64, 1 sequences of 32 (N 32), 20 parameters, 133 tasks a step, GEMM numerics 0, fused as a gang of 32
+[fgpt_bed 01:29:25Z]   [kvm_exec][I] fuse gpt: 1 run(s) fused, 0 unchanged; 6749 tasks replaced by 32
+[fgpt_bed 01:29:25Z]   [kvm_exec][I] fuse gpt: run 0: a gang of 32, 50 steps, attention in 1 query block(s) a unit, 0.41 MB of scratch, 39520 bytes of shared memory a member
+[fgpt_bed 01:29:25Z]   [kvm_exec][I] fused GPT kernel: 1 run(s), 32 members, 1 resident blocks/SM, 39520 bytes of dynamic shared memory a member
+[fgpt_bed 01:29:25Z]   [kvm_exec][I] fused GPT run done: 32 members in 4.384 ms
+[fgpt_bed 01:29:25Z] exec: losses (first and last three): 4.146049, 3.993769, 3.768156, 1.332551, 1.284188, 1.245304 (VM 4.146039, 3.993824, 3.768175, 1.332614, 1.283695, 1.244709): worst of 50 6.89e-04 relative, 1/count off by 0.0e+00: ok
+[fgpt_bed 01:29:25Z] OK
+### fgpt_bed.py W/w_small --exec kvm_exec --steps 3 --tol 2e-3
+[fgpt_bed 01:29:25Z] VM reference: cached vm-bfef8b9702cace4c-k3.json
+[fgpt_bed 01:29:26Z] model: L 2, d 64, heads 4 x 16, MLP 256, V 128, 2 x 64 rows; 3 steps; work <work>/W/fgpt-bed-w_small-k3
+[fgpt_bed 01:29:26Z]   OK: 32/32 tasks, 9.372 ms
+[fgpt_bed 01:29:26Z]   [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang)
+[fgpt_bed 01:29:26Z]   [kvm_exec][I] fuse gpt: component 0: GPT run of 50 steps, 28858 tasks: L 2, d 64, heads 4 x 16, MLP 256, vocabulary 128, 2 sequences of 64 (N 128), 36 parameters, 584 tasks a step, GEMM numerics 0, fused as a gang of 32
+[fgpt_bed 01:29:26Z]   [kvm_exec][I] fuse gpt: 1 run(s) fused, 0 unchanged; 28858 tasks replaced by 32
+[fgpt_bed 01:29:26Z]   [kvm_exec][I] fuse gpt: run 0: a gang of 32, 50 steps, attention in 4 query block(s) a unit, 4.44 MB of scratch, 74208 bytes of shared memory a member
+[fgpt_bed 01:29:26Z]   [kvm_exec][I] fused GPT kernel: 1 run(s), 32 members, 1 resident blocks/SM, 74208 bytes of dynamic shared memory a member
+[fgpt_bed 01:29:26Z]   [kvm_exec][I] fused GPT run done: 32 members in 9.372 ms
+[fgpt_bed 01:29:26Z] exec: losses: 4.878223, 4.396643, 4.250735 (VM 4.878237, 4.396643, 4.250421): worst of 3 7.39e-05 relative, 1/count off by 0.0e+00: ok
+[fgpt_bed 01:29:26Z] OK

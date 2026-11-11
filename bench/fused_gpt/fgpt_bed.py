@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Run the fused GPT step's device program (include/kvm_fused_gpt.cuh) alone on a GPU and judge it against the workload VM.
+"""Run the fused GPT step's device program (include/kvm_fused_gpt.cuh) on a GPU, alone or in the executor, and judge it against the workload VM.
 
   python3 -I bench/fused_gpt/fgpt_bed.py WORKLOAD_DIR --bed BINARY [--steps 2] [--gangs 1,4] [--work DIR] [--tol 3e-4] [--launcher CMD]
+  python3 -I bench/fused_gpt/fgpt_bed.py WORKLOAD_DIR --exec KVM_EXEC [--exec-flags FLAGS] [--steps 50] ...    (with or without --bed)
 
 BINARY is bench/fused_gpt/fgpt_bed.cu built for the GPU at hand (nvcc -O3 -std=c++17 -arch=sm_XX -Iinclude). The workload is a GPT
 bundle's workload directory (workload.json and its data/). This script:
@@ -11,7 +12,9 @@ bundle's workload directory (workload.json and its data/). This script:
   3. judges each run against the VM: every step's loss, and the last step's gradients and AdamW moments, each tensor's largest
      difference over its largest magnitude (a float32 GEMM's error scales with its operands); the weights are reported, not judged
      (AdamW's first update is about lr x sign(g), so float32 noise flips it where a gradient is near zero);
-  4. compares each gang size with the first (the decomposition: only the order of a few sums changes with G).
+  4. compares each gang size with the first (the decomposition: only the order of a few sums changes with G);
+  5. with --exec, runs kvm_exec on the workload's own bundle (WORKLOAD_DIR/bundle; its default path, which is the fused GPT kernel when
+     the run fuses, plus --exec-flags) and judges its first --steps losses against the same VM run.
 Under the bundle's default 1xTF32 GEMMs, run one step for the gradient bars: after the first AdamW update the trajectories part (its
 update is about lr x sign(g), and TF32 noise flips the sign where a gradient is near zero), so later steps' gradients are not comparable
 element by element. A precise-mode bundle (gen.py --mode precise, 3xTF32) holds the tight bars over several steps.
@@ -132,16 +135,23 @@ def rel(mine: list[float], theirs: list[float]) -> float:
     return worst / scale
 
 
+def judge_losses(losses: list, vmr: dict, tol: float) -> tuple[bool, str]:
+    """Every step's (loss, 1/count) against the VM's: the loss within tol relative, the count exact to float32."""
+    lw = max(abs(a[0] - b[0]) / abs(b[0]) for a, b in zip(losses, vmr['losses']))
+    inv = max(abs(a[1] - b[1]) for a, b in zip(losses, vmr['losses']))
+    good = lw < tol and inv < 1e-6
+    shown = losses if len(losses) <= 6 else losses[:3] + losses[-3:]
+    want = vmr['losses'] if len(losses) <= 6 else vmr['losses'][:3] + vmr['losses'][len(losses) - 3:len(losses)]
+    gap = '' if len(losses) <= 6 else ' (first and last three)'
+    return good, (f'losses{gap}: {", ".join(f"{a[0]:.6f}" for a in shown)} (VM {", ".join(f"{b[0]:.6f}" for b in want)}): '
+                  f'worst of {len(losses)} {lw:.2e} relative, 1/count off by {inv:.1e}: {"ok" if good else "FAIL"}')
+
+
 def judge(run: dict, vmr: dict, names: list[str], tol: float, lr: float, grads_judged: bool) -> tuple[bool, list[str]]:
     """Every step's loss against the VM; the last step's gradients and moments too where they are comparable element by element
     (grads_judged: precise numerics, or a single step), else reported only."""
-    lines, ok = [], True
-    lw = max(abs(a[0] - b[0]) / abs(b[0]) for a, b in zip(run['losses'], vmr['losses']))
-    inv = max(abs(a[1] - b[1]) for a, b in zip(run['losses'], vmr['losses']))
-    good = lw < tol and inv < 1e-6
-    ok &= good
-    lines.append(f'losses: {", ".join(f"{a[0]:.6f}" for a in run["losses"])} (VM {", ".join(f"{b[0]:.6f}" for b in vmr["losses"])}): '
-                 f'worst {lw:.2e} relative, 1/count off by {inv:.1e}: {"ok" if good else "FAIL"}')
+    ok, line = judge_losses(run['losses'], vmr, tol)
+    lines = [line]
     for what, key, limit in (('gradients', 'g', tol), ('first moments', 'm', tol), ('second moments', 'v', 2 * tol)):
         worst, wname = 0.0, ''
         for n in names:
@@ -165,13 +175,41 @@ def judge(run: dict, vmr: dict, names: list[str], tol: float, lr: float, grads_j
     return ok, lines
 
 
+def exec_losses(a, wdir: Path, work: Path) -> list | None:
+    """kvm_exec on the workload's own bundle, every step's loss buffer dumped; its first --steps (loss, 1/count) pairs, or None if it failed."""
+    bundle = wdir / 'bundle'
+    idx = {b['name']: b['index'] for b in json.loads((bundle / 'metadata.json').read_text())['buffers']}
+    missing = [s for s in range(a.steps) if f'loss.{s}' not in idx]
+    if missing:
+        raise SystemExit(f'{bundle}: no loss buffer for step(s) {missing}: the bundle has fewer than --steps {a.steps} steps')
+    out = work / 'exec-out'
+    out.mkdir(exist_ok=True)
+    for f in out.glob('*.bin'):
+        f.unlink()
+    cmd = a.launcher.split() + [a.exec, *a.exec_flags.split(), '--dump-bin', str(out), ','.join(str(idx[f'loss.{s}']) for s in range(a.steps)), str(bundle)]
+    log(f'exec: {" ".join(cmd)}')
+    p = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
+    (work / 'exec.log').write_text(p.stdout + p.stderr)
+    for line in (p.stdout + p.stderr).splitlines():
+        if line.startswith(('[kvm_exec][I] path:', '[kvm_exec][I] fuse gpt:', '[kvm_exec][I] fused GPT', 'OK:', 'FAIL')) or '[E]' in line or '[W]' in line:
+            log(f'  {line}')
+    if p.returncode:
+        log(f'exec: kvm_exec exited {p.returncode}: FAIL (its whole log: {work / "exec.log"})')
+        return None
+    return [read_f32(out / f'{idx[f"loss.{s}"]}.bin')[:2] for s in range(a.steps)]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('workload'); ap.add_argument('--bed', required=True); ap.add_argument('--steps', type=int, default=2)
+    ap.add_argument('workload'); ap.add_argument('--bed', default=None); ap.add_argument('--steps', type=int, default=2)
     ap.add_argument('--gangs', default='1,4'); ap.add_argument('--work', default=None); ap.add_argument('--tol', type=float, default=3e-4)
     ap.add_argument('--launcher', default='', help='command prefix for each bed run, e.g. a GPU lock')
     ap.add_argument('--decomp-tol', type=float, default=1e-4, help='gradients of each gang size against the first, of each tensor\'s scale')
+    ap.add_argument('--exec', default=None, help='a kvm_exec binary: run the workload\'s bundle on it and judge its losses too')
+    ap.add_argument('--exec-flags', default='', help='kvm_exec flags for --exec, split on spaces (e.g. --no-fuse for the unfused path)')
     a = ap.parse_args()
+    if not a.bed and not a.exec:
+        ap.error('nothing to run: give --bed, --exec or both')
     wdir = Path(a.workload).resolve()
     work = Path(a.work).resolve() if a.work else wdir.parent / f'fgpt-bed-{wdir.name}-k{a.steps}'
     work.mkdir(parents=True, exist_ok=True)
@@ -184,7 +222,7 @@ def main() -> int:
     names, sizes = write_inputs(model, spec, work)
     precise = any(l.split() == ['mm_numerics', '16'] for l in (work / 'meta.txt').read_text().splitlines())
     runs, fail = {}, 0
-    for G in [int(x) for x in a.gangs.split(',')]:
+    for G in [int(x) for x in a.gangs.split(',')] if a.bed else []:
         cmd = a.launcher.split() + [a.bed, str(work), str(G)]
         log(f'G {G}: {" ".join(cmd)}')
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
@@ -213,6 +251,11 @@ def main() -> int:
         good = lw < 1e-5 and gw < a.decomp_tol
         fail += not good
         log(f'decomposition G {G} against G {gangs[0]}: losses {lw:.2e}, gradients {gw:.2e} of scale: {"ok" if good else "FAIL"}')
+    if a.exec:
+        losses = exec_losses(a, wdir, work)
+        good, line = judge_losses(losses, vmr, a.tol) if losses is not None else (False, 'no losses')
+        log(f'exec: {line}')
+        fail += not good
     log('OK' if not fail else f'FAILED: {fail}')
     return 1 if fail else 0
 

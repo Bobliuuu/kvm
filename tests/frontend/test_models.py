@@ -214,6 +214,23 @@ class Features(unittest.TestCase):
         with self.assertRaises(Exception):
             Tiling.preset('cpu', tf32_copy_scope='step')
 
+    def test_tf32_copies_share_slots_without_changing_a_bit(self):
+        # the copies reuse slots inside a step (plan.py `local`). Run in a random topological order, the program gives the bits it gives
+        # in program order, and the weights after two steps are the bits of a plan where no tensor shares a slot (reuse 'none').
+        wide = models.LlamaConfig(**{**SMALL.__dict__, 'vocab': 256, 'd_model': 256, 'heads': 4, 'kv_heads': 2, 'ffn': 256, 'batch': 8, 'seq': 32})
+        for scope in ('value', 'phase'):
+            tiling = Tiling.preset('cpu', mm_tile=256, mm_min_tiles=1, mm_min_eff=0.0, mm_huge_min_tiles=1, mm_huge_min_k=1, tf32_preround=True,
+                                   tf32_copy_scope=scope)
+            shared = compile_training(wide, TrainConfig(steps=2), tiling, reuse='step')
+            alone = compile_training(wide, TrainConfig(steps=2), tiling, reuse='none')
+            copies = sum(1 for t in shared.spec['graphs'][0]['tasks'] if t['op'] == 'round_tf32')
+            self.assertTrue(copies)
+            self.assertLess(shared.low.plan.stats['slots'], alone.low.plan.stats['slots'])
+            a, b, c = shared.run(), shared.run(order='random', seed=7), alone.run()
+            for k in a.bufs:
+                self.assertEqual(a.bufs[k].a, b.bufs[k].a, (scope, k))
+            self.assertEqual(weights(a), weights(c), scope)
+
     def test_remat_same_result_less_memory(self):
         base = models.LlamaConfig(**{**SMALL.__dict__, 'layers': 3})
         rm = models.LlamaConfig(**{**base.__dict__, 'remat': True})

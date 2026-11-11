@@ -166,6 +166,19 @@ __device__ void gemm(const float* A, int lda, const float* B, int ldb, int M, in
   __syncthreads();
 }
 
+// f(r, c) over a rows x units grid, unit x = r * units + c taken by thread x % NT in turn (x = threadIdx.x, + NT, ...), the order a flat
+// loop takes them, with (r, c) stepped instead of divided out: integer division by a runtime value is a ~20-instruction sequence, and these
+// loops ran one a unit (one division a call instead).
+template <class F>
+__device__ __forceinline__ void grid_loop(int rows, int units, F&& f) {
+  if (rows <= 0 || units <= 0) return;
+  const int dr = NT / units, dc = NT % units;
+  for (int r = threadIdx.x / units, c = threadIdx.x % units; r < rows;) {
+    f(r, c);
+    r += dr; c += dc;
+    if (c >= units) { c -= units; ++r; }
+  }
+}
 // One staging copy: rows x cols floats of global memory (row stride sld) into shared memory (row stride dld), and zeros over the rest of
 // [0, prows) x [0, pcols).
 struct Copy {
@@ -190,21 +203,17 @@ __device__ void stage_all(const Copy (&cs)[NC]) {
 #pragma unroll
   for (int i = 0; i < NC; ++i) {
     const Copy& q = cs[i];
-    if (q.vec()) {
-      const int w = q.pcols >> 2, n = q.prows * w;
-      for (int x = threadIdx.x; x < n; x += NT) {
-        const int r = x / w, c = (x % w) << 2;
+    if (q.vec())
+      grid_loop(q.prows, q.pcols >> 2, [&](int r, int c4) {
+        const int c = c4 << 2;
         const bool in = r < q.rows && c < q.cols;
         cp16(q.dst + r * q.dld + c, in ? q.src + (size_t)r * q.sld + c : q.src, in);
-      }
-    } else {
-      const int n = q.prows * q.pcols;
-      for (int x = threadIdx.x; x < n; x += NT) {
-        const int r = x / q.pcols, c = x % q.pcols;
+      });
+    else
+      grid_loop(q.prows, q.pcols, [&](int r, int c) {
         const bool in = r < q.rows && c < q.cols;
         cp4(q.dst + r * q.dld + c, in ? q.src + (size_t)r * q.sld + c : q.src, in);
-      }
-    }
+      });
   }
   asm volatile("cp.async.commit_group;\ncp.async.wait_group 0;\n" ::: "memory");
   __syncthreads();
@@ -215,7 +224,12 @@ __device__ __forceinline__ void stage(float* dst, int dld, const float* src, siz
   stage_all(cs);
 }
 // Zeros a rows x cols block of shared memory (row stride ld): a GEMM's operand that an epilogue fills only in part. No sync.
-__device__ __forceinline__ void zero(float* p, int ld, int rows, int cols) { for (int e = threadIdx.x; e < rows * cols; e += NT) p[(e / cols) * ld + e % cols] = 0.f; }
+__device__ __forceinline__ void zero(float* p, int ld, int rows, int cols) {
+  if (((cols | ld) & 3) == 0 && (reinterpret_cast<size_t>(p) & 15) == 0)   // 16 bytes a store where every row allows it
+    grid_loop(rows, cols >> 2, [&](int r, int c4) { *reinterpret_cast<float4*>(p + r * ld + (c4 << 2)) = make_float4(0.f, 0.f, 0.f, 0.f); });
+  else
+    grid_loop(rows, cols, [&](int r, int c) { p[r * ld + c] = 0.f; });
+}
 
 // Column sums of an R x C block of shared memory (row stride ld) into out[c] (global). With C < NT, NT / C threads share a column, each
 // summing a contiguous chunk of rows in order, then one thread a column sums the chunks in order (`scr`: NT floats of shared memory), so the
@@ -918,7 +932,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
             zero(DU, ldu, rc16, kvm_fgpt_r8(w));
             stage_all(cs);
           }
-          for (int e = tid; e < rc16 * kvm_fgpt_r8(w); e += NT) { const int r = e / kvm_fgpt_r8(w), c = e % kvm_fgpt_r8(w); Ut[r * ldum + c] = r < rc && c < w ? gelu(PRE[r * ldu + c]) : 0.f; }
+          grid_loop(rc16, kvm_fgpt_r8(w), [&](int r, int c) { Ut[r * ldum + c] = r < rc && c < w ? gelu(PRE[r * ldu + c]) : 0.f; });
           __syncthreads();
           gemm<true, false>(Ut, ldum, XS, ldd, w, D, rc, prec, [&](int m, int n, float a) { float* const o = gw2 + (size_t)(f0 + m) * D + n; *o = add ? ld(o) + a : a; });
           gemm<false, true>(XS, ldd, WS, ldd, rc, w, D, prec, [&](int m, int n, float a) { DU[m * ldu + n] = a * gelu_grad(PRE[m * ldu + n]); });

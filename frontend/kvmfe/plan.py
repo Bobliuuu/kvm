@@ -6,6 +6,9 @@ slot. Sharing is always safe: the dataflow analysis turns the reuse into tile-le
 for ordering. `gap` trades memory for overlap: reuse right after the last reader serializes consecutive steps, a larger gap keeps
 them parallel. Policies: 'shape' (reuse as soon as the gap allows), 'step' (a slot is reused only by a tensor of a LATER step: no
 reuse inside a step, so no WAR/WAW edges inside it, at the price of one step's whole activation footprint), 'none'.
+`local` names tensors that reuse slots inside a step whatever the policy (pre-rounding's TF32 copies, tf32.py: each lives from its cast
+to its last GEMM, so under 'step' every copy would otherwise cost its full size). They get a pool of their own, so the other tensors'
+plan is the policy's alone; a local slot is freed after its last reader plus `gap`, like any other.
 """
 from __future__ import annotations
 
@@ -43,7 +46,7 @@ class Plan:
 REUSE_POLICIES = ('none', 'shape', 'step')
 
 
-def plan_memory(ops: list[LogicalOp], reuse: str = 'shape', gap: int = 0, prefix: str = 'act') -> Plan:
+def plan_memory(ops: list[LogicalOp], reuse: str = 'shape', gap: int = 0, prefix: str = 'act', local: frozenset = frozenset()) -> Plan:
     if reuse not in REUSE_POLICIES:
         raise FrontendError(f"reuse must be one of {REUSE_POLICIES}, got {reuse!r}")
     step_start: dict = {}
@@ -71,26 +74,27 @@ def plan_memory(ops: list[LogicalOp], reuse: str = 'shape', gap: int = 0, prefix
         if b.init is None or (b.init[0] == 'fill' and r.init and r.init[0] != 'fill'):
             b.init = r.init
     pinned_bytes = sum(b.rows * b.cols * _ITEM[b.dtype] for b in buffers.values())
-    free: dict = {}
-    active: list = []                         # heap of (last use, uid, shape, slot)
     n_slots, total, pool = 0, 0, 0
-    for uid in sorted((u for u, r in roots.items() if r.buf is None), key=lambda u: span[u][0]):
-        r, (first, last) = roots[uid], span[uid]
-        total += r.numel * _ITEM[r.dtype]
-        horizon = step_start[ops[first].step] if reuse == 'step' else first         # 'step': only slots freed in earlier steps
-        while active and active[0][0] + gap < first and active[0][0] < horizon:
-            _, _, key, slot = heapq.heappop(active)
-            free.setdefault(key, []).append(slot)
-        key = (r.shape, r.dtype)
-        slot = free[key].pop() if reuse != 'none' and free.get(key) else None
-        if slot is None:
-            slot = f'{prefix}{n_slots}'
-            n_slots += 1
-            buffers[slot] = BufferInfo(slot, r.rows, r.cols, False, None, 0, r.dtype)
-            pool += r.numel * _ITEM[r.dtype]
-        buffers[slot].tensors += 1
-        of[uid] = slot
-        heapq.heappush(active, (last, uid, key, slot))
+    for group, policy in ((False, reuse), (True, 'shape')):       # the local tensors last, in a pool of their own
+        free: dict = {}
+        active: list = []                     # heap of (last use, uid, shape, slot)
+        for uid in sorted((u for u, r in roots.items() if r.buf is None and (u in local) == group), key=lambda u: span[u][0]):
+            r, (first, last) = roots[uid], span[uid]
+            total += r.numel * _ITEM[r.dtype]
+            horizon = step_start[ops[first].step] if policy == 'step' else first         # 'step': only slots freed in earlier steps
+            while active and active[0][0] + gap < first and active[0][0] < horizon:
+                _, _, key, slot = heapq.heappop(active)
+                free.setdefault(key, []).append(slot)
+            key = (r.shape, r.dtype)
+            slot = free[key].pop() if policy != 'none' and free.get(key) else None
+            if slot is None:
+                slot = f'{prefix}{n_slots}'
+                n_slots += 1
+                buffers[slot] = BufferInfo(slot, r.rows, r.cols, False, None, 0, r.dtype)
+                pool += r.numel * _ITEM[r.dtype]
+            buffers[slot].tensors += 1
+            of[uid] = slot
+            heapq.heappush(active, (last, uid, key, slot))
     transient = sum(1 for r in roots.values() if r.buf is None)
     stats = dict(reuse=reuse, gap=gap, persistent_bytes=pinned_bytes, pool_bytes=pool, no_reuse_bytes=total, slots=n_slots,
                  transient_tensors=transient, reuse_factor=(total / pool) if pool else 1.0)

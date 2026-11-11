@@ -79,6 +79,23 @@ class Planner(unittest.TestCase):
         self.assertEqual(plan_memory(ops, 'shape').stats['slots'], 2)
         self.assertEqual(plan_memory(ops[:5], 'step').stats['slots'], 6)         # one step: no reuse at all
 
+    def test_local_tensors_reuse_inside_a_step_in_their_own_pool(self):
+        # under 'step' nothing is shared inside a step, except the `local` tensors (pre-rounding's copies): they reuse slots by liveness,
+        # in a pool of their own, so every other tensor keeps the slot the policy alone gives it
+        b = Builder()
+        ts = [b.tensor(f't{i}', 4, 4) for i in range(6)]
+        cs = [b.tensor(f'c{i}', 4, 4) for i in range(5)]
+        for i in range(5):
+            b.emit('cast', {'x': ts[i]}, {'out': cs[i]})
+            b.emit('add2', {'a': cs[i], 'b': cs[i]}, {'out': ts[i + 1]})
+        local = frozenset(c.uid for c in cs)
+        alone = plan_memory(b.ops, 'step')
+        mixed = plan_memory(b.ops, 'step', local=local)
+        self.assertEqual(alone.stats['slots'], 11)                   # one step: every tensor its own slot
+        self.assertEqual(len({mixed.of[c.uid] for c in cs}), 1)      # each copy dies before the next one is made
+        self.assertEqual(mixed.stats['slots'], 7)
+        self.assertFalse({mixed.of[c.uid] for c in cs} & {mixed.of[t.uid] for t in ts})
+
     def test_pinned_and_shape_mismatch(self):
         a, b = Tensor('a', 2, 2, buf='w'), Tensor('b', 2, 3, buf='w')
         bld = Builder()

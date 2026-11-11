@@ -33,12 +33,14 @@ class Tiling:
     ew_elems: int = 1 << 40   # flat elementwise ops and the sgd update: target elements of one task, so a wide matrix is not streamed through one SM (a single task's stream is bound by one SM's bandwidth)
     ew_max_tasks: int = 128   # ... but never more tasks than this for one operation (the executor's parallelism)
     tf32_preround: bool = False   # 256x128-tile GEMMs read TF32 copies of their operands, made once per value (tf32.py), instead of rounding them in every tile
+    tf32_copy_scope: str = 'value'   # ... a copy is shared by every GEMM that reads its value ('value': fewest copies, but a forward activation stays copied until its weight-gradient GEMM), or by the GEMMs of one phase ('phase': less memory, more rounding)
+    tf32_copy_max_bytes: int = 256 << 20   # ... a GEMM whose operand copy would be larger than this keeps rounding in its tiles (gpt-162m's 786 MiB logits gradient)
     tf32_trunc: bool = False # 1xTF32 GEMM tiles skip the operand rounding (flag 256) and scale out the truncation's mean bias: ~25% faster big tile, but outside 2x of eager's float64 error on some rows (cuBLAS rounds)
 
     PRESETS = {
         'cpu': dict(rows=8, ew_rows=8, cols=32, vocab=16, opt_elems=256),
         'a100': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, row_tasks=16),   # 256x128 tiles stepping down by shape, TF32 operands rounded to nearest in the tiles
-        'a100_pre': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, tf32_preround=True),   # a100 with the 256x128-tile GEMMs reading round_tf32 copies of their operands (tf32.py: the same products, rounded once per value, the 162M step 6% faster), at the copies' memory: the 162M bundle's buffers grow 9.4 -> 12.6 GB, more than a 40 GB A100 holds beside PyTorch's resident models
+        'a100_pre': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, tf32_preround=True),   # a100 with the 256x128-tile GEMMs reading round_tf32 copies of their operands (tf32.py: the same products, rounded once per value; the 162M step 6% faster with uncapped copies). The copies reuse slots inside a step and the 256 MiB cap leaves out the logits gradient: one 162M step plans 10.1 GB against a100's 8.8 (uncapped and step-planned: 12.6, more than a 40 GB A100 held beside PyTorch's resident models); tf32_copy_scope='phase' plans 9.1
         'a100_mm128': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=128, ew_elems=16384),   # 128x128 tiles, rounded (the previous a100)
         'a100_trunc': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, tf32_trunc=True, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256),   # a100's tiles with the operands truncated by the tensor core and the output scaled to remove the mean bias (KVM_GPT_RZ_GAIN): inside the panel's numerics gates, but after 1000 SGD steps the weights end about 2x further from float64 than rounding's (six MLP widths)
         'a100_mm64': dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, ew_elems=16384),   # 64x64 GEMM tiles
@@ -56,10 +58,12 @@ class Tiling:
         if self.mm_tile not in (64, 128, 256):
             raise FrontendError(f'Tiling.mm_tile must be 64, 128 or 256, got {self.mm_tile!r}')
         for k, v in vars(self).items():
-            if k in ('precise', 'mm_min_eff', 'tf32_trunc', 'tf32_preround'):
+            if k in ('precise', 'mm_min_eff', 'tf32_trunc', 'tf32_preround', 'tf32_copy_scope'):
                 continue
             if not isinstance(v, int) or v < 1:
                 raise FrontendError(f'Tiling.{k} must be a positive int, got {v!r}')
+        if self.tf32_copy_scope not in ('phase', 'value'):
+            raise FrontendError(f"Tiling.tf32_copy_scope must be 'phase' or 'value', got {self.tf32_copy_scope!r}")
         if self.tf32_preround and (self.tf32_trunc or self.precise):
             raise FrontendError('Tiling.tf32_preround makes rounded operand copies; it does not combine with tf32_trunc or precise')
 

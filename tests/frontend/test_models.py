@@ -189,6 +189,31 @@ class Features(unittest.TestCase):
         with self.assertRaises(Exception):
             Tiling.preset('cpu', tf32_preround=True, tf32_trunc=True)
 
+    def test_tf32_preround_scopes_copies_by_phase_and_caps_their_size(self):
+        # 'phase': a value read by forward and backward GEMMs gets one copy in each phase, so no copy outlives its phase; 'value' (the
+        # default) shares one copy across phases. The same GEMMs read copies either way. A GEMM with an operand copy above
+        # tf32_copy_max_bytes keeps rounding in its tiles: no flag 1024 and no copy for it.
+        wide = models.LlamaConfig(**{**SMALL.__dict__, 'vocab': 256, 'd_model': 256, 'heads': 4, 'kv_heads': 2, 'ffn': 256, 'batch': 8, 'seq': 32})
+        base = dict(mm_tile=256, mm_min_tiles=1, mm_min_eff=0.0, mm_huge_min_tiles=1, mm_huge_min_k=1, tf32_preround=True)
+
+        def tasks(**kw):
+            return compile_training(wide, TrainConfig(steps=1), Tiling.preset('cpu', **base, **kw)).spec['graphs'][0]['tasks']
+
+        def rounds(ts):
+            return sum(t['op'] == 'round_tf32' for t in ts)
+
+        def exact(ts):
+            return sum(1 for t in ts if t['op'] == 'matmul_tile' and t['args']['flags'] & 1024)
+
+        phase, value = tasks(tf32_copy_scope='phase'), tasks()
+        self.assertTrue(exact(phase))
+        self.assertEqual(exact(phase), exact(value))
+        self.assertGreater(rounds(phase), rounds(value))
+        capped = tasks(tf32_copy_max_bytes=4096)   # below every operand of this model
+        self.assertEqual((exact(capped), rounds(capped)), (0, 0))
+        with self.assertRaises(Exception):
+            Tiling.preset('cpu', tf32_copy_scope='step')
+
     def test_remat_same_result_less_memory(self):
         base = models.LlamaConfig(**{**SMALL.__dict__, 'layers': 3})
         rm = models.LlamaConfig(**{**base.__dict__, 'remat': True})

@@ -57,7 +57,7 @@ class Lowered:
         return sum(1 for t in self.tasks if t.name.startswith('join.'))
 
 
-def lower_program(ops: list[LogicalOp], tiling: Tiling, reuse='shape', gap=0, prefix='act') -> Lowered:
+def lower_program(ops: list[LogicalOp], tiling: Tiling, reuse='shape', gap=0, prefix='act', local=frozenset()) -> Lowered:
     from .fuse import DEFAULT_PATTERNS, fuse
     ops, _ = fuse(ops, DEFAULT_PATTERNS)                    # default fusions run on every program, so every generator and bundle gets them (fuse.py: bitwise-equal by construction)
     tasks = []
@@ -65,7 +65,7 @@ def lower_program(ops: list[LogicalOp], tiling: Tiling, reuse='shape', gap=0, pr
         for t in lower_op(op, tiling):
             t.name = f's{op.step}/{i}:{t.name}'
             tasks.append(t)
-    plan = plan_memory(ops, reuse, gap, prefix)
+    plan = plan_memory(ops, reuse, gap, prefix, local)
     rect = lambda r: (plan.buf(r.t), r.r0, r.r1, r.c0, r.c1)
     seq, preds = build_edges(join_min=tiling.join_min, accesses=[([rect(r) for r in t.reads], [rect(r) for r in t.writes]) for t in tasks])
     ordered, nxt = [], None

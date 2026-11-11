@@ -82,7 +82,7 @@ form checked at 108, an A100's default):
 
 | bundle | at 108 workers |
 |---|---|
-| h256-d4 (the panel's mlp256), h576-d1, h128-d4, h256-d2, h224-d2, h200-d3 | split form: one gang a step of 6 x 18 = 108 members (12.9k-23.5k floats a member); at 107 workers, 6 x 16 = 96 |
+| h256-d4 (the panel's mlp256), h576-d1, h128-d4, h256-d2, h224-d2, h200-d3 | split form: one gang a step of 6 x 18 = 108 members (9.6k-23.5k floats a member); at 107 workers, 6 x 16 = 96 |
 | h200-d1 x 16 runs | split form: 48 gangs of 6 x 18 = 108, the runs' gangs in turns (the single run's share count) |
 | h224-d2 x 8 runs | split form: 24 gangs of 6 x 18 = 108, the runs' gangs in turns |
 | h48-d2, h72-d2, mlp72 x 8 runs | the one-block form, as before |
@@ -90,8 +90,7 @@ form checked at 108, an A100's default):
 
 - **Every rewritten bundle** is acyclic, keeps its other tasks as they were, and plans with every gang's members on distinct workers.
 - **Its emitted records replay as the device runs them** (`tests/static/replay.h`): every gang's barrier is crossed, nothing deadlocks, and
-  every edge of the DAG (successors and versions) is honoured. A mutant planner that puts a gang's members on one worker deadlocks the replay of
-  every split bundle.
+  every edge of the DAG (successors and versions) is honoured.
 - **16 shares** (`fix(fused)`): at 8 to 15 shares h256-d4's widest share is 24 units, padded to 32 columns, so a member needs 39,900 floats
   against 38,400. Without 16, the panel's mlp256 split only at 108 workers.
 

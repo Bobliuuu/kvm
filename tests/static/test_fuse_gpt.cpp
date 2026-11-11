@@ -181,9 +181,12 @@ int main(int argc, char** argv) {
                 const int t = first_of(b, ops.rope_fwd); if (t < 0) return false;
                 b.args[b.tasks[t].args_off + 4] -= 1; return true; }},
             {"the q projection applies GELU", "q projection does not chain", [&](Bundle& b) {
-                const int t = first_of(b, ops.rope_fwd); if (t < 1) return false;
-                for (int i = t - 1; i >= 0 && b.tasks[i].op_id == ops.matmul_tile; --i) b.args[b.tasks[i].args_off + 11] |= kvm_fuse::G_GELU;
-                return true; }},
+                const int t = first_of(b, ops.rope_fwd); if (t < 0) return false;
+                const int q = b.args[b.tasks[t].args_off];             // RoPE's input: the q projection's output
+                int changed = 0;                                       // every tile that writes it, wherever the frontend placed them
+                for (size_t i = 0; i < b.tasks.size(); ++i)
+                    if (b.tasks[i].op_id == ops.matmul_tile && b.args[b.tasks[i].args_off + 2] == q) { b.args[b.tasks[i].args_off + 11] |= kvm_fuse::G_GELU; ++changed; }
+                return changed > 0; }},
             {"proj adds no residual", "attention output projection does not chain", [&](Bundle& b) {
                 const int t = first_of(b, ops.attn_fwd); if (t < 0) return false;
                 const int o = b.args[b.tasks[t].args_off + 3];      // the attention output: proj's tiles are the GEMM tiles that read it as their a operand

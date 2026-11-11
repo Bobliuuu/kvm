@@ -1588,7 +1588,7 @@ static void usage() {
     "  --no-dissolve      keep the noops that only order tasks (default: spliced out of a plain single-bundle run on the dynamic path)\n"
     "  --no-tape-sort     admit the tape as the bundle wrote it (default on the dynamic path: dependency order, which starts every replicated run at once)\n"
     "  --dump-bin DIR i,j,..  write the listed buffers (by metadata index, widened to little-endian f32 / raw i32) to DIR/<index>.bin after the run\n"
-    "  --static           (default for one bundle) run the bundle as per-worker programs compiled at load: no ready queue, no admission  --workers N  --comm-us X (scheduler's cross-worker cost)  --no-partition (independent runs share all workers)  --no-fuse (no fused MLP steps; by default a run whose steps match is fused on the static path, --dump-buffers included)\n"
+    "  --static           (default for one bundle) run the bundle as per-worker programs compiled at load: no ready queue, no admission  --workers N  --comm-us X (scheduler's cross-worker cost)  --no-partition (independent runs share all workers)  --no-fuse (no fused training steps; by default every run whose steps match is fused, --dump-buffers included: MLP steps on the static path, GPT runs on the fused GPT kernel)  --no-fuse-gpt (the GPT runs only)\n"
     "  --dynamic          use the admission ring and ready queue even for one bundle\n");
 }
 
@@ -1598,6 +1598,7 @@ int main(int argc, char** argv) {
   bool sized = false;   // the caller gave a sizing flag: keep its live_cap/ring/slots
   bool no_fifo = false;  // --no-fifo: keep the 32-bucket ready rings even for a bundle set that qualifies for the FIFO ring
   bool opt_static = false, opt_dynamic = false, static_spin = false, static_partition = true, opt_fuse = true, fuse_phases = false; int static_workers = 0; double static_comm = 1.5;
+  bool opt_fuse_gpt = true;   // --no-fuse-gpt: the GPT pass off, the MLP passes on (a read of an MLP lever that must leave the GPT rows on their old path)
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto val = [&](long long lo = 0, long long hi = 1ll << 30) -> long long {   // strict integer in [lo, hi]
@@ -1627,6 +1628,7 @@ int main(int argc, char** argv) {
     else if (a == "--no-partition") static_partition = false;
     else if (a == "--fuse") opt_fuse = true;
     else if (a == "--no-fuse") opt_fuse = false;
+    else if (a == "--no-fuse-gpt") opt_fuse_gpt = false;
     else if (a == "--fuse-phases") fuse_phases = true;
     else if (a == "--comm-us") { if (i + 1 >= argc) { usage(); return 2; } static_comm = atof(argv[++i]); }
     else if (a == "--dump-buffers") dump = true;
@@ -1752,7 +1754,7 @@ int main(int argc, char** argv) {
     const auto fgpt_whole = [](const KvmFuseGptPlan& g) { return g.fused_runs > 0 && g.unchanged_runs == 0; };
     if (!opt_dynamic && !opt_static && bundles.size() == 1 && !cfg.sched.on && static_feasible(bundles[0])) {
       const std::string unpriced = unpriced_ops(bundles[0]);
-      const KvmFuseGptPlan gpt_dry = opt_fuse ? ex.fuse_gpt(bundles[0], fgpt_workers, dump_idx, false) : KvmFuseGptPlan{};   // a dry run of the pass the branch applies
+      const KvmFuseGptPlan gpt_dry = opt_fuse && opt_fuse_gpt ? ex.fuse_gpt(bundles[0], fgpt_workers, dump_idx, false) : KvmFuseGptPlan{};   // a dry run of the pass the branch applies
       if (gpt_dry.fused_runs > 0 && !fgpt_whole(gpt_dry))
         KLOG(1, "fuse gpt: %d GPT run(s) would fuse, but %d other component(s) do not; the fused GPT kernel runs a bundle of gangs alone, so this bundle runs unfused", gpt_dry.fused_runs, gpt_dry.unchanged_runs);
       if (gang_task(bundles[0]) >= 0) {

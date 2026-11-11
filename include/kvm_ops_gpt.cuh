@@ -2378,8 +2378,22 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
         cp_commit();
     };
     issue(0); issue(1);
-    float ak[NT][4], av[NT][4];
-    load_a_raw<HD>(ak, eoff(A.k, (size_t)A.b * Tn * A.ldk + kvh * HD, A.sd & KVM_ATT_K), A.ldk, keyA, Tn, t, A.sd & KVM_ATT_K);
+    // Up to hd 64 the warp's K fragments wait in shared memory after the stage ring, one float4 a lane a k-step, read back each tile: the
+    // loop keeps 32 fewer registers live (at hd 64 it reloaded 59 spilled values a pass with them in registers, 2 without). The slots are
+    // warp-private, written and read by the same lane, and the MMAs read the same values. hd 128 keeps them in registers: its park would
+    // not fit the launch.
+    constexpr bool KPARK = HD <= 64;
+    float4* kpark = reinterpret_cast<float4*>(QO + M::NST * M::STAGE) + warp * (NT * 32);
+    float ak[KPARK ? 1 : NT][4], av[NT][4];
+    if constexpr (KPARK) {
+        static_assert((M::NST * M::STAGE + (KVM_GPT_THREADS / 32) * NT * 32 * 4) * 4 <= KVM_GPT_SMEM_BYTES, "the K park must fit the launch");
+        float kr[NT][4];
+        load_a_raw<HD>(kr, eoff(A.k, (size_t)A.b * Tn * A.ldk + kvh * HD, A.sd & KVM_ATT_K), A.ldk, keyA, Tn, t, A.sd & KVM_ATT_K);
+#pragma unroll
+        for (int ks = 0; ks < NT; ks++) kpark[ks * 32 + lane] = make_float4(kr[ks][0], kr[ks][1], kr[ks][2], kr[ks][3]);
+    } else {
+        load_a_raw<HD>(ak, eoff(A.k, (size_t)A.b * Tn * A.ldk + kvh * HD, A.sd & KVM_ATT_K), A.ldk, keyA, Tn, t, A.sd & KVM_ATT_K);
+    }
     load_a_raw<HD>(av, eoff(A.v, (size_t)A.b * Tn * A.ldv + kvh * HD, A.sd & KVM_ATT_V), A.ldv, keyA, Tn, t, A.sd & KVM_ATT_V);
     float dk[NT][4], dv[NT][4];
 #pragma unroll
@@ -2412,7 +2426,8 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
 #pragma unroll
         for (int ks = 0; ks < NT; ks++) {
             unsigned ah[4], al[4], bh[4][2], bl[4][2];
-            split4(ak[ks], ah, al);
+            if constexpr (KPARK) { const float4 kq = kpark[ks * 32 + lane]; const float kf[4] = {kq.x, kq.y, kq.z, kq.w}; split4(kf, ah, al); }
+            else split4(ak[ks], ah, al);
             frag_nt<LD, 4>(bh, bl, Qs, 0, ks, g, t);
             mma3n<4>(s, 0, ah, al, bh, bl);
             split4(av[ks], ah, al);

@@ -1,0 +1,41 @@
+# row chunks on an RTX 5070: 1. the bed against the previous head's bed (bitwise); 2. forced chunks judged against the workload VM; 3. a batch-4 gpt-small (N 256), bed and executor; 4. the executor on the panel rows, then paired time against the previous head (A = before, B = this head)
+== 1. bitwise against the previous bed
+tiny G 32: bitwise equal (1c8d107fbc3d05bd)
+tiny G 8: bitwise equal (89033a737ae8cd2f)
+small G 32: bitwise equal (a96d16df3646e95e)
+== 2. forced chunks, judged against the VM
+w_small_p k2 G16,32 rows=64: rc=0
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 16, 2 steps, attention in 2 query block(s) a unit, rows in chunks of 64 of 128, shared memory 62432 B
+  G 16: losses: 4.878237, 4.396643 (VM 4.878237, 4.396643): worst of 2 1.08e-07 relative, 1/count off by 0.0e+00: ok
+  G 16: gradients (last step): worst 4.01e-05 of its tensor's scale (w.gpt.h0.mlp.fc1.b): ok
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 2 steps, attention in 4 query block(s) a unit, rows in chunks of 64 of 128, shared memory 48480 B
+  G 32: losses: 4.878237, 4.396643 (VM 4.878237, 4.396643): worst of 2 1.08e-07 relative, 1/count off by 0.0e+00: ok
+  G 32: gradients (last step): worst 4.21e-05 of its tensor's scale (w.gpt.h0.mlp.fc1.b): ok
+  decomposition G 32 against G 16: losses 0.00e+00, gradients 1.27e-05 of scale: ok
+w_small_p k2 G32 rows=32: rc=0
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 2 steps, attention in 4 query block(s) a unit, rows in chunks of 32 of 128, shared memory 48480 B
+  G 32: losses: 4.878237, 4.396643 (VM 4.878237, 4.396643): worst of 2 1.08e-07 relative, 1/count off by 0.0e+00: ok
+  G 32: gradients (last step): worst 3.52e-05 of its tensor's scale (w.gpt.h0.mlp.fc1.b): ok
+w_tiny_p k2 G4 rows=16: rc=0
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 4, 2 steps, attention in 2 query block(s) a unit, rows in chunks of 16 of 32, shared memory 28896 B a
+  G 4: losses: 4.146039, 3.993824 (VM 4.146039, 3.993824): worst of 2 0.00e+00 relative, 1/count off by 0.0e+00: ok
+  G 4: gradients (last step): worst 7.23e-06 of its tensor's scale (w.gpt.h0.n1.b): ok
+w_small k1 G32 rows=64: rc=0
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 1 steps, attention in 4 query block(s) a unit, rows in chunks of 64 of 128, shared memory 48480 B
+  G 32: losses: 4.878223 (VM 4.878237): worst of 1 2.93e-06 relative, 1/count off by 0.0e+00: ok
+  G 32: gradients (last step): worst 1.16e-03 of its tensor's scale (w.gpt.h1.attn.q.b): ok
+== 3. the batch-4 gpt-small (N 256)
+bed, precise, 2 steps, G 32: rc=0
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 2 steps, attention in 2 query block(s) a unit, rows in chunks of 128 of 256, shared memory 75744 
+  G 32: losses: 4.874084, 4.359669 (VM 4.874084, 4.359669): worst of 2 1.09e-07 relative, 1/count off by 0.0e+00: ok
+  G 32: gradients (last step): worst 2.57e-04 of its tensor's scale (w.gpt.h1.mlp.fc1.w): ok
+executor, 1xTF32, 3 steps: rc=0
+    [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang)
+    [kvm_exec][I] fuse gpt: run 0: a gang of 32, 3 steps, attention in 2 query block(s) a unit, rows in chunks of 128 of 256, 6.52 MB of scratch, 75744 bytes of shared memory a member
+  exec: losses: 4.874073, 4.359650, 4.134085 (VM 4.874084, 4.359669, 4.133796): worst of 3 6.99e-05 relative, 1/count off by 0.0e+00: ok
+== 4. the executor on the panel rows
+w_tiny: rc=0 worst of 50 6.90e-04 relative, 1/count off by 0.0e+00: ok
+w_small: rc=0 worst of 3 7.39e-05 relative, 1/count off by 0.0e+00: ok
+tiny: old median 78.3 us, new 75.9; paired old/new x1.032 (range 1.021-1.036)
+small: old median 179.2 us, new 177.4; paired old/new x1.010 (range 1.004-1.012)
+row chunks verify: 0 failure(s)

@@ -107,7 +107,7 @@ def _opaque(extents=lambda a: {}):
 # allow opaque operators. The game engine (doomgeneric) and the inter-device communication ops have no CPU model here, nor the
 # fused MLP step's members (kvm_ops_fmlp.def): the executor's bundle pass (kvm_fuse.h) makes them, and no workload emits them.
 OPAQUE_OPS = {
-    'fmlp_slice': _opaque(), 'fmlp_sgd': _opaque(), 'fmlp_split': _opaque(),
+    'fmlp_slice': _opaque(), 'fmlp_sgd': _opaque(), 'fmlp_split': _opaque(), 'fmlp_grid': _opaque(),
     'doom_tick': _opaque(), 'doom_status': _opaque(),
     'doom_present': _opaque(lambda a: {'fb': 16256}),
     'doom_tick_n': _opaque(), 'doom_status_n': _opaque(), 'doom_present_n': _opaque(lambda a: {'fb': 16256}),

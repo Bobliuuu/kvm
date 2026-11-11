@@ -86,7 +86,7 @@ static double kvm_tile_mflop(int op, const int32_t* a) {
 static const std::map<std::string, double>& kvm_static_costs() {
   static const std::map<std::string, double> base = {{"noop", 0.1}, {"matmul_tile", 4.0}, {"adamw", 5.0}, {"gradnorm_partial", 2.0}, {"gradnorm_finish", 2.0}, {"colsum", 2.0},
     {"layernorm_fwd", 7.0}, {"layernorm_bwd_dx", 8.0}, {"norm_bwd_params", 5.0}, {"attn_fwd", 8.0}, {"attn_bwd_dq", 9.0}, {"attn_bwd_dkv", 10.0}, {"attn_bwd_delta", 6.0},
-    {"rope_fwd", 4.0}, {"rope_bwd", 4.0}, {"embedding_fwd", 3.0}, {"embedding_bwd", 3.0}, {"softmax_ce_fwd", 3.0}, {"softmax_ce_bwd", 3.0}, {"softmax_ce_reduce", 2.0}, {"gelu_bwd", 3.0}, {"gelu_fwd", 3.0}, {"select_window", 2.0}, {"counter_inc", 1.0}, {"fmlp_slice", 60.0}, {"fmlp_sgd", 8.0}, {"fmlp_split", 40.0},
+    {"rope_fwd", 4.0}, {"rope_bwd", 4.0}, {"embedding_fwd", 3.0}, {"embedding_bwd", 3.0}, {"softmax_ce_fwd", 3.0}, {"softmax_ce_bwd", 3.0}, {"softmax_ce_reduce", 2.0}, {"gelu_bwd", 3.0}, {"gelu_fwd", 3.0}, {"select_window", 2.0}, {"counter_inc", 1.0}, {"fmlp_slice", 60.0}, {"fmlp_sgd", 8.0}, {"fmlp_split", 40.0}, {"fmlp_grid", 60.0},
     {"sgd_range", 4.0}, {"softmax_ce_fused", 4.0}};
   return base;
 }
@@ -784,7 +784,7 @@ class KvmExec {
     ops.noop = kvm_op_by_name("noop"); ops.select_window = kvm_op_by_name("select_window"); ops.embedding_fwd = kvm_op_by_name("embedding_fwd"); ops.matmul_tile = kvm_op_by_name("matmul_tile");
     ops.softmax_ce_fwd = kvm_op_by_name("softmax_ce_fwd"); ops.softmax_ce_reduce = kvm_op_by_name("softmax_ce_reduce"); ops.softmax_ce_bwd = kvm_op_by_name("softmax_ce_bwd"); ops.softmax_ce_fused = kvm_op_by_name("softmax_ce_fused");
     ops.gelu_bwd = kvm_op_by_name("gelu_bwd"); ops.colsum = kvm_op_by_name("colsum"); ops.embedding_bwd = kvm_op_by_name("embedding_bwd"); ops.sgd = kvm_op_by_name("sgd"); ops.sgd_range = kvm_op_by_name("sgd_range");
-    ops.fmlp_slice = kvm_op_by_name("fmlp_slice"); ops.fmlp_sgd = kvm_op_by_name("fmlp_sgd"); ops.fmlp_split = kvm_op_by_name("fmlp_split");
+    ops.fmlp_slice = kvm_op_by_name("fmlp_slice"); ops.fmlp_sgd = kvm_op_by_name("fmlp_sgd"); ops.fmlp_split = kvm_op_by_name("fmlp_split"); ops.fmlp_grid = kvm_op_by_name("fmlp_grid");
     std::vector<KvmFuseBuf> infos(bufs_.size());
     for (size_t i = 0; i < bufs_.size(); ++i) infos[i] = KvmFuseBuf{bufs_[i].rows, bufs_[i].cols, bufs_[i].ld, bufs_[i].dtype};
     const KvmSOpLookup op_of = [](int id) { const KvmOpInfo* i = kvm_op(id); KvmSOpInfo v; if (i) { v.arity = i->arity; v.types = i->types; kvm_static_gang_args(i->sig, v); } return v; };
@@ -796,18 +796,33 @@ class KvmExec {
     return r;
   }
 
-  struct FusedState { KvmFusedDesc* desc = nullptr; KvmSplitDesc* split = nullptr; std::vector<void*> allocs; int smem_bytes = 0; };
+  struct FusedState { KvmFusedDesc* desc = nullptr; KvmSplitDesc* split = nullptr; KvmGridDesc* grid = nullptr; std::vector<void*> allocs; int smem_bytes = 0; };
   // One descriptor per fused run, with its partial-gradient scratch (zeroed), and the shared memory the largest run's slice (or split member) needs. A run's index is its descriptor's in both
   // tables, the one its form uses (kvm_fuse.h's ops carry it as `desc`); the other table's entry is unused. Buffers are already device-allocated (after prepare()).
   FusedState make_fused_state(const std::vector<KvmFuseRun>& runs) {
     FusedState st;
     std::vector<KvmFusedDesc> descs(runs.size());
     std::vector<KvmSplitDesc> splits(runs.size());
-    bool any_split = false;
+    std::vector<KvmGridDesc> grids(runs.size());
+    bool any_split = false, any_grid = false;
     const auto scratch = [&](size_t floats) { float* p; CK(cudaMalloc(&p, floats * sizeof(float))); CK(cudaMemset(p, 0, floats * sizeof(float))); st.allocs.push_back(p); return p; };
     const auto param = [&](int idx) { return static_cast<float*>(bufs_[idx].p); };
     for (size_t i = 0; i < runs.size(); ++i) {
       const KvmFuseRun& r = runs[i];
+      if (r.grid) {   // the grid form: one copy of the model over P members, its partials and exchanges, the gang's barrier words (kvm_fused_grid.h)
+        KvmGridDesc& d = grids[i]; any_grid = true;
+        d.V = r.V; d.E = r.E; d.L = r.L; d.H = r.H[0]; d.T = r.T; d.P = r.P; d.lr = r.lr;
+        const int floats = kvm_grid_layout(d);
+        if (floats < 0 || floats > r.smem_floats) throw std::runtime_error("fuse: a grid run's layout does not fit what the pass sized it for");
+        st.smem_bytes = std::max(st.smem_bytes, floats * (int)sizeof(float));
+        const size_t TH = (size_t)d.T * d.H;
+        d.emb = param(r.wte); d.wh = param(r.head);
+        for (int l = 0; l < r.L; ++l) { d.w[l] = param(r.w[l]); d.b[l] = param(r.b[l]); d.Y[l] = scratch(TH); }
+        d.part = scratch(d.L > 1 ? (size_t)d.ka * TH : 1); d.hpart = scratch((size_t)d.kah * d.T * d.VP); d.dlog = scratch((size_t)d.T * d.VP);
+        d.dyp = scratch((size_t)std::max(d.nb, 1) * TH); d.dz = scratch(TH); d.dx0 = scratch((size_t)d.nb0 * d.T * d.E); d.rloss = scratch(d.T);
+        d.ctl = reinterpret_cast<unsigned*>(scratch(2));   // zeroed once: the barrier is sense-reversing
+        continue;
+      }
       if (r.split) {   // the split form: Q x S members, their partials, the exchanges, the gang's barrier words (kvm_fused_split.h)
         KvmSplitDesc& d = splits[i]; any_split = true;
         d.V = r.V; d.E = r.E; d.L = r.L; d.H = r.H[0]; d.S = r.S; d.Q = r.Q; d.lr = r.lr;
@@ -852,6 +867,11 @@ class KvmExec {
       CK(cudaMemcpy(st.split, splits.data(), splits.size() * sizeof(KvmSplitDesc), cudaMemcpyHostToDevice));
       st.allocs.push_back(st.split);
     }
+    if (any_grid) {
+      CK(cudaMalloc(&st.grid, grids.size() * sizeof(KvmGridDesc)));
+      CK(cudaMemcpy(st.grid, grids.data(), grids.size() * sizeof(KvmGridDesc), cudaMemcpyHostToDevice));
+      st.allocs.push_back(st.grid);
+    }
     return st;
   }
 
@@ -891,7 +911,7 @@ class KvmExec {
     CK(cudaMalloc(&dcnt, sizeof(KvmCounters))); CK(cudaMemset(dcnt, 0, sizeof(KvmCounters)));
     if (o.trace_csv) { CK(cudaMalloc(&dtrace, (size_t)nrec * KVM_S_TRACE_WORDS * 8)); CK(cudaMemset(dtrace, 0, (size_t)nrec * KVM_S_TRACE_WORDS * 8)); }
     CK(cudaMalloc(&dfinished, sizeof(int))); CK(cudaMemset(dfinished, 0, sizeof(int)));
-    S.recs = drecs; S.offs = doffs; S.progress = dprog; S.nworkers = sc.workers; S.nactive = used; S.spin_idle = o.spin_idle; S.finished = dfinished; S.timeout_ns = cfg_.timeout_us * 1000ull; S.cnt = dcnt; S.herr = S_.herr; S.fused = fused.desc; S.split = fused.split; S.trace = dtrace; S.trace_on = dtrace != nullptr;
+    S.recs = drecs; S.offs = doffs; S.progress = dprog; S.nworkers = sc.workers; S.nactive = used; S.spin_idle = o.spin_idle; S.finished = dfinished; S.timeout_ns = cfg_.timeout_us * 1000ull; S.cnt = dcnt; S.herr = S_.herr; S.fused = fused.desc; S.split = fused.split; S.grid = fused.grid; S.trace = dtrace; S.trace_on = dtrace != nullptr;
     CK(cudaStreamSynchronize(0));
     if (static_smem > 0) CK(cudaFuncSetAttribute(kvm_static_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)static_smem));
     int occ = 0; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, kvm_static_kernel, KVM_THREADS, static_smem));

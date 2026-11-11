@@ -118,16 +118,21 @@ __host__ __device__ constexpr int kvm_gpt_matmul_tile_smem(int fl) {
 
 extern __shared__ __align__(128) unsigned char kvm_gpt_smem[];
 
-// Device error codes reported through ctx.fail (distinct from the executor's own KVM_ERR_* values, which are small).
+// Device error codes reported through ctx.fail (distinct from the executor's own KVM_ERR_* values, which are small). One list: the enum
+// below and the executor's DEVICE ERROR line (kvm_err_name, kvm_err_text) both expand it, so a new code is never printed as UNKNOWN.
 #define KVM_GPT_ERR_BASE 1000
+#define KVM_GPT_ERRORS(E)                                                                                   \
+    E(KVM_GPT_E_BUF, 1, "buffer index out of the table")                                                     \
+    E(KVM_GPT_E_DTYPE, 2, "null pointer or wrong dtype (f32 = 0, i32 = 1)")                                   \
+    E(KVM_GPT_E_RANGE, 3, "range / shape arguments outside the buffer")                                      \
+    E(KVM_GPT_E_SHAPE, 4, "unsupported shape (head size), bad flags or misaligned buffer")                   \
+    E(KVM_GPT_E_TOKEN, 5, "token id / target outside [0, V)")                                                \
+    E(KVM_GPT_E_KVLEN, 6, "KV cache length overflow")                                                        \
+    E(KVM_GPT_E_SMEM, 7, "the launch's dynamic shared memory is below what the task needs (kvm_gpt_*_smem)")
 enum KvmGptErr {
-    KVM_GPT_E_BUF = KVM_GPT_ERR_BASE + 1,     // buffer index out of the table
-    KVM_GPT_E_DTYPE = KVM_GPT_ERR_BASE + 2,   // null pointer or wrong dtype (f32 = 0, i32 = 1)
-    KVM_GPT_E_RANGE = KVM_GPT_ERR_BASE + 3,   // range / shape arguments outside the buffer
-    KVM_GPT_E_SHAPE = KVM_GPT_ERR_BASE + 4,   // unsupported shape (head size), bad flags or misaligned buffer
-    KVM_GPT_E_TOKEN = KVM_GPT_ERR_BASE + 5,   // token id / target outside [0, V)
-    KVM_GPT_E_KVLEN = KVM_GPT_ERR_BASE + 6,   // KV cache length overflow
-    KVM_GPT_E_SMEM = KVM_GPT_ERR_BASE + 7     // the launch's dynamic shared memory is below what the task needs (kvm_gpt_*_smem)
+#define KVM_GPT_ERR_ENUM(n, off, text) n = KVM_GPT_ERR_BASE + off,
+    KVM_GPT_ERRORS(KVM_GPT_ERR_ENUM)
+#undef KVM_GPT_ERR_ENUM
 };
 enum { KVM_GPT_F32 = 0, KVM_GPT_I32 = 1, KVM_GPT_BF16 = 2 };   // KvmBuf.dtype; bf16 = raw 16-bit storage
 

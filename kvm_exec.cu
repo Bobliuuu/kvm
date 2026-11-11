@@ -48,8 +48,22 @@ static const char* kvm_dist_err(int c, bool text) {  // KVM_DIST_HOOK: codes 64.
   }
   return nullptr;
 }
+// The GPT pack's device errors (kvm_ops_gpt.cuh's one list), or nullptr when the code is not one of them.
+static const char* kvm_gpt_err(int c, bool text) {
+#ifdef KVM_GPT_ERR_BASE
+  switch (c) {
+#define KVM_GPT_ERR_CASE(n, off, str) case KVM_GPT_ERR_BASE + off: return text ? str : #n;
+    KVM_GPT_ERRORS(KVM_GPT_ERR_CASE)
+#undef KVM_GPT_ERR_CASE
+  }
+#else
+  (void)c; (void)text;
+#endif
+  return nullptr;
+}
 static const char* kvm_err_name(int c) {
   if (const char* d = kvm_dist_err(c, false)) return d;
+  if (const char* g = kvm_gpt_err(c, false)) return g;
   static const char* nm[] = {
 #define E(n, s) #n,
       KVM_ERRORS(E)
@@ -59,6 +73,7 @@ static const char* kvm_err_name(int c) {
 }
 static const char* kvm_err_text(int c) {
   if (const char* d = kvm_dist_err(c, true)) return d;
+  if (const char* g = kvm_gpt_err(c, true)) return g;
   static const char* tx[] = {
 #define E(n, s) s,
       KVM_ERRORS(E)
@@ -966,7 +981,7 @@ class KvmExec {
       KLOG(2, "fuse phases: %.0f cycles per slice in total, over %lld slices", (double)total / nslice, nslice);
     }
     if (res_.ok()) KLOG(2, "static run done: %d tasks in %.3f ms on %d workers", plan.nt, res_.kernel_ms, sc.workers);
-    else KLOG(0, "DEVICE ERROR %s (%s): task %d, a=%d, b=%d", kvm_err_name(res_.err_code), kvm_err_text(res_.err_code), res_.err_slot, res_.err_a, res_.err_b);
+    else KLOG(0, "DEVICE ERROR %s (%s, code %d): task %d, a=%d, b=%d", kvm_err_name(res_.err_code), kvm_err_text(res_.err_code), res_.err_code, res_.err_slot, res_.err_a, res_.err_b);
     return res_;
   }
 
@@ -1003,7 +1018,7 @@ class KvmExec {
     }
     finished_ = true;
     if (res_.ok()) KLOG(2, "kernel done: %d/%d tasks in %.3f ms, %d records, %d ring wraps, %d backpressure waits", res_.done, res_.admitted, res_.kernel_ms, stats_.bundles, stats_.pads, stats_.backpressure_waits);
-    else KLOG(0, "DEVICE ERROR %s (%s): slot %d, a=%d, b=%d; done %d/%d", kvm_err_name(res_.err_code), kvm_err_text(res_.err_code), res_.err_slot, res_.err_a, res_.err_b, res_.done, res_.admitted);
+    else KLOG(0, "DEVICE ERROR %s (%s, code %d): slot %d, a=%d, b=%d; done %d/%d", kvm_err_name(res_.err_code), kvm_err_text(res_.err_code), res_.err_code, res_.err_slot, res_.err_a, res_.err_b, res_.done, res_.admitted);
     return res_;
   }
 

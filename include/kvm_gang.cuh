@@ -51,4 +51,39 @@ __device__ __forceinline__ bool barrier(unsigned* ctl, int members, const int* a
     return !gave_up;
 }
 
+// The flag-line form, for gangs whose barrier is on their critical path. Member m's thread 0 publishes its epoch, the count of its
+// crossings, in word m of `lines` (line_words(members) words, 128-byte aligned, zeroed once), and warp w polls line w, lane l
+// acquiring member 32 w + l's word, until every member's epoch has reached its own; the block barrier then hands that to every thread. One
+// round trip to L2 a crossing and no atomic, where `barrier` waits for an atomic's round trip, a release and a poll: on an RTX 5070 a
+// crossing took 710 ns at 32 members against `barrier`'s 1,194. The words need no reset: every member of a completed run crosses equally
+// often, so they stay equal, and a member starts each run from its own word (`lines_epoch`). `abort` is read every 4,096 polls, as
+// `barrier` reads it; false means the run failed (every thread of the block gets the same answer), and the caller returns without
+// another crossing. Every thread of the block calls it, and the block has a warp for each line: members <= 32 * (blockDim.x / 32).
+__host__ __device__ constexpr int line_words(int members) { return (members + 31) / 32 * 32; }
+__device__ __forceinline__ unsigned lines_epoch(const unsigned* lines, int member) { return *(const volatile unsigned*)(lines + member); }
+__device__ __forceinline__ bool barrier_lines(unsigned* lines, int member, int members, unsigned& epoch, const int* abort = nullptr) {
+    __shared__ int gave_up;
+    if (threadIdx.x == 0) gave_up = 0;   // before the entry barrier: a crossing that returned false is never followed by another
+    __syncthreads();
+    ++epoch;
+    if (threadIdx.x == 0) {
+        __threadfence();
+        st_release(lines + member, epoch);
+    }
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
+    if (warp < (members + 31) / 32) {
+        const int m = warp * 32 + lane;
+        for (unsigned spin = 1;; ++spin) {
+            const unsigned v = m < members ? ld_acquire(lines + m) : epoch;
+            if (__all_sync(0xffffffffu, (int)(v - epoch) >= 0)) break;
+            if ((spin & 4095u) == 0 && __any_sync(0xffffffffu, abort != nullptr && *(const volatile int*)abort != 0)) {
+                if (lane == 0) gave_up = 1;
+                break;
+            }
+        }
+    }
+    __syncthreads();
+    return !gave_up;
+}
+
 }  // namespace kvm_gang

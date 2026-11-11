@@ -30,6 +30,7 @@
 #define KVM_GRID_MAXL 4     // hidden layers
 #define KVM_GRID_G 16       // granule of a block's rows and columns
 #define KVM_GRID_MAXN 128   // widest column block (the GEMM: one 16-column block a warp, 8 warps)
+#define KVM_GRID_MAXP 256   // members of a gang: the flag-line barrier polls each 32 with one warp of the block's 8
 
 struct alignas(16) KvmGridDesc {   // copied to shared memory with 16-byte cp.async
   int V, VP, E, H, L, T, P;        // vocabulary (padded to VP), embedding width, hidden width, hidden layers, rows a step, the gang's members
@@ -44,7 +45,7 @@ struct alignas(16) KvmGridDesc {   // copied to shared memory with 16-byte cp.as
   // layers' forward partials; hpart [kah][T][VP] the head's; dlog [T][VP]; dyp [max(nb, 1)][T][H] input-gradient partials over a layer's N
   // blocks; dz [T][H]; dx0 [nb0][T][E]; rloss [T] each row's loss term
   float* Y[KVM_GRID_MAXL]; float* part; float* hpart; float* dlog; float* dyp; float* dz; float* dx0; float* rloss;
-  unsigned* ctl;                   // the gang barrier's two words (kvm_gang.cuh), zero before the first step
+  unsigned* ctl;                   // the gang's flag lines (kvm_gang::barrier_lines: line_words(P) words, 128-byte aligned), zero before the first step
 };
 
 KVM_GRID_HD inline constexpr int kvm_grid_desc_floats() { return (int)((sizeof(KvmGridDesc) + 63) / 64 * 16); }
@@ -58,7 +59,7 @@ KVM_GRID_HD inline int kvm_grid_widest(int D, int n, int g = KVM_GRID_G) { retur
 // many row blocks as the members then allow. The head takes kah = min(P, H / 16) row blocks.
 KVM_GRID_HD inline int kvm_grid_layout(KvmGridDesc& d) {
   // V % 4: the head's rows are copied in 16-byte pieces; T = 96: the GEMMs over every row take 6 row blocks at compile time
-  if (d.L < 1 || d.L > KVM_GRID_MAXL || d.H % KVM_GRID_G || d.E % KVM_GRID_G || d.E > KVM_GRID_MAXN || d.V < 1 || d.V % 4 || d.T != 96 || d.P < 1) return -1;
+  if (d.L < 1 || d.L > KVM_GRID_MAXL || d.H % KVM_GRID_G || d.E % KVM_GRID_G || d.E > KVM_GRID_MAXN || d.V < 1 || d.V % 4 || d.T != 96 || d.P < 1 || d.P > KVM_GRID_MAXP) return -1;
   d.VP = kvm_grid_pad16(d.V);
   if (d.VP > KVM_GRID_MAXN) return -1;
   const int gran = d.H / KVM_GRID_G;

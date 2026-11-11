@@ -85,7 +85,8 @@ int main(int argc, char** argv) {
   d.wh = dalloc(data.Wh.size()); d.emb = dalloc(data.emb.size());
   d.part = dalloc(d.L > 1 ? (size_t)d.ka * TH : 1); d.hpart = dalloc((size_t)d.kah * T * d.VP); d.dlog = dalloc((size_t)T * d.VP);
   d.dyp = dalloc((size_t)std::max(d.nb, 1) * TH); d.dz = dalloc(TH); d.dx0 = dalloc((size_t)d.nb0 * T * d.E); d.rloss = dalloc(T);
-  CK(cudaMalloc(&d.ctl, 2 * sizeof(unsigned))); CK(cudaMemset(d.ctl, 0, 2 * sizeof(unsigned)));   // once: the gang barrier needs no reset between launches
+  const size_t lines = kvm_gang::line_words(d.P) * sizeof(unsigned);
+  CK(cudaMalloc(&d.ctl, lines)); CK(cudaMemset(d.ctl, 0, lines));   // once: the flag lines need no reset between launches
   KvmGridDesc* gd; CK(cudaMalloc(&gd, sizeof(KvmGridDesc))); CK(cudaMemcpy(gd, &d, sizeof(KvmGridDesc), cudaMemcpyHostToDevice));
   int *dids, *dtgt; CK(cudaMalloc(&dids, data.ids.size() * sizeof(int))); CK(cudaMalloc(&dtgt, data.tgt.size() * sizeof(int)));
   CK(cudaMemcpy(dids, data.ids.data(), data.ids.size() * sizeof(int), cudaMemcpyHostToDevice)); CK(cudaMemcpy(dtgt, data.tgt.data(), data.tgt.size() * sizeof(int), cudaMemcpyHostToDevice));

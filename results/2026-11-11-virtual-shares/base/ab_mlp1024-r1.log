@@ -1,0 +1,13 @@
+GATE ok: mlp1024-r1: 6 buffers with prefix 'w.', tasks 17117 -> 17117; bitwise equal
+rep 0 mlp1024-r1 control: 6.78 ms
+rep 0 mlp1024-r1 cand: 6.78 ms
+rep 1 mlp1024-r1 control: 6.79 ms
+rep 1 mlp1024-r1 cand: 6.80 ms
+rep 2 mlp1024-r1 control: 6.78 ms
+rep 2 mlp1024-r1 cand: 6.78 ms
+rep 3 mlp1024-r1 control: 6.79 ms
+rep 3 mlp1024-r1 cand: 6.79 ms
+rep 4 mlp1024-r1 control: 6.79 ms
+rep 4 mlp1024-r1 cand: 6.78 ms
+{"row": "mlp1024-r1", "control": "/root/reads/panel-count1/h1024/bundle", "cand": "/root/reads/panel-count1/h1024/bundle", "tasks": {"control": 17117, "cand": 17117}, "ms": {"control": {"median": 6.786, "best": 6.776, "all": [6.78, 6.79, 6.78, 6.79, 6.79]}, "cand": {"median": 6.782, "best": 6.782, "all": [6.78, 6.8, 6.78, 6.79, 6.78]}}, "paired_ratio_median": 1.0, "best_ratio": 0.9991153052196992}
+rc 0

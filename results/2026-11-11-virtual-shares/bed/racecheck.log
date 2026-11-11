@@ -1,0 +1,24 @@
+========= COMPUTE-SANITIZER
+NVIDIA A100-SXM4-80GB, 108 SMs, 163 KB shared memory a block (opt-in); model E 48 V 100 H 96 depth 2, T 96 (6 slices of 16), S 2 shares carrying 6 virtual (width <= 48, padded 48): 12 blocks, 77.8 KB a block, 5 barriers a step
+check step 0: loss 4.606087, fp64 4.606086
+check step 1: loss 4.606297, fp64 4.606298
+check after 2 steps: loss max rel 1.45e-07; update rel L2 (worst layer) W 5.43e-04, b 4.54e-04; Wh 4.20e-04, emb 1.44e-03 (TF32 operands: a few 1e-3 expected)
+check ok
+warm: 1 launches, 311 ms
+timed: 2 steps: 154737.65 us a step in the kernel (block 0's %globaltimer over its counted loop), 169320.08 us by events (launch and host delays included)
+block 0 by phase (cycles a step; 2 of the step's 5 barriers sit inside the forward and backward phases):
+  load (weights, embedding rows)         28175312  (12.9%)
+  forward (GEMMs, GELU, all-gathers)     45779225  (21.0%)
+  logits partial GEMM (to L2)            14318234  ( 6.6%)
+  barrier: logits                         7394186  ( 3.4%)
+  logits summed, cross-entropy           30235222  (13.9%)
+  backward (GEMMs, reduce-scatters)      66089940  (30.4%)
+  barrier: partials                       4217581  ( 1.9%)
+  owners: parameters                       761480  ( 0.3%)
+  owners: embedding + last barrier       20699107  ( 9.5%)
+  total                                  217670288 cycles
+block 0's phases: from the last warp's end of the previous phase to the last warp's end of this one (per-warp stamps)
+blocks ran on 12 distinct SMs of 12 blocks (one block a SM)
+effective SM clock 1407 MHz (block 0's cycles over its kernel time), rated 1410 MHz: at the rated clock
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+rc 0

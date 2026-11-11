@@ -1,0 +1,37 @@
+[
+ {
+  "row": "ho-mlp-h128-d4-r1",
+  "control": "/root/reads/vsread/bundles-4cec0fbd9b692803/ho128/bundle",
+  "cand": "/root/reads/vsread/bundles-4cec0fbd9b692803/ho128/bundle",
+  "tasks": {
+   "control": 15600,
+   "cand": 15600
+  },
+  "ms": {
+   "control": {
+    "median": 15.489,
+    "best": 15.456,
+    "all": [
+     15.49,
+     15.46,
+     15.49,
+     15.49,
+     15.48
+    ]
+   },
+   "cand": {
+    "median": 15.979,
+    "best": 15.968,
+    "all": [
+     15.97,
+     15.97,
+     15.98,
+     15.99,
+     15.98
+    ]
+   }
+  },
+  "paired_ratio_median": 0.9688516387290468,
+  "best_ratio": 0.9679358717434869
+ }
+]

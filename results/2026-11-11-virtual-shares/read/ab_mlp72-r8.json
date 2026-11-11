@@ -1,0 +1,37 @@
+[
+ {
+  "row": "mlp72-r8",
+  "control": "/root/reads/panel-count1/h72_r8",
+  "cand": "/root/reads/panel-count1/h72_r8",
+  "tasks": {
+   "control": 76800,
+   "cand": 76800
+  },
+  "ms": {
+   "control": {
+    "median": 6.436,
+    "best": 6.417,
+    "all": [
+     6.43,
+     6.45,
+     6.46,
+     6.42,
+     6.44
+    ]
+   },
+   "cand": {
+    "median": 5.829,
+    "best": 5.824,
+    "all": [
+     5.82,
+     5.83,
+     5.83,
+     5.83,
+     5.84
+    ]
+   }
+  },
+  "paired_ratio_median": 1.1040521978021978,
+  "best_ratio": 1.101820054945055
+ }
+]

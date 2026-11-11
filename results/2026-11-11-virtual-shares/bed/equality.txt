@@ -1,0 +1,33 @@
+equality h200d1 S=9: byte-identical to S=18 (138424 bytes)
+equality h200d1 S=6: byte-identical to S=18 (138424 bytes)
+equality h200d1 S=4: byte-identical to S=18 (138424 bytes)
+equality h200d1 S=3: byte-identical to S=18 (138424 bytes)
+equality h200d1 S=2: byte-identical to S=18 (138424 bytes)
+check h200d1 S=18: check ok
+check h200d1 S=9: check ok
+check h200d1 S=6: check ok
+check h200d1 S=4: check ok
+check h200d1 S=3: check ok
+check h200d1 S=2: check ok
+equality h224d2 S=9: byte-identical to S=18 (354328 bytes)
+equality h224d2 S=6: byte-identical to S=18 (354328 bytes)
+equality h224d2 S=4: byte-identical to S=18 (354328 bytes)
+equality h224d2 S=3: no dump (does not fit)
+equality h224d2 S=2: no dump (does not fit)
+check h224d2 S=18: check ok
+check h224d2 S=9: check ok
+check h224d2 S=6: check ok
+check h224d2 S=4: check ok
+check h224d2 S=3: 
+check h224d2 S=2: 
+equality h256d4 S=9: byte-identical to S=18 (961304 bytes)
+equality h256d4 S=6: no dump (does not fit)
+equality h256d4 S=4: no dump (does not fit)
+equality h256d4 S=3: no dump (does not fit)
+equality h256d4 S=2: no dump (does not fit)
+check h256d4 S=18: check ok
+check h256d4 S=9: check ok
+check h256d4 S=6: 
+check h256d4 S=4: 
+check h256d4 S=3: 
+check h256d4 S=2: 

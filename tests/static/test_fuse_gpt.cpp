@@ -1,9 +1,8 @@
 // CPU check of the GPT step matcher (include/kvm_fuse_gpt.h) on real bundles: prints the decision for every run, and on a matched run checks
 // that its steps account for every task of the run exactly once, prints the step's shape and its parameter updates by buffer name, then
 // breaks the bundle in ways the template must refuse (each mutation must leave the run unmatched, with its own reason).
-//   g++ -std=c++17 -O2 -Iinclude -DKVM_EXTRA_OPS_DEF='"kvm_ops_fgpt.def"' tests/static/test_fuse_gpt.cpp -o /tmp/test_fuse_gpt && /tmp/test_fuse_gpt BUNDLE_DIR...
-// The registry is compiled in from include/kvm_ops_list.inc (registry.h); fgpt_step joins it through the list's extension hook until the
-// executor dispatches it. A tree that lacks an op the matcher reads fails here.
+//   g++ -std=c++17 -O2 -Iinclude tests/static/test_fuse_gpt.cpp -o /tmp/test_fuse_gpt && /tmp/test_fuse_gpt BUNDLE_DIR...
+// The registry is compiled in from include/kvm_ops_list.inc (registry.h): a tree that lacks an op the matcher reads fails here.
 #include <algorithm>
 #include <cstdio>
 #include <functional>
@@ -91,10 +90,10 @@ int main(int argc, char** argv) {
                 printf("    %-24s grad %-6s m %-24s v %-24s wd %g\n", B.bufs.name[u.p].c_str(), B.bufs.name[u.g].c_str(), B.bufs.name[u.m].c_str(), B.bufs.name[u.v].c_str(), u.wd);
         }
 
-        // 3. the rewrite: each matched run becomes one gang of G fgpt_step members; every other task is copied through; the static planner places the gang
+        // 3. the rewrite: each matched run becomes one gang of G fgpt_step members; every other task is copied through; the fused kernel's launch
+        //    reads each gang's members where the rewrite put them
         {
             const int fgpt = reg.require("fgpt_step");
-            const KvmSOpLookup op_of = reg.lookup();
             KvmFuseGptOptions opt;
             const KvmFuseGptPlan P = kvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, opt);
             printf("  rewrite: %d fused, %d unchanged, %d tasks replaced by %d members\n", P.fused_runs, P.unchanged_runs, P.replaced_tasks, P.new_tasks);
@@ -103,7 +102,7 @@ int main(int argc, char** argv) {
             int misrefused = 0;
             for (const auto& run : r.runs) {
                 const std::string& line = P.report[run.component];
-                if (line.find("fused as a gang") == std::string::npos && line.find("does not fit a resident gang") == std::string::npos) ++misrefused;
+                if (line.find("fused as a gang") == std::string::npos && line.find("does not fit a gang") == std::string::npos) ++misrefused;
             }
             if (misrefused) { printf("  FAIL: %d matched runs refused for a reason other than their fit\n", misrefused); ++failures; }
             // kept tasks keep their op and arguments: the multiset of (op, args) of the non-member tasks is the original's minus the fused runs' tasks
@@ -128,25 +127,30 @@ int main(int argc, char** argv) {
             }
             for (auto& kv : members) { std::sort(kv.second.begin(), kv.second.end()); for (int m = 0; m < (int)kv.second.size(); ++m) bad_member += kv.second[m] != m; }
             if (before != after) { printf("  FAIL: the kept tasks changed\n"); ++failures; }
-            // the static path takes a bundle's final versions from its publishers: the rewrite keeps every variable's last version
+            // the fused path takes a bundle's final versions from its publishers: the rewrite keeps every variable's last version
             std::map<int, int> vb, va;
             for (const auto& t : B.tasks) if (t.pub_var >= 0) vb[t.pub_var] = std::max(vb[t.pub_var], t.pub_ver);
             for (const auto& t : P.tasks) if (t.pub_var >= 0) va[t.pub_var] = std::max(va[t.pub_var], t.pub_ver);
             if (vb != va) { printf("  FAIL: the rewrite changed a final version\n"); ++failures; }
             else if (!vb.empty()) printf("  final versions kept: %zu variable(s), e.g. variable %d at %d\n", vb.size(), vb.begin()->first, vb.begin()->second);
             if (bad_member || (int)members.size() != P.fused_runs) { printf("  FAIL: %d malformed gang members, %zu gangs for %d runs\n", bad_member, members.size(), P.fused_runs); ++failures; }
-            // the static planner places every task, and puts each gang's members on distinct workers
-            for (int W : {8, 32, 108}) {
-                if (P.fused_runs && W < *std::max_element(P.gang.begin(), P.gang.end())) continue;
-                KvmSConfig cfg; cfg.workers = W;
-                const KvmSCostFn cost = [&](int op, const int32_t*) { return op == fgpt ? 100.0 : op == 0 ? 0.1 : 3.0; };
-                const KvmSPlan plan = kvm_static_plan(P.tasks, P.succ, P.args, cfg, op_of, cost);
-                int placed = 0; for (const auto& prog : plan.prog) placed += (int)prog.size();
-                std::map<int, std::set<int>> workers_of_gang;
-                for (size_t i = 0; i < P.tasks.size(); ++i) if (P.tasks[i].op_id == fgpt) workers_of_gang[P.args[P.tasks[i].args_off + 1]].insert(plan.worker_of[i]);
-                bool spread = true; for (const auto& kv : workers_of_gang) spread = spread && (int)kv.second.size() == P.gang[kv.first];
-                printf("  W=%d: planned %d of %zu tasks, each gang on distinct workers: %s, predicted makespan %.1f us\n", W, placed, P.tasks.size(), spread ? "yes" : "NO", plan.makespan_us);
-                if (placed != (int)P.tasks.size() || !spread) ++failures;
+            // the fused kernel's launch (KvmExec::run_fgpt) takes task kept + (the members of earlier runs) + m as member m of its run: the members
+            // follow every kept task, in run and member order. A bundle whose runs all fuse is its gangs alone, which is the fused path's bundle.
+            {
+                const int kept = (int)P.tasks.size() - P.new_tasks;
+                std::vector<int> first(P.runs.size() + 1, kept);
+                for (size_t q = 0; q < P.runs.size(); ++q) first[q + 1] = first[q] + P.gang[q];
+                int misplaced = 0;
+                for (size_t i = 0; i < P.tasks.size(); ++i) {
+                    const bool member = P.tasks[i].op_id == fgpt;
+                    if ((int)i < kept) { misplaced += member; continue; }
+                    const int32_t* a = P.args.data() + P.tasks[i].args_off;
+                    misplaced += !member || a[0] < 0 || a[0] >= (int)P.runs.size() || (int)i != first[a[0]] + a[2];
+                }
+                const bool whole = P.fused_runs > 0 && P.unchanged_runs == 0;
+                printf("  launch layout: %d kept task(s), then %d member(s) in run and member order: %s%s\n", kept, P.new_tasks, misplaced ? "NO" : "yes",
+                       whole ? "; the bundle is its gangs alone (the fused GPT path)" : "");
+                if (misplaced || (whole && kept)) { printf("  FAIL: %d misplaced member task(s)\n", misplaced); ++failures; }
             }
             // refusals of the rewrite, on a run it fuses by default: a budget no gang fits, and a dumped activation the fused step would leave stale
             if (P.fused_runs) {
@@ -154,7 +158,7 @@ int main(int argc, char** argv) {
                 const KvmFuseGptPlan T = kvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, tight);
                 KvmFuseGptOptions dump; if (!r.runs.empty()) dump.keep = {*r.runs[0].shape.interior.begin()};
                 const KvmFuseGptPlan D = kvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, dump);
-                const bool tight_ok = !T.fused_runs && T.report[r.runs[0].component].find("does not fit a resident gang") != std::string::npos;
+                const bool tight_ok = !T.fused_runs && T.report[r.runs[0].component].find("does not fit a gang") != std::string::npos;
                 const bool dump_ok = !D.fused_runs && D.report[r.runs[0].component].find("stale") != std::string::npos;
                 printf("  rewrite refusals: budget of 1000 floats %s; a dumped activation %s\n", tight_ok ? "refused" : "NOT REFUSED", dump_ok ? "refused" : "NOT REFUSED");
                 if (!tight_ok || !dump_ok) ++failures;

@@ -1,9 +1,9 @@
 #pragma once
-// The fused GPT step (design D2): the descriptor one fused run's gang reads, and the gang's sizing (host and device; host-only
-// callers include it with plain g++).
+// The fused GPT step: the descriptor one fused run's gang reads, and the gang's sizing (host and device; host-only callers include it with
+// plain g++).
 //
-// A fused run trains one pre-norm GPT (the template of kvm_fuse_gpt.h) for all of its steps as one gang of G blocks (`fgpt_step`, a gang op:
-// the static planner starts its G members together). Each member holds a shard of every parameter with its gradient and AdamW moments in
+// A fused run trains one pre-norm GPT (the template of kvm_fuse_gpt.h) for all of its steps as one gang of G blocks (its G `fgpt_step`
+// members, launched together as one kernel: kvm_fgpt_kernel.cuh). Each member holds a shard of every parameter with its gradient and AdamW moments in
 // shared memory across the steps: column shards of q, k, v (by head), fc1 and the head; row shards of proj and fc2; rows of every N x d
 // stream. Activations cross members through global memory at two-barrier exchanges (reduce-scatter, all-gather). The member reads the
 // step's tokens and targets from the run's streams itself, as the bundle's data windows did. Device side: kvm_fused_gpt.cuh.
@@ -19,8 +19,8 @@
 #define KVM_FGPT_MAXL 4                       // transformer layers a fused run may have (the shared-memory fit bounds it before this does)
 #define KVM_FGPT_PER_LAYER 16                 // parameters a layer: n1 (g, b), q, k, v, proj (w, b each), n2 (g, b), fc1, fc2 (w, b each)
 #define KVM_FGPT_MAXP (4 + KVM_FGPT_PER_LAYER * KVM_FGPT_MAXL)   // + wte, nf (g, b), head
-#define KVM_FGPT_SMEM_FLOATS 38400            // shared memory a member may use (the static worker's own arena stays out of it, as for the MLP step)
-#define KVM_FGPT_GRANULE 8                    // columns of a shard's unit (the mma n8 width): every column shard is a whole number of granules
+#define KVM_FGPT_SMEM_FLOATS 38400            // the pass's default budget of shared memory a member, in floats (the executor passes the device's)
+#define KVM_FGPT_MAX_GANG 32                  // the widest gang the policy picks (kvm_fgpt_gang)
 
 // Parameter slots, in one fixed order: 0 wte; 1 + 16 l + r for layer l's role r (KVM_FGPT_R_*); then nf's g and b; then the head.
 enum KvmFgptRole {
@@ -53,34 +53,8 @@ struct alignas(16) KvmFgptDesc {
   float* g[KVM_FGPT_MAXP];                    // the bundle's gradient buffers: written once at the end, so a reader after the run sees the last step's
   float* xch;                                 // the global scratch (kvm_fgpt_scratch's layout, zeroed or not: every element is written before it is read)
   size_t xch_floats;
-  int smem_floats;                            // the member's shared memory, in floats (at least kvm_fgpt_smem_floats of the shape)
   unsigned* ctl;                              // the gang barrier's two words (kvm_gang.cuh), zeroed once
 };
-
-// The gang's size for a shape: the smallest G whose member state fits `smem_floats`, among the G that split every column-sharded phase into
-// whole granules (q, k and v go by head, so G is also checked against the heads); 0 when no G up to `max_g` fits (the run is not fused).
-// A member holds 4 floats a parameter of its shard (w, g, m, v) plus its own rows of every stored N x d stream, its heads' q, k, v, o and lse,
-// and its fc1 columns' pre-activation and output, plus two staging buffers for the streamed GEMM operands.
-KVM_FGPT_HD inline long long kvm_fgpt_member_floats(int N, int d, int H, int F, int V, int L, int G) {
-  const long long P = (long long)V * d * 2 + (long long)L * (4LL * d * d + 2LL * d * F + 9LL * d + F) + 2LL * d;   // wte, head; per layer q,k,v,proj, fc1, fc2, biases, norms; nf
-  const long long shard = (P + G - 1) / G;
-  const int heads_of_member = (H + G - 1) / G;                   // a member owns at most this many heads (0 or 1 when G >= H)
-  const int hd = d / H;
-  const long long own_rows = (N + G - 1) / G;
-  const long long streams = own_rows * d * (6LL * L + 3);        // x, h, x_mid, h2 (and their gradients) a layer, own rows; the final ones
-  const long long attn = (long long)heads_of_member * (long long)N * hd * 5 + (long long)heads_of_member * N;   // q, k, v, o, dq/dk/dv reuse; lse
-  const long long fc1 = (long long)N * ((F + G - 1) / G) * 2 * L; // pre and u of its fc1 columns, every layer
-  const long long staging = 2LL * 16 * 128;                       // two 16 x 128 operand stages of the streamed A operand
-  return 4 * shard + streams + attn + fc1 + staging;
-}
-KVM_FGPT_HD inline int kvm_fgpt_gang(int N, int d, int H, int F, int V, int L, int smem_floats, int max_g) {
-  for (int G = 1; G <= max_g; ++G) {
-    if (F % KVM_FGPT_GRANULE || V % KVM_FGPT_GRANULE || d % KVM_FGPT_GRANULE) return 0;
-    if ((F / KVM_FGPT_GRANULE) % G && G < F / KVM_FGPT_GRANULE) continue;   // fc1's granules split evenly (or one at most a member)
-    if (kvm_fgpt_member_floats(N, d, H, F, V, L, G) <= smem_floats) return G;
-  }
-  return 0;
-}
 
 // The device program's global scratch: offsets in floats into KvmFgptDesc::xch, laid out by the host for the run's shape and gang, every
 // array 16-byte aligned. Every element is written before it is read.
@@ -151,7 +125,7 @@ KVM_FGPT_HD inline int kvm_fgpt_ldmn(int cols) { return ((cols + 15) & ~15) + 8;
 KVM_FGPT_HD inline int kvm_fgpt_r16(int n) { return (n + 15) & ~15; }
 KVM_FGPT_HD inline int kvm_fgpt_r8(int n) { return (n + 7) & ~7; }
 KVM_FGPT_HD inline long long kvm_fgpt_r4(long long n) { return (n + 3) & ~3LL; }
-#define KVM_FGPT_NT 256                       // threads of a member's block (the static worker's KVM_THREADS)
+#define KVM_FGPT_NT 256                       // threads of a member's block
 #define KVM_FGPT_MAXBLK 16                    // a member's block rectangles: fc1's columns, b1, fc2's rows a layer, wte's rows, the head's columns
 // The fixed head of a member's shared memory: the step's tokens and targets and the cross-entropy's log-sum-exp a row (N each), RoPE's cos
 // and sin table (T x hd / 2 each), a block reduction's partials (one double a warp), a flag, a scratch of one float a thread, every
@@ -162,7 +136,8 @@ KVM_FGPT_HD inline long long kvm_fgpt_smem_head(int N, int T, int hd) {
 }
 // A bound on the program's shared memory, in floats: a fixed head (the step's tokens and targets, the cross-entropy's log-sum-exp a row, a
 // block reduction's partials and a flag), then the largest phase's buffers, as kvm_fused_gpt.cuh takes them. The device checks every phase
-// against KvmFgptDesc::smem_floats and fails the run (KVM_FGPT_E_SCRATCH) instead of overrunning, so a bound too small shows at once.
+// against the shared memory its caller gives it and fails the run (KVM_FGPT_E_SCRATCH) instead of overrunning, so a bound too small shows
+// at once.
 KVM_FGPT_HD inline long long kvm_fgpt_smem_floats(int N, int T, int d, int H, int F, int V, int G, int QB) {
   const int hd = H > 0 ? d / H : 0, T16 = kvm_fgpt_r16(T), N16 = kvm_fgpt_r16(N), wf = (F + G - 1) / G, wv = (V + G - 1) / G;
   const int ldq = kvm_fgpt_ldk(3 * hd), ldd = kvm_fgpt_ldk(d), ldh = kvm_fgpt_ldk(kvm_fgpt_r16(hd)), ldm = kvm_fgpt_ldmn(d);
@@ -187,6 +162,28 @@ KVM_FGPT_HD inline long long kvm_fgpt_smem_floats(int N, int T, int d, int H, in
   const long long logit = r4((long long)N16 * ldd) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldmn(wv));
   const long long headb = r4((long long)N16 * kvm_fgpt_ldk(wv)) + r4((long long)N16 * ldm) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldk(wv));
   return kvm_fgpt_smem_head(N, T, hd) + mx(mx(mx(mx(attn_qkv, attn_f), mx(attn_b, attn_k)), mx(mlp_f, mlp_b)), mx(logit, headb));
+}
+
+// The gang's size for a shape: the largest power of two up to min(KVM_FGPT_MAX_GANG, max_g, N) whose members fit `smem_floats` (the fast
+// form's phases, kvm_fgpt_smem_floats, with the default query blocks); 0 when none does (the run is not fused). On an RTX 5070, gpt-small ran
+// faster at 32 members than at 16, and gpt-tiny was flat from 8 to 32 (20 steps each, bench/fused_gpt/fgpt_bed.cu).
+KVM_FGPT_HD inline int kvm_fgpt_gang(int N, int T, int d, int H, int F, int V, int smem_floats, int max_g) {
+  if (T <= 0 || N % T) return 0;
+  int G = 1;
+  while (G * 2 <= KVM_FGPT_MAX_GANG && G * 2 <= max_g && G * 2 <= N) G *= 2;
+  for (; G >= 1; G /= 2)
+    if (kvm_fgpt_smem_floats(N, T, d, H, F, V, G, kvm_fgpt_qblocks(N / T, H, T, G)) <= smem_floats) return G;
+  return 0;
+}
+// Why the device program cannot run a matched shape, or "" when it can (the conditions kvm_fused_gpt.cuh's run checks; its layer count is a
+// question of fit, which the pass asks separately).
+inline const char* kvm_fgpt_unrunnable(int d, int H, int L, int mm_numerics) {
+  const int hd = H > 0 ? d / H : 0;
+  if (hd <= 0 || d != H * hd || hd % 8 || hd > 128) return "a head width the fused step does not take (a multiple of 8, at most 128)";
+  if (d % 4) return "a width that is not a multiple of 4";
+  if (L < 1) return "no layer";
+  if (mm_numerics & ~16) return "GEMM numerics the fused step does not reproduce (truncated or exact tiles)";
+  return "";
 }
 
 // The faults a member reports through its caller's `fail(code)` (kvm_fused_gpt.cuh's run; the executor reports one as KVM_ERR_BOUNDS with the

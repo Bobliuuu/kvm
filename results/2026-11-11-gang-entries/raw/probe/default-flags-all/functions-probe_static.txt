@@ -1,0 +1,31 @@
+_Z12probe_staticPK4PRecPKiPiP8ProbeCntPx: every block, 158016 instructions in 7091 blocks
+  12 functions (cubin symbols; 6 are ptxas's internal helpers, folded below), 342 calls between functions, 118 CALLs inside their own function; registers R0-R252, R1 aside
+  function                         instr  HMMA   LDL   STL touched avoided  avoided registers held across a call by
+  (kernel)                           447     0    15    39      22     230  kvm_s_fmlp_grid 128, kvm_s_fmlp_slice 120, kvm_s_fmlp_split 99; held by none 10
+  probe_fail                          14     0     0     0       6     246  kvm_s_fmlp_grid 144, kvm_s_fmlp_slice 133, kvm_s_fmlp_split 113; held by none 10
+  kvm_s_fmlp_sgd                     982     0    16    16     117     135  kvm_s_fmlp_grid 74, kvm_s_fmlp_slice 66, kvm_s_fmlp_split 35; held by none 10
+  kvm_s_fmlp_grid                  23318   976    85    35     184      68  kvm_s_fmlp_slice 36, kvm_s_fmlp_sgd 32
+  kvm_s_fmlp_slice                 10794   512    84   146     188      64  kvm_s_fmlp_sgd 32, kvm_s_fmlp_grid 32
+  kvm_s_fmlp_split                122202  5434  2341  1744     152     100  kvm_s_fmlp_slice 36, kvm_s_fmlp_sgd 32, kvm_s_fmlp_grid 32
+  (6 internal helpers: 259 instructions, at most 15 registers each)
+  calls: caller -> callee, sites, registers live across them (min-max, R1 aside), the widest site
+    kvm_s_fmlp_slice             -> __internal_6_$__cuda_sm3x_div_rn_noftz_f32_s   17 site(s)   60-123 live, widest at 0x081560
+    kvm_s_fmlp_slice             -> __internal_5_$__cuda_sm20_rcp_rn_f32_slowpat    8 site(s)   63-120 live, widest at 0x07a060
+    kvm_s_fmlp_grid              -> __internal_5_$__cuda_sm20_rcp_rn_f32_slowpat    4 site(s)   34-120 live, widest at 0x012d70
+    kvm_s_fmlp_grid              -> __internal_6_$__cuda_sm3x_div_rn_noftz_f32_s    9 site(s)   33-119 live, widest at 0x012cd0
+    kvm_s_fmlp_grid              -> __internal_4_$__cuda_sm20_div_s64              12 site(s)  104-116 live, widest at 0x0079c0
+    kvm_s_fmlp_slice             -> probe_fail                                      5 site(s)  101-102 live, widest at 0x064150
+    kvm_s_fmlp_sgd               -> __internal_8_$__cuda_sm70_shflsync_idx_p        5 site(s)   86- 88 live, widest at 0x0059a0
+    kvm_s_fmlp_sgd               -> __internal_6_$__cuda_sm3x_div_rn_noftz_f32_s    1 site(s)   85- 85 live, widest at 0x002240
+    kvm_s_fmlp_sgd               -> __internal_5_$__cuda_sm20_rcp_rn_f32_slowpat    1 site(s)   85- 85 live, widest at 0x0022e0
+    kvm_s_fmlp_split             -> __internal_5_$__cuda_sm20_rcp_rn_f32_slowpat   44 site(s)   31- 58 live, widest at 0x215cc0
+    kvm_s_fmlp_split             -> __internal_6_$__cuda_sm3x_div_rn_noftz_f32_s   77 site(s)   14- 57 live, widest at 0x2413b0
+    kvm_s_fmlp_grid              -> __internal_7_$__cuda_sm70_shflsync_bfly_p      15 site(s)   31- 33 live, widest at 0x060940
+    kvm_s_fmlp_split             -> __internal_7_$__cuda_sm70_shflsync_bfly_p     110 site(s)   15- 16 live, widest at 0x268180
+    kvm_s_fmlp_split             -> __internal_9_$__cuda_sm70_warpsync             11 site(s)   14- 14 live, widest at 0x247f40
+    (kernel)                     -> kvm_s_fmlp_split                                5 site(s)    1-  2 live, widest at 0x001ac0
+    (kernel)                     -> kvm_s_fmlp_slice                                5 site(s)    1-  2 live, widest at 0x001970
+    (kernel)                     -> kvm_s_fmlp_sgd                                  5 site(s)    1-  2 live, widest at 0x001810
+    (kernel)                     -> kvm_s_fmlp_grid                                 5 site(s)    1-  2 live, widest at 0x001a40
+    kvm_s_fmlp_split             -> probe_fail                                      2 site(s)    0-  0 live, widest at 0x265360
+    kvm_s_fmlp_grid              -> probe_fail                                      1 site(s)    0-  0 live, widest at 0x060330

@@ -489,7 +489,7 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
       pl.steps.push_back(std::move(st));
     }
     if (why.empty() && pl.steps.empty()) why = "no training step found";
-    if (why.empty()) near = true;   // every step matched
+    if (why.empty()) near = covered(pl.steps[0]);   // every step matched: a near miss only in shapes some fused form covers
     // Every step's closing barrier but the last is replaced too: the fused tasks' own edges order the steps, and a join in the middle would sit on the critical path. The last one stays: it publishes the run's final version.
     if (why.empty()) for (size_t si = 0; si + 1 < pl.steps.size(); ++si) if (pl.steps[si].barrier_end >= 0) { pl.steps[si].replaced.push_back(pl.steps[si].barrier_end); pl.steps[si].barrier_end = -1; }
     if (why.empty()) {

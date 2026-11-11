@@ -1,0 +1,8 @@
+[kvm_exec][I] device NVIDIA A100-SXM4-80GB, 108 SMs, 1 resident blocks/SM with 147456 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] /root/reads/cefix/bundles/pr39_h72d2/bundle: 159 tasks, 727 edges, 1680 arg words
+[kvm_exec][I] fuse: component 0 (159 tasks): unchanged: step 0: expected the reduce after the fused softmax CE
+[kvm_exec][I] fuse: 0 run(s) fused, 1 unchanged; 0 tasks replaced by 0
+[kvm_exec][I] static schedule: 159 tasks -> 159 records on 13/108 workers, 584 of 727 edges cross workers, 144 records publish; runs partitioned: no; plan 157.7 us, work 596.2 us (compiled in 0.000 s)
+[kvm_exec][I] static kernel: 1 resident blocks/SM, 147456 bytes of dynamic shared memory, launching 108 workers
+[kvm_exec][I] static run done: 159 tasks in 0.503 ms on 108 workers
+rc 0

@@ -1,0 +1,157 @@
+# tests/static/test_fuse_pass.cpp (g++ -O2, CPU) on gen_mlp.py bundles (--no-golden, the default a100 tiling), from two frontends:
+#   main = 4bbdaab;  pr39 = 4bbdaab + a6b0fea + 5e20289 (#39's two frontend commits: Tiling.ce_rows, and ce_rows=16 in the a100 preset)
+# and the panel's own 200-step h72 bundle (main's frontend). 'before' is main's test and pass (4bbdaab), 'after' this branch's (f6fc955).
+# The digest covers the pass's whole result: the rewritten tasks, edges and arguments, every fused run's descriptor, the interior buffers.
+
+## main_h72d2, before
+main_h72d2/bundle: 144 tasks, 73 buffers -> fused runs 1, unchanged runs 0, replaced tasks 137, new tasks 73
+  [1 runs] fused: 3 steps, T=96 V=100 widths 48x72x72, 6 slices of 16 rows, 16 reduction owners
+  W=1: planned 73 tasks, predicted makespan 1482.1 us (work 1482.1 us), 0 cross-worker waits
+  W=4: planned 73 tasks, predicted makespan 475.6 us (work 1482.1 us), 396 cross-worker waits
+  W=8: planned 73 tasks, predicted makespan 247.6 us (work 1482.1 us), 464 cross-worker waits
+  W=107: planned 73 tasks, predicted makespan 217.6 us (work 1482.1 us), 499 cross-worker waits
+OK
+
+## main_h72d2, after
+main_h72d2/bundle: 144 tasks, 73 buffers -> fused runs 1, unchanged runs 0, replaced tasks 137, new tasks 73; rewritten bundle f78062de68ead70f
+  [1 runs] fused: 3 steps, T=96 V=100 widths 48x72x72, 6 slices of 16 rows, 16 reduction owners
+  loss in 16-row blocks, fused form: 159 tasks -> fused runs 1, rewritten bundle f78062de68ead70f: the same bundle
+  loss in 16-row blocks, per-op form: 177 tasks -> fused runs 1, rewritten bundle f78062de68ead70f: the same bundle
+  loss in 16-row blocks with a gap: fused runs 0, 1 warning(s) (step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments): refused, with a warning
+  loss in 16-row blocks with an overlap: fused runs 0, 1 warning(s) (step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments): refused, with a warning
+  loss in 16-row blocks with a short cover: fused runs 0, 1 warning(s) (step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments): refused, with a warning
+  loss in 16-row blocks with another vocabulary: fused runs 0, 1 warning(s) (step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments): refused, with a warning
+  W=1: planned 73 tasks, predicted makespan 1482.1 us (work 1482.1 us), 0 cross-worker waits
+  W=4: planned 73 tasks, predicted makespan 475.6 us (work 1482.1 us), 396 cross-worker waits
+  W=8: planned 73 tasks, predicted makespan 247.6 us (work 1482.1 us), 464 cross-worker waits
+  W=107: planned 73 tasks, predicted makespan 217.6 us (work 1482.1 us), 499 cross-worker waits
+OK
+
+## pr39_h72d2, before
+pr39_h72d2/bundle: 159 tasks, 73 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+  [1 runs] unchanged: step 0: expected the reduce after the fused softmax CE
+OK
+
+## pr39_h72d2, after
+pr39_h72d2/bundle: 159 tasks, 73 buffers -> fused runs 1, unchanged runs 0, replaced tasks 152, new tasks 73; rewritten bundle f78062de68ead70f
+  [1 runs] fused: 3 steps, T=96 V=100 widths 48x72x72, 6 slices of 16 rows, 16 reduction owners
+  loss in row blocks: no single-task loss to lower again
+  W=1: planned 73 tasks, predicted makespan 1482.1 us (work 1482.1 us), 0 cross-worker waits
+  W=4: planned 73 tasks, predicted makespan 475.6 us (work 1482.1 us), 396 cross-worker waits
+  W=8: planned 73 tasks, predicted makespan 247.6 us (work 1482.1 us), 464 cross-worker waits
+  W=107: planned 73 tasks, predicted makespan 217.6 us (work 1482.1 us), 499 cross-worker waits
+OK
+
+## main_h48d2, before
+main_h48d2/bundle: 102 tasks, 73 buffers -> fused runs 1, unchanged runs 0, replaced tasks 95, new tasks 73
+  [1 runs] fused: 3 steps, T=96 V=100 widths 48x48x48, 6 slices of 16 rows, 16 reduction owners
+  W=1: planned 73 tasks, predicted makespan 1482.1 us (work 1482.1 us), 0 cross-worker waits
+  W=4: planned 73 tasks, predicted makespan 475.6 us (work 1482.1 us), 396 cross-worker waits
+  W=8: planned 73 tasks, predicted makespan 247.6 us (work 1482.1 us), 464 cross-worker waits
+  W=107: planned 73 tasks, predicted makespan 217.6 us (work 1482.1 us), 499 cross-worker waits
+OK
+
+## main_h48d2, after
+main_h48d2/bundle: 102 tasks, 73 buffers -> fused runs 1, unchanged runs 0, replaced tasks 95, new tasks 73; rewritten bundle d4ec8817b17e59ef
+  [1 runs] fused: 3 steps, T=96 V=100 widths 48x48x48, 6 slices of 16 rows, 16 reduction owners
+  loss in 16-row blocks, fused form: 117 tasks -> fused runs 1, rewritten bundle d4ec8817b17e59ef: the same bundle
+  loss in 16-row blocks, per-op form: 135 tasks -> fused runs 1, rewritten bundle d4ec8817b17e59ef: the same bundle
+  loss in 16-row blocks with a gap: fused runs 0, 1 warning(s) (step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments): refused, with a warning
+  loss in 16-row blocks with an overlap: fused runs 0, 1 warning(s) (step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments): refused, with a warning
+  loss in 16-row blocks with a short cover: fused runs 0, 1 warning(s) (step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments): refused, with a warning
+  loss in 16-row blocks with another vocabulary: fused runs 0, 1 warning(s) (step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments): refused, with a warning
+  W=1: planned 73 tasks, predicted makespan 1482.1 us (work 1482.1 us), 0 cross-worker waits
+  W=4: planned 73 tasks, predicted makespan 475.6 us (work 1482.1 us), 396 cross-worker waits
+  W=8: planned 73 tasks, predicted makespan 247.6 us (work 1482.1 us), 464 cross-worker waits
+  W=107: planned 73 tasks, predicted makespan 217.6 us (work 1482.1 us), 499 cross-worker waits
+OK
+
+## pr39_h48d2, before
+pr39_h48d2/bundle: 117 tasks, 73 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+  [1 runs] unchanged: step 0: expected the reduce after the fused softmax CE
+OK
+
+## pr39_h48d2, after
+pr39_h48d2/bundle: 117 tasks, 73 buffers -> fused runs 1, unchanged runs 0, replaced tasks 110, new tasks 73; rewritten bundle d4ec8817b17e59ef
+  [1 runs] fused: 3 steps, T=96 V=100 widths 48x48x48, 6 slices of 16 rows, 16 reduction owners
+  loss in row blocks: no single-task loss to lower again
+  W=1: planned 73 tasks, predicted makespan 1482.1 us (work 1482.1 us), 0 cross-worker waits
+  W=4: planned 73 tasks, predicted makespan 475.6 us (work 1482.1 us), 396 cross-worker waits
+  W=8: planned 73 tasks, predicted makespan 247.6 us (work 1482.1 us), 464 cross-worker waits
+  W=107: planned 73 tasks, predicted makespan 217.6 us (work 1482.1 us), 499 cross-worker waits
+OK
+
+## main_h128d4, before
+main_h128d4/bundle: 234 tasks, 107 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+  [1 runs] unchanged: no slice size fits (87056 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)
+OK
+
+## main_h128d4, after
+main_h128d4/bundle: 234 tasks, 107 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0; rewritten bundle 955f2cc846b1952c
+  [1 runs] unchanged: no slice size fits (87056 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)
+OK
+
+## pr39_h128d4, before
+pr39_h128d4/bundle: 249 tasks, 107 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+  [1 runs] unchanged: step 0: expected the reduce after the fused softmax CE
+OK
+
+## pr39_h128d4, after
+pr39_h128d4/bundle: 249 tasks, 107 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0; rewritten bundle f9a3f43d4ae90bb9
+  [1 runs] unchanged: no slice size fits (87056 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)
+OK
+
+## main_h72d2_s50, before
+main_h72d2_s50/bundle: 2400 tasks, 1060 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+  [1 runs] unchanged: step 22: interior buffer 514 is used outside the step
+OK
+
+## main_h72d2_s50, after
+main_h72d2_s50/bundle: 2400 tasks, 1060 buffers -> fused runs 1, unchanged runs 0, replaced tasks 2299, new tasks 1201; rewritten bundle be8827dda7db3249
+  [1 runs] fused: 50 steps, T=96 V=100 widths 48x72x72, 6 slices of 16 rows, 16 reduction owners
+  loss in 16-row blocks, fused form: 2650 tasks -> fused runs 1, rewritten bundle be8827dda7db3249: the same bundle
+  loss in 16-row blocks, per-op form: 2950 tasks -> fused runs 1, rewritten bundle be8827dda7db3249: the same bundle
+  loss in 16-row blocks with a gap: fused runs 0, 1 warning(s) (step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments): refused, with a warning
+  loss in 16-row blocks with an overlap: fused runs 0, 1 warning(s) (step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments): refused, with a warning
+  loss in 16-row blocks with a short cover: fused runs 0, 1 warning(s) (step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments): refused, with a warning
+  loss in 16-row blocks with another vocabulary: fused runs 0, 1 warning(s) (step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments): refused, with a warning
+  W=1: planned 1201 tasks, predicted makespan 24700.1 us (work 24700.1 us), 0 cross-worker waits
+  W=4: planned 1201 tasks, predicted makespan 7901.6 us (work 24700.1 us), 7540 cross-worker waits
+  W=8: planned 1201 tasks, predicted makespan 4101.6 us (work 24700.1 us), 8830 cross-worker waits
+  W=107: planned 1201 tasks, predicted makespan 3554.6 us (work 24700.1 us), 9523 cross-worker waits
+OK
+
+## pr39_h72d2_s50, before
+pr39_h72d2_s50/bundle: 2650 tasks, 1060 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+  [1 runs] unchanged: step 0: expected the reduce after the fused softmax CE
+OK
+
+## pr39_h72d2_s50, after
+pr39_h72d2_s50/bundle: 2650 tasks, 1060 buffers -> fused runs 1, unchanged runs 0, replaced tasks 2549, new tasks 1201; rewritten bundle be8827dda7db3249
+  [1 runs] fused: 50 steps, T=96 V=100 widths 48x72x72, 6 slices of 16 rows, 16 reduction owners
+  loss in row blocks: no single-task loss to lower again
+  W=1: planned 1201 tasks, predicted makespan 24700.1 us (work 24700.1 us), 0 cross-worker waits
+  W=4: planned 1201 tasks, predicted makespan 7901.6 us (work 24700.1 us), 7540 cross-worker waits
+  W=8: planned 1201 tasks, predicted makespan 4101.6 us (work 24700.1 us), 8830 cross-worker waits
+  W=107: planned 1201 tasks, predicted makespan 3554.6 us (work 24700.1 us), 9523 cross-worker waits
+OK
+
+## panel_h72, before
+panel_h72/bundle: 9600 tasks, 4210 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+  [1 runs] unchanged: step 15: interior buffer 514 is used outside the step
+OK
+
+## panel_h72, after
+panel_h72/bundle: 9600 tasks, 4210 buffers -> fused runs 1, unchanged runs 0, replaced tasks 9199, new tasks 4801; rewritten bundle 94b104f200487404
+  [1 runs] fused: 200 steps, T=96 V=100 widths 48x72x72, 6 slices of 16 rows, 16 reduction owners
+  loss in 16-row blocks, fused form: 10600 tasks -> fused runs 1, rewritten bundle 94b104f200487404: the same bundle
+  loss in 16-row blocks, per-op form: 11800 tasks -> fused runs 1, rewritten bundle 94b104f200487404: the same bundle
+  loss in 16-row blocks with a gap: fused runs 0, 1 warning(s) (step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments): refused, with a warning
+  loss in 16-row blocks with an overlap: fused runs 0, 1 warning(s) (step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments): refused, with a warning
+  loss in 16-row blocks with a short cover: fused runs 0, 1 warning(s) (step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments): refused, with a warning
+  loss in 16-row blocks with another vocabulary: fused runs 0, 1 warning(s) (step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments): refused, with a warning
+  W=1: planned 4801 tasks, predicted makespan 98800.1 us (work 98800.1 us), 0 cross-worker waits
+  W=4: planned 4801 tasks, predicted makespan 31601.6 us (work 98800.1 us), 30340 cross-worker waits
+  W=8: planned 4801 tasks, predicted makespan 16401.6 us (work 98800.1 us), 35530 cross-worker waits
+  W=107: planned 4801 tasks, predicted makespan 14204.6 us (work 98800.1 us), 38323 cross-worker waits
+OK

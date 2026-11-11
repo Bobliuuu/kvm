@@ -1,0 +1,13 @@
+# git merge-tree --write-tree of this branch (f6fc955) with #39 (pr/39 = 93d9a5d), both orders:
+fix/fuse-loss-row-blocks + pr/39: exit 0, tree 3868958abcff7085b5f0e7b3ea50fd127da65655, conflicted files: 0
+pr/39 + fix/fuse-loss-row-blocks: exit 0, tree 3868958abcff7085b5f0e7b3ea50fd127da65655, conflicted files: 0
+
+# the merged tree (3868958a): its own gen_mlp.py --steps 3 --hidden 72 --depth 2 --no-golden, then its own test_fuse_pass
+b_h72/bundle: 159 tasks, 73 buffers -> fused runs 1, unchanged runs 0, replaced tasks 152, new tasks 73; rewritten bundle f78062de68ead70f
+  [1 runs] fused: 3 steps, T=96 V=100 widths 48x72x72, 6 slices of 16 rows, 16 reduction owners
+  loss in row blocks: no single-task loss to lower again
+  W=1: planned 73 tasks, predicted makespan 1482.1 us (work 1482.1 us), 0 cross-worker waits
+  W=4: planned 73 tasks, predicted makespan 475.6 us (work 1482.1 us), 396 cross-worker waits
+  W=8: planned 73 tasks, predicted makespan 247.6 us (work 1482.1 us), 464 cross-worker waits
+  W=107: planned 73 tasks, predicted makespan 217.6 us (work 1482.1 us), 499 cross-worker waits
+OK

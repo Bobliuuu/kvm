@@ -1,0 +1,37 @@
+[
+ {
+  "row": "pr39-mlp72-r32",
+  "control": "/root/reads/m39/pr39/panel/h72_r32",
+  "cand": "/root/reads/m39/pr39/panel/h72_r32",
+  "tasks": {
+   "control": 339200,
+   "cand": 339200
+  },
+  "ms": {
+   "control": {
+    "median": 40.085,
+    "best": 40.067,
+    "all": [
+     40.09,
+     40.1,
+     40.07,
+     40.11,
+     40.08
+    ]
+   },
+   "cand": {
+    "median": 9.146,
+    "best": 9.078,
+    "all": [
+     9.18,
+     9.08,
+     9.2,
+     9.14,
+     9.15
+    ]
+   }
+  },
+  "paired_ratio_median": 4.382462278591734,
+  "best_ratio": 4.413637365058383
+ }
+]

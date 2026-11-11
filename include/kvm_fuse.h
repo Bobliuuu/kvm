@@ -44,7 +44,7 @@ struct KvmFuseBuf { int rows = 0, cols = 0, ld = 0, dtype = 0; };   // what the 
 
 struct KvmFuseOps {   // operator ids (from the registry, by name); a missing op leaves its id at -1 and the template never matches it
   int noop = -1, select_window = -1, embedding_fwd = -1, matmul_tile = -1, softmax_ce_fwd = -1, softmax_ce_reduce = -1, softmax_ce_bwd = -1, softmax_ce_fused = -1, gelu_bwd = -1, colsum = -1, embedding_bwd = -1, sgd = -1, sgd_range = -1;
-  int fmlp_slice = -1, fmlp_sgd = -1;   // the fused ops the pass emits
+  int fmlp_slice = -1, fmlp_sgd = -1;   // the one-block form's ops (-1: the form is off)
   int fmlp_split = -1;                  // the split form's gang op (-1: the split form is off)
   int fmlp_grid = -1;                   // the grid form's gang op (-1: the grid form is off)
 };
@@ -72,13 +72,14 @@ struct KvmFuseRun {
 inline bool kvm_fuse_gang(const KvmFuseRun& r) { return r.split || r.grid; }
 inline int kvm_fuse_members(const KvmFuseRun& r) { return r.split ? r.Q * r.S : r.grid ? r.P : 0; }
 
-// The static kernel entry a rewritten bundle runs on (kvm_static.cuh). A gang step runs only on an entry of its own: ptxas sets an
+// The static kernel entry a rewritten bundle runs on (kvm_static.cuh). Every fused form runs on an entry of its own: ptxas sets an
 // out-of-line function's registers by what every other function of its kernel holds across calls, and beside the one-block form's
-// functions the grid member lost 35 of its 219 registers and reloaded in its MMA loops (sm_80 SASS, Nov 11). So a bundle with gangs
-// must hold one gang form at one share count, and besides its members only the steps' data windows and ordering noops; `mixed` names
-// what else it holds (the executor then runs the pass again with the gang forms off). No gang: the generic entry, which refuses gang ops.
+// functions the grid member lost 35 of its 219 registers and reloaded in its MMA loops (sm_80 SASS, Nov 11). So a fused bundle holds one
+// form (the one-block form, or one gang form at one share count) and, besides its fused tasks, only the steps' data windows and ordering
+// noops; `mixed` names what else it holds (the executor then runs the pass again with fewer forms). Nothing fused: the generic entry,
+// which holds no fused function and refuses the fused ops.
 struct KvmFuseEntry {
-  enum Kind { generic, split, grid, mixed } kind = generic;
+  enum Kind { generic, block, split, grid, mixed } kind = generic;
   int S = 0;           // the split entry's share count
   std::string why;     // mixed: what keeps the bundle off a gang entry
 };
@@ -94,26 +95,30 @@ struct KvmFuseResult {
 
 inline KvmFuseEntry kvm_fuse_entry(const KvmFuseResult& r, const KvmFuseOps& ops) {
   KvmFuseEntry e;
-  int nsplit = 0, ngrid = 0;
+  int nsplit = 0, ngrid = 0, nblock = 0;
   for (const KvmFuseRun& run : r.runs) {
     if (run.split) { if (nsplit++ && run.S != e.S) { e.kind = KvmFuseEntry::mixed; e.why = "split runs at " + std::to_string(e.S) + " and " + std::to_string(run.S) + " shares"; return e; } e.S = run.S; }
-    ngrid += run.grid != 0;
+    else if (run.grid) ++ngrid;
+    else ++nblock;
   }
-  if (!nsplit && !ngrid) return e;
-  if (nsplit && ngrid) { e.kind = KvmFuseEntry::mixed; e.why = std::to_string(nsplit) + " split and " + std::to_string(ngrid) + " grid run(s)"; return e; }
-  const int gang_op = nsplit ? ops.fmlp_split : ops.fmlp_grid;
+  if (!nsplit && !ngrid && !nblock) return e;
+  if ((nsplit > 0) + (ngrid > 0) + (nblock > 0) > 1) {
+    e.kind = KvmFuseEntry::mixed; e.why = std::to_string(nblock) + " one-block, " + std::to_string(nsplit) + " split and " + std::to_string(ngrid) + " grid run(s)"; return e;
+  }
+  const int a = nsplit ? ops.fmlp_split : ngrid ? ops.fmlp_grid : ops.fmlp_slice, b = nblock ? ops.fmlp_sgd : a;
   for (size_t t = 0; t < r.tasks.size(); ++t) {
     const int op = r.tasks[t].op_id;
-    if (op != gang_op && op != ops.select_window && op != ops.noop) {
-      e.kind = KvmFuseEntry::mixed; e.why = "task " + std::to_string(t) + " (op " + std::to_string(op) + ") beside the gangs"; return e;
+    if (op != a && op != b && op != ops.select_window && op != ops.noop) {
+      e.kind = KvmFuseEntry::mixed; e.why = "task " + std::to_string(t) + " (op " + std::to_string(op) + ") beside the fused runs"; return e;
     }
   }
-  e.kind = nsplit ? KvmFuseEntry::split : KvmFuseEntry::grid;
+  e.kind = nsplit ? KvmFuseEntry::split : ngrid ? KvmFuseEntry::grid : KvmFuseEntry::block;
   return e;
 }
 inline std::string kvm_fuse_entry_name(const KvmFuseEntry& e) {
   switch (e.kind) {
     case KvmFuseEntry::generic: return "generic";
+    case KvmFuseEntry::block: return "one-block";
     case KvmFuseEntry::split: return "split, " + std::to_string(e.S) + " shares";
     case KvmFuseEntry::grid: return "grid";
     default: return "mixed (" + e.why + ")";
@@ -443,6 +448,7 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
     if (why.empty()) {
       const Step& s = pl.steps[0];
       std::string one;   // why the one-block form cannot take the run (empty: it can)
+      if (ops.fmlp_slice < 0 || ops.fmlp_sgd < 0) one = "one-block form off (no fmlp_slice or fmlp_sgd op)";
       for (int l = 0; l < s.L; ++l) if (s.H[l] % 8 || s.H[l] > 128) { one = "layer width not a multiple of 8 up to 128"; break; }
       if (one.empty() && (s.E % 8 || s.E == 0)) one = "embedding width not a multiple of 8";
       if (one.empty() && (s.V % 4 || s.V == 0 || s.V > 128)) one = "vocabulary not a multiple of 4 up to 128";

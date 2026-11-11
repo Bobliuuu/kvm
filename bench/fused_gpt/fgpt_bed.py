@@ -4,6 +4,7 @@
   python3 -I bench/fused_gpt/fgpt_bed.py WORKLOAD_DIR --bed BINARY [--steps 2] [--gangs 1,4] [--work DIR] [--tol 3e-4] [--launcher CMD]
   python3 -I bench/fused_gpt/fgpt_bed.py WORKLOAD_DIR --exec KVM_EXEC [--exec-flags FLAGS] [--steps 50] ...    (with or without --bed)
   python3 -I bench/fused_gpt/fgpt_bed.py WORKLOAD_DIR --bed BINARY --time-only [--bed-args clock] [--steps 20] [--gangs 32]
+  python3 -I bench/fused_gpt/fgpt_bed.py WORKLOAD_DIR --bed BINARY --steps 1 --resync K [--gangs 32]       (step K + 1 alone, from the VM's state)
 
 BINARY is bench/fused_gpt/fgpt_bed.cu built for the GPU at hand (nvcc -O3 -std=c++17 -arch=sm_XX -Iinclude). The workload is a GPT
 bundle's workload directory (workload.json and its data/). This script:
@@ -20,6 +21,8 @@ Run one step for the gradient bars, in either numerics: after the first AdamW up
 lr x sign(g), so rounding flips it where a gradient is near zero, TF32's and float32's alike), and later steps' gradients and moments are
 not comparable element by element. They are reported, and a run of several steps is judged by its losses. Measured on a d128 GPT in
 precise mode (3xTF32): gradients within 3.8e-6 of each tensor's scale after one step, 9.2e-4 after two.
+--resync K judges a later step as strictly as the first: the bed starts from the VM's own weights and moments after K steps, its step
+counter K steps on, and runs step K + 1 alone, so no earlier update can part the two trajectories.
 --time-only skips the VM and every judgment: it writes the bed's inputs and runs it, for its time (and with --bed-args clock, the bed's
 phase table). Exit 0 when every check passes. --launcher is a command prefix for each bed run (a GPU lock or a memory guard), split on spaces; the bed
 itself refuses a run above 1 GiB of device memory.
@@ -83,8 +86,9 @@ def vm_reference(spec: dict, wdir: Path, steps: int, work: Path) -> dict:
     return out
 
 
-def write_inputs(model: ref.Model, spec: dict, work: Path) -> tuple[list[str], list[int]]:
-    """meta.txt and the binaries the bed reads; returns the parameter names and sizes in slot order."""
+def write_inputs(model: ref.Model, spec: dict, work: Path, state: dict | None = None, done: int = 0) -> tuple[list[str], list[int]]:
+    """meta.txt and the binaries the bed reads; returns the parameter names and sizes in slot order. With `state` (a VM reference after
+    `done` steps), the weights and moments are the VM's at that point and the step counter starts `done` steps later."""
     names = model.params()
     emb = next(t['args'] for g in spec['graphs'] for t in g['tasks'] if t['op'] == 'embedding_fwd')
     wi = window(spec, emb['ids'])
@@ -93,7 +97,7 @@ def write_inputs(model: ref.Model, spec: dict, work: Path) -> tuple[list[str], l
     ids = [int(x) for x in model.init[wi['src']]]
     tgt = [int(x) for x in model.init[wt['src']]]
     assert all(float(x) == int(x) for x in model.init[wi['src']]), 'token stream is not integral'
-    step0 = int(model.init[model.step_buf][0])
+    step0 = int(model.init[model.step_buf][0]) + done
     # the GEMM tiles' numerics bits (16 precise = 3xTF32, 256 truncated, 1024 exact): one value on every tile, as the matcher requires
     bits = {t['args'].get('flags', 0) & (16 | 256 | 1024) for g in spec['graphs'] for t in g['tasks'] if t['op'] == 'matmul_tile'}
     assert len(bits) == 1, f'GEMM numerics differ between tiles: {sorted(bits)}'
@@ -112,7 +116,7 @@ def write_inputs(model: ref.Model, spec: dict, work: Path) -> tuple[list[str], l
     for tag, prefix in (('p', 'w.'), ('m', 'm.'), ('v', 'v.')):
         vals = []
         for n in names:
-            vals += list(model.init[n.replace('w.', prefix, 1)])
+            vals += list((state['bufs'] if state else model.init)[n.replace('w.', prefix, 1)])
         write_f32(work / f'{tag}.bin', vals)
     (work / 'ids.bin').write_bytes(struct.pack(f'<{len(ids)}i', *ids))
     (work / 'tgt.bin').write_bytes(struct.pack(f'<{len(tgt)}i', *tgt))
@@ -212,21 +216,30 @@ def main() -> int:
     ap.add_argument('--exec-flags', default='', help='kvm_exec flags for --exec, split on spaces (e.g. --no-fuse for the unfused path)')
     ap.add_argument('--time-only', action='store_true', help='no VM, no judgment: the bed runs for its time (a timing read, not a check)')
     ap.add_argument('--bed-args', default='', help='arguments after the bed\'s gang size, split on spaces (e.g. clock, qb=2)')
+    ap.add_argument('--resync', type=int, default=None, metavar='K', help='one step from the VM\'s own state after K steps (weights, moments, '
+                    'step counter), judged element by element against the VM\'s step K + 1: no earlier update can part the trajectories')
     a = ap.parse_args()
     if not a.bed and not a.exec:
         ap.error('nothing to run: give --bed, --exec or both')
     if a.time_only and (a.exec or not a.bed):
         ap.error('--time-only runs the bed alone: give --bed, and judge --exec without it')
+    if a.resync is not None and (a.resync < 1 or a.exec or a.time_only or not a.bed or a.steps != 1):
+        ap.error('--resync K (K >= 1) runs the bed alone for one step: give --bed and --steps 1, without --exec or --time-only')
     wdir = Path(a.workload).resolve()
     work = Path(a.work).resolve() if a.work else wdir.parent / f'fgpt-bed-{wdir.name}-k{a.steps}'
     work.mkdir(parents=True, exist_ok=True)
     spec = json.loads((wdir / 'workload.json').read_text())
-    vmr = None if a.time_only else vm_reference(spec, wdir, a.steps, work)
+    k0 = a.resync or 0                                                                   # steps the VM runs before the bed's first
+    start = vm_reference(spec, wdir, k0, work) if k0 else None
+    vmr = None if a.time_only else vm_reference(spec, wdir, k0 + a.steps, work)
+    if vmr and k0:
+        vmr = dict(vmr, losses=vmr['losses'][k0:])                                        # the steps the bed runs
+        log(f'resync: the bed starts from the VM\'s weights and moments after {k0} step(s), at step counter +{k0}')
     compiled = cw.compile_spec(spec, data_dir=wdir)
     model = ref.Model(spec, compiled, a.steps)
     log(f'model: L {model.L}, d {model.d}, heads {model.H} x {model.hd}, MLP {model.F}, V {model.V}, {model.B} x {model.T} rows; '
         f'{a.steps} steps; work {work}')
-    names, sizes = write_inputs(model, spec, work)
+    names, sizes = write_inputs(model, spec, work, start, k0)
     runs, fail = {}, 0
     for G in [int(x) for x in a.gangs.split(',')] if a.bed else []:
         cmd = a.launcher.split() + [a.bed, str(work), str(G), *a.bed_args.split()]

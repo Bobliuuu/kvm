@@ -33,5 +33,5 @@ GPU losses: 4.14610 3.99400 3.76810 3.86571 3.63923
   loss.3 gpu 3.865713 golden 3.865713 rel 1.28e-10
   loss.4 gpu 3.639231 golden 3.639231 rel 9.43e-10
 PASS
-remote scratch kept: ~/kvm-scratch-bf16-jhome-96514
+remote scratch kept: ~/kvm-scratch-bf16-USER-96514
 done

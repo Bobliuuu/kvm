@@ -18,17 +18,21 @@ template <class T> static std::vector<T> load(const std::string& p) { std::strin
 
 // The registry from the .def files (X(name, id, "sig") lines).
 static std::map<int, KvmSOpInfo> g_ops; static std::map<std::string, int> g_ids;
-static int types_of(const std::string& sig, int* arity) {
+// Three bits an argument, so an op's types take 64 bits: matmul_tile has 13 arguments, and an int dropped its flags and alpha, which then
+// read as buffers (a flags word of 514 = F_DGELU | 2 then "touched" buffer 514 in bundles that have one, and the harness refused runs the
+// executor fuses).
+static uint64_t types_of(const std::string& sig, int* arity) {
     uint64_t t = 0; int i = 0; std::stringstream ss(sig); std::string tok;
     while (std::getline(ss, tok, ',')) { auto c = tok.find(':'); std::string ty = tok.substr(c + 1); uint64_t v = ty == "buf" ? 0 : ty == "i32" ? 1 : ty == "f32" ? 2 : ty == "buf?" ? 3 : 7; assert(v != 7); t |= v << (3 * i); ++i; }
-    *arity = i; return (int)t;
+    assert(i <= 21);   // 21 arguments fill 63 bits
+    *arity = i; return t;
 }
 static void load_defs(const std::string& inc) {
     for (const char* f : {"kvm_ops.def", "kvm_ops_gpt.def", "kvm_ops_extra.def", "kvm_ops_comm.def", "kvm_ops_game.def", "kvm_ops_fmlp.def"}) {
         std::ifstream in(inc + "/" + f); std::string line; std::regex re("^\\s*X\\(\\s*(\\w+)\\s*,\\s*(\\d+)\\s*,\\s*\"([^\"]*)\"");
         while (std::getline(in, line)) {
             std::smatch m; if (!std::regex_search(line, m, re)) continue;
-            int id = std::stoi(m[2].str()), ar = 0; KvmSOpInfo o; o.types = (uint64_t)types_of(m[3].str(), &ar); o.arity = ar; g_ops[id] = o; g_ids[m[1].str()] = id;
+            int id = std::stoi(m[2].str()), ar = 0; KvmSOpInfo o; o.types = types_of(m[3].str(), &ar); o.arity = ar; g_ops[id] = o; g_ids[m[1].str()] = id;
         }
     }
 }

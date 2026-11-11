@@ -17,17 +17,31 @@
 #     107 108; and KVM_CHECK_MLP_DEPTH=4 with 128 at 48 107 108 for the deepest.
 #   * A width the split form cannot hold either takes the grid form (one gang of every worker a step, fmlp_grid), sized for the run's workers:
 #     KVM_CHECK_MLP_HIDDEN=1024 tests/static/run_check.sh 107 108 (the panel's mlp1024 shape).
+#   The MLP bundle's CPU golden is a pure-Python run: h256 d4 took 44 s on a quiet laptop and over 60 s (compile_workload.py's default
+#   budget) on an A100 host busy with builds. KVM_CHECK_GOLDEN_TIMEOUT sets its budget in seconds (default 1800). KVM_CHECK_MLP_DIR takes a
+#   golden made beforehand (gen_mlp.py's output, golden included), so the GPU lock is not held while it runs: the check still makes its
+#   own bundle, without a golden, and uses the given one only when every other file of the output matches its own byte for byte.
 set -euo pipefail
 EXE="${KVM_EXE:-./kvm_exec}"; [ -x "$EXE" ] || { echo "no executor at $EXE (set KVM_EXE)"; exit 2; }
 WORKERS=("${@:-1 4 16 107}"); read -r -a WORKERS <<< "${WORKERS[*]}"
 PY="${KVM_PY:-python3}"
 MLP_H="${KVM_CHECK_MLP_HIDDEN:-72}"; [[ "$MLP_H" =~ ^[0-9]+$ ]] || { echo "KVM_CHECK_MLP_HIDDEN must be a width, got $MLP_H"; exit 2; }
 MLP_D="${KVM_CHECK_MLP_DEPTH:-2}"; [[ "$MLP_D" =~ ^[1-9]$ ]] || { echo "KVM_CHECK_MLP_DEPTH must be a depth 1-9, got $MLP_D"; exit 2; }
+GOLDEN_S="${KVM_CHECK_GOLDEN_TIMEOUT:-1800}"; [[ "$GOLDEN_S" =~ ^[0-9]+$ ]] || { echo "KVM_CHECK_GOLDEN_TIMEOUT must be seconds, got $GOLDEN_S"; exit 2; }
 "$PY" -c 'import numpy, torch' 2> /dev/null || { echo "no numpy and torch in $PY (set KVM_PY)"; exit 2; }
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/kvm-static-check.XXXXXX")"; trap 'rm -rf "$TMP"' EXIT
 "$PY" bench/vs_pytorch/gen.py "$TMP/gpt" --model gpt_tiny --steps 3 --tiling a100 > /dev/null
 echo "MLP bundle: hidden $MLP_H, depth $MLP_D, 3 steps"
-"$PY" -I bench/exec_vs_torch/gen_mlp.py "$TMP/mlp" --steps 3 --hidden "$MLP_H" --depth "$MLP_D" > /dev/null
+if [ -n "${KVM_CHECK_MLP_DIR:-}" ]; then
+  [ -f "$KVM_CHECK_MLP_DIR/bundle/golden.json" ] || { echo "no golden at $KVM_CHECK_MLP_DIR/bundle (KVM_CHECK_MLP_DIR)"; exit 2; }
+  "$PY" -I bench/exec_vs_torch/gen_mlp.py "$TMP/mlp" --steps 3 --hidden "$MLP_H" --depth "$MLP_D" --no-golden > /dev/null
+  diff -rq -x golden.json "$TMP/mlp" "$KVM_CHECK_MLP_DIR" > /dev/null \
+    || { echo "KVM_CHECK_MLP_DIR $KVM_CHECK_MLP_DIR is not this tree's hidden $MLP_H depth $MLP_D bundle (files differ)"; exit 2; }
+  cp "$KVM_CHECK_MLP_DIR/bundle/golden.json" "$TMP/mlp/bundle/"
+  echo "MLP golden: from $KVM_CHECK_MLP_DIR (the bundle matches this tree's byte for byte)"
+else
+  "$PY" -I bench/exec_vs_torch/gen_mlp.py "$TMP/mlp" --steps 3 --hidden "$MLP_H" --depth "$MLP_D" --golden-timeout "$GOLDEN_S" > /dev/null
+fi
 if command -v g++ > /dev/null; then g++ -std=c++17 -O2 -Iinclude tests/static/test_static_plan.cpp -o "$TMP/plan_test"; "$TMP/plan_test" "$TMP/gpt/bundle"; "$TMP/plan_test" "$TMP/mlp/bundle"; fi
 fails=0
 fail() { echo "FAIL: $*"; fails=$((fails + 1)); }

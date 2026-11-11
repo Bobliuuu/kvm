@@ -15,7 +15,10 @@ g = importlib.util.module_from_spec(spec); spec.loader.exec_module(g)
 
 ap = argparse.ArgumentParser(); ap.add_argument('out'); ap.add_argument('--steps', type=int, default=3)
 ap.add_argument('--tiling', default='a100'); ap.add_argument('--hidden', type=int, default=72); ap.add_argument('--depth', type=int, default=2)
-ap.add_argument('--no-golden', action='store_true'); a = ap.parse_args()
+ap.add_argument('--no-golden', action='store_true')
+ap.add_argument('--golden-timeout', type=float, default=None, help="seconds the pure-Python CPU golden may take (compile_workload.py's default "
+                'when unset); wide or deep shapes on a loaded host need more')
+a = ap.parse_args()
 tl = g.Tiling.preset(a.tiling)
 sgd = g.TrainConfig(steps=a.steps, optim=g.OptimConfig(kind='sgd', lr=0.05), clip=0)
 cfg = g.ModelConfig('mlp', vocab=100, d_model=48, layers=1, heads=3, seq=32, batch=3)
@@ -38,5 +41,6 @@ out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
 for p, raw in low.data_files.items():
     (out / p).parent.mkdir(parents=True, exist_ok=True); (out / p).write_bytes(raw)
 (out / 'workload.json').write_text(json.dumps(workload, separators=(',', ':')))
-subprocess.run([sys.executable, str(ROOT / 'runtime/compile_workload.py'), *([] if a.no_golden else ['--emit-golden']), str(out / 'workload.json'), str(out / 'bundle')], check=True)
+golden = [] if a.no_golden else ['--emit-golden', *(['--golden-timeout', str(a.golden_timeout)] if a.golden_timeout else [])]
+subprocess.run([sys.executable, str(ROOT / 'runtime/compile_workload.py'), *golden, str(out / 'workload.json'), str(out / 'bundle')], check=True)
 print('mlp tiling', a.tiling, 'hidden', a.hidden, 'depth', a.depth, 'steps', a.steps, 'tasks', sum(len(x['tasks']) for x in workload['graphs']), 'tasks/step', sum(len(x['tasks']) for x in workload['graphs']) // a.steps)

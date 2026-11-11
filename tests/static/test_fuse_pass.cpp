@@ -3,7 +3,8 @@
 // FORM, when given, is what the pass must make of every run of the bundle at the largest worker count (108, an A100's default): none (no run fused), block (the one-block
 // form, fmlp_slice and fmlp_sgd) or split (the split form's fmlp_split gangs). A bundle given without one is only reported.
 // Checks on a fired bundle: the DAG is acyclic; every kept task keeps its op and arguments; every replaced step became its slices and groups, each slice before every group; the static
-// planner accepts the result on the bundle's registry signatures, with the fused ops' signatures added.
+// planner accepts the result on the bundle's registry signatures, with the fused ops' signatures added; every gang's members sit on distinct workers; and the emitted records
+// replay as the device runs them (tests/static/replay.h): no deadlock through any gang's barrier, every edge of the DAG honoured.
 #include <cassert>
 #include <cstdio>
 #include <fstream>
@@ -15,6 +16,7 @@
 #include <vector>
 #include "kvm_fuse.h"
 #include "registry.h"
+#include "replay.h"
 
 static std::string slurp(const std::string& p) { std::ifstream f(p, std::ios::binary); if (!f) { fprintf(stderr, "cannot read %s\n", p.c_str()); exit(2); } std::stringstream s; s << f.rdbuf(); return s.str(); }
 template <class T> static std::vector<T> load(const std::string& p) { std::string r = slurp(p); assert(r.size() % sizeof(T) == 0); std::vector<T> v(r.size() / sizeof(T)); memcpy(v.data(), r.data(), r.size()); return v; }
@@ -110,7 +112,11 @@ int main(int argc, char** argv) {
         std::map<int, std::set<int>> gang_workers; std::map<int, int> gang_size;
         for (size_t t = 0; t < r.tasks.size(); ++t) if (r.tasks[t].op_id == split_id) { const int g = r.args[r.tasks[t].args_off + 1]; gang_workers[g].insert(p.worker_of[t]); ++gang_size[g]; }
         for (const auto& kv : gang_workers) if ((int)kv.second.size() != gang_size[kv.first]) { printf("  FAIL: gang %d shares a worker\n", kv.first); ++failures; break; }
-        printf("  W=%d: planned %d tasks (%d gangs), predicted makespan %.1f us (work %.1f us), %d cross-worker waits\n", W, done, p.gangs, p.makespan_us, p.total_work_us, p.cross_edges);
+        // the emitted records replay as the device runs them: no deadlock through any gang's barrier, every edge (successors and versions) honoured
+        const kvm_test_replay::Result rp = kvm_test_replay::replay(r.tasks, r.args, kvm_static::build_dag(r.tasks, r.succ), p, op_of);
+        if (!rp.ok) { printf("  FAIL: the records' replay at W=%d: %s\n", W, rp.why.c_str()); ++failures; }
+        printf("  W=%d: planned %d tasks (%d gangs), predicted makespan %.1f us (work %.1f us), %d cross-worker waits; replayed %zu records%s\n", W, done, p.gangs,
+               p.makespan_us, p.total_work_us, p.cross_edges, rp.records, rp.ok ? (rp.gangs ? ", every gang's barrier crossed" : "") : ", FAILED");
         }
     }
     printf(failures ? "FAILED: %d\n" : "OK\n", failures);

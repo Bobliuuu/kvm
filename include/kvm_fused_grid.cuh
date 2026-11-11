@@ -132,33 +132,35 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
   }
   if (!cross()) return;
   ph(2);
-  // ---- cross-entropy: rows m, m + P, ..., one warp a row; the logits summed over the Kah partials in row-block order
-  for (int r = m + warp * P; r < T; r += (NT / 32) * P) {
-    float x[KVM_GRID_MAXN / 32];
-    float mx = -INFINITY;
+  // ---- cross-entropy: rows m, m + P, ...; a row's logits are summed over the Kah partials by the whole block, one column a thread, then warp 0
+  // takes the row's statistics. (One warp a row left 7 of 8 warps idle at 108 members, where a member has one row or none.)
+  for (int r = m; r < T; r += P) {
+    float* const lrow = B;   // [VP]: the row's logits (B is free between the head's partials and its backward)
+    for (int v = tid; v < V; v += NT) lrow[v] = sum_cg(d.hpart + (size_t)r * VP + v, (size_t)T * VP, d.kah);
+    __syncthreads();
+    if (warp == 0) {
+      float x[KVM_GRID_MAXN / 32];
+      float mx = -INFINITY;
 #pragma unroll
-    for (int j = 0; j < KVM_GRID_MAXN / 32; ++j) {
-      const int v = lane + 32 * j;
-      float s = -INFINITY;
-      if (v < V) s = sum_cg(d.hpart + (size_t)r * VP + v, (size_t)T * VP, d.kah);
-      x[j] = s; mx = fmaxf(mx, s);
+      for (int j = 0; j < KVM_GRID_MAXN / 32; ++j) { const int v = lane + 32 * j; x[j] = v < V ? lrow[v] : -INFINITY; mx = fmaxf(mx, x[j]); }
+      for (int o = 16; o; o >>= 1) mx = fmaxf(mx, __shfl_xor_sync(0xffffffffu, mx, o));
+      float z = 0.f;
+#pragma unroll
+      for (int j = 0; j < KVM_GRID_MAXN / 32; ++j) if (lane + 32 * j < V) z += expf(x[j] - mx);
+      for (int o = 16; o; o >>= 1) z += __shfl_xor_sync(0xffffffffu, z, o);
+      const int t = stg[r];
+      float lt = 0.f;
+#pragma unroll
+      for (int j = 0; j < KVM_GRID_MAXN / 32; ++j) if (lane + 32 * j == t) lt = x[j];
+      for (int o = 16; o; o >>= 1) lt += __shfl_xor_sync(0xffffffffu, lt, o);   // only the target's lane holds a non-zero term
+#pragma unroll
+      for (int j = 0; j < KVM_GRID_MAXN / 32; ++j) {
+        const int v = lane + 32 * j;
+        if (v < VP) d.dlog[(size_t)r * VP + v] = v < V ? (expf(x[j] - mx) / z - (v == t ? 1.f : 0.f)) * inv_t : 0.f;
+      }
+      if (lane == 0) d.rloss[r] = mx + logf(z) - lt;
     }
-    for (int o = 16; o; o >>= 1) mx = fmaxf(mx, __shfl_xor_sync(0xffffffffu, mx, o));
-    float z = 0.f;
-#pragma unroll
-    for (int j = 0; j < KVM_GRID_MAXN / 32; ++j) if (lane + 32 * j < V) z += expf(x[j] - mx);
-    for (int o = 16; o; o >>= 1) z += __shfl_xor_sync(0xffffffffu, z, o);
-    const int t = stg[r];
-    float lt = 0.f;
-#pragma unroll
-    for (int j = 0; j < KVM_GRID_MAXN / 32; ++j) if (lane + 32 * j == t) lt = x[j];
-    for (int o = 16; o; o >>= 1) lt += __shfl_xor_sync(0xffffffffu, lt, o);   // only the target's lane holds a non-zero term
-#pragma unroll
-    for (int j = 0; j < KVM_GRID_MAXN / 32; ++j) {
-      const int v = lane + 32 * j;
-      if (v < VP) d.dlog[(size_t)r * VP + v] = v < V ? (expf(x[j] - mx) / z - (v == t ? 1.f : 0.f)) * inv_t : 0.f;
-    }
-    if (lane == 0) d.rloss[r] = mx + logf(z) - lt;
+    __syncthreads();   // the next row rewrites lrow
   }
   if (!cross()) return;
   if (m == 0 && tid == 0) { float sum = 0.f; for (int r = 0; r < T; ++r) sum += __ldcg(d.rloss + r); loss_out[0] = sum / (float)T; loss_out[1] = inv_t; }
@@ -214,15 +216,24 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
   }
   if (!cross()) return;
   ph(6);
-  // ---- the embedding rows this member owns: each row's gradient sums its tokens' rows of dX0 in token order, each a fixed-order sum over layer 0's
-  // members; the rows go to the warps, a row's columns to the lanes
-  for (int v = e0 + warp; v < e1; v += NT / 32)
-    for (int c = lane; c < E; c += 32) {
-      float g = 0.f;
-      for (int t = 0; t < T; ++t)
-        if (sid[t] == v) g += sum_cg(d.dx0 + (size_t)t * E + c, (size_t)T * E, d.nb0);
-      d.emb[(size_t)v * E + c] -= lr * g;
-    }
+  // ---- the embedding rows this member owns. Its tokens (those whose id it owns, in token order) are listed once, every (token, column) sum of dX0 over
+  // layer 0's members runs on a thread of its own, and then each row adds its tokens' sums in token order. (Row by row and token by token, one lane
+  // a column, the sums ran one after another: the step's longest phase on the 5070.)
+  {
+    int* const tok = reinterpret_cast<int*>(A);   // [T + 1]: the member's tokens in token order, then their count (A is free after layer 0's backward)
+    float* const ts = B;                          // [ntok][E]: each token's dX0 row summed over layer 0's members
+    if (tid == 0) { int n = 0; for (int t = 0; t < T; ++t) if (sid[t] >= e0 && sid[t] < e1) tok[n++] = t; tok[T] = n; }
+    __syncthreads();
+    const int ntok = tok[T];
+    kvm_fmlp::for_cells(ntok, E, [&](int i, int c) { ts[i * E + c] = sum_cg(d.dx0 + (size_t)tok[i] * E + c, (size_t)T * E, d.nb0); });
+    __syncthreads();
+    for (int v = e0 + warp; v < e1; v += NT / 32)
+      for (int c = lane; c < E; c += 32) {
+        float g = 0.f;
+        for (int i = 0; i < ntok; ++i) if (sid[tok[i]] == v) g += ts[i * E + c];
+        d.emb[(size_t)v * E + c] -= lr * g;
+      }
+  }
   // ---- every block and bias back to the model (a hidden bias by its column's first member)
   if (in0) { store_rows(d.w[0] + c0, H, sm + d.sW0, d.pW0, E, w0); store_rows(d.b[0] + c0, H, sm + d.sb0, w0, 1, w0); }
   if (inh)

@@ -113,6 +113,7 @@ __host__ __device__ constexpr int kvm_gpt_bigtile_smem(int bm, int bn) {   // 12
                ? bm * (bn + 8) * 4 : KVM_GPT_BIG_NST * (bm + bn) * KVM_GPT_BIG_BK * 4;
 }
 __host__ __device__ constexpr int kvm_gpt_attn_smem(int hd) { return 3 * 2 * 32 * (hd + 4) * 4; }   // 3 stages of two 32 x (hd+4) tiles
+__host__ __device__ constexpr int kvm_gpt_attn_dkv_smem(int hd) { return kvm_gpt_attn_smem(hd) + kvm_gpt_dkv_park_bytes(hd); }   // attn_bwd_dkv: its stages and, up to hd 64, its K park
 // matmul_tile by its flags (a[11]): 64 (256x128) without 16 (3xTF32) or 128 (bf16 operands) is one 256x128 tile; 32, or 64 with either,
 // a 128x128 tile (two passes for 64); everything else the 64x64 tile.
 __host__ __device__ constexpr int kvm_gpt_matmul_tile_smem(int fl) {
@@ -142,7 +143,8 @@ __host__ __device__ constexpr bool kvm_gpt_has_op(int op) {
 __host__ __device__ constexpr int kvm_gpt_task_smem(int op, const int32_t* a) {
     return op == KVM_GPT_OPID_matmul_tile ? kvm_gpt_matmul_tile_smem(a[KVM_GPT_ARG_TILE_FLAGS])
          : op == KVM_GPT_OPID_attn_fwd ? kvm_gpt_attn_smem(a[KVM_GPT_ARG_ATTN_FWD_HD])
-         : op == KVM_GPT_OPID_attn_bwd_dq || op == KVM_GPT_OPID_attn_bwd_dkv ? kvm_gpt_attn_smem(a[KVM_GPT_ARG_ATTN_BWD_HD])
+         : op == KVM_GPT_OPID_attn_bwd_dq ? kvm_gpt_attn_smem(a[KVM_GPT_ARG_ATTN_BWD_HD])
+         : op == KVM_GPT_OPID_attn_bwd_dkv ? kvm_gpt_attn_dkv_smem(a[KVM_GPT_ARG_ATTN_BWD_HD])
          : kvm_gpt_has_op(op) ? KVM_GPT_SMEM_SMALL : -1;
 }
 
@@ -2390,7 +2392,7 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
     float ak[KPARK ? 1 : NT][4], av[NT][4];
     if constexpr (KPARK) {
         static_assert((KVM_GPT_THREADS / 32) * NT * 32 * 16 == kvm_gpt_dkv_park_bytes(HD), "kvm_gpt_dkv_park_bytes is the park's size");
-        static_assert(M::NST * M::STAGE * 4 + kvm_gpt_dkv_park_bytes(HD) <= KVM_GPT_SMEM_BYTES, "the K park must fit the launch");
+        static_assert(M::SMEM + kvm_gpt_dkv_park_bytes(HD) == kvm_gpt_attn_dkv_smem(HD), "the launch is sized by kvm_gpt_attn_dkv_smem");
         float kr[NT][4];
         load_a_raw<HD>(kr, eoff(A.k, (size_t)A.b * Tn * A.ldk + kvh * HD, A.sd & KVM_ATT_K), A.ldk, keyA, Tn, t, A.sd & KVM_ATT_K);
 #pragma unroll
@@ -2607,7 +2609,7 @@ KVM_GPT_DEVI void attn_bwd_dkv(const KvmCtx& ctx, const int32_t* a) {
     A.Hkv = kb->cols / hd;
     k.need(A.Hkv > 0 && kb->cols % hd == 0, KVM_GPT_E_SHAPE);
     if (k.bad || !attn_geom(k, A.b, A.h, A.i0, A.T, A.H, A.Hkv, hd, true)) return;
-    k.need(dyn_smem_bytes() >= (unsigned)kvm_gpt_attn_smem(hd), KVM_GPT_E_SMEM);   // a launch sized below this head size's stages
+    k.need(dyn_smem_bytes() >= (unsigned)kvm_gpt_attn_dkv_smem(hd), KVM_GPT_E_SMEM);   // a launch sized below this head size's stages and K park
     if (k.bad) return;
     long R = (long)(A.b + 1) * A.T, nl = R * A.H;
     A.q = attn_mat(k, A, a[0], R, (long)A.H * hd, &A.ldq, KVM_ATT_Q); A.k = attn_mat(k, A, a[1], R, (long)A.Hkv * hd, &A.ldk, KVM_ATT_K);

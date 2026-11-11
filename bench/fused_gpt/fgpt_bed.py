@@ -16,9 +16,10 @@ bundle's workload directory (workload.json and its data/). This script:
   4. compares each gang size with the first (the decomposition: only the order of a few sums changes with G);
   5. with --exec, runs kvm_exec on the workload's own bundle (WORKLOAD_DIR/bundle; its default path, which is the fused GPT kernel when
      the run fuses, plus --exec-flags) and judges its first --steps losses against the same VM run.
-Under the bundle's default 1xTF32 GEMMs, run one step for the gradient bars: after the first AdamW update the trajectories part (its
-update is about lr x sign(g), and TF32 noise flips the sign where a gradient is near zero), so later steps' gradients are not comparable
-element by element. A precise-mode bundle (gen.py --mode precise, 3xTF32) holds the tight bars over several steps.
+Run one step for the gradient bars, in either numerics: after the first AdamW update the trajectories part (its update is about
+lr x sign(g), so rounding flips it where a gradient is near zero, TF32's and float32's alike), and later steps' gradients and moments are
+not comparable element by element. They are reported, and a run of several steps is judged by its losses. Measured on a d128 GPT in
+precise mode (3xTF32): gradients within 3.8e-6 of each tensor's scale after one step, 9.2e-4 after two.
 --time-only skips the VM and every judgment: it writes the bed's inputs and runs it, for its time (and with --bed-args clock, the bed's
 phase table). Exit 0 when every check passes. --launcher is a command prefix for each bed run (a GPU lock or a memory guard), split on spaces; the bed
 itself refuses a run above 1 GiB of device memory.
@@ -151,7 +152,7 @@ def judge_losses(losses: list, vmr: dict, tol: float) -> tuple[bool, str]:
 
 def judge(run: dict, vmr: dict, names: list[str], tol: float, lr: float, grads_judged: bool) -> tuple[bool, list[str]]:
     """Every step's loss against the VM; the last step's gradients and moments too where they are comparable element by element
-    (grads_judged: precise numerics, or a single step), else reported only."""
+    (grads_judged: a single step, before any AdamW update parts the trajectories), else reported only."""
     ok, line = judge_losses(run['losses'], vmr, tol)
     lines = [line]
     for what, key, limit in (('gradients', 'g', tol), ('first moments', 'm', tol), ('second moments', 'v', 2 * tol)):
@@ -166,7 +167,7 @@ def judge(run: dict, vmr: dict, names: list[str], tol: float, lr: float, grads_j
             ok &= good
             lines.append(f'{what} (last step): worst {worst:.2e} of its tensor\'s scale ({wname}): {"ok" if good else "FAIL"}')
         else:
-            lines.append(f'{what} (last step): worst {worst:.2e} of its tensor\'s scale ({wname}): reported (1xTF32 after AdamW steps)')
+            lines.append(f'{what} (last step): worst {worst:.2e} of its tensor\'s scale ({wname}): reported (after AdamW steps)')
     wl = 0.0
     wname = ''
     for n in names:
@@ -226,7 +227,6 @@ def main() -> int:
     log(f'model: L {model.L}, d {model.d}, heads {model.H} x {model.hd}, MLP {model.F}, V {model.V}, {model.B} x {model.T} rows; '
         f'{a.steps} steps; work {work}')
     names, sizes = write_inputs(model, spec, work)
-    precise = any(l.split() == ['mm_numerics', '16'] for l in (work / 'meta.txt').read_text().splitlines())
     runs, fail = {}, 0
     for G in [int(x) for x in a.gangs.split(',')] if a.bed else []:
         cmd = a.launcher.split() + [a.bed, str(work), str(G), *a.bed_args.split()]
@@ -247,7 +247,7 @@ def main() -> int:
         for key in ('p', 'm', 'v', 'g'):
             run[key] = split(read_f32(out / f'{key}.bin'), names, sizes)
         runs[G] = run
-        ok, lines = judge(run, vmr, names, a.tol, model.lr, grads_judged=precise or a.steps == 1)
+        ok, lines = judge(run, vmr, names, a.tol, model.lr, grads_judged=a.steps == 1)
         for line in lines:
             log(f'G {G}: {line}')
         fail += not ok
@@ -256,11 +256,11 @@ def main() -> int:
         base = runs[gangs[0]]
         lw = max(abs(x[0] - y[0]) / abs(y[0]) for x, y in zip(runs[G]['losses'], base['losses']))
         gw = max(rel(runs[G]['g'][n], base['g'][n]) for n in names)
-        judged = precise or a.steps == 1      # as the gradient bars: over AdamW steps in 1xTF32, two sums' orders part like any two runs
+        judged = a.steps == 1                 # as the gradient bars: after an AdamW update, two sums' orders part like any two runs
         good = (lw < 1e-5 and gw < a.decomp_tol) or not judged
         fail += not good
         log(f'decomposition G {G} against G {gangs[0]}: losses {lw:.2e}, gradients {gw:.2e} of scale: '
-            f'{("ok" if good else "FAIL") if judged else "reported (1xTF32 after AdamW steps)"}')
+            f'{("ok" if good else "FAIL") if judged else "reported (after AdamW steps)"}')
     if a.exec:
         losses = exec_losses(a, wdir, work)
         good, line = judge_losses(losses, vmr, a.tol) if losses is not None else (False, 'no losses')

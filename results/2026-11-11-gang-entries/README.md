@@ -62,13 +62,11 @@ An independent review of the change found no wrong-entry, fallback or barrier fa
   | bundles | entry |
   |---|---|
   | h1024-d2 | grid |
-  | h256-d4, h128-d4, h576-d1, h256-d2 | split, 18 shares |
-  | h200-d1 x 16 runs | split, 2 shares |
-  | h224-d2 x 8 runs | split, 4 shares |
+  | h256-d4, h128-d4, h576-d1, h256-d2, h200-d1 x 16 runs, h224-d2 x 8 runs | split, 18 shares (a run's own share count, whatever shares its bundle) |
   | h72-d2, h48-d2 | one-block |
 
   No bundle is `mixed`, and every gang's records replay through its barriers. Two more cases:
-  - **The panel's mixed-width row** (8 widths, h48-h104 d2, merged): one-block at an A100's budget, and split at one share count (3) at a 24,032-float budget (`raw/fuse_pass_small.log`).
+  - **The panel's mixed-width row** (8 widths, h48-h104 d2, merged): one-block at an A100's budget, and split at a 24,032-float budget, every width at its own 18 shares (`raw/fuse_pass_small.log`).
   - **An MLP run merged with a GPT run:** nothing fuses, and the reason is named.
 
   Each split member's gang is Q x the entry's share count.

@@ -1,0 +1,4 @@
+# the bed's outputs (losses, parameters, moments, gradients) hashed over five 50-step runs of each shape that fits this card (gpt-small at G 8 needs more than its 99 KB of shared memory a member)
+tiny G 32: 5 runs, outputs 0a046497469df233, all equal
+tiny G 8: 5 runs, outputs c6e3dc9fa6cf7f24, all equal
+small G 32: 5 runs, outputs a96d16df3646e95e, all equal

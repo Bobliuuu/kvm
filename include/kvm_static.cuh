@@ -11,6 +11,7 @@
 // publisher's st.release.gpu, whose fence-then-barrier history covers every store of every record the publisher ran before it; the
 // waiter's barrier extends that to all of its threads (kvm_exec.cuh's argument, unchanged).
 #include "kvm_static.h"
+#include "kvm_fuse.h"
 #include "kvm_fused_mlp.cuh"
 #include "kvm_fused_split.cuh"
 #include "kvm_fused_grid.cuh"
@@ -73,21 +74,18 @@ __device__ __noinline__ void kvm_s_fmlp_slice(int sc, const int32_t* ids, const 
   kvm_fmlp::slice_run(sc, ids, tgt, nullptr, arena, kvm_fmlp::PhaseTimer{ph, ph_last}, [c](int code, int v) { c->fail(code, v); });
 }
 __device__ __noinline__ void kvm_s_fmlp_sgd(int owner, float* loss, float* arena) { kvm_fmlp::sgd_run(owner, loss, arena); }
-// One member of a split step (a gang op: the planner placed its members on distinct workers at one point of every program, kvm_static_plan). The
-// descriptor's S and Q pick the instantiation. A pair outside KVM_SPLIT_SHARE_LIST x KVM_SPLIT_Q, or a member count that disagrees with them,
-// fails the run before any barrier. Every member reads the same descriptor, so all of them fail alike. Any other failure ends the gang at its next
-// crossing: the barrier watches the run's error word.
+// One member of a split step at S_ shares (a gang op: the planner placed its members on distinct workers at one point of every program,
+// kvm_static_plan). Each share count is a function of its own, on an entry of its own (kvm_static_gang_split<S_>): with all of them in one
+// function, the member used every register and still spilled (sm_80, Nov 11). A descriptor whose S and Q are not this entry's, or a member count
+// that disagrees with them, fails the run before any barrier. Every member reads the same descriptor, so all of them fail alike. Any other
+// failure ends the gang at its next crossing: the barrier watches the run's error word.
+template <int S_>
 __device__ __noinline__ void kvm_s_fmlp_split(int member, int members, const int32_t* ids, const int32_t* tgt, float* loss, float* arena, KvmCtx* c) {
   kvm_fmlp::cp_commit_wait();
   __syncthreads();
   const KvmSplitDesc& d = *reinterpret_cast<const KvmSplitDesc*>(arena);
-  if (d.Q != KVM_SPLIT_Q || members != d.Q * d.S || member < 0 || member >= members) { c->fail(KVM_ERR_BAD_OP, KVM_OP_fmlp_split); return; }
-  switch (d.S) {
-#define X(S_) case S_: kvm_fsplit::split_run<S_, KVM_SPLIT_Q>(member, ids, tgt, loss, arena, &c->cnt->err_code, kvm_fsplit::NoPhases{}); return;
-    KVM_SPLIT_SHARE_LIST
-#undef X
-    default: c->fail(KVM_ERR_BAD_OP, KVM_OP_fmlp_split);
-  }
+  if (d.Q != KVM_SPLIT_Q || d.S != S_ || members != d.Q * d.S || member < 0 || member >= members) { c->fail(KVM_ERR_BAD_OP, KVM_OP_fmlp_split); return; }
+  kvm_fsplit::split_run<S_, KVM_SPLIT_Q>(member, ids, tgt, loss, arena, &c->cnt->err_code, kvm_fsplit::NoPhases{});
 }
 
 // One member of a grid step (a gang op, like fmlp_split). A member count that disagrees with the descriptor fails the run before any barrier;
@@ -100,6 +98,25 @@ __device__ __noinline__ void kvm_s_fmlp_grid(int member, int members, const int3
   kvm_fgrid::grid_run(member, ids, tgt, loss, arena, &c->cnt->err_code, kvm_fgrid::NoPhases{});
 }
 
+// The ops a gang entry runs besides its members (kvm_fuse_entry admits nothing else): the steps' data windows and the ordering noops.
+// A task of any other op fails the run, as the generic dispatch fails a gang op.
+__device__ __noinline__ void kvm_dispatch_gang(int op, const KvmCtx c, const int32_t* a) {
+  switch (op) {
+    case KVM_OP_noop: break;
+#if __has_include("kvm_ops_gpt.def")   // the windows are the GPT pack's op (kvm_ops_list.inc's own test); a build without the pack has no MLP bundle to fuse
+    case KVM_OP_select_window: op_select_window(c, a); break;
+#endif
+    default: c.fail(KVM_ERR_BAD_OP, op);
+  }
+}
+
+// The kernel entries (kvm_fuse_entry picks one per bundle). Named so that no gang entry's name contains `kvm_static_kernel`: the SASS
+// census finds a kernel by that name's first match. `generic` runs every op but the gang steps: its dispatch refuses them, so a
+// gang task can only run where its own function is the entry's one large callee. `split` (at S_ shares) and `grid` run their gang op and,
+// through kvm_dispatch_gang, the steps' windows and noops.
+enum class KvmSEntry { generic, split, grid };
+
+template <KvmSEntry E, int S_ = 0>
 __device__ void kvm_static_worker(const KvmStaticDev& Sref, KvmSShared& sh) {
   const KvmStaticDev S = Sref;   // a register copy of the launch state: fields then read from registers, not through the __grid_constant__ reference (the same copy measured x1.04-1.09 on the dynamic worker)
   const int w = blockIdx.x;
@@ -118,9 +135,10 @@ __device__ void kvm_static_worker(const KvmStaticDev& Sref, KvmSShared& sh) {
     const KvmSRec* r = &sh.rec[pc & 1];
     if (S.trace_on && threadIdx.x == 0) S.trace[(size_t)(first + pc) * KVM_S_TRACE_WORDS] = kvm_now();
     if (pc + 1 < n) kvm_s_fetch(prog + pc + 1, &sh.rec[(pc + 1) & 1]);   // the next record is copied beside this one's waits and op body
-    if (r->op == KVM_OP_fmlp_slice || r->op == KVM_OP_fmlp_sgd) kvm_fmlp::prefetch_desc(S.fused + r->args[0], reinterpret_cast<float*>(kvm_gpt_smem));   // a fused op's descriptor: its round trip overlaps this record's waits
-    else if (r->op == KVM_OP_fmlp_split) kvm_fsplit::prefetch_desc(S.split + r->args[0], reinterpret_cast<float*>(kvm_gpt_smem));
-    else if (r->op == KVM_OP_fmlp_grid) kvm_fgrid::prefetch_desc(S.grid + r->args[0], reinterpret_cast<float*>(kvm_gpt_smem));
+    // a fused op's descriptor: its round trip overlaps this record's waits
+    if constexpr (E == KvmSEntry::generic) { if (r->op == KVM_OP_fmlp_slice || r->op == KVM_OP_fmlp_sgd) kvm_fmlp::prefetch_desc(S.fused + r->args[0], reinterpret_cast<float*>(kvm_gpt_smem)); }
+    else if constexpr (E == KvmSEntry::split) { if (r->op == KVM_OP_fmlp_split) kvm_fsplit::prefetch_desc(S.split + r->args[0], reinterpret_cast<float*>(kvm_gpt_smem)); }
+    else { if (r->op == KVM_OP_fmlp_grid) kvm_fgrid::prefetch_desc(S.grid + r->args[0], reinterpret_cast<float*>(kvm_gpt_smem)); }
     const int nw = r->nwait;
     if (nw) {   // only a record with waits needs the hand-over barrier (a plain chain continues directly)
       if (threadIdx.x < nw) {   // one lane of warp 0 per wait: a fan-in of up to KVM_S_WAITS costs one poll, not one per source
@@ -134,11 +152,17 @@ __device__ void kvm_static_worker(const KvmStaticDev& Sref, KvmSShared& sh) {
     if (!(flags & KVM_S_WAITONLY)) {
       KvmCtx c{r->bufs, r->nbufs, r->task, S.cnt, S.herr, sh.smem};
       float* const arena = reinterpret_cast<float*>(kvm_gpt_smem);
-      if (r->op == KVM_OP_fmlp_slice) kvm_s_fmlp_slice(r->args[1], reinterpret_cast<const int32_t*>(r->bufs[r->args[2]].p), reinterpret_cast<const int32_t*>(r->bufs[r->args[3]].p), arena, S.fuse_phases ? S.fuse_phases + (size_t)w * KVM_FMLP_NPHASES : nullptr, &sh.t_phase, &c);
-      else if (r->op == KVM_OP_fmlp_sgd) kvm_s_fmlp_sgd(r->args[1], reinterpret_cast<float*>(r->bufs[r->args[2]].p), arena);
-      else if (r->op == KVM_OP_fmlp_split) kvm_s_fmlp_split(r->args[2], r->args[3], reinterpret_cast<const int32_t*>(r->bufs[r->args[4]].p), reinterpret_cast<const int32_t*>(r->bufs[r->args[5]].p), reinterpret_cast<float*>(r->bufs[r->args[6]].p), arena, &c);
-      else if (r->op == KVM_OP_fmlp_grid) kvm_s_fmlp_grid(r->args[2], r->args[3], reinterpret_cast<const int32_t*>(r->bufs[r->args[4]].p), reinterpret_cast<const int32_t*>(r->bufs[r->args[5]].p), reinterpret_cast<float*>(r->bufs[r->args[6]].p), arena, &c);
-      else kvm_dispatch(r->op, c, r->args);
+      if constexpr (E == KvmSEntry::generic) {
+        if (r->op == KVM_OP_fmlp_slice) kvm_s_fmlp_slice(r->args[1], reinterpret_cast<const int32_t*>(r->bufs[r->args[2]].p), reinterpret_cast<const int32_t*>(r->bufs[r->args[3]].p), arena, S.fuse_phases ? S.fuse_phases + (size_t)w * KVM_FMLP_NPHASES : nullptr, &sh.t_phase, &c);
+        else if (r->op == KVM_OP_fmlp_sgd) kvm_s_fmlp_sgd(r->args[1], reinterpret_cast<float*>(r->bufs[r->args[2]].p), arena);
+        else kvm_dispatch(r->op, c, r->args);
+      } else if constexpr (E == KvmSEntry::split) {
+        if (r->op == KVM_OP_fmlp_split) kvm_s_fmlp_split<S_>(r->args[2], r->args[3], reinterpret_cast<const int32_t*>(r->bufs[r->args[4]].p), reinterpret_cast<const int32_t*>(r->bufs[r->args[5]].p), reinterpret_cast<float*>(r->bufs[r->args[6]].p), arena, &c);
+        else kvm_dispatch_gang(r->op, c, r->args);
+      } else {
+        if (r->op == KVM_OP_fmlp_grid) kvm_s_fmlp_grid(r->args[2], r->args[3], reinterpret_cast<const int32_t*>(r->bufs[r->args[4]].p), reinterpret_cast<const int32_t*>(r->bufs[r->args[5]].p), reinterpret_cast<float*>(r->bufs[r->args[6]].p), arena, &c);
+        else kvm_dispatch_gang(r->op, c, r->args);
+      }
     }
     if (threadIdx.x == 0 && ((pc & 63) == 63) && *(volatile int*)&S.cnt->err_code) sh.stop = 1;   // a failure elsewhere ends the run within 64 records
     if (flags & KVM_S_PUBLISH) __threadfence();    // each warp makes its own op stores visible GPU-wide (kvm_exec.cuh, kvm_run_task)
@@ -153,6 +177,32 @@ __device__ void kvm_static_worker(const KvmStaticDev& Sref, KvmSShared& sh) {
 
 __global__ void __launch_bounds__(KVM_THREADS, KVM_MIN_BLOCKS) kvm_static_kernel(const __grid_constant__ KvmStaticDev S) {
   __shared__ KvmSShared sh;
-  kvm_static_worker(S, sh);
+  kvm_static_worker<KvmSEntry::generic>(S, sh);
+}
+template <int S_>
+__global__ void __launch_bounds__(KVM_THREADS, KVM_MIN_BLOCKS) kvm_static_gang_split(const __grid_constant__ KvmStaticDev S) {
+  __shared__ KvmSShared sh;
+  kvm_static_worker<KvmSEntry::split, S_>(S, sh);
+}
+__global__ void __launch_bounds__(KVM_THREADS, KVM_MIN_BLOCKS) kvm_static_gang_grid(const __grid_constant__ KvmStaticDev S) {
+  __shared__ KvmSShared sh;
+  kvm_static_worker<KvmSEntry::grid>(S, sh);
+}
+
+// The entry a bundle runs on, as kvm_fuse_entry chose it (nullptr: a share count outside KVM_SPLIT_SHARE_LIST, or a mixed bundle).
+using KvmStaticEntryFn = void (*)(const KvmStaticDev);
+inline KvmStaticEntryFn kvm_static_entry_fn(const KvmFuseEntry& e) {
+  switch (e.kind) {
+    case KvmFuseEntry::generic: return kvm_static_kernel;
+    case KvmFuseEntry::grid: return kvm_static_gang_grid;
+    case KvmFuseEntry::split:
+      switch (e.S) {
+#define X(S_) case S_: return kvm_static_gang_split<S_>;
+        KVM_SPLIT_SHARE_LIST
+#undef X
+      }
+      return nullptr;
+    default: return nullptr;
+  }
 }
 #endif  // __CUDACC__

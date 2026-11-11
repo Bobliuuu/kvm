@@ -824,7 +824,7 @@ class KvmExec {
         for (int k = 0; k < 2; ++k) d.XD[k] = r.L > 1 ? scratch((size_t)nslot * R * d.HR) : nullptr;
         d.P = scratch((size_t)nslot * R * d.VP); d.dWh = scratch((size_t)nslot * d.HP * d.VP); d.dX0 = scratch((size_t)nslot * R * d.E);
         d.loss_part = scratch(d.Q);
-        d.ctl = reinterpret_cast<unsigned*>(scratch(2));   // zeroed once: the barrier is sense-reversing
+        d.ctl = reinterpret_cast<unsigned*>(scratch(kvm_gang::line_words(nslot)));   // the gang's flag lines, zeroed once (cudaMalloc: 256-byte aligned)
         continue;
       }
       KvmFusedDesc& d = descs[i];

@@ -198,7 +198,8 @@ int main(int argc, char** argv) {
   d.P = dalloc((size_t)nslot * R * d.VP); d.dWh = dalloc((size_t)nslot * d.HP * d.VP); d.dX0 = dalloc((size_t)nslot * R * d.E);
   for (int k = 0; k < 2; ++k) d.XD[k] = d.L > 1 ? dalloc((size_t)nslot * R * d.HR) : nullptr;   // layer l's reduce-scatter in XD[l & 1]
   d.loss_part = dalloc(d.Q);
-  CK(cudaMalloc(&d.ctl, 2 * sizeof(unsigned))); CK(cudaMemset(d.ctl, 0, 2 * sizeof(unsigned)));   // once: the gang barrier needs no reset between launches
+  const size_t lines = kvm_gang::line_words(nslot) * sizeof(unsigned);
+  CK(cudaMalloc(&d.ctl, lines)); CK(cudaMemset(d.ctl, 0, lines));   // once: the flag lines need no reset between launches
   KvmSplitDesc* gd; CK(cudaMalloc(&gd, sizeof(KvmSplitDesc))); CK(cudaMemcpy(gd, &d, sizeof(KvmSplitDesc), cudaMemcpyHostToDevice));
   int *dids, *dtgt; CK(cudaMalloc(&dids, ids.size() * sizeof(int))); CK(cudaMalloc(&dtgt, tgt.size() * sizeof(int)));
   CK(cudaMemcpy(dids, ids.data(), ids.size() * sizeof(int), cudaMemcpyHostToDevice)); CK(cudaMemcpy(dtgt, tgt.data(), tgt.size() * sizeof(int), cudaMemcpyHostToDevice));

@@ -50,10 +50,10 @@ static_assert(KVM_GPT_THREADS / 32 * 16 == KVM_GPT_ATTN_ROWS, "attention: one m1
 #define KVM_GPT_SMEM_CVT 1   // 1: matmul operands are rounded to tf32 once per CTA in shared memory (tile_cvt); 0: per fragment, per warp
 #endif
 #ifndef KVM_GPT_TILE64_NST
-#define KVM_GPT_TILE64_NST 3    // pipeline stages of the 64x64 tile (a 4th stage measured no gain at the panel's shapes, F-06d)
+#define KVM_GPT_TILE64_NST 3    // pipeline stages of the 64x64 tile (a 4th stage measured no gain at the panel's shapes)
 #endif
 // TileStream (per-thread copy pointers precomputed once) against per-chunk address arithmetic: it starts a tile sooner (first-stage wait, a short K's cost) and streams slower per K slab (the long K's cost).
-// F-06d, 64x64 tile: chain 9.6 against 13.6 us at K=72, 13.7 against 14.5 at K=96, 61 against 51 at K=768, 370 against 249 at K=4096; so K <= KMAX streams.
+// Measured, 64x64 tile: chain 9.6 against 13.6 us at K=72, 13.7 against 14.5 at K=96, 61 against 51 at K=768, 370 against 249 at K=4096; so K <= KMAX streams.
 #ifndef KVM_GPT_TILE64_STREAM_KMAX
 #define KVM_GPT_TILE64_STREAM_KMAX 127
 #endif
@@ -64,7 +64,7 @@ static_assert(KVM_GPT_THREADS / 32 * 16 == KVM_GPT_ATTN_ROWS, "attention: one m1
 #define KVM_GPT_BIG_PIPE_RND 1   // the rounded big tile: 1: the pipeline, each thread rounding the chunks it copied once they land, before the barrier that publishes them (0.73-0.84x cuBLAS at the 162M shapes; rounding each fragment as it is loaded measured 0.66-0.74x, every warp that reads a value rounding it again); 0: the plain loop with rounding in shared memory (0.53-0.60x)
 #endif
 #ifndef KVM_GPT_RZ_GAIN
-#define KVM_GPT_RZ_GAIN 1.000704f   // output scale of the truncated-operand GEMM (flag 256): the tensor core drops the low 13 bits of each operand, so a product shrinks by about 2 * 2^-11 * E[1/mantissa] = 7.04e-4 for log-uniform mantissas. Scaling the tile's output removes that mean, the systematic part of the truncation error (the numerics gates of the panel's rows pass with it, and fail without it: C-05, G-01)
+#define KVM_GPT_RZ_GAIN 1.000704f   // output scale of the truncated-operand GEMM (flag 256): the tensor core drops the low 13 bits of each operand, so a product shrinks by about 2 * 2^-11 * E[1/mantissa] = 7.04e-4 for log-uniform mantissas. Scaling the tile's output removes that mean, the systematic part of the truncation error (the numerics gates of the panel's rows pass with it, and fail without it)
 #endif
 #ifndef KVM_GPT_BIG_STREAM_KMAX
 #define KVM_GPT_BIG_STREAM_KMAX 0x40000000   // big tiles: the same switch (0: never, default: always)
@@ -881,7 +881,7 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
         __syncthreads();
         KVM_GPT_PROBE(1);
         load_step(0, 0, 0);
-        // Whole, in-range chunks along both operands (the common tile: checked once per task) take the loop with the next stage's copies spread over the k-steps, each step issuing its share between its MMAs: issued in one burst after the first step, the 8 warps' 12 copies each leave the tensor units idle (F-06x: 0.77 → 0.94x of cuBLAS at 4096x3072x768). Spread copies need NST >= 3, so that the group committed before the wait is not the one the wait must drain.
+        // Whole, in-range chunks along both operands (the common tile: checked once per task) take the loop with the next stage's copies spread over the k-steps, each step issuing its share between its MMAs: issued in one burst after the first step, the 8 warps' 12 copies each leave the tensor units idle (measured: 0.77 → 0.94x of cuBLAS at 4096x3072x768). Spread copies need NST >= 3, so that the group committed before the wait is not the one the wait must drain.
         const bool spread = NST >= 3 && fa && fb && (K % BK) == 0 && m0 + BM <= M && n0 + BN <= N;
         auto k_loop = [&](auto spread_tag) {
             for (int it = 0; it < nk; it++) {

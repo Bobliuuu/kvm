@@ -105,7 +105,7 @@ ROW_WARPS = 8   # warps of a row-wise device op (KVM_GPT_THREADS / 32), one row 
 def row_blocks(n, size, tc):
     """Blocks of an op whose rows are computed independently of each other (a norm's forward and dx, rope, the attention delta):
     none above `size` rows, and at least tc.row_tasks of them while each keeps a whole warp's rows (ROW_WARPS), so a short op runs
-    on several SMs instead of one (R-37: each of gpt-small's ten layernorms was one task over its 128 rows, 16 rows a warp in
+    on several SMs instead of one (measured: each of gpt-small's ten layernorms was one task over its 128 rows, 16 rows a warp in
     sequence, 32% of its critical path). No arithmetic depends on the split."""
     want = -(-n // tc.row_tasks)
     want = -(-want // ROW_WARPS) * ROW_WARPS

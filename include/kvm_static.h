@@ -174,7 +174,7 @@ inline KvmSPlan kvm_static_plan(const std::vector<KvmTaskDesc>& tasks, const std
             std::sort(rem.rbegin(), rem.rend());
             for (size_t k = 0; given < cfg.workers; ++k, ++given) share[rem[k % rem.size()].second]++;
             // A run given fewer workers than it can keep busy queues behind its own tasks, so the partition holds only where each run has at least twice its average parallelism
-            // (work / longest path; measured R-09: 8 runs with 13 workers each gained 10%, 32 runs with 3 each lost 7% to one shared pool).
+            // (work / longest path; measured: 8 runs with 13 workers each gained 10%, 32 runs with 3 each lost 7% to one shared pool).
             std::vector<double> span(nc, 0.0);
             for (int i = 0; i < nt; ++i) span[comp_of[i]] = std::max(span[comp_of[i]], rank[i]);
             partitioned = true;

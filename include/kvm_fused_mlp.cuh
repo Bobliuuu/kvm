@@ -32,7 +32,7 @@ __device__ __forceinline__ unsigned tf32_in(float x) { return tf32_round(__float
 // C[M x N] = A B over shared-memory operands, m16n8k8 TF32 mma with fp32 accumulators held in registers. A: row-major, pitch lda (TA: stored [k][m], A^T); B: pitch ldb (TB: stored [n][k], B^T).
 // M, N multiples of 16 (N at most 128), K a multiple of 8. Warp w owns column block w (16 columns) and every row block of it (at most MAXI row blocks): no division, and pairs are loop indices, so the accumulators
 // stay in registers (an array indexed at run time would live in memory). K-contiguous operands (A as [m][k], B as [n][k]) are read with ldmatrix (their pitch must be a multiple of 4), the others with 32-bit loads.
-// NRB > 0 fixes the number of row blocks at compile time (M = 16 NRB, MAXI = NRB): the k-loop then has no per-block predicate and branch (R-28: at one row block those cost a
+// NRB > 0 fixes the number of row blocks at compile time (M = 16 NRB, MAXI = NRB): the k-loop then has no per-block predicate and branch (measured: at one row block those cost a
 // third of a k-step); NRB = 0 takes M at run time, up to MAXI blocks.
 template <bool TA, bool TB, int MAXI, bool ALIAS = false, int NRB = 0>
 __device__ __forceinline__ void gemm(const float* A, int lda, const float* B, int ldb, float* C, int ldc, int M, int N, int K) {
@@ -198,7 +198,7 @@ __device__ __forceinline__ void slice_run(int sc, const int32_t* ids, const int3
       float* const sHl = d.keepH && l + 1 < L ? sm + d.Hk[l] : sH;   // the last layer's H stays in sH (the head and its gradient read it there)
       gemm_r<false, false>(A, lda, sm + d.W[l], d.WP[l], sZ, HPl, R, kvm_fmlp_pad16(Hl), l ? d.H[l - 1] : E);
       __syncthreads();
-      if (d.keepH)   // the backward needs Z[l] only for gelu'(Z[l]): store that instead (R-32), so its pass is one multiply
+      if (d.keepH)   // the backward needs Z[l] only for gelu'(Z[l]): store that instead, so its pass is one multiply
         for_cells(R, Hl, [&](int r, int c) { const float z = sZ[r * HPl + c] + sB[c]; float h, g; gelu_fg(z, h, g); sZ[r * HPl + c] = g; sHl[r * maxHP + c] = h; });
       else
         for_cells(R, Hl, [&](int r, int c) { const float z = sZ[r * HPl + c] + sB[c]; sZ[r * HPl + c] = z; sHl[r * maxHP + c] = gelu_f(z); });
@@ -334,7 +334,7 @@ __device__ __forceinline__ void sgd_share(float* w, const float* gg, int gld, si
 
 // One owner's share of the reduction: every parameter's rows split evenly over the d.groups owners (the inverse in `d.inv_groups` replaces a division per parameter; the shares meet exactly). Each warp runs
 // its rows of the shares one after another, so an owner costs one round trip per row its busiest warp holds. A bias (owner l % groups updates bias l) and the loss (owner 0) therefore go to the first warp
-// past the rows of the share beside them, which holds none of them while the share has fewer than 8 rows: their round trips overlap that share's instead of following it (R-15: owner 0 ran 8.3 us
+// past the rows of the share beside them, which holds none of them while the share has fewer than 8 rows: their round trips overlap that share's instead of following it (measured: owner 0 ran 8.3 us
 // against a mean of 5.5 with both on its warp 0). The loss is loss_out[0] = sum / T, loss_out[1] = 1 / T, as softmax_ce_reduce writes them, summed in slice order.
 __device__ __forceinline__ void sgd_run(int owner, float* loss_out, float* sm) {
   const KvmFusedDesc& d = *wait_desc(sm);

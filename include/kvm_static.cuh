@@ -64,7 +64,7 @@ __device__ __forceinline__ bool kvm_s_await(const KvmStaticDev& S, int worker, i
 }
 
 // The fused ops' bodies as functions of their own, not inlined into the worker loop: the loop's live state then stays out of their register allocation, and the GEMMs' accumulators
-// do not spill around it (R-33: with them inlined the static kernel ran 255 registers and a 3.6 KB stack frame; the same body on the bed, alone, 64 bytes).
+// do not spill around it (measured: with them inlined the static kernel ran 255 registers and a 3.6 KB stack frame; the same body on the bed, alone, 64 bytes).
 __device__ __noinline__ void kvm_s_fmlp_slice(int sc, const int32_t* ids, const int32_t* tgt, float* arena, long long* ph, long long* ph_last, KvmCtx* c) {
   kvm_fmlp::slice_run(sc, ids, tgt, nullptr, arena, kvm_fmlp::PhaseTimer{ph, ph_last}, [c](int code, int v) { c->fail(code, v); });
 }

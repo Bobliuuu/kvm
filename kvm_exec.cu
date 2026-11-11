@@ -99,7 +99,7 @@ static double kvm_static_cost(int op, const int32_t* a) {
 }
 
 // A bundle whose ops the cost model all prices and whose mean estimated task cost (kvm_static_cost) is at most this runs on the static path by default; above it, on the dynamic path (main()). The crossover measured on
-// frontend GPTs outside the panel (R-21, Nov 10, A100, fusion off, static against dynamic on one binary): mean 4.7-5.6 us static x1.26-1.28, 5.7 us even, 6.6-8.3 us static x0.62-0.71.
+// frontend GPTs outside the panel (Nov 10, A100, fusion off, static against dynamic on one binary): mean 4.7-5.6 us static x1.26-1.28, 5.7 us even, 6.6-8.3 us static x0.62-0.71.
 #ifndef KVM_STATIC_MAX_MEAN_US
 #define KVM_STATIC_MAX_MEAN_US 6.0
 #endif
@@ -197,7 +197,7 @@ static int kvm_dissolve_noops(KvmBundle& b, long long max_fan = 65536) {
   const int nt = (int)b.tasks.size();
   for (const KvmTaskDesc& t : b.tasks) if (t.wait_var >= 0) return 0;
   // Only a noop on a longest path (counted in tasks) costs the run a hop; anywhere else splicing it buys nothing and multiplies edges (a GPT step's barrier, 20-45 in by
-  // 21-81 out, lies off the path: spliced, gpt-tiny and gpt-small lost 0.5-0.9%; the MLP rows' barrier lies on it and gained 4-9%; F-07m, T-CE5).
+  // 21-81 out, lies off the path: spliced, gpt-tiny and gpt-small lost 0.5-0.9%; the MLP rows' barrier lies on it and gained 4-9%).
   std::vector<int> depth(nt, 0), height(nt, 0), pending(nt), order;
   order.reserve(nt);
   for (int i = 0; i < nt; ++i) { pending[i] = b.tasks[i].indegree; if (pending[i] == 0) order.push_back(i); }
@@ -273,7 +273,7 @@ static int kvm_dissolve_noops(KvmBundle& b, long long max_fan = 65536) {
 
 // ---------------- the tape in dependency order ----------------
 // The admitter reads a record in task order and a task can be released only once it has passed it, so a task's position in the tape sets the earliest moment it can start. Replicated
-// runs concatenate R tapes, which puts run k's first task behind every task of runs 0..k-1 (R=32: run 31 became ready 18.7 ms into a 76 ms run, at 62 ns a task; F-07o). Any
+// runs concatenate R tapes, which puts run k's first task behind every task of runs 0..k-1 (R=32: run 31 became ready 18.7 ms into a 76 ms run, at 62 ns a task). Any
 // topological order is a valid tape; this one is by dependency level, in the old order within a level (a GEMM's tiles stay consecutive).
 static bool kvm_sort_tape(KvmBundle& b) {
   const int n = (int)b.tasks.size();
@@ -1489,8 +1489,8 @@ int main(int argc, char** argv) {
       return true;
     };
     // The static path pays where tasks are short. A precompiled order saves the dynamic path's per-task scheduling (claim, admission, successor counts: about 1-2 us of an SM per task) and
-    // gives up its ready queue's balancing, which a plan from the cost model cannot replace when tasks are long and the model is far off (R-20: gpt-162m's ~80 us tiles ran x0.70 static).
-    // Decided from the bundle alone: the planner's own mean estimated cost per task against KVM_STATIC_MAX_MEAN_US, the crossover measured on bundles outside the panel (R-21).
+    // gives up its ready queue's balancing, which a plan from the cost model cannot replace when tasks are long and the model is far off (measured: gpt-162m's ~80 us tiles ran x0.70 static).
+    // Decided from the bundle alone: the planner's own mean estimated cost per task against KVM_STATIC_MAX_MEAN_US, the crossover measured on bundles outside the panel.
     auto static_mean_us = [&](const KvmBundle& b) {
       double work = 0.0;
       for (const KvmTaskDesc& d : b.tasks) work += kvm_static_cost(d.op_id, b.args.data() + d.args_off);
@@ -1526,7 +1526,7 @@ int main(int argc, char** argv) {
       if (bundles.size() != 1) throw std::runtime_error("--static takes exactly one bundle directory");
       KvmExec::StaticOptions so; so.workers = static_workers ? static_workers : cfg.blocks; so.comm_us = static_comm; so.trace_csv = csv; csv = nullptr; so.spin_idle = static_spin; so.partition = static_partition; so.fuse_phases = fuse_phases; so.fuse_phases = fuse_phases;
       if (opt_fuse) {
-        // the pass sizes slices and owners for the workers the schedule will have (run_static's own count: --workers, at most the grid; the grid when unset). R-23: given 0, it took the
+        // the pass sizes slices and owners for the workers the schedule will have (run_static's own count: --workers, at most the grid; the grid when unset). Measured: given 0, it took the
         // widest slice that fits, so a single run chose 32-row slices and the same run inside a merged bundle 16, and their rounding differed.
         const int workers = so.workers ? std::min(so.workers, ex.grid()) : ex.grid();
         fused = ex.fuse_bundle(bundles[0], workers, dump_idx);   // --dump-buffers keeps the fused path: a gate must read the path that is timed; the buffers no fused run writes dump as they started

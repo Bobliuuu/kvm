@@ -1,4 +1,4 @@
-# Built from this branch's code at f6fc955 (g++ -std=c++17 -O2 -Iinclude tests/static/test_fuse_pass.cpp; binary md5 37180473); 'before' is main's at 4bbdaab.
+# Built from this branch's code at 1a942da (g++ -std=c++17 -O2 -Iinclude tests/static/test_fuse_pass.cpp; binary md5 6600c22f); 'before' is main's at 4bbdaab.
 # this branch's tests/static/test_fuse_pass.cpp (g++ -O2, CPU) on the panel's own MLP bundles (its generator, the referee's bench), from main's
 # frontend (4bbdaab) and from main + #39's (93d9a5d); 'before' is main's test and pass. main's pass fuses the one-block rows (mlp72-r1, -r8,
 # the mixed-width row); mlp256 and mlp1024 are shapes main's template leaves out (no warning).

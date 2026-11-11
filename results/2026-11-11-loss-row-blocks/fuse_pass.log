@@ -1,6 +1,6 @@
 # tests/static/test_fuse_pass.cpp (g++ -O2, CPU) on gen_mlp.py bundles (--no-golden, the default a100 tiling), from two frontends:
 #   main = 4bbdaab;  pr39 = 4bbdaab + a6b0fea + 5e20289 (#39's two frontend commits: Tiling.ce_rows, and ce_rows=16 in the a100 preset)
-# and the panel's own 200-step h72 bundle (main's frontend). 'before' is main's test and pass (4bbdaab), 'after' this branch's (f6fc955).
+# and the panel's own 200-step h72 bundle (main's frontend). 'before' is main's test and pass (4bbdaab), 'after' this branch's (1a942da).
 # The digest covers the pass's whole result: the rewritten tasks, edges and arguments, every fused run's descriptor, the interior buffers.
 
 ## main_h72d2, before

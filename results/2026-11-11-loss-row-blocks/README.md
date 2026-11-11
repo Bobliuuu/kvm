@@ -21,12 +21,18 @@ stays unfused. Paths on the host are shown as `/root/reads/`.
   mixed-width row fuse on this pass from either frontend to one digest each, as `main`'s pass fuses them from its own; on `main`'s
   frontend, `main`'s test misses one of the eight runs of -r8 and of the mixed row (the 32-bit types). mlp256 and mlp1024 are shapes
   `main`'s template leaves out: unfused, without a warning.
+- **`edge_cases.txt`** (CPU, AddressSanitizer and UBSan): 188 edge cases of this pass, made by mutating the bundles above. Uneven,
+  mixed and per-step coverings fuse to the one-task loss's digest; gaps, overlaps, short or long covers, out-of-order or duplicate blocks
+  and a block with another argument stay unfused with a warning; a task whose word count is not its op's arity leaves the bundle as it
+  came, read no further; and the warning rules. All 188 pass, and the sanitizers report nothing.
 - **`merge_with_39.log`**: `git merge-tree --write-tree` of this branch with #39, in both orders: exit 0, no conflicted file, one tree
-  (`3868958a`). That tree's own `gen_mlp.py` makes the 159-task h72 bundle, and its own `test_fuse_pass` fuses it to `main`'s digest.
-- **`python_tests.log`**: the three unittest suites on this branch (run at `71af38a`; the commit after it changes a C++ test only), on the
-  A100 host's Python (numpy and torch present, no GPU visible to the tests): 157, 74 and 137 tests, all OK.
+  (`c5adb572`). That tree's own `gen_mlp.py` makes the 159-task h72 bundle, and its own `test_fuse_pass` fuses it to `main`'s digest.
+- **`python_tests.log`**: the three unittest suites on this branch (run at `71af38a`; the commits after it change only the pass's C++
+  header and its C++ test, which no Python test reads), on the A100 host's Python (numpy and torch present, no GPU visible to the
+  tests): 157, 74 and 137 tests, all OK.
 - **`ce-fix/`** (A100-SXM4-80GB, one hold): `main`'s binary (`4bbdaab`) against this branch's (key `e8b69fa3`, built from `24f3ccf`,
-  binary md5 `249fcee7`; the commit after it changes only which unchanged runs log a warning).
+  binary md5 `249fcee7`; the commits after it change only which unfused runs log a warning and which malformed bundles the pass leaves
+  alone, and the pass's output on every bundle in the logs above is byte for byte the same at the head).
   - `run_check.log`: `tests/static/run_check.sh` at 1, 4, 16, 107 and 108 workers on this branch's binary: PASS.
   - `dump_<bundle>_<binary>.log`, `dumps.txt`: the 3-step h72-d2 from both frontends, run once with `--dump-buffers` on both binaries.
     This branch fuses both (`main`'s 137 tasks and #39's 152 into the same 73), and both dump the same 73 buffer lines as `main`'s binary

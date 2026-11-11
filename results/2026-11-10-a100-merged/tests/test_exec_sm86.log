@@ -1,5 +1,5 @@
-hold: M-02 queued 2026-11-10T19:28:13Z; waiting for its turn (hold --ls)
-hold: M-02 started 2026-11-10T19:28:13Z
+hold: sm86-suites queued 2026-11-10T19:28:13Z; waiting for its turn (hold --ls)
+hold: sm86-suites started 2026-11-10T19:28:13Z
 GPU NVIDIA GeForce RTX 3090, 82 SMs, sm_86, driver CUDA 13.5, runtime 12.8
 == checker
   checker: 9 hand-made reader observations classified correctly; trace checker flagged 2/2 injected faults
@@ -76991,4 +76991,4 @@ GPU NVIDIA GeForce RTX 3090, 82 SMs, sm_86, driver CUDA 13.5, runtime 12.8
 == litmus: PASS (11.0s, 0 new failures)
 8609 checks, 0 failed, 0 suites failed
 PASS
-hold: M-02 ended 2026-11-10T19:28:33Z rc=0
+hold: sm86-suites ended 2026-11-10T19:28:33Z rc=0

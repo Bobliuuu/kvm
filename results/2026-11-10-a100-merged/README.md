@@ -45,7 +45,7 @@ Clocks: every stage ran at a 1,410 MHz median; GPT 162M dipped to 1,260 MHz unde
   * CUDA-graph capture in `thread_local` mode, with a retry;
   * the heterogeneous row (`run_hetero.py`, `hetero_merge.py`) and the zoo generators.
 
-  One comment differs from the files that ran (a host name removed).
+  Two comments differ from the files that ran (a host name and an internal run label removed).
 * **Rows** (`bench/exec_vs_torch/run_mlp.py`, `run_hetero.py`, `run_gpt.py`):
   * MLP h72 d2, 200 steps, 1, 8 and 32 independent runs; MLP h48-h104 d2 (8 widths), 200 steps; MLP h256 d4 and h1024 d2, 50 steps;
   * GPT tiny and small (`gen.py --mode tf32 --tiling a100`), and GPT 162M, 3 steps.
@@ -60,8 +60,8 @@ Clocks: every stage ran at a 1,410 MHz median; GPT 162M dipped to 1,260 MHz unde
 | `test_exec` suites | RTX 3090 (sm_86) | 8,609 checks, 0 failed | `tests/test_exec_sm86.log` |
 | `test_ops` | RTX 3080 Ti (sm_86) | 4,999 passed, 0 failed, 67 skipped: the cases this build cannot compile (hd=128 attention, the T=1 sweep) | `tests/test_ops_sm86.log` |
 | static path `run_check.sh`; `gptdiff` (CPU and a100 tilings, 1/2/5 steps, 1xTF32 and precise), two of its cases under memcheck, racecheck and synccheck | RTX 3080 Ti (sm_86) | PASS at 1, 4, 16 and 107 workers; 8/8 PASS; clean | `tests/static_run_check_sm86.log` |
-| litmus, mutants and e2e controls | RTX 3090 (sm_86) | every check this GPU can observe passes | `tests/litmus_sm86.log` |
-| the same, three full passes | RTX 3080 Ti (sm_86) | 3 of 3 run to their end, every mutant detected, none hanging | `tests/litmus_full_sm86_pass*.log` |
+| litmus: properties, mutants, probes and e2e scenarios | RTX 3090 (sm_86) | **exit 1, from a control this GPU cannot show:** every property reads 0 violations on the production headers, every mutant is detected, every probe and e2e scenario passes. The one failure is the relaxed-CAS `mp` control, which consumer Ampere does not exhibit (an undetected control counts as a failure, `tests/litmus/litmus.cu:136-140`; the A100 row below detects it). Three e2e controls also print "not detected" in this harness (`breakchunk` on dag and bigrecord, `breakcont` on versions); #24 makes them bite | `tests/litmus_sm86.log` |
+| the same, three full passes | RTX 3080 Ti (sm_86) | 3 of 3 run to their end, none hanging, each with the same verdict lines (exit 1 by the same control) | `tests/litmus_full_sm86_pass*.log` |
 | `recycle` (3,000,000 tasks in 100,000 bundles, 16,666 ring wraps) | RTX 3080 Ti (sm_86) | 0 failures in 10 runs | `tests/recycle_sm86_verdicts.txt` |
 | `test_ops`, every case (hd=128 included) | A100-SXM4-40GB, production build | 5,403 passed, 0 failed | `tests/test_ops_a100.log` |
 | `test_e2e` | A100-SXM4-40GB, production build | 7 passed, 0 failed | `tests/test_e2e_a100.log` |
@@ -104,7 +104,7 @@ session's GPU time ended.
 * `raw/`: the JSON each row's bench wrote; the table is computed from it.
 * `env.json`: what ran: the binary's hash and flags, versions, clocks, and the CPU throttling of each stage.
 * `logs/`: each stage's bench log, clock trace and stage record.
-* `tests/`: the suite logs in the table above (one tree path in a log header renamed).
+* `tests/`: the suite logs in the table above (one tree path in a log header and the runs' internal queue labels renamed, nothing else).
 * `main-9a76574/`: the GPT rows read on main as it is (the section above).
 * `phaseb-162m-bf16s-torch/`: PyTorch's side of the Phase B row.
 * `bench/`: the bench as run.

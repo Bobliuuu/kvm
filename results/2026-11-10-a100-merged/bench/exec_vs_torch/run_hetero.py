@@ -253,7 +253,7 @@ def main():
             if not (name.endswith('_whole') and is_capture_flake(exc)):
                 raise
             if int(os.environ.get('PANEL_STAGE_ATTEMPT', '1')) < int(os.environ.get('PANEL_STAGE_ATTEMPTS', '1')):
-                raise       # (the whole-run graphs are x0.53 of this row's bar: a fresh process usually captures them, Nov 9 V2-T; only the stage's last attempt falls back)
+                raise       # (the whole-run graphs are x0.53 of this row's bar: a fresh process usually captures them, Nov 9; only the stage's last attempt falls back)
             print(f'{name}: SKIPPED, its whole-run CUDA graph could not be captured here ({type(exc).__name__}): {str(exc)[:200]}', flush=True)
             names.remove(name)
             skipped.append(dict(variant=name, error=str(exc)[:300]))

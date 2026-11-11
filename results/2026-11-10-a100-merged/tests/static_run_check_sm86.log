@@ -4,8 +4,8 @@ kbuild (--extra '-DKVM_GPT_BIG_BK=16 -DKVM_GPT_MMA_SMEM=90112'): HIT 378df1d6780
 2026-11-10 22:15:15,788 INFO kvm.compiler: wrote bundle to /root/rb/m05/h48/bundle
 2026-11-10 22:15:15,966 INFO kvm.compiler: compiled 144 tasks (0 gates), 589 edges, 73 buffers, 1 variables in 0.01s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
 2026-11-10 22:15:15,968 INFO kvm.compiler: wrote bundle to /root/rb/m05/h72/bundle
-hold: M-05 queued 2026-11-10T22:15:55Z; waiting for its turn (hold --ls)
-hold: M-05 started 2026-11-10T22:15:55Z
+hold: sm86-static queued 2026-11-10T22:15:55Z; waiting for its turn (hold --ls)
+hold: sm86-static started 2026-11-10T22:15:55Z
 === h48, default run (static path, fusion on)
 [kvm_exec][I] path: static (mean estimated task 3.53 us <= 6.0)
 [kvm_exec][I] fuse: component 0: fused: 3 steps, T=96 V=100 widths 48x48x48, 6 slices of 16 rows, 16 reduction owners
@@ -83,6 +83,6 @@ sanitizer synccheck cpu_s2_tf32: clean
 sanitizer memcheck cpu_s5_precise: clean
 sanitizer racecheck cpu_s5_precise: clean
 sanitizer synccheck cpu_s5_precise: clean
-M-05 GPU checks: 0 failing
-hold: M-05 ended 2026-11-10T22:16:50Z rc=0
+sm86-static GPU checks: 0 failing
+hold: sm86-static ended 2026-11-10T22:16:50Z rc=0
 M-05-DONE rc=0

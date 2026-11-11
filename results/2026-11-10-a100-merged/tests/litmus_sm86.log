@@ -1,5 +1,5 @@
-hold: M-02 queued 2026-11-10T19:30:20Z; waiting for its turn (hold --ls)
-hold: M-02 started 2026-11-10T19:30:20Z
+hold: sm86-suites queued 2026-11-10T19:30:20Z; waiting for its turn (hold --ls)
+hold: sm86-suites started 2026-11-10T19:30:20Z
 == properties on the production headers (must be 0 violations)
 property sb(controls included): TOTAL rounds=2500000 violations=0 (exit 0)
 property dekker1: TOTAL rounds=500000 violations=0 (exit 0)
@@ -48,4 +48,4 @@ E2E probe_spin: spin(2e9 us): finish() after 0.00 s, err=BOUNDS  ok
 E2E probe_spin: 1.5 s task with task_limit 0.5 s: err=TASK_LIMIT  ok
 SUMMARY: 14 properties/scenarios/probes passed, 8 mutants/controls detected, 1 failures
 LITMUS FAIL
-hold: M-02 ended 2026-11-10T19:33:55Z rc=1
+hold: sm86-suites ended 2026-11-10T19:33:55Z rc=1

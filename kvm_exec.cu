@@ -936,7 +936,7 @@ class KvmExec {
       const KvmFgptScratch sc = kvm_fgpt_scratch(d.N, d.T, d.d, d.H, d.F, d.V, d.L, d.G, d.qb);
       d.xch = static_cast<float*>(alloc((size_t)sc.total * sizeof(float))); d.xch_floats = (size_t)sc.total;
       d.bc = static_cast<float*>(alloc(2 * (size_t)run.steps * sizeof(float)));     // filled by member 0 at the run's start
-      d.ctl = static_cast<unsigned*>(alloc(KVM_FGPT_MAX_GANG * sizeof(unsigned)));   // the barrier's flag line, zeroed once (cudaMalloc: 256-byte aligned)
+      d.ctl = static_cast<unsigned*>(alloc(kvm_gang::line_words(KVM_FGPT_MAX_GANG) * sizeof(unsigned)));   // the gang's flag lines, zeroed once (cudaMalloc: 256-byte aligned)
       const int smem = (int)(kvm_fgpt_smem_floats(d.N, d.T, d.d, d.H, d.F, d.V, d.G, d.qb, d.rows) * sizeof(float));
       st.smem_bytes = std::max(st.smem_bytes, smem);
       KLOG(2, "fuse gpt: run %zu: a gang of %d, %d steps, attention in %d query block(s) a unit, rows in chunks of %d of %d, %.2f MB of scratch, %d bytes of shared memory a member", i, d.G, d.steps, d.qb, d.rows, d.N, sc.total * 4.0 / 1e6, smem);

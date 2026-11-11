@@ -35,6 +35,10 @@ mut weakpub kvm_exec.cuh 's#^(\s*)__threadfence\(\);( +)// fence.sc.gpu: weights
 mut popplain kvm_sched.cuh 's#const unsigned long long h = atom_add64\(\&q->head, 1ull\);#const unsigned long long h = *(volatile unsigned long long*)\&q->head; *(volatile unsigned long long*)\&q->head = h + 1;#'
 # Queue, ticket claim: the popper reserves an item with a plain read-modify-write instead of the atomic fetch-add (two poppers reserve the same item: double pop)
 mut popticket kvm_sched.cuh 's#\(long long\)atom_add64\(&q->avail, ~0ull\) > 0#(long long)((*(volatile unsigned long long*)\&q->avail)--) > 0#'
+# FIFO ring (the scheduler-off CLI's queue): a popper takes its ticket on head with a plain read and store instead of the fetch-add (two poppers watch one cell: double pop)
+mut fifoticket kvm_sched.cuh 's#if \(ticket < 0\) ticket = \(long long\)atom_add64\(\&S.qctl\[0\].head, 1ull\);#if (ticket < 0) { ticket = (long long)*(volatile unsigned long long*)\&S.qctl[0].head; *(volatile unsigned long long*)\&S.qctl[0].head = (unsigned long long)ticket + 1; }#'
+# FIFO ring: a producer takes its tail position with a plain read and store instead of the fetch-add (two producers publish one position: a token is lost)
+mut fifotail kvm_sched.cuh 's#if \(S.fifo_only\) \{ kvm_publish_cell\(S, slot, 0, atom_add64\(\&S.qctl\[0\].tail, 1ull\)\); return; \}#if (S.fifo_only) { const unsigned long long t_ = *(volatile unsigned long long*)\&S.qctl[0].tail; *(volatile unsigned long long*)\&S.qctl[0].tail = t_ + 1; kvm_publish_cell(S, slot, 0, t_); return; }#'
 # Queue: producer publishes the cell with a relaxed store (no release): payload may be stale
 mut qrelax kvm_sched.cuh 's#st_rel64\(&cell->seq, pos \+ 1\);#*(volatile unsigned long long*)\&cell->seq = pos + 1;#'
 bad=0

@@ -1,0 +1,7 @@
+grid_h1024_d2_p108 grid_bed --hidden 1024 --depth 2 --members 108
+split_h256_d4_s18 split_bed --hidden 256 --depth 4 --shares 18
+split_h256_d4_s16 split_bed --hidden 256 --depth 4 --shares 16
+split_h576_d1_s18 split_bed --hidden 576 --depth 1 --shares 18
+grid_h496_d3_p108 grid_bed --hidden 496 --depth 3 --members 108
+grid_h512_d4_p108 grid_bed --hidden 512 --depth 4 --members 108
+grid_h600_d3_p108 grid_bed --hidden 600 --depth 3 --members 108 candidate-only

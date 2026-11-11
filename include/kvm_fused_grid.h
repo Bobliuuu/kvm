@@ -48,7 +48,7 @@ struct alignas(16) KvmGridDesc {   // copied to shared memory with 16-byte cp.as
   // layers' forward partials; hpart [kah][T][VP] the head's; dlog [T][VP]; dyp [max(nb, 1)][T][H] input-gradient partials over a layer's N
   // blocks; dz [T][H]; dx0 [nb0][T][E]; rloss [T] each row's loss term
   float* Y[KVM_GRID_MAXL]; float* part; float* hpart; float* dlog; float* dyp; float* dz; float* dx0; float* rloss;
-  unsigned* ctl;                   // the gang's flag lines (kvm_gang::barrier_lines: line_words(P) words, 128-byte aligned), zero before the first step
+  unsigned* ctl;                   // the gang's control words (kvm_gang::cross: line_words(P) words, 128-byte aligned), zero before the first step
 };
 
 KVM_GRID_HD inline constexpr int kvm_grid_desc_floats() { return (int)((sizeof(KvmGridDesc) + 63) / 64 * 16); }

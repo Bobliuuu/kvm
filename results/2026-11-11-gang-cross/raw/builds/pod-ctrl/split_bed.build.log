@@ -1,0 +1,56 @@
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z12split_kernelILi18ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing' for 'sm_80'
+ptxas info    : Function properties for _Z12split_kernelILi18ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 234 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Compile time = 851.671 ms
+ptxas info    : Compiling entry function '_Z12split_kernelILi16ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing' for 'sm_80'
+ptxas info    : Function properties for _Z12split_kernelILi16ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 227 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Compile time = 813.102 ms
+ptxas info    : Compiling entry function '_Z12split_kernelILi12ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing' for 'sm_80'
+ptxas info    : Function properties for _Z12split_kernelILi12ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 228 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Compile time = 793.901 ms
+ptxas info    : Compiling entry function '_Z12split_kernelILi10ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing' for 'sm_80'
+ptxas info    : Function properties for _Z12split_kernelILi10ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 228 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Compile time = 800.980 ms
+ptxas info    : Compiling entry function '_Z12split_kernelILi9ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing' for 'sm_80'
+ptxas info    : Function properties for _Z12split_kernelILi9ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 228 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Compile time = 804.900 ms
+ptxas info    : Compiling entry function '_Z12split_kernelILi8ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing' for 'sm_80'
+ptxas info    : Function properties for _Z12split_kernelILi8ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 227 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Compile time = 807.183 ms
+ptxas info    : Compiling entry function '_Z12split_kernelILi6ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing' for 'sm_80'
+ptxas info    : Function properties for _Z12split_kernelILi6ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 229 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Compile time = 825.933 ms
+ptxas info    : Compiling entry function '_Z12split_kernelILi5ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing' for 'sm_80'
+ptxas info    : Function properties for _Z12split_kernelILi5ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 229 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Compile time = 840.250 ms
+ptxas info    : Compiling entry function '_Z12split_kernelILi4ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing' for 'sm_80'
+ptxas info    : Function properties for _Z12split_kernelILi4ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 230 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Compile time = 850.747 ms
+ptxas info    : Compiling entry function '_Z12split_kernelILi3ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing' for 'sm_80'
+ptxas info    : Function properties for _Z12split_kernelILi3ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 231 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Compile time = 803.251 ms
+ptxas info    : Compiling entry function '_Z12split_kernelILi2ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing' for 'sm_80'
+ptxas info    : Function properties for _Z12split_kernelILi2ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 230 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Compile time = 812.577 ms

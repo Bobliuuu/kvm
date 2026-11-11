@@ -1,0 +1,181 @@
+beds_next: run /root/work/grid1/run-20261111T065306Z
+beds_next: flag lines grid_bed b925e4b27c873e50 split_bed 5108f5a8cabbb265; counter grid_bed 2c6216364cff1387 split_bed 915f9ef021edf60f 2026-11-11T06:53:06Z
+grid_h1024_d2_p16_new_r1 rc=3: does not fit: 612992 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p16_ctrl_r1 rc=3: does not fit: 612992 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p32_new_r1 rc=3: does not fit: 333824 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p32_ctrl_r1 rc=3: does not fit: 333824 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p48_new_r1 rc=3: does not fit: 256768 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p48_ctrl_r1 rc=3: does not fit: 256768 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p64_new_r1 rc=3: does not fit: 194240 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p64_ctrl_r1 rc=3: does not fit: 194240 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p80_new_r1 rc=3: does not fit: 178624 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p80_ctrl_r1 rc=3: does not fit: 178624 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p96_new_r1 rc=0: check ok; 147.85 us a step in the kernel
+grid_h1024_d2_p96_ctrl_r1 rc=0: check ok; 134.94 us a step in the kernel
+grid_h1024_d2_p108_new_r1 rc=0: check ok; 160.53 us a step in the kernel
+grid_h1024_d2_p108_ctrl_r1 rc=0: check ok; 133.61 us a step in the kernel
+split_h256_d4_s2_new_r1 rc=3: does not fit: 554352 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s2_ctrl_r1 rc=3: does not fit: 554352 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s4_new_r1 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s4_ctrl_r1 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s5_new_r1 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s5_ctrl_r1 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s6_new_r1 rc=3: does not fit: 225392 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s6_ctrl_r1 rc=3: does not fit: 225392 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s8_new_r1 rc=0: check ok; 113.60 us a step in the kernel
+split_h256_d4_s8_ctrl_r1 rc=0: check ok; 120.30 us a step in the kernel
+split_h256_d4_s10_new_r1 rc=0: check ok; 120.31 us a step in the kernel
+split_h256_d4_s10_ctrl_r1 rc=0: check ok; 122.54 us a step in the kernel
+split_h256_d4_s12_new_r1 rc=0: check ok; 123.96 us a step in the kernel
+split_h256_d4_s12_ctrl_r1 rc=0: check ok; 122.66 us a step in the kernel
+split_h256_d4_s16_new_r1 rc=0: check ok; 116.32 us a step in the kernel
+split_h256_d4_s16_ctrl_r1 rc=0: check ok; 100.00 us a step in the kernel
+split_h256_d4_s18_new_r1 rc=0: check ok; 128.93 us a step in the kernel
+split_h256_d4_s18_ctrl_r1 rc=0: check ok; 108.35 us a step in the kernel
+grid_h1024_d2_p16_ctrl_r2 rc=3: does not fit: 612992 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p16_new_r2 rc=3: does not fit: 612992 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p32_ctrl_r2 rc=3: does not fit: 333824 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p32_new_r2 rc=3: does not fit: 333824 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p48_ctrl_r2 rc=3: does not fit: 256768 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p48_new_r2 rc=3: does not fit: 256768 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p64_ctrl_r2 rc=3: does not fit: 194240 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p64_new_r2 rc=3: does not fit: 194240 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p80_ctrl_r2 rc=3: does not fit: 178624 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p80_new_r2 rc=3: does not fit: 178624 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p96_ctrl_r2 rc=0: check ok; 135.36 us a step in the kernel
+grid_h1024_d2_p96_new_r2 rc=0: check ok; 147.96 us a step in the kernel
+grid_h1024_d2_p108_ctrl_r2 rc=0: check ok; 133.85 us a step in the kernel
+grid_h1024_d2_p108_new_r2 rc=0: check ok; 159.67 us a step in the kernel
+split_h256_d4_s2_ctrl_r2 rc=3: does not fit: 554352 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s2_new_r2 rc=3: does not fit: 554352 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s4_ctrl_r2 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s4_new_r2 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s5_ctrl_r2 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s5_new_r2 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s6_ctrl_r2 rc=3: does not fit: 225392 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s6_new_r2 rc=3: does not fit: 225392 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s8_ctrl_r2 rc=0: check ok; 115.91 us a step in the kernel
+split_h256_d4_s8_new_r2 rc=0: check ok; 113.71 us a step in the kernel
+split_h256_d4_s10_ctrl_r2 rc=0: check ok; 122.66 us a step in the kernel
+split_h256_d4_s10_new_r2 rc=0: check ok; 120.60 us a step in the kernel
+split_h256_d4_s12_ctrl_r2 rc=0: check ok; 122.74 us a step in the kernel
+split_h256_d4_s12_new_r2 rc=0: check ok; 123.96 us a step in the kernel
+split_h256_d4_s16_ctrl_r2 rc=0: check ok; 101.66 us a step in the kernel
+split_h256_d4_s16_new_r2 rc=0: check ok; 116.05 us a step in the kernel
+split_h256_d4_s18_ctrl_r2 rc=0: check ok; 108.75 us a step in the kernel
+split_h256_d4_s18_new_r2 rc=0: check ok; 131.44 us a step in the kernel
+grid_h1024_d2_p16_new_r3 rc=3: does not fit: 612992 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p16_ctrl_r3 rc=3: does not fit: 612992 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p32_new_r3 rc=3: does not fit: 333824 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p32_ctrl_r3 rc=3: does not fit: 333824 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p48_new_r3 rc=3: does not fit: 256768 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p48_ctrl_r3 rc=3: does not fit: 256768 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p64_new_r3 rc=3: does not fit: 194240 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p64_ctrl_r3 rc=3: does not fit: 194240 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p80_new_r3 rc=3: does not fit: 178624 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p80_ctrl_r3 rc=3: does not fit: 178624 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p96_new_r3 rc=0: check ok; 147.10 us a step in the kernel
+grid_h1024_d2_p96_ctrl_r3 rc=0: check ok; 135.16 us a step in the kernel
+grid_h1024_d2_p108_new_r3 rc=0: check ok; 159.46 us a step in the kernel
+grid_h1024_d2_p108_ctrl_r3 rc=0: check ok; 133.48 us a step in the kernel
+split_h256_d4_s2_new_r3 rc=3: does not fit: 554352 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s2_ctrl_r3 rc=3: does not fit: 554352 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s4_new_r3 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s4_ctrl_r3 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s5_new_r3 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s5_ctrl_r3 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s6_new_r3 rc=3: does not fit: 225392 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s6_ctrl_r3 rc=3: does not fit: 225392 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s8_new_r3 rc=0: check ok; 113.54 us a step in the kernel
+split_h256_d4_s8_ctrl_r3 rc=0: check ok; 120.33 us a step in the kernel
+split_h256_d4_s10_new_r3 rc=0: check ok; 120.44 us a step in the kernel
+split_h256_d4_s10_ctrl_r3 rc=0: check ok; 122.54 us a step in the kernel
+split_h256_d4_s12_new_r3 rc=0: check ok; 124.09 us a step in the kernel
+split_h256_d4_s12_ctrl_r3 rc=0: check ok; 121.89 us a step in the kernel
+split_h256_d4_s16_new_r3 rc=0: check ok; 116.30 us a step in the kernel
+split_h256_d4_s16_ctrl_r3 rc=0: check ok; 101.63 us a step in the kernel
+split_h256_d4_s18_new_r3 rc=0: check ok; 128.52 us a step in the kernel
+split_h256_d4_s18_ctrl_r3 rc=0: check ok; 108.59 us a step in the kernel
+grid_h1024_d2_p16_ctrl_r4 rc=3: does not fit: 612992 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p16_new_r4 rc=3: does not fit: 612992 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p32_ctrl_r4 rc=3: does not fit: 333824 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p32_new_r4 rc=3: does not fit: 333824 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p48_ctrl_r4 rc=3: does not fit: 256768 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p48_new_r4 rc=3: does not fit: 256768 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p64_ctrl_r4 rc=3: does not fit: 194240 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p64_new_r4 rc=3: does not fit: 194240 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p80_ctrl_r4 rc=3: does not fit: 178624 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p80_new_r4 rc=3: does not fit: 178624 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p96_ctrl_r4 rc=0: check ok; 135.82 us a step in the kernel
+grid_h1024_d2_p96_new_r4 rc=0: check ok; 147.39 us a step in the kernel
+grid_h1024_d2_p108_ctrl_r4 rc=0: check ok; 134.09 us a step in the kernel
+grid_h1024_d2_p108_new_r4 rc=0: check ok; 159.67 us a step in the kernel
+split_h256_d4_s2_ctrl_r4 rc=3: does not fit: 554352 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s2_new_r4 rc=3: does not fit: 554352 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s4_ctrl_r4 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s4_new_r4 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s5_ctrl_r4 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s5_new_r4 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s6_ctrl_r4 rc=3: does not fit: 225392 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s6_new_r4 rc=3: does not fit: 225392 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s8_ctrl_r4 rc=0: check ok; 120.30 us a step in the kernel
+split_h256_d4_s8_new_r4 rc=0: check ok; 114.13 us a step in the kernel
+split_h256_d4_s10_ctrl_r4 rc=0: check ok; 122.62 us a step in the kernel
+split_h256_d4_s10_new_r4 rc=0: check ok; 120.21 us a step in the kernel
+split_h256_d4_s12_ctrl_r4 rc=0: check ok; 121.82 us a step in the kernel
+split_h256_d4_s12_new_r4 rc=0: check ok; 124.44 us a step in the kernel
+split_h256_d4_s16_ctrl_r4 rc=0: check ok; 102.32 us a step in the kernel
+split_h256_d4_s16_new_r4 rc=0: check ok; 115.95 us a step in the kernel
+split_h256_d4_s18_ctrl_r4 rc=0: check ok; 108.33 us a step in the kernel
+split_h256_d4_s18_new_r4 rc=0: check ok; 126.83 us a step in the kernel
+grid_h1024_d2_p16_new_r5 rc=3: does not fit: 612992 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p16_ctrl_r5 rc=3: does not fit: 612992 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p32_new_r5 rc=3: does not fit: 333824 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p32_ctrl_r5 rc=3: does not fit: 333824 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p48_new_r5 rc=3: does not fit: 256768 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p48_ctrl_r5 rc=3: does not fit: 256768 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p64_new_r5 rc=3: does not fit: 194240 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p64_ctrl_r5 rc=3: does not fit: 194240 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p80_new_r5 rc=3: does not fit: 178624 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p80_ctrl_r5 rc=3: does not fit: 178624 dynamic + 128 static > 166912 bytes a b; 
+grid_h1024_d2_p96_new_r5 rc=0: check ok; 146.59 us a step in the kernel
+grid_h1024_d2_p96_ctrl_r5 rc=0: check ok; 135.25 us a step in the kernel
+grid_h1024_d2_p108_new_r5 rc=0: check ok; 159.84 us a step in the kernel
+grid_h1024_d2_p108_ctrl_r5 rc=0: check ok; 133.46 us a step in the kernel
+split_h256_d4_s2_new_r5 rc=3: does not fit: 554352 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s2_ctrl_r5 rc=3: does not fit: 554352 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s4_new_r5 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s4_ctrl_r5 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s5_new_r5 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s5_ctrl_r5 rc=3: does not fit: 291184 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s6_new_r5 rc=3: does not fit: 225392 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s6_ctrl_r5 rc=3: does not fit: 225392 dynamic + 256 static > 166912 bytes a b; 
+split_h256_d4_s8_new_r5 rc=0: check ok; 106.57 us a step in the kernel
+split_h256_d4_s8_ctrl_r5 rc=0: check ok; 112.71 us a step in the kernel
+split_h256_d4_s10_new_r5 rc=0: check ok; 120.14 us a step in the kernel
+split_h256_d4_s10_ctrl_r5 rc=0: check ok; 122.55 us a step in the kernel
+split_h256_d4_s12_new_r5 rc=0: check ok; 124.15 us a step in the kernel
+split_h256_d4_s12_ctrl_r5 rc=0: check ok; 122.59 us a step in the kernel
+split_h256_d4_s16_new_r5 rc=0: check ok; 116.88 us a step in the kernel
+split_h256_d4_s16_ctrl_r5 rc=0: check ok; 102.16 us a step in the kernel
+split_h256_d4_s18_new_r5 rc=0: check ok; 130.08 us a step in the kernel
+split_h256_d4_s18_ctrl_r5 rc=0: check ok; 108.60 us a step in the kernel
+BEDS_NEXT_GPU_END
+grid_h1024_d2_p16      MISSING ROUNDS: new has [], wants [1, 2, 3, 4, 5], ctrl has [], wants [1, 2, 3, 4, 5]
+grid_h1024_d2_p32      MISSING ROUNDS: new has [], wants [1, 2, 3, 4, 5], ctrl has [], wants [1, 2, 3, 4, 5]
+grid_h1024_d2_p48      MISSING ROUNDS: new has [], wants [1, 2, 3, 4, 5], ctrl has [], wants [1, 2, 3, 4, 5]
+grid_h1024_d2_p64      MISSING ROUNDS: new has [], wants [1, 2, 3, 4, 5], ctrl has [], wants [1, 2, 3, 4, 5]
+grid_h1024_d2_p80      MISSING ROUNDS: new has [], wants [1, 2, 3, 4, 5], ctrl has [], wants [1, 2, 3, 4, 5]
+grid_h1024_d2_p96      candidate median   147.39 us (n 5, slow 0)  control median   135.25 us (n 5, slow 0)  paired x0.919  Fisher p 1.000  check lines 5 identical
+grid_h1024_d2_p108     candidate median   159.67 us (n 5, slow 0)  control median   133.61 us (n 5, slow 0)  paired x0.837  Fisher p 1.000  check lines 5 identical
+split_h256_d4_s2       MISSING ROUNDS: new has [], wants [1, 2, 3, 4, 5], ctrl has [], wants [1, 2, 3, 4, 5]
+split_h256_d4_s4       MISSING ROUNDS: new has [], wants [1, 2, 3, 4, 5], ctrl has [], wants [1, 2, 3, 4, 5]
+split_h256_d4_s5       MISSING ROUNDS: new has [], wants [1, 2, 3, 4, 5], ctrl has [], wants [1, 2, 3, 4, 5]
+split_h256_d4_s6       MISSING ROUNDS: new has [], wants [1, 2, 3, 4, 5], ctrl has [], wants [1, 2, 3, 4, 5]
+split_h256_d4_s8       candidate median   113.60 us (n 5, slow 0)  control median   120.30 us (n 5, slow 0)  paired x1.058  Fisher p 1.000  check lines 5 identical
+split_h256_d4_s10      candidate median   120.31 us (n 5, slow 0)  control median   122.55 us (n 5, slow 0)  paired x1.019  Fisher p 1.000  check lines 5 identical
+split_h256_d4_s12      candidate median   124.09 us (n 5, slow 0)  control median   122.59 us (n 5, slow 0)  paired x0.987  Fisher p 1.000  check lines 5 identical
+split_h256_d4_s16      candidate median   116.30 us (n 5, slow 0)  control median   101.66 us (n 5, slow 0)  paired x0.874  Fisher p 1.000  check lines 5 identical
+split_h256_d4_s18      candidate median   128.93 us (n 5, slow 0)  control median   108.59 us (n 5, slow 0)  paired x0.840  Fisher p 1.000  check lines 5 identical
+verdict: FAIL: 9 problem(s) (a row with a failed check, missing rounds or a slow mode; a missing end), 16 rows expected
+BEDS_NEXT_END

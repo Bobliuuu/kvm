@@ -4,8 +4,6 @@ GPU: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs; the SMs ran at 2.5-2.8 
 nanoseconds), CUDA 12.8, `nvcc -O3 -std=c++17 -arch=sm_120`. **Not an A100**: these runs give correctness, the shares of a step, and a
 hint of its time.
 
-**Every figure here is unverified** until an independent re-derivation from `raw/` confirms it.
-
 Tree: this branch. Workloads: `bench/vs_pytorch/gen.py` at this tree, `gpt_tiny` and `gpt_small`, 50 steps, `--tiling a100`, in the
 default `--mode tf32` (matmul_tile's 1xTF32) and in `--mode precise` (3xTF32).
 
@@ -25,8 +23,8 @@ Precise mode (3xTF32, so the trajectories stay comparable), 2 steps:
 
 | row | G | losses against the VM | worst gradient, of its tensor's scale | worst moment | G against the first G |
 |---|---|---|---|---|---|
-| gpt-tiny | 1, 2, 4 | bit-identical (4.146039, 3.993824) | 6.1e-6 | 6.3e-6 | 8.2e-6 |
-| gpt-small | 16, 32 | within 1.1e-7 relative | 8.0e-5 (G 32), 7.3e-5 (G 16) | 8.0e-5 | 1.8e-5 |
+| gpt-tiny | 1, 2, 4 | bit-identical (4.146039, 3.993824) | 6.1e-6 | 6.3e-6 | 8.1e-6 |
+| gpt-small | 16, 32 | within 1.1e-7 relative | 6.1e-5 (G 32), 5.5e-5 (G 16) | 8.0e-5 | 1.7e-5 |
 
 The default 1xTF32 numerics, as the panel runs them:
 
@@ -49,8 +47,8 @@ In-kernel time a step (member 0's globaltimer, 20 steps, the GPU warmed first), 
 | gpt-small, precise | 32 | 257.7, 264.7 (1xTF32 beside it: 221.0, 240.0) |
 
 **Where gpt-small's step goes** (`fgpt_bed ... 32 clock`, the largest member of each phase, both layers summed; `raw/t20f-small-G32-clock.log`):
-- the (sequence, head) units' attention, about 85 us on the critical path (36 forward, 50 backward), while the other 24 members wait;
-- the MLP's backward, 26 us; AdamW, 22.5 us; fc1 and fc2, 12 us;
+- the (sequence, head) units' attention, about 86 us on the critical path (36.6 forward, 49.8 backward), while the other 24 members wait;
+- the MLP's backward, 27.3 us; AdamW, 22.8 us; fc1 and fc2, 12.3 us;
 - 22 gang barriers, about 2.8 us each on this card.
 
 Precise mode, three tensor-core products for one on the linear layers, adds only 25-35 us. So the step is bound by instruction and latency
@@ -64,9 +62,10 @@ launches each gang as one kernel of G blocks (`include/kvm_fgpt_kernel.cuh`). `-
 took before.
 
 **Why a kernel of its own:** ptxas allocates registers per kernel. Compiled as a function inside the static kernel, the program got 153
-registers, and up to 149 local reloads a pass in its staging loops. Alone, it gets 237, with at most 69, as on its bed (240 and 75). Alone,
-it also leaves the static kernel as it was: every fused function there compiles exactly as in a build without the step. In place, the
-step had moved theirs (the split member 156 → 147 registers). `raw/census-*.txt`, read from each build's SASS.
+registers, and its MMA loops reloaded up to 179 values a pass (`raw/census-static-kernel-with-the-step-inside-by-function.txt`, each loop
+attributed to its function). Alone, it gets 239, with at most 69 (`raw/census-fused-gpt-kernel*.txt`); on its bed, 243 and 75
+(`raw/census-bed.txt`; unverified). In place, it had also moved the other fused functions' allocation (the split member 156 → 147
+registers), read on the base before #31 gave every fused form a kernel entry of its own (`raw/census-static-kernel-*.txt`).
 
 These runs use a test build of the executor: the GPT pack's op bodies are stubs (a fused bundle dispatches none of them), the comm and
 extra packs are left out, and the split step's share list is cut to 2, so it compiles within the laptop's memory.
@@ -81,8 +80,8 @@ two clock states about 1.2x apart, so the table pairs the rounds where both exec
 
 | row | inside the static kernel | its own kernel | ratio |
 |---|---|---|---|
-| gpt-tiny | 97.4, 97.8 | 87.5, 87.2 | x1.12 |
-| gpt-small | 211.9, 212.1 | 188.1, 188.0 | x1.13 |
+| gpt-tiny | 97.4, 97.8, 97.5 | 87.5, 87.2, 87.0 | x1.12 |
+| gpt-small | 211.9, 211.8, 212.1 | 188.1, 188.1, 188.0 | x1.13 |
 
 Over all six rounds, the median ratio is x1.12 (gpt-tiny) and x1.13 (gpt-small).
 
@@ -109,7 +108,8 @@ Under the counter barrier, 2 blocks had made gpt-tiny 10% slower.
 - Every bar against the VM above holds, unchanged.
 - A member's fault ends the gang (`fgpt_bed ... fault=M:F`, `raw/abort.log`): one member given too little shared memory fails a phase
   before the first crossing, or after about ten. Every other member then leaves at its next crossing: error word 5, no member
-  finished, no hang. On gpt-small and gpt-tiny, each faulted run ends within 0.1 s of a clean run's wall time.
+  finished, no hang. Each faulted run ends within 0.02 s of a clean run of its shape, the wall time mostly the process's start: gpt-small
+  1.09 and 1.05 s against 1.07, gpt-tiny 1.06 against 1.05 (unverified).
 
 ## Reach: the hold-out's shapes
 
@@ -122,7 +122,8 @@ They now walk N in chunks of R rows, with the weights resident:
 - The attention backward's h rows and Wq columns now go below DQ, over its dead buffers, where they fit there.
 
 A seeded hold-out panel draws GPTs with d from 48 to 512, T from 32 to 128, B from 1 to 4 and V up to 512. Over every shape it can draw, on
-an A100 (163 KB a block; `kvm_fgpt_fit`, computed on the CPU):
+an A100 (163 KB a block; computed on the CPU by `raw/reach.cpp`, built against the tree before row chunks and against this branch:
+`raw/reach.txt`):
 
 | d | 48 | 96 | 128 | 192 | 256 | 384 | 512 | all |
 |---|---|---|---|---|---|---|---|---|
@@ -136,7 +137,7 @@ The rest need the weights themselves streamed: at d 512 a member's MLP slices al
 | check | result |
 |---|---|
 | the panel's shapes (one chunk each), the bed against the previous head's | bitwise equal: gpt-tiny at G 32 and 8, gpt-small at G 32 |
-| forced chunks, precise, against the VM | gpt-small at 64 rows (G 16, 32) and 32 rows: losses within 1.1e-7, gradients within 4.3e-5 of scale; gpt-tiny at 16 rows: bit-identical losses, gradients within 7.3e-6 |
+| forced chunks, precise, against the VM | gpt-small at 64 rows (G 16, 32) and 32 rows: losses within 1.1e-7, gradients within 4.2e-5 of scale; gpt-tiny at 16 rows: bit-identical losses, gradients within 7.2e-6 |
 | a batch-4 gpt-small (N 256: 128-row chunks by the fit), bed, precise | losses within 1.1e-7 of the VM's; after one step, gradients within 2.3e-6 of scale |
 | the same, the executor, 1xTF32, 3 steps | fused, losses within 7.0e-5 of the VM's |
 | the executor on the panel rows, us a step (8 paired rounds, against the previous head) | gpt-tiny 78.3 to 75.9 (x1.032), gpt-small 179.2 to 177.4 (x1.010); with the bias corrections' table, now filled once a run |
@@ -158,6 +159,7 @@ python3 -I bench/fused_gpt/fgpt_bed.py W/w_tiny --bed ./fgpt_bed --steps 2 --gan
 nvcc -O3 -arch=sm_120 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off kvm_exec.cu -o kvm_exec  # the executor
 python3 -I bench/fused_gpt/fgpt_bed.py W/w_tiny --exec ./kvm_exec --steps 50 --tol 2e-3                  # its own path: the fused GPT kernel
 ./kvm_exec --no-fuse W/w_tiny/bundle                                                                     # the same bundle, unfused
+g++ -std=c++17 -O1 -Iinclude results/2026-11-11-fused-gpt-step-bed/raw/reach.cpp -o reach && ./reach  # the reach table's row (-DBEFORE on the tree before row chunks: the first)
 ```
 
 Files: `raw/`, the runs above (paths replaced by `<work>`).

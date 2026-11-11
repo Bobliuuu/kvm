@@ -122,16 +122,23 @@ __device__ __forceinline__ void split_run(int member, const int32_t* ids, const 
     *reinterpret_cast<float4*>(Lg + r * VP + 4 * v4) = a;
   });
   __syncthreads();
-  for (int r = warp; r < R; r += NT / 32) {   // 8 warps, two rows each
-    float* row = Lg + r * VP; float m = -INFINITY;
-    for (int v = lane; v < V; v += 32) m = fmaxf(m, row[v]);
+  // 8 warps, two rows each. A row's VP <= 128 logits sit in registers, four a lane, and each exponential is taken once: the same operations in the same
+  // order as three passes over shared memory with every exponential taken twice, so the same bits (the A100's split bed spent 17% of the step here).
+  constexpr int VR = 128 / 32;
+  for (int r = warp; r < R; r += NT / 32) {
+    float* row = Lg + r * VP;
+    float x[VR], m = -INFINITY;
+#pragma unroll
+    for (int j = 0; j < VR; ++j) { const int v = lane + 32 * j; x[j] = v < V ? row[v] : -INFINITY; m = fmaxf(m, x[j]); }
     for (int o = 16; o; o >>= 1) m = fmaxf(m, __shfl_xor_sync(0xffffffffu, m, o));
-    float z = 0.f;
-    for (int v = lane; v < V; v += 32) z += expf(row[v] - m);
-    for (int o = 16; o; o >>= 1) z += __shfl_xor_sync(0xffffffffu, z, o);
     const int t = tg[r]; const float lt = row[t];   // every lane reads the target's logit before any lane overwrites the row
+    float z = 0.f;
+#pragma unroll
+    for (int j = 0; j < VR; ++j) if (lane + 32 * j < V) { x[j] = expf(x[j] - m); z += x[j]; }
+    for (int o = 16; o; o >>= 1) z += __shfl_xor_sync(0xffffffffu, z, o);
     __syncwarp();
-    for (int v = lane; v < VP; v += 32) row[v] = v < V ? (expf(row[v] - m) / z - (v == t ? 1.f : 0.f)) * inv_t : 0.f;
+#pragma unroll
+    for (int j = 0; j < VR; ++j) { const int v = lane + 32 * j; if (v < VP) row[v] = v < V ? (x[j] / z - (v == t ? 1.f : 0.f)) * inv_t : 0.f; }
     if (lane == 0) rl[r] = m + logf(z) - lt;
   }
   __syncthreads();

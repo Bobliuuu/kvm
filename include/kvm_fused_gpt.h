@@ -37,6 +37,7 @@ struct alignas(16) KvmFgptDesc {
   // shape: rows (B sequences of T), width, heads x head width, MLP width, vocabulary, layers; the gang's size; the run's steps
   int N, T, B, d, H, hd, F, V, L, G, steps;
   int mm_numerics;                            // the bundle's GEMM numerics bits (matmul_tile flags: precise, trunc, exact), which the fused GEMMs reproduce
+  int qb;                                     // attention's query blocks a (sequence, head) unit (kvm_fgpt_qblocks gives the default); T a multiple of 16 qb
   float ln_eps, theta, scale;                 // LayerNorm epsilon, RoPE base, attention scale
   float lr, beta1, beta2, adam_eps, max_norm; // AdamW and the grad-norm clip
   float wd[KVM_FGPT_MAXP];                    // weight decay of every parameter slot
@@ -93,15 +94,26 @@ KVM_FGPT_HD inline int kvm_fgpt_gang(int N, int d, int H, int F, int V, int L, i
 //    reduce-scatter's reads from the next one's writes. lnp, each LayerNorm's own-row partials of dgamma and dbeta [2 L + 1][G][2 d] (LN1
 //    of layer l is 2 l, LN2 2 l + 1, the final one 2 L); rpart, the own-row partials of proj's and fc2's bias gradients [2 L][G][d] (bo of
 //    layer l is 2 l, b2 2 l + 1); hgp, each (layer, unit)'s partial of its head's gradients [L][B H][kvm_fgpt_unit_grads(d, hd)], summed by
-//    the head's owner in sequence order after the backward; gn, each member's sum of squares of the gradients it owns.
+//    the head's owner in sequence order after the backward (a unit is QB items: one partial an item); dkv, each item's partials of dK and
+//    dV over its prefix's keys [B H QB][T][2 hd], summed by key block; gn, each member's sum of squares of the gradients it owns.
 //  * dy: a member's own rows of the reduce-scatter's sum.
 KVM_FGPT_HD inline int kvm_fgpt_unit_grads(int d, int hd) { return 4 * d * hd + 3 * hd; }   // dWq, dWk, dWv [d][hd]; dbq, dbk, dbv [hd]; dWo [hd][d]
+// Attention's work items: each (sequence, head) unit cut into QB query blocks of T / QB rows, so that up to G members share it. Blocks cost
+// two more gang barriers a layer (q, k, v gathered; dK and dV partials summed), so they pay only where a unit's attention outweighs them:
+// the default is the largest power of two with B H QB <= G, T a multiple of 16 QB (a block is whole mma row tiles) and blocks of at least
+// 16 rows out of sequences of at least 64; 1 otherwise (gpt-tiny's T = 32 ran 10% slower with 2 blocks on an RTX 5070).
+KVM_FGPT_HD inline int kvm_fgpt_qblocks(int B, int H, int T, int G) {
+  if (T < 64) return 1;
+  int q = 1;
+  while ((long long)B * H * q * 2 <= G && T % (16 * q * 2) == 0) q *= 2;
+  return q;
+}
 struct KvmFgptScratch {
   long long x[KVM_FGPT_MAXL + 1], h[KVM_FGPT_MAXL], m1[KVM_FGPT_MAXL], r1[KVM_FGPT_MAXL], q[KVM_FGPT_MAXL], k[KVM_FGPT_MAXL], v[KVM_FGPT_MAXL],
       o[KVM_FGPT_MAXL], lse[KVM_FGPT_MAXL], xm[KVM_FGPT_MAXL], h2[KVM_FGPT_MAXL], m2[KVM_FGPT_MAXL], r2[KVM_FGPT_MAXL], pre[KVM_FGPT_MAXL];
-  long long hf, mf, rf, logits, ce, tl, gx, part, lnp, rpart, hgp, gn, dy, total;
+  long long hf, mf, rf, logits, ce, tl, gx, part, lnp, rpart, hgp, dkv, gn, dy, total;
 };
-KVM_FGPT_HD inline KvmFgptScratch kvm_fgpt_scratch(int N, int T, int d, int H, int F, int V, int L, int G) {
+KVM_FGPT_HD inline KvmFgptScratch kvm_fgpt_scratch(int N, int T, int d, int H, int F, int V, int L, int G, int QB) {
   KvmFgptScratch s{};
   long long at = 0;
   const long long Nd = (long long)N * d, NF = (long long)N * F, B = T > 0 ? N / T : 0;
@@ -114,7 +126,8 @@ KVM_FGPT_HD inline KvmFgptScratch kvm_fgpt_scratch(int N, int T, int d, int H, i
   s.hf = take(Nd); s.mf = take(N); s.rf = take(N); s.logits = take((long long)N * V);
   s.ce = take((long long)G * N * 2); s.tl = take(N); s.gx = take(Nd); s.part = take((long long)(G > H ? G : H) * Nd);
   s.lnp = take((long long)(2 * L + 1) * G * 2 * d); s.rpart = take((long long)2 * L * G * d);
-  s.hgp = take((long long)L * B * H * kvm_fgpt_unit_grads(d, H > 0 ? d / H : 0)); s.gn = take(G); s.dy = take(Nd);
+  const int hd = H > 0 ? d / H : 0, items = (int)B * H * QB;
+  s.hgp = take((long long)L * items * kvm_fgpt_unit_grads(d, hd)); s.dkv = take((long long)items * T * 2 * hd); s.gn = take(G); s.dy = take(Nd);
   s.total = at;
   return s;
 }
@@ -138,17 +151,21 @@ KVM_FGPT_HD inline long long kvm_fgpt_smem_head(int N, int T, int hd) {
 // A bound on the program's shared memory, in floats: a fixed head (the step's tokens and targets, the cross-entropy's log-sum-exp a row, a
 // block reduction's partials and a flag), then the largest phase's buffers, as kvm_fused_gpt.cuh takes them. The device checks every phase
 // against KvmFgptDesc::smem_floats and fails the run (KVM_FGPT_E_SCRATCH) instead of overrunning, so a bound too small shows at once.
-KVM_FGPT_HD inline long long kvm_fgpt_smem_floats(int N, int T, int d, int H, int F, int V, int G) {
+KVM_FGPT_HD inline long long kvm_fgpt_smem_floats(int N, int T, int d, int H, int F, int V, int G, int QB) {
   const int hd = H > 0 ? d / H : 0, T16 = kvm_fgpt_r16(T), N16 = kvm_fgpt_r16(N), wf = (F + G - 1) / G, wv = (V + G - 1) / G;
-  const int ldq = kvm_fgpt_ldk(3 * hd), ldd = kvm_fgpt_ldk(d), ldT = kvm_fgpt_ldk(T16), ldh = kvm_fgpt_ldk(kvm_fgpt_r16(hd)), ldm = kvm_fgpt_ldmn(d);
+  const int ldq = kvm_fgpt_ldk(3 * hd), ldd = kvm_fgpt_ldk(d), ldh = kvm_fgpt_ldk(kvm_fgpt_r16(hd)), ldm = kvm_fgpt_ldmn(d);
   auto r4 = [](long long n) { return kvm_fgpt_r4(n); };
   auto mx = [](long long a, long long b) { return a > b ? a : b; };
-  // a (sequence, head) unit, forward: q | k | v, the biases, lse, h's rows, W's columns, the scores, o, proj's rows
-  const long long attn_f = r4((long long)T16 * ldq) + r4(3 * hd) + r4(T) + r4((long long)T16 * ldd) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldmn(3 * hd)) +
-                           r4((long long)T16 * ldT) + r4((long long)T16 * ldh) + r4((long long)kvm_fgpt_r8(hd) * ldm);
-  // backward: do, delta, dq | dk | dv, q | k | v, lse, P, o; then gx's rows and Wo's rows, or h's rows and W's columns
-  const long long attn_b = r4((long long)T16 * ldh) + r4(T) + 2 * r4((long long)T16 * ldq) + r4(T) + r4((long long)T16 * ldT) + r4((long long)T16 * ldh) +
-                           mx(r4((long long)T16 * ldd) + r4((long long)kvm_fgpt_r8(hd) * ldd), r4((long long)T16 * ldm) + r4((long long)kvm_fgpt_r8(d) * ldq));
+  // attention items of TQ query rows (KE = T keys at most): their q | k | v rows (h's rows, W's columns, the biases); then attention (q, k,
+  // v, lse, the scores, o, proj's rows); the backward's query side (do, delta, q, k, v, lse, P, dq, dk, dv, o, then gx's rows and Wo's
+  // rows or h's rows and Wq's columns); its key side (dk | dv, h's rows, Wk | Wv's columns)
+  const int TQ = QB > 0 ? T / QB : T, TQ16 = kvm_fgpt_r16(TQ), ldS = kvm_fgpt_ldk(T16), ldkv = kvm_fgpt_ldk(2 * hd);
+  const long long qrow = r4((long long)TQ16 * ldh), krow = r4((long long)T16 * ldh);
+  const long long attn_qkv = r4((long long)TQ16 * ldd) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldmn(3 * hd)) + r4(3 * hd) + r4((long long)TQ16 * ldq);
+  const long long attn_f = qrow + 2 * krow + r4(TQ) + r4((long long)TQ16 * ldS) + qrow + r4((long long)kvm_fgpt_r8(hd) * ldm);
+  const long long attn_b = qrow + r4(TQ) + qrow + 2 * krow + r4(TQ) + r4((long long)TQ16 * ldS) + qrow + 2 * krow + qrow +
+                           mx(r4((long long)TQ16 * ldd) + r4((long long)kvm_fgpt_r8(hd) * ldd), r4((long long)TQ16 * ldm) + r4((long long)kvm_fgpt_r8(d) * ldh));
+  const long long attn_k = r4((long long)TQ16 * ldkv) + r4((long long)TQ16 * ldm) + r4((long long)kvm_fgpt_r8(d) * ldkv);
   // the MLP, forward: h2, W1's columns, u, W2's rows, b1; backward: pre, gelu(pre), du, gx then h2, W2's rows then W1's columns
   const long long mlp_f = r4((long long)N16 * ldd) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldmn(wf)) + r4((long long)N16 * kvm_fgpt_ldk(wf)) +
                           r4((long long)kvm_fgpt_r8(wf) * ldm) + r4(wf);
@@ -157,7 +174,7 @@ KVM_FGPT_HD inline long long kvm_fgpt_smem_floats(int N, int T, int d, int H, in
   // the head: hf and its columns (logits); dlogits, hf, its columns again (backward)
   const long long logit = r4((long long)N16 * ldd) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldmn(wv));
   const long long headb = r4((long long)N16 * kvm_fgpt_ldk(wv)) + r4((long long)N16 * ldm) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldk(wv));
-  return kvm_fgpt_smem_head(N, T, hd) + mx(mx(mx(attn_f, attn_b), mx(mlp_f, mlp_b)), mx(logit, headb));
+  return kvm_fgpt_smem_head(N, T, hd) + mx(mx(mx(mx(attn_qkv, attn_f), mx(attn_b, attn_k)), mx(mlp_f, mlp_b)), mx(logit, headb));
 }
 
 // The faults a member reports through its caller's `fail(code)` (kvm_fused_gpt.cuh's run; the executor reports one as KVM_ERR_BOUNDS with the

@@ -2,7 +2,9 @@
 // and data that fgpt_bed.py writes from a workload. It writes the per-step losses, the final parameters and AdamW moments, the last step's
 // gradients and the step counter, for fgpt_bed.py to judge against the workload VM.
 //
-//   fgpt_bed DIR G [clock]   (reads DIR/meta.txt, DIR/{p,m,v}.bin, DIR/{ids,tgt}.bin; writes DIR/out-G<G>/, or DIR/out-G<G>-clock/)
+//   fgpt_bed DIR G [clock] [qb=Q]   (reads DIR/meta.txt, DIR/{p,m,v}.bin, DIR/{ids,tgt}.bin; writes DIR/out-G<G>/, or DIR/out-G<G>-clock/)
+//
+// qb=Q sets attention's query blocks a unit (default: kvm_fgpt_qblocks).
 //
 // `clock` runs the program with its phase marks: every phase and every barrier's wait ends in a __syncthreads and a clock64() read by
 // thread 0 of each member, summed over steps and layers, and the bed prints the cycles a step of each, the members' mean and their
@@ -60,13 +62,14 @@ struct PhaseClock {
   }
 };
 static const char* const kMarks[kvm_fgpt::MK_COUNT] = {
-    "input + embedding", "LN1", "  wait: all-gather h", "  unit: stage h, W", "  unit: q k v GEMM", "  unit: RoPE + keep q k v",
-    "  unit: scores", "  unit: softmax", "  unit: P V", "  unit: proj partial", "attention, rest", "  wait: reduce-scatter proj",
-    "proj sum + LN2", "  wait: all-gather h2", "fc1 + GELU + fc2", "  wait: reduce-scatter fc2", "fc2 sum", "final LN", "  wait: all-gather hf",
-    "logits + CE stats", "  wait: CE exchange", "lse, loss", "head backward", "  wait: reduce-scatter dhf", "dhf sum + LNf backward",
-    "  wait: all-gather gx (fc2)", "MLP backward", "  wait: reduce-scatter dh2", "dh2 sum + LN2 backward", "  wait: all-gather gx (proj)",
-    "  unit: stage gx, Wo, o", "  unit: dWo, do, delta", "  unit: stage q k v, lse", "  unit: P", "  unit: dv, dS", "  unit: dq, dk",
-    "  unit: RoPE back, db", "  unit: dWq dWk dWv", "  unit: dh partial", "attention backward, rest", "  wait: reduce-scatter dh",
+    "input + embedding", "LN1", "  wait: all-gather h", "  item: stage h rows, W", "  item: q k v GEMM", "  item: RoPE + keep q k v",
+    "  wait: all-gather q k v", "  item: stage + scores", "  item: softmax", "  item: P V", "  item: proj partial", "attention, rest",
+    "  wait: reduce-scatter proj", "proj sum + LN2", "  wait: all-gather h2", "fc1 + GELU + fc2", "  wait: reduce-scatter fc2", "fc2 sum",
+    "final LN", "  wait: all-gather hf", "logits + CE stats", "  wait: CE exchange", "lse, loss", "head backward", "  wait: reduce-scatter dhf",
+    "dhf sum + LNf backward", "  wait: all-gather gx (fc2)", "MLP backward", "  wait: reduce-scatter dh2", "dh2 sum + LN2 backward",
+    "  wait: all-gather gx (proj)", "  item: stage gx, Wo, o, q, k, v", "  item: dWo, do, delta", "  item: q side: dWq, q's dh rows",
+    "  item: P", "  item: dV, dS", "  item: dQ, dK, partials kept", "  item: RoPE back, dbq", "  wait: dK dV partials",
+    "  item: key side: sums, RoPE, dbk dbv", "  item: dWk dWv, k v dh rows", "attention backward, rest", "  wait: reduce-scatter dh",
     "dh sum + LN1 backward", "  wait: all-gather gx (emb)", "embedding gradient", "attention + replicated sums, squares", "norm partial",
     "  wait: norm", "AdamW", "  wait: step end"};
 
@@ -116,10 +119,16 @@ template <class T> static void write_bin(const std::string& path, const T* p, si
 }
 
 int main(int argc, char** argv) {
-  if (argc < 3 || argc > 4 || (argc == 4 && strcmp(argv[3], "clock"))) { fprintf(stderr, "usage: fgpt_bed DIR G [clock]\n"); return 2; }
+  if (argc < 3) { fprintf(stderr, "usage: fgpt_bed DIR G [clock] [qb=Q]\n"); return 2; }
   const std::string dir = argv[1];
   const int G = atoi(argv[2]);
-  const bool clocked = argc == 4;
+  bool clocked = false;
+  int qb_arg = 0;
+  for (int i = 3; i < argc; ++i) {
+    if (!strcmp(argv[i], "clock")) clocked = true;
+    else if (!strncmp(argv[i], "qb=", 3)) qb_arg = atoi(argv[i] + 3);
+    else { fprintf(stderr, "fgpt_bed: unknown argument %s\n", argv[i]); return 2; }
+  }
   // ---- meta.txt: `key value` lines; `slot i rows cols wd` a parameter
   std::map<std::string, double> kv;
   struct Slot { int rows, cols; float wd; };
@@ -155,7 +164,9 @@ int main(int argc, char** argv) {
   // ---- the parameters, their moments, gradients; the streams; the scratch; the gang's control words
   size_t total = 0;
   for (auto& s : slots) total += (size_t)s.rows * s.cols;
-  const KvmFgptScratch sc = kvm_fgpt_scratch(h.N, h.T, h.d, h.H, h.F, h.V, h.L, G);
+  h.qb = qb_arg > 0 ? qb_arg : kvm_fgpt_qblocks(h.B, h.H, h.T, G);
+  if (h.qb < 1 || h.T % h.qb || (h.qb > 1 && (h.T / h.qb) % 16)) die("qb must split T into blocks of a multiple of 16 rows");
+  const KvmFgptScratch sc = kvm_fgpt_scratch(h.N, h.T, h.d, h.H, h.F, h.V, h.L, G, h.qb);
   const size_t bytes = 4 * total * 4 + (size_t)sc.total * 4 + (size_t)(h.ids_len + h.tgt_len) * 4;
   if (bytes > (1ull << 30)) die("the run needs more than 1 GiB of device memory");
   const auto P = read_bin<float>(dir + "/p.bin", total), M = read_bin<float>(dir + "/m.bin", total), Vv = read_bin<float>(dir + "/v.bin", total);
@@ -190,7 +201,7 @@ int main(int argc, char** argv) {
   CK(cudaMalloc(&dok, G * 4)); CK(cudaMemset(dok, 0, G * 4));
   h.ids_src = dids; h.tgt_src = dtgt; h.step = dstep; h.loss = dlossp; h.xch = dx; h.xch_floats = (size_t)sc.total; h.ctl = dctl;
   // the member's shared memory: the program's bound for the shape (the device checks every phase against it)
-  const long long smem_floats = kvm_fgpt_smem_floats(h.N, h.T, h.d, h.H, h.F, h.V, G);
+  const long long smem_floats = kvm_fgpt_smem_floats(h.N, h.T, h.d, h.H, h.F, h.V, G, h.qb);
   const size_t smem = (size_t)smem_floats * 4;
   h.smem_floats = (int)smem_floats;
   KvmFgptDesc* dd;
@@ -214,8 +225,8 @@ int main(int argc, char** argv) {
   CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&per_sm, kern, KVM_FGPT_NT, smem));
   cudaDeviceProp prop;
   CK(cudaGetDeviceProperties(&prop, dev));
-  printf("fgpt_bed: %s (sm_%d%d, %d SMs), G %d, %d steps, shared memory %zu B a member, scratch %.2f MB, %d member(s) an SM at most\n", prop.name,
-         prop.major, prop.minor, sms, G, h.steps, smem, sc.total * 4.0 / 1e6, per_sm);
+  printf("fgpt_bed: %s (sm_%d%d, %d SMs), G %d, %d steps, attention in %d query block(s) a unit, shared memory %zu B a member, scratch %.2f MB, "
+         "%d member(s) an SM at most\n", prop.name, prop.major, prop.minor, sms, G, h.steps, h.qb, smem, sc.total * 4.0 / 1e6, per_sm);
   if ((long long)per_sm * sms < G) die("the gang does not fit the GPU at once");
   unsigned long long* dacc = nullptr;
   const size_t acc_words = clocked ? (size_t)G * (kvm_fgpt::MK_COUNT + 2) : 1;

@@ -263,17 +263,17 @@ __device__ void ln_bwd(const float* x, const float* dy, const float* g, const fl
   __syncthreads();
 }
 
-// The reduce-scatter's sum for rows [r0, r1): out[r] = (the partials of row r, in order) + bias + res[r]. With `units`, the partials are the
-// H (sequence, head) units' T x d blocks of row r's sequence (unit s H + h at part + (s H + h) T d), else P members' N x d partials. Ends with
-// __syncthreads.
-__device__ void rs_sum(const float* part, bool units, int P, int T, size_t Nd, const float* bias, const float* res, float* out, int r0, int r1, int d) {
+// The reduce-scatter's sum for rows [r0, r1): out[r] = (the partials of row r, in order) + bias + res[r]. With `units` (QB query blocks of TQ
+// rows), the partials are the H attention items' TQ x d blocks of row r's block, heads in order (item (s H + h) QB + qb at part + item TQ
+// d), else P members' N x d partials. Ends with __syncthreads.
+__device__ void rs_sum(const float* part, bool units, int P, int T, int QB, size_t Nd, const float* bias, const float* res, float* out, int r0, int r1, int d) {
   for (int e = threadIdx.x; e < (r1 - r0) * d; e += NT) {
     const int c = e % d, r = r0 + e / d;
     const size_t o = (size_t)r * d + c;
     float a = 0.f;
     if (units) {
-      const int s = r / T, i = r % T;
-      for (int h = 0; h < P; ++h) a += ld(part + ((size_t)(s * P + h) * T + i) * d + c);
+      const int s = r / T, i = r % T, TQ = T / QB, qb = i / TQ, ii = i % TQ;
+      for (int h = 0; h < P; ++h) a += ld(part + ((size_t)((s * P + h) * QB + qb) * TQ + ii) * d + c);
     } else {
       for (int m = 0; m < P; ++m) a += ld(part + m * Nd + o);
     }
@@ -303,13 +303,13 @@ __device__ void rope_table(float* tab, int T, int hd, float theta) {
   }
   __syncthreads();
 }
-// RoPE of a T x hd block in shared memory (row stride ld; row i at position i), pairs i and i + hd / 2, in place; sign -1 rotates back.
-// Ends with __syncthreads.
-__device__ void rope(float* X, int ld_, int T, int hd, const float* tab, float sign) {
+// RoPE of R rows x hd columns in shared memory (row stride ld; row r at position pos0 + r of a sequence of T), pairs i and i + hd / 2, in
+// place; sign -1 rotates back. Ends with __syncthreads.
+__device__ void rope(float* X, int ld_, int R, int pos0, int T, int hd, const float* tab, float sign) {
   const int half = hd / 2;
-  for (int e = threadIdx.x; e < T * half; e += NT) {
-    const int r = e / half, i = e % half;
-    const float cs = tab[e], sn = sign * tab[T * half + e];
+  for (int e = threadIdx.x; e < R * half; e += NT) {
+    const int r = e / half, i = e % half, at = (pos0 + r) * half + i;
+    const float cs = tab[at], sn = sign * tab[T * half + at];
     float* p = X + r * ld_ + i;
     const float a = p[0], b = p[half];
     p[0] = a * cs - b * sn;
@@ -398,9 +398,9 @@ __device__ __forceinline__ void repl_elem(const Plan& p, long long q, int& slot,
 // Phase marks, for a bed's clock (fgpt_bed.cu): `ph(mark)` is called by every thread at the end of each phase and of each barrier's wait,
 // once a layer for the per-layer ones. The production path passes NoPhases, which compiles to nothing.
 enum KvmFgptMark : int {
-  MK_INPUT, MK_LN1, MK_X_H, MK_UF_STAGE, MK_UF_QKV, MK_UF_ROPE, MK_UF_SCORES, MK_UF_SOFTMAX, MK_UF_PV, MK_UF_PROJ, MK_ATTN, MK_X_PROJ, MK_LN2,
+  MK_INPUT, MK_LN1, MK_X_H, MK_UF_STAGE, MK_UF_QKV, MK_UF_ROPE, MK_X_KV, MK_UF_SCORES, MK_UF_SOFTMAX, MK_UF_PV, MK_UF_PROJ, MK_ATTN, MK_X_PROJ, MK_LN2,
   MK_X_H2, MK_MLP, MK_X_FC2, MK_RES, MK_LNF, MK_X_HF, MK_LOGITS, MK_X_CE, MK_CE, MK_HEADB, MK_X_DHF, MK_LNFB, MK_X_GFC2, MK_MLPB, MK_X_DH2,
-  MK_LN2B, MK_X_GPROJ, MK_UB_STAGE, MK_UB_DO, MK_UB_STAGE2, MK_UB_P, MK_UB_DV_DS, MK_UB_DQ_DK, MK_UB_DB, MK_UB_DW, MK_UB_DH, MK_ATTNB, MK_X_DH,
+  MK_LN2B, MK_X_GPROJ, MK_UB_STAGE, MK_UB_DO, MK_UB_STAGE2, MK_UB_P, MK_UB_DV_DS, MK_UB_DQ_DK, MK_UB_DB, MK_X_DKV, MK_UB_DW, MK_UB_DH, MK_ATTNB, MK_X_DH,
   MK_LN1B, MK_X_GEMB, MK_EMBB, MK_SUMS, MK_SQUARES, MK_X_NORM, MK_ADAMW, MK_X_END, MK_COUNT
 };
 struct NoPhases { __device__ __forceinline__ void operator()(int) const {} };
@@ -414,12 +414,14 @@ template <class FAIL, class PH>
 __device__ bool run(const KvmFgptDesc& d, int member, float* smem, const int* abort, FAIL fail, PH& ph) {
   const Plan p = plan_of(d, member);
   const int tid = threadIdx.x, N = p.N, T = p.T, D = p.d, H = p.H, hd = p.hd, F = p.F, V = p.V, L = p.L, b = p.b, G = p.G, B = p.B;
-  const int T16 = kvm_fgpt_r16(T), N16 = kvm_fgpt_r16(N), U = B * H, hgsz = kvm_fgpt_unit_grads(D, hd);
+  // attention's work items: (sequence, head, query block), QB blocks of TQ rows a unit, item w = (s H + h) QB + qb on member w % G
+  const int QB = d.qb, TQ = QB > 0 ? T / QB : 0, W = B * H * QB, TQ16 = kvm_fgpt_r16(TQ);
+  const int T16 = kvm_fgpt_r16(T), N16 = kvm_fgpt_r16(N), hgsz = kvm_fgpt_unit_grads(D, hd);
   const size_t Nd = (size_t)N * D;
-  const KvmFgptScratch s = kvm_fgpt_scratch(N, T, D, H, F, V, L, G);
+  const KvmFgptScratch s = kvm_fgpt_scratch(N, T, D, H, F, V, L, G, d.qb);
   const bool prec = (d.mm_numerics & 16) != 0;                                        // matmul_tile's 3xTF32 flag
   const bool shape_ok = hd <= 128 && hd % 8 == 0 && D == H * hd && L >= 1 && L <= KVM_FGPT_MAXL && T > 0 && N % T == 0 && B == N / T &&
-                        (d.mm_numerics & ~16) == 0 && D % 4 == 0;
+                        (d.mm_numerics & ~16) == 0 && D % 4 == 0 && d.qb >= 1 && T % d.qb == 0 && (d.qb == 1 || (T / d.qb) % 16 == 0);
   if ((size_t)s.total > d.xch_floats || !shape_ok) {
     if (tid == 0) fail((size_t)s.total > d.xch_floats ? KVM_FGPT_E_SCRATCH : KVM_FGPT_E_SHAPE);
     return false;
@@ -528,78 +530,98 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, const int* ab
       ph(MK_LN1);
       if (!cross()) return false;                                                     // all-gather h
       ph(MK_X_H);
-      for (int u = b; u < U; u += G) {                                                // (sequence, head) units: q, k, v, RoPE, attention, proj's partial
-        const int sq = u / H, hh = u % H, c0 = hh * hd, row0 = sq * T;
+      // ---- attention, forward. Each item first projects its own TQ rows to q, k and v (RoPE'd) and keeps them; one exchange; then its queries
+      // attend over the gathered keys and values of their prefix, and it writes proj's partial of its rows.
+      for (int w = b; w < W; w += G) {
+        const int u = w / QB, qb = w % QB, sq = u / H, hh = u % H, c0 = hh * hd, r0 = sq * T + qb * TQ;
         phase();
-        float* const QKV = ar.take((long long)T16 * ldq);                             // q | k | v, T x 3 hd
-        float* const bias = ar.take(3 * hd);
-        float* const lse = ar.take(T);
-        float* const HS = ar.take((long long)T16 * ldd);
+        float* const HS = ar.take((long long)TQ16 * ldd);
         float* const WC = ar.take((long long)kvm_fgpt_r8(D) * kvm_fgpt_ldmn(3 * hd));
-        float* const S = ar.take((long long)T16 * ldT);
-        float* const O = ar.take((long long)T16 * ldh);
-        float* const WR = ar.take((long long)kvm_fgpt_r8(hd) * kvm_fgpt_ldmn(D));
+        float* const bias = ar.take(3 * hd);
+        float* const QKV = ar.take((long long)TQ16 * ldq);
         if (!check()) return false;
         {
           const int ldw = kvm_fgpt_ldmn(3 * hd);
-          const Copy cs[8] = {{HS, h + (size_t)row0 * D, ldd, (size_t)D, T, D, T16, kvm_fgpt_r8(D)},
+          const Copy cs[7] = {{HS, h + (size_t)r0 * D, ldd, (size_t)D, TQ, D, TQ16, kvm_fgpt_r8(D)},
                               {WC, P(lay(l, KVM_FGPT_R_WQ)) + c0, ldw, (size_t)D, D, hd, kvm_fgpt_r8(D), hd},
                               {WC + hd, P(lay(l, KVM_FGPT_R_WK)) + c0, ldw, (size_t)D, D, hd, kvm_fgpt_r8(D), hd},
                               {WC + 2 * hd, P(lay(l, KVM_FGPT_R_WV)) + c0, ldw, (size_t)D, D, hd, kvm_fgpt_r8(D), hd},
                               {bias, P(lay(l, KVM_FGPT_R_BQ)) + c0, 0, 0, 1, hd, 1, hd},
                               {bias + hd, P(lay(l, KVM_FGPT_R_BK)) + c0, 0, 0, 1, hd, 1, hd},
-                              {bias + 2 * hd, P(lay(l, KVM_FGPT_R_BV)) + c0, 0, 0, 1, hd, 1, hd},
-                              {WR, P(lay(l, KVM_FGPT_R_WO)) + (size_t)c0 * D, kvm_fgpt_ldmn(D), (size_t)D, hd, D, kvm_fgpt_r8(hd), D}};
-          zero(QKV, ldq, T16, kvm_fgpt_r8(3 * hd));
-          zero(S, ldT, T16, kvm_fgpt_r8(T));
-          zero(O, ldh, T16, kvm_fgpt_r8(hd));
+                              {bias + 2 * hd, P(lay(l, KVM_FGPT_R_BV)) + c0, 0, 0, 1, hd, 1, hd}};
+          zero(QKV, ldq, TQ16, kvm_fgpt_r8(3 * hd));
           stage_all(cs);
         }
         ph(MK_UF_STAGE);
-        gemm<false, false>(HS, ldd, WC, kvm_fgpt_ldmn(3 * hd), T, 3 * hd, D, prec, [&](int m, int n, float a) { QKV[m * ldq + n] = a + bias[n]; });
+        gemm<false, false>(HS, ldd, WC, kvm_fgpt_ldmn(3 * hd), TQ, 3 * hd, D, prec, [&](int m, int n, float a) { QKV[m * ldq + n] = a + bias[n]; });
         ph(MK_UF_QKV);
-        rope(QKV, ldq, T, hd, rtab, 1.f);
-        rope(QKV + hd, ldq, T, hd, rtab, 1.f);
-        ph(MK_UF_ROPE);
-        {                                                                              // q, k, v of the unit, kept for the backward
+        rope(QKV, ldq, TQ, qb * TQ, T, hd, rtab, 1.f);
+        rope(QKV + hd, ldq, TQ, qb * TQ, T, hd, rtab, 1.f);
+        {                                                                              // q, k and v of the item's rows, kept
           float* const dsts[3] = {X + s.q[l], X + s.k[l], X + s.v[l]};
           const int q4 = 3 * hd / 4;
-          for (int e = tid; e < T * q4; e += NT) {
+          for (int e = tid; e < TQ * q4; e += NT) {
             const int i = e / q4, c = (e % q4) * 4;
-            *reinterpret_cast<float4*>(dsts[c / hd] + (size_t)(row0 + i) * D + c0 + c % hd) = *reinterpret_cast<const float4*>(QKV + i * ldq + c);
+            *reinterpret_cast<float4*>(dsts[c / hd] + (size_t)(r0 + i) * D + c0 + c % hd) = *reinterpret_cast<const float4*>(QKV + i * ldq + c);
           }
         }
-        // scores, 3xTF32 as the attention ops; then the softmax of each row over its causal keys, normalized in place
-        gemm<false, true>(QKV, ldq, QKV + hd, ldq, T, T, hd, true, [&](int m, int n, float a) { S[m * ldT + n] = n <= m ? a * d.scale : 0.f; });
+        ph(MK_UF_ROPE);
+      }
+      if (QB > 1) { if (!cross()) return false; }                                       // all-gather q, k, v (one block a unit: the member's own)
+      else __syncthreads();
+      ph(MK_X_KV);
+      for (int w = b; w < W; w += G) {
+        const int u = w / QB, qb = w % QB, sq = u / H, hh = u % H, c0 = hh * hd, r0 = sq * T + qb * TQ, q0 = qb * TQ;
+        const int KE = q0 + TQ, KE16 = kvm_fgpt_r16(KE), ldS = kvm_fgpt_ldk(KE16);   // the prefix's keys
+        phase();
+        float* const Q = ar.take((long long)TQ16 * ldh);
+        float* const K = ar.take((long long)KE16 * ldh);
+        float* const Vv = ar.take((long long)KE16 * ldh);
+        float* const S = ar.take((long long)TQ16 * ldS);
+        float* const O = ar.take((long long)TQ16 * ldh);
+        float* const WR = ar.take((long long)kvm_fgpt_r8(hd) * kvm_fgpt_ldmn(D));
+        if (!check()) return false;
+        {
+          const Copy cs[4] = {{Q, X + s.q[l] + (size_t)r0 * D + c0, ldh, (size_t)D, TQ, hd, TQ16, kvm_fgpt_r8(hd)},
+                              {K, X + s.k[l] + (size_t)sq * T * D + c0, ldh, (size_t)D, KE, hd, KE16, kvm_fgpt_r8(hd)},
+                              {Vv, X + s.v[l] + (size_t)sq * T * D + c0, ldh, (size_t)D, KE, hd, KE16, kvm_fgpt_r8(hd)},
+                              {WR, P(lay(l, KVM_FGPT_R_WO)) + (size_t)c0 * D, kvm_fgpt_ldmn(D), (size_t)D, hd, D, kvm_fgpt_r8(hd), D}};
+          zero(S, ldS, TQ16, KE16);
+          zero(O, ldh, TQ16, kvm_fgpt_r8(hd));
+          stage_all(cs);
+        }
+        // the queries' (positions q0 + m) scores over the prefix's keys, 3xTF32 as the attention ops, causal; then each row's softmax
+        gemm<false, true>(Q, ldh, K, ldh, TQ, KE, hd, true, [&](int m, int n, float a) { S[m * ldS + n] = n <= q0 + m ? a * d.scale : 0.f; });
         ph(MK_UF_SCORES);
         {
-          const int w = tid >> 5, lane = tid & 31;
-          for (int i = w; i < T; i += NW) {
+          const int wp = tid >> 5, lane = tid & 31;
+          for (int i = wp; i < TQ; i += NW) {
+            const int last = q0 + i;
             float mx = -INFINITY;
-            for (int j = lane; j <= i; j += 32) mx = fmaxf(mx, S[i * ldT + j]);
+            for (int j = lane; j <= last; j += 32) mx = fmaxf(mx, S[i * ldS + j]);
             mx = warp_max(mx);
             float l1 = 0.f;
-            for (int j = lane; j <= i; j += 32) { const float e = expf(S[i * ldT + j] - mx); S[i * ldT + j] = e; l1 += e; }
+            for (int j = lane; j <= last; j += 32) { const float e = expf(S[i * ldS + j] - mx); S[i * ldS + j] = e; l1 += e; }
             l1 = warp_sum(l1);
-            for (int j = lane; j <= i; j += 32) S[i * ldT + j] /= l1;
-            if (lane == 0) { lse[i] = mx + logf(l1); X[s.lse[l] + (size_t)(sq * H + hh) * T + i] = mx + logf(l1); }
+            for (int j = lane; j <= last; j += 32) S[i * ldS + j] /= l1;
+            if (lane == 0) X[s.lse[l] + (size_t)(sq * H + hh) * T + q0 + i] = mx + logf(l1);
           }
         }
         __syncthreads();
         ph(MK_UF_SOFTMAX);
-        gemm<false, false>(S, ldT, QKV + 2 * hd, ldq, T, hd, T, true, [&](int m, int n, float a) {
+        gemm<false, false>(S, ldS, Vv, ldh, TQ, hd, KE, true, [&](int m, int n, float a) {
           O[m * ldh + n] = a;
-          X[s.o[l] + (size_t)(row0 + m) * D + c0 + n] = a;
+          X[s.o[l] + (size_t)(r0 + m) * D + c0 + n] = a;
         });
         ph(MK_UF_PV);
-        float* const pu = X + s.part + (size_t)u * T * D;                             // the unit's partial of its sequence's rows
-        gemm<false, false>(O, ldh, WR, kvm_fgpt_ldmn(D), T, D, hd, prec, [&](int m, int n, float a) { pu[(size_t)m * D + n] = a; });
+        float* const pu = X + s.part + (size_t)w * TQ * D;                            // the item's partial of its rows
+        gemm<false, false>(O, ldh, WR, kvm_fgpt_ldmn(D), TQ, D, hd, prec, [&](int m, int n, float a) { pu[(size_t)m * D + n] = a; });
         ph(MK_UF_PROJ);
       }
       ph(MK_ATTN);
       if (!cross()) return false;                                                     // reduce-scatter proj
       ph(MK_X_PROJ);
-      rs_sum(X + s.part, true, H, T, Nd, P(lay(l, KVM_FGPT_R_BO)), x, xm, p.r0, p.r1, D);
+      rs_sum(X + s.part, true, H, T, QB, Nd, P(lay(l, KVM_FGPT_R_BO)), x, xm, p.r0, p.r1, D);
       ln_fwd(xm, P(lay(l, KVM_FGPT_R_N2G)), P(lay(l, KVM_FGPT_R_N2B)), h2, X + s.m2[l], X + s.r2[l], p.r0, p.r1, D, d.ln_eps);
       ph(MK_LN2);
       if (!cross()) return false;                                                     // all-gather h2
@@ -632,7 +654,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, const int* ab
       ph(MK_MLP);
       if (!cross()) return false;                                                     // reduce-scatter fc2
       ph(MK_X_FC2);
-      rs_sum(X + s.part, false, p.nf, T, Nd, P(lay(l, KVM_FGPT_R_B2)), xm, X + s.x[l + 1], p.r0, p.r1, D);
+      rs_sum(X + s.part, false, p.nf, T, 1, Nd, P(lay(l, KVM_FGPT_R_B2)), xm, X + s.x[l + 1], p.r0, p.r1, D);
       ph(MK_RES);
     }
     // ---- the final LayerNorm, the head, the cross-entropy across vocabulary shards
@@ -714,7 +736,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, const int* ab
     ph(MK_HEADB);
     if (!cross()) return false;                                                       // reduce-scatter dhf
     ph(MK_X_DHF);
-    rs_sum(X + s.part, false, p.nv, T, Nd, nullptr, nullptr, dy, p.r0, p.r1, D);
+    rs_sum(X + s.part, false, p.nv, T, 1, Nd, nullptr, nullptr, dy, p.r0, p.r1, D);
     ln_bwd(X + s.x[L], dy, P(nfg), X + s.mf, X + s.rf, gx, false, X + s.lnp + ((size_t)(2 * L) * G + b) * 2 * D,
            X + s.lnp + ((size_t)(2 * L) * G + b) * 2 * D + D, p.r0, p.r1, D);
     colsum_rows(gx, p.r0, p.r1, D, X + s.rpart + ((size_t)(2 * (L - 1) + 1) * G + b) * D);   // b2 of the last layer: the gradient at x[L]
@@ -757,81 +779,125 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, const int* ab
       ph(MK_MLPB);
       if (!cross()) return false;                                                     // reduce-scatter dh2
       ph(MK_X_DH2);
-      rs_sum(X + s.part, false, p.nf, T, Nd, nullptr, nullptr, dy, p.r0, p.r1, D);
+      rs_sum(X + s.part, false, p.nf, T, 1, Nd, nullptr, nullptr, dy, p.r0, p.r1, D);
       ln_bwd(xm, dy, P(lay(l, KVM_FGPT_R_N2G)), X + s.m2[l], X + s.r2[l], gx, true, X + s.lnp + ((size_t)(2 * l + 1) * G + b) * 2 * D,
              X + s.lnp + ((size_t)(2 * l + 1) * G + b) * 2 * D + D, p.r0, p.r1, D);
       colsum_rows(gx, p.r0, p.r1, D, X + s.rpart + ((size_t)(2 * l) * G + b) * D);  // bo: the gradient at xm
       ph(MK_LN2B);
       if (!cross()) return false;                                                     // all-gather gx (proj's output gradient)
       ph(MK_X_GPROJ);
-      for (int u = b; u < U; u += G) {                                                // (sequence, head) units: proj's rows, attention, q, k, v
-        const int sq = u / H, hh = u % H, c0 = hh * hd, row0 = sq * T;
-        float* const hg = X + s.hgp + ((size_t)l * U + u) * hgsz;                     // the unit's partial of its head's gradients
+      // ---- attention, backward. Each item as a query block: dWo, do, P, dS, dQ, the dK and dV partials over its prefix's keys, dbq, dWq and
+      // q's dh rows; one exchange; then each item as a key block sums its keys' dK and dV partials over the query blocks at and after it, in
+      // order, and adds dbk, dbv, dWk, dWv and k's and v's dh rows. An item's head-gradient partial is whole after both.
+      for (int w = b; w < W; w += G) {
+        const int u = w / QB, qb = w % QB, sq = u / H, hh = u % H, c0 = hh * hd, r0 = sq * T + qb * TQ, q0 = qb * TQ;
+        const int KE = q0 + TQ, KE16 = kvm_fgpt_r16(KE), ldS = kvm_fgpt_ldk(KE16);
+        float* const hg = X + s.hgp + ((size_t)l * W + w) * hgsz;
+        float* const dkv = X + s.dkv + (size_t)w * T * 2 * hd;
         phase();
-        float* const DO = ar.take((long long)T16 * ldh);
-        float* const delta = ar.take(T);
-        float* const DQKV = ar.take((long long)T16 * ldq);
-        float* const QKV = ar.take((long long)T16 * ldq);
-        float* const lse = ar.take(T);
-        float* const S = ar.take((long long)T16 * ldT);
-        float* const O = ar.take((long long)T16 * ldh);
-        const int mark = ar.top;                                                       // gx and Wo's rows, then h and W's columns
-        float* const GS = ar.take((long long)T16 * ldd);
+        float* const DO = ar.take((long long)TQ16 * ldh);
+        float* const delta = ar.take(TQ);
+        float* const Q = ar.take((long long)TQ16 * ldh);
+        float* const K = ar.take((long long)KE16 * ldh);
+        float* const Vv = ar.take((long long)KE16 * ldh);
+        float* const lse = ar.take(TQ);
+        float* const S = ar.take((long long)TQ16 * ldS);
+        float* const DQ = ar.take((long long)TQ16 * ldh);
+        float* const DK = ar.take((long long)KE16 * ldh);
+        float* const DV = ar.take((long long)KE16 * ldh);
+        float* const O = ar.take((long long)TQ16 * ldh);
+        const int mark = ar.top;                                                       // gx's rows and Wo's rows, then h's rows and Wq's columns
+        float* const GS = ar.take((long long)TQ16 * ldd);
         float* const WO = ar.take((long long)kvm_fgpt_r8(hd) * ldd);
         if (!check()) return false;
         {
-          const Copy cs[7] = {{GS, gx + (size_t)row0 * D, ldd, (size_t)D, T, D, T16, kvm_fgpt_r8(D)},
+          const Copy cs[7] = {{GS, gx + (size_t)r0 * D, ldd, (size_t)D, TQ, D, TQ16, kvm_fgpt_r8(D)},
                               {WO, P(lay(l, KVM_FGPT_R_WO)) + (size_t)c0 * D, ldd, (size_t)D, hd, D, kvm_fgpt_r8(hd), kvm_fgpt_r8(D)},
-                              {O, X + s.o[l] + (size_t)row0 * D + c0, ldh, (size_t)D, T, hd, T16, kvm_fgpt_r8(hd)},
-                              {QKV, X + s.q[l] + (size_t)row0 * D + c0, ldq, (size_t)D, T, hd, T16, hd},
-                              {QKV + hd, X + s.k[l] + (size_t)row0 * D + c0, ldq, (size_t)D, T, hd, T16, hd},
-                              {QKV + 2 * hd, X + s.v[l] + (size_t)row0 * D + c0, ldq, (size_t)D, T, hd, T16, hd},
-                              {lse, X + s.lse[l] + (size_t)(sq * H + hh) * T, 0, 0, 1, T, 1, T}};
-          zero(DO, ldh, T16, kvm_fgpt_r8(hd));
-          zero(S, ldT, T16, kvm_fgpt_r8(T));
-          zero(DQKV, ldq, T16, kvm_fgpt_r8(3 * hd));
+                              {O, X + s.o[l] + (size_t)r0 * D + c0, ldh, (size_t)D, TQ, hd, TQ16, kvm_fgpt_r8(hd)},
+                              {Q, X + s.q[l] + (size_t)r0 * D + c0, ldh, (size_t)D, TQ, hd, TQ16, kvm_fgpt_r8(hd)},
+                              {K, X + s.k[l] + (size_t)sq * T * D + c0, ldh, (size_t)D, KE, hd, KE16, kvm_fgpt_r8(hd)},
+                              {Vv, X + s.v[l] + (size_t)sq * T * D + c0, ldh, (size_t)D, KE, hd, KE16, kvm_fgpt_r8(hd)},
+                              {lse, X + s.lse[l] + (size_t)(sq * H + hh) * T + q0, 0, 0, 1, TQ, 1, TQ}};
+          zero(DO, ldh, TQ16, kvm_fgpt_r8(hd));
+          zero(S, ldS, TQ16, KE16);
+          zero(DQ, ldh, TQ16, kvm_fgpt_r8(hd));
+          zero(DK, ldh, KE16, kvm_fgpt_r8(hd));
+          zero(DV, ldh, KE16, kvm_fgpt_r8(hd));
           stage_all(cs);
         }
         ph(MK_UB_STAGE);
-        gemm<true, false>(O, ldh, GS, ldd, hd, D, T, prec, [&](int m, int n, float a) { hg[3 * D * hd + 3 * hd + m * D + n] = a; });   // dWo rows
-        gemm<false, true>(GS, ldd, WO, ldd, T, hd, D, prec, [&](int m, int n, float a) { DO[m * ldh + n] = a; });                         // do
-        for (int i = tid; i < T; i += NT) { float a = 0.f; for (int c = 0; c < hd; ++c) a += O[i * ldh + c] * DO[i * ldh + c]; delta[i] = a; }
+        gemm<true, false>(O, ldh, GS, ldd, hd, D, TQ, prec, [&](int m, int n, float a) { hg[3 * D * hd + 3 * hd + m * D + n] = a; });   // dWo rows
+        gemm<false, true>(GS, ldd, WO, ldd, TQ, hd, D, prec, [&](int m, int n, float a) { DO[m * ldh + n] = a; });                       // do
+        for (int i = tid; i < TQ; i += NT) { float a = 0.f; for (int c = 0; c < hd; ++c) a += O[i * ldh + c] * DO[i * ldh + c]; delta[i] = a; }
         __syncthreads();
         ph(MK_UB_DO);
-        ph(MK_UB_STAGE2);
-        gemm<false, true>(QKV, ldq, QKV + hd, ldq, T, T, hd, true, [&](int m, int n, float a) { S[m * ldT + n] = n <= m ? expf(a * d.scale - lse[m]) : 0.f; });
+        gemm<false, true>(Q, ldh, K, ldh, TQ, KE, hd, true, [&](int m, int n, float a) { S[m * ldS + n] = n <= q0 + m ? expf(a * d.scale - lse[m]) : 0.f; });
         ph(MK_UB_P);
-        gemm<true, false>(S, ldT, DO, ldh, T, hd, T, true, [&](int m, int n, float a) { DQKV[m * ldq + 2 * hd + n] = a; });                 // dv = P^T do
-        gemm<false, true>(DO, ldh, QKV + 2 * hd, ldq, T, T, hd, true, [&](int m, int n, float a) { if (n <= m) S[m * ldT + n] *= a - delta[m]; });   // dS
+        gemm<true, false>(S, ldS, DO, ldh, KE, hd, TQ, true, [&](int m, int n, float a) { DV[m * ldh + n] = a; });                       // dV partial = P^T do
+        gemm<false, true>(DO, ldh, Vv, ldh, TQ, KE, hd, true, [&](int m, int n, float a) { if (n <= q0 + m) S[m * ldS + n] *= a - delta[m]; });   // dS
         ph(MK_UB_DV_DS);
-        gemm<false, false>(S, ldT, QKV + hd, ldq, T, hd, T, true, [&](int m, int n, float a) { DQKV[m * ldq + n] = a * d.scale; });           // dq
-        gemm<true, false>(S, ldT, QKV, ldq, T, hd, T, true, [&](int m, int n, float a) { DQKV[m * ldq + hd + n] = a * d.scale; });             // dk
+        gemm<false, false>(S, ldS, K, ldh, TQ, hd, KE, true, [&](int m, int n, float a) { DQ[m * ldh + n] = a * d.scale; });              // dq
+        gemm<true, false>(S, ldS, Q, ldh, KE, hd, TQ, true, [&](int m, int n, float a) { DK[m * ldh + n] = a * d.scale; });               // dK partial
+        for (int e = tid; e < KE * (hd / 4); e += NT) {                                // the dK and dV partials of the prefix's keys, for the key blocks
+          const int j = e / (hd / 4), c = (e % (hd / 4)) * 4;
+          *reinterpret_cast<float4*>(dkv + (size_t)j * 2 * hd + c) = *reinterpret_cast<const float4*>(DK + j * ldh + c);
+          *reinterpret_cast<float4*>(dkv + (size_t)j * 2 * hd + hd + c) = *reinterpret_cast<const float4*>(DV + j * ldh + c);
+        }
         ph(MK_UB_DQ_DK);
-        rope(DQKV, ldq, T, hd, rtab, -1.f);
-        rope(DQKV + hd, ldq, T, hd, rtab, -1.f);
-        colsum_smem(DQKV, ldq, T, 3 * hd, hg + 3 * D * hd, scr);                                                                                  // dbq, dbk, dbv
+        rope(DQ, ldh, TQ, q0, T, hd, rtab, -1.f);
+        colsum_smem(DQ, ldh, TQ, hd, hg + 3 * D * hd, scr);                                                                         // dbq
         ph(MK_UB_DB);
         ar.top = mark;
-        float* const HS = ar.take((long long)T16 * kvm_fgpt_ldmn(D));
-        float* const WC = ar.take((long long)kvm_fgpt_r8(D) * ldq);
+        float* const HQ = ar.take((long long)TQ16 * kvm_fgpt_ldmn(D));
+        float* const WQ = ar.take((long long)kvm_fgpt_r8(D) * ldh);
         if (!check()) return false;
         {
-          const Copy cs[4] = {{HS, h + (size_t)row0 * D, kvm_fgpt_ldmn(D), (size_t)D, T, D, T16, D},
-                              {WC, P(lay(l, KVM_FGPT_R_WQ)) + c0, ldq, (size_t)D, D, hd, kvm_fgpt_r8(D), hd},
-                              {WC + hd, P(lay(l, KVM_FGPT_R_WK)) + c0, ldq, (size_t)D, D, hd, kvm_fgpt_r8(D), hd},
-                              {WC + 2 * hd, P(lay(l, KVM_FGPT_R_WV)) + c0, ldq, (size_t)D, D, hd, kvm_fgpt_r8(D), hd}};
+          const Copy cs[2] = {{HQ, h + (size_t)r0 * D, kvm_fgpt_ldmn(D), (size_t)D, TQ, D, TQ16, D},
+                              {WQ, P(lay(l, KVM_FGPT_R_WQ)) + c0, ldh, (size_t)D, D, hd, kvm_fgpt_r8(D), kvm_fgpt_r8(hd)}};
           stage_all(cs);
         }
-        gemm<true, false>(HS, kvm_fgpt_ldmn(D), DQKV, ldq, D, 3 * hd, T, prec, [&](int m, int n, float a) { hg[(n / hd) * D * hd + m * hd + n % hd] = a; });   // dWq, dWk, dWv
+        gemm<true, false>(HQ, kvm_fgpt_ldmn(D), DQ, ldh, D, hd, TQ, prec, [&](int m, int n, float a) { hg[m * hd + n] = a; });          // dWq
+        float* const pu = X + s.part + (size_t)w * TQ * D;
+        gemm<false, true>(DQ, ldh, WQ, ldh, TQ, D, hd, prec, [&](int m, int n, float a) { pu[(size_t)m * D + n] = a; });                // q's dh rows
+        ph(MK_UB_STAGE2);
+      }
+      if (QB > 1) { if (!cross()) return false; }                                       // the dK and dV partials (one block a unit: its own)
+      else __syncthreads();
+      ph(MK_X_DKV);
+      for (int w = b; w < W; w += G) {                                                // each item as a key block
+        const int u = w / QB, kb = w % QB, sq = u / H, hh = u % H, c0 = hh * hd, r0 = sq * T + kb * TQ, k0 = kb * TQ, ldv = kvm_fgpt_ldk(2 * hd);
+        float* const hg = X + s.hgp + ((size_t)l * W + w) * hgsz;
+        phase();
+        float* const DKV = ar.take((long long)TQ16 * ldv);
+        float* const HK = ar.take((long long)TQ16 * kvm_fgpt_ldmn(D));
+        float* const WKV = ar.take((long long)kvm_fgpt_r8(D) * ldv);
+        if (!check()) return false;
+        {
+          const Copy cs[3] = {{HK, h + (size_t)r0 * D, kvm_fgpt_ldmn(D), (size_t)D, TQ, D, TQ16, D},
+                              {WKV, P(lay(l, KVM_FGPT_R_WK)) + c0, ldv, (size_t)D, D, hd, kvm_fgpt_r8(D), hd},
+                              {WKV + hd, P(lay(l, KVM_FGPT_R_WV)) + c0, ldv, (size_t)D, D, hd, kvm_fgpt_r8(D), hd}};
+          zero(DKV, ldv, TQ16, kvm_fgpt_r8(2 * hd));
+          stage_all(cs);
+        }
+        for (int e = tid; e < TQ * 2 * hd; e += NT) {                                  // the keys' dK and dV: the query blocks at and after this one, in order
+          const int j = e / (2 * hd), c = e % (2 * hd);
+          float a = 0.f;
+          for (int qq = kb; qq < QB; ++qq) a += ld(X + s.dkv + ((size_t)(u * QB + qq) * T + k0 + j) * 2 * hd + c);
+          DKV[j * ldv + c] = a;
+        }
+        __syncthreads();
+        rope(DKV, ldv, TQ, k0, T, hd, rtab, -1.f);                                     // dK back through RoPE
+        colsum_smem(DKV, ldv, TQ, 2 * hd, hg + 3 * D * hd + hd, scr);                  // dbk, dbv
         ph(MK_UB_DW);
-        float* const pu = X + s.part + (size_t)u * T * D;
-        gemm<false, true>(DQKV, ldq, WC, ldq, T, D, 3 * hd, prec, [&](int m, int n, float a) { pu[(size_t)m * D + n] = a; });               // dh partial
+        gemm<true, false>(HK, kvm_fgpt_ldmn(D), DKV, ldv, D, 2 * hd, TQ, prec, [&](int m, int n, float a) { hg[(1 + n / hd) * D * hd + m * hd + n % hd] = a; });   // dWk, dWv
+        float* const pu = X + s.part + (size_t)w * TQ * D;
+        gemm<false, true>(DKV, ldv, WKV, ldv, TQ, D, 2 * hd, prec, [&](int m, int n, float a) { const size_t i = (size_t)m * D + n; pu[i] = ld(pu + i) + a; });   // k's and v's dh rows
         ph(MK_UB_DH);
       }
       ph(MK_ATTNB);
       if (!cross()) return false;                                                     // reduce-scatter dh
       ph(MK_X_DH);
-      rs_sum(X + s.part, true, H, T, Nd, nullptr, nullptr, dy, p.r0, p.r1, D);
+      rs_sum(X + s.part, true, H, T, QB, Nd, nullptr, nullptr, dy, p.r0, p.r1, D);
       ln_bwd(x, dy, P(lay(l, KVM_FGPT_R_N1G)), X + s.m1[l], X + s.r1[l], gx, true, X + s.lnp + ((size_t)(2 * l) * G + b) * 2 * D,
              X + s.lnp + ((size_t)(2 * l) * G + b) * 2 * D + D, p.r0, p.r1, D);
       if (l > 0) colsum_rows(gx, p.r0, p.r1, D, X + s.rpart + ((size_t)(2 * (l - 1) + 1) * G + b) * D);   // b2 of layer l - 1: the gradient at x[l]
@@ -875,8 +941,9 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, const int* ab
         else {
           int ll, hh, src;
           attn_elem(p, a0 + (i - nb), sl[u], off[u], ll, hh, src);
-          const float* const part0 = X + s.hgp + ((size_t)ll * U + hh) * hgsz + src;
-          for (int sqi = 0; sqi < B; ++sqi) v[u] += ld(part0 + (size_t)sqi * H * hgsz);
+          const float* const part0 = X + s.hgp + ((size_t)ll * W + (size_t)hh * QB) * hgsz + src;   // the head's items: sequence, then query block
+          for (int sqi = 0; sqi < B; ++sqi)
+            for (int qq = 0; qq < QB; ++qq) v[u] += ld(part0 + ((size_t)sqi * H * QB + qq) * hgsz);
           ptab[3 * KVM_FGPT_MAXP + sl[u]][off[u]] = v[u];
         }
       }

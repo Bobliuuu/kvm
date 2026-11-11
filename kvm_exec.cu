@@ -679,7 +679,11 @@ class KvmExec {
   // True once every task of window wid (a submitted bundle record) has completed.
   // win_done_[slot] holds the id+1 of the newest finished window in that slot. A slot is reused only after its old window finished, so
   // a value at or past wid+1 (wrap-safe signed distance) means wid finished, even after the table wrapped over it.
+#ifdef KVM_BREAK_WINDOW_DONE   // negative build: the pre-fix equality test (false for a finished window once the table wrapped over it: the `recycle` flake)
+  bool window_done(unsigned wid) const { return __atomic_load_n(&win_done_[wid & (cfg_.win_cap - 1)], __ATOMIC_ACQUIRE) == wid + 1; }
+#else
   bool window_done(unsigned wid) const { return (int)(__atomic_load_n(&win_done_[wid & (cfg_.win_cap - 1)], __ATOMIC_ACQUIRE) - (wid + 1)) >= 0; }
+#endif
   // Diagnostics for a window that never reads as done: the raw mark in wid's table slot (id+1 of the newest finished window there, 0 =
   // none yet). A mark past wid+1 means the table wrapped over wid, which window_done counts as finished; below wid+1 means it really has not.
   unsigned window_mark(unsigned wid) const { return __atomic_load_n(&win_done_[wid & (cfg_.win_cap - 1)], __ATOMIC_ACQUIRE); }

@@ -32,33 +32,72 @@
 
 static void die(const char* fmt, const std::string& a = "") { fprintf(stderr, "fgpt_bed: "); fprintf(stderr, fmt, a.c_str()); fprintf(stderr, "\n"); exit(2); }
 
-// The phase clock: cycles since the previous mark, per member and mark, summed over the run.
+// The phase clock: nanoseconds (%globaltimer) since the previous mark, per member and mark, summed over the run in shared memory (a mark
+// costs a __syncthreads and two reads, no memory round trip) and written out at the end; and each member's SM cycles over the whole run
+// beside its nanoseconds, so the bed reports the clock the SMs actually ran at.
+__device__ __forceinline__ unsigned long long gtimer() { unsigned long long t; asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(t)); return t; }
 struct PhaseClock {
-  unsigned long long* acc;
-  long long last;
-  __device__ void start() { __syncthreads(); last = clock64(); }
+  unsigned long long* acc;   // [G][MK_COUNT] ns, then [G][2]: the run's ns and cycles
+  unsigned long long* sacc;  // [MK_COUNT] in shared memory
+  unsigned long long last, t0;
+  long long c0;
+  __device__ void start() {
+    for (int k = threadIdx.x; k < kvm_fgpt::MK_COUNT; k += blockDim.x) sacc[k] = 0;
+    __syncthreads();
+    last = t0 = gtimer(); c0 = clock64();
+  }
   __device__ void operator()(int mk) {
     __syncthreads();
-    if (threadIdx.x == 0) { const long long t = clock64(); acc[blockIdx.x * kvm_fgpt::MK_COUNT + mk] += (unsigned long long)(t - last); last = t; }
+    if (threadIdx.x == 0) { const unsigned long long t = gtimer(); sacc[mk] += t - last; last = t; }
+  }
+  __device__ void stop(int G) {
+    __syncthreads();
+    if (threadIdx.x == 0) {
+      unsigned long long* run = acc + (size_t)G * kvm_fgpt::MK_COUNT + 2 * blockIdx.x;
+      run[0] = gtimer() - t0; run[1] = (unsigned long long)(clock64() - c0);
+      for (int k = 0; k < kvm_fgpt::MK_COUNT; ++k) acc[blockIdx.x * kvm_fgpt::MK_COUNT + k] = sacc[k];
+    }
   }
 };
 static const char* const kMarks[kvm_fgpt::MK_COUNT] = {
-    "input + embedding", "LN1", "  wait: all-gather h", "q k v, RoPE, attention, proj", "  wait: reduce-scatter proj", "proj sum + LN2",
-    "  wait: all-gather h2", "fc1 + GELU + fc2", "  wait: reduce-scatter fc2", "fc2 sum", "final LN", "  wait: all-gather hf", "logits + CE stats",
-    "  wait: CE exchange", "lse, dlogits, loss", "head backward", "  wait: reduce-scatter dhf", "dhf sum + LNf backward", "  wait: all-gather gx (fc2)",
-    "MLP backward", "  wait: reduce-scatter dh2", "dh2 sum + LN2 backward", "  wait: all-gather gx (proj)", "attention backward",
-    "  wait: reduce-scatter dh", "dh sum + LN1 backward", "  wait: all-gather gx (emb)", "embedding grad, replicated, norm", "  wait: norm",
-    "AdamW", "  wait: step end"};
+    "input + embedding", "LN1", "  wait: all-gather h", "  unit: stage h, W", "  unit: q k v GEMM", "  unit: RoPE + keep q k v",
+    "  unit: scores", "  unit: softmax", "  unit: P V", "  unit: proj partial", "attention, rest", "  wait: reduce-scatter proj",
+    "proj sum + LN2", "  wait: all-gather h2", "fc1 + GELU + fc2", "  wait: reduce-scatter fc2", "fc2 sum", "final LN", "  wait: all-gather hf",
+    "logits + CE stats", "  wait: CE exchange", "lse, loss", "head backward", "  wait: reduce-scatter dhf", "dhf sum + LNf backward",
+    "  wait: all-gather gx (fc2)", "MLP backward", "  wait: reduce-scatter dh2", "dh2 sum + LN2 backward", "  wait: all-gather gx (proj)",
+    "  unit: stage gx, Wo, o", "  unit: dWo, do, delta", "  unit: stage q k v, lse", "  unit: P", "  unit: dv, dS", "  unit: dq, dk",
+    "  unit: RoPE back, db", "  unit: dWq dWk dWv", "  unit: dh partial", "attention backward, rest", "  wait: reduce-scatter dh",
+    "dh sum + LN1 backward", "  wait: all-gather gx (emb)", "embedding gradient", "attention + replicated sums, squares", "norm partial",
+    "  wait: norm", "AdamW", "  wait: step end"};
 
+// `acc` (plain run): member 0's in-kernel nanoseconds, start to end, so the run's time excludes the launch.
 template <bool CLOCK>
 __global__ void __launch_bounds__(KVM_FGPT_NT, 1) fgpt_kernel(const KvmFgptDesc* d, int* err, int* ok, unsigned long long* acc) {
   extern __shared__ float sm[];
   bool r;
   // the bed's report: the first code wins, in the word the barrier reads (the executor's kvm_fail does the same with its own codes)
   const auto fail = [err](int code) { atomicCAS(err, 0, code); };
-  if constexpr (CLOCK) { PhaseClock ph{acc, 0}; ph.start(); r = kvm_fgpt::run(*d, blockIdx.x, sm, err, fail, ph); }
-  else r = kvm_fgpt::run(*d, blockIdx.x, sm, err, fail);
+  if constexpr (CLOCK) {
+    __shared__ unsigned long long sacc[kvm_fgpt::MK_COUNT];
+    PhaseClock ph{acc, sacc, 0, 0, 0};
+    ph.start();
+    r = kvm_fgpt::run(*d, blockIdx.x, sm, err, fail, ph);
+    ph.stop(d->G);
+  } else {
+    const unsigned long long t0 = gtimer();
+    r = kvm_fgpt::run(*d, blockIdx.x, sm, err, fail);
+    if (threadIdx.x == 0 && blockIdx.x == 0 && acc) acc[0] = gtimer() - t0;
+  }
   if (threadIdx.x == 0) ok[blockIdx.x] = r ? 1 : 0;
+}
+
+// The warm-up: every SM spins for `cycles`, so a GPU that idles at a low clock (a laptop part does) reaches its running clock before the
+// timed launch. The result is never used; `sink` keeps the loop from being removed.
+__global__ void warm_kernel(long long cycles, int* sink) {
+  const long long t0 = clock64();
+  int x = threadIdx.x;
+  while (clock64() - t0 < cycles) x = x * 1103515245 + 12345;
+  if (x == 42 && sink) *sink = x;
 }
 
 template <class T> static std::vector<T> read_bin(const std::string& path, size_t n) {
@@ -104,7 +143,7 @@ int main(int argc, char** argv) {
   auto need = [&](const char* k) { auto it = kv.find(k); if (it == kv.end()) die("meta.txt lacks %s", k); return it->second; };
   KvmFgptDesc h{};
   h.N = (int)need("N"); h.T = (int)need("T"); h.B = (int)need("B"); h.d = (int)need("d"); h.H = (int)need("H"); h.hd = (int)need("hd");
-  h.F = (int)need("F"); h.V = (int)need("V"); h.L = (int)need("L"); h.G = G; h.steps = (int)need("steps"); h.mm_numerics = 0;
+  h.F = (int)need("F"); h.V = (int)need("V"); h.L = (int)need("L"); h.G = G; h.steps = (int)need("steps"); h.mm_numerics = (int)need("mm_numerics");
   h.ln_eps = (float)need("ln_eps"); h.theta = (float)need("theta"); h.scale = (float)need("scale"); h.lr = (float)need("lr");
   h.beta1 = (float)need("beta1"); h.beta2 = (float)need("beta2"); h.adam_eps = (float)need("adam_eps"); h.max_norm = (float)need("max_norm");
   h.ids_stride = (int)need("ids_stride"); h.ids_off = (int)need("ids_off"); h.tgt_stride = (int)need("tgt_stride"); h.tgt_off = (int)need("tgt_off");
@@ -116,7 +155,7 @@ int main(int argc, char** argv) {
   // ---- the parameters, their moments, gradients; the streams; the scratch; the gang's control words
   size_t total = 0;
   for (auto& s : slots) total += (size_t)s.rows * s.cols;
-  const KvmFgptScratch sc = kvm_fgpt_scratch(h.N, h.d, h.H, h.F, h.V, h.L, G);
+  const KvmFgptScratch sc = kvm_fgpt_scratch(h.N, h.T, h.d, h.H, h.F, h.V, h.L, G);
   const size_t bytes = 4 * total * 4 + (size_t)sc.total * 4 + (size_t)(h.ids_len + h.tgt_len) * 4;
   if (bytes > (1ull << 30)) die("the run needs more than 1 GiB of device memory");
   const auto P = read_bin<float>(dir + "/p.bin", total), M = read_bin<float>(dir + "/m.bin", total), Vv = read_bin<float>(dir + "/v.bin", total);
@@ -150,12 +189,24 @@ int main(int argc, char** argv) {
   CK(cudaMalloc(&derr, 4)); CK(cudaMemset(derr, 0, 4));
   CK(cudaMalloc(&dok, G * 4)); CK(cudaMemset(dok, 0, G * 4));
   h.ids_src = dids; h.tgt_src = dtgt; h.step = dstep; h.loss = dlossp; h.xch = dx; h.xch_floats = (size_t)sc.total; h.ctl = dctl;
+  // the member's shared memory: the program's bound for the shape (the device checks every phase against it)
+  const long long smem_floats = kvm_fgpt_smem_floats(h.N, h.T, h.d, h.H, h.F, h.V, G);
+  const size_t smem = (size_t)smem_floats * 4;
+  h.smem_floats = (int)smem_floats;
   KvmFgptDesc* dd;
   CK(cudaMalloc(&dd, sizeof(KvmFgptDesc)));
   CK(cudaMemcpy(dd, &h, sizeof(KvmFgptDesc), cudaMemcpyHostToDevice));
   // ---- one cooperative launch: the driver refuses it unless all G blocks are resident at once, which the gang barrier needs
-  const size_t smem = (size_t)kvm_fgpt_smem_floats(h.N, h.T) * 4;
   void* kern = clocked ? (void*)fgpt_kernel<true> : (void*)fgpt_kernel<false>;
+  {
+    int dev0 = 0, optin = 0;
+    CK(cudaGetDevice(&dev0));
+    CK(cudaDeviceGetAttribute(&optin, cudaDevAttrMaxSharedMemoryPerBlockOptin, dev0));
+    if (smem > (size_t)optin) {
+      fprintf(stderr, "fgpt_bed: a member of a gang of %d needs %zu B of shared memory, above this GPU's %d B a block: a larger gang fits\n", G, smem, optin);
+      return 3;
+    }
+  }
   CK(cudaFuncSetAttribute(kern, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)smem));
   int dev = 0, sms = 0, per_sm = 0;
   CK(cudaGetDevice(&dev));
@@ -167,7 +218,25 @@ int main(int argc, char** argv) {
          prop.major, prop.minor, sms, G, h.steps, smem, sc.total * 4.0 / 1e6, per_sm);
   if ((long long)per_sm * sms < G) die("the gang does not fit the GPU at once");
   unsigned long long* dacc = nullptr;
-  if (clocked) { CK(cudaMalloc(&dacc, (size_t)G * kvm_fgpt::MK_COUNT * 8)); CK(cudaMemset(dacc, 0, (size_t)G * kvm_fgpt::MK_COUNT * 8)); }
+  const size_t acc_words = clocked ? (size_t)G * (kvm_fgpt::MK_COUNT + 2) : 1;
+  CK(cudaMalloc(&dacc, acc_words * 8)); CK(cudaMemset(dacc, 0, acc_words * 8));
+  // ---- warm the GPU to its running clock: about 0.5 s of busy SMs, in launches of 20 ms, right before the timed run
+  {
+    cudaEvent_t w0, w1;
+    CK(cudaEventCreate(&w0)); CK(cudaEventCreate(&w1));
+    float spent = 0.f;
+    for (int i = 0; i < 200 && spent < 500.f; ++i) {
+      CK(cudaEventRecord(w0));
+      warm_kernel<<<sms * 2, 256>>>(20000000LL, nullptr);
+      CK(cudaEventRecord(w1));
+      CK(cudaEventSynchronize(w1));
+      float ms1 = 0.f;
+      CK(cudaEventElapsedTime(&ms1, w0, w1));
+      spent += ms1;
+    }
+    printf("fgpt_bed: warmed the GPU for %.0f ms\n", spent);
+    CK(cudaEventDestroy(w0)); CK(cudaEventDestroy(w1));
+  }
   void* args[] = {&dd, &derr, &dok, &dacc};
   cudaEvent_t e0, e1;
   CK(cudaEventCreate(&e0)); CK(cudaEventCreate(&e1));
@@ -185,22 +254,24 @@ int main(int argc, char** argv) {
   CK(cudaMemcpy(&step, dstep, 4, cudaMemcpyDeviceToHost));
   int done = 0;
   for (int b = 0; b < G; ++b) done += ok[b];
-  printf("fgpt_bed: run %.3f ms (%.1f us a step; a hint, not a chip's verdict), error word %d, %d of %d members finished, step counter %d -> %d\n", ms,
-         1000.0 * ms / h.steps, err, done, G, step0, step);
-  if (clocked) {   // the phase table: cycles a step, the members' mean and largest, and the mean's share of the step
-    std::vector<unsigned long long> acc((size_t)G * kvm_fgpt::MK_COUNT);
+  unsigned long long kern_ns = 0;
+  if (!clocked) CK(cudaMemcpy(&kern_ns, dacc, 8, cudaMemcpyDeviceToHost));
+  printf("fgpt_bed: run %.3f ms with its launch; in the kernel %.1f us a step (member 0's globaltimer; a hint, not a chip's verdict); error word %d, "
+         "%d of %d members finished, step counter %d -> %d\n", ms, kern_ns / 1000.0 / h.steps, err, done, G, step0, step);
+  if (clocked) {   // the phase table: microseconds a step, the members' mean and largest, and the mean's share of the step
+    std::vector<unsigned long long> acc(acc_words);
     CK(cudaMemcpy(acc.data(), dacc, acc.size() * 8, cudaMemcpyDeviceToHost));
-    double tot = 0.0;
+    double tot = 0.0, run_ns = 0.0, run_cyc = 0.0;
     std::vector<double> mean(kvm_fgpt::MK_COUNT), mx(kvm_fgpt::MK_COUNT);
     for (int k = 0; k < kvm_fgpt::MK_COUNT; ++k) {
-      for (int b = 0; b < G; ++b) { const double c = (double)acc[(size_t)b * kvm_fgpt::MK_COUNT + k] / h.steps; mean[k] += c / G; mx[k] = std::max(mx[k], c); }
+      for (int b = 0; b < G; ++b) { const double c = (double)acc[(size_t)b * kvm_fgpt::MK_COUNT + k] / h.steps / 1000.0; mean[k] += c / G; mx[k] = std::max(mx[k], c); }
       tot += mean[k];
     }
-    const double us_per_cycle = 1000.0 * ms / h.steps / tot;
-    printf("fgpt_bed: phase clock, cycles a step (all layers), %.0f cycles a step in all, %.3f ns a cycle from the run's time\n", tot, 1000.0 * us_per_cycle);
-    printf("  %-36s %12s %12s %7s %9s\n", "phase", "mean", "largest", "share", "mean us");
+    for (int b = 0; b < G; ++b) { run_ns += (double)acc[(size_t)G * kvm_fgpt::MK_COUNT + 2 * b] / G; run_cyc += (double)acc[(size_t)G * kvm_fgpt::MK_COUNT + 2 * b + 1] / G; }
+    printf("fgpt_bed: phase clock (globaltimer), %.1f us a step in all; the SMs ran at %.0f MHz (cycles over nanoseconds, members' mean)\n", tot, 1000.0 * run_cyc / run_ns);
+    printf("  %-36s %10s %10s %7s\n", "phase", "mean us", "largest", "share");
     for (int k = 0; k < kvm_fgpt::MK_COUNT; ++k)
-      printf("  %-36s %12.0f %12.0f %6.1f%% %9.2f\n", kMarks[k], mean[k], mx[k], 100.0 * mean[k] / tot, mean[k] * us_per_cycle);
+      printf("  %-36s %10.2f %10.2f %6.1f%%\n", kMarks[k], mean[k], mx[k], 100.0 * mean[k] / tot);
   }
   // ---- outputs
   const std::string out = dir + "/out-G" + std::to_string(G) + (clocked ? "-clock" : "");

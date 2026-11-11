@@ -1,0 +1,41 @@
+# the bed's kernel (fgpt_kernel<false>, the timed one), sm_120: functions
+_Z11fgpt_kernelILb0EEvPK11KvmFgptDesciPiS3_Pyii: every block, 31344 instructions in 2459 blocks
+  9 functions (cubin symbols; 7 are ptxas's internal helpers, folded below), 58 calls between functions, 0 CALLs inside their own function; registers R0-R244, R1 aside
+  function                         instr  HMMA   LDL   STL touched avoided  avoided registers held across a call by
+  (kernel)                            25     0     0     0       7     237  _ZN8kvm_fgpt3runIZ11fgpt_kernelILb0EEvPK11KvmFgptDesciPiS5_PyiiEUliE_NS_8NoPhasesEEEbRS3_iPfiPKiT_RT0_ 189; held by none 48
+  _ZN8kvm_fgpt3runIZ11fgpt_kerne   30359   178   140   242     243       1  ; held by none 1
+  (7 internal helpers: 960 instructions, at most 21 registers each)
+  calls: caller -> callee, sites, registers live across them (min-max, R1 aside), the widest site
+    _ZN8kvm_fgpt3runIZ11fgpt_ker -> __internal_5_$__cuda_sm3x_div_rn_noftz_f32_s   27 site(s)   81-182 live, widest at 0x01a5f0
+    _ZN8kvm_fgpt3runIZ11fgpt_ker -> __internal_3_$__cuda_sm20_rcp_rn_f32_slowpat    3 site(s)  167-172 live, widest at 0x00db30
+    _ZN8kvm_fgpt3runIZ11fgpt_ker -> __internal_4_$__cuda_sm20_sqrt_rn_f32_slowpa    8 site(s)  144-171 live, widest at 0x00da50
+    _ZN8kvm_fgpt3runIZ11fgpt_ker -> __internal_1_$__cuda_sm20_div_rn_f64_full       1 site(s)  165-165 live, widest at 0x0307b0
+    _ZN8kvm_fgpt3runIZ11fgpt_ker -> __internal_0_$__cuda_sm20_dblrcp_rn_slowpath    2 site(s)  132-162 live, widest at 0x030a00
+    _ZN8kvm_fgpt3runIZ11fgpt_ker -> __internal_2_$__cuda_sm20_div_s64              15 site(s)   21-153 live, widest at 0x0702f0
+    _ZN8kvm_fgpt3runIZ11fgpt_ker -> __internal_accurate_pow                         1 site(s)   70- 70 live, widest at 0x009c50
+    (kernel)                     -> _ZN8kvm_fgpt3runIZ11fgpt_kernelILb0EEvPK11Kv    1 site(s)    6-  6 live, widest at 0x000090
+
+# loops
+_Z11fgpt_kernelILb0EEvPK11KvmFgptDesciPiS3_Pyii: every block, 31344 instructions in 2459 blocks
+  70 MMA loops; by kind (HMMA a pass, LDGSTS a pass):
+    HMMA   6 LDGSTS   0:  14 loops; registers used in the loop median 59, passengers median 166 (range 143-175), LDL a pass median 0 (range 0-8)
+    HMMA   8 LDGSTS   0:  34 loops; registers used in the loop median 53, passengers median 161 (range 142-174), LDL a pass median 0 (range 0-0)
+    HMMA   8 LDGSTS   6:   1 loops; registers used in the loop median 74, passengers median 131 (range 131-131), LDL a pass median 0 (range 0-0)
+    HMMA   8 LDGSTS  14:   1 loops; registers used in the loop median 90, passengers median 115 (range 115-115), LDL a pass median 4 (range 4-4)
+    HMMA  16 LDGSTS   6:   2 loops; registers used in the loop median 86, passengers median 127 (range 120-127), LDL a pass median 3 (range 0-3)
+    HMMA  16 LDGSTS  10:   1 loops; registers used in the loop median 83, passengers median 125 (range 125-125), LDL a pass median 0 (range 0-0)
+    HMMA  20 LDGSTS   8:   1 loops; registers used in the loop median 90, passengers median 126 (range 126-126), LDL a pass median 13 (range 13-13)
+    HMMA  32 LDGSTS  10:   1 loops; registers used in the loop median 89, passengers median 125 (range 125-125), LDL a pass median 0 (range 0-0)
+    HMMA  44 LDGSTS  32:   1 loops; registers used in the loop median 139, passengers median 79 (range 79-79), LDL a pass median 28 (range 28-28)
+    HMMA  62 LDGSTS  18:   1 loops; registers used in the loop median 108, passengers median 117 (range 117-117), LDL a pass median 8 (range 8-8)
+    HMMA  78 LDGSTS  26:   1 loops; registers used in the loop median 173, passengers median 53 (range 53-53), LDL a pass median 21 (range 21-21)
+    HMMA 110 LDGSTS  34:   1 loops; registers used in the loop median 143, passengers median 84 (range 84-84), LDL a pass median 25 (range 25-25)
+    HMMA 110 LDGSTS  36:   1 loops; registers used in the loop median 191, passengers median 37 (range 37-37), LDL a pass median 31 (range 31-31)
+    HMMA 126 LDGSTS  42:   1 loops; registers used in the loop median 201, passengers median 27 (range 27-27), LDL a pass median 36 (range 36-36)
+    HMMA 134 LDGSTS  48:   2 loops; registers used in the loop median 206, passengers median 22 (range 22-22), LDL a pass median 40 (range 40-40)
+    HMMA 150 LDGSTS  58:   2 loops; registers used in the loop median 213, passengers median 15 (range 15-15), LDL a pass median 48 (range 48-48)
+    HMMA 164 LDGSTS  58:   2 loops; registers used in the loop median 213, passengers median 15 (range 15-15), LDL a pass median 61 (range 61-61)
+    HMMA 178 LDGSTS  80:   3 loops; registers used in the loop median 228, passengers median 0 (range 0-2), LDL a pass median 68 (range 68-75)
+  the loop with the most reloads, at 0x00b340 (HMMA 178, LDL 75): 2 passengers
+      R6   defined by @!P0 LDC.64 R6, c[0x0][0x3a0]                                        &wr=0x1                    
+      R18  defined by PRMT R18, RZ, 0x7610, R18                                                                      ?

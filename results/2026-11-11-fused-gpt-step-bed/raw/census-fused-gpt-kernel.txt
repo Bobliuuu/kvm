@@ -1,17 +1,17 @@
-_Z15kvm_fgpt_kernelPK11KvmFgptDescP11KvmCountersP10KvmHostErri: every block, 30800 instructions in 2251 blocks
-  10 functions (cubin symbols; 7 are ptxas's internal helpers, folded below), 73 calls between functions, 0 CALLs inside their own function; registers R0-R237, R1 aside
+_Z15kvm_fgpt_kernelPK11KvmFgptDescP11KvmCountersP10KvmHostErri: every block, 31704 instructions in 2464 blocks
+  10 functions (cubin symbols; 7 are ptxas's internal helpers, folded below), 72 calls between functions, 0 CALLs inside their own function; registers R0-R239, R1 aside
   function                         instr  HMMA   LDL   STL touched avoided  avoided registers held across a call by
-  (kernel)                            17     0     0     0       3     234  _ZN8kvm_fgpt3runIZ15kvm_fgpt_kernelPK11KvmFgptDescP11KvmCountersP10KvmHostErriEUliE_NS_8NoPhasesEEEbRS2_iPfiPKiT_RT0_ 196; held by none 38
-  kvm_fail                            40     0     0     0      14     223  _ZN8kvm_fgpt3runIZ15kvm_fgpt_kernelPK11KvmFgptDescP11KvmCountersP10KvmHostErriEUliE_NS_8NoPhasesEEEbRS2_iPfiPKiT_RT0_ 185; held by none 38
-  _ZN8kvm_fgpt3runIZ15kvm_fgpt_k   29786   178   129   242     237       0  -
-  (7 internal helpers: 957 instructions, at most 21 registers each)
+  (kernel)                            17     0     0     0       3     236  _ZN8kvm_fgpt3runIZ15kvm_fgpt_kernelPK11KvmFgptDescP11KvmCountersP10KvmHostErriEUliE_NS_8NoPhasesEEEbRS2_iPfiPKiT_RT0_ 201; held by none 35
+  kvm_fail                            38     0     0     0      13     226  _ZN8kvm_fgpt3runIZ15kvm_fgpt_kernelPK11KvmFgptDescP11KvmCountersP10KvmHostErriEUliE_NS_8NoPhasesEEEbRS2_iPfiPKiT_RT0_ 191; held by none 35
+  _ZN8kvm_fgpt3runIZ15kvm_fgpt_k   30687   178   129   242     239       0  -
+  (7 internal helpers: 962 instructions, at most 23 registers each)
   calls: caller -> callee, sites, registers live across them (min-max, R1 aside), the widest site
-    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_5_$__cuda_sm3x_div_rn_noftz_f32_s   27 site(s)   79-174 live, widest at 0x01a610
-    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_3_$__cuda_sm20_rcp_rn_f32_slowpat    3 site(s)  156-162 live, widest at 0x00d6c0
-    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> kvm_fail                                       14 site(s)    1-162 live, widest at 0x015800
-    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_4_$__cuda_sm20_sqrt_rn_f32_slowpa    8 site(s)  139-161 live, widest at 0x00d5e0
-    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_1_$__cuda_sm20_div_rn_f64_full       1 site(s)  160-160 live, widest at 0x02f190
-    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_0_$__cuda_sm20_dblrcp_rn_slowpath    2 site(s)  127-158 live, widest at 0x02f3e0
-    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_accurate_pow                         2 site(s)  151-151 live, widest at 0x06f840
-    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_2_$__cuda_sm20_div_s64              15 site(s)   20-147 live, widest at 0x06d510
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_5_$__cuda_sm3x_div_rn_noftz_f32_s   27 site(s)   82-180 live, widest at 0x01aab0
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_3_$__cuda_sm20_rcp_rn_f32_slowpat    3 site(s)  165-168 live, widest at 0x00dea0
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_4_$__cuda_sm20_sqrt_rn_f32_slowpa    8 site(s)  143-166 live, widest at 0x00ddc0
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> kvm_fail                                       14 site(s)    1-166 live, widest at 0x04ae90
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_1_$__cuda_sm20_div_rn_f64_full       1 site(s)  162-162 live, widest at 0x031070
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_0_$__cuda_sm20_dblrcp_rn_slowpath    2 site(s)  133-159 live, widest at 0x0312c0
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_2_$__cuda_sm20_div_s64              15 site(s)   19-150 live, widest at 0x071670
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_accurate_pow                         1 site(s)   68- 68 live, widest at 0x009f10
     (kernel)                     -> _ZN8kvm_fgpt3runIZ15kvm_fgpt_kernelPK11KvmFg    1 site(s)    0-  0 live, widest at 0x0000e0

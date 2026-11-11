@@ -97,6 +97,9 @@ __host__ __device__ constexpr int kvm_gpt_smem_bytes(int max_hd) {
 #define KVM_GPT_MAX_HD 64   // largest attention head size the launch must support (16/32/64 -> 56 KiB, 128 -> 104 KiB)
 #endif
 #define KVM_GPT_SMEM_BYTES kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)
+// attn_bwd_dkv's K park (attn_dkv_t, up to hd 64): each warp's K fragments, hd/8 k-steps x 32 lanes x 16 B, after the stage ring.
+// A launch sized per task must give attn_bwd_dkv its stage ring plus this.
+__host__ __device__ constexpr int kvm_gpt_dkv_park_bytes(int hd) { return hd <= 64 ? (KVM_GPT_THREADS / 32) * (hd / 8) * 32 * 16 : 0; }
 
 // ---- One task's dynamic shared memory: what the launch is sized from (KvmExec::size_launch) and what the ops' guards check ----------
 // KVM_GPT_SMEM_BYTES is the most any task of this build can need. A launch that asks for it leaves the A100 28 KB of L1 at 147,456 B
@@ -2382,11 +2385,12 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
     // loop keeps 32 fewer registers live (at hd 64 it reloaded 59 spilled values a pass with them in registers, 2 without). The slots are
     // warp-private, written and read by the same lane, and the MMAs read the same values. hd 128 keeps them in registers: its park would
     // not fit the launch.
-    constexpr bool KPARK = HD <= 64;
+    constexpr bool KPARK = kvm_gpt_dkv_park_bytes(HD) > 0;
     float4* kpark = reinterpret_cast<float4*>(QO + M::NST * M::STAGE) + warp * (NT * 32);
     float ak[KPARK ? 1 : NT][4], av[NT][4];
     if constexpr (KPARK) {
-        static_assert((M::NST * M::STAGE + (KVM_GPT_THREADS / 32) * NT * 32 * 4) * 4 <= KVM_GPT_SMEM_BYTES, "the K park must fit the launch");
+        static_assert((KVM_GPT_THREADS / 32) * NT * 32 * 16 == kvm_gpt_dkv_park_bytes(HD), "kvm_gpt_dkv_park_bytes is the park's size");
+        static_assert(M::NST * M::STAGE * 4 + kvm_gpt_dkv_park_bytes(HD) <= KVM_GPT_SMEM_BYTES, "the K park must fit the launch");
         float kr[NT][4];
         load_a_raw<HD>(kr, eoff(A.k, (size_t)A.b * Tn * A.ldk + kvh * HD, A.sd & KVM_ATT_K), A.ldk, keyA, Tn, t, A.sd & KVM_ATT_K);
 #pragma unroll

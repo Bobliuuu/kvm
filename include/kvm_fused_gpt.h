@@ -139,7 +139,7 @@ KVM_FGPT_HD inline int kvm_fgpt_ldmn(int cols) { return ((cols + 15) & ~15) + 8;
 KVM_FGPT_HD inline int kvm_fgpt_r16(int n) { return (n + 15) & ~15; }
 KVM_FGPT_HD inline int kvm_fgpt_r8(int n) { return (n + 7) & ~7; }
 KVM_FGPT_HD inline long long kvm_fgpt_r4(long long n) { return (n + 3) & ~3LL; }
-#define KVM_FGPT_NT 256                       // threads of a member's block
+#define KVM_FGPT_NT 384                       // threads of a member's block: 12 warps, three to each SM sub-partition, which hide the step's latency-bound tile loops better than two
 #define KVM_FGPT_MAXBLK 16                    // a member's block rectangles: fc1's columns, b1, fc2's rows a layer, wte's rows, the head's columns
 // The scratch layout in floats, rounded to 16 bytes: one copy a block heads its shared memory, so a thread never holds the offsets itself.
 // Read with a runtime layer index, a thread's own copy would live in local memory, 592 bytes a thread (on an A100, beside this kernel's

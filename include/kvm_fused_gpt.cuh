@@ -1178,7 +1178,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
     ph(MK_SQUARES);
     if (!cross()) return false;                                                       // the grad norm's partials
     ph(MK_X_NORM);
-    const float norm2 = sum_l2<KVM_FGPT_MAX_GANG>(G, [&](int m) { return X + s.gn + m; });
+    const float norm2 = sum_l2<32>(G, [&](int m) { return X + s.gn + m; });   // 32 in flight (sum_l2 adds in index order at any width)
     const float norm = sqrtf(norm2);
     const float coef = d.max_norm > 0.f ? fminf(1.f, d.max_norm / (norm + 1e-6f)) : 1.f;
     // ---- AdamW on the owned elements, in the bundle's float32 operation order, with the counter after its increment: one flat index over

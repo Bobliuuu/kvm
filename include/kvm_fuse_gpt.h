@@ -1,6 +1,6 @@
 #pragma once
 // KVM fusion pass for GPT training steps, host side: recognize whole pre-norm GPT training steps in a closed bundle and describe each matched
-// run for the fused GPT step (design D2: Megatron column and row shards over a gang of blocks, AdamW in place).
+// run for the fused GPT step (Megatron column and row shards over a gang of blocks, AdamW in place).
 //
 // ===== What it decides, and from what =====
 // From the bundle's DAG and its op arguments alone, like kvm_fuse_mlp: no model name, no task name, no width, depth, head or vocabulary
@@ -14,9 +14,9 @@
 // and the report says which step and why.
 //
 // ===== Output =====
-// For now a description of each matched run (KvmFuseGptRun: the shapes, every parameter with its gradient and moments, the step's tasks). The
-// rewrite into gang members of the fused step comes with its device op (the gang task: kvm_static_gang_args). Host only:
-// tests/static/test_fuse_gpt.cpp drives it with plain g++ on real bundles.
+// A description of each matched run (KvmFuseGptRun: the shapes, every parameter with its gradient and moments, the step's tasks), and the
+// rewrite (kvm_fuse_gpt) of each run that fits into the G members of one fgpt_step gang, which the executor launches as one kernel
+// (KvmExec::run_fgpt). Host only: tests/static/test_fuse_gpt.cpp drives it with plain g++ on real bundles.
 #include <set>
 #include <string>
 #include <vector>
@@ -778,10 +778,12 @@ inline KvmFuseGptPlan kvm_fuse_gpt(const std::vector<KvmTaskDesc>& tasks, const 
   for (const KvmFuseGptRun& r : scan.runs) {
     const KvmGptStep& s = r.shape;
     std::string why;
-    const int G = fgpt_step_op < 0 ? 0 : kvm_fgpt_gang(s.N, s.d, s.H, s.F, s.V, s.L, opt.smem_floats, opt.workers);
+    const int G = fgpt_step_op < 0 ? 0 : kvm_fgpt_gang(s.N, s.T, s.d, s.H, s.F, s.V, opt.smem_floats, opt.workers);
+    const std::string unrun = kvm_fgpt_unrunnable(s.d, s.H, s.L, s.mm_numerics);
     if (fgpt_step_op < 0) why = "the registry has no fgpt_step op";
-    else if (s.L > KVM_FGPT_MAXL) why = "does not fit a resident gang: " + std::to_string(s.L) + " layers, more than the " + std::to_string(KVM_FGPT_MAXL) + " the fused step holds";
-    else if (!G) why = "does not fit a resident gang: no gang of at most " + std::to_string(opt.workers) + " members holds its shards in " + std::to_string(opt.smem_floats) + " floats a member";
+    else if (!unrun.empty()) why = "the fused step cannot run it: " + unrun;
+    else if (s.L > KVM_FGPT_MAXL) why = "does not fit a gang: " + std::to_string(s.L) + " layers, more than the " + std::to_string(KVM_FGPT_MAXL) + " the fused step's scratch holds";
+    else if (!G) why = "does not fit a gang: no gang of at most " + std::to_string(opt.workers) + " members fits its phases in " + std::to_string(opt.smem_floats) + " floats of shared memory a member";
     if (why.empty()) {   // the gang writes the parameters, moments, gradients, step counter and losses; activations and the windows' copies go stale
       std::set<int> written;
       for (const KvmGptUpdate& u : s.updates) written.insert({u.p, u.g, u.m, u.v});
@@ -824,7 +826,7 @@ inline KvmFuseGptPlan kvm_fuse_gpt(const std::vector<KvmTaskDesc>& tasks, const 
       KvmTaskDesc d{};
       d.op_id = fgpt_step_op; d.deadline_us = -1; d.wait_var = KVM_NO_VAR; d.pub_var = KVM_NO_VAR; d.workload_id = wl;
       const KvmFuseGptRun& run = P.runs[ri];
-      if (m == 0 && run.shape.pub_var != -1) {   // the run's last version: the static path takes a bundle's final versions from its publishers
+      if (m == 0 && run.shape.pub_var != -1) {   // the run's last version: the fused path takes a bundle's final versions from its publishers
         const int per = (run.shape.pub_pre != -1) + (run.shape.pub_end != -1);
         d.pub_var = run.shape.pub_var; d.pub_ver = run.pub_first + per * run.steps - 1;
       }

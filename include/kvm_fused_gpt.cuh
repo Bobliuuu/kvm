@@ -406,12 +406,13 @@ enum KvmFgptMark : int {
 struct NoPhases { __device__ __forceinline__ void operator()(int) const {} };
 
 // ---- the program -------------------------------------------------------------------------------------------------------------------------
-// Every step of the run as member `member` of the gang. `smem` is the member's shared memory (d.smem_floats floats). `abort` is the run's
+// Every step of the run as member `member` of the gang. `smem` is the member's shared memory, `smem_floats` floats (at least
+// kvm_fgpt_smem_floats of the shape: every phase checks, and fails the run with KVM_FGPT_E_SCRATCH rather than overrun). `abort` is the run's
 // error word, which the gang barrier only reads. A member that finds a fault reports it once, from thread 0, through `fail(code)` (a
 // KvmFgptError), and returns; the caller's report must set the error word (the executor's kvm_fail does), so every other member leaves at its
 // next crossing. Returns false when the run failed. Every thread of the block calls it.
 template <class FAIL, class PH>
-__device__ bool run(const KvmFgptDesc& d, int member, float* smem, const int* abort, FAIL fail, PH& ph) {
+__device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floats, const int* abort, FAIL fail, PH& ph) {
   const Plan p = plan_of(d, member);
   const int tid = threadIdx.x, N = p.N, T = p.T, D = p.d, H = p.H, hd = p.hd, F = p.F, V = p.V, L = p.L, b = p.b, G = p.G, B = p.B;
   // attention's work items: (sequence, head, query block), QB blocks of TQ rows a unit, item w = (s H + h) QB + qb on member w % G
@@ -438,7 +439,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, const int* ab
   float* const wdt = reinterpret_cast<float*>(ptab + 4 * KVM_FGPT_MAXP);                // [MAXP] weight decay
   int* const blk = reinterpret_cast<int*>(wdt + kvm_fgpt_r4(KVM_FGPT_MAXP));            // [MAXBLK][8]: slot, first row, first column, width, row length, count, first index
   const int base = (int)kvm_fgpt_smem_head(N, T, hd);
-  Arena ar{smem, d.smem_floats, base, d.smem_floats < base};
+  Arena ar{smem, smem_floats, base, smem_floats < base};
   auto phase = [&]() { ar.top = base; };
   auto check = [&]() {   // after a phase's takes: every thread agrees
     if (!ar.over) return true;
@@ -1049,9 +1050,9 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, const int* ab
 }
 
 template <class FAIL>
-__device__ __forceinline__ bool run(const KvmFgptDesc& d, int member, float* smem, const int* abort, FAIL fail) {
+__device__ __forceinline__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floats, const int* abort, FAIL fail) {
   NoPhases ph;
-  return run(d, member, smem, abort, fail, ph);
+  return run(d, member, smem, smem_floats, abort, fail, ph);
 }
 
 }  // namespace kvm_fgpt

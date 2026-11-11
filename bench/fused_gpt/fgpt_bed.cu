@@ -75,7 +75,7 @@ static const char* const kMarks[kvm_fgpt::MK_COUNT] = {
 
 // `acc` (plain run): member 0's in-kernel nanoseconds, start to end, so the run's time excludes the launch.
 template <bool CLOCK>
-__global__ void __launch_bounds__(KVM_FGPT_NT, 1) fgpt_kernel(const KvmFgptDesc* d, int* err, int* ok, unsigned long long* acc) {
+__global__ void __launch_bounds__(KVM_FGPT_NT, 1) fgpt_kernel(const KvmFgptDesc* d, int smem_floats, int* err, int* ok, unsigned long long* acc) {
   extern __shared__ float sm[];
   bool r;
   // the bed's report: the first code wins, in the word the barrier reads (the executor's kvm_fail does the same with its own codes)
@@ -84,11 +84,11 @@ __global__ void __launch_bounds__(KVM_FGPT_NT, 1) fgpt_kernel(const KvmFgptDesc*
     __shared__ unsigned long long sacc[kvm_fgpt::MK_COUNT];
     PhaseClock ph{acc, sacc, 0, 0, 0};
     ph.start();
-    r = kvm_fgpt::run(*d, blockIdx.x, sm, err, fail, ph);
+    r = kvm_fgpt::run(*d, blockIdx.x, sm, smem_floats, err, fail, ph);
     ph.stop(d->G);
   } else {
     const unsigned long long t0 = gtimer();
-    r = kvm_fgpt::run(*d, blockIdx.x, sm, err, fail);
+    r = kvm_fgpt::run(*d, blockIdx.x, sm, smem_floats, err, fail);
     if (threadIdx.x == 0 && blockIdx.x == 0 && acc) acc[0] = gtimer() - t0;
   }
   if (threadIdx.x == 0) ok[blockIdx.x] = r ? 1 : 0;
@@ -203,7 +203,7 @@ int main(int argc, char** argv) {
   // the member's shared memory: the program's bound for the shape (the device checks every phase against it)
   const long long smem_floats = kvm_fgpt_smem_floats(h.N, h.T, h.d, h.H, h.F, h.V, G, h.qb);
   const size_t smem = (size_t)smem_floats * 4;
-  h.smem_floats = (int)smem_floats;
+  int smem_arg = (int)smem_floats;
   KvmFgptDesc* dd;
   CK(cudaMalloc(&dd, sizeof(KvmFgptDesc)));
   CK(cudaMemcpy(dd, &h, sizeof(KvmFgptDesc), cudaMemcpyHostToDevice));
@@ -248,7 +248,7 @@ int main(int argc, char** argv) {
     printf("fgpt_bed: warmed the GPU for %.0f ms\n", spent);
     CK(cudaEventDestroy(w0)); CK(cudaEventDestroy(w1));
   }
-  void* args[] = {&dd, &derr, &dok, &dacc};
+  void* args[] = {&dd, &smem_arg, &derr, &dok, &dacc};
   cudaEvent_t e0, e1;
   CK(cudaEventCreate(&e0)); CK(cudaEventCreate(&e1));
   CK(cudaEventRecord(e0));

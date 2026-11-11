@@ -75,16 +75,17 @@ __device__ __noinline__ void kvm_s_fmlp_slice(int sc, const int32_t* ids, const 
 }
 __device__ __noinline__ void kvm_s_fmlp_sgd(int owner, float* loss, float* arena) { kvm_fmlp::sgd_run(owner, loss, arena); }
 // One member of a split step at S_ shares (a gang op: the planner placed its members on distinct workers at one point of every program,
-// kvm_static_plan). Each share count is a function of its own, on an entry of its own (kvm_static_gang_split<S_>): with all of them in one
-// function, the member used every register and still spilled (sm_80, Nov 11). A descriptor whose S and Q are not this entry's, or a member count
-// that disagrees with them, fails the run before any barrier. Every member reads the same descriptor, so all of them fail alike. Any other
+// kvm_static_plan). Each virtual share count is a function of its own, on an entry of its own (kvm_static_gang_split<S_>): with all of them in
+// one function, the member used every register and still spilled (sm_80, Nov 11). The gang's physical share count is the descriptor's S, any count
+// up to its Sv (kvm_fused_split.h). A descriptor whose Sv and Q are not this entry's, an S outside 1..Sv, or a member count that disagrees with
+// them, fails the run before any barrier. Every member reads the same descriptor, so all of them fail alike. Any other
 // failure ends the gang at its next crossing: the barrier watches the run's error word.
 template <int S_>
 __device__ __noinline__ void kvm_s_fmlp_split(int member, int members, const int32_t* ids, const int32_t* tgt, float* loss, float* arena, KvmCtx* c) {
   kvm_fmlp::cp_commit_wait();
   __syncthreads();
   const KvmSplitDesc& d = *reinterpret_cast<const KvmSplitDesc*>(arena);
-  if (d.Q != KVM_SPLIT_Q || d.S != S_ || members != d.Q * d.S || member < 0 || member >= members) { c->fail(KVM_ERR_BAD_OP, KVM_OP_fmlp_split); return; }
+  if (d.Q != KVM_SPLIT_Q || d.Sv != S_ || d.S < 1 || d.S > d.Sv || members != d.Q * d.S || member < 0 || member >= members) { c->fail(KVM_ERR_BAD_OP, KVM_OP_fmlp_split); return; }
   kvm_fsplit::split_run<S_, KVM_SPLIT_Q>(member, ids, tgt, loss, arena, &c->cnt->err_code, kvm_fsplit::NoPhases{});
 }
 

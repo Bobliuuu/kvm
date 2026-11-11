@@ -65,7 +65,8 @@ struct KvmFuseRun {
   std::array<int, KVM_FUSE_MAXL> H{}, w{}, b{};
   int wte = -1, head = -1;
   int steps = 0;
-  int split = 0, S = 0, Q = 0;          // the split form: S shares x Q slices a gang (slice_rows = KVM_SPLIT_R; nsl and groups unused)
+  int split = 0, S = 0, Q = 0, Sv = 0;  // the split form: S shares x Q slices a gang, carrying the run's Sv virtual shares (its arithmetic: kvm_fused_split.h;
+                                        // slice_rows = KVM_SPLIT_R; nsl and groups unused)
   int grid = 0, P = 0;                  // the grid form: one gang of P members a step over one copy of the model (nsl and groups unused)
 };
 // A run whose steps run as gangs (the split or the grid form), and the size of its gangs.
@@ -80,7 +81,7 @@ inline int kvm_fuse_members(const KvmFuseRun& r) { return r.split ? r.Q * r.S : 
 // which holds no fused function and refuses the fused ops.
 struct KvmFuseEntry {
   enum Kind { generic, block, split, grid, mixed } kind = generic;
-  int S = 0;           // the split entry's share count
+  int S = 0;           // the split entry's virtual share count (its instantiation; each gang's physical count is the descriptor's)
   std::string why;     // mixed: what keeps the bundle off a gang entry
 };
 struct KvmFuseResult {
@@ -98,7 +99,7 @@ inline KvmFuseEntry kvm_fuse_entry(const KvmFuseResult& r, const KvmFuseOps& ops
   KvmFuseEntry e;
   int nsplit = 0, ngrid = 0, nblock = 0;
   for (const KvmFuseRun& run : r.runs) {
-    if (run.split) { if (nsplit++ && run.S != e.S) { e.kind = KvmFuseEntry::mixed; e.why = "split runs at " + std::to_string(e.S) + " and " + std::to_string(run.S) + " shares"; return e; } e.S = run.S; }
+    if (run.split) { if (nsplit++ && run.Sv != e.S) { e.kind = KvmFuseEntry::mixed; e.why = "split runs at " + std::to_string(e.S) + " and " + std::to_string(run.Sv) + " virtual shares"; return e; } e.S = run.Sv; }
     else if (run.grid) ++ngrid;
     else ++nblock;
   }
@@ -517,13 +518,35 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
       if (common) { p.run.slice_rows = common; continue; }
       for (int rows : kvm_fuse_slice_choices) if (fits(p.run, rows)) { p.run.slice_rows = rows; break; }
     }
-    // the split runs' share count: each run's own, the largest its shape takes (kvm_fuse_split_fits: a member within the budget, one gang of
-    // Q x S members within the workers; wider shares ran faster, measured: h576-d1 on the A100, 52.1 us a step at S = 5 against 34.2 at S = 12).
-    // Never chosen by how many runs share the bundle: the logits' and the reduce-scatter's sums run over a run's S shares, so S is part of the
-    // run's arithmetic, and a run's arithmetic must depend on its shape alone (the MLP bench's gate 2, bench/exec_vs_torch/run_mlp.py, asserts
-    // four replicated copies of a run bitwise equal to the run alone). Runs of one shape take one S; their gangs take turns past the workers.
-    // Runs whose counts differ leave the bundle unfused (kvm_fuse_entry: an entry runs one share count).
-    for (Plan& p : plans) if (p.run.split) p.run.S = p.split_fit.back();
+    // The split runs' share counts. A run's virtual count Sv is its own shape's largest (kvm_fuse_split_fits: a member within the budget, one gang
+    // of Q x Sv members within the workers; wider shares ran faster, measured: h576-d1 on the A100, 52.1 us a step at S = 5 against 34.2 at S = 12).
+    // Never chosen by how many runs share the bundle: three sums run over a run's shares, so Sv is part of its arithmetic, and a run's arithmetic
+    // must depend on its shape alone (the MLP bench's gate 2, bench/exec_vs_torch/run_mlp.py, asserts four replicated copies of a run bitwise
+    // equal to the run alone). Runs whose Sv differ leave the bundle unfused (kvm_fuse_entry: an entry runs one virtual count).
+    // The physical count S, the members a gang carries Sv on, is free (kvm_fused_split.h: every S up to Sv computes the same bits), so it is chosen
+    // for the bundle: the fewest waves of gangs over the workers, then the widest gangs, among the counts whose member fits the budget. A run alone
+    // takes S = Sv; 16 runs of h200-d1 take 2, so their gangs run 2 waves deep instead of 16.
+    {
+      int nsplit = 0, Sv = 0;
+      for (const Plan& p : plans) if (p.run.split) { ++nsplit; Sv = std::max(Sv, p.split_fit.back()); }
+      int pick = 0, pick_waves = 0;
+      for (int S = 1; nsplit && S <= Sv; ++S) {
+        bool ok = true;
+        for (const Plan& p : plans) {
+          if (!p.run.split || !ok) continue;
+          const int sv = p.split_fit.back();
+          KvmSplitDesc d{}; d.V = p.run.V; d.E = p.run.E; d.L = p.run.L; d.H = p.run.H[0]; d.S = std::min(S, sv); d.Sv = sv; d.Q = KVM_SPLIT_Q;
+          const int f = kvm_split_layout(d);
+          ok = f > 0 && f <= opts.smem_floats;
+        }
+        if (!ok) continue;
+        int members = 0;
+        for (const Plan& p : plans) if (p.run.split) members += KVM_SPLIT_Q * std::min(S, p.split_fit.back());
+        const int waves = (members + opts.workers - 1) / opts.workers;
+        if (!pick || waves < pick_waves || (waves == pick_waves && S > pick)) { pick = S; pick_waves = waves; }
+      }
+      for (Plan& p : plans) if (p.run.split) { p.run.Sv = p.split_fit.back(); p.run.S = std::min(pick ? pick : p.run.Sv, p.run.Sv); }
+    }
     for (size_t i = 0; i < plans.size(); ++i) {
       KvmFuseRun& r = plans[i].run;
       if (r.grid) {
@@ -538,11 +561,12 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
       }
       if (r.split) {
         r.slice_rows = KVM_SPLIT_R;
-        KvmSplitDesc d{}; d.V = r.V; d.E = r.E; d.L = r.L; d.H = r.H[0]; d.S = r.S; d.Q = r.Q;
+        KvmSplitDesc d{}; d.V = r.V; d.E = r.E; d.L = r.L; d.H = r.H[0]; d.S = r.S; d.Sv = r.Sv; d.Q = r.Q;
         const int floats = kvm_split_layout(d);
         std::string shape = std::to_string(r.E);
         for (int l = 0; l < r.L; ++l) shape += "x" + std::to_string(r.H[l]);
-        R.report.push_back("component " + std::to_string(plan_comp[i]) + ": fused, split form (" + plans[i].split_why + "): " + std::to_string(plans[i].steps.size()) + " steps, T=" + std::to_string(r.T) + " V=" + std::to_string(r.V) + " widths " + shape + ", gangs of " + std::to_string(r.Q) + " slices x " + std::to_string(r.S) + " shares = " + std::to_string(r.Q * r.S) + " members, " + std::to_string(floats) + " floats a member");
+        R.report.push_back("component " + std::to_string(plan_comp[i]) + ": fused, split form (" + plans[i].split_why + "): " + std::to_string(plans[i].steps.size()) + " steps, T=" + std::to_string(r.T) + " V=" + std::to_string(r.V) + " widths " + shape + ", gangs of " + std::to_string(r.Q) + " slices x " + std::to_string(r.S) + " shares = " + std::to_string(r.Q * r.S) + " members, " + std::to_string(floats) + " floats a member" +
+                           (r.S < r.Sv ? " (" + std::to_string(r.Sv) + " virtual shares, the run's own)" : ""));
         continue;
       }
       r.nsl = r.T / r.slice_rows;

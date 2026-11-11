@@ -852,19 +852,19 @@ class KvmExec {
       }
       if (r.split) {   // the split form: Q x S members, their partials, the exchanges, the gang's barrier words (kvm_fused_split.h)
         KvmSplitDesc& d = splits[i]; any_split = true;
-        d.V = r.V; d.E = r.E; d.L = r.L; d.H = r.H[0]; d.S = r.S; d.Q = r.Q; d.lr = r.lr;
+        d.V = r.V; d.E = r.E; d.L = r.L; d.H = r.H[0]; d.S = r.S; d.Sv = r.Sv; d.Q = r.Q; d.lr = r.lr;
         const int floats = kvm_split_layout(d);
         if (floats < 0 || floats > r.smem_floats) throw std::runtime_error("fuse: a split run's layout does not fit what the pass sized it for");
         st.smem_bytes = std::max(st.smem_bytes, floats * (int)sizeof(float));
-        const int nslot = d.Q * d.S, R = KVM_SPLIT_R;
+        const int nslot = d.Q * d.S, vslot = d.Q * d.Sv, R = KVM_SPLIT_R;   // a member's partials, and a virtual share's
         d.we = param(r.wte); d.wh = param(r.head);
         for (int l = 0; l < r.L; ++l) {
           d.w[l] = param(r.w[l]); d.b[l] = param(r.b[l]);
           d.dW[l] = scratch((size_t)nslot * (l ? d.HR : d.E) * d.HP); d.db[l] = scratch((size_t)nslot * d.HP);
           if (l + 1 < r.L) d.XH[l] = scratch((size_t)d.Q * R * d.HR);   // zeroed: the pad columns past H are never written
         }
-        for (int k = 0; k < 2; ++k) d.XD[k] = r.L > 1 ? scratch((size_t)nslot * R * d.HR) : nullptr;
-        d.P = scratch((size_t)nslot * R * d.VP); d.dWh = scratch((size_t)nslot * d.HP * d.VP); d.dX0 = scratch((size_t)nslot * R * d.E);
+        for (int k = 0; k < 2; ++k) d.XD[k] = r.L > 1 ? scratch((size_t)vslot * R * d.HR) : nullptr;
+        d.P = scratch((size_t)vslot * R * d.VP); d.dWh = scratch((size_t)nslot * d.HP * d.VP); d.dX0 = scratch((size_t)vslot * R * d.E);
         d.loss_part = scratch(d.Q);
         d.ctl = reinterpret_cast<unsigned*>(scratch(kvm_gang::line_words(nslot)));   // the gang's control words (kvm_gang::cross), zeroed once (cudaMalloc: 256-byte aligned)
         continue;

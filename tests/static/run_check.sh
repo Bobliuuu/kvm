@@ -13,8 +13,12 @@
 #     (99 KB) has not; use 48 there.
 #   * A width one block cannot hold takes the split form (gangs of 6 x S fmlp_split members), which fires only where a gang fits the
 #     workers, and a worker count where the pass does not fire fails the check: KVM_CHECK_MLP_HIDDEN=256 tests/static/run_check.sh 16 48 107;
-#     the panel's mlp256 shape needs 16 shares or more (96 members), so KVM_CHECK_MLP_HIDDEN=256 KVM_CHECK_MLP_DEPTH=4 tests/static/run_check.sh
-#     107 108; and KVM_CHECK_MLP_DEPTH=4 with 128 at 48 107 108 for the deepest.
+#     on an A100 the panel's mlp256 shape (h256 d4) takes 8 shares at 48 workers, 12 at 72, 16 at 96-107 and 18 at 108, and the grid form
+#     at 36: KVM_CHECK_MLP_HIDDEN=256 KVM_CHECK_MLP_DEPTH=4 tests/static/run_check.sh 107 108; and KVM_CHECK_MLP_DEPTH=4 with 128 at 48 107
+#     108 for the deepest.
+#     On the h256 d4 bundle the float64 bound (2 x eager's distance + 1e-4) sits inside TF32's spread: its first SGD step drops the loss
+#     8x, and on an A100 (Nov 11) the per-op path itself read 2.98e-4 against the bound's 2.10e-4, the split form 1.07-1.21e-4 at 12 and
+#     18 shares and 5.05-5.12e-4 at 8 and 16, the grid 3.48e-4. Read that check beside the per-op path's own distance (--no-fuse).
 #   * A width the split form cannot hold either takes the grid form (one gang of every worker a step, fmlp_grid), sized for the run's workers:
 #     KVM_CHECK_MLP_HIDDEN=1024 tests/static/run_check.sh 107 108 (the panel's mlp1024 shape).
 #   The MLP bundle's CPU golden is a pure-Python run: h256 d4 took 44 s on a quiet laptop and over 60 s (compile_workload.py's default

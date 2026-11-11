@@ -497,6 +497,27 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, const int* ab
       repl_elem(p, q0 + (i - nb - na), slot, off, src, stride, lnq);
     }
   };
+  // the owned elements decoded once a run: slot << 25 | offset, and an attention element's first item partial in hgp
+  const int n_own = nb + na + nq;
+  const long long ostride = kvm_fgpt_own_stride(B, T, D, H, F, V, L, G);
+  uint32_t* const olist = reinterpret_cast<uint32_t*>(d.xch + s.olist) + (size_t)b * ostride;
+  uint32_t* const osrc = reinterpret_cast<uint32_t*>(d.xch + s.osrc) + (size_t)b * ostride;
+  {
+    bool fits = n_own <= ostride;
+    for (int sl = 0; sl < np; ++sl) fits = fits && (long long)d.prows[sl] * d.pcols[sl] < (1LL << 25);
+    if (!fits) { if (tid == 0) fail(KVM_FGPT_E_SHAPE); return false; }
+  }
+  for (int i = tid; i < n_own; i += NT) {
+    int slot; size_t off;
+    own(i, slot, off);
+    olist[i] = ((uint32_t)slot << 25) | (uint32_t)off;
+    if (i >= nb && i < nb + na) {
+      int ll, hh, src;
+      attn_elem(p, a0 + (i - nb), slot, off, ll, hh, src);
+      osrc[i] = (uint32_t)(((size_t)ll * W + (size_t)hh * QB) * hgsz + src);
+    }
+  }
+  __syncthreads();
   const int t0 = __ldcg(d.step);
   for (int step = 0; step < d.steps; ++step) {
     const long long t = (long long)t0 + step;
@@ -937,11 +958,11 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, const int* ab
         const int i = i0 + u * NT;
         v[u] = 0.f;
         if (i >= nb + na) continue;
-        if (i < nb) { own(i, sl[u], off[u]); v[u] = ld(ptab[3 * KVM_FGPT_MAXP + sl[u]] + off[u]); }
+        const uint32_t e = olist[i];
+        sl[u] = (int)(e >> 25); off[u] = e & ((1u << 25) - 1);
+        if (i < nb) v[u] = ld(ptab[3 * KVM_FGPT_MAXP + sl[u]] + off[u]);
         else {
-          int ll, hh, src;
-          attn_elem(p, a0 + (i - nb), sl[u], off[u], ll, hh, src);
-          const float* const part0 = X + s.hgp + ((size_t)ll * W + (size_t)hh * QB) * hgsz + src;   // the head's items: sequence, then query block
+          const float* const part0 = X + s.hgp + osrc[i];                             // the head's items: sequence, then query block
           for (int sqi = 0; sqi < B; ++sqi)
             for (int qq = 0; qq < QB; ++qq) v[u] += ld(part0 + ((size_t)sqi * H * QB + qq) * hgsz);
           ptab[3 * KVM_FGPT_MAXP + sl[u]][off[u]] = v[u];
@@ -982,9 +1003,11 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, const int* ab
     {
       const long long t1 = t + 1;
       const float b1 = d.beta1, b2 = d.beta2, lr = d.lr, eps = d.adam_eps;
-      const float bc1 = __fsub_rn(1.f, (float)pow((double)b1, (double)t1)), bc2 = __fsub_rn(1.f, (float)pow((double)b2, (double)t1));
+      if (tid == 0) { scr[0] = __fsub_rn(1.f, (float)pow((double)b1, (double)t1)); scr[1] = __fsub_rn(1.f, (float)pow((double)b2, (double)t1)); }
+      __syncthreads();
+      const float bc1 = scr[0], bc2 = scr[1];                                        // once a block: a double pow is slow where FP64 is
+      __syncthreads();
       const float ob1 = __fsub_rn(1.f, b1), ob2 = __fsub_rn(1.f, b2);
-      const int n_own = nb + na + nq;
       for (int i0 = tid; i0 < n_own; i0 += 4 * NT) {
         int sl[4];
         size_t off[4];
@@ -995,7 +1018,8 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, const int* ab
           const int i = i0 + u * NT;
           ok[u] = i < n_own;
           if (!ok[u]) continue;
-          own(i, sl[u], off[u]);
+          const uint32_t e = olist[i];
+          sl[u] = (int)(e >> 25); off[u] = e & ((1u << 25) - 1);
           g4[u] = ld(ptab[3 * KVM_FGPT_MAXP + sl[u]] + off[u]);
           m4[u] = ld(ptab[KVM_FGPT_MAXP + sl[u]] + off[u]);
           v4[u] = ld(ptab[2 * KVM_FGPT_MAXP + sl[u]] + off[u]);

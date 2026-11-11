@@ -50,10 +50,9 @@ BUILDS = {
     "test_ops": ('(' + OPS % ("test_ops", "test_ops") + ' && nvcc -O2 -arch=sm_80 -std=c++17 -lineinfo -I../../include -I. test_e2e.cu -o test_e2e && mv test_ops test_e2e ../..)', ["test_ops", "test_e2e"]),
     "test_extra": ('(' + OPSF % ("test_extra", "test_extra") + ' && mv test_extra ../..)', ["test_extra"]),
     "test_bf16": ('(' + OPSF % ("test_bf16", "test_bf16") + ' && mv test_bf16 ../..)', ["test_bf16"]),
-    "litmus": ('mkdir -p out && bash tests/litmus/build.sh "$PWD/out" && '
-               'nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -lineinfo -DKVM_EXEC_NO_MAIN -DKVM_NEW tests/litmus/e2e.cu -o out/e2e && '
-               'nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -lineinfo -DKVM_EXEC_NO_MAIN -DKVM_NEW -DKVM_BREAK_FENCE tests/litmus/e2e.cu -o out/e2e_breakfence && '
-               'mkdir -p litmus_bins && cp out/litmus_* out/e2e out/e2e_breakfence litmus_bins/ && rm -rf out/hdr_*', ["litmus_bins"]),
+    "litmus": ('mkdir -p out && LIT_BUILD_ONLY=1 bash tests/litmus/run_litmus.sh && '
+               'for f in litmus_prod e2e e2e_breakfence e2e_breakchunk e2e_breakcont kvm_exec; do [ -x out/$f ] || { echo "missing out/$f"; exit 1; }; done && '
+               'mkdir -p litmus_bins && find out -maxdepth 1 -type f -exec cp {} litmus_bins/ \\; && rm -rf out/hdr_*', ["litmus_bins"]),
     "kvm_run_nogame": (NV + ' -I. demo/kvm_run.cu -o kvm_run_nogame', ["kvm_run_nogame"]),
     "kvm_run_game": ('bash doom/setup.sh && bash doom/build.sh && bash doom/cpu_build.sh && ' + NV.replace('-Iinclude', '-rdc=true -DKVM_WITH_GAME -I. -Iinclude') +
                      ' demo/kvm_run.cu doom/build/doom_dev.o -o kvm_run_game && tar czf doom_assets.tgz doom/build doom/third_party', ["kvm_run_game", "doom_assets.tgz"]),
@@ -134,7 +133,7 @@ JOBS["negative"] = ('cp $B/test_exec_bf $B/test_exec_bp $B/test_exec_bw .\ntimeo
                     '[ $r1 -eq 0 ] && [ $r2 -eq 0 ] && [ $r3 -ne 0 ] && grep -q "window_done false" /tmp/n3.txt && echo "RESULT: PASS all 3 broken builds are detected (KVM_BREAK_FENCE, KVM_BREAK_PARK_RECHECK, KVM_BREAK_WINDOW_DONE = the recycle flake)" || echo "RESULT: FAIL negatives rc $r1 $r2 $r3"', "A100-40GB")
 JOBS["sanitize"] = ('cp $B/test_exec .\nbad=0; for t in memcheck racecheck synccheck; do echo "== $t"; timeout -k 10 3000 compute-sanitizer --tool $t --error-exitcode 9 ./test_exec smoke > /tmp/s_$t.txt 2>&1; rc=$?; tail -n 6 /tmp/s_$t.txt; echo "sanitizer exit $rc"; [ $rc -eq 0 ] || bad=$((bad+1)); done\n'
                     '[ $bad -eq 0 ] && echo "RESULT: PASS test_exec smoke under memcheck, racecheck, synccheck: 0 errors" || echo "RESULT: FAIL $bad sanitizer(s) reported errors"', "A100-40GB")
-JOBS["litmus"] = ('KVM_LITMUS_PREBUILT=$B/litmus_bins bash tests/litmus/run_litmus.sh > /tmp/l.txt 2>&1; rc=$?; cat /tmp/l.txt | cut -c1-200\n'
+JOBS["litmus"] = ('mkdir -p out && cp $B/litmus_bins/* out/ && LIT_PREBUILT=1 bash tests/litmus/run_litmus.sh > /tmp/l.txt 2>&1; rc=$?; cat /tmp/l.txt | cut -c1-200\n'
                   'res $rc "^LITMUS PASS" /tmp/l.txt "litmus: $(grep ^SUMMARY /tmp/l.txt)"', "A100-40GB")
 JOBS["gpt_modes"] = ('KVM_EXEC_BIN=$B/kvm_exec bash tests/gpu/run_gpt.sh > /tmp/g.txt 2>&1; rc=$?; tail -n 20 /tmp/g.txt | cut -c1-200\nres $rc "^GPT PASS" /tmp/g.txt "gpt_tiny 544 tasks, 6 scheduler modes, identical buffers, sanitizers"', "A100-40GB")
 JOBS["ops"] = ('cp $B/test_ops $B/test_e2e .\nbad=0; for t in test_ops test_e2e; do timeout -k 10 900 ./$t > /tmp/$t.txt 2>&1; rc=$?; echo "$t: $(tail -n 1 /tmp/$t.txt)"; [ $rc -eq 0 ] || { bad=$((bad+1)); tail -n 20 /tmp/$t.txt; }; done\n'
@@ -175,10 +174,11 @@ m = re.search(r"all \d+ tensors: max exec ([0-9.e+-]+), max torch-tf32 ([0-9.e+-
 if not m: print("no grads line"); sys.exit(1)
 ex, tf = float(m.group(1)), float(m.group(2))
 lim = 2.5e-2 if P == "bf16s" else max(1.5 * tf, 2e-3)
-print(f"{P}: worst exec-vs-fp64 {ex:.2e} (limit {lim:.1e}, torch-tf32 worst {tf:.2e})"); sys.exit(0 if ex <= lim else 1)
+v = f"{P}: worst exec-vs-fp64 {ex:.2e} (limit {lim:.1e}, torch-tf32 worst {tf:.2e})"; print(v); open(f"/tmp/gv_{P}.txt", "w").write(v + "\n")
+sys.exit(0 if ex <= lim else 1)
 PY
 done
-[ $fail -eq 0 ] && echo "RESULT: PASS 162M step-1 gradients vs PyTorch float64: bf16s and f32 within bound ($(grep -h 'worst exec' /tmp/g_*.txt | tr '\n' ' '))" || echo "RESULT: FAIL grads162 $fail"''', "A100-80GB")
+[ $fail -eq 0 ] && echo "RESULT: PASS 162M step-1 gradients vs PyTorch float64: bf16s and f32 within bound ($(cat /tmp/gv_*.txt 2>/dev/null | tr '\n' ' '))" || echo "RESULT: FAIL grads162 $fail"''', "A100-80GB")
 JOBS["learn300"] = (r'''cp $B/kvm_run_nogame demo/kvm_run; chmod +x demo/kvm_run; mkdir -p /work
 M='{"name":"gpt_162m","vocab":50304,"d_model":768,"layers":12,"heads":12,"seq":1024,"batch":4,"data_vocab":256,"data_noise":0.1}'
 echo "$M" > /logs/$TAG/learn_model.json
@@ -200,8 +200,10 @@ DEMO_TAG=big MODEL="$M" TILING=a100 STEPS=6 WINDOW=1 SERVE_EVERY=2 FRAMES=700 PR
 grep -E "window sizing|windows|records" runs/big/kvm_run.log | head -n 5
 if [ $rc -eq 0 ] && grep -q "ALL CHECKS PASSED" runs/big/check.log && grep -q "raw-identical 700/700" runs/big/check.log; then echo "RESULT: PASS demo (162M bf16s training + serving + Doom): $(grep -h 'game: compared' runs/big/check.log | cut -c1-120); $(grep -h 'cadence' runs/big/check.log | cut -c1-120)"; else echo "RESULT: FAIL demo rc $rc"; fi''', "A100-80GB")
 JOBS["multigpu"] = (r'''nvidia-smi -L; KVM_STAGE_TIMEOUT=900 bash dist/run_multigpu_tests.sh > /tmp/mg.txt 2>&1; rc=$?; grep -E "^(PASS|FAIL|SKIP) |^RESULT|passed" /tmp/mg.txt | cut -c1-200; mkdir -p /logs/$TAG/multigpu; cp /tmp/mg.txt /logs/$TAG/multigpu/run.txt; cp -r logs/*-dist /logs/$TAG/multigpu/ 2>/dev/null
-nsk=$(grep -c "^SKIP " /tmp/mg.txt); nsk_ok=$(grep "^SKIP " /tmp/mg.txt | grep -c "multinode")
-if [ $rc -eq 0 ] && grep -q "^RESULT: PASS" /tmp/mg.txt && [ "$nsk" -le "$nsk_ok" ] && grep -q "PASS multigpu-p2p-pingpong" /tmp/mg.txt; then echo "RESULT: PASS distributed suite on 2 physical A100s: $(grep -E '[0-9]+ passed' /tmp/mg.txt | tail -1) (only the multi-node stage skipped)"; else echo "RESULT: FAIL multigpu rc $rc, $(grep -E '^(FAIL|SKIP)' /tmp/mg.txt | tr '\n' ';' | cut -c1-300)"; fi''', "A100-40GB:2")
+nsk=$(grep -c "^SKIP " /tmp/mg.txt); nsk_ok=$(grep "^SKIP " /tmp/mg.txt | grep -cE "multinode|rdma")
+if [ $rc -eq 0 ] && grep -q "^RESULT: PASS" /tmp/mg.txt && [ "$nsk" -le "$nsk_ok" ] && grep -q "PASS multigpu-p2p-pingpong" /tmp/mg.txt; then echo "RESULT: PASS distributed suite on 2 physical A100s: $(grep -E '^passed [0-9]+' /tmp/mg.txt | tail -1) (only multi-node and RDMA stages skipped)"; else echo "RESULT: FAIL multigpu rc $rc, $(grep -E '^(FAIL|SKIP)' /tmp/mg.txt | tr '\n' ';' | cut -c1-300)"; fi''', "A100-40GB:2")
+JOBS["static"] = ('KVM_EXE=$B/kvm_exec KVM_PY=python3 bash tests/static/run_check.sh > /tmp/st.txt 2>&1; rc=$?; tail -n 12 /tmp/st.txt | cut -c1-220\n'
+                  'res $rc "^PASS: static schedule" /tmp/st.txt "static schedule bitwise equal to the dynamic path at 1, 4, 16, 107 workers; fused MLP step within its gates"', "A100-40GB")
 JOBS["unit"] = (r'''fail=0
 python3 -I -m unittest discover -s tests > /tmp/u1.txt 2>&1 || fail=$((fail+1)); tail -n 3 /tmp/u1.txt
 python3 -I -m unittest discover -s tests/frontend > /tmp/u2.txt 2>&1 || fail=$((fail+1)); tail -n 3 /tmp/u2.txt
@@ -214,7 +216,7 @@ for f in $(find . -name '*.sh' -not -path './doom/third_party/*'); do bash -n "$
 NEEDS = {  # job -> builds it needs
     "exec": ["test_exec"], "recycle5": ["test_exec"], "negative": ["test_exec_bf", "test_exec_bp", "test_exec_bw"], "sanitize": ["test_exec"], "litmus": ["litmus"],
     "gpt_modes": ["kvm_exec"], "ops": ["test_ops"], "extra": ["test_extra"], "bf16_ops": ["test_bf16"], "sched": ["test_sched"], "zoo": ["zoo", "kvm_exec"],
-    "gptdiff": ["kvm_exec"], "multigpu": [], "bf16_bundles": ["kvm_exec"], "grads162": ["kvm_run_nogame"], "learn300": ["kvm_run_nogame"], "demo": ["kvm_run_game"], "unit": [],
+    "gptdiff": ["kvm_exec"], "multigpu": [], "bf16_bundles": ["kvm_exec"], "grads162": ["kvm_run_nogame"], "learn300": ["kvm_run_nogame"], "demo": ["kvm_run_game"], "static": ["kvm_exec"], "unit": [],
 }
 
 

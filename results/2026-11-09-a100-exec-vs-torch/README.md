@@ -1,5 +1,7 @@
 # Executor (`kvm_exec`) vs PyTorch eager / whole-step CUDA graph / `torch.compile`, small dependent workloads and the 162M GPT (A100, 2026-11-09)
 
+> **Superseded (2026-11-11).** Measured on the executor before #13/#22. Main's current read is `results/2026-11-10-a100-merged` (executor 2.2-3.8x faster than PyTorch's fastest variant on small MLPs, slower on GEMM-bound rows). Kept as the record of that executor; its verdict below is not main's.
+
 **Verdict: AGENTS.md goal 3 is NOT met for the generic executor.** On the workloads where the cost model says a VM should win (small MLP, one run
 or many runs, 10 to 1000 steps) the executor is correct and **beats only PyTorch eager (1.1x to 3.9x) and `torch.compile` without CUDA graphs (1.2-1.9x at R=1)**.
 It **loses to a whole-step CUDA graph by 1.9x (R=32) to 4.8x (R=1), to R graphs on R streams by 5.7x to 7.2x, and to a batched graph by 5.5x to 33x and a compiled

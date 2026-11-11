@@ -1,5 +1,7 @@
 # Goal 3c: executor vs whole-step CUDA graph, A100 (2026-11-09): faster than before, still loses 1.8x / 2.4x
 
+> **Superseded (2026-11-11).** Measured on the executor before #13/#22. Main's current read is `results/2026-11-10-a100-merged` (executor 2.2-3.8x faster than PyTorch's fastest variant on small MLPs, slower on GEMM-bound rows). Kept as the record of that executor; its verdict below is not main's.
+
 > **Landing note.** The numbers below were measured on branch `perf/exec-vs-graph` (PR #6), whose device changes (ticket-based ready-queue claim, continuation fast path, one-fence-warp completion, admitter staging, `--no-cont`, `KVM_LEAN`) rewrite the same hot paths as the completion hand-off / staged admission of PR #1 and conflict with them in `include/kvm_exec.cuh`, `include/kvm_sched.cuh`, `tests/gpu/test_exec.cu` and `tests/litmus/build.sh`. The combined branch keeps PR #1's device code (GPU-verified there) and carries PR #6's results and `bench/exec_vs_graph/` scripts only; `nocont.sh` and the "executor (this work)" column need the PR #6 code (branch tip 7801809). The verdict (goal 3 negative for the executor) rests on the numbers in this file and on PR #7's independent measurement.
 
 

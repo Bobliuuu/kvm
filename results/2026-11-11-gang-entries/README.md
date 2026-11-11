@@ -24,12 +24,12 @@ the team's SASS census (`sass_check.sh`, then `raw/probe/loops_by_function.py` t
 |---|---|---|---|---|
 | grid alone | `kvm_s_fmlp_grid` | 219 | 1 / 0 | 0 |
 | one-block form (slice, sgd), split, grid | `kvm_s_fmlp_grid` | 184 | 85 / 35 | 35 |
-| split alone, its 11 share counts in one function | `kvm_s_fmlp_split` | 252 | 2,202 / 1,266 | 33 (loops of up to 64 HMMA) |
+| split alone, its 11 share counts in one function | `kvm_s_fmlp_split` | 252 | 2,202 / 1,266 | 2,148 (33 in loops of up to 64 HMMA) |
 | **entry: grid alone** (the panel's flags) | `kvm_s_fmlp_grid` | 219 | 1 / 0 | **0** |
 | **entry: split at 18 shares** (the panel's flags) | `kvm_s_fmlp_split<18>` | 229 | 4 / 30 | **3** (0 in loops of up to 64 HMMA) |
 
 The first three rows use nvcc's default flags. The entries use the panel's: `--fmad=false -Xcompiler -ffp-contract=off -DKVM_LEAN`. All figures (unverified) until the team's verifier names them.
-The split beds, with one share count a kernel, held 227-234 registers and no spill.
+The split beds, with one share count a kernel, held 227-234 registers and no spill (#30's `results/2026-11-10-split-mlp-step/bed_regs.log`).
 
 ## What changed
 
@@ -93,7 +93,7 @@ Every figure in this section is (unverified) until the team's verifier names it.
 
 The flag lines are faster in all 6 pairs.
 
-| grid bed kernel | old (counter) | new (flag lines) |
+| grid bed kernel (`raw/flag-lines/builds/`) | old (counter) | new (flag lines) |
 |---|---|---|
 | sm_120 (5070) | 255 registers, spills 212 B | 255 registers, spills 312 B stored / 452 B loaded |
 | sm_80 (A100) | 223 registers, no spill | 223 registers, no spill |
@@ -107,5 +107,5 @@ The flag lines are faster in all 6 pairs.
 
 Within 9 registers of the counter barrier's 219 and 229.
 
-**The executor's PTX compile** (`raw/ptx_check.log`: `kvm_exec.cu`, the panel's flags, `-DKVM_LEAN`, code=compute_80): rc 0, with
-only the 4 warnings the base already has (`kvm_ops_gpt.cuh`'s `#pragma unroll`).
+**The executor's PTX compile** (`raw/ptx_check.log`, its rc and time in `raw/flag-lines/build.log`: `kvm_exec.cu`, the panel's flags,
+`-DKVM_LEAN`, code=compute_80): rc 0 in 145 s, with only the 4 warnings the base already has (`kvm_ops_gpt.cuh`'s `#pragma unroll`).

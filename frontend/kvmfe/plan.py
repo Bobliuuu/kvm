@@ -7,8 +7,9 @@ for ordering. `gap` trades memory for overlap: reuse right after the last reader
 them parallel. Policies: 'shape' (reuse as soon as the gap allows), 'step' (a slot is reused only by a tensor of a LATER step: no
 reuse inside a step, so no WAR/WAW edges inside it, at the price of one step's whole activation footprint), 'none'.
 `local` names tensors that reuse slots inside a step under 'step' too (pre-rounding's TF32 copies, tf32.py: each lives from its cast to
-its last GEMM, so under 'step' every copy would otherwise cost its full size); 'none' shares nothing, theirs included. They get a pool of
-their own, so the other tensors' plan is the policy's alone; a local slot is freed after its last reader plus `gap`, like any other.
+its last GEMM, so under 'step' every copy would otherwise cost its full size). They get a pool of their own, so the other tensors' plan is
+the policy's alone; a local slot is freed after its last reader plus `gap`, like any other. Under 'shape' they share the one pool with
+everything else (a separate pool would only plan more), and under 'none' nothing is shared.
 """
 from __future__ import annotations
 
@@ -74,8 +75,10 @@ def plan_memory(ops: list[LogicalOp], reuse: str = 'shape', gap: int = 0, prefix
         if b.init is None or (b.init[0] == 'fill' and r.init and r.init[0] != 'fill'):
             b.init = r.init
     pinned_bytes = sum(b.rows * b.cols * _ITEM[b.dtype] for b in buffers.values())
+    if reuse != 'step':
+        local = frozenset()                   # only 'step' needs the local tensors apart (module docstring)
     n_slots, total, pool = 0, 0, 0
-    for group, policy in ((False, reuse), (True, 'none' if reuse == 'none' else 'shape')):   # the local tensors last, in a pool of their own
+    for group, policy in ((False, reuse), (True, 'shape')):       # the local tensors last, in a pool of their own
         free: dict = {}
         active: list = []                     # heap of (last use, uid, shape, slot)
         for uid in sorted((u for u, r in roots.items() if r.buf is None and (u in local) == group), key=lambda u: span[u][0]):

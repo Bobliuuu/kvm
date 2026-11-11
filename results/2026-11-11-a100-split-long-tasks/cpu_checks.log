@@ -1,16 +1,18 @@
-# CPU checks of this branch (03f2306), on the A100 host's CPU (nice 19), Nov 11.
-# 13:31-13:34Z, the suites (python3 -I -m unittest discover -s ...):
-RESULT tests rc=0 Ran 157 tests in 6.078s OK
-RESULT tests/frontend rc=0 Ran 144 tests in 156.252s OK
-RESULT tests/dist rc=0 Ran 74 tests in 273.474s OK
-# 14:08Z, tests/frontend/test_clip_chunks.py against two mutants of this tree and the tree itself:
-# 1. the a100 tiling with norm_elems=0 (the clip follows AdamW's 16,384-element chunks):
-FAIL: test_a100_norm_keeps_the_base_chunks_while_adamw_splits
-AssertionError: Tuples differ: (16384, 0) != (16384, 262144)
-Ran 3 tests: FAILED (failures=1)
-# 2. _norm_chunks ignoring norm_elems (the tiling's values kept, so only the clip's tasks can show it):
-FAIL: test_a100_norm_keeps_the_base_chunks_while_adamw_splits
-AssertionError: Lists differ: [... ('e1', 12288)), ...] != [... ('e1', 36864)), ...]   (the gradnorm_partial tasks' ranges)
-Ran 3 tests: FAILED (failures=1)
-# 3. this tree:
-Ran 3 tests: OK
+# CPU checks of this branch (a65f90b: the split with AdamW's chunks sized to the model), Nov 11.
+# 14:49-14:56Z, the suites, on the A100 host's CPU (python3 -I -m unittest discover -s ... -p 'test_*.py'):
+RESULT tests rc=0 Ran 157 tests in 6.055s OK
+RESULT tests/frontend rc=0 Ran 148 tests in 153.205s OK
+RESULT tests/dist rc=0 Ran 74 tests in 257.041s OK
+# 15:18Z, tests/frontend/test_clip_chunks.py (7 tests) on another CPU host (numpy 2.5.4, torch 2.15.0+cpu), against this tree and three mutants of it:
+# this tree:
+Ran 7 tests: OK
+# 1. the a100 tiling with norm_elems=0 (the clip follows AdamW's chunks):
+FAIL: test_a100_sizes_the_chunk_to_the_model: Tuples differ: (0, 0, 0) != (0, 0, 262144)
+FAIL: test_a100_norm_keeps_the_base_chunks_while_adamw_splits: Tuples differ: (16384, 0) != (16384, 262144)
+Ran 7 tests: FAILED (failures=2)
+# 2. _norm_chunks ignoring norm_elems (the tiling's values kept, so only the clip's own tasks can show it):
+FAIL: test_a100_norm_keeps_the_base_chunks_while_adamw_splits: Lists differ: [... ('e1', 12288)), ...] != [... ('e1', 36864)), ...]   (the gradnorm_partial tasks' ranges)
+Ran 7 tests: FAILED (failures=1)
+# 3. for_model without its cap (opt_elems_max ignored, so a 162M model gets params / 432):
+FAIL: test_a100_sizes_the_chunk_to_the_model: 375000 != 262144
+Ran 7 tests: FAILED (failures=1)

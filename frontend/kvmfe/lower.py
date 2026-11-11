@@ -8,22 +8,24 @@ tests/frontend), an over-declared one only costs parallelism.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable
 
 from .ir import Builder, FrontendError, LogicalOp, Tensor
 from .opset import ATTN_BLOCK, ATTN_Q, F_ACC, F_BIG, F_DGELU, F_EXACT, F_GELU, F_HUGE, F_PRECISE, F_TA, F_TB, F_TRUNC, MM_TILE, MMA_TILE, mm_dims, op as device_op
 
 
-_A100 = dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, row_tasks=16)   # a100_pre and a100_trunc are this tiling plus one change each, so neither can drift from it
+_A100 = dict(rows=128, ew_rows=128, cols=256, col_sub=64, vocab=2048, opt_elems=16384, norm_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, row_tasks=16)   # a100_pre and a100_trunc are this tiling plus one change each, so neither can drift from it
 
 @dataclass(frozen=True)
 class Tiling:
     rows: int = 64           # row block of row-wise ops (norms, rope, embedding, cross-entropy, argmax, attention delta)
     ew_rows: int = 64        # row block of flat elementwise ops (gelu_bwd, residual accumulate)
     cols: int = 128          # column block of column reductions (colsum, norm parameter gradients)
+    col_sub: int = 0         # 0: a column reduction takes whole `cols` blocks; else each block splits into tasks this wide (> 32), every column keeping its order (col_blocks)
     vocab: int = 1024        # key block of the embedding gradient
     opt_elems: int = 16384   # AdamW chunk (rounded down to whole rows)
+    norm_elems: int = 0      # 0: the gradient clip's partial sums take opt_elems chunks; else chunks of this size. The clip's norm is a sum stored per chunk in fp32, so its chunking is numerics, not speed (_norm_chunks)
     mm_tile: int = 64        # GEMM output tile: 64 (64x64), 128 (128x128, flag 32) or 256 (256x128, flag 64); see mm_choice for fallbacks
     mm_min_tiles: int = 8    # a GEMM that would give fewer tiles than this at mm_tile steps down to a smaller tile (parallelism over hop cost)
     mm_huge_min_tiles: int = 1    # the 256x128 tile needs at least this many tiles (a narrow GEMM wants more SMs busy on smaller tiles; the a100 preset asks 32)
@@ -59,8 +61,12 @@ class Tiling:
     def __post_init__(self):
         if self.mm_tile not in (64, 128, 256):
             raise FrontendError(f'Tiling.mm_tile must be 64, 128 or 256, got {self.mm_tile!r}')
+        if not isinstance(self.col_sub, int) or self.col_sub < 0 or 0 < self.col_sub <= 32:
+            raise FrontendError(f'Tiling.col_sub must be 0 or an int above 32 (col_reduce keeps a column\'s order only in strips of 64), got {self.col_sub!r}')
+        if not isinstance(self.norm_elems, int) or self.norm_elems < 0:
+            raise FrontendError(f'Tiling.norm_elems must be 0 (follow opt_elems) or a positive int, got {self.norm_elems!r}')
         for k, v in vars(self).items():
-            if k in ('precise', 'mm_min_eff', 'tf32_trunc', 'tf32_preround', 'tf32_copy_scope'):
+            if k in ('precise', 'mm_min_eff', 'tf32_trunc', 'tf32_preround', 'tf32_copy_scope', 'col_sub', 'norm_elems'):
                 continue
             if not isinstance(v, int) or v < 1:
                 raise FrontendError(f'Tiling.{k} must be a positive int, got {v!r}')
@@ -103,6 +109,22 @@ def lowers(kind):
 
 def blocks(n, size):
     return [(a, min(a + size, n)) for a in range(0, n, size)]
+
+
+def col_blocks(n, tc):
+    """Column ranges of a column reduction: `tc.cols` blocks, each split into `tc.col_sub`-wide tasks when col_sub is set. col_reduce
+    (kvm_ops_gpt.cuh) sums a column in strips of NC columns, NC fixed by its task's width (<= 8, 16, 32, else 64), so the split keeps
+    every column's NC, and its sum bitwise: a block of <= 32 columns stays whole, and a last piece of <= 32 columns joins the one before."""
+    out = []
+    for a, b in blocks(n, tc.cols):
+        if not tc.col_sub or b - a <= max(32, tc.col_sub):
+            out.append((a, b))
+            continue
+        pieces = blocks(b - a, tc.col_sub)
+        if pieces[-1][1] - pieces[-1][0] <= 32:
+            pieces[-2:] = [(pieces[-2][0], pieces[-1][1])]
+        out += [(a + p, a + q) for p, q in pieces]
+    return out
 
 
 ROW_WARPS = 8   # warps of a row-wise device op (KVM_GPT_THREADS / 32), one row per warp at a time: the finest block worth a task
@@ -263,7 +285,7 @@ def _norm_bwd(op, tc):
             a['mean'] = mean
         yield TileTask('layernorm_bwd_dx' if ln else 'rmsnorm_bwd_dx', a, [r for r in reads if r], [_rows(dx, r0, r1)])
     dg, db = op.outs['dg'], op.outs.get('db')
-    for c0, c1 in blocks(x.cols, tc.cols):
+    for c0, c1 in col_blocks(x.cols, tc):
         reads = [x.region(0, x.rows, c0, c1), dy.region(0, x.rows, c0, c1), _full(rstd), _full(mean) if ln else None]
         writes = [dg.region(0, 1, c0, c1), db.region(0, 1, c0, c1) if db else None]
         if op.attrs['acc_p']:
@@ -313,7 +335,7 @@ def _(op, tc):
 @lowers('colsum')
 def _(op, tc):
     x, out, acc = op.ins['x'], op.outs['out'], 'into' in op.ins
-    for c0, c1 in blocks(x.cols, tc.cols):
+    for c0, c1 in col_blocks(x.cols, tc):
         w = out.region(0, 1, c0, c1)
         yield _task('colsum', [x.region(0, x.rows, c0, c1), w if acc else None], [w], x=x, out=out, R=x.rows, c0=c0, c1=c1, acc=int(acc))
 
@@ -482,13 +504,20 @@ def _opt_chunks(w, tc, tile=MM_TILE):
     return blocks(w.rows, rows)
 
 
+def _norm_chunks(g, tc, tile=MM_TILE):
+    """Row chunks of the gradient clip's partial sums. Each partial is summed in double and stored in fp32 (gradnorm_partial), so the
+    chunking decides the norm's last bit and, on a step whose norm is over max_norm, the clip coefficient that scales every gradient.
+    A tiling that moves AdamW's chunks for speed keeps the norm's grouping by setting norm_elems (0: the norm follows opt_elems)."""
+    return _opt_chunks(g, replace(tc, opt_elems=tc.norm_elems) if tc.norm_elems else tc, tile)
+
+
 @lowers('grad_clip')
 def _(op, tc):
     coef, partial = op.outs['coef'], op.outs['partial']
     slot = 0
     for k in sorted(op.ins):
         g = op.ins[k]
-        for r0, r1 in _opt_chunks(g, tc, op.attrs.get('tile_rows', MM_TILE)):
+        for r0, r1 in _norm_chunks(g, tc, op.attrs.get('tile_rows', MM_TILE)):
             yield _task('gradnorm_partial', [_rows(g, r0, r1)], [partial.region(slot, slot + 1, 0, 1)],
                         g=g, partial=partial, slot=slot, e0=r0 * g.cols, e1=r1 * g.cols)
             slot += 1

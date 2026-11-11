@@ -3,6 +3,7 @@
 
   python3 -I bench/fused_gpt/fgpt_bed.py WORKLOAD_DIR --bed BINARY [--steps 2] [--gangs 1,4] [--work DIR] [--tol 3e-4] [--launcher CMD]
   python3 -I bench/fused_gpt/fgpt_bed.py WORKLOAD_DIR --exec KVM_EXEC [--exec-flags FLAGS] [--steps 50] ...    (with or without --bed)
+  python3 -I bench/fused_gpt/fgpt_bed.py WORKLOAD_DIR --bed BINARY --time-only [--bed-args clock] [--steps 20] [--gangs 32]
 
 BINARY is bench/fused_gpt/fgpt_bed.cu built for the GPU at hand (nvcc -O3 -std=c++17 -arch=sm_XX -Iinclude). The workload is a GPT
 bundle's workload directory (workload.json and its data/). This script:
@@ -18,7 +19,8 @@ bundle's workload directory (workload.json and its data/). This script:
 Under the bundle's default 1xTF32 GEMMs, run one step for the gradient bars: after the first AdamW update the trajectories part (its
 update is about lr x sign(g), and TF32 noise flips the sign where a gradient is near zero), so later steps' gradients are not comparable
 element by element. A precise-mode bundle (gen.py --mode precise, 3xTF32) holds the tight bars over several steps.
-Exit 0 when every check passes. --launcher is a command prefix for each bed run (a GPU lock or a memory guard), split on spaces; the bed
+--time-only skips the VM and every judgment: it writes the bed's inputs and runs it, for its time (and with --bed-args clock, the bed's
+phase table). Exit 0 when every check passes. --launcher is a command prefix for each bed run (a GPU lock or a memory guard), split on spaces; the bed
 itself refuses a run above 1 GiB of device memory.
 """
 from __future__ import annotations
@@ -207,14 +209,18 @@ def main() -> int:
     ap.add_argument('--decomp-tol', type=float, default=1e-4, help='gradients of each gang size against the first, of each tensor\'s scale')
     ap.add_argument('--exec', default=None, help='a kvm_exec binary: run the workload\'s bundle on it and judge its losses too')
     ap.add_argument('--exec-flags', default='', help='kvm_exec flags for --exec, split on spaces (e.g. --no-fuse for the unfused path)')
+    ap.add_argument('--time-only', action='store_true', help='no VM, no judgment: the bed runs for its time (a timing read, not a check)')
+    ap.add_argument('--bed-args', default='', help='arguments after the bed\'s gang size, split on spaces (e.g. clock, qb=2)')
     a = ap.parse_args()
     if not a.bed and not a.exec:
         ap.error('nothing to run: give --bed, --exec or both')
+    if a.time_only and (a.exec or not a.bed):
+        ap.error('--time-only runs the bed alone: give --bed, and judge --exec without it')
     wdir = Path(a.workload).resolve()
     work = Path(a.work).resolve() if a.work else wdir.parent / f'fgpt-bed-{wdir.name}-k{a.steps}'
     work.mkdir(parents=True, exist_ok=True)
     spec = json.loads((wdir / 'workload.json').read_text())
-    vmr = vm_reference(spec, wdir, a.steps, work)
+    vmr = None if a.time_only else vm_reference(spec, wdir, a.steps, work)
     compiled = cw.compile_spec(spec, data_dir=wdir)
     model = ref.Model(spec, compiled, a.steps)
     log(f'model: L {model.L}, d {model.d}, heads {model.H} x {model.hd}, MLP {model.F}, V {model.V}, {model.B} x {model.T} rows; '
@@ -223,7 +229,7 @@ def main() -> int:
     precise = any(l.split() == ['mm_numerics', '16'] for l in (work / 'meta.txt').read_text().splitlines())
     runs, fail = {}, 0
     for G in [int(x) for x in a.gangs.split(',')] if a.bed else []:
-        cmd = a.launcher.split() + [a.bed, str(work), str(G)]
+        cmd = a.launcher.split() + [a.bed, str(work), str(G), *a.bed_args.split()]
         log(f'G {G}: {" ".join(cmd)}')
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
         (work / f'bed-G{G}.log').write_text(p.stdout + p.stderr)
@@ -232,6 +238,8 @@ def main() -> int:
         if p.returncode:
             log(f'G {G}: the bed exited {p.returncode}: FAIL')
             fail += 1
+            continue
+        if a.time_only:
             continue
         out = work / f'out-G{G}'
         flat = read_f32(out / 'losses.bin')

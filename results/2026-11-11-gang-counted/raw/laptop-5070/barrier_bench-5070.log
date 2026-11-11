@@ -1,0 +1,11 @@
+NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs): 4000 crossings a launch (two a round, data checked between), ns a crossing (median of 5 launches)
+crossing: the flag lines up to KVM_GANG_LINES_MAX = 32 members, the counted barrier past them
+    G       cross     counted  flag lines     counter  errors (in that order)
+    2         585         564         572        1130  0/0/0/0
+    4         678         671         661        1164  0/0/0/0
+    8         704         690         685        1169  0/0/0/0
+   16         716         693         698        1168  0/0/0/0
+   24         741         699         723        1452  0/0/0/0
+   32         995         697         897        1446  0/0/0/0
+   33         712         698         793        1438  0/0/0/0
+rc 0

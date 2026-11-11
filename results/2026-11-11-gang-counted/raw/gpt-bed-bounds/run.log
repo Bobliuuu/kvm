@@ -1,0 +1,145 @@
+CHECK L0-tiny-p-k2-g16: ok; 1 ok, 0 FAIL
+[fgpt_bed 15:28:59Z]   fgpt_bed: run 0.381 ms with its launch; in the kernel 150.7 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 16 of 16 members finished, step counter 0 -> 2
+CHECK L0-small-p-k2-g32: ok; 1 ok, 0 FAIL
+[fgpt_bed 15:29:01Z]   fgpt_bed: run 0.712 ms with its launch; in the kernel 320.7 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 2
+CHECK L0-d128-p-k1-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:29:06Z]   fgpt_bed: run 1.057 ms with its launch; in the kernel 933.4 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 0 -> 1
+CHECK L0-d128-p-resync-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:29:14Z]   fgpt_bed: run 1.058 ms with its launch; in the kernel 930.7 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 1 -> 2
+CHECK L0-ho128-p-k1-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:29:21Z]   fgpt_bed: run 1.251 ms with its launch; in the kernel 1145.5 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 0 -> 1
+CHECK L0-ho128-p-resync-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:29:28Z]   fgpt_bed: run 1.222 ms with its launch; in the kernel 1145.8 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 1 -> 2
+CHECK L64-tiny-p-k2-g16: ok; 1 ok, 0 FAIL
+[fgpt_bed 15:29:30Z]   fgpt_bed: run 0.365 ms with its launch; in the kernel 148.8 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 16 of 16 members finished, step counter 0 -> 2
+CHECK L64-small-p-k2-g32: ok; 1 ok, 0 FAIL
+[fgpt_bed 15:29:32Z]   fgpt_bed: run 0.690 ms with its launch; in the kernel 312.6 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 2
+CHECK L64-d128-p-k1-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:29:38Z]   fgpt_bed: run 1.086 ms with its launch; in the kernel 936.1 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 0 -> 1
+CHECK L64-d128-p-resync-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:29:46Z]   fgpt_bed: run 1.061 ms with its launch; in the kernel 938.0 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 1 -> 2
+CHECK L64-ho128-p-k1-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:29:52Z]   fgpt_bed: run 1.264 ms with its launch; in the kernel 1154.8 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 0 -> 1
+CHECK L64-ho128-p-resync-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:29:59Z]   fgpt_bed: run 1.256 ms with its launch; in the kernel 1152.6 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 1 -> 2
+w_tiny round 1 L32 135.4 us a step in all; the SMs ran at 1409 MHz
+HASH w_tiny g16 r1 L32 7131904305770c47
+w_tiny round 1 L0 138.0 us a step in all; the SMs ran at 1409 MHz
+HASH w_tiny g16 r1 L0 7131904305770c47
+w_tiny round 1 L64 135.5 us a step in all; the SMs ran at 1409 MHz
+HASH w_tiny g16 r1 L64 7131904305770c47
+w_small round 1 L32 292.9 us a step in all; the SMs ran at 1408 MHz
+HASH w_small g32 r1 L32 2a79658034eac8d3
+w_small round 1 L0 300.7 us a step in all; the SMs ran at 1408 MHz
+HASH w_small g32 r1 L0 2a79658034eac8d3
+w_small round 1 L64 293.6 us a step in all; the SMs ran at 1408 MHz
+HASH w_small g32 r1 L64 2a79658034eac8d3
+w_d128_tf32_k30 round 1 L32 851.6 us a step in all; the SMs ran at 1407 MHz
+HASH w_d128_tf32_k30 g64 r1 L32 011250ceba415cb2
+w_d128_tf32_k30 round 1 L0 850.2 us a step in all; the SMs ran at 1407 MHz
+HASH w_d128_tf32_k30 g64 r1 L0 011250ceba415cb2
+w_d128_tf32_k30 round 1 L64 858.6 us a step in all; the SMs ran at 1407 MHz
+HASH w_d128_tf32_k30 g64 r1 L64 011250ceba415cb2
+w_ho128_tf32_k30 round 1 L32 1062.8 us a step in all; the SMs ran at 1407 MHz
+HASH w_ho128_tf32_k30 g64 r1 L32 7ae71500c2d0f515
+w_ho128_tf32_k30 round 1 L0 1060.4 us a step in all; the SMs ran at 1407 MHz
+HASH w_ho128_tf32_k30 g64 r1 L0 7ae71500c2d0f515
+w_ho128_tf32_k30 round 1 L64 1062.2 us a step in all; the SMs ran at 1407 MHz
+HASH w_ho128_tf32_k30 g64 r1 L64 7ae71500c2d0f515
+w_tiny round 2 L0 138.1 us a step in all; the SMs ran at 1409 MHz
+HASH w_tiny g16 r2 L0 7131904305770c47
+w_tiny round 2 L64 135.4 us a step in all; the SMs ran at 1409 MHz
+HASH w_tiny g16 r2 L64 7131904305770c47
+w_tiny round 2 L32 135.4 us a step in all; the SMs ran at 1409 MHz
+HASH w_tiny g16 r2 L32 7131904305770c47
+w_small round 2 L0 300.5 us a step in all; the SMs ran at 1408 MHz
+HASH w_small g32 r2 L0 2a79658034eac8d3
+w_small round 2 L64 292.8 us a step in all; the SMs ran at 1408 MHz
+HASH w_small g32 r2 L64 2a79658034eac8d3
+w_small round 2 L32 293.1 us a step in all; the SMs ran at 1408 MHz
+HASH w_small g32 r2 L32 2a79658034eac8d3
+w_d128_tf32_k30 round 2 L0 850.8 us a step in all; the SMs ran at 1407 MHz
+HASH w_d128_tf32_k30 g64 r2 L0 011250ceba415cb2
+w_d128_tf32_k30 round 2 L64 858.1 us a step in all; the SMs ran at 1407 MHz
+HASH w_d128_tf32_k30 g64 r2 L64 011250ceba415cb2
+w_d128_tf32_k30 round 2 L32 850.5 us a step in all; the SMs ran at 1407 MHz
+HASH w_d128_tf32_k30 g64 r2 L32 011250ceba415cb2
+w_ho128_tf32_k30 round 2 L0 1063.1 us a step in all; the SMs ran at 1407 MHz
+HASH w_ho128_tf32_k30 g64 r2 L0 7ae71500c2d0f515
+w_ho128_tf32_k30 round 2 L64 1062.5 us a step in all; the SMs ran at 1407 MHz
+HASH w_ho128_tf32_k30 g64 r2 L64 7ae71500c2d0f515
+w_ho128_tf32_k30 round 2 L32 1062.5 us a step in all; the SMs ran at 1407 MHz
+HASH w_ho128_tf32_k30 g64 r2 L32 7ae71500c2d0f515
+w_tiny round 3 L64 135.4 us a step in all; the SMs ran at 1409 MHz
+HASH w_tiny g16 r3 L64 7131904305770c47
+w_tiny round 3 L32 135.5 us a step in all; the SMs ran at 1409 MHz
+HASH w_tiny g16 r3 L32 7131904305770c47
+w_tiny round 3 L0 137.9 us a step in all; the SMs ran at 1409 MHz
+HASH w_tiny g16 r3 L0 7131904305770c47
+w_small round 3 L64 293.4 us a step in all; the SMs ran at 1408 MHz
+HASH w_small g32 r3 L64 2a79658034eac8d3
+w_small round 3 L32 293.0 us a step in all; the SMs ran at 1408 MHz
+HASH w_small g32 r3 L32 2a79658034eac8d3
+w_small round 3 L0 300.6 us a step in all; the SMs ran at 1408 MHz
+HASH w_small g32 r3 L0 2a79658034eac8d3
+w_d128_tf32_k30 round 3 L64 857.9 us a step in all; the SMs ran at 1407 MHz
+HASH w_d128_tf32_k30 g64 r3 L64 011250ceba415cb2
+w_d128_tf32_k30 round 3 L32 849.1 us a step in all; the SMs ran at 1407 MHz
+HASH w_d128_tf32_k30 g64 r3 L32 011250ceba415cb2
+w_d128_tf32_k30 round 3 L0 851.6 us a step in all; the SMs ran at 1407 MHz
+HASH w_d128_tf32_k30 g64 r3 L0 011250ceba415cb2
+w_ho128_tf32_k30 round 3 L64 1062.8 us a step in all; the SMs ran at 1407 MHz
+HASH w_ho128_tf32_k30 g64 r3 L64 7ae71500c2d0f515
+w_ho128_tf32_k30 round 3 L32 1061.6 us a step in all; the SMs ran at 1407 MHz
+HASH w_ho128_tf32_k30 g64 r3 L32 7ae71500c2d0f515
+w_ho128_tf32_k30 round 3 L0 1062.0 us a step in all; the SMs ran at 1407 MHz
+HASH w_ho128_tf32_k30 g64 r3 L0 7ae71500c2d0f515
+w_tiny round 4 L32 135.4 us a step in all; the SMs ran at 1409 MHz
+HASH w_tiny g16 r4 L32 7131904305770c47
+w_tiny round 4 L0 137.9 us a step in all; the SMs ran at 1409 MHz
+HASH w_tiny g16 r4 L0 7131904305770c47
+w_tiny round 4 L64 135.5 us a step in all; the SMs ran at 1409 MHz
+HASH w_tiny g16 r4 L64 7131904305770c47
+w_small round 4 L32 291.9 us a step in all; the SMs ran at 1408 MHz
+HASH w_small g32 r4 L32 2a79658034eac8d3
+w_small round 4 L0 300.6 us a step in all; the SMs ran at 1408 MHz
+HASH w_small g32 r4 L0 2a79658034eac8d3
+w_small round 4 L64 292.4 us a step in all; the SMs ran at 1408 MHz
+HASH w_small g32 r4 L64 2a79658034eac8d3
+w_d128_tf32_k30 round 4 L32 851.4 us a step in all; the SMs ran at 1407 MHz
+HASH w_d128_tf32_k30 g64 r4 L32 011250ceba415cb2
+w_d128_tf32_k30 round 4 L0 850.5 us a step in all; the SMs ran at 1407 MHz
+HASH w_d128_tf32_k30 g64 r4 L0 011250ceba415cb2
+w_d128_tf32_k30 round 4 L64 858.4 us a step in all; the SMs ran at 1407 MHz
+HASH w_d128_tf32_k30 g64 r4 L64 011250ceba415cb2
+w_ho128_tf32_k30 round 4 L32 1061.5 us a step in all; the SMs ran at 1407 MHz
+HASH w_ho128_tf32_k30 g64 r4 L32 7ae71500c2d0f515
+w_ho128_tf32_k30 round 4 L0 1062.0 us a step in all; the SMs ran at 1407 MHz
+HASH w_ho128_tf32_k30 g64 r4 L0 7ae71500c2d0f515
+w_ho128_tf32_k30 round 4 L64 1061.3 us a step in all; the SMs ran at 1407 MHz
+HASH w_ho128_tf32_k30 g64 r4 L64 7ae71500c2d0f515
+w_tiny round 5 L0 138.0 us a step in all; the SMs ran at 1409 MHz
+HASH w_tiny g16 r5 L0 7131904305770c47
+w_tiny round 5 L64 135.5 us a step in all; the SMs ran at 1409 MHz
+HASH w_tiny g16 r5 L64 7131904305770c47
+w_tiny round 5 L32 135.4 us a step in all; the SMs ran at 1409 MHz
+HASH w_tiny g16 r5 L32 7131904305770c47
+w_small round 5 L0 300.5 us a step in all; the SMs ran at 1408 MHz
+HASH w_small g32 r5 L0 2a79658034eac8d3
+w_small round 5 L64 293.3 us a step in all; the SMs ran at 1408 MHz
+HASH w_small g32 r5 L64 2a79658034eac8d3
+w_small round 5 L32 293.2 us a step in all; the SMs ran at 1408 MHz
+HASH w_small g32 r5 L32 2a79658034eac8d3
+w_d128_tf32_k30 round 5 L0 850.5 us a step in all; the SMs ran at 1407 MHz
+HASH w_d128_tf32_k30 g64 r5 L0 011250ceba415cb2
+w_d128_tf32_k30 round 5 L64 857.5 us a step in all; the SMs ran at 1407 MHz
+HASH w_d128_tf32_k30 g64 r5 L64 011250ceba415cb2
+w_d128_tf32_k30 round 5 L32 850.7 us a step in all; the SMs ran at 1407 MHz
+HASH w_d128_tf32_k30 g64 r5 L32 011250ceba415cb2
+w_ho128_tf32_k30 round 5 L0 1061.8 us a step in all; the SMs ran at 1407 MHz
+HASH w_ho128_tf32_k30 g64 r5 L0 7ae71500c2d0f515
+w_ho128_tf32_k30 round 5 L64 1063.2 us a step in all; the SMs ran at 1407 MHz
+HASH w_ho128_tf32_k30 g64 r5 L64 7ae71500c2d0f515
+w_ho128_tf32_k30 round 5 L32 1061.3 us a step in all; the SMs ran at 1407 MHz
+HASH w_ho128_tf32_k30 g64 r5 L32 7ae71500c2d0f515
+AW_GPU_END

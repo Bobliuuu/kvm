@@ -1,0 +1,64 @@
+   w_tiny control: rc 0; [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang); gangs [16]; /root/builds/e5b215c6ad3c05c5612594e8/kvm_exec
+   w_tiny candidate: rc 0; [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang); gangs [16]; /root/builds/10a883c7bede10e9df070e9b/kvm_exec
+BITWISE w_tiny: 110 state buffers, 202,768 bytes, all equal
+   w_small control: rc 0; [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang); gangs [32]; /root/builds/e5b215c6ad3c05c5612594e8/kvm_exec
+   w_small candidate: rc 0; [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang); gangs [32]; /root/builds/10a883c7bede10e9df070e9b/kvm_exec
+BITWISE w_small: 158 state buffers, 1,398,160 bytes, all equal
+   w_ho128 control: rc 0; [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang); gangs [64]; /root/builds/e5b215c6ad3c05c5612594e8/kvm_exec
+   w_ho128 candidate: rc 0; [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang); gangs [64]; /root/builds/10a883c7bede10e9df070e9b/kvm_exec
+BITWISE w_ho128: 234 state buffers, 10,306,800 bytes, all equal
+BITWISE: 3 of 3 bundles bitwise on the fused path
+bitwise rc 0
+NVIDIA A100-SXM4-80GB: 108 co-resident blocks of 256 threads
+counted barrier, side by side: 108 blocks in 7 gang(s) (sizes 1 2 3 5 8 13 76), 96 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 75 member(s) gave up at a crossing (the widest gang has 75 others; members of other gangs may give up too once the word is set)
+counted barrier, one gang: 108 blocks in 1 gang(s) (sizes 108), 128 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 107 member(s) gave up at a crossing (the widest gang has 107 others; members of other gangs may give up too once the word is set)
+flag-line barrier, side by side: 108 blocks in 7 gang(s) (sizes 1 2 3 5 8 13 76), 96 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 75 member(s) gave up at a crossing (the widest gang has 75 others; members of other gangs may give up too once the word is set)
+flag-line barrier, one gang: 108 blocks in 1 gang(s) (sizes 108), 128 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 107 member(s) gave up at a crossing (the widest gang has 107 others; members of other gangs may give up too once the word is set)
+cross<8> barrier, side by side: 108 blocks in 7 gang(s) (sizes 1 2 3 5 8 13 76), 96 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 75 member(s) gave up at a crossing (the widest gang has 75 others; members of other gangs may give up too once the word is set)
+cross<8> barrier, one gang: 108 blocks in 1 gang(s) (sizes 108), 128 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 107 member(s) gave up at a crossing (the widest gang has 107 others; members of other gangs may give up too once the word is set)
+cross<KVM_GANG_LINES_MAX> barrier, side by side: 108 blocks in 7 gang(s) (sizes 1 2 3 5 8 13 76), 96 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 75 member(s) gave up at a crossing (the widest gang has 75 others; members of other gangs may give up too once the word is set)
+cross<KVM_GANG_LINES_MAX> barrier, one gang: 108 blocks in 1 gang(s) (sizes 108), 128 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 107 member(s) gave up at a crossing (the widest gang has 107 others; members of other gangs may give up too once the word is set)
+PASS: in every form (counted, flag lines, cross at 8 and at KVM_GANG_LINES_MAX) every member read every slot of its round, every gang's control words are as clean runs leave them (staggered starts included), and an aborted gang ends
+device test rc 0
+NVIDIA A100-SXM4-80GB (sm_80, 108 SMs): 4000 crossings a launch (two a round, data checked between), ns a crossing (median of 5 launches)
+crossing: the flag lines up to KVM_GANG_LINES_MAX = 32 members, the counted barrier past them
+    G       cross     counted  flag lines     counter  errors (in that order)
+    2        1039         948        1020        1677  0/0/0/0
+    4        1107        1069        1091        1982  0/0/0/0
+    8        1218        1206        1203        2107  0/0/0/0
+   16        1287        1290        1273        2177  0/0/0/0
+   24        1333        1343        1316        2218  0/0/0/0
+   32        1358        1344        1350        2195  0/0/0/0
+   33        1391        1366        1613        2213  0/0/0/0
+   40        1410        1385        1725        2216  0/0/0/0
+   48        1427        1401        1895        2221  0/0/0/0
+   56        1443        1419        2032        2235  0/0/0/0
+   64        1431        1405        2174        2216  0/0/0/0
+   96        1517        1496        2760        2299  0/0/0/0
+  108        1580        1551        3467        2354  0/0/0/0
+barrier bench rc 0
+GANG_CNT_B_END

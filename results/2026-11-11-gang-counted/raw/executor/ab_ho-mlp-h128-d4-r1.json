@@ -1,0 +1,39 @@
+[
+ {
+  "row": "ho-mlp-h128-d4-r1",
+  "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho128/bundle",
+  "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho128/bundle",
+  "tasks": {
+   "control": 15600,
+   "cand": 15600
+  },
+  "ms": {
+   "control": {
+    "median": 15.491,
+    "best": 15.484,
+    "all": [
+     15.491,
+     15.484,
+     15.49,
+     15.496,
+     15.492
+    ]
+   },
+   "cand": {
+    "median": 14.484,
+    "best": 14.464,
+    "all": [
+     14.484,
+     14.467,
+     14.489,
+     14.484,
+     14.464
+    ]
+   }
+  },
+  "paired_ratio_median": 1.0698702016017676,
+  "best_ratio": 1.0705199115044248,
+  "gate_max_rel": 0.0,
+  "gate_tol": 0.0
+ }
+]

@@ -1,0 +1,102 @@
+PR-READ: run /root/work/gangcnt/pr/run-20261111T142648Z, bundles /root/work/gangcnt/pr/bundles-6528ca77af9f9191
+PR-READ: cand 5e1dd02e0fc8e944 tree ?, control 228dc8df86f39cf9 tree ?, 2026-11-11T14:26:48Z
+SASS (registers, then the loop with the most reloads a pass):
+  kvm_static_kernel:   (kernel)                           269     0     4     2      15     237  kvm_dispatch 237, mm_tile_big_ni 256x128 TN 190, mm_tile_big_ni 256x128 TT rz 187
+  kvm_static_kernel:     (kernel)                     -> kvm_fail                                        1 site(s)    2-  2 live, widest at 0x0008f0
+  kvm_static_kernel:     (kernel)                     -> kvm_dispatch                                    1 site(s)    2-  2 live, widest at 0x000b10
+  kvm_static_kernel:   the loop with the most reloads, at 0x018bb0 (HMMA 3784, LDL 5034): 0 passengers
+  kvm_static_block:   (kernel)                           298     0     0     5      40     210  kvm_s_fmlp_slice 137, kvm_s_fmlp_sgd 62, kvm_dispatch_fused 3; held by none 30
+  kvm_static_block:   kvm_s_fmlp_sgd                     889     0     0     0      99     151  kvm_s_fmlp_slice 115, (kernel) 12; held by none 24
+  kvm_static_block:   kvm_s_fmlp_slice                 10920   512    15     0     206      44  kvm_s_fmlp_sgd 32, (kernel) 12
+  kvm_static_block:   the loop with the most reloads, at 0x027e50 (HMMA 8, LDL 0): 117 passengers
+  kvm_static_gang_grid:   (kernel)                           347     0     0     5      44     205  kvm_s_fmlp_grid 157, kvm_dispatch_fused 4; held by none 48
+  kvm_static_gang_grid:   kvm_s_fmlp_grid                  25592   976     3     0     231      18  (kernel) 18
+  kvm_static_gang_grid:     kvm_s_fmlp_grid              -> __internal_69_$__cuda_sm70_votesync_any        10 site(s)   10-140 live, widest at 0x0652c0
+  kvm_static_gang_grid:   the loop with the most reloads, at 0x044ad0 (HMMA 352, LDL 2): 43 passengers
+  kvm_static_gang_splitILi18E:   (kernel)                           273     0     0     5      37     202  kvm_s_fmlp_split 139, kvm_dispatch_fused 5; held by none 63
+  kvm_static_gang_splitILi18E:   kvm_s_fmlp_split                 10879   494     5    30     225      14  (kernel) 14
+  kvm_static_gang_splitILi18E:     kvm_s_fmlp_split             -> __internal_11_$__cuda_sm20_rcp_rn_f32_slowpa    4 site(s)   72- 74 live, widest at 0x007ec0
+  kvm_static_gang_splitILi18E:   the loop with the most reloads, at 0x00e0f0 (HMMA 470, LDL 4): 0 passengers
+  kvm_static_gang_splitILi4E:   (kernel)                           273     0     0     5      37     204  kvm_s_fmlp_split 137, kvm_dispatch_fused 5; held by none 67
+  kvm_static_gang_splitILi4E:   kvm_s_fmlp_split                 10905   494     5    30     227      14  (kernel) 14
+  kvm_static_gang_splitILi4E:     kvm_s_fmlp_split             -> __internal_49_$__cuda_sm70_votesync_any         5 site(s)   10-119 live, widest at 0x02b8f0
+  kvm_static_gang_splitILi4E:   the loop with the most reloads, at 0x01f040 (HMMA 158, LDL 4): 45 passengers
+  kvm_static_gang_splitILi2E:   (kernel)                           273     0     0     5      37     202  kvm_s_fmlp_split 129, kvm_dispatch_fused 5; held by none 73
+  kvm_static_gang_splitILi2E:   kvm_s_fmlp_split                 10884   494     5    30     225      14  (kernel) 14
+  kvm_static_gang_splitILi2E:     kvm_s_fmlp_split             -> __internal_61_$__cuda_sm70_votesync_any         5 site(s)   10-112 live, widest at 0x02b7a0
+  kvm_static_gang_splitILi2E:   the loop with the most reloads, at 0x01f0f0 (HMMA 158, LDL 4): 45 passengers
+/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/w_tiny/bundle: 21 op ids used, each both trees' id for its name
+/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/w_small/bundle: 21 op ids used, each both trees' id for its name
+/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/w_162m_3/bundle: 21 op ids used, each both trees' id for its name
+/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h72/bundle: 9 op ids used, each both trees' id for its name
+/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h72_r8: 9 op ids used, each both trees' id for its name
+/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h72_r32: 9 op ids used, each both trees' id for its name
+/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/hetero_r8: 9 op ids used, each both trees' id for its name
+/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h256/bundle: 9 op ids used, each both trees' id for its name
+/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h1024/bundle: 9 op ids used, each both trees' id for its name
+/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho576/bundle: 9 op ids used, each both trees' id for its name
+/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho200_r16: 9 op ids used, each both trees' id for its name
+/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho128/bundle: 9 op ids used, each both trees' id for its name
+/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho224_r8: 9 op ids used, each both trees' id for its name
+REPORT gpt-tiny: candidate ok: MLP 0 fused (generic), GPT 1 fused; main ok: MLP 0 fused (generic), GPT 1 fused -> gate w. bitwise, bar x0.99
+REPORT gpt-small: candidate ok: MLP 0 fused (generic), GPT 1 fused; main ok: MLP 0 fused (generic), GPT 1 fused -> gate w. bitwise, bar x0.99
+REPORT gpt-162m: candidate ok: MLP 0 fused (generic), GPT 0 fused; main ok: MLP 0 fused (generic), GPT 0 fused -> gate w. bitwise, bar x0.99
+REPORT mlp72-r1: candidate ok: MLP 1 fused (one-block), GPT 0 fused; main ok: MLP 1 fused (one-block), GPT 0 fused -> gate w. bitwise, bar x0.99
+REPORT mlp72-r8: candidate ok: MLP 8 fused (one-block), GPT 0 fused; main ok: MLP 8 fused (one-block), GPT 0 fused -> gate w. bitwise, bar x0.99
+REPORT mlp72-r32: candidate ok: MLP 32 fused (one-block), GPT 0 fused; main ok: MLP 32 fused (one-block), GPT 0 fused -> gate w. bitwise, bar x0.99
+REPORT mlp-hetero-r8: candidate ok: MLP 8 fused (one-block), GPT 0 fused; main ok: MLP 8 fused (one-block), GPT 0 fused -> gate w. bitwise, bar x0.99
+REPORT mlp256-r1: candidate ok: MLP 1 fused (split), GPT 0 fused; main ok: MLP 1 fused (split), GPT 0 fused -> gate w. bitwise, bar x0.99
+REPORT mlp1024-r1: candidate ok: MLP 1 fused (grid), GPT 0 fused; main ok: MLP 1 fused (grid), GPT 0 fused -> gate w. bitwise, bar x0.99
+REPORT ho-mlp-h576-d1-r1: candidate ok: MLP 1 fused (split), GPT 0 fused; main ok: MLP 1 fused (split), GPT 0 fused -> gate w. bitwise, bar x0.99
+REPORT ho-mlp-h200-d1-r16: candidate ok: MLP 16 fused (split), GPT 0 fused; main ok: MLP 16 fused (split), GPT 0 fused -> gate w. bitwise, bar x0.99
+REPORT ho-mlp-h128-d4-r1: candidate ok: MLP 1 fused (split), GPT 0 fused; main ok: MLP 1 fused (split), GPT 0 fused -> gate w. bitwise, bar x0.99
+REPORT ho-mlp-h224-d2-r8: candidate ok: MLP 8 fused (split), GPT 0 fused; main ok: MLP 8 fused (split), GPT 0 fused -> gate w. bitwise, bar x0.99
+run_check default rc=0: 35 ok, 0 FAIL; PASS: static schedule bitwise equal to the dynamic path; fused MLP step within its gates
+run_check h256d4 rc=1: 13 ok, 3 FAIL; FAIL: 1 checks failed
+run_check h128d4 rc=0: 21 ok, 0 FAIL; PASS: static schedule bitwise equal to the dynamic path; fused MLP step within its gates
+run_check h1024d2 rc=0: 14 ok, 0 FAIL; PASS: static schedule bitwise equal to the dynamic path; fused MLP step within its gates
+GATE ok: gpt-tiny: 20 buffers with prefix 'w.', tasks 6749 -> 6749; bitwise equal; largest relative difference 0.00e+00
+{"row": "gpt-tiny", "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/w_tiny/bundle", "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/w_tiny/bundle", "tasks": {"control": 6749, "cand": 6749}, "ms": {"control": {"median": 6.625, "best": 6.617, "all": [6.625, 6.63, 6.617, 6.622, 6.632]}, "cand": {"median": 6.662, "best": 6.659, "all": [6.659, 6.667, 6.664, 6.66, 6.662]}}, "paired_ratio_median": 0.9944502774861257, "best_ratio": 0.9936927466586575, "gate_max_rel": 0.0, "gate_tol": 0.0}
+GATE ok: gpt-small: 36 buffers with prefix 'w.', tasks 28858 -> 28858; bitwise equal; largest relative difference 0.00e+00
+{"row": "gpt-small", "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/w_small/bundle", "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/w_small/bundle", "tasks": {"control": 28858, "cand": 28858}, "ms": {"control": {"median": 14.322, "best": 14.316, "all": [14.321, 14.333, 14.363, 14.322, 14.316]}, "cand": {"median": 14.448, "best": 14.443, "all": [14.453, 14.45, 14.444, 14.448, 14.443]}}, "paired_ratio_median": 0.9912790697674417, "best_ratio": 0.9912068129889913, "gate_max_rel": 0.0, "gate_tol": 0.0}
+GATE ok: gpt-162m: 196 buffers with prefix 'w.', tasks 161316 -> 161316; bitwise equal; largest relative difference 0.00e+00
+{"row": "gpt-162m", "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/w_162m_3/bundle", "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/w_162m_3/bundle", "tasks": {"control": 161316, "cand": 161316}, "ms": {"control": {"median": 348.794, "best": 347.509, "all": [349.357, 347.527, 347.509, 348.794, 349.577]}, "cand": {"median": 348.148, "best": 347.734, "all": [349.264, 347.794, 348.954, 347.734, 348.148]}}, "paired_ratio_median": 1.0002662742223647, "best_ratio": 0.9993529536944907, "gate_max_rel": 0.0, "gate_tol": 0.0}
+GATE ok: mlp72-r1: 6 buffers with prefix 'w.', tasks 9600 -> 9600; bitwise equal; largest relative difference 0.00e+00
+{"row": "mlp72-r1", "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h72/bundle", "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h72/bundle", "tasks": {"control": 9600, "cand": 9600}, "ms": {"control": {"median": 5.599, "best": 5.597, "all": [5.597, 5.598, 5.599, 5.599, 5.6]}, "cand": {"median": 5.6, "best": 5.594, "all": [5.594, 5.598, 5.6, 5.603, 5.642]}}, "paired_ratio_median": 0.9998214285714286, "best_ratio": 1.000536288880944, "gate_max_rel": 0.0, "gate_tol": 0.0}
+GATE ok: mlp72-r8: 48 buffers with prefix 'w.', tasks 76800 -> 76800; bitwise equal; largest relative difference 0.00e+00
+{"row": "mlp72-r8", "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h72_r8", "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h72_r8", "tasks": {"control": 76800, "cand": 76800}, "ms": {"control": {"median": 5.507, "best": 5.501, "all": [5.51, 5.51, 5.501, 5.505, 5.507]}, "cand": {"median": 5.507, "best": 5.504, "all": [5.504, 5.507, 5.509, 5.504, 5.507]}}, "paired_ratio_median": 1.0001816860465116, "best_ratio": 0.9994549418604652, "gate_max_rel": 0.0, "gate_tol": 0.0}
+GATE ok: mlp72-r32: 192 buffers with prefix 'w.', tasks 307200 -> 307200; bitwise equal; largest relative difference 0.00e+00
+{"row": "mlp72-r32", "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h72_r32", "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h72_r32", "tasks": {"control": 307200, "cand": 307200}, "ms": {"control": {"median": 8.255, "best": 8.251, "all": [8.26, 8.255, 8.251, 8.259, 8.255]}, "cand": {"median": 8.256, "best": 8.255, "all": [8.256, 8.255, 8.259, 8.256, 8.255]}}, "paired_ratio_median": 1.0, "best_ratio": 0.9995154451847363, "gate_max_rel": 0.0, "gate_tol": 0.0}
+GATE ok: mlp-hetero-r8: 48 buffers with prefix 'w.', tasks 68400 -> 68400; bitwise equal; largest relative difference 0.00e+00
+{"row": "mlp-hetero-r8", "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/hetero_r8", "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/hetero_r8", "tasks": {"control": 68400, "cand": 68400}, "ms": {"control": {"median": 6.283, "best": 6.278, "all": [6.278, 6.283, 6.283, 6.286, 6.28]}, "cand": {"median": 6.281, "best": 6.274, "all": [6.281, 6.274, 6.283, 6.28, 6.281]}}, "paired_ratio_median": 1.0, "best_ratio": 1.0006375518010837, "gate_max_rel": 0.0, "gate_tol": 0.0}
+GATE ok: mlp256-r1: 10 buffers with prefix 'w.', tasks 8394 -> 8394; bitwise equal; largest relative difference 0.00e+00
+{"row": "mlp256-r1", "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h256/bundle", "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h256/bundle", "tasks": {"control": 8394, "cand": 8394}, "ms": {"control": {"median": 4.816, "best": 4.807, "all": [4.807, 4.816, 4.827, 4.816, 4.889]}, "cand": {"median": 4.694, "best": 4.666, "all": [4.695, 4.692, 4.694, 4.695, 4.666]}}, "paired_ratio_median": 1.0264279624893435, "best_ratio": 1.0302186026575224, "gate_max_rel": 0.0, "gate_tol": 0.0}
+GATE ok: mlp1024-r1: 6 buffers with prefix 'w.', tasks 17117 -> 17117; bitwise equal; largest relative difference 0.00e+00
+{"row": "mlp1024-r1", "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h1024/bundle", "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h1024/bundle", "tasks": {"control": 17117, "cand": 17117}, "ms": {"control": {"median": 6.784, "best": 6.774, "all": [6.786, 6.788, 6.784, 6.774, 6.781]}, "cand": {"median": 6.542, "best": 6.515, "all": [6.542, 6.561, 6.515, 6.526, 6.559]}}, "paired_ratio_median": 1.037297462549679, "best_ratio": 1.0397544128933232, "gate_max_rel": 0.0, "gate_tol": 0.0}
+GATE ok: ho-mlp-h576-d1-r1: 4 buffers with prefix 'w.', tasks 4450 -> 4450; bitwise equal; largest relative difference 0.00e+00
+{"row": "ho-mlp-h576-d1-r1", "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho576/bundle", "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho576/bundle", "tasks": {"control": 4450, "cand": 4450}, "ms": {"control": {"median": 1.873, "best": 1.869, "all": [1.873, 1.874, 1.873, 1.88, 1.869]}, "cand": {"median": 1.844, "best": 1.818, "all": [1.847, 1.818, 1.875, 1.831, 1.844]}}, "paired_ratio_median": 1.0140768814293448, "best_ratio": 1.028052805280528, "gate_max_rel": 0.0, "gate_tol": 0.0}
+GATE ok: ho-mlp-h200-d1-r16: 64 buffers with prefix 'w.', tasks 38400 -> 38400; bitwise equal; largest relative difference 0.00e+00
+{"row": "ho-mlp-h200-d1-r16", "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho200_r16", "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho200_r16", "tasks": {"control": 38400, "cand": 38400}, "ms": {"control": {"median": 26.569, "best": 26.556, "all": [26.584, 26.575, 26.557, 26.569, 26.556]}, "cand": {"median": 26.077, "best": 26.041, "all": [26.041, 26.077, 26.11, 26.066, 26.095]}}, "paired_ratio_median": 1.019097288798558, "best_ratio": 1.0197765062785606, "gate_max_rel": 0.0, "gate_tol": 0.0}
+GATE ok: ho-mlp-h128-d4-r1: 10 buffers with prefix 'w.', tasks 15600 -> 15600; bitwise equal; largest relative difference 0.00e+00
+{"row": "ho-mlp-h128-d4-r1", "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho128/bundle", "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho128/bundle", "tasks": {"control": 15600, "cand": 15600}, "ms": {"control": {"median": 15.491, "best": 15.484, "all": [15.491, 15.484, 15.49, 15.496, 15.492]}, "cand": {"median": 14.484, "best": 14.464, "all": [14.484, 14.467, 14.489, 14.484, 14.464]}}, "paired_ratio_median": 1.0698702016017676, "best_ratio": 1.0705199115044248, "gate_max_rel": 0.0, "gate_tol": 0.0}
+GATE ok: ho-mlp-h224-d2-r8: 48 buffers with prefix 'w.', tasks 35184 -> 35184; bitwise equal; largest relative difference 0.00e+00
+{"row": "ho-mlp-h224-d2-r8", "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho224_r8", "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho224_r8", "tasks": {"control": 35184, "cand": 35184}, "ms": {"control": {"median": 21.059, "best": 21.047, "all": [21.096, 21.082, 21.059, 21.055, 21.047]}, "cand": {"median": 20.261, "best": 20.255, "all": [20.255, 20.261, 20.275, 20.342, 20.256]}}, "paired_ratio_median": 1.039050157977883, "best_ratio": 1.039101456430511, "gate_max_rel": 0.0, "gate_tol": 0.0}
+PR_READ_GPU_END
+gpt-tiny             main     6.625 ms  stack     6.662 ms  paired x0.994  bar x0.99  gate bitwise  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+gpt-small            main    14.322 ms  stack    14.448 ms  paired x0.991  bar x0.99  gate bitwise  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+gpt-162m             main   348.794 ms  stack   348.148 ms  paired x1.000  bar x0.99  gate bitwise  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+mlp72-r1             main     5.599 ms  stack     5.600 ms  paired x1.000  bar x0.99  gate bitwise  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+mlp72-r8             main     5.507 ms  stack     5.507 ms  paired x1.000  bar x0.99  gate bitwise  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+mlp72-r32            main     8.255 ms  stack     8.256 ms  paired x1.000  bar x0.99  gate bitwise  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+mlp-hetero-r8        main     6.283 ms  stack     6.281 ms  paired x1.000  bar x0.99  gate bitwise  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+mlp256-r1            main     4.816 ms  stack     4.694 ms  paired x1.026  bar x0.99  gate bitwise  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+mlp1024-r1           main     6.784 ms  stack     6.542 ms  paired x1.037  bar x0.99  gate bitwise  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+ho-mlp-h576-d1-r1    main     1.873 ms  stack     1.844 ms  paired x1.014  bar x0.99  gate bitwise  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+ho-mlp-h200-d1-r16   main    26.569 ms  stack    26.077 ms  paired x1.019  bar x0.99  gate bitwise  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+ho-mlp-h128-d4-r1    main    15.491 ms  stack    14.484 ms  paired x1.070  bar x0.99  gate bitwise  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+ho-mlp-h224-d2-r8    main    21.059 ms  stack    20.261 ms  paired x1.039  bar x0.99  gate bitwise  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+(for reference, not the verdict) the 9 panel rows: geometric mean of the paired medians x1.0054 over 9
+(for reference, not the verdict) the hold-out draws: geometric mean of the paired medians x1.0353 over 4
+  FAIL: run_check h256d4: rc=1
+verdict: FAIL: 1 problem(s); 13 rows, 4 run_checks, 5 forms expected
+PR_READ_END

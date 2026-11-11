@@ -1,0 +1,10 @@
+NVIDIA A100-SXM4-80GB: 108 co-resident blocks of 256 threads
+side by side: 108 blocks in 7 gang(s) (sizes 1 2 3 5 8 13 76), 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose count is not 2 x 2000 rounds x its size x 1
+  launch 1 (from the first's counts, starts staggered up to 1 ms): 0 wrong values read, 0 gang(s) whose count is not 2 x 2000 rounds x its size x 2
+  abort launch: ended (no hang); 75 member(s) gave up at a crossing (the widest gang has 75 others; members of other gangs may give up too once the word is set)
+one gang: 108 blocks in 1 gang(s) (sizes 108), 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose count is not 2 x 2000 rounds x its size x 1
+  launch 1 (from the first's counts, starts staggered up to 1 ms): 0 wrong values read, 0 gang(s) whose count is not 2 x 2000 rounds x its size x 2
+  abort launch: ended (no hang); 107 member(s) gave up at a crossing (the widest gang has 107 others; members of other gangs may give up too once the word is set)
+PASS: every member read every slot of its round, every gang's count is as clean runs leave it (staggered starts included), and an aborted gang ends

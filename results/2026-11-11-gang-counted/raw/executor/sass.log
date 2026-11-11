@@ -1,0 +1,69 @@
+sass_check: kvm_exec 5e1dd02e0fc8e944, kernels kvm_static_kernel kvm_static_block kvm_static_gang_grid kvm_static_gang_splitILi18E kvm_static_gang_splitILi4E kvm_static_gang_splitILi2E, 2026-11-11T14:26:48Z
+== kvm_static_kernel
+    HMMA   8 LDGSTS  12:   4 loops; registers used in the loop median 110, passengers median 0 (range 0-0), LDL a pass median 23 (range 21-23)
+    HMMA  16 LDGSTS  12:   8 loops; registers used in the loop median 107, passengers median 0 (range 0-0), LDL a pass median 23 (range 21-26)
+    HMMA  64 LDGSTS  24:  16 loops; registers used in the loop median 216, passengers median 0 (range 0-0), LDL a pass median 33 (range 10-45)
+    HMMA 128 LDGSTS  12:   8 loops; registers used in the loop median 250, passengers median 0 (range 0-5), LDL a pass median 20 (range 8-48)
+    HMMA 128 LDGSTS  36:   8 loops; registers used in the loop median 252, passengers median 0 (range 0-1), LDL a pass median 90 (range 32-146)
+  kvm_dispatch                    197842  3784  5086  2015     252       0  -
+  mm_tile_big_ni 256x128 NN         7010   256   223    93     252       0  -
+    kvm_dispatch                 -> __internal_80_$__cuda_sm70_shflsync_bfly_p    269 site(s)   25-151 live, widest at 0x301d20
+    kvm_dispatch                 -> kvm_fail                                      624 site(s)    0-122 live, widest at 0x23dc30
+    kvm_dispatch                 -> __internal_77_$__cuda_sm20_rcp_rn_f32_slowpa   18 site(s)   26- 65 live, widest at 0x019810
+    kvm_dispatch                 -> __internal_78_$__cuda_sm20_sqrt_rn_f32_slowp   33 site(s)   24- 65 live, widest at 0x019740
+    kvm_dispatch                 -> __internal_79_$__cuda_sm3x_div_rn_noftz_f32_  115 site(s)    3- 65 live, widest at 0x0196a0
+    kvm_dispatch                 -> __internal_81_$__cuda_sm70_shflsync_idx_p      12 site(s)   31- 57 live, widest at 0x304160
+    kvm_dispatch                 -> __internal_74_$__cuda_sm20_div_rn_f64_full      5 site(s)    7- 50 live, widest at 0x2db9b0
+    kvm_dispatch                 -> __internal_75_$__cuda_sm20_div_u16              8 site(s)   19- 34 live, widest at 0x017f80
+    kvm_dispatch                 -> __internal_73_$__cuda_sm20_dblrcp_rn_slowpat    3 site(s)    4- 29 live, widest at 0x2f86f0
+    kvm_dispatch                 -> __internal_83_$__cuda_sm70_warpsync             2 site(s)   25- 27 live, widest at 0x1bf9e0
+    kvm_dispatch                 -> __internal_82_$__cuda_sm70_votesync_ballot      5 site(s)   22- 27 live, widest at 0x3008a0
+    kvm_dispatch                 -> __internal_accurate_pow                         2 site(s)   24- 25 live, widest at 0x2bd270
+    kvm_dispatch                 -> mm_tile_big_ni 128x128 (every variant)         16 site(s)    6-  6 live, widest at 0x1bc5f0
+    kvm_dispatch                 -> __internal_76_$__cuda_sm20_dsqrt_rn_f64_medi    1 site(s)    5-  5 live, widest at 0x2cfba0
+    kvm_dispatch                 -> mm_tile_big_ni 256x128 (every variant)          8 site(s)    0-  0 live, widest at 0x1bd6b0
+== kvm_static_block
+  kvm_s_fmlp_sgd                     889     0     0     0      99     151  kvm_s_fmlp_slice 115, (kernel) 12; held by none 24
+  kvm_s_fmlp_slice                 10920   512    15     0     206      44  kvm_s_fmlp_sgd 32, (kernel) 12
+    kvm_s_fmlp_slice             -> __internal_71_$__cuda_sm3x_div_rn_noftz_f32_   17 site(s)   58-139 live, widest at 0x025a50
+    kvm_s_fmlp_slice             -> __internal_70_$__cuda_sm20_rcp_rn_f32_slowpa    8 site(s)   60-135 live, widest at 0x01e0d0
+    kvm_s_fmlp_slice             -> kvm_fail                                        5 site(s)  101-102 live, widest at 0x007c00
+    kvm_s_fmlp_sgd               -> __internal_72_$__cuda_sm70_shflsync_idx_p       5 site(s)   78- 78 live, widest at 0x004a00
+    kvm_s_fmlp_sgd               -> __internal_71_$__cuda_sm3x_div_rn_noftz_f32_    1 site(s)   76- 76 live, widest at 0x0017f0
+    kvm_s_fmlp_sgd               -> __internal_70_$__cuda_sm20_rcp_rn_f32_slowpa    1 site(s)   75- 75 live, widest at 0x0018a0
+== kvm_static_gang_grid
+  kvm_s_fmlp_grid                  25592   976     3     0     231      18  (kernel) 18
+    kvm_s_fmlp_grid              -> __internal_69_$__cuda_sm70_votesync_any        10 site(s)   10-140 live, widest at 0x0652c0
+    kvm_s_fmlp_grid              -> __internal_68_$__cuda_sm70_votesync_all        10 site(s)    9-139 live, widest at 0x065260
+    kvm_s_fmlp_grid              -> __internal_63_$__cuda_sm20_div_s64             12 site(s)  137-138 live, widest at 0x003940
+    kvm_s_fmlp_grid              -> __internal_65_$__cuda_sm20_rem_u64              1 site(s)  136-136 live, widest at 0x0018b0
+    kvm_s_fmlp_grid              -> __internal_66_$__cuda_sm3x_div_rn_noftz_f32_    9 site(s)   30-134 live, widest at 0x010450
+    kvm_s_fmlp_grid              -> __internal_64_$__cuda_sm20_rcp_rn_f32_slowpa    4 site(s)   29-133 live, widest at 0x0104f0
+    kvm_s_fmlp_grid              -> __internal_67_$__cuda_sm70_shflsync_bfly_p     15 site(s)   29- 33 live, widest at 0x064e60
+    kvm_s_fmlp_grid              -> kvm_fail                                        1 site(s)    1-  1 live, widest at 0x064640
+== kvm_static_gang_splitILi18E
+  kvm_s_fmlp_split                 10879   494     5    30     225      14  (kernel) 14
+    kvm_s_fmlp_split             -> __internal_11_$__cuda_sm20_rcp_rn_f32_slowpa    4 site(s)   72- 74 live, widest at 0x007ec0
+    kvm_s_fmlp_split             -> __internal_12_$__cuda_sm3x_div_rn_noftz_f32_    7 site(s)   17- 74 live, widest at 0x007e30
+    kvm_s_fmlp_split             -> __internal_13_$__cuda_sm70_shflsync_bfly_p     10 site(s)   17- 19 live, widest at 0x02b6c0
+    kvm_s_fmlp_split             -> __internal_14_$__cuda_sm70_warpsync             1 site(s)   16- 16 live, widest at 0x00e680
+    kvm_s_fmlp_split             -> kvm_fail                                        1 site(s)    1-  1 live, widest at 0x02b490
+== kvm_static_gang_splitILi4E
+  kvm_s_fmlp_split                 10905   494     5    30     227      14  (kernel) 14
+    kvm_s_fmlp_split             -> __internal_49_$__cuda_sm70_votesync_any         5 site(s)   10-119 live, widest at 0x02b8f0
+    kvm_s_fmlp_split             -> __internal_48_$__cuda_sm70_votesync_all         5 site(s)   10-119 live, widest at 0x02b890
+    kvm_s_fmlp_split             -> __internal_46_$__cuda_sm3x_div_rn_noftz_f32_    7 site(s)   17- 76 live, widest at 0x007a40
+    kvm_s_fmlp_split             -> __internal_45_$__cuda_sm20_rcp_rn_f32_slowpa    4 site(s)   72- 75 live, widest at 0x007ae0
+    kvm_s_fmlp_split             -> __internal_47_$__cuda_sm70_shflsync_bfly_p     10 site(s)   18- 19 live, widest at 0x02b630
+    kvm_s_fmlp_split             -> __internal_50_$__cuda_sm70_warpsync             1 site(s)   17- 17 live, widest at 0x00e610
+    kvm_s_fmlp_split             -> kvm_fail                                        1 site(s)    1-  1 live, widest at 0x02b280
+== kvm_static_gang_splitILi2E
+  kvm_s_fmlp_split                 10884   494     5    30     225      14  (kernel) 14
+    kvm_s_fmlp_split             -> __internal_61_$__cuda_sm70_votesync_any         5 site(s)   10-112 live, widest at 0x02b7a0
+    kvm_s_fmlp_split             -> __internal_60_$__cuda_sm70_votesync_all         5 site(s)    9-111 live, widest at 0x02b740
+    kvm_s_fmlp_split             -> __internal_58_$__cuda_sm3x_div_rn_noftz_f32_    7 site(s)   17- 76 live, widest at 0x007a90
+    kvm_s_fmlp_split             -> __internal_57_$__cuda_sm20_rcp_rn_f32_slowpa    4 site(s)   72- 75 live, widest at 0x007b30
+    kvm_s_fmlp_split             -> __internal_59_$__cuda_sm70_shflsync_bfly_p     10 site(s)   18- 19 live, widest at 0x02b4e0
+    kvm_s_fmlp_split             -> __internal_62_$__cuda_sm70_warpsync             1 site(s)   17- 17 live, widest at 0x00e6e0
+    kvm_s_fmlp_split             -> kvm_fail                                        1 site(s)    1-  1 live, widest at 0x02b130
+sass_check: rc=0, outputs in /root/work/gangcnt/pr/run-20261111T142648Z/sass

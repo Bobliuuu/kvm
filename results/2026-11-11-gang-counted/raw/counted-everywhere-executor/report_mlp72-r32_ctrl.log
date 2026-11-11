@@ -1,0 +1,41 @@
+OK: 51232/51232 tasks, 10.249 ms
+[kvm_exec][I] device NVIDIA A100-SXM4-80GB, 108 SMs, 1 resident blocks/SM with 147456 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] /root/work/panel-count1/h72_r32: 307200 tasks, 1348992 edges, 3232000 arg words
+[kvm_exec][I] path: static (mean estimated task 3.72 us <= 6.0)
+[kvm_exec][I] fuse: component 0: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 1: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 2: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 3: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 4: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 5: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 6: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 7: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 8: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 9: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 10: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 11: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 12: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 13: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 14: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 15: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 16: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 17: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 18: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 19: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 20: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 21: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 22: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 23: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 24: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 25: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 26: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 27: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 28: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 29: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 30: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: component 31: fused: 200 steps, T=96 V=100 widths 48x72x72, 3 slices of 32 rows, 3 reduction owners
+[kvm_exec][I] fuse: shared-memory budget 40416 floats (161664 bytes) a fused block
+[kvm_exec][I] fuse: 32 run(s) fused, 0 unchanged; 294368 tasks replaced by 51232; static kernel entry: one-block
+[kvm_exec][I] static schedule: 51232 tasks -> 51232 records on 108/108 workers, 115100 of 153408 edges cross workers, 51199 records publish; runs partitioned: no; plan 14203.6 us, work 1331203.2 us (compiled in 0.079 s)
+[kvm_exec][I] static kernel: entry one-block, 1 resident blocks/SM, 147456 bytes of dynamic shared memory, launching 108 workers
+[kvm_exec][I] static run done: 51232 tasks in 10.249 ms on 108 workers

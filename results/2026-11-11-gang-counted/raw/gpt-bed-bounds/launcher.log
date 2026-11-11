@@ -1,0 +1,49 @@
+CHECK L0-tiny-p-k2-g16: ok; 1 ok, 0 FAIL
+[fgpt_bed 15:28:59Z]   fgpt_bed: run 0.381 ms with its launch; in the kernel 150.7 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 16 of 16 members finished, step counter 0 -> 2
+CHECK L0-small-p-k2-g32: ok; 1 ok, 0 FAIL
+[fgpt_bed 15:29:01Z]   fgpt_bed: run 0.712 ms with its launch; in the kernel 320.7 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 2
+CHECK L0-d128-p-k1-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:29:06Z]   fgpt_bed: run 1.057 ms with its launch; in the kernel 933.4 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 0 -> 1
+CHECK L0-d128-p-resync-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:29:14Z]   fgpt_bed: run 1.058 ms with its launch; in the kernel 930.7 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 1 -> 2
+CHECK L0-ho128-p-k1-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:29:21Z]   fgpt_bed: run 1.251 ms with its launch; in the kernel 1145.5 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 0 -> 1
+CHECK L0-ho128-p-resync-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:29:28Z]   fgpt_bed: run 1.222 ms with its launch; in the kernel 1145.8 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 1 -> 2
+CHECK L64-tiny-p-k2-g16: ok; 1 ok, 0 FAIL
+[fgpt_bed 15:29:30Z]   fgpt_bed: run 0.365 ms with its launch; in the kernel 148.8 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 16 of 16 members finished, step counter 0 -> 2
+CHECK L64-small-p-k2-g32: ok; 1 ok, 0 FAIL
+[fgpt_bed 15:29:32Z]   fgpt_bed: run 0.690 ms with its launch; in the kernel 312.6 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 2
+CHECK L64-d128-p-k1-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:29:38Z]   fgpt_bed: run 1.086 ms with its launch; in the kernel 936.1 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 0 -> 1
+CHECK L64-d128-p-resync-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:29:46Z]   fgpt_bed: run 1.061 ms with its launch; in the kernel 938.0 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 1 -> 2
+CHECK L64-ho128-p-k1-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:29:52Z]   fgpt_bed: run 1.264 ms with its launch; in the kernel 1154.8 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 0 -> 1
+CHECK L64-ho128-p-resync-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:29:59Z]   fgpt_bed: run 1.256 ms with its launch; in the kernel 1152.6 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 1 -> 2
+AW_GPU_END
+HASHES w_d128_tf32_k30 g64: each arm's 5 rounds agree; across arms equal {'L32': '011250ceba415cb2', 'L0': '011250ceba415cb2', 'L64': '011250ceba415cb2'}
+HASHES w_ho128_tf32_k30 g64: each arm's 5 rounds agree; across arms equal {'L32': '7ae71500c2d0f515', 'L0': '7ae71500c2d0f515', 'L64': '7ae71500c2d0f515'}
+HASHES w_small g32: each arm's 5 rounds agree; across arms equal {'L32': '2a79658034eac8d3', 'L0': '2a79658034eac8d3', 'L64': '2a79658034eac8d3'}
+HASHES w_tiny g16: each arm's 5 rounds agree; across arms equal {'L32': '7131904305770c47', 'L0': '7131904305770c47', 'L64': '7131904305770c47'}
+== w_tiny: G 16, 20 steps
+w_tiny       L32->L0, 5 rounds: best x0.982 (137.9 / 135.4 us), median x0.981 (138.0 / 135.4), paired x0.981; slow runs (> 1.10x the arm's fastest, in cycles) L0 0 of 5, L32 0 of 5; Fisher p 1.000 one-sided, 1.000 two-sided; cycles a step (k) fast L0 194, L32 191; slow L0 
+             rounds where both arms ran fast: 5, paired x0.981 (range x0.980-0.983)
+w_tiny       L32->L64, 5 rounds: best x1.000 (135.4 / 135.4 us), median x0.999 (135.5 / 135.4), paired x0.999; slow runs (> 1.10x the arm's fastest, in cycles) L64 0 of 5, L32 0 of 5; Fisher p 1.000 one-sided, 1.000 two-sided; cycles a step (k) fast L64 191, L32 191; slow L64 
+             rounds where both arms ran fast: 5, paired x0.999 (range x0.999-1.001)
+== w_small: G 32, 20 steps
+w_small      L32->L0, 5 rounds: best x0.971 (300.5 / 291.9 us), median x0.975 (300.6 / 293.0), paired x0.975; slow runs (> 1.10x the arm's fastest, in cycles) L0 0 of 5, L32 0 of 5; Fisher p 1.000 one-sided, 1.000 two-sided; cycles a step (k) fast L0 423, L32 411; slow L0 
+             rounds where both arms ran fast: 5, paired x0.975 (range x0.971-0.976)
+w_small      L32->L64, 5 rounds: best x0.998 (292.4 / 291.9 us), median x0.999 (293.3 / 293.0), paired x0.999; slow runs (> 1.10x the arm's fastest, in cycles) L64 0 of 5, L32 0 of 5; Fisher p 1.000 one-sided, 1.000 two-sided; cycles a step (k) fast L64 412, L32 411; slow L64 
+             rounds where both arms ran fast: 5, paired x0.999 (range x0.998-1.001)
+== w_d128_tf32_k30: G 64, 20 steps
+w_d128_tf32_k30 L32->L0, 5 rounds: best x0.999 (850.2 / 849.1 us), median x1.000 (850.5 / 850.7), paired x1.000; slow runs (> 1.10x the arm's fastest, in cycles) L0 0 of 5, L32 0 of 5; Fisher p 1.000 one-sided, 1.000 two-sided; cycles a step (k) fast L0 1196, L32 1195; slow L0 
+             rounds where both arms ran fast: 5, paired x1.000 (range x0.997-1.002)
+w_d128_tf32_k30 L32->L64, 5 rounds: best x0.990 (857.5 / 849.1 us), median x0.991 (858.1 / 850.7), paired x0.992; slow runs (> 1.10x the arm's fastest, in cycles) L64 0 of 5, L32 0 of 5; Fisher p 1.000 one-sided, 1.000 two-sided; cycles a step (k) fast L64 1207, L32 1195; slow L64 
+             rounds where both arms ran fast: 5, paired x0.992 (range x0.990-0.992)
+== w_ho128_tf32_k30: G 64, 20 steps
+w_ho128_tf32_k30 L32->L0, 5 rounds: best x1.001 (1060.4 / 1061.3 us), median x1.000 (1062.0 / 1061.6), paired x1.000; slow runs (> 1.10x the arm's fastest, in cycles) L0 0 of 5, L32 0 of 5; Fisher p 1.000 one-sided, 1.000 two-sided; cycles a step (k) fast L0 1492, L32 1493; slow L0 
+             rounds where both arms ran fast: 5, paired x1.000 (range x0.999-1.002)
+w_ho128_tf32_k30 L32->L64, 5 rounds: best x1.000 (1061.3 / 1061.3 us), median x0.999 (1062.5 / 1061.6), paired x1.000; slow runs (> 1.10x the arm's fastest, in cycles) L64 0 of 5, L32 0 of 5; Fisher p 1.000 one-sided, 1.000 two-sided; cycles a step (k) fast L64 1493, L32 1493; slow L64 
+             rounds where both arms ran fast: 5, paired x1.000 (range x0.998-1.001)

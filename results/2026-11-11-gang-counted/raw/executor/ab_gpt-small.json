@@ -1,0 +1,39 @@
+[
+ {
+  "row": "gpt-small",
+  "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/w_small/bundle",
+  "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/w_small/bundle",
+  "tasks": {
+   "control": 28858,
+   "cand": 28858
+  },
+  "ms": {
+   "control": {
+    "median": 14.322,
+    "best": 14.316,
+    "all": [
+     14.321,
+     14.333,
+     14.363,
+     14.322,
+     14.316
+    ]
+   },
+   "cand": {
+    "median": 14.448,
+    "best": 14.443,
+    "all": [
+     14.453,
+     14.45,
+     14.444,
+     14.448,
+     14.443
+    ]
+   }
+  },
+  "paired_ratio_median": 0.9912790697674417,
+  "best_ratio": 0.9912068129889913,
+  "gate_max_rel": 0.0,
+  "gate_tol": 0.0
+ }
+]

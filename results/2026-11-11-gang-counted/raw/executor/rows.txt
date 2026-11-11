@@ -1,0 +1,13 @@
+gpt-tiny exec /root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/w_tiny/bundle
+gpt-small exec /root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/w_small/bundle
+gpt-162m exec /root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/w_162m_3/bundle
+mlp72-r1 mlp /root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h72/bundle
+mlp72-r8 mlp /root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h72_r8
+mlp72-r32 mlp /root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h72_r32
+mlp-hetero-r8 mlp /root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/hetero_r8
+mlp256-r1 mlp /root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h256/bundle
+mlp1024-r1 mlp /root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h1024/bundle
+ho-mlp-h576-d1-r1 mlp /root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho576/bundle
+ho-mlp-h200-d1-r16 mlp /root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho200_r16
+ho-mlp-h128-d4-r1 mlp /root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho128/bundle
+ho-mlp-h224-d2-r8 mlp /root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho224_r8

@@ -1,0 +1,39 @@
+[
+ {
+  "row": "mlp1024-r1",
+  "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h1024/bundle",
+  "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h1024/bundle",
+  "tasks": {
+   "control": 17117,
+   "cand": 17117
+  },
+  "ms": {
+   "control": {
+    "median": 6.784,
+    "best": 6.774,
+    "all": [
+     6.786,
+     6.788,
+     6.784,
+     6.774,
+     6.781
+    ]
+   },
+   "cand": {
+    "median": 6.542,
+    "best": 6.515,
+    "all": [
+     6.542,
+     6.561,
+     6.515,
+     6.526,
+     6.559
+    ]
+   }
+  },
+  "paired_ratio_median": 1.037297462549679,
+  "best_ratio": 1.0397544128933232,
+  "gate_max_rel": 0.0,
+  "gate_tol": 0.0
+ }
+]

@@ -1,0 +1,39 @@
+[
+ {
+  "row": "mlp-hetero-r8",
+  "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/hetero_r8",
+  "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/hetero_r8",
+  "tasks": {
+   "control": 68400,
+   "cand": 68400
+  },
+  "ms": {
+   "control": {
+    "median": 6.283,
+    "best": 6.278,
+    "all": [
+     6.278,
+     6.283,
+     6.283,
+     6.286,
+     6.28
+    ]
+   },
+   "cand": {
+    "median": 6.281,
+    "best": 6.274,
+    "all": [
+     6.281,
+     6.274,
+     6.283,
+     6.28,
+     6.281
+    ]
+   }
+  },
+  "paired_ratio_median": 1.0,
+  "best_ratio": 1.0006375518010837,
+  "gate_max_rel": 0.0,
+  "gate_tol": 0.0
+ }
+]

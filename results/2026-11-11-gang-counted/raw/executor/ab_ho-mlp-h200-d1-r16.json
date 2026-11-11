@@ -1,0 +1,39 @@
+[
+ {
+  "row": "ho-mlp-h200-d1-r16",
+  "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho200_r16",
+  "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho200_r16",
+  "tasks": {
+   "control": 38400,
+   "cand": 38400
+  },
+  "ms": {
+   "control": {
+    "median": 26.569,
+    "best": 26.556,
+    "all": [
+     26.584,
+     26.575,
+     26.557,
+     26.569,
+     26.556
+    ]
+   },
+   "cand": {
+    "median": 26.077,
+    "best": 26.041,
+    "all": [
+     26.041,
+     26.077,
+     26.11,
+     26.066,
+     26.095
+    ]
+   }
+  },
+  "paired_ratio_median": 1.019097288798558,
+  "best_ratio": 1.0197765062785606,
+  "gate_max_rel": 0.0,
+  "gate_tol": 0.0
+ }
+]

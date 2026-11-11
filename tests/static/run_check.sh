@@ -12,7 +12,9 @@
 #   * The one-block fused step must fit one block's shared memory. 72 needs 99.3 KB at 16 rows, which an A100 has (163 KB) and an RTX 3090
 #     (99 KB) has not; use 48 there.
 #   * A width one block cannot hold takes the split form (gangs of 6 x S fmlp_split members), which fires only where a gang fits the
-#     workers: KVM_CHECK_MLP_HIDDEN=256 tests/static/run_check.sh 16 48 107 (and KVM_CHECK_MLP_DEPTH=4 with 128 for the deepest).
+#     workers, and a worker count where the pass does not fire fails the check: KVM_CHECK_MLP_HIDDEN=256 tests/static/run_check.sh 16 48 107;
+#     the panel's mlp256 shape needs 16 shares or more (96 members), so KVM_CHECK_MLP_HIDDEN=256 KVM_CHECK_MLP_DEPTH=4 tests/static/run_check.sh
+#     107 108; and KVM_CHECK_MLP_DEPTH=4 with 128 at 48 107 108 for the deepest.
 set -euo pipefail
 EXE="${KVM_EXE:-./kvm_exec}"; [ -x "$EXE" ] || { echo "no executor at $EXE (set KVM_EXE)"; exit 2; }
 WORKERS=("${@:-1 4 16 107}"); read -r -a WORKERS <<< "${WORKERS[*]}"

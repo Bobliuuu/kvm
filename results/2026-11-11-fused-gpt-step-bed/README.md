@@ -86,14 +86,14 @@ Over all six rounds, the median ratio is x1.12 (gpt-tiny) and x1.13 (gpt-small).
 
 ## The gang's barrier
 
-A step crosses 8 L + 6 gang barriers: 14 on gpt-tiny, 26 on gpt-small, whose query blocks add 2 L. The program crosses them on a flag
-line (`kvm_fgpt::cross_line`). Each member publishes its count of crossings in its own word of one 128-byte line, and warp 0 polls the
-whole line, one member a lane. That is one round trip to L2 a crossing, with no atomic. The counter barrier (`kvm_gang::barrier`) waits
-for an atomic's round trip, then a release, then a poll.
+A step crosses 8 L + 6 gang barriers: 14 on gpt-tiny, 26 on gpt-small, whose query blocks add 2 L. The program crosses them on the gang's flag
+lines (`kvm_gang::barrier_lines`, from #29). Each member publishes its count of crossings in its own word of a 128-byte line, and warp 0
+polls the whole line, one member a lane (a gang of 32 is one line). That is one round trip to L2 a crossing, with no atomic. The counter
+barrier (`kvm_gang::barrier`) waits for an atomic's round trip, then a release, then a poll.
 
 | read (RTX 5070) | counter barrier | flag line | ratio |
 |---|---|---|---|
-| one crossing alone, G 32 (`bench/fused_gpt/barrier_bench.cu`, `raw/barrier-bench.log`) | 1,194 ns | 710 ns | x1.68 |
+| one crossing alone, 32 members (`bench/gang/barrier_bench.cu`, `results/2026-11-10-static-gang-tasks/flag-lines/`) | 1,203 ns | 728 ns | x1.65 |
 | the executor, gpt-tiny, us a step (8 rounds in alternating order, `raw/exec-barrier-ab.log`) | 87.3 | 82.3 | x1.06 |
 | the executor, gpt-small | 187.7 | 178.7 | x1.05 |
 

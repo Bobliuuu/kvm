@@ -448,25 +448,17 @@ constexpr const char* kvm_op_sig(int id) {
 }
 constexpr int KVM_ARG_TILE_FLAGS = kvm_sig_index(kvm_op_sig(KVM_OP_matmul_tile), "flags"), KVM_ARG_ATTN_FWD_HD = kvm_sig_index(kvm_op_sig(KVM_OP_attn_fwd), "hd"),
               KVM_ARG_ATTN_DQ_HD = kvm_sig_index(kvm_op_sig(KVM_OP_attn_bwd_dq), "hd"), KVM_ARG_ATTN_DKV_HD = kvm_sig_index(kvm_op_sig(KVM_OP_attn_bwd_dkv), "hd");
-static_assert(KVM_ARG_TILE_FLAGS >= 0 && KVM_ARG_ATTN_FWD_HD >= 0 && KVM_ARG_ATTN_DQ_HD >= 0 && KVM_ARG_ATTN_DKV_HD >= 0, "kvm_task_smem: an argument it sizes by is gone");
-// The dynamic shared memory one task needs: the sizes the ops' own guards check (kvm_gpt_*_smem). The core and GPT packs are sized here;
-// an op of any other pack (extra, comm, game, fused steps, test packs) gets the build's maximum, so a bundle holding one keeps that launch.
+static_assert(KVM_ARG_TILE_FLAGS == KVM_GPT_ARG_TILE_FLAGS && KVM_ARG_ATTN_FWD_HD == KVM_GPT_ARG_ATTN_FWD_HD && KVM_ARG_ATTN_DQ_HD == KVM_GPT_ARG_ATTN_BWD_HD &&
+              KVM_ARG_ATTN_DKV_HD == KVM_GPT_ARG_ATTN_BWD_HD, "kvm_gpt_task_smem reads the arguments it sizes by where the registry puts them");
+// The dynamic shared memory one task needs. A GPT-pack op's is kvm_gpt_task_smem's, the function the op tests launch with too; the core pack
+// takes the small ops' size; an op of any other pack (extra, comm, game, fused steps, test packs) gets the build's maximum, so a bundle
+// holding one keeps that launch.
 static size_t kvm_task_smem(const KvmTaskDesc& d, const int32_t* args) {
-  const int32_t* a = args + d.args_off;
+  const int gpt = kvm_gpt_task_smem(d.op_id, args + d.args_off);
+  if (gpt >= 0) return (size_t)gpt;
   switch (d.op_id) {
-    case KVM_OP_matmul_tile: return (size_t)kvm_gpt_matmul_tile_smem(a[KVM_ARG_TILE_FLAGS]);
-    case KVM_OP_attn_fwd: return (size_t)kvm_gpt_attn_smem(a[KVM_ARG_ATTN_FWD_HD]);
-    case KVM_OP_attn_bwd_dq: return (size_t)kvm_gpt_attn_smem(a[KVM_ARG_ATTN_DQ_HD]);
-    case KVM_OP_attn_bwd_dkv: return (size_t)kvm_gpt_attn_smem(a[KVM_ARG_ATTN_DKV_HD]);
 #define X(n, i, sig) case i:
 #include "kvm_ops.def"
-#undef X
-      return KVM_GPT_SMEM_SMALL;
-    default: break;
-  }
-  switch (d.op_id) {
-#define X(n, i, sig) case i:
-#include "kvm_ops_gpt.def"
 #undef X
       return KVM_GPT_SMEM_SMALL;
     default: return KVM_DYN_SMEM_BYTES;

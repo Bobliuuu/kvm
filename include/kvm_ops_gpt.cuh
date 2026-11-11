@@ -115,6 +115,33 @@ __host__ __device__ constexpr int kvm_gpt_attn_smem(int hd) { return 3 * 2 * 32 
 __host__ __device__ constexpr int kvm_gpt_matmul_tile_smem(int fl) {
     return (fl & 64) && !(fl & (16 | 128)) ? kvm_gpt_bigtile_smem(256, 128) : (fl & (32 | 64)) ? kvm_gpt_bigtile_smem(128, 128) : kvm_gpt_tile64_smem();
 }
+// One task's dynamic shared memory, from its op and argument words: what the executor sizes a bundle's launch from (the largest over its
+// tasks, KvmExec::size_launch) and what the op tests launch each task with (tests/gpu_ops/harness.cuh), so a test runs every op at the
+// launch the executor gives it, and a footprint its formula does not count shows there (under compute-sanitizer, as an invalid shared
+// write). The argument positions are the bodies' own reads; kvm_exec.cu checks them against the registry. GPT-pack ops only: -1 otherwise.
+enum : int {
+#define X(n, id, s) KVM_GPT_OPID_##n = id,
+#include "kvm_ops_gpt.def"
+#undef X
+};
+#define KVM_GPT_ARG_TILE_FLAGS 11    // matmul_tile's flags
+#define KVM_GPT_ARG_ATTN_FWD_HD 11   // attn_fwd's hd
+#define KVM_GPT_ARG_ATTN_BWD_HD 13   // attn_bwd_dq's and attn_bwd_dkv's hd
+__host__ __device__ constexpr bool kvm_gpt_has_op(int op) {
+    switch (op) {
+#define X(n, id, s) case id:
+#include "kvm_ops_gpt.def"
+#undef X
+        return true;
+    default: return false;
+    }
+}
+__host__ __device__ constexpr int kvm_gpt_task_smem(int op, const int32_t* a) {
+    return op == KVM_GPT_OPID_matmul_tile ? kvm_gpt_matmul_tile_smem(a[KVM_GPT_ARG_TILE_FLAGS])
+         : op == KVM_GPT_OPID_attn_fwd ? kvm_gpt_attn_smem(a[KVM_GPT_ARG_ATTN_FWD_HD])
+         : op == KVM_GPT_OPID_attn_bwd_dq || op == KVM_GPT_OPID_attn_bwd_dkv ? kvm_gpt_attn_smem(a[KVM_GPT_ARG_ATTN_BWD_HD])
+         : kvm_gpt_has_op(op) ? KVM_GPT_SMEM_SMALL : -1;
+}
 
 extern __shared__ __align__(128) unsigned char kvm_gpt_smem[];
 
@@ -247,6 +274,7 @@ KVM_GPT_DEVI float fexp(float x) {
 }
 // Fixed-order block sum in double (bitwise deterministic): tree over buf[0..255]. Returns the total to every thread.
 KVM_GPT_DEVI double bsum_d(double v, double* buf) {
+    static_assert(KVM_GPT_THREADS * 8 <= KVM_GPT_SMEM_SMALL, "a block sum's doubles must fit the small ops' launch");
     buf[threadIdx.x] = v;
     __syncthreads();
     for (int s = KVM_GPT_THREADS / 2; s; s >>= 1) {
@@ -1662,6 +1690,7 @@ KVM_GPT_DEVI void rmsnorm_bwd_dx(const KvmCtx& c, const int32_t* a) { norm_bwd_d
 template <class Fn>
 KVM_GPT_DEVI void col_reduce(int R, int c0, int c1, float* out1, float* out2, bool acc, Fn fn) {
     const int ncols = c1 - c0, NC = ncols <= 8 ? 8 : ncols <= 16 ? 16 : ncols <= 32 ? 32 : 64, RG = KVM_GPT_THREADS / NC;
+    static_assert(2 * KVM_GPT_THREADS * 4 <= KVM_GPT_SMEM_SMALL, "col_reduce's partials must fit the small ops' launch");
     float* part = reinterpret_cast<float*>(kvm_gpt_smem);   // [2][RG][NC] (at most 2 x 256 floats)
     const int cl = threadIdx.x % NC, rg = threadIdx.x / NC;
     for (int cb = c0; cb < c1; cb += NC) {
@@ -2617,6 +2646,7 @@ KVM_GPT_DEVI void attn_decode(const KvmCtx& ctx, const int32_t* a) {
     const int n = lens[b] + 1;
     k.need(lens[b] >= 0 && n <= Tmax, KVM_GPT_E_KVLEN);
     if (k.bad) return;
+    static_assert((8 + 8 + 8 * 128) * 4 <= KVM_GPT_SMEM_SMALL, "attn_decode's shared memory must fit the small ops' launch");
     float* sm_m = reinterpret_cast<float*>(kvm_gpt_smem);   // [8] m, [8] l, [8][128] acc
     float* sm_l = sm_m + 8;
     float* sm_a = sm_l + 8;
@@ -3042,6 +3072,7 @@ KVM_GPT_DEVI void sample(const KvmCtx& ctx, const int32_t* a) {
     const int32_t* ctr = k.ivec(a[2], 1, true);
     if (k.bad) return;
     // shared: double csum[256], double pre[256], float sv[256], int si[256], int cnt, unsigned thr
+    static_assert(2 * KVM_GPT_THREADS * 8 + 2 * KVM_GPT_THREADS * 4 + 8 <= KVM_GPT_SMEM_SMALL, "sample's shared memory must fit the small ops' launch");
     double* csum = reinterpret_cast<double*>(kvm_gpt_smem);
     double* pre = csum + KVM_GPT_THREADS;
     float* sv = reinterpret_cast<float*>(pre + KVM_GPT_THREADS);
@@ -3115,6 +3146,7 @@ KVM_GPT_DEVI void argmax(const KvmCtx& ctx, const int32_t* a) {
     const float* lg = k.mat(a[0], r1, V, &ld);
     int32_t* out = k.ivec(a[1], r1);
     if (k.bad) return;
+    static_assert(2 * KVM_GPT_THREADS * 4 <= KVM_GPT_SMEM_SMALL, "argmax's values and indices must fit the small ops' launch");
     float* sv = reinterpret_cast<float*>(kvm_gpt_smem);
     int* si = reinterpret_cast<int*>(sv + KVM_GPT_THREADS);
     for (int r = r0; r < r1; r++) { int j = row_argmax(lg + (size_t)r * ld, V, sv, si); if (threadIdx.x == 0) out[r] = j; }

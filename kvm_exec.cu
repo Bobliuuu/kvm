@@ -775,7 +775,9 @@ class KvmExec {
   // Runs the fusion pass over a closed bundle: what it fuses, and why it left each other run alone, goes to the log. The caller swaps the rewritten bundle in when something fused.
   // The shared memory a fused block may use on this device: the static kernel's opt-in maximum less its own static shared memory, in floats (16-float multiples).
   int fused_smem_floats() const { return smem_floats_of(reinterpret_cast<const void*>(kvm_static_kernel)); }
-  int fgpt_smem_floats() const { return smem_floats_of(reinterpret_cast<const void*>(kvm_fgpt_kernel)); }
+  int fgpt_smem_floats() const {   // both crossing forms' instances: the smaller budget, so a gang of either form fits
+    return std::min(smem_floats_of(reinterpret_cast<const void*>(kvm_fgpt_kernel<false>)), smem_floats_of(reinterpret_cast<const void*>(kvm_fgpt_kernel<true>)));
+  }
   // A kernel's dynamic shared memory a block, in floats (a multiple of 16): the device's opt-in limit less the kernel's static share.
   static int smem_floats_of(const void* kernel) {
     int dev; CK(cudaGetDevice(&dev));
@@ -980,20 +982,35 @@ class KvmExec {
     if ((int)b.tasks.size() != members) throw std::logic_error("run_fgpt: " + std::to_string(b.tasks.size()) + " tasks for gangs of " + std::to_string(members) + " members");
     prepare();   // buffers and the host mirrors are in place before anything launches
     FgptState st = make_fgpt_state(plan);
-    CK(cudaFuncSetAttribute(kvm_fgpt_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, st.smem_bytes));
-    int occ = 0; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, kvm_fgpt_kernel, KVM_FGPT_NT, st.smem_bytes));
+    // Each run's gang crosses in the form its size takes (kvm_gang::counted_form), on the kernel's instance for that form: each crossing
+    // site then carries one form's code. Both instances share the arena, so each one the plan uses gets the same attribute and check.
+    bool form_used[2] = {false, false};
+    for (int g : plan.gang) form_used[kvm_gang::counted_form(g) ? 1 : 0] = true;
+    const void* const form_kernel[2] = {reinterpret_cast<const void*>(kvm_fgpt_kernel<false>), reinterpret_cast<const void*>(kvm_fgpt_kernel<true>)};
+    int occ = -1;
+    for (int f = 0; f < 2; ++f) {
+      if (!form_used[f]) continue;
+      CK(cudaFuncSetAttribute(form_kernel[f], cudaFuncAttributeMaxDynamicSharedMemorySize, st.smem_bytes));
+      int o = 0; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&o, form_kernel[f], KVM_FGPT_NT, st.smem_bytes));
+      occ = occ < 0 ? o : std::min(occ, o);
+    }
     if ((long long)occ * sms_ < gmax)
       throw std::runtime_error("fused GPT kernel: a gang of " + std::to_string(gmax) + " needs that many resident blocks; " + std::to_string(sms_) + " SMs hold " +
                                std::to_string(occ) + " each with " + std::to_string(st.smem_bytes) + " bytes of shared memory");
     KvmCounters* dcnt; CK(cudaMalloc(&dcnt, sizeof(KvmCounters))); CK(cudaMemset(dcnt, 0, sizeof(KvmCounters)));
     CK(cudaStreamSynchronize(0));
-    KLOG(2, "fused GPT kernel: %zu run(s), %d members, %d resident blocks/SM, %d bytes of dynamic shared memory a member", plan.runs.size(), members, occ, st.smem_bytes);
-    // Warm-up launch (desc nullptr: every block returns at once), so the kernel's code is loaded outside the timed window, as run_static does.
-    kvm_fgpt_kernel<<<1, KVM_FGPT_NT, st.smem_bytes, stream_>>>(nullptr, dcnt, S_.herr, 0); CK(cudaGetLastError()); CK(cudaStreamSynchronize(stream_));
+    KLOG(2, "fused GPT kernel: %zu run(s), %d members, %d resident blocks/SM, %d bytes of dynamic shared memory a member; crossings on %s", plan.runs.size(), members, occ,
+         st.smem_bytes, form_used[0] && form_used[1] ? "both forms (each gang's own)" : form_used[1] ? "the counted barrier" : "the flag lines");
+    // Warm-up launches (desc nullptr: every block returns at once), so each instance's code is loaded outside the timed window, as run_static does.
+    if (form_used[0]) kvm_fgpt_kernel<false><<<1, KVM_FGPT_NT, st.smem_bytes, stream_>>>(nullptr, dcnt, S_.herr, 0);
+    if (form_used[1]) kvm_fgpt_kernel<true><<<1, KVM_FGPT_NT, st.smem_bytes, stream_>>>(nullptr, dcnt, S_.herr, 0);
+    CK(cudaGetLastError()); CK(cudaStreamSynchronize(stream_));
     clock_warmup();
     CK(cudaEventRecord(e0_, stream_));
-    for (size_t r = 0, slot0 = 0; r < plan.runs.size(); slot0 += plan.gang[r], ++r)
-      kvm_fgpt_kernel<<<plan.gang[r], KVM_FGPT_NT, st.smem_bytes, stream_>>>(st.desc + r, dcnt, S_.herr, (int)slot0);
+    for (size_t r = 0, slot0 = 0; r < plan.runs.size(); slot0 += plan.gang[r], ++r) {
+      if (kvm_gang::counted_form(plan.gang[r])) kvm_fgpt_kernel<true><<<plan.gang[r], KVM_FGPT_NT, st.smem_bytes, stream_>>>(st.desc + r, dcnt, S_.herr, (int)slot0);
+      else kvm_fgpt_kernel<false><<<plan.gang[r], KVM_FGPT_NT, st.smem_bytes, stream_>>>(st.desc + r, dcnt, S_.herr, (int)slot0);
+    }
     CK(cudaGetLastError());
     CK(cudaEventRecord(e1_, stream_));
     started_ = true;

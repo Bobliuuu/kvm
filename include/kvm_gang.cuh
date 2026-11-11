@@ -100,6 +100,11 @@ __device__ __forceinline__ bool barrier_counted(unsigned* ctl, int members, unsi
 #ifndef KVM_GANG_LINES_MAX
 #define KVM_GANG_LINES_MAX 32
 #endif
+// The form `cross` takes for a gang of `members`: the counted barrier past LinesMax members, else the flag lines. A kernel that picks its
+// form once at launch (an instance per form, chosen on the host by this) calls that form directly at every crossing, where `cross` would
+// carry both forms' code behind a run-time branch at each one.
+template <int LinesMax = KVM_GANG_LINES_MAX>
+__host__ __device__ constexpr bool counted_form(int members) { return members > LinesMax; }
 template <int LinesMax = KVM_GANG_LINES_MAX>
 __device__ __forceinline__ unsigned long long cross_start(const unsigned* ctl, int member, int members) {
     return members <= LinesMax ? (unsigned long long)lines_epoch(ctl, member) : counted_base(ctl, members);

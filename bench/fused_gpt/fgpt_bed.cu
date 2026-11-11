@@ -77,7 +77,7 @@ static const char* const kMarks[kvm_fgpt::MK_COUNT] = {
     "  wait: norm", "AdamW", "  wait: step end"};
 
 // `acc` (plain run): member 0's in-kernel nanoseconds, start to end, so the run's time excludes the launch.
-template <bool CLOCK>
+template <bool CLOCK, bool COUNTED>   // COUNTED: the gang's crossing form (kvm_gang::counted_form(G), picked at launch)
 __global__ void __launch_bounds__(KVM_FGPT_NT, 1) fgpt_kernel(const KvmFgptDesc* d, int smem_floats, int* err, int* ok, unsigned long long* acc,
                                                               int fault_member, int fault_floats) {
   extern __shared__ float sm[];
@@ -89,11 +89,11 @@ __global__ void __launch_bounds__(KVM_FGPT_NT, 1) fgpt_kernel(const KvmFgptDesc*
     __shared__ unsigned long long sacc[kvm_fgpt::MK_COUNT];
     PhaseClock ph{acc, sacc, 0, 0, 0};
     ph.start();
-    r = kvm_fgpt::run(*d, blockIdx.x, sm, sf, err, fail, ph);
+    r = kvm_fgpt::run<COUNTED>(*d, blockIdx.x, sm, sf, err, fail, ph);
     ph.stop(d->G);
   } else {
     const unsigned long long t0 = gtimer();
-    r = kvm_fgpt::run(*d, blockIdx.x, sm, sf, err, fail);
+    r = kvm_fgpt::run<COUNTED>(*d, blockIdx.x, sm, sf, err, fail);
     if (threadIdx.x == 0 && blockIdx.x == 0 && acc) acc[0] = gtimer() - t0;
   }
   if (threadIdx.x == 0) ok[blockIdx.x] = r ? 1 : 0;
@@ -211,7 +211,9 @@ int main(int argc, char** argv) {
   h.ids_src = dids; h.tgt_src = dtgt; h.step = dstep; h.loss = dlossp; h.xch = dx; h.xch_floats = (size_t)sc.total; h.ctl = dctl; h.bc = dbc;
   // ---- the member's shared memory: the program's bound for the shape and the row chunk (the device checks every phase against it), within
   // this GPU's opt-in shared memory a block less the kernel's static share
-  void* kern = clocked ? (void*)fgpt_kernel<true> : (void*)fgpt_kernel<false>;
+  const bool counted = kvm_gang::counted_form(G);   // the gang's crossing form, an instance each
+  void* kern = clocked ? (counted ? (void*)fgpt_kernel<true, true> : (void*)fgpt_kernel<true, false>)
+                       : (counted ? (void*)fgpt_kernel<false, true> : (void*)fgpt_kernel<false, false>);
   long long budget = 0;
   {
     int dev0 = 0, optin = 0;

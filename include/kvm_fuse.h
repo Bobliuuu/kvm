@@ -311,6 +311,19 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
   using Step = kvm_fuse::Parser::Step;
   KvmFuseResult R;
   const int nt = (int)tasks.size();
+  // The pass reads each task's argument words up to its op's arity, and it runs before the executor's validation. So a bundle with a task
+  // whose word count is not its op's arity, or whose words lie outside the argument array, is left alone, never read past and never made
+  // valid by replacing the task: validation then names it, fused or not.
+  for (int i = 0; i < nt; ++i) {
+    const KvmSOpInfo o = op_of(tasks[i].op_id);
+    const long long off = tasks[i].args_off, words = tasks[i].args_words;
+    if (off < 0 || words < 0 || off + words > (long long)args.size() || (o.arity >= 0 && words != o.arity)) {
+      R.tasks = tasks; R.succ = succ; R.args = args;
+      R.report.push_back("task " + std::to_string(i) + " (op " + std::to_string(tasks[i].op_id) + ") has " + std::to_string(words) + " argument words at " + std::to_string(off) +
+                         (o.arity >= 0 ? ", its op takes " + std::to_string(o.arity) : std::string()) + ": the pass leaves the bundle alone");
+      return R;
+    }
+  }
   // every reference to each buffer, so an interior buffer can be checked to be touched by its step alone
   std::vector<std::vector<int>> refs(bufs.size());
   for (int i = 0; i < nt; ++i) {

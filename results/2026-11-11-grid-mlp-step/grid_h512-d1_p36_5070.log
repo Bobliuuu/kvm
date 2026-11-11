@@ -4,16 +4,16 @@ check step 1: loss 4.612423, fp64 4.612422
 check step 2: loss 4.603212, fp64 4.603216
 check after 3 steps: loss max rel 8.70e-07; update rel L2 (worst layer) W 4.22e-04, b 3.05e-04; Wh 3.94e-04, emb 5.97e-04 (TF32 operands: a few 1e-3 expected)
 check ok
-timed: 20 steps: 42.23 us a step in the kernel (block 0's %globaltimer over its counted loop), 45.56 us by events (launch and host delays included)
+timed: 20 steps: 35.77 us a step in the kernel (block 0's %globaltimer over its counted loop), 37.56 us by events (launch and host delays included)
 block 0 by phase (cycles a step; each phase ends at a barrier, which its time includes):
-  load (blocks, embedding rows)              6438  ( 5.4%)
-  forward (layer 0, hidden layers)           9883  ( 8.2%)
-  head partial logits                        9845  ( 8.2%)
-  cross-entropy                             15948  (13.3%)
-  backward: head                            18910  (15.8%)
-  backward: hidden layers                     966  ( 0.8%)
-  backward: layer 0                         18853  (15.7%)
-  embedding, write-back, last barrier       39069  (32.6%)
-  total                                    119912 cycles
+  load (blocks, embedding rows)              6611  ( 6.6%)
+  forward (layer 0, hidden layers)           9734  ( 9.7%)
+  head partial logits                       10667  (10.6%)
+  cross-entropy                             17647  (17.6%)
+  backward: head                            19076  (19.0%)
+  backward: hidden layers                     517  ( 0.5%)
+  backward: layer 0                         19542  (19.5%)
+  embedding, write-back, last barrier       16538  (16.5%)
+  total                                    100332 cycles
 blocks ran on 36 distinct SMs of 36 blocks (one block a SM)
-effective SM clock 2839 MHz (block 0's cycles over its kernel time), rated 1425 MHz: the GPU boosted above its rated clock
+effective SM clock 2805 MHz (block 0's cycles over its kernel time), rated 1425 MHz: the GPU boosted above its rated clock

@@ -53,6 +53,8 @@ struct alignas(16) KvmFgptDesc {
   float* g[KVM_FGPT_MAXP];                    // the bundle's gradient buffers: written once at the end, so a reader after the run sees the last step's
   float* xch;                                 // the global scratch (kvm_fgpt_scratch's layout, zeroed or not: every element is written before it is read)
   size_t xch_floats;
+  float* bc;                                  // [2 steps]: each step's AdamW bias corrections, 1 - beta1^t and 1 - beta2^t, filled by member 0
+                                              // at the run's start (a double pow is microseconds where FP64 is slow; once a run, not a step)
   unsigned* ctl;                              // the gang barrier's flag line: KVM_FGPT_MAX_GANG words, one a member, 128-byte aligned
                                               // (kvm_fused_gpt.cuh's cross_line), zeroed once
 };

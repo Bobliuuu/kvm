@@ -199,7 +199,8 @@ int main(int argc, char** argv) {
   CK(cudaMalloc(&dctl, KVM_FGPT_MAX_GANG * sizeof(unsigned))); CK(cudaMemset(dctl, 0, KVM_FGPT_MAX_GANG * sizeof(unsigned)));   // the gang's flag line
   CK(cudaMalloc(&derr, 4)); CK(cudaMemset(derr, 0, 4));
   CK(cudaMalloc(&dok, G * 4)); CK(cudaMemset(dok, 0, G * 4));
-  h.ids_src = dids; h.tgt_src = dtgt; h.step = dstep; h.loss = dlossp; h.xch = dx; h.xch_floats = (size_t)sc.total; h.ctl = dctl;
+  float* dbc; CK(cudaMalloc(&dbc, 2 * (size_t)h.steps * sizeof(float)));   // the bias corrections' table, filled by member 0
+  h.ids_src = dids; h.tgt_src = dtgt; h.step = dstep; h.loss = dlossp; h.xch = dx; h.xch_floats = (size_t)sc.total; h.ctl = dctl; h.bc = dbc;
   // the member's shared memory: the program's bound for the shape (the device checks every phase against it)
   const long long smem_floats = kvm_fgpt_smem_floats(h.N, h.T, h.d, h.H, h.F, h.V, G, h.qb);
   const size_t smem = (size_t)smem_floats * 4;

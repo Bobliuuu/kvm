@@ -38,5 +38,31 @@ class ClipChunks(unittest.TestCase):
                 Tiling.preset('a100', norm_elems=bad)
 
 
+class AdamwChunks(unittest.TestCase):
+    """Tiling.for_model sizes AdamW's chunk to about opt_tasks tasks a step, between opt_elems and opt_elems_max."""
+
+    def test_a100_sizes_the_chunk_to_the_model(self):
+        a100 = Tiling.preset('a100')
+        self.assertEqual((a100.opt_elems, a100.opt_elems_max, a100.opt_tasks), (16384, 262144, 432))
+        self.assertEqual(a100.for_model(162_000_000).opt_elems, 262144)          # a 162M GPT: the cap, as before the split
+        self.assertEqual(a100.for_model(5_400_000).opt_elems, 16384)             # a hold-out draw: the floor
+        self.assertEqual(a100.for_model(12_600_000).opt_elems, 29167)            # between: params / 432, rounded up
+        sized = a100.for_model(162_000_000)
+        self.assertEqual((sized.opt_tasks, sized.opt_elems_max, sized.norm_elems), (0, 0, 262144))   # sized once; the clip's own chunks kept
+
+    def test_without_opt_tasks_nothing_moves(self):
+        for name in ('cpu', 'a100_mm64'):
+            t = Tiling.preset(name)
+            self.assertIs(t.for_model(162_000_000), t)
+
+    def test_compile_sizes_a_small_model_as_before(self):
+        self.assertEqual(len(tasks(Tiling.preset('a100'), 'adamw')), len(tasks(Tiling.preset('a100', opt_tasks=0, opt_elems_max=0), 'adamw')))
+
+    def test_bounds_are_validated(self):
+        for bad in (dict(opt_elems_max=8192), dict(opt_tasks=-1), dict(opt_elems_max=1.5)):
+            with self.assertRaises(FrontendError):
+                Tiling.preset('a100', **bad)
+
+
 if __name__ == '__main__':
     unittest.main()

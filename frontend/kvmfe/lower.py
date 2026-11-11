@@ -15,7 +15,7 @@ from .ir import Builder, FrontendError, LogicalOp, Tensor
 from .opset import ATTN_BLOCK, ATTN_Q, F_ACC, F_BIG, F_DGELU, F_EXACT, F_GELU, F_HUGE, F_PRECISE, F_TA, F_TB, F_TRUNC, MM_TILE, MMA_TILE, mm_dims, op as device_op
 
 
-_A100 = dict(rows=128, ew_rows=128, cols=256, col_sub=64, vocab=2048, opt_elems=16384, norm_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, row_tasks=16)   # a100_pre and a100_trunc are this tiling plus one change each, so neither can drift from it
+_A100 = dict(rows=128, ew_rows=128, cols=256, col_sub=64, vocab=2048, opt_elems=16384, opt_elems_max=262144, opt_tasks=432, norm_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, row_tasks=16)   # a100_pre and a100_trunc are this tiling plus one change each, so neither can drift from it
 
 @dataclass(frozen=True)
 class Tiling:
@@ -24,7 +24,9 @@ class Tiling:
     cols: int = 128          # column block of column reductions (colsum, norm parameter gradients)
     col_sub: int = 0         # 0: a column reduction takes whole `cols` blocks; else each block splits into tasks this wide (> 32), every column keeping its order (col_blocks)
     vocab: int = 1024        # key block of the embedding gradient
-    opt_elems: int = 16384   # AdamW chunk (rounded down to whole rows)
+    opt_elems: int = 16384   # AdamW chunk (rounded down to whole rows); with opt_tasks, the smallest
+    opt_elems_max: int = 0   # with opt_tasks, the largest AdamW chunk (0: opt_elems)
+    opt_tasks: int = 0       # 0: AdamW takes opt_elems chunks; else for_model sizes the chunk so a step's AdamW makes about this many tasks
     norm_elems: int = 0      # 0: the gradient clip's partial sums take opt_elems chunks; else chunks of this size. The clip's norm is a sum stored per chunk in fp32, so its chunking is numerics, not speed (_norm_chunks)
     mm_tile: int = 64        # GEMM output tile: 64 (64x64), 128 (128x128, flag 32) or 256 (256x128, flag 64); see mm_choice for fallbacks
     mm_min_tiles: int = 8    # a GEMM that would give fewer tiles than this at mm_tile steps down to a smaller tile (parallelism over hop cost)
@@ -65,8 +67,13 @@ class Tiling:
             raise FrontendError(f'Tiling.col_sub must be 0 or an int above 32 (col_reduce keeps a column\'s order only in strips of 64), got {self.col_sub!r}')
         if not isinstance(self.norm_elems, int) or self.norm_elems < 0:
             raise FrontendError(f'Tiling.norm_elems must be 0 (follow opt_elems) or a positive int, got {self.norm_elems!r}')
+        for k in ('opt_elems_max', 'opt_tasks'):
+            if not isinstance(getattr(self, k), int) or getattr(self, k) < 0:
+                raise FrontendError(f'Tiling.{k} must be 0 or a positive int, got {getattr(self, k)!r}')
+        if self.opt_elems_max and self.opt_elems_max < self.opt_elems:
+            raise FrontendError(f'Tiling.opt_elems_max ({self.opt_elems_max}) is below opt_elems ({self.opt_elems})')
         for k, v in vars(self).items():
-            if k in ('precise', 'mm_min_eff', 'tf32_trunc', 'tf32_preround', 'tf32_copy_scope', 'col_sub', 'norm_elems'):
+            if k in ('precise', 'mm_min_eff', 'tf32_trunc', 'tf32_preround', 'tf32_copy_scope', 'col_sub', 'norm_elems', 'opt_elems_max', 'opt_tasks'):
                 continue
             if not isinstance(v, int) or v < 1:
                 raise FrontendError(f'Tiling.{k} must be a positive int, got {v!r}')
@@ -74,6 +81,16 @@ class Tiling:
             raise FrontendError(f"Tiling.tf32_copy_scope must be 'phase' or 'value', got {self.tf32_copy_scope!r}")
         if self.tf32_preround and (self.tf32_trunc or self.precise):
             raise FrontendError('Tiling.tf32_preround makes rounded operand copies; it does not combine with tf32_trunc or precise')
+
+    def for_model(self, params: int) -> 'Tiling':
+        """This tiling for a model of `params` parameters: with opt_tasks, AdamW's chunk is the parameters over opt_tasks, at least
+        opt_elems and at most opt_elems_max. A small model's AdamW then splits finely, where its long chunks sit on a per-op step's
+        critical path; a large model's keeps large chunks, where the step is throughput-bound and every extra task is overhead
+        (measured: a 162M GPT's step at 16,384-element chunks ran 1.1% slower on the dynamic path, ~9,300 more tasks a step)."""
+        if not self.opt_tasks:
+            return self
+        chunk = min(max(-(-params // self.opt_tasks), self.opt_elems), self.opt_elems_max or self.opt_elems)
+        return replace(self, opt_elems=chunk, opt_elems_max=0, opt_tasks=0)
 
 
 @dataclass

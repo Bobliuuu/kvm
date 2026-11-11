@@ -10,7 +10,8 @@ members, and takes a counted barrier (`barrier_counted`) past it, in place of th
   `red.release.gpu.add`, so its arrival costs no round trip, and its thread 0 polls the count until it reaches the crossing's target.
 - **No reset between steps or runs.** A member takes its first target from the count it reads before its first arrival, rounded down to a
   multiple of the gang's size. Late starters therefore agree with early ones.
-- **Who crosses through it:** the split and grid MLP steps and, now, the fused GPT step.
+- **Who follows the rule:** the split and grid MLP steps cross through `cross`. The fused GPT step picks its form once, at its kernel's
+  entry, by the same rule (`kvm_gang::counted_form`), so each of its crossing sites carries one form.
 
 Both forms are exact barriers with the same ordering and abort contract. The choice changes cost only, never a result: every buffer below
 is bitwise across the arms.
@@ -117,9 +118,14 @@ members. The arms that choose the same form read x0.999-1.000.
 
 ### The executor: this branch against its base
 
-This branch (`5b48276`) against its base (`2a8692b`, the head of #48), each built with the panel's flags, both on one A100-SXM4-80GB:
-the panel's 9 rows and four hold-out MLP draws, 5 interleaved rounds a row, `--warm-ms 500`, no slow run in either arm
-(`raw/executor/`: `ab_*.json`, the gang sizes from `report_*_cand.log`). Every row's weights are bitwise equal (gate `w.` at tolerance 0).
+This branch against its base (`2a8692b`, the head of #48), each built with the panel's flags, both on one A100-SXM4-80GB: the panel's
+9 rows and four hold-out MLP draws, 5 interleaved rounds a row, `--warm-ms 500`, no slow run in either arm (`raw/executor/`: `ab_*.json`,
+the gang sizes from `report_*_cand.log`). Every row's weights are bitwise equal (gate `w.` at tolerance 0).
+
+Two builds of the branch were read. Its first commit (`5b48276`) was read on every row. Its head, with the fused GPT step's crossing form
+chosen at its entry (below), was read on the GPT rows, 9 rounds each (`raw/entry/`). Every kernel except the fused GPT one has the same
+SASS in the two builds, all 18 of them (`raw/entry/sass-identity-against-the-first-build.txt`), so the first commit's figures stand for
+the head on every other row.
 
 | row | members a gang | base, ms | this branch, ms | paired | rounds |
 |---|---|---|---|---|---|
@@ -130,32 +136,34 @@ the panel's 9 rows and four hold-out MLP draws, 5 interleaved rounds a row, `--w
 | ho-mlp-h200-d1-r16 | 16 gangs of 108 | 26.569 | 26.077 | **x1.019** | x1.017-1.021 |
 | ho-mlp-h576-d1-r1 (read again, 9 rounds) | 108 | 1.882 | 1.827 | **x1.030** | x1.014-1.043 |
 | gpt-162m, mlp72-r1, mlp72-r8, mlp72-r32, mlp-hetero-r8 | no gang | | | x1.000 | x0.993-1.004 |
-| gpt-small | 32 | 14.322 | 14.448 | **x0.991** | x0.991-0.994 |
-| gpt-tiny | 16 | 6.625 | 6.662 | **x0.994** | x0.993-0.995 |
+| gpt-small (the head, 9 rounds) | 32 | 14.324 | 14.327 | x1.000 | x0.998-1.003 |
+| gpt-tiny (the head, 9 rounds) | 16 | 6.623 | 6.621 | x1.001 | x0.998-1.001 |
 
 mlp256-r1 and h576-d1 first read x1.026 and x1.014 (`raw/executor/`), but their rounds spread x1.024-1.048 and x0.999-1.031 while the
 host's CPU quota throttled the read. They were read again alone, 9 rounds each, with no period throttled (`raw/reread/`); the table
-quotes that read. Geometric means of the paired medians: the panel's 9 rows **x1.0058**, the four hold-out MLP draws **x1.0394**.
+quotes that read. Geometric means of the paired medians, with the head's GPT rows: the panel's 9 rows **x1.0075**, the four hold-out MLP
+draws **x1.0394**.
 
 ### The fused GPT step
 
-`fgs_read`'s paired read on gpt-tiny, gpt-small and a d128 hold-out draw (d 128, 4 layers, T 96, B 2, 30 steps), 9 rounds a row, no slow
-run, every step's loss equal to the last bit (`raw/gpt-executor/`). Their per-step state is bitwise equal too: 110, 158 and 234 buffers
-(202,768, 1,398,160 and 10,306,800 bytes) on the fused path (`raw/bitwise-device-bench/b.log`).
+The head against the base on gpt-tiny, gpt-small and a d128 hold-out draw (d 128, 4 layers, T 96, B 2, 30 steps), 9 rounds a row, no slow
+run, every weight bitwise (`raw/entry/`). Their per-step state is bitwise equal too: 110, 158 and 234 buffers (202,768, 1,398,160 and
+10,306,800 bytes) on the fused path, compared byte for byte (`raw/entry/run.log`).
 
-| row | members | base, µs a step | this branch | paired | rounds |
+| row | members | base, µs a step | the head | paired | rounds |
 |---|---|---|---|---|---|
-| d128 hold-out draw | 64 | 1,048.9 | 1,041.5 | x1.006 | x1.005-1.008 |
-| gpt-small | 32 | 286.5 | 288.9 | x0.992 | x0.991-0.992 |
-| gpt-tiny | 16 | 132.5 | 133.3 | x0.994 | x0.993-0.996 |
+| d128 hold-out draw | 64 | 1,048.5 | 1,020.6 | **x1.027** | x1.026-1.029 |
+| gpt-small | 32 | 286.5 | 286.5 | x1.000 | x0.998-1.003 |
+| gpt-tiny | 16 | 132.5 | 132.4 | x1.001 | x0.998-1.001 |
 
-### The 16- and 32-member GPT rows
+### The fused GPT step's crossing form, chosen at its entry
 
-Their gangs keep the flag lines, as they did on the base, yet they lose 0.6-0.9% with every round below 1. The cause is code, not the
-crossing's form. The fused GPT step used to call the flag lines directly; it now crosses through `cross`, which inlines both forms at each
-crossing site behind a run-time branch on the gang's size. The SASS census of `kvm_fgpt_kernel` on both binaries (`raw/census/`):
+In the branch's first build the fused GPT step crossed through `cross`, which inlines both forms at each crossing site behind a run-time
+branch on the gang's size. Its 16- and 32-member gangs kept the flag lines, yet lost 0.6-0.9% with every round below 1: gpt-tiny x0.994
+and gpt-small x0.992, while the 64-member d128 draw gained x1.006 (9 rounds, `raw/gpt-executor/`). The cause was code, not the crossing's
+form. The SASS census of `kvm_fgpt_kernel` (`raw/census/`):
 
-| the fused GPT program, `kvm_fgpt::run` | base | this branch |
+| the fused GPT program, `kvm_fgpt::run` | base | first build |
 |---|---|---|
 | instructions | 40,499 | **41,519 (+1,020)** |
 | basic blocks (the whole kernel) | 2,985 | **3,154 (+169)** |
@@ -165,8 +173,10 @@ crossing site behind a run-time branch on the gang's size. The SASS census of `k
 
 Registers, spills and tensor-core work are unchanged. The bench above prices the branch at 8-29 ns a crossing.
 
-The fix is next: choose the form once, at the fused GPT kernel's entry (an instance per form, picked by the gang's size at launch), so each
-crossing site carries one form and a 16- or 32-member gang runs the base's code.
+The head chooses the form once. The program and its kernel take it as a template parameter, and the launch picks the instance by the
+gang's size (`kvm_gang::counted_form`), so each crossing site carries one form. The flag-line instance is the base's kernel byte for byte:
+41,120 instructions with the same SASS (`raw/entry/sass-fgpt.txt`). The counted instance is 40,688 instructions. The 16- and 32-member
+rows read x1.000-1.001, and the 64-member draw x1.027 (above).
 
 ## Checks
 
@@ -184,7 +194,8 @@ crossing site carries one form and a 16- or 32-member gang runs the base's code.
 - `counted-beds/`: the split and grid beds, the counted barrier against the earlier crossing.
 - `counted-everywhere-executor/`: the executor with the counted barrier at every size, against the earlier crossing.
 - `executor/`, `reread/`: this branch against its base, the panel and the hold-out MLP draws.
-- `gpt-executor/`: the fused GPT rows and the d128 hold-out draw.
+- `entry/`: the head's GPT rows against the base, with the SASS checks between the builds and the scripts that made them.
+- `gpt-executor/`: the first build's fused GPT rows and the d128 hold-out draw.
 - `bitwise-device-bench/`: the GPT rows' state compared byte for byte, the device test and the bench, on this branch.
-- `census/`: the SASS census of the fused GPT kernel on both binaries.
+- `census/`: the SASS census of the fused GPT kernel, base and first build.
 - `laptop-5070/`: the device test and the bench on an RTX 5070 Laptop GPU.

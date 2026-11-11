@@ -1,0 +1,5 @@
+functions: 19 in A, 20 in B; identical 18; differ 0; in one only 3
+excluding names with 'kvm_fgpt_kernel': identical 18, differ 0, in one only 0
+  ONLY IN B _Z15kvm_fgpt_kernelILb0EEvPK11KvmFgptDescP11KvmCountersP10KvmHostErri: 41120 instructions
+  ONLY IN B _Z15kvm_fgpt_kernelILb1EEvPK11KvmFgptDescP11KvmCountersP10KvmHostErri: 40688 instructions
+  ONLY IN A _Z15kvm_fgpt_kernelPK11KvmFgptDescP11KvmCountersP10KvmHostErri: 42200 instructions

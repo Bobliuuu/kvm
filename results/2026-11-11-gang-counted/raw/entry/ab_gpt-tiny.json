@@ -1,0 +1,47 @@
+[
+ {
+  "row": "gpt-tiny",
+  "control": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_tiny/bundle",
+  "cand": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_tiny/bundle",
+  "tasks": {
+   "control": 6749,
+   "cand": 6749
+  },
+  "ms": {
+   "control": {
+    "median": 6.623,
+    "best": 6.619,
+    "all": [
+     6.626,
+     6.619,
+     6.622,
+     6.627,
+     6.623,
+     6.626,
+     6.622,
+     6.622,
+     6.627
+    ]
+   },
+   "cand": {
+    "median": 6.621,
+    "best": 6.616,
+    "all": [
+     6.622,
+     6.619,
+     6.623,
+     6.618,
+     6.636,
+     6.62,
+     6.616,
+     6.622,
+     6.621
+    ]
+   }
+  },
+  "paired_ratio_median": 1.0006040471156752,
+  "best_ratio": 1.000453446191052,
+  "gate_max_rel": 0.0,
+  "gate_tol": 0.0
+ }
+]

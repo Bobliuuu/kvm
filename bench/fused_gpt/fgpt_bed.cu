@@ -196,7 +196,7 @@ int main(int argc, char** argv) {
   CK(cudaMalloc(&dlossp, h.steps * sizeof(float*)));
   CK(cudaMemcpy(dlossp, lp.data(), h.steps * sizeof(float*), cudaMemcpyHostToDevice));
   unsigned* dctl; int *derr, *dok;
-  CK(cudaMalloc(&dctl, 2 * sizeof(unsigned))); CK(cudaMemset(dctl, 0, 2 * sizeof(unsigned)));
+  CK(cudaMalloc(&dctl, KVM_FGPT_MAX_GANG * sizeof(unsigned))); CK(cudaMemset(dctl, 0, KVM_FGPT_MAX_GANG * sizeof(unsigned)));   // the gang's flag line
   CK(cudaMalloc(&derr, 4)); CK(cudaMemset(derr, 0, 4));
   CK(cudaMalloc(&dok, G * 4)); CK(cudaMemset(dok, 0, G * 4));
   h.ids_src = dids; h.tgt_src = dtgt; h.step = dstep; h.loss = dlossp; h.xch = dx; h.xch_floats = (size_t)sc.total; h.ctl = dctl;

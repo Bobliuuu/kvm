@@ -84,14 +84,15 @@ __global__ void __launch_bounds__(NT, 1) split_kernel(const KvmSplitDesc* gd, co
   }
 }
 
-// The instantiated (shares, slices) pairs: a run-time bound on the partial-sum loops would serialize each cell's loads (measured on the fused slice's owners: about 7.6 GB/s an SM, latency-bound).
+// The instantiated (shares, slices) pairs, the op's own (KVM_SPLIT_SHARE_LIST x KVM_SPLIT_Q): a run-time bound on the partial-sum loops would serialize
+// each cell's loads (measured on the fused slice's owners: about 7.6 GB/s an SM, latency-bound).
 using KernelFn = void (*)(const KvmSplitDesc*, const int*, const int*, float*, int, int, Timing);
 static KernelFn pick_kernel(int S, int Q) {
-  if (Q != 6) return nullptr;
+  if (Q != KVM_SPLIT_Q) return nullptr;
   switch (S) {
-    case 2: return split_kernel<2, 6>;   case 3: return split_kernel<3, 6>;   case 4: return split_kernel<4, 6>;   case 5: return split_kernel<5, 6>;
-    case 6: return split_kernel<6, 6>;   case 8: return split_kernel<8, 6>;   case 9: return split_kernel<9, 6>;   case 10: return split_kernel<10, 6>;
-    case 12: return split_kernel<12, 6>; case 18: return split_kernel<18, 6>;
+#define X(S_) case S_: return split_kernel<S_, KVM_SPLIT_Q>;
+    KVM_SPLIT_SHARE_LIST
+#undef X
     default: return nullptr;
   }
 }

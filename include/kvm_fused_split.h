@@ -24,8 +24,9 @@
 #define KVM_SPLIT_R 16       // rows of a slice (one m16 row block)
 #define KVM_SPLIT_Q 6        // slices of a run: the op is instantiated for 6 (T = 96, the panel's and the hold-out's MLP runs)
 // The share counts the op is instantiated for (its partial-sum loops are unrolled over S): the pass chooses among these, the static worker dispatches
-// on them, and a run that needs another stays unfused. X(S) once each.
-#define KVM_SPLIT_SHARE_LIST X(2) X(3) X(4) X(5) X(6) X(8) X(9) X(10) X(12) X(18)
+// on them, and a run that needs another stays unfused. X(S) once each. 16 is the panel's mlp256 (h256-d4): its 32 blocks of 8 units split 2 a share,
+// so a member holds 23,452 floats; at 8 to 15 shares the widest share is 24 units, padded to 32 columns, and a member needs 39,900 (budget 38,400).
+#define KVM_SPLIT_SHARE_LIST X(2) X(3) X(4) X(5) X(6) X(8) X(9) X(10) X(12) X(16) X(18)
 struct alignas(16) KvmSplitDesc {   // copied to shared memory with 16-byte cp.async
   // shape: vocabulary (VP rounded up to 16), embedding width, hidden layers, hidden width (HR rounded up to 16), the widest share rounded up to 16,
   // shares, slices, rows a step

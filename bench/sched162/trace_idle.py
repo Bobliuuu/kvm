@@ -53,8 +53,8 @@ def main():
     if t is not None:
         succ = np.frombuffer((bundle / 'successors.bin').read_bytes(), dtype=np.int32)
         ntask = len(t)
-        # tasks.bin layout is the ABI's descriptor: succ_off, succ_cnt words (see include/kvm_task_abi.h)
-        off, cnt_ = t[:, 8], t[:, 9]
+        # tasks.bin layout is the ABI's descriptor: succ_off, succ_cnt words (KvmTaskDesc words 1, 2)
+        off, cnt_ = t[:, 1], t[:, 2]
         if tr['op'] and len(tr['op']) == ntask:
             full_S = tr['start']; full_E = tr['end']
             dur = np.where(full_S >= 0, full_E - full_S, 0.0)

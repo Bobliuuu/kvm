@@ -1059,6 +1059,9 @@ class KvmExec {
       for (size_t t = 0; t < b.tasks.size(); ++t)
         if (b.tasks[t].op_id == KVM_OP_fmlp_slice || b.tasks[t].op_id == KVM_OP_fmlp_sgd || b.tasks[t].op_id == KVM_OP_fmlp_split || b.tasks[t].op_id == KVM_OP_fmlp_grid)
           throw std::logic_error("static kernel: task " + std::to_string(t) + " is a fused op (" + kvm_op(b.tasks[t].op_id)->name + "), which the generic entry refuses");
+    for (size_t t = 0; t < b.tasks.size(); ++t)   // a fused GPT member runs only as its gang's block of the fused GPT kernel (run_fgpt): no entry's dispatch runs it
+      if (b.tasks[t].op_id == KVM_OP_fgpt_step)
+        throw std::logic_error("static kernel: task " + std::to_string(t) + " is a fused GPT member (fgpt_step), which only the fused GPT kernel runs (run_fgpt)");
     {
       cudaFuncAttributes fe, fg; CK(cudaFuncGetAttributes(&fe, entry)); CK(cudaFuncGetAttributes(&fg, kvm_static_kernel));
       if (fe.sharedSizeBytes > fg.sharedSizeBytes) throw std::logic_error("static kernel: entry " + kvm_fuse_entry_name(o.entry) + " holds " + std::to_string(fe.sharedSizeBytes) + " bytes of static shared memory, the generic one " + std::to_string(fg.sharedSizeBytes) + ": the fused budget assumed at most the generic one's");

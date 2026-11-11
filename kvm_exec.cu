@@ -26,6 +26,8 @@
 #include "kvm_exec.cuh"
 #include "kvm_static.h"
 #include "kvm_fuse.h"
+#include "kvm_fuse_gpt.h"
+#include "kvm_fgpt_kernel.cuh"
 
 // ---------------- logging (levels 0 error .. 3 debug; everything is shown by default) ----------------
 static int g_kvm_log = 3;
@@ -757,10 +759,13 @@ class KvmExec {
   // ---- fused MLP steps (kvm_fuse.h): the rewritten bundle's runs, their device state
   // Runs the fusion pass over a closed bundle: what it fuses, and why it left each other run alone, goes to the log. The caller swaps the rewritten bundle in when something fused.
   // The shared memory a fused block may use on this device: the static kernel's opt-in maximum less its own static shared memory, in floats (16-float multiples).
-  int fused_smem_floats() const {
+  int fused_smem_floats() const { return smem_floats_of(reinterpret_cast<const void*>(kvm_static_kernel)); }
+  int fgpt_smem_floats() const { return smem_floats_of(reinterpret_cast<const void*>(kvm_fgpt_kernel)); }
+  // A kernel's dynamic shared memory a block, in floats (a multiple of 16): the device's opt-in limit less the kernel's static share.
+  static int smem_floats_of(const void* kernel) {
     int dev; CK(cudaGetDevice(&dev));
     cudaDeviceProp p; CK(cudaGetDeviceProperties(&p, dev));
-    cudaFuncAttributes fa; CK(cudaFuncGetAttributes(&fa, kvm_static_kernel));
+    cudaFuncAttributes fa; CK(cudaFuncGetAttributes(&fa, kernel));
     const long long bytes = (long long)p.sharedMemPerBlockOptin - (long long)fa.sharedSizeBytes;
     return bytes > 0 ? (int)(bytes / 4) & ~15 : 0;
   }
@@ -779,6 +784,27 @@ class KvmExec {
     if (!r.dropped.empty()) KLOG(1, "fuse: nothing fused: %s, and each fused form runs on a static-kernel entry of its own", r.dropped.c_str());
     if (r.fused_runs) KLOG(2, "fuse: shared-memory budget %d floats (%d bytes) a fused block", opts.smem_floats, opts.smem_floats * 4);
     KLOG(2, "fuse: %d run(s) fused, %d unchanged; %d tasks replaced by %d; static kernel entry: %s", r.fused_runs, r.unchanged_runs, r.replaced_tasks, r.new_tasks, kvm_fuse_entry_name(r.entry).c_str());
+    return r;
+  }
+
+  // The fused GPT step's pass (kvm_fuse_gpt.h): each GPT training run whose gang fits the fused kernel's shared memory on this device and
+  // `workers` resident blocks becomes one fgpt_step gang (run_fgpt runs a bundle that is such gangs alone).
+  KvmFuseGptPlan fuse_gpt(const KvmBundle& b, int workers, const std::vector<int>& keep, bool log = true) const {
+    KvmFuseGptOps ops;
+    const auto id = [](const char* n) { return kvm_op_by_name(n); };
+    ops.select_window = id("select_window"); ops.embedding_fwd = id("embedding_fwd"); ops.layernorm_fwd = id("layernorm_fwd"); ops.matmul_tile = id("matmul_tile");
+    ops.rope_fwd = id("rope_fwd"); ops.attn_fwd = id("attn_fwd"); ops.softmax_ce_fused = id("softmax_ce_fused"); ops.softmax_ce_reduce = id("softmax_ce_reduce");
+    ops.layernorm_bwd_dx = id("layernorm_bwd_dx"); ops.norm_bwd_params = id("norm_bwd_params"); ops.colsum = id("colsum"); ops.attn_bwd_delta = id("attn_bwd_delta");
+    ops.attn_bwd_dq = id("attn_bwd_dq"); ops.attn_bwd_dkv = id("attn_bwd_dkv"); ops.rope_bwd = id("rope_bwd"); ops.embedding_bwd = id("embedding_bwd");
+    ops.gradnorm_partial = id("gradnorm_partial"); ops.gradnorm_finish = id("gradnorm_finish"); ops.counter_inc = id("counter_inc"); ops.adamw = id("adamw"); ops.noop = id("noop");
+    std::vector<KvmFuseBuf> infos(bufs_.size());
+    for (size_t i = 0; i < bufs_.size(); ++i) infos[i] = KvmFuseBuf{bufs_[i].rows, bufs_[i].cols, bufs_[i].ld, bufs_[i].dtype};
+    KvmFuseGptOptions opts; opts.workers = workers; opts.keep = keep; opts.smem_floats = fgpt_smem_floats();
+    KvmFuseGptPlan r = kvm_fuse_gpt(b.tasks, b.succ, b.args, infos, ops, id("fgpt_step"), opts);
+    if (log) {
+      for (const std::string& line : r.report) KLOG(2, "fuse gpt: %s", line.c_str());
+      KLOG(2, "fuse gpt: %d run(s) fused, %d unchanged; %d tasks replaced by %d", r.fused_runs, r.unchanged_runs, r.replaced_tasks, r.new_tasks);
+    }
     return r;
   }
 
@@ -859,6 +885,116 @@ class KvmExec {
       st.allocs.push_back(st.grid);
     }
     return st;
+  }
+
+  // One descriptor per fused GPT run (kvm_fused_gpt.h; a run's index is its members' `desc` argument), with the run's scratch, its gang's
+  // barrier words and its steps' loss pointers, and the shared memory its members need. Its buffers are device-allocated already (prepare()):
+  // a parameter, gradient or moment that is not contiguous f32, or a stream that is not i32, is refused here, loudly.
+  struct FgptState { KvmFgptDesc* desc = nullptr; std::vector<void*> allocs; int smem_bytes = 0; };
+  FgptState make_fgpt_state(const KvmFuseGptPlan& plan) {
+    FgptState st;
+    std::vector<KvmFgptDesc> descs(plan.runs.size());
+    const auto alloc = [&](size_t bytes) { void* p; CK(cudaMalloc(&p, bytes)); CK(cudaMemset(p, 0, bytes)); st.allocs.push_back(p); return p; };
+    const auto need = [&](int b, int dtype, const char* what) {
+      if (b < 0 || b >= (int)bufs_.size() || bufs_[b].dtype != dtype || (bufs_[b].rows > 1 && bufs_[b].ld != bufs_[b].cols))
+        throw std::runtime_error(std::string("fuse gpt: ") + what + " buffer " + std::to_string(b) + " is not contiguous " + (dtype ? "i32" : "f32"));
+      return bufs_[b].p;
+    };
+    for (size_t i = 0; i < plan.runs.size(); ++i) {
+      const KvmFuseGptRun& run = plan.runs[i];
+      const KvmGptStep& s = run.shape;
+      KvmFgptDesc& d = descs[i];
+      d.N = s.N; d.T = s.T; d.B = s.B; d.d = s.d; d.H = s.H; d.hd = s.hd; d.F = s.F; d.V = s.V; d.L = s.L; d.G = plan.gang[i]; d.steps = run.steps;
+      d.mm_numerics = s.mm_numerics; d.qb = kvm_fgpt_qblocks(s.B, s.H, s.T, d.G);
+      d.ln_eps = s.ln_eps; d.theta = s.theta; d.scale = s.scale; d.lr = s.lr; d.beta1 = s.beta1; d.beta2 = s.beta2; d.adam_eps = s.adam_eps; d.max_norm = s.max_norm;
+      // the parameters in slot order (kvm_fused_gpt.h), each with its gradient, moments and weight decay: the run's AdamW updates
+      std::vector<int> slot(kvm_fgpt_nparams(s.L), -1);
+      slot[0] = s.wte;
+      for (int l = 0; l < s.L; ++l) {
+        const KvmGptLayer& P = s.layers[l];
+        const int role[KVM_FGPT_PER_LAYER] = {P.n1g, P.n1b, P.wq, P.bq, P.wk, P.bk, P.wv, P.bv, P.wo, P.bo, P.n2g, P.n2b, P.w1, P.b1, P.w2, P.b2};
+        for (int r = 0; r < KVM_FGPT_PER_LAYER; ++r) slot[kvm_fgpt_slot_layer(l, r)] = role[r];
+      }
+      slot[kvm_fgpt_slot_nfg(s.L)] = s.nfg; slot[kvm_fgpt_slot_nfb(s.L)] = s.nfb; slot[kvm_fgpt_slot_head(s.L)] = s.head;
+      for (size_t k = 0; k < slot.size(); ++k) {
+        const KvmGptUpdate* u = nullptr;
+        for (const KvmGptUpdate& x : s.updates) if (x.p == slot[k]) u = &x;
+        if (!u) throw std::runtime_error("fuse gpt: parameter buffer " + std::to_string(slot[k]) + " of a fused run has no AdamW update");
+        d.p[k] = static_cast<float*>(need(u->p, 0, "a parameter")); d.g[k] = static_cast<float*>(need(u->g, 0, "a gradient"));
+        d.m[k] = static_cast<float*>(need(u->m, 0, "a first moment")); d.v[k] = static_cast<float*>(need(u->v, 0, "a second moment"));
+        d.wd[k] = u->wd; d.prows[k] = bufs_[u->p].rows; d.pcols[k] = bufs_[u->p].cols;
+      }
+      d.ids_src = static_cast<const int32_t*>(need(s.ids_src, 1, "the token stream")); d.tgt_src = static_cast<const int32_t*>(need(s.tgt_src, 1, "the target stream"));
+      d.ids_stride = s.ids_stride; d.ids_off = s.ids_off; d.tgt_stride = s.tgt_stride; d.tgt_off = s.tgt_off;
+      d.ids_len = (long long)bufs_[s.ids_src].rows * bufs_[s.ids_src].cols; d.tgt_len = (long long)bufs_[s.tgt_src].rows * bufs_[s.tgt_src].cols;
+      d.step = static_cast<int32_t*>(need(s.step_buf, 1, "the step counter"));
+      std::vector<float*> lp(run.steps);
+      for (int k = 0; k < run.steps; ++k) lp[k] = static_cast<float*>(need(run.losses[k], 0, "a loss"));
+      float** dl = static_cast<float**>(alloc(lp.size() * sizeof(float*)));
+      CK(cudaMemcpy(dl, lp.data(), lp.size() * sizeof(float*), cudaMemcpyHostToDevice));
+      d.loss = dl;
+      const KvmFgptScratch sc = kvm_fgpt_scratch(d.N, d.T, d.d, d.H, d.F, d.V, d.L, d.G, d.qb);
+      d.xch = static_cast<float*>(alloc((size_t)sc.total * sizeof(float))); d.xch_floats = (size_t)sc.total;
+      d.ctl = static_cast<unsigned*>(alloc(2 * sizeof(unsigned)));   // zeroed once: the barrier is sense-reversing
+      const int smem = (int)(kvm_fgpt_smem_floats(d.N, d.T, d.d, d.H, d.F, d.V, d.G, d.qb) * sizeof(float));
+      st.smem_bytes = std::max(st.smem_bytes, smem);
+      KLOG(2, "fuse gpt: run %zu: a gang of %d, %d steps, attention in %d query block(s) a unit, %.2f MB of scratch, %d bytes of shared memory a member", i, d.G, d.steps, d.qb, sc.total * 4.0 / 1e6, smem);
+    }
+    if (!descs.empty()) {
+      st.desc = static_cast<KvmFgptDesc*>(alloc(descs.size() * sizeof(KvmFgptDesc)));
+      CK(cudaMemcpy(st.desc, descs.data(), descs.size() * sizeof(KvmFgptDesc), cudaMemcpyHostToDevice));
+    }
+    return st;
+  }
+
+  // FUSED GPT RUNS: a bundle that the GPT pass rewrote into gangs and nothing else (kvm_fuse_gpt.h) runs as one launch of the fused kernel
+  // per run (kvm_fgpt_kernel.cuh), in place of start()/submit() or run_static. Runs are separate components, so their order is free. A
+  // gang's members wait on each other at barriers, so all G of its blocks must be resident at once: refused here when the device cannot hold
+  // them. Fills the same KvmResult as run_static (no per-task trace; final versions from the plan).
+  const KvmResult& run_fgpt(const KvmBundle& b, const KvmFuseGptPlan& plan) {
+    if (started_ || finished_) throw std::logic_error("run_fgpt replaces start()");
+    std::string why = b.validate(nbufs(), cfg_.num_vars, 0);
+    if (!why.empty()) { res_.err_code = -1; last_error_ = why; throw std::runtime_error("bundle rejected: " + why); }
+    if (plan.runs.empty()) throw std::logic_error("run_fgpt: the plan fused no run");
+    const int member_op = kvm_op_by_name("fgpt_step");
+    int members = 0, gmax = 0;
+    for (int g : plan.gang) { members += g; gmax = std::max(gmax, g); }
+    for (size_t t = 0; t < b.tasks.size(); ++t)   // the slots below are the members' task indices: the pass appends each run's members in order
+      if (b.tasks[t].op_id != member_op) throw std::logic_error("run_fgpt: task " + std::to_string(t) + " is not a fused GPT member (the bundle must be its gangs alone)");
+    if ((int)b.tasks.size() != members) throw std::logic_error("run_fgpt: " + std::to_string(b.tasks.size()) + " tasks for gangs of " + std::to_string(members) + " members");
+    prepare();   // buffers and the host mirrors are in place before anything launches
+    FgptState st = make_fgpt_state(plan);
+    CK(cudaFuncSetAttribute(kvm_fgpt_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, st.smem_bytes));
+    int occ = 0; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, kvm_fgpt_kernel, KVM_FGPT_NT, st.smem_bytes));
+    if ((long long)occ * sms_ < gmax)
+      throw std::runtime_error("fused GPT kernel: a gang of " + std::to_string(gmax) + " needs that many resident blocks; " + std::to_string(sms_) + " SMs hold " +
+                               std::to_string(occ) + " each with " + std::to_string(st.smem_bytes) + " bytes of shared memory");
+    KvmCounters* dcnt; CK(cudaMalloc(&dcnt, sizeof(KvmCounters))); CK(cudaMemset(dcnt, 0, sizeof(KvmCounters)));
+    CK(cudaStreamSynchronize(0));
+    KLOG(2, "fused GPT kernel: %zu run(s), %d members, %d resident blocks/SM, %d bytes of dynamic shared memory a member", plan.runs.size(), members, occ, st.smem_bytes);
+    // Warm-up launch (desc nullptr: every block returns at once), so the kernel's code is loaded outside the timed window, as run_static does.
+    kvm_fgpt_kernel<<<1, KVM_FGPT_NT, st.smem_bytes, stream_>>>(nullptr, dcnt, S_.herr, 0); CK(cudaGetLastError()); CK(cudaStreamSynchronize(stream_));
+    clock_warmup();
+    CK(cudaEventRecord(e0_, stream_));
+    for (size_t r = 0, slot0 = 0; r < plan.runs.size(); slot0 += plan.gang[r], ++r)
+      kvm_fgpt_kernel<<<plan.gang[r], KVM_FGPT_NT, st.smem_bytes, stream_>>>(st.desc + r, dcnt, S_.herr, (int)slot0);
+    CK(cudaGetLastError());
+    CK(cudaEventRecord(e1_, stream_));
+    started_ = true;
+    CK(cudaStreamSynchronize(stream_));
+    CK(cudaGetLastError());
+    KvmCounters c; CK(cudaMemcpy(&c, dcnt, sizeof c, cudaMemcpyDeviceToHost));
+    res_.err_code = c.err_code; res_.err_slot = c.err_slot; res_.err_a = c.err_a; res_.err_b = c.err_b;
+    res_.admitted = members; res_.done = c.err_code ? 0 : members; res_.grid = gmax;
+    CK(cudaEventElapsedTime(&res_.kernel_ms, e0_, e1_));
+    res_.version.assign(cfg_.num_vars, 0);
+    CK(cudaMemcpy(res_.version.data(), S_.version, cfg_.num_vars * 4, cudaMemcpyDeviceToHost));
+    for (const KvmTaskDesc& d : b.tasks) if (d.pub_var >= 0) res_.version[d.pub_var] = std::max(res_.version[d.pub_var], d.pub_ver);   // member 0 carries its run's last version
+    finished_ = true;
+    CK(cudaFree(dcnt));
+    for (void* p : st.allocs) CK(cudaFree(p));
+    if (res_.ok()) KLOG(2, "fused GPT run done: %d members in %.3f ms", members, res_.kernel_ms);
+    return res_;
   }
 
   // STATIC SCHEDULE: compile `b` (kvm_static.h) into one program per worker and run them all in one launch (kvm_static.cuh), instead of start()/submit():
@@ -1585,11 +1721,22 @@ int main(int argc, char** argv) {
       }
       return -1;
     };
+    // The fused GPT path (KvmExec::run_fgpt): a bundle whose every task belongs to a GPT training run that fuses into one gang (kvm_fuse_gpt.h).
+    // A gang's members must be resident at once, one block an SM at the shared memory they take: at most the SM count, or --workers.
+    bool opt_fgpt = false;
+    const int fgpt_workers = static_workers ? std::min(static_workers, ex.sms()) : ex.sms();
+    const auto fgpt_whole = [](const KvmFuseGptPlan& g) { return g.fused_runs > 0 && g.unchanged_runs == 0; };
     if (!opt_dynamic && !opt_static && bundles.size() == 1 && !cfg.sched.on && static_feasible(bundles[0])) {
       const std::string unpriced = unpriced_ops(bundles[0]);
+      const KvmFuseGptPlan gpt_dry = opt_fuse ? ex.fuse_gpt(bundles[0], fgpt_workers, dump_idx, false) : KvmFuseGptPlan{};   // a dry run of the pass the branch applies
+      if (gpt_dry.fused_runs > 0 && !fgpt_whole(gpt_dry))
+        KLOG(1, "fuse gpt: %d GPT run(s) would fuse, but %d other component(s) do not; the fused GPT kernel runs a bundle of gangs alone, so this bundle runs unfused", gpt_dry.fused_runs, gpt_dry.unchanged_runs);
       if (gang_task(bundles[0]) >= 0) {
         opt_static = true;
         KLOG(2, "path: static (the bundle has gang ops, which only the static plan runs)");
+      } else if (fgpt_whole(gpt_dry)) {
+        opt_fgpt = true;
+        KLOG(2, "path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang)");
       } else if (!unpriced.empty()) {
         KLOG(2, "path: dynamic (the static cost model does not price %s)", unpriced.c_str());
       } else {
@@ -1601,7 +1748,17 @@ int main(int argc, char** argv) {
     if (opt_static && !static_feasible(bundles[0])) throw std::runtime_error("--static: a task waits for a version no task of this bundle publishes");
     const KvmResult* resp = nullptr;
     KvmFuseResult fused;            // outside the branch: the golden check below skips what the fused runs no longer write
-    if (opt_static) {
+    if (opt_fgpt) {
+      const KvmFuseGptPlan gpt = ex.fuse_gpt(bundles[0], fgpt_workers, dump_idx);
+      if (!fgpt_whole(gpt)) throw std::logic_error("fuse gpt: the pass fused " + std::to_string(gpt.fused_runs) + " run(s) and left " + std::to_string(gpt.unchanged_runs) + ", unlike its dry run");
+      bundles[0].tasks = gpt.tasks; bundles[0].succ = gpt.succ; bundles[0].args = gpt.args;
+      for (const KvmFuseGptRun& g : gpt.runs) {   // what the gang no longer writes: the step's activations and gradients, and the windows' copies
+        fused.interior.insert(g.shape.interior.begin(), g.shape.interior.end());
+        fused.interior.insert({g.shape.ids, g.shape.tgt, g.shape.coef});
+      }
+      if (csv) { KLOG(1, "trace: the fused GPT kernel keeps no per-task trace, so %s is not written", csv); csv = nullptr; }
+      resp = &ex.run_fgpt(bundles[0], gpt);
+    } else if (opt_static) {
       if (bundles.size() != 1) throw std::runtime_error("--static takes exactly one bundle directory");
       KvmExec::StaticOptions so; so.workers = static_workers ? static_workers : cfg.blocks; so.comm_us = static_comm; so.trace_csv = csv; csv = nullptr; so.spin_idle = static_spin; so.partition = static_partition; so.fuse_phases = fuse_phases; so.fuse_phases = fuse_phases;
       if (opt_fuse) {
@@ -1650,7 +1807,7 @@ int main(int argc, char** argv) {
       resp = &ex.finish();
     }
     const KvmResult& r = *resp;
-    if (r.ok() && !opt_static) kvm_print_class_report(r);
+    if (r.ok() && !opt_static && !opt_fgpt) kvm_print_class_report(r);
     if (csv) kvm_write_trace_csv(r, csv);
     int golden_bad = 0;
     if (golden) {
@@ -1686,7 +1843,7 @@ int main(int argc, char** argv) {
         if (got != want) { KLOG(0, "golden: version %s = %d, golden %d", kv.first.c_str(), got, want); ++golden_bad; }
       }
       int nreads = 0;
-      if (const Json* rs = meta0.get("reads")) if (!opt_static) for (auto& jr : rs->a) {   // the per-read version checks need the per-task trace (the dynamic path's)
+      if (const Json* rs = meta0.get("reads")) if (!opt_static && !opt_fgpt) for (auto& jr : rs->a) {   // the per-read version checks need the per-task trace (the dynamic path's)
         const Json* gate = jr.get("gate");
         int slot = (int)jr.num("task", -1); if (gate && gate->t == Json::N) slot = (int)gate->n;  // the task carrying the wait
         const Json* pol = jr.get("policy"); int need = (int)jr.num("version", 0);

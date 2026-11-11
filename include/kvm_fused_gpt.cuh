@@ -1093,31 +1093,53 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
       __syncthreads();
     }
     ph(MK_EMBB);
-    // ---- the gradients' squares over this member's blocks (written by its epilogues) and its attention slice (each element the sum of its B
-    // units' partials, in sequence order, stored first), one flat index, four elements a thread in flight
+    // ---- the gradients' squares over this member's blocks (written by its epilogues) and its attention slice (each element the sum of its
+    // B units' partials, in sequence order, stored first): one flat index, four elements a thread in flight, each thread's squares added in
+    // index order. No branch per element: a slot is a block element (its own gradient, one load), an attention element (its partials, all
+    // four slots' loaded together, eight at a time, each element adding its own in index order, as sum_l2 does) or past the end (no load);
+    // the loads are predicated, so a trip's index loads, then its value loads, issue together.
     float sq = 0.f;
-    for (int i0 = tid; i0 < nb + na; i0 += 4 * NT) {
-      float v[4];
-      int sl[4];
-      size_t off[4];
+    {
+      const int nu = B * QB;                                                          // partials an attention element
+      for (int i0 = tid; i0 < nb + na; i0 += 4 * NT) {
+        float v[4];
+        float* gp[4];
+        const float* src[4];
+        bool ok[4], att[4];
 #pragma unroll
-      for (int u = 0; u < 4; ++u) {
-        const int i = i0 + u * NT;
-        v[u] = 0.f;
-        if (i >= nb + na) continue;
-        const uint32_t e = olist[i];
-        sl[u] = (int)(e >> 25); off[u] = e & ((1u << 25) - 1);
-        if (i < nb) v[u] = ld(ptab[3 * KVM_FGPT_MAXP + sl[u]] + off[u]);
-        else {
-          const float* const part0 = X + s.hgp + osrc[i];                             // the head's items: sequence, then query block
-          v[u] = sum_l2<8>(B * QB, [&](int k) { return part0 + ((size_t)(k / QB) * H * QB + k % QB) * hgsz; });
+        for (int u = 0; u < 4; ++u) {
+          const int i = i0 + u * NT;
+          ok[u] = i < nb + na;
+          att[u] = ok[u] && i >= nb;
+          const uint32_t e = ok[u] ? olist[i] : 0u;
+          gp[u] = ptab[3 * KVM_FGPT_MAXP + (int)(e >> 25)] + (e & ((1u << 25) - 1));
+          v[u] = ok[u] && !att[u] ? *gp[u] : 0.f;                                     // a block's gradient is this member's own
+          src[u] = X + s.hgp + (att[u] ? osrc[i] : 0u);                               // the head's items: sequence, then query block
         }
+        if (att[0] || att[1] || att[2] || att[3])                                     // a thread with no attention slot skips the partials
+          for (int m0 = 0, bq = 0, qq = 0; m0 < nu; m0 += 8) {                         // partial m is sequence bq, query block qq
+            size_t offk[8];                                                           // the same for every element: one chunk's offsets
+#pragma unroll
+            for (int k = 0; k < 8; ++k) {
+              offk[k] = ((size_t)bq * H * QB + qq) * hgsz;
+              if (++qq == QB) { qq = 0; ++bq; }
+            }
+            float pv[4][8];
+#pragma unroll
+            for (int u = 0; u < 4; ++u)
+#pragma unroll
+              for (int k = 0; k < 8; ++k) pv[u][k] = att[u] && m0 + k < nu ? ld(src[u] + offk[k]) : 0.f;
+#pragma unroll
+            for (int u = 0; u < 4; ++u)
+#pragma unroll
+              for (int k = 0; k < 8; ++k)
+                if (att[u] && m0 + k < nu) v[u] += pv[u][k];
+          }
+#pragma unroll
+        for (int u = 0; u < 4; ++u) if (att[u]) *gp[u] = v[u];                        // after the trip's sums: no store between their loads
+#pragma unroll
+        for (int u = 0; u < 4; ++u) if (ok[u]) sq += v[u] * v[u];
       }
-#pragma unroll
-      for (int u = 0; u < 4; ++u)                                                   // after the four sums: no store between their loads
-        if (i0 + u * NT >= nb && i0 + u * NT < nb + na) ptab[3 * KVM_FGPT_MAXP + sl[u]][off[u]] = v[u];
-#pragma unroll
-      for (int u = 0; u < 4; ++u) sq += v[u] * v[u];
     }
     // ---- the replicated slice: each element's G member partials, summed by 8 threads over fixed member chunks, the chunks in order
     {
@@ -1146,40 +1168,48 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
     const float norm = sqrtf(norm2);
     const float coef = d.max_norm > 0.f ? fminf(1.f, d.max_norm / (norm + 1e-6f)) : 1.f;
     // ---- AdamW on the owned elements, in the bundle's float32 operation order, with the counter after its increment: one flat index over
-    // the blocks, the attention slice and the replicated slice, four elements a thread in flight
+    // the blocks, the attention slice and the replicated slice, four elements a thread in flight. Each element's pointers are taken from
+    // the shared table once, before any store, so no store waits on the table again, and every element's math runs before the first
+    // store. A slot past n_own loads nothing (predicated, not branched, so the trip's loads still issue together), skips the math and
+    // stores nothing: a member with fewer elements than a trip's slots (gpt-tiny's ~530 against 2,048) pays only for its own. All four
+    // arrays are this member's own.
     {
       const float b1 = d.beta1, b2 = d.beta2, lr = d.lr, eps = d.adam_eps;
       const float bc1 = ld(d.bc + 2 * step), bc2 = ld(d.bc + 2 * step + 1);          // member 0's table (above), for t + 1
       const float ob1 = __fsub_rn(1.f, b1), ob2 = __fsub_rn(1.f, b2);
-      for (int i0 = tid; i0 < n_own; i0 += 4 * NT) {
-        int sl[4];
-        size_t off[4];
-        bool ok[4];
-        float g4[4], m4[4], v4[4], p4[4];
+      constexpr int AD = 4;                                                         // the A100 reads 8 slower than 4 (x1.085 against x1.070 on a d128)
+      for (int i0 = tid; i0 < n_own; i0 += AD * NT) {
+        float* pp[AD];
+        float* mp[AD];
+        float* vp[AD];
+        float g4[AD], m4[AD], v4[AD], p4[AD], w4[AD];
+        bool ok[AD];
 #pragma unroll
-        for (int u = 0; u < 4; ++u) {
+        for (int u = 0; u < AD; ++u) {
           const int i = i0 + u * NT;
           ok[u] = i < n_own;
-          if (!ok[u]) continue;
-          const uint32_t e = olist[i];
-          sl[u] = (int)(e >> 25); off[u] = e & ((1u << 25) - 1);
-          g4[u] = ld(ptab[3 * KVM_FGPT_MAXP + sl[u]] + off[u]);
-          m4[u] = ld(ptab[KVM_FGPT_MAXP + sl[u]] + off[u]);
-          v4[u] = ld(ptab[2 * KVM_FGPT_MAXP + sl[u]] + off[u]);
-          p4[u] = ld(ptab[sl[u]] + off[u]);
+          const uint32_t e = ok[u] ? olist[i] : 0u;                                 // a slot past n_own loads nothing
+          const int sl = (int)(e >> 25);
+          const size_t off = e & ((1u << 25) - 1);
+          pp[u] = ptab[sl] + off; mp[u] = ptab[KVM_FGPT_MAXP + sl] + off; vp[u] = ptab[2 * KVM_FGPT_MAXP + sl] + off;
+          g4[u] = ok[u] ? *(ptab[3 * KVM_FGPT_MAXP + sl] + off) : 0.f;
+          w4[u] = wdt[sl];
         }
 #pragma unroll
-        for (int u = 0; u < 4; ++u) {
-          if (!ok[u]) continue;
+        for (int u = 0; u < AD; ++u) { m4[u] = ok[u] ? *mp[u] : 0.f; v4[u] = ok[u] ? *vp[u] : 0.f; p4[u] = ok[u] ? *pp[u] : 0.f; }
+#pragma unroll
+        for (int u = 0; u < AD; ++u) {
+          if (!ok[u]) continue;                                                        // nor any math
           const float gi = __fmul_rn(g4[u], coef);
           const float mi = __fadd_rn(__fmul_rn(b1, m4[u]), __fmul_rn(ob1, gi));
           const float vi = __fadd_rn(__fmul_rn(b2, v4[u]), __fmul_rn(__fmul_rn(ob2, gi), gi));
-          const float decay = __fmul_rn(__fmul_rn(lr, wdt[sl[u]]), p4[u]);
+          const float decay = __fmul_rn(__fmul_rn(lr, w4[u]), p4[u]);
           const float upd = __fdiv_rn(__fmul_rn(lr, __fdiv_rn(mi, bc1)), __fadd_rn(__fsqrt_rn(__fdiv_rn(vi, bc2)), eps));
-          ptab[KVM_FGPT_MAXP + sl[u]][off[u]] = mi;
-          ptab[2 * KVM_FGPT_MAXP + sl[u]][off[u]] = vi;
-          ptab[sl[u]][off[u]] = __fsub_rn(__fsub_rn(p4[u], decay), upd);
+          m4[u] = mi; v4[u] = vi; p4[u] = __fsub_rn(__fsub_rn(p4[u], decay), upd);
         }
+#pragma unroll
+        for (int u = 0; u < AD; ++u)
+          if (ok[u]) { *mp[u] = m4[u]; *vp[u] = v4[u]; *pp[u] = p4[u]; }
       }
     }
     __syncthreads();

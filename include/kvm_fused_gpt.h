@@ -102,7 +102,7 @@ KVM_FGPT_HD inline long long kvm_fgpt_own_stride(int B, int T, int d, int H, int
 struct KvmFgptScratch {
   long long x[KVM_FGPT_MAXL + 1], h[KVM_FGPT_MAXL], m1[KVM_FGPT_MAXL], r1[KVM_FGPT_MAXL], q[KVM_FGPT_MAXL], k[KVM_FGPT_MAXL], v[KVM_FGPT_MAXL],
       o[KVM_FGPT_MAXL], lse[KVM_FGPT_MAXL], xm[KVM_FGPT_MAXL], h2[KVM_FGPT_MAXL], m2[KVM_FGPT_MAXL], r2[KVM_FGPT_MAXL], pre[KVM_FGPT_MAXL];
-  long long hf, mf, rf, logits, ce, tl, gx, gxk, du, part, lnp, rpart, hgp, dkv, olist, osrc, gn, dy, total;
+  long long hf, mf, rf, logits, ce, tl, gx, gxk, du, dqk, part, lnp, rpart, hgp, dkv, olist, osrc, gn, dy, total;
 };
 // The layout written into `s` in place (the program's thread 0 builds the block's shared copy this way, with no local copy to spill); every
 // offset is a long long, so the zeroing loop clears the arrays past L as KvmFgptScratch{} would.
@@ -120,6 +120,7 @@ KVM_FGPT_HD inline void kvm_fgpt_scratch_into(KvmFgptScratch& s, int N, int T, i
   s.hf = take(Nd); s.mf = take(N); s.rf = take(N); s.logits = take((long long)N * V);
   s.ce = take((long long)G * N * 2); s.tl = take(N); s.gx = take(Nd);
   s.gxk = take(Nd); s.du = take(NF);   // ZBW's (kvm_fused_gpt.cuh, the MLP backward): fc2's output gradient kept, and the owners' dU
+  s.dqk = take(Nd);                    // ZBW's for the attention: the items' dq after RoPE's backward, for their doers
   s.part = take((long long)(G > H ? G : H) * Nd);
   s.lnp = take((long long)(2 * L + 1) * G * 2 * d); s.rpart = take((long long)2 * L * G * d);
   const int hd = H > 0 ? d / H : 0, items = (int)B * H * QB;
@@ -145,6 +146,13 @@ KVM_FGPT_HD inline long long kvm_fgpt_r4(long long n) { return (n + 3) & ~3LL; }
 // KVM_FGPT_ZBW_OWNERS owners' fc1 columns in the attention backward's waits (0 turns it off). Four: on an RTX 5070 one pass over four
 // owners' columns cost 2.13x one owner's weight gradients (d 128, w 8 a member), which the hold-out's d128 at G 64 (16 such members for
 // 64 owners) needs to fit their waits; a doer of more owners would overrun them.
+// ZBW for the attention (kvm_fused_gpt.cuh, the attention backward), its own switch (0 turns it off): when the gang has at least as many
+// members without an item as items (2 W <= G) and query blocks to exchange (QB > 1), member W + w runs item w's dWo in the first wait and
+// its dWq and dbq after the dK dV exchange, from the dq the item stores. gpt-tiny at G 16 (4 items, 12 such members) takes it; the
+// hold-out's d128 at G 64 (48 items, 16 such members, already full of the MLP's) does not.
+#ifndef KVM_FGPT_ZBW_ATTN
+#define KVM_FGPT_ZBW_ATTN 1
+#endif
 #ifndef KVM_FGPT_ZBW_OWNERS
 #define KVM_FGPT_ZBW_OWNERS 4
 #endif

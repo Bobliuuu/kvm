@@ -71,8 +71,8 @@ static const char* const kMarks[kvm_fgpt::MK_COUNT] = {
     "final LN", "  wait: all-gather hf", "logits + CE stats", "  wait: CE exchange", "lse, loss", "head backward", "  wait: reduce-scatter dhf",
     "dhf sum + LNf backward", "  wait: all-gather gx (fc2)", "MLP backward", "  wait: reduce-scatter dh2", "dh2 sum + LN2 backward",
     "  wait: all-gather gx (proj)", "  item: stage gx, Wo, o, q, k, v", "  item: dWo, do, delta", "  item: q side: dWq, q's dh rows",
-    "  item: P", "  item: dV, dS", "  item: dQ, dK, partials kept", "  item: RoPE back, dbq", "  doer: dW2, db1 of its owners", "  wait: dK dV partials",
-    "  item: key side: sums, RoPE, dbk dbv", "  item: dWk dWv, k v dh rows", "  doer: dW1 of its owners", "attention backward, rest", "  wait: reduce-scatter dh",
+    "  item: P", "  item: dV, dS", "  item: dQ, dK, partials kept", "  item: RoPE back, dbq", "  doer: dW2, db1 (MLP); dWo (attention)", "  wait: dK dV partials",
+    "  item: key side: sums, RoPE, dbk dbv", "  item: dWk dWv, k v dh rows", "  doer: dW1 (MLP); dWq, dbq (attention)", "attention backward, rest", "  wait: reduce-scatter dh",
     "dh sum + LN1 backward", "  wait: all-gather gx (emb)", "embedding gradient", "attention + replicated sums, squares", "norm partial",
     "  wait: norm", "AdamW", "  wait: step end"};
 
@@ -253,6 +253,8 @@ int main(int argc, char** argv) {
     if (z.zg) printf("fgpt_bed: ZBW: %d doers (members without an attention item) for %d owners, %d owner(s) a pass, %d of %d columns a block\n",
                      z.doers, nf, z.zg, z.zdb, h.d);
     else printf("fgpt_bed: ZBW: off (%d attention items for %d members, %d owners)\n", W, G, nf);
+    if (KVM_FGPT_ZBW_ATTN && h.qb > 1 && W > 0 && 2 * W <= G) printf("fgpt_bed: ZBW for the attention: members %d-%d run the %d items' dWo, dWq and dbq\n", W, 2 * W - 1, W);
+    else printf("fgpt_bed: ZBW for the attention: off\n");
   }
   unsigned long long* dacc = nullptr;
   const size_t acc_words = clocked ? (size_t)G * (kvm_fgpt::MK_COUNT + 2) : 1;

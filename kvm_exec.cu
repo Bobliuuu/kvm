@@ -24,6 +24,7 @@
 #include <thread>
 #include <vector>
 #include "kvm_exec.cuh"
+#include "kvm_window_size.h"   // the record count and the successor ring's floor, host only
 #include "kvm_static.h"
 #include "kvm_fuse.h"
 
@@ -186,7 +187,7 @@ struct KvmBundle {
     }
     return "";
   }
-  size_t words() const { return (KVM_REC_HDR + tasks.size() * KVM_TASK_WORDS + succ.size() + args.size() + 7) & ~(size_t)7; }
+  size_t words() const { return (size_t)kvm_record_words((long long)tasks.size(), (long long)succ.size(), (long long)args.size(), KVM_REC_HDR, KVM_TASK_WORDS); }
 };
 
 // ---------------- dissolve noops that only order tasks (on a longest path) ----------------
@@ -348,7 +349,7 @@ struct KvmConfig {
   int blocks = 0;               // 0: occupancy-sized (SMs * resident blocks); >= 2 (block 0 admits, the rest work)
   int max_tasks = 1 << 18;      // task slots, power of two; slots are recycled when a task completes
   int live_cap = 1 << 14;       // max admitted-but-unfinished tasks (and max tasks per bundle record); ready rings hold this many each
-  unsigned succ_cap = 1u << 21; // successor ring (words), power of two; a window's words return when all its tasks completed
+  unsigned succ_cap = 1u << 21; // successor ring (words), power of two; a window's words return when all its tasks completed; never below ring_words (KvmExec raises it)
   int win_cap = 1 << 16;        // bundle records in flight, power of two
   int num_vars = 64;
   int ring_words = 1 << 16;     // admission ring, multiple of 8
@@ -356,7 +357,7 @@ struct KvmConfig {
   // A bundle of `tasks` tasks and `words` record words (KvmBundle::words()) goes in as one record: else it is cut into windows that drain.
   bool fits_one_record(long long tasks, long long words) const { return tasks <= live_cap && tasks <= max_tasks && words <= ring_words / 2; }
   // Record words of a bundle with `tasks` tasks, `edges` edges and `args` argument words, as KvmBundle::words() counts them once it is read.
-  static long long record_words(long long tasks, long long edges, long long args) { return (KVM_REC_HDR + tasks * KVM_TASK_WORDS + edges + args + 7) & ~7ll; }
+  static long long record_words(long long tasks, long long edges, long long args) { return kvm_record_words(tasks, edges, args, KVM_REC_HDR, KVM_TASK_WORDS); }
   // Grow the capacities so such a bundle goes in as one record when it would otherwise be cut: a cut bundle runs window by window, each drained
   // before the next (a 9,800-task bundle of 4 replicated runs ran its runs one after another in 10 windows, x4 slower). Above `max_live` tasks
   // (a power of two, at most 2^20) or 2^26 words the capacities stay and the bundle streams. The ready rings cost 4 KiB of device memory per
@@ -436,6 +437,13 @@ class KvmExec {
     if (cfg_.timeout_us == 0 || cfg_.timeout_us > 86400ull * 1000000) throw std::invalid_argument("timeout_us must be in [1, 86400 s]");
     if (cfg_.ring_words % 8 || cfg_.ring_words < 64) throw std::invalid_argument("ring_words must be a multiple of 8 and >= 64");
     if (!pow2(cfg_.live_cap) || !pow2(cfg_.max_tasks) || !pow2(cfg_.succ_cap) || !pow2(cfg_.win_cap)) throw std::invalid_argument("live_cap, max_tasks, succ_cap and win_cap must be powers of two");
+    // The successor ring fits every record the admission ring can carry (kvm_window_size.h), whatever produced the record: a sizing flag, or a transform that
+    // adds edges after the window was sized (Nov 11: the dynamic path's noop splice took h640-d4-r16 past a ring sized from the bundle as written, and
+    // admission stopped with DEVICE ERROR POOL). Every runner builds its executor here, kvm_exec's CLI and demo/kvm_run alike.
+    const unsigned succ_floor = kvm_succ_ring_words(cfg_.succ_cap, cfg_.ring_words);   // a power of two: it doubles the power of two checked above
+    if (succ_floor != cfg_.succ_cap)
+      KLOG(2, "successor ring raised from %u to %u words: the floor of a %d-word admission ring", cfg_.succ_cap, succ_floor, cfg_.ring_words);
+    cfg_.succ_cap = succ_floor;
     int dev; CK(cudaGetDevice(&dev));
     cudaDeviceProp p; CK(cudaGetDeviceProperties(&p, dev));
     sms_ = p.multiProcessorCount; name_ = p.name;
@@ -1462,19 +1470,10 @@ int main(int argc, char** argv) {
   }
   if (dirs.empty()) { usage(); return 2; }
   try {
-    // Window sizing: the default live_cap / ring cut a large bundle into windows, and the host submits a window only after the windows holding its producers
-    // completed (a drain per window). When no sizing flag was given and a single bundle would be cut by any capacity (its tasks, or its words: a 9,800-task
-    // bundle of 4 replicated runs ran its runs one after another in 10 windows, x4 slower), size them so the bundle is one record.
-    if (!sized && dirs.size() == 1) {
-      Json m = JsonParser(read_file(dirs[0] + "/metadata.json")).parse();
-      const long long nt = (long long)m.num("task_count", -1), ne = (long long)m.num("edge_count", -1), nw = (long long)m.num("args_words", -1);
-      if (cfg.size_for_one_record(nt, ne, nw))
-        KLOG(2, "window sizing: %lld tasks, %lld words as one record (live_cap %d, ring %d words, successor ring %u words)", nt, KvmConfig::record_words(nt, ne, nw),
-             cfg.live_cap, cfg.ring_words, cfg.succ_cap);
-    }
-    KvmExec ex(cfg);
     std::vector<KvmBundle> bundles;
     std::vector<std::pair<int, int>> shapes;
+    struct BufSpec { int rows, cols, dtype; KvmInit init; };
+    std::vector<BufSpec> buf_specs;   // added once the executor exists: its pools are sized from the bundles as they will be admitted (below)
     std::vector<std::string> buf_names, var_names; std::map<int, std::string> var_by_id;
     std::map<int, int> version_base;   // per variable: its base version (metadata), the static path's feasibility check
     Json meta0;
@@ -1496,12 +1495,11 @@ int main(int argc, char** argv) {
           if (idx < (int)shapes.size()) { if (shapes[idx] != std::make_pair(rows, cols)) throw std::runtime_error(dir + ": buffer " + std::to_string(idx) + " shape differs from an earlier bundle"); continue; }
           if (idx != (int)shapes.size()) throw std::runtime_error(dir + ": buffer indices must be dense and ascending");
           const int dtype = (int)jb.num("dtype", 0);
-          KvmInit init = kvm_parse_init(jb, dir, dtype);
-          if (ex.add_buffer(rows, cols, init, dtype) != idx) throw std::logic_error("buffer index mismatch");
+          buf_specs.push_back({rows, cols, dtype, kvm_parse_init(jb, dir, dtype)});
           shapes.push_back({rows, cols});
         }
       }
-      if (auto* vs = m.get("variables")) for (auto& jv : vs->a) { int id = (int)jv.num("id", -1), base = (int)jv.num("base_version", 0); ex.set_version(id, base); version_base[id] = base; }
+      if (auto* vs = m.get("variables")) for (auto& jv : vs->a) { int id = (int)jv.num("id", -1), base = (int)jv.num("base_version", 0); version_base[id] = base; }
       KLOG(2, "%s: %d tasks, %d edges, %d arg words", dir.c_str(), nt, ne, nw);
       bundles.push_back(std::move(b));
     }
@@ -1557,6 +1555,30 @@ int main(int argc, char** argv) {
       }
     }
     if (opt_static && !static_feasible(bundles[0])) throw std::runtime_error("--static: a task waits for a version no task of this bundle publishes");
+    // The dynamic path's host transforms come before the window is sized: the splice adds up to fan-in x fan-out edges a noop, so a window sized from the bundle as
+    // written can be too small for the bundle as admitted (Nov 11: h640-d4-r16, 307,200 tasks, ran as windows and overran its successor ring).
+    if (!opt_static) {
+      if (dissolve && !golden && !csv && dirs.size() == 1 && !cfg.sched.on) {   // the dynamic path only (the static planner and the fused-step matcher read the bundle as written); a trace's slots are the bundle's task indices, so a traced run keeps its noops
+        const int nd = kvm_dissolve_noops(bundles[0]);
+        if (nd) KLOG(2, "%d noops dissolved: %zu tasks, %zu edges", nd, bundles[0].tasks.size(), bundles[0].succ.size());
+      }
+      if (tape_sort && !golden && !csv && bundles.size() == 1 && kvm_sort_tape(bundles[0])) KLOG(2, "tape in dependency order");
+    }
+    // Window sizing: the default live_cap / ring cut a large bundle into windows, and the host submits a window only after the windows holding its producers
+    // completed (a drain per window). When no sizing flag was given and a single bundle would be cut by any capacity (its tasks, or its words: a 9,800-task
+    // bundle of 4 replicated runs ran its runs one after another in 10 windows, x4 slower), size them so the bundle, as it will be admitted, is one record.
+    // A sizing flag keeps its window (the litmus fuzzer and the sanitizer jobs set small ones to exercise the windowed path); the successor ring's floor
+    // holds either way (KvmExec).
+    if (!sized && bundles.size() == 1) {
+      const long long nt = (long long)bundles[0].tasks.size(), ne = (long long)bundles[0].succ.size(), nw = (long long)bundles[0].args.size();
+      if (cfg.size_for_one_record(nt, ne, nw))
+        KLOG(2, "window sizing: %lld tasks, %lld words as one record (live_cap %d, ring %d words, successor ring %u words)", nt, KvmConfig::record_words(nt, ne, nw),
+             cfg.live_cap, cfg.ring_words, cfg.succ_cap);
+    }
+    KvmExec ex(cfg);
+    for (size_t i = 0; i < buf_specs.size(); ++i)
+      if (ex.add_buffer(buf_specs[i].rows, buf_specs[i].cols, buf_specs[i].init, buf_specs[i].dtype) != (int)i) throw std::logic_error("buffer index mismatch");
+    for (const auto& vb : version_base) ex.set_version(vb.first, vb.second);
     const KvmResult* resp = nullptr;
     KvmFuseResult fused;            // outside the branch: the golden check below skips what the fused runs no longer write
     if (opt_static) {
@@ -1571,11 +1593,6 @@ int main(int argc, char** argv) {
       }
       resp = &ex.run_static(bundles[0], so);
     } else {
-      if (dissolve && !golden && !csv && dirs.size() == 1 && !cfg.sched.on) {   // the dynamic path only (the static planner and the fused-step matcher read the bundle as written); a trace's slots are the bundle's task indices, so a traced run keeps its noops
-        const int nd = kvm_dissolve_noops(bundles[0]);
-        if (nd) KLOG(2, "%d noops dissolved: %zu tasks, %zu edges", nd, bundles[0].tasks.size(), bundles[0].succ.size());
-      }
-      if (tape_sort && !golden && !csv && bundles.size() == 1 && kvm_sort_tape(bundles[0])) KLOG(2, "tape in dependency order");
       bool one_record = false;
       {
         bool fifo = !no_fifo && !cfg.sched.on, no_waits = true;

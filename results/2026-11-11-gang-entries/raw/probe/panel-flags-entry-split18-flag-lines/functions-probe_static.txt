@@ -1,0 +1,16 @@
+_Z12probe_staticPK4PRecPKiPiP8ProbeCntPx: every block, 11360 instructions in 583 blocks
+  9 functions (cubin symbols; 6 are ptxas's internal helpers, folded below), 39 calls between functions, 9 CALLs inside their own function; registers R0-R235, R1 aside
+  function                         instr  HMMA   LDL   STL touched avoided  avoided registers held across a call by
+  (kernel)                           139     0     0     1      20     215  kvm_s_fmlp_split 172; held by none 43
+  probe_fail                          13     0     0     0       8     227  kvm_s_fmlp_split 173, (kernel) 10; held by none 44
+  kvm_s_fmlp_split                 11009   494     4    30     225      10  (kernel) 10
+  (6 internal helpers: 199 instructions, at most 12 registers each)
+  calls: caller -> callee, sites, registers live across them (min-max, R1 aside), the widest site
+    kvm_s_fmlp_split             -> __internal_10_$__cuda_sm70_votesync_any         5 site(s)   10-115 live, widest at 0x02b7e0
+    kvm_s_fmlp_split             -> __internal_9_$__cuda_sm70_votesync_all          5 site(s)    9-114 live, widest at 0x02b780
+    kvm_s_fmlp_split             -> __internal_7_$__cuda_sm3x_div_rn_noftz_f32_s    7 site(s)   17- 75 live, widest at 0x0072f0
+    kvm_s_fmlp_split             -> __internal_6_$__cuda_sm20_rcp_rn_f32_slowpat    4 site(s)   71- 74 live, widest at 0x007380
+    kvm_s_fmlp_split             -> __internal_8_$__cuda_sm70_shflsync_bfly_p      10 site(s)   17- 19 live, widest at 0x02b520
+    kvm_s_fmlp_split             -> __internal_11_$__cuda_sm70_warpsync             1 site(s)   16- 16 live, widest at 0x00e1b0
+    (kernel)                     -> kvm_s_fmlp_split                                5 site(s)    7- 11 live, widest at 0x000610
+    kvm_s_fmlp_split             -> probe_fail                                      2 site(s)    1-  1 live, widest at 0x02b170

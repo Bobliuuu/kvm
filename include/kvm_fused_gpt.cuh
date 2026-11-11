@@ -179,6 +179,37 @@ __device__ __forceinline__ void grid_loop(int rows, int units, F&& f) {
     if (c >= units) { c -= units; ++r; }
   }
 }
+// A thread's walk over its member's block elements (indices [0, nb) of the owned list: block k's elements in row-major order over its
+// rectangle, blk[8 k] = slot, first row, first column, width, row length, count, first index), from index i0 by steps of NT: the same
+// elements in the same order as the owned list's, with each one's slot and offset stepped from the last instead of read from olist (one
+// round trip less a trip) and a division only where a step enters another block.
+struct BlkWalk {
+  const int* blk;
+  int nblk, i = 0, k = 0, row = 0, col = 0, w = 1, dq = 0, dr = 0;
+  __device__ void enter() {
+    const int* e = blk + 8 * k;
+    const int x = i - e[6];
+    w = e[3]; row = x / w; col = x % w; dq = NT / w; dr = NT % w;
+  }
+  __device__ void start(int i0, int nb) {
+    i = i0;
+    if (i >= nb) return;
+    while (k + 1 < nblk && blk[8 * (k + 1) + 6] <= i) ++k;
+    enter();
+  }
+  __device__ void step(int nb) {
+    i += NT;
+    if (i >= nb) return;
+    row += dq; col += dr;
+    if (col >= w) { col -= w; ++row; }
+    if (row * w + col >= blk[8 * k + 5]) {                                              // past this block: the one holding i
+      while (k + 1 < nblk && blk[8 * (k + 1) + 6] <= i) ++k;
+      enter();
+    }
+  }
+  __device__ int slot() const { return blk[8 * k]; }
+  __device__ size_t off() const { const int* e = blk + 8 * k; return (size_t)(e[1] + row) * e[4] + e[2] + col; }
+};
 // One staging copy: rows x cols floats of global memory (row stride sld) into shared memory (row stride dld), and zeros over the rest of
 // [0, prows) x [0, pcols).
 struct Copy {
@@ -1107,15 +1138,33 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
       __syncthreads();
     }
     ph(MK_EMBB);
-    // ---- the gradients' squares over this member's blocks (written by its epilogues) and its attention slice (each element the sum of its
+    // ---- the gradients' squares over this member's blocks (written by its epilogues; walked from the block table, eight loads a thread in
+    // flight, no olist read) and its attention slice (each element the sum of its
     // B units' partials, in sequence order, stored first): one flat index, four elements a thread in flight, each thread's squares added in
     // index order. No branch per element: a slot is a block element (its own gradient, one load), an attention element (its partials, all
     // four slots' loaded together, eight at a time, each element adding its own in index order, as sum_l2 does) or past the end (no load);
     // the loads are predicated, so a trip's index loads, then its value loads, issue together.
     float sq = 0.f;
+    {                                                                                 // the blocks: their gradients are this member's own
+      constexpr int BQ = 8;
+      BlkWalk wk{blk, nblk};
+      wk.start(tid, nb);
+      while (wk.i < nb) {
+        float v[BQ];
+#pragma unroll
+        for (int u = 0; u < BQ; ++u) {
+          const bool ok = wk.i < nb;
+          v[u] = ok ? *(ptab[3 * KVM_FGPT_MAXP + wk.slot()] + wk.off()) : 0.f;
+          wk.step(nb);
+        }
+#pragma unroll
+        for (int u = 0; u < BQ; ++u) sq += v[u] * v[u];                                // a slot past nb adds 0 * 0: sq is unchanged, bit for bit
+      }
+    }
     {
       const int nu = B * QB;                                                          // partials an attention element
-      for (int i0 = tid; i0 < nb + na; i0 += 4 * NT) {
+      const int first = tid + (nb > tid ? (nb - tid + NT - 1) / NT * NT : 0);          // this thread's first index past the blocks
+      for (int i0 = first; i0 < nb + na; i0 += 4 * NT) {
         float v[4];
         float* gp[4];
         const float* src[4];
@@ -1182,7 +1231,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
     const float norm = sqrtf(norm2);
     const float coef = d.max_norm > 0.f ? fminf(1.f, d.max_norm / (norm + 1e-6f)) : 1.f;
     // ---- AdamW on the owned elements, in the bundle's float32 operation order, with the counter after its increment: one flat index over
-    // the blocks, the attention slice and the replicated slice, four elements a thread in flight. Each element's pointers are taken from
+    // the blocks (walked from the block table, no olist read), the attention slice and the replicated slice, four elements a thread in flight. Each element's pointers are taken from
     // the shared table once, before any store, so no store waits on the table again, and every element's math runs before the first
     // store. A slot past n_own loads nothing (predicated, not branched, so the trip's loads still issue together), skips the math and
     // stores nothing: a member with fewer elements than a trip's slots (gpt-tiny's ~530 against 2,048) pays only for its own. All four
@@ -1192,22 +1241,17 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
       const float bc1 = ld(d.bc + 2 * step), bc2 = ld(d.bc + 2 * step + 1);          // member 0's table (above), for t + 1
       const float ob1 = __fsub_rn(1.f, b1), ob2 = __fsub_rn(1.f, b2);
       constexpr int AD = 4;                                                         // the A100 reads 8 slower than 4 (x1.085 against x1.070 on a d128)
-      for (int i0 = tid; i0 < n_own; i0 += AD * NT) {
+      // one trip: AD elements, each by its slot and offset (ok false: no load, no math, no store); every load before the first store
+      auto trip = [&](const bool (&ok)[AD], const int (&sl)[AD], const size_t (&off)[AD]) {
         float* pp[AD];
         float* mp[AD];
         float* vp[AD];
         float g4[AD], m4[AD], v4[AD], p4[AD], w4[AD];
-        bool ok[AD];
 #pragma unroll
         for (int u = 0; u < AD; ++u) {
-          const int i = i0 + u * NT;
-          ok[u] = i < n_own;
-          const uint32_t e = ok[u] ? olist[i] : 0u;                                 // a slot past n_own loads nothing
-          const int sl = (int)(e >> 25);
-          const size_t off = e & ((1u << 25) - 1);
-          pp[u] = ptab[sl] + off; mp[u] = ptab[KVM_FGPT_MAXP + sl] + off; vp[u] = ptab[2 * KVM_FGPT_MAXP + sl] + off;
-          g4[u] = ok[u] ? *(ptab[3 * KVM_FGPT_MAXP + sl] + off) : 0.f;
-          w4[u] = wdt[sl];
+          pp[u] = ptab[sl[u]] + off[u]; mp[u] = ptab[KVM_FGPT_MAXP + sl[u]] + off[u]; vp[u] = ptab[2 * KVM_FGPT_MAXP + sl[u]] + off[u];
+          g4[u] = ok[u] ? *(ptab[3 * KVM_FGPT_MAXP + sl[u]] + off[u]) : 0.f;
+          w4[u] = wdt[sl[u]];
         }
 #pragma unroll
         for (int u = 0; u < AD; ++u) { m4[u] = ok[u] ? *mp[u] : 0.f; v4[u] = ok[u] ? *vp[u] : 0.f; p4[u] = ok[u] ? *pp[u] : 0.f; }
@@ -1224,6 +1268,32 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
 #pragma unroll
         for (int u = 0; u < AD; ++u)
           if (ok[u]) { *mp[u] = m4[u]; *vp[u] = v4[u]; *pp[u] = p4[u]; }
+      };
+      bool ok[AD];
+      int sl[AD];
+      size_t off[AD];
+      {                                                                               // the blocks, by the walk: no olist read
+        BlkWalk wk{blk, nblk};
+        wk.start(tid, nb);
+        while (wk.i < nb) {
+#pragma unroll
+          for (int u = 0; u < AD; ++u) {
+            ok[u] = wk.i < nb; sl[u] = ok[u] ? wk.slot() : 0; off[u] = ok[u] ? wk.off() : 0;
+            wk.step(nb);
+          }
+          trip(ok, sl, off);
+        }
+      }
+      const int first = tid + (nb > tid ? (nb - tid + NT - 1) / NT * NT : 0);          // this thread's first index past the blocks
+      for (int i0 = first; i0 < n_own; i0 += AD * NT) {                                // the attention and replicated slices, by olist
+#pragma unroll
+        for (int u = 0; u < AD; ++u) {
+          const int i = i0 + u * NT;
+          ok[u] = i < n_own;
+          const uint32_t e = ok[u] ? olist[i] : 0u;                                    // a slot past n_own loads nothing
+          sl[u] = (int)(e >> 25); off[u] = e & ((1u << 25) - 1);
+        }
+        trip(ok, sl, off);
       }
     }
     __syncthreads();

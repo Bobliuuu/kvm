@@ -4,6 +4,8 @@ GPU: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs; the SMs ran at 2.5-2.8 
 nanoseconds), CUDA 12.8, `nvcc -O3 -std=c++17 -arch=sm_120`. **Not an A100**: these runs give correctness, the shares of a step, and a
 hint of its time.
 
+**Every figure here is unverified** until an independent re-derivation from `raw/` confirms it.
+
 Tree: this branch. Workloads: `bench/vs_pytorch/gen.py` at this tree, `gpt_tiny` and `gpt_small`, 50 steps, `--tiling a100`, in the
 default `--mode tf32` (matmul_tile's 1xTF32) and in `--mode precise` (3xTF32).
 

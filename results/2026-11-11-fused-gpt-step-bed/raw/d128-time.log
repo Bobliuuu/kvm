@@ -1,0 +1,66 @@
+# a d128 GPT (4 layers, 4 heads of 32, T 64, B 2: N 128, V 256), 1xTF32, 30 steps, on an RTX 5070: the fused executor's warm time (7 runs; the card runs in two clock states about 1.2x apart), then the bed's phase clock over 20 steps
+exec rep 1: 24.008 ms, 800.3 us a step
+exec rep 2: 23.700 ms, 790.0 us a step
+exec rep 3: 30.641 ms, 1021.4 us a step
+exec rep 4: 30.608 ms, 1020.3 us a step
+exec rep 5: 24.239 ms, 808.0 us a step
+exec rep 6: 29.995 ms, 999.8 us a step
+exec rep 7: 30.447 ms, 1014.9 us a step
+model: L 4, d 128, heads 4 x 32, MLP 512, V 256, 2 x 64 rows; 20 steps; work <work>/d128-phase
+  fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 20 steps, attention in 4 query block(s) a unit, rows in chunks of 64 of 128, shared memory 89696 B a member, scratch 21.95 MB, 1 
+  fgpt_bed: warmed the GPU for 503 ms
+  fgpt_bed: run 20.520 ms with its launch; in the kernel 0.0 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 20
+  fgpt_bed: phase clock (globaltimer), 827.1 us a step in all; the SMs ran at 2403 MHz (cycles over nanoseconds, members' mean)
+    phase                                   mean us    largest   share
+    input + embedding                          5.50       5.65    0.7%
+    LN1                                        7.77       8.22    0.9%
+      wait: all-gather h                       3.94       5.25    0.5%
+      item: stage h rows, W                   13.19      13.40    1.6%
+      item: q k v GEMM                        11.63      11.67    1.4%
+      item: RoPE + keep q k v                  6.99       7.39    0.8%
+      wait: all-gather q k v                   4.28       4.70    0.5%
+      item: stage + scores                    14.04      14.83    1.7%
+      item: softmax                            5.55       6.13    0.7%
+      item: P V                                4.67       5.53    0.6%
+      item: proj partial                       4.87       4.99    0.6%
+    attention, rest                            0.71       0.92    0.1%
+      wait: reduce-scatter proj                4.63       6.76    0.6%
+    proj sum + LN2                            13.34      13.92    1.6%
+      wait: all-gather h2                      3.81       4.41    0.5%
+    fc1 + GELU + fc2                          51.83      52.32    6.3%
+      wait: reduce-scatter fc2                 4.43       4.87    0.5%
+    fc2 sum                                   14.58      15.24    1.8%
+    final LN                                   2.16       2.24    0.3%
+      wait: all-gather hf                      0.94       1.12    0.1%
+    logits + CE stats                          9.30       9.48    1.1%
+      wait: CE exchange                        0.98       1.16    0.1%
+    lse, loss                                  3.90       7.18    0.5%
+    head backward                             13.94      14.10    1.7%
+      wait: reduce-scatter dhf                 1.18       1.32    0.1%
+    dhf sum + LNf backward                     6.05       6.11    0.7%
+      wait: all-gather gx (fc2)                3.87       4.04    0.5%
+    MLP backward                             176.82     178.54   21.4%
+      wait: reduce-scatter dh2                 4.98       6.47    0.6%
+    dh2 sum + LN2 backward                    22.31      22.99    2.7%
+      wait: all-gather gx (proj)               3.70       4.40    0.4%
+      item: stage gx, Wo, o, q, k, v          18.09      18.71    2.2%
+      item: dWo, do, delta                    20.10      20.52    2.4%
+      item: q side: dWq, q's dh rows          17.86      18.35    2.2%
+      item: P                                  4.38       4.52    0.5%
+      item: dV, dS                             7.21       7.83    0.9%
+      item: dQ, dK, partials kept              7.95       9.20    1.0%
+      item: RoPE back, dbq                     3.96       4.20    0.5%
+      wait: dK dV partials                     4.89       6.14    0.6%
+      item: key side: sums, RoPE, dbk dbv      19.91      21.50    2.4%
+      item: dWk dWv, k v dh rows              40.48      41.17    4.9%
+    attention backward, rest                   0.79       1.18    0.1%
+      wait: reduce-scatter dh                  3.84       4.72    0.5%
+    dh sum + LN1 backward                     14.17      14.55    1.7%
+      wait: all-gather gx (emb)                1.03       1.12    0.1%
+    embedding gradient                        25.63      25.71    3.1%
+    attention + replicated sums, squares      81.82      90.50    9.9%
+    norm partial                               3.46       5.04    0.4%
+      wait: norm                              10.35      18.96    1.3%
+    AdamW                                    112.50     113.59   13.6%
+      wait: step end                           2.71       5.69    0.3%
+OK

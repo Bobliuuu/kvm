@@ -3,6 +3,7 @@ runs every suite on its own A100 in parallel, and prints ONE PASS/FAIL table. En
 
   modal run --detach scripts/green_all.py --tag NAME [--only job1,job2] [--rebuild]
   results:  volume kvm-green:/NAME/{table.txt,table.json,<job>.log}   ->   modal volume get kvm-green /NAME results/<dir>/raw
+  rehearsal (CPU, no GPU, no Modal):  python3 scripts/green_rehearse.py   (wiring, and every job's verdict against stand-ins)
 
 Nothing here names a host or a key. Binaries live in kvm-green:/bin/<tree-hash>/ so a re-run of an unchanged tree skips the ~40 min nvcc builds.
 A job PASSES only if its script's last line is `RESULT: PASS ...`; any other ending (including a hang killed by the job timeout) is FAIL.

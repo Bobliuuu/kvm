@@ -52,6 +52,7 @@ struct alignas(16) KvmFgptDesc {
   float* g[KVM_FGPT_MAXP];                    // the bundle's gradient buffers: written once at the end, so a reader after the run sees the last step's
   float* xch;                                 // the global scratch (kvm_fgpt_scratch's layout, zeroed or not: every element is written before it is read)
   size_t xch_floats;
+  int smem_floats;                            // the member's shared memory, in floats (at least kvm_fgpt_smem_floats of the shape)
   unsigned* ctl;                              // the gang barrier's two words (kvm_gang.cuh), zeroed once
 };
 
@@ -80,50 +81,83 @@ KVM_FGPT_HD inline int kvm_fgpt_gang(int N, int d, int H, int F, int V, int L, i
   return 0;
 }
 
-// The device program's global scratch (v0 keeps every activation and partial in global memory; later forms keep the shards in shared memory):
-// offsets in floats into KvmFgptDesc::xch, laid out by the host for the run's shape and gang, every array 16-byte aligned.
-//  * Saved for the backward, a layer l: its input x[l] (x[L] is the last layer's output), LN1's output h[l] and row statistics m1, r1, q, k
-//    and v after RoPE, attention's output o and log-sum-exp lse, the residual after attention xm, LN2's output h2 and statistics m2, r2, fc1's
-//    pre-activation pre and output u. Then the final LayerNorm's output hf and statistics mf, rf, the logits and their gradient dlog.
+// The device program's global scratch: offsets in floats into KvmFgptDesc::xch, laid out by the host for the run's shape and gang, every
+// array 16-byte aligned. Every element is written before it is read.
+//  * Saved for the backward, a layer l: its input x[l] (x[L] is the last layer's output), LN1's output h[l] and row statistics m1, r1; q, k
+//    (after RoPE), v and attention's output o, each written by the (sequence, head) unit that owns its rows and columns, and the log-sum-exp
+//    lse [(sequence H + head) T + position]; the residual after attention xm, LN2's output h2 and statistics m2, r2; fc1's pre-activation pre
+//    (its output is recomputed from it). Then the final LayerNorm's output hf and statistics mf, rf, and the logits.
 //  * Exchanges: ce, the cross-entropy's per-member row statistics (max, sum of exp) [G][N][2]; tl, each row's target logit; gx, the
-//    residual-stream gradient (N x d, own rows written); part, one N x d partial a contributing member, read by the reduce-scatter (one buffer:
-//    an all-gather's barrier always separates a reduce-scatter's reads from the next one's writes); lnp, each LayerNorm's own-row partials of
-//    dgamma and dbeta [2 L + 1][G][2 d] (LN1 of layer l is 2 l, LN2 2 l + 1, the final one 2 L); rpart, the own-row partials of proj's and
-//    fc2's bias gradients [2 L][G][d] (bo of layer l is 2 l, b2 2 l + 1); gn, each member's sum of squares of the gradients it owns.
-//  * A member's own work arrays: dy, the reduce-scatter's sum of its rows; du, dq, dk, dv and dout (attention's output gradient).
+//    residual-stream gradient (N x d, own rows written); part, the reduce-scatters' partials: one N x d a contributing member (MLP, head), or
+//    one T x d a (sequence, head) unit (attention), max(G, H) N x d floats. One buffer: an all-gather's barrier always separates a
+//    reduce-scatter's reads from the next one's writes. lnp, each LayerNorm's own-row partials of dgamma and dbeta [2 L + 1][G][2 d] (LN1
+//    of layer l is 2 l, LN2 2 l + 1, the final one 2 L); rpart, the own-row partials of proj's and fc2's bias gradients [2 L][G][d] (bo of
+//    layer l is 2 l, b2 2 l + 1); hgp, each (layer, unit)'s partial of its head's gradients [L][B H][kvm_fgpt_unit_grads(d, hd)], summed by
+//    the head's owner in sequence order after the backward; gn, each member's sum of squares of the gradients it owns.
+//  * dy: a member's own rows of the reduce-scatter's sum.
+KVM_FGPT_HD inline int kvm_fgpt_unit_grads(int d, int hd) { return 4 * d * hd + 3 * hd; }   // dWq, dWk, dWv [d][hd]; dbq, dbk, dbv [hd]; dWo [hd][d]
 struct KvmFgptScratch {
   long long x[KVM_FGPT_MAXL + 1], h[KVM_FGPT_MAXL], m1[KVM_FGPT_MAXL], r1[KVM_FGPT_MAXL], q[KVM_FGPT_MAXL], k[KVM_FGPT_MAXL], v[KVM_FGPT_MAXL],
-      o[KVM_FGPT_MAXL], lse[KVM_FGPT_MAXL], xm[KVM_FGPT_MAXL], h2[KVM_FGPT_MAXL], m2[KVM_FGPT_MAXL], r2[KVM_FGPT_MAXL], pre[KVM_FGPT_MAXL],
-      u[KVM_FGPT_MAXL];
-  long long hf, mf, rf, logits, dlog, ce, tl, gx, part, lnp, rpart, gn, dy, du, dq, dk, dv, dout, total;
+      o[KVM_FGPT_MAXL], lse[KVM_FGPT_MAXL], xm[KVM_FGPT_MAXL], h2[KVM_FGPT_MAXL], m2[KVM_FGPT_MAXL], r2[KVM_FGPT_MAXL], pre[KVM_FGPT_MAXL];
+  long long hf, mf, rf, logits, ce, tl, gx, part, lnp, rpart, hgp, gn, dy, total;
 };
-KVM_FGPT_HD inline KvmFgptScratch kvm_fgpt_scratch(int N, int d, int H, int F, int V, int L, int G) {
+KVM_FGPT_HD inline KvmFgptScratch kvm_fgpt_scratch(int N, int T, int d, int H, int F, int V, int L, int G) {
   KvmFgptScratch s{};
   long long at = 0;
-  const long long Nd = (long long)N * d, NF = (long long)N * F;
+  const long long Nd = (long long)N * d, NF = (long long)N * F, B = T > 0 ? N / T : 0;
   auto take = [&at](long long n) { const long long o = at; at += (n + 3) & ~3LL; return o; };
   for (int l = 0; l <= L; ++l) s.x[l] = take(Nd);
   for (int l = 0; l < L; ++l) {
     s.h[l] = take(Nd); s.m1[l] = take(N); s.r1[l] = take(N); s.q[l] = take(Nd); s.k[l] = take(Nd); s.v[l] = take(Nd); s.o[l] = take(Nd);
     s.lse[l] = take((long long)N * H); s.xm[l] = take(Nd); s.h2[l] = take(Nd); s.m2[l] = take(N); s.r2[l] = take(N); s.pre[l] = take(NF);
-    s.u[l] = take(NF);
   }
-  s.hf = take(Nd); s.mf = take(N); s.rf = take(N); s.logits = take((long long)N * V); s.dlog = take((long long)N * V);
-  s.ce = take((long long)G * N * 2); s.tl = take(N); s.gx = take(Nd); s.part = take((long long)G * Nd);
-  s.lnp = take((long long)(2 * L + 1) * G * 2 * d); s.rpart = take((long long)2 * L * G * d); s.gn = take(G);
-  s.dy = take(Nd); s.du = take(NF); s.dq = take(Nd); s.dk = take(Nd); s.dv = take(Nd); s.dout = take(Nd);
+  s.hf = take(Nd); s.mf = take(N); s.rf = take(N); s.logits = take((long long)N * V);
+  s.ce = take((long long)G * N * 2); s.tl = take(N); s.gx = take(Nd); s.part = take((long long)(G > H ? G : H) * Nd);
+  s.lnp = take((long long)(2 * L + 1) * G * 2 * d); s.rpart = take((long long)2 * L * G * d);
+  s.hgp = take((long long)L * B * H * kvm_fgpt_unit_grads(d, H > 0 ? d / H : 0)); s.gn = take(G); s.dy = take(Nd);
   s.total = at;
   return s;
 }
 
-// The v0 program's shared memory, in floats: the block GEMM's two staged K slices (KVM_FGPT_GK x (KVM_FGPT_GT + 1) each), two score rows of
-// T a warp (attention), the attention backward's delta (T), each row's log-sum-exp of the cross-entropy (N), the step's tokens and targets
-// (N ints each), and a block reduction's partials and flags.
+// Shared memory. The tensor-core GEMM reads its operands from shared memory, padded to whole mma tiles (16 rows of A, 8 columns of B, k in
+// 8s) and to conflict-free row strides: 4 mod 8 floats for an operand contiguous in k, 8 mod 16 for one contiguous in m or n.
+KVM_FGPT_HD inline int kvm_fgpt_ldk(int cols) { return ((cols + 7) & ~7) + 4; }
+KVM_FGPT_HD inline int kvm_fgpt_ldmn(int cols) { return ((cols + 15) & ~15) + 8; }
+KVM_FGPT_HD inline int kvm_fgpt_r16(int n) { return (n + 15) & ~15; }
+KVM_FGPT_HD inline int kvm_fgpt_r8(int n) { return (n + 7) & ~7; }
+KVM_FGPT_HD inline long long kvm_fgpt_r4(long long n) { return (n + 3) & ~3LL; }
 #define KVM_FGPT_NT 256                       // threads of a member's block (the static worker's KVM_THREADS)
-#define KVM_FGPT_GK 16                        // the block GEMM's K slice
-#define KVM_FGPT_GT 64                        // its output tile (KVM_FGPT_GT x KVM_FGPT_GT), 4 x 4 outputs a thread
-KVM_FGPT_HD inline long long kvm_fgpt_smem_floats(int N, int T) {
-  return 2LL * KVM_FGPT_GK * (KVM_FGPT_GT + 1) + 2LL * (KVM_FGPT_NT / 32) * T + T + N + 2LL * N + 16;
+#define KVM_FGPT_MAXBLK 16                    // a member's block rectangles: fc1's columns, b1, fc2's rows a layer, wte's rows, the head's columns
+// The fixed head of a member's shared memory: the step's tokens and targets and the cross-entropy's log-sum-exp a row (N each), RoPE's cos
+// and sin table (T x hd / 2 each), a block reduction's partials (one double a warp), a flag, a scratch of one float a thread, every
+// parameter slot's four pointers (p, m, v, g) and weight decay, and the member's block table (8 ints an entry).
+KVM_FGPT_HD inline long long kvm_fgpt_smem_head(int N, int T, int hd) {
+  return 3 * kvm_fgpt_r4(N) + kvm_fgpt_r4((long long)T * hd) + 2 * (KVM_FGPT_NT / 32) + 4 + KVM_FGPT_NT + 4LL * KVM_FGPT_MAXP * 2 +
+         kvm_fgpt_r4(KVM_FGPT_MAXP) + 8LL * KVM_FGPT_MAXBLK;
+}
+// A bound on the program's shared memory, in floats: a fixed head (the step's tokens and targets, the cross-entropy's log-sum-exp a row, a
+// block reduction's partials and a flag), then the largest phase's buffers, as kvm_fused_gpt.cuh takes them. The device checks every phase
+// against KvmFgptDesc::smem_floats and fails the run (KVM_FGPT_E_SCRATCH) instead of overrunning, so a bound too small shows at once.
+KVM_FGPT_HD inline long long kvm_fgpt_smem_floats(int N, int T, int d, int H, int F, int V, int G) {
+  const int hd = H > 0 ? d / H : 0, T16 = kvm_fgpt_r16(T), N16 = kvm_fgpt_r16(N), wf = (F + G - 1) / G, wv = (V + G - 1) / G;
+  const int ldq = kvm_fgpt_ldk(3 * hd), ldd = kvm_fgpt_ldk(d), ldT = kvm_fgpt_ldk(T16), ldh = kvm_fgpt_ldk(kvm_fgpt_r16(hd)), ldm = kvm_fgpt_ldmn(d);
+  auto r4 = [](long long n) { return kvm_fgpt_r4(n); };
+  auto mx = [](long long a, long long b) { return a > b ? a : b; };
+  // a (sequence, head) unit, forward: q | k | v, the biases, lse, h's rows, W's columns, the scores, o, proj's rows
+  const long long attn_f = r4((long long)T16 * ldq) + r4(3 * hd) + r4(T) + r4((long long)T16 * ldd) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldmn(3 * hd)) +
+                           r4((long long)T16 * ldT) + r4((long long)T16 * ldh) + r4((long long)kvm_fgpt_r8(hd) * ldm);
+  // backward: do, delta, dq | dk | dv, q | k | v, lse, P, o; then gx's rows and Wo's rows, or h's rows and W's columns
+  const long long attn_b = r4((long long)T16 * ldh) + r4(T) + 2 * r4((long long)T16 * ldq) + r4(T) + r4((long long)T16 * ldT) + r4((long long)T16 * ldh) +
+                           mx(r4((long long)T16 * ldd) + r4((long long)kvm_fgpt_r8(hd) * ldd), r4((long long)T16 * ldm) + r4((long long)kvm_fgpt_r8(d) * ldq));
+  // the MLP, forward: h2, W1's columns, u, W2's rows, b1; backward: pre, gelu(pre), du, gx then h2, W2's rows then W1's columns
+  const long long mlp_f = r4((long long)N16 * ldd) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldmn(wf)) + r4((long long)N16 * kvm_fgpt_ldk(wf)) +
+                          r4((long long)kvm_fgpt_r8(wf) * ldm) + r4(wf);
+  const long long mlp_b = 2 * r4((long long)N16 * kvm_fgpt_ldk(wf)) + r4((long long)N16 * kvm_fgpt_ldmn(wf)) + r4((long long)N16 * mx(ldd, ldm)) +
+                          mx(r4((long long)kvm_fgpt_r8(wf) * ldd), r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldk(wf)));
+  // the head: hf and its columns (logits); dlogits, hf, its columns again (backward)
+  const long long logit = r4((long long)N16 * ldd) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldmn(wv));
+  const long long headb = r4((long long)N16 * kvm_fgpt_ldk(wv)) + r4((long long)N16 * ldm) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldk(wv));
+  return kvm_fgpt_smem_head(N, T, hd) + mx(mx(mx(attn_f, attn_b), mx(mlp_f, mlp_b)), mx(logit, headb));
 }
 
 // The faults a member reports through its caller's `fail(code)` (kvm_fused_gpt.cuh's run; the executor reports one as KVM_ERR_BOUNDS with the

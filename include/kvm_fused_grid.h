@@ -17,7 +17,9 @@
 //   * the embedding: layer 0's members write their partials of dX0; after a barrier the owners of the vocabulary rows sum their tokens' rows
 //     in token order, then member order, and update them; every member writes its blocks back; a last barrier ends the step.
 // 4 L + 2 barriers a step, and every sum in a fixed order, so a run is deterministic and independent of the GEMMs' warp count.
-// Blocks are whole granules of 16 (the GEMM's column block and a multiple of its k-step), so H % 16 == 0; V is padded to VP (a multiple of 16).
+// Blocks are whole granules of 16 (the GEMM's column block and a multiple of its k-step). A hidden width H that is a multiple of 8 but not of 16
+// is cut as Hp = H + 8: the step loads the padding's weights and biases as zeros and never writes them back, so its units hold exact zeros
+// through every sum and contribute nothing (gelu(0) = 0, and the next layer's padded rows are zero). V is padded to VP (a multiple of 16).
 #include <cstddef>
 #include <cstdint>
 
@@ -33,7 +35,8 @@
 #define KVM_GRID_MAXP 256   // members of a gang: the flag-line barrier polls each 32 with one warp of the block's 8
 
 struct alignas(16) KvmGridDesc {   // copied to shared memory with 16-byte cp.async
-  int V, VP, E, H, L, T, P;        // vocabulary (padded to VP), embedding width, hidden width, hidden layers, rows a step, the gang's members
+  int V, VP, E, H, Hp, L, T, P;    // vocabulary (padded to VP), embedding width, hidden width (the model's: its arrays' leading dimension) and it
+                                   // padded to the granule (the cuts' and the step's scratch's), hidden layers, rows a step, the gang's members
   int nb0, ka, nb, kah;            // grids: layer 0 is 1 x nb0; hidden layers 1..L-1 are ka x nb; the head is kah x 1
   // shared-memory offsets of one member (floats from the arena's base; the descriptor itself sits at 0)
   int sW0, sW[KVM_GRID_MAXL], sWh, sb0, sb[KVM_GRID_MAXL], sg0, sg[KVM_GRID_MAXL], sA, sB, sints, total;
@@ -55,21 +58,22 @@ KVM_GRID_HD inline int kvm_grid_off(int D, int n, int i, int g = KVM_GRID_G) { r
 KVM_GRID_HD inline int kvm_grid_widest(int D, int n, int g = KVM_GRID_G) { return ((D / g + n - 1) / n) * g; }
 
 // The grids for P members and the member's shared-memory layout. Returns the floats a member needs, or -1 for a shape the step does not take.
-// Layer 0 takes nb0 = min(P, H / 16) column blocks. The hidden layers take the fewest column blocks that keep a block at most 128 wide, and as
-// many row blocks as the members then allow. The head takes kah = min(P, H / 16) row blocks.
+// Layer 0 takes nb0 = min(P, Hp / 16) column blocks. The hidden layers take the fewest column blocks that keep a block at most 128 wide, and as
+// many row blocks as the members then allow. The head takes kah = min(P, Hp / 16) row blocks.
 KVM_GRID_HD inline int kvm_grid_layout(KvmGridDesc& d) {
   // V % 4: the head's rows are copied in 16-byte pieces; T = 96: the GEMMs over every row take 6 row blocks at compile time
-  if (d.L < 1 || d.L > KVM_GRID_MAXL || d.H % KVM_GRID_G || d.E % KVM_GRID_G || d.E > KVM_GRID_MAXN || d.V < 1 || d.V % 4 || d.T != 96 || d.P < 1 || d.P > KVM_GRID_MAXP) return -1;
+  if (d.L < 1 || d.L > KVM_GRID_MAXL || d.H % 8 || d.E % KVM_GRID_G || d.E > KVM_GRID_MAXN || d.V < 1 || d.V % 4 || d.T != 96 || d.P < 1 || d.P > KVM_GRID_MAXP) return -1;
   d.VP = kvm_grid_pad16(d.V);
+  d.Hp = kvm_grid_pad16(d.H);
   if (d.VP > KVM_GRID_MAXN) return -1;
-  const int gran = d.H / KVM_GRID_G;
+  const int gran = d.Hp / KVM_GRID_G;
   d.nb0 = d.P < gran ? d.P : gran;
-  d.nb = (d.H + KVM_GRID_MAXN - 1) / KVM_GRID_MAXN;
+  d.nb = (d.Hp + KVM_GRID_MAXN - 1) / KVM_GRID_MAXN;
   d.ka = d.L > 1 ? (d.P / d.nb < gran ? d.P / d.nb : gran) : 0;
   if (d.L > 1 && d.ka < 1) return -1;
   d.kah = d.P < gran ? d.P : gran;
-  const int w0 = kvm_grid_widest(d.H, d.nb0), wn = kvm_grid_widest(d.H, d.nb), wk = d.L > 1 ? kvm_grid_widest(d.H, d.ka) : 0,
-            wkh = kvm_grid_widest(d.H, d.kah), rows = d.L > 1 ? (d.T + d.ka - 1) / d.ka : 0;
+  const int w0 = kvm_grid_widest(d.Hp, d.nb0), wn = kvm_grid_widest(d.Hp, d.nb), wk = d.L > 1 ? kvm_grid_widest(d.Hp, d.ka) : 0,
+            wkh = kvm_grid_widest(d.Hp, d.kah), rows = d.L > 1 ? (d.T + d.ka - 1) / d.ka : 0;
   d.pW0 = w0 + 4; d.pW = wn + 4; d.pWh = d.VP + 4;
   const int wA = d.E > wk ? (d.E > wkh ? d.E : wkh) : (wk > wkh ? wk : wkh), wB = wn > d.VP ? (wn > w0 ? wn : w0) : (d.VP > w0 ? d.VP : w0);
   d.pA = wA + 4; d.pB = wB + 4;

@@ -63,7 +63,7 @@ int main(int argc, char** argv) {
     else { fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
   }
   const int total = kvm_grid_layout(d);
-  if (total < 0) { fprintf(stderr, "a shape the grid step does not take (kvm_grid_layout): H and E multiples of 16 (E at most 128), V a multiple of 4 (padded at most 128), depth 1-%d, T = 96\n", KVM_GRID_MAXL); return 2; }
+  if (total < 0) { fprintf(stderr, "a shape the grid step does not take (kvm_grid_layout): H a multiple of 8, E of 16 (E at most 128), V a multiple of 4 (padded at most 128), depth 1-%d, T = 96\n", KVM_GRID_MAXL); return 2; }
   const size_t smem_bytes = (size_t)total * sizeof(float);
   cudaDeviceProp prop; CK(cudaGetDeviceProperties(&prop, 0));
   int clock_khz = 0; CK(cudaDeviceGetAttribute(&clock_khz, cudaDevAttrClockRate, 0));
@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
   const int nsteps = std::max(steps, check);
   const mlp_ref::Data data = mlp_ref::draw(d, seed, nsteps);   // the model and the steps' tokens, drawn as every fused MLP bed draws them
   auto dalloc = [](size_t n) { float* p; CK(cudaMalloc(&p, std::max<size_t>(n, 1) * sizeof(float))); CK(cudaMemset(p, 0, std::max<size_t>(n, 1) * sizeof(float))); return p; };
-  const size_t TH = (size_t)T * d.H;
+  const size_t TH = (size_t)T * d.Hp;   // the step's activations and partials, at the padded width
   for (int l = 0; l < d.L; ++l) { d.w[l] = dalloc(data.W[l].size()); d.b[l] = dalloc(d.H); d.Y[l] = dalloc(TH); }
   d.wh = dalloc(data.Wh.size()); d.emb = dalloc(data.emb.size());
   d.part = dalloc(d.L > 1 ? (size_t)d.ka * TH : 1); d.hpart = dalloc((size_t)d.kah * T * d.VP); d.dlog = dalloc((size_t)T * d.VP);

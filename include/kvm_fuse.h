@@ -399,7 +399,7 @@ inline int kvm_fuse_grid_fits(int L, int E, int V, const std::array<int, KVM_FUS
   for (int l = 1; l < L; ++l) if (H[l] != H[0]) { why = "the hidden widths differ (the op takes one)"; return 0; }
   KvmGridDesc d{}; d.V = V; d.E = E; d.L = L; d.H = H[0]; d.T = T; d.P = std::min(opts.workers, KVM_GRID_MAXP);
   const int f = kvm_grid_layout(d);
-  if (f < 0) { why = "the shape is outside the op's bounds (H and E multiples of 16, V of 4 up to 128, 96 rows a step)"; return 0; }
+  if (f < 0) { why = "the shape is outside the op's bounds (H a multiple of 8, E of 16, V of 4 up to 128, 96 rows a step)"; return 0; }
   if (f > opts.smem_floats) { why = std::to_string(f) + " floats a member at " + std::to_string(d.P) + " members, limit " + std::to_string(opts.smem_floats); return 0; }
   return d.P;
 }

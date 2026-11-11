@@ -1414,7 +1414,7 @@ static void usage() {
     "  --no-dissolve      keep the noops that only order tasks (default: spliced out of a plain single-bundle run on the dynamic path)\n"
     "  --no-tape-sort     admit the tape as the bundle wrote it (default on the dynamic path: dependency order, which starts every replicated run at once)\n"
     "  --dump-bin DIR i,j,..  write the listed buffers (by metadata index, widened to little-endian f32 / raw i32) to DIR/<index>.bin after the run\n"
-    "  --static           (default for one bundle) run the bundle as per-worker programs compiled at load: no ready queue, no admission  --workers N  --comm-us X (scheduler's cross-worker cost)  --no-partition (independent runs share all workers)  --no-fuse (no fused MLP steps; by default a run whose steps match is fused on the static path, and --dump-buffers turns them off)\n"
+    "  --static           (default for one bundle) run the bundle as per-worker programs compiled at load: no ready queue, no admission  --workers N  --comm-us X (scheduler's cross-worker cost)  --no-partition (independent runs share all workers)  --no-fuse (no fused MLP steps; by default a run whose steps match is fused on the static path, --dump-buffers included)\n"
     "  --dynamic          use the admission ring and ready queue even for one bundle\n");
 }
 

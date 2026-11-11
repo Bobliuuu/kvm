@@ -323,14 +323,19 @@ inline std::vector<int> kvm_fuse_split_fits(int L, int E, int V, const std::arra
   if (L > KVM_SPLIT_MAXL) { why = std::to_string(L) + " hidden layers, at most " + std::to_string(KVM_SPLIT_MAXL); return fit; }
   for (int l = 1; l < L; ++l) if (H[l] != H[0]) { why = "the hidden widths differ (the op takes one)"; return fit; }
   if (T != KVM_SPLIT_R * KVM_SPLIT_Q) { why = std::to_string(T) + " rows a step (the op is built for " + std::to_string(KVM_SPLIT_R * KVM_SPLIT_Q) + ")"; return fit; }
-  int smallest = -1;
+  // the smallest member among the share counts the shape takes and the workers allow: how far the best candidate is from the budget
+  int takes = 0, best = -1, best_s = 0;
 #define X(S_) { KvmSplitDesc d{}; d.V = V; d.E = E; d.L = L; d.H = H[0]; d.S = S_; d.Q = KVM_SPLIT_Q; const int f = kvm_split_layout(d); \
-                if (f > 0 && smallest < 0) smallest = f; \
+                takes += f > 0; \
+                if (f > 0 && KVM_SPLIT_Q * S_ <= opts.workers && (best < 0 || f < best)) { best = f; best_s = S_; } \
                 if (f > 0 && f <= opts.smem_floats && KVM_SPLIT_Q * S_ <= opts.workers) fit.push_back(S_); }
   KVM_SPLIT_SHARE_LIST
 #undef X
-  if (fit.empty()) why = smallest < 0 ? "no share count takes the shape (E, V, H or a share's width outside the op's bounds)"
-                                      : "no share count fits (" + std::to_string(smallest) + " floats a member at the fewest shares that take the shape, limit " + std::to_string(opts.smem_floats) + ", gangs of at most " + std::to_string(opts.workers) + " workers)";
+  if (fit.empty())
+    why = !takes ? "no share count takes the shape (E, V, H or a share's width outside the op's bounds)"
+        : best < 0 ? "no gang fits " + std::to_string(opts.workers) + " workers (" + std::to_string(KVM_SPLIT_Q) + " x S members)"
+                   : "no share count fits (at best " + std::to_string(best) + " floats a member, at " + std::to_string(best_s) + " shares, limit " + std::to_string(opts.smem_floats) +
+                     ", gangs of at most " + std::to_string(opts.workers) + " workers)";
   return fit;
 }
 

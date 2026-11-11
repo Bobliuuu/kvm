@@ -1,6 +1,6 @@
 // CPU check of the bundle-level fusion pass (include/kvm_fuse.h) on real bundles: prints the decision for every run and, when it fires, checks the rewritten bundle.
 //   g++ -std=c++17 -O2 -Iinclude tests/static/test_fuse_pass.cpp -o /tmp/test_fuse_pass && /tmp/test_fuse_pass BUNDLE_DIR[@FORM]...   (build from the repo root)
-// FORM, when given, is what the pass must make of every run of the bundle at the largest worker count (107): none (no run fused), block (the one-block
+// FORM, when given, is what the pass must make of every run of the bundle at the largest worker count (108, an A100's default): none (no run fused), block (the one-block
 // form, fmlp_slice and fmlp_sgd) or split (the split form's fmlp_split gangs). A bundle given without one is only reported.
 // Checks on a fired bundle: the DAG is acyclic; every kept task keeps its op and arguments; every replaced step became its slices and groups, each slice before every group; the static
 // planner accepts the result on the bundle's registry signatures, with the fused ops' signatures added.
@@ -63,7 +63,7 @@ int main(int argc, char** argv) {
     ops.fmlp_split = R.require("fmlp_split");
     const int slice_id = ops.fmlp_slice, sgd_id = ops.fmlp_sgd, split_id = ops.fmlp_split;
     const KvmSOpLookup op_of = R.lookup();
-    static constexpr int kWorkers[] = {1, 4, 8, 48, 107};
+    static constexpr int kWorkers[] = {1, 4, 8, 48, 107, 108};   // 108: the A100's grid, the executor's default worker count
     int failures = 0;
     for (int ai = 1; ai < argc; ++ai) {
         // BUNDLE_DIR[@FORM]: the form follows the last @, unless a / follows it (a directory name with an @ in it)

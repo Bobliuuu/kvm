@@ -63,10 +63,41 @@ Clocks: every stage ran at a 1,410 MHz median; GPT 162M dipped to 1,260 MHz unde
 | litmus, mutants and e2e controls | RTX 3090 (sm_86) | every check this GPU can observe passes | `tests/litmus_sm86.log` |
 | the same, three full passes | RTX 3080 Ti (sm_86) | 3 of 3 run to their end, every mutant detected, none hanging | `tests/litmus_full_sm86_pass*.log` |
 | `recycle` (3,000,000 tasks in 100,000 bundles, 16,666 ring wraps) | RTX 3080 Ti (sm_86) | 0 failures in 10 runs | `tests/recycle_sm86_verdicts.txt` |
+| `test_ops`, every case (hd=128 included) | A100-SXM4-40GB, production build | 5,403 passed, 0 failed | `tests/test_ops_a100.log` |
+| `test_e2e` | A100-SXM4-40GB, production build | 7 passed, 0 failed | `tests/test_e2e_a100.log` |
+| memcheck on the attention cases | A100-SXM4-40GB, production build | clean | `tests/green_ops_a100.txt` |
+| static path `run_check.sh` on the production executor | A100-SXM4-40GB | PASS (fused step against float64 6.58e-6, bound 1.33e-4) | `tests/static_run_check_a100.log` |
 | litmus `mp` on the production build; `weakpub` mutant | A100-SXM4-40GB | 0 violations in 2,000,000 rounds, every control detected; the mutant shows 63 violations (caught) | `tests/litmus_mp_a100.txt`, `tests/litmus_weakpub_a100.txt` |
 
 The sm_86 builds add `-DKVM_GPT_BIG_BK=16 -DKVM_GPT_MMA_SMEM=90112`, since those GPUs opt into 99 KB of shared memory a block where the
 production tiles launch with 144 KiB.
+
+## The GPT rows on main, same host and session
+
+#18's rows read on main `9a76574` as it is: the same bench, host, session and build flags as the panel above (binary sha256 `7f5e0258…`,
+`main-9a76574/env.json`). PyTorch's bars of the two reads agree within 0.2% (each read's fastest-variant median), so the change is the
+executor's alone.
+
+| row | main: ours (ratio) | this branch: ours (ratio) | this branch over main |
+|---|---|---|---|
+| GPT tiny | 641.4 us (0.289) | 263.8 us (0.701) | **x2.431** |
+| GPT small | 1,549.1 us (0.269) | 571.9 us (0.730) | **x2.709** |
+| GPT 162M | 135.0 ms (0.467) | 118.0 ms (0.537) | **x1.145** |
+
+Files: `main-9a76574/` (raw JSON, `env.json`, stage logs and clock traces).
+
+## The roadmap's Phase B row: GPT 162M bf16s (PyTorch's side only)
+
+Measured on the same A100 (`phaseb-162m-bf16s-torch/`, two rounds of 5 repetitions, autocast bf16, the 1-step 162M tape): PyTorch eager
+**51.2-51.7 ms a step** (round medians), whole-step CUDA graph 42.3 ms. The roadmap's exit gate, within 1.3x of eager, is therefore
+**67.1 ms a step or less** for the executor. The executor's side did not run: its build (every op pack) was still compiling when this
+session's GPU time ended.
+
+## Not run on the A100
+
+* `test_exec` with sanitizers on the production build: its build did not finish in time. The RTX 3090 run above (8,609 checks, 0 failed)
+  covers the same suites on the same tree.
+* The executor's Phase B row (above).
 
 ## Files
 
@@ -74,4 +105,6 @@ production tiles launch with 144 KiB.
 * `env.json`: what ran: the binary's hash and flags, versions, clocks, and the CPU throttling of each stage.
 * `logs/`: each stage's bench log, clock trace and stage record.
 * `tests/`: the suite logs in the table above (one tree path in a log header renamed).
+* `main-9a76574/`: the GPT rows read on main as it is (the section above).
+* `phaseb-162m-bf16s-torch/`: PyTorch's side of the Phase B row.
 * `bench/`: the bench as run.

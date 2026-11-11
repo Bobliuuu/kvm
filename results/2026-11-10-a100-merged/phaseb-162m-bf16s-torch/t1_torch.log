@@ -1,0 +1,2 @@
+eager: best 45072.4 us/step  median 51653.6  worst 52729.9  loss 10.9793 -> 10.9793  (setup 1s)
+graph: best 42201.1 us/step  median 42245.1  worst 42450.9  loss 10.9793 -> 10.9793  (setup 1s)

@@ -34,6 +34,7 @@
 #include <vector>
 #include "kvm_fused_mlp.h"
 #include "kvm_fused_split.h"
+#include "kvm_fused_grid.h"
 #include "kvm_static.h"
 #include "kvm_task_abi.h"
 
@@ -45,6 +46,7 @@ struct KvmFuseOps {   // operator ids (from the registry, by name); a missing op
   int noop = -1, select_window = -1, embedding_fwd = -1, matmul_tile = -1, softmax_ce_fwd = -1, softmax_ce_reduce = -1, softmax_ce_bwd = -1, softmax_ce_fused = -1, gelu_bwd = -1, colsum = -1, embedding_bwd = -1, sgd = -1, sgd_range = -1;
   int fmlp_slice = -1, fmlp_sgd = -1;   // the fused ops the pass emits
   int fmlp_split = -1;                  // the split form's gang op (-1: the split form is off)
+  int fmlp_grid = -1;                   // the grid form's gang op (-1: the grid form is off)
 };
 
 struct KvmFuseOptions {
@@ -64,7 +66,11 @@ struct KvmFuseRun {
   int wte = -1, head = -1;
   int steps = 0;
   int split = 0, S = 0, Q = 0;          // the split form: S shares x Q slices a gang (slice_rows = KVM_SPLIT_R; nsl and groups unused)
+  int grid = 0, P = 0;                  // the grid form: one gang of P members a step over one copy of the model (nsl and groups unused)
 };
+// A run whose steps run as gangs (the split or the grid form), and the size of its gangs.
+inline bool kvm_fuse_gang(const KvmFuseRun& r) { return r.split || r.grid; }
+inline int kvm_fuse_members(const KvmFuseRun& r) { return r.split ? r.Q * r.S : r.grid ? r.P : 0; }
 
 struct KvmFuseResult {
   std::vector<KvmTaskDesc> tasks;
@@ -339,6 +345,19 @@ inline std::vector<int> kvm_fuse_split_fits(int L, int E, int V, const std::arra
   return fit;
 }
 
+// The grid form's gang for the shape: every worker a member (more members make every member's blocks smaller), when that member fits the budget.
+// Returns the member count, or 0 with the reason in `why`. The pass offers it only to a run the split form refused.
+inline int kvm_fuse_grid_fits(int L, int E, int V, const std::array<int, KVM_FUSE_MAXL>& H, int T, const KvmFuseOps& ops, const KvmFuseOptions& opts, std::string& why) {
+  if (ops.fmlp_grid < 0) { why = "off (no fmlp_grid op)"; return 0; }
+  if (L > KVM_GRID_MAXL) { why = std::to_string(L) + " hidden layers, at most " + std::to_string(KVM_GRID_MAXL); return 0; }
+  for (int l = 1; l < L; ++l) if (H[l] != H[0]) { why = "the hidden widths differ (the op takes one)"; return 0; }
+  KvmGridDesc d{}; d.V = V; d.E = E; d.L = L; d.H = H[0]; d.T = T; d.P = opts.workers;
+  const int f = kvm_grid_layout(d);
+  if (f < 0) { why = "the shape is outside the op's bounds (H and E multiples of 16, V of 4 up to 128, 96 rows a step)"; return 0; }
+  if (f > opts.smem_floats) { why = std::to_string(f) + " floats a member at " + std::to_string(d.P) + " members, limit " + std::to_string(opts.smem_floats); return 0; }
+  return d.P;
+}
+
 // The pass: rewrite every run (connected component) whose steps all match the MLP template into fused tasks; the others stay as they are. `op_of` gives each op's signature (to find its buffer arguments).
 inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const std::vector<int32_t>& succ, const std::vector<int32_t>& args, const std::vector<KvmFuseBuf>& bufs, const KvmFuseOps& ops, const KvmSOpLookup& op_of, const KvmFuseOptions& opts = {}) {
   using Step = kvm_fuse::Parser::Step;
@@ -393,13 +412,18 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
         for (int r : kvm_fuse_slice_choices) any |= s.T % r == 0 && r <= s.T && s.T / r <= KVM_FMLP_MAX_SLICES && kvm_fuse_layout_floats(s.L, s.E, s.V, s.H, s.T, r) <= opts.smem_floats;
         if (!any) one = "no slice size fits (" + std::to_string(kvm_fuse_layout_floats(s.L, s.E, s.V, s.H, s.T, kvm_fuse_slice_choices[0])) + " floats of shared memory at the smallest slice, at most " + std::to_string(KVM_FMLP_MAX_SLICES) + " slices, limit " + std::to_string(opts.smem_floats) + ")";
       }
-      if (one.empty()) { pl.run.L = s.L; pl.run.E = s.E; pl.run.V = s.V; pl.run.T = s.T; pl.run.lr = s.lr; pl.run.H = s.H; pl.run.w = s.w; pl.run.b = s.b; pl.run.wte = s.wte; pl.run.head = s.head; pl.run.steps = (int)pl.steps.size(); pl.run.smem_floats = opts.smem_floats; }
+      const auto take = [&]() { pl.run.L = s.L; pl.run.E = s.E; pl.run.V = s.V; pl.run.T = s.T; pl.run.lr = s.lr; pl.run.H = s.H; pl.run.w = s.w; pl.run.b = s.b; pl.run.wte = s.wte; pl.run.head = s.head; pl.run.steps = (int)pl.steps.size(); pl.run.smem_floats = opts.smem_floats; };
+      if (one.empty()) take();
       else {
         std::string sw;
         const std::vector<int> fit = kvm_fuse_split_fits(s.L, s.E, s.V, s.H, s.T, ops, opts, sw);
-        if (fit.empty()) why = one + "; split form: " + sw;
-        else { pl.run.L = s.L; pl.run.E = s.E; pl.run.V = s.V; pl.run.T = s.T; pl.run.lr = s.lr; pl.run.H = s.H; pl.run.w = s.w; pl.run.b = s.b; pl.run.wte = s.wte; pl.run.head = s.head; pl.run.steps = (int)pl.steps.size(); pl.run.smem_floats = opts.smem_floats;
-               pl.run.split = 1; pl.run.Q = KVM_SPLIT_Q; pl.run.S = fit.back(); pl.split_fit = fit; pl.split_why = one; }
+        if (!fit.empty()) { take(); pl.run.split = 1; pl.run.Q = KVM_SPLIT_Q; pl.run.S = fit.back(); pl.split_fit = fit; pl.split_why = one; }
+        else {   // the grid form: for a run the split form cannot hold
+          std::string gw;
+          const int P = kvm_fuse_grid_fits(s.L, s.E, s.V, s.H, s.T, ops, opts, gw);
+          if (P) { take(); pl.run.grid = 1; pl.run.P = P; pl.split_why = one + "; split form: " + sw; }
+          else why = one + "; split form: " + sw + "; grid form: " + gw;
+        }
       }
     }
     if (why.empty()) {   // a buffer the caller reads after the run may not be interior
@@ -414,17 +438,17 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
   {
     auto fits = [&](const KvmFuseRun& r, int rows) { return r.T % rows == 0 && rows <= r.T && r.T / rows <= KVM_FMLP_MAX_SLICES && kvm_fuse_layout_floats(r.L, r.E, r.V, r.H, r.T, rows) <= opts.smem_floats; };
     int common = 0, widest_common = 0, nblock = 0;
-    for (const Plan& p : plans) nblock += !p.run.split;
+    for (const Plan& p : plans) nblock += !kvm_fuse_gang(p.run);
     for (int rows : kvm_fuse_slice_choices) {
       bool all = nblock > 0; int total = 0;
-      for (const Plan& p : plans) if (!p.run.split) { all &= fits(p.run, rows); total += p.run.T / rows; }
+      for (const Plan& p : plans) if (!kvm_fuse_gang(p.run)) { all &= fits(p.run, rows); total += p.run.T / rows; }
       if (!all) continue;
       widest_common = rows;
       if (total <= opts.workers) { common = rows; break; }
     }
     if (!common) common = widest_common;
     for (Plan& p : plans) {
-      if (p.run.split) continue;
+      if (kvm_fuse_gang(p.run)) continue;
       if (common) { p.run.slice_rows = common; continue; }
       for (int rows : kvm_fuse_slice_choices) if (fits(p.run, rows)) { p.run.slice_rows = rows; break; }
     }
@@ -436,6 +460,16 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
     for (Plan& p : plans) if (p.run.split) p.run.S = p.split_fit.back();
     for (size_t i = 0; i < plans.size(); ++i) {
       KvmFuseRun& r = plans[i].run;
+      if (r.grid) {
+        KvmGridDesc d{}; d.V = r.V; d.E = r.E; d.L = r.L; d.H = r.H[0]; d.T = r.T; d.P = r.P;
+        const int floats = kvm_grid_layout(d);
+        std::string shape = std::to_string(r.E);
+        for (int l = 0; l < r.L; ++l) shape += "x" + std::to_string(r.H[l]);
+        R.report.push_back("component " + std::to_string(plan_comp[i]) + ": fused, grid form (" + plans[i].split_why + "): " + std::to_string(plans[i].steps.size()) + " steps, T=" + std::to_string(r.T) +
+                           " V=" + std::to_string(r.V) + " widths " + shape + ", gangs of " + std::to_string(r.P) + " members (layer 0 1 x " + std::to_string(d.nb0) + ", hidden " + std::to_string(d.ka) + " x " +
+                           std::to_string(d.nb) + ", head " + std::to_string(d.kah) + " x 1), " + std::to_string(floats) + " floats a member");
+        continue;
+      }
       if (r.split) {
         r.slice_rows = KVM_SPLIT_R;
         KvmSplitDesc d{}; d.V = r.V; d.E = r.E; d.L = r.L; d.H = r.H[0]; d.S = r.S; d.Q = r.Q;
@@ -447,7 +481,7 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
       }
       r.nsl = r.T / r.slice_rows;
       // the reduction runs after every slice of a step has finished: the slices' workers are free for it, and any workers no slice uses take a share too (the reduce is bandwidth-bound per SM)
-      { int total = 0; for (const Plan& p : plans) if (!p.run.split) total += p.run.T / p.run.slice_rows;
+      { int total = 0; for (const Plan& p : plans) if (!kvm_fuse_gang(p.run)) total += p.run.T / p.run.slice_rows;
         const int spare = std::max(0, opts.workers - total) / (int)plans.size();
         r.groups = std::min(KVM_FMLP_MAX_GROUPS, std::max(r.nsl, r.nsl + spare)); }
       std::string shape = std::to_string(r.E);
@@ -470,7 +504,7 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
     if (!first_new.count(key)) {
       first_new[key] = nnew;
       const KvmFuseRun& kr = plans[key.first].run;
-      const int nodes = kr.split ? kr.Q * kr.S : kr.nsl + kr.groups;
+      const int nodes = kvm_fuse_gang(kr) ? kvm_fuse_members(kr) : kr.nsl + kr.groups;
       for (int i = 0; i < nodes; ++i) order.push_back({key.first << 20 | key.second, i});
       nnew += nodes;
     }
@@ -478,31 +512,31 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
   R.new_tasks = nnew;
   const auto slice_id = [&](int pl, int st, int i) { return first_new.at({pl, st}) + i; };
   const auto group_id = [&](int pl, int st, int j) { return first_new.at({pl, st}) + plans[pl].run.nsl + j; };
-  const auto member_id = [&](int pl, int st, int m) { return first_new.at({pl, st}) + m; };   // the split form: member m of a step's gang
+  const auto member_id = [&](int pl, int st, int m) { return first_new.at({pl, st}) + m; };   // the gang forms: member m of a step's gang
   std::vector<std::set<int>> out(nnew);
   const auto old_edges = kvm_static::build_dag(tasks, succ);
   for (int u = 0; u < nt; ++u) for (int v : old_edges[u]) {
     const bool ru = run_of[u] >= 0, rv = run_of[v] >= 0;
     if (ru && rv && run_of[u] == run_of[v] && step_of[u] == step_of[v]) continue;   // inside one replaced step
-    const bool su = ru && plans[run_of[u]].run.split, sv = rv && plans[run_of[v]].run.split;
-    if (su && sv && run_of[u] == run_of[v]) {   // two steps of one split run: member to member (a gang finishes together, so any member's end is the step's)
-      const int G = plans[run_of[u]].run.Q * plans[run_of[u]].run.S;
+    const bool su = ru && kvm_fuse_gang(plans[run_of[u]].run), sv = rv && kvm_fuse_gang(plans[run_of[v]].run);
+    if (su && sv && run_of[u] == run_of[v]) {   // two steps of one gang run: member to member (a gang finishes together, so any member's end is the step's)
+      const int G = kvm_fuse_members(plans[run_of[u]].run);
       for (int m = 0; m < G; ++m) out[member_id(run_of[u], step_of[u], m)].insert(member_id(run_of[v], step_of[v], m));
       continue;
     }
     std::vector<int> from, to;
-    if (su) from.push_back(member_id(run_of[u], step_of[u], 0));   // a split step's end is any member's: member 0 stands for it
+    if (su) from.push_back(member_id(run_of[u], step_of[u], 0));   // a gang step's end is any member's: member 0 stands for it
     else if (ru) for (int j = 0; j < plans[run_of[u]].run.groups; ++j) from.push_back(group_id(run_of[u], step_of[u], j));
     else from.push_back(new_of[u]);
-    if (sv) for (int m = 0; m < plans[run_of[v]].run.Q * plans[run_of[v]].run.S; ++m) to.push_back(member_id(run_of[v], step_of[v], m));
+    if (sv) for (int m = 0; m < kvm_fuse_members(plans[run_of[v]].run); ++m) to.push_back(member_id(run_of[v], step_of[v], m));
     else if (rv) for (int i = 0; i < plans[run_of[v]].run.nsl; ++i) to.push_back(slice_id(run_of[v], step_of[v], i));
     else to.push_back(new_of[v]);
     for (int f : from) for (int g : to) out[f].insert(g);
   }
-  for (size_t p = 0; p < plans.size(); ++p) if (!plans[p].run.split) for (size_t st = 0; st < plans[p].steps.size(); ++st) for (int i = 0; i < plans[p].run.nsl; ++i) for (int j = 0; j < plans[p].run.groups; ++j) out[slice_id((int)p, (int)st, i)].insert(group_id((int)p, (int)st, j));
-  // gang ids: one per split step, unique in the bundle (kvm_static_plan groups a gang's members by it)
+  for (size_t p = 0; p < plans.size(); ++p) if (!kvm_fuse_gang(plans[p].run)) for (size_t st = 0; st < plans[p].steps.size(); ++st) for (int i = 0; i < plans[p].run.nsl; ++i) for (int j = 0; j < plans[p].run.groups; ++j) out[slice_id((int)p, (int)st, i)].insert(group_id((int)p, (int)st, j));
+  // gang ids: one per gang step, unique in the bundle (kvm_static_plan groups a gang's members by it)
   std::map<std::pair<int, int>, int> gang_of_step;
-  for (size_t p = 0; p < plans.size(); ++p) if (plans[p].run.split) for (size_t st = 0; st < plans[p].steps.size(); ++st) gang_of_step[{(int)p, (int)st}] = (int)gang_of_step.size();
+  for (size_t p = 0; p < plans.size(); ++p) if (kvm_fuse_gang(plans[p].run)) for (size_t st = 0; st < plans[p].steps.size(); ++st) gang_of_step[{(int)p, (int)st}] = (int)gang_of_step.size();
   // ---- the new CSR and argument arrays
   R.tasks.resize(nnew);
   std::vector<int> indeg(nnew, 0);
@@ -520,10 +554,10 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
       const int pl = o.first >> 20, st = o.first & 0xFFFFF, nsl = plans[pl].run.nsl;
       const Step& s = plans[pl].steps[st];
       d.workload_id = tasks[s.replaced[0]].workload_id;
-      if (plans[pl].run.split) {
+      if (kvm_fuse_gang(plans[pl].run)) {   // fmlp_split and fmlp_grid take the same arguments
         id = member_id(pl, st, o.second);
-        d.op_id = ops.fmlp_split; d.args_off = (int)R.args.size(); d.args_words = 7;
-        R.args.insert(R.args.end(), {pl, gang_of_step.at({pl, st}), o.second, plans[pl].run.Q * plans[pl].run.S, s.ids, s.tgt, s.loss});
+        d.op_id = plans[pl].run.split ? ops.fmlp_split : ops.fmlp_grid; d.args_off = (int)R.args.size(); d.args_words = 7;
+        R.args.insert(R.args.end(), {pl, gang_of_step.at({pl, st}), o.second, kvm_fuse_members(plans[pl].run), s.ids, s.tgt, s.loss});
       } else if (o.second < nsl) {
         id = slice_id(pl, st, o.second);
         d.op_id = ops.fmlp_slice; d.args_off = (int)R.args.size(); d.args_words = 4;

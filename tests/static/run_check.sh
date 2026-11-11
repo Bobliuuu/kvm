@@ -15,6 +15,8 @@
 #     workers, and a worker count where the pass does not fire fails the check: KVM_CHECK_MLP_HIDDEN=256 tests/static/run_check.sh 16 48 107;
 #     the panel's mlp256 shape needs 16 shares or more (96 members), so KVM_CHECK_MLP_HIDDEN=256 KVM_CHECK_MLP_DEPTH=4 tests/static/run_check.sh
 #     107 108; and KVM_CHECK_MLP_DEPTH=4 with 128 at 48 107 108 for the deepest.
+#   * A width the split form cannot hold either takes the grid form (one gang of every worker a step, fmlp_grid), sized for the run's workers:
+#     KVM_CHECK_MLP_HIDDEN=1024 tests/static/run_check.sh 107 108 (the panel's mlp1024 shape).
 set -euo pipefail
 EXE="${KVM_EXE:-./kvm_exec}"; [ -x "$EXE" ] || { echo "no executor at $EXE (set KVM_EXE)"; exit 2; }
 WORKERS=("${@:-1 4 16 107}"); read -r -a WORKERS <<< "${WORKERS[*]}"

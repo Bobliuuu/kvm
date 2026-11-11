@@ -455,7 +455,7 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
       if (one.empty() && (s.V % 4 || s.V == 0 || s.V > 128)) one = "vocabulary not a multiple of 4 up to 128";
       if (one.empty()) {
         bool any = false;
-        for (int r : kvm_fuse_slice_choices) any |= s.T % r == 0 && r <= s.T && s.T / r <= KVM_FMLP_MAX_SLICES && kvm_fuse_layout_floats(s.L, s.E, s.V, s.H, s.T, r) <= opts.smem_floats;
+        for (int r : kvm_fuse_slice_choices) any |= s.T % r == 0 && r <= s.T && s.T / r <= KVM_FMLP_MAX_SLICES && s.T / KVM_FMLP_GRANULE <= KVM_FMLP_MAX_SLICES && kvm_fuse_layout_floats(s.L, s.E, s.V, s.H, s.T, r) <= opts.smem_floats;
         if (!any) one = "no slice size fits (" + std::to_string(kvm_fuse_layout_floats(s.L, s.E, s.V, s.H, s.T, kvm_fuse_slice_choices[0])) + " floats of shared memory at the smallest slice, at most " + std::to_string(KVM_FMLP_MAX_SLICES) + " slices, limit " + std::to_string(opts.smem_floats) + ")";
       }
       const auto take = [&]() { pl.run.L = s.L; pl.run.E = s.E; pl.run.V = s.V; pl.run.T = s.T; pl.run.lr = s.lr; pl.run.H = s.H; pl.run.w = s.w; pl.run.b = s.b; pl.run.wte = s.wte; pl.run.head = s.head; pl.run.steps = (int)pl.steps.size(); pl.run.smem_floats = opts.smem_floats; };
@@ -500,7 +500,8 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
   // ---- slice size: one size for all runs, the smallest that fits every run and gives each slice a worker; if none does, the largest that fits every run (slices then share workers);
   // runs that fit no common size each take their own smallest
   {
-    auto fits = [&](const KvmFuseRun& r, int rows) { return r.T % rows == 0 && rows <= r.T && r.T / rows <= KVM_FMLP_MAX_SLICES && kvm_fuse_layout_floats(r.L, r.E, r.V, r.H, r.T, rows) <= opts.smem_floats; };
+    // a slice holds whole granules, and the owners sum the step's T / 16 granule partials at most KVM_FMLP_MAX_SLICES at a time (kvm_fused_mlp.h)
+    auto fits = [&](const KvmFuseRun& r, int rows) { return r.T % rows == 0 && rows <= r.T && r.T / rows <= KVM_FMLP_MAX_SLICES && r.T / KVM_FMLP_GRANULE <= KVM_FMLP_MAX_SLICES && kvm_fuse_layout_floats(r.L, r.E, r.V, r.H, r.T, rows) <= opts.smem_floats; };
     int common = 0, widest_common = 0, nblock = 0;
     for (const Plan& p : plans) nblock += !kvm_fuse_gang(p.run);
     for (int rows : kvm_fuse_slice_choices) {

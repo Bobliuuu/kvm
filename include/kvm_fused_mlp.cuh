@@ -156,15 +156,17 @@ struct PhaseTimer {
 };
 constexpr int ERR_TOKEN = 1005;   // a token id or target outside [0, V) (= KVM_GPT_E_TOKEN of the executor's op pack)
 
-// One slice of one step: forward and backward over rows [sc * R, sc * R + R) of the step's batch (ids and tgt: the step's rows); the partial gradients go to global memory. The slice's sum of row
-// losses goes to `loss_slot`, or to d.loss_part[sc] when it is null. `ph(i)` marks the end of phase i (the bed times them; the executor passes a null timer unless --fuse-phases). Ends with its stores issued, not yet visible GPU-wide:
+// One slice of one step: forward and backward over rows [sc * R, sc * R + R) of the step's batch (ids and tgt: the step's rows); the partial gradients go to global memory, one copy per granule of
+// KVM_FMLP_GRANULE rows (kvm_fused_mlp.h: the step's arithmetic does not depend on the slice size). Each granule's sum of row losses goes to `loss_slot[g]`, or to d.loss_part[sc * R / 16 + g] when it is
+// null. `ph(i)` marks the end of phase i (the bed times them; the executor passes a null timer unless --fuse-phases). Ends with its stores issued, not yet visible GPU-wide:
 // the caller's publish fences them.
 template <class PH, class FAIL>
 __device__ __forceinline__ void slice_run(int sc, const int32_t* ids, const int32_t* tgt, float* loss_slot, float* sm, PH ph, FAIL fail) {
   const KvmFusedDesc& d = *wait_desc(sm);
   const int R = d.R, L = d.L, E = d.E, V = d.V, VP = d.VP, XP = d.XP, maxHP = d.maxHP, bt = d.T;
   ids += (size_t)sc * R; tgt += (size_t)sc * R;
-  if (!loss_slot) loss_slot = d.loss_part + sc;
+  constexpr int G = KVM_FMLP_GRANULE;
+  if (!loss_slot) loss_slot = d.loss_part + sc * (d.R / G);
   const int VN = kvm_fmlp_pad16(V), VK = kvm_fmlp_pad8(V);
   float* const sX = sm + d.X, *const sY = sm + d.Y, *const sH = sm + d.Htmp;
   int32_t* const s_ids = reinterpret_cast<int32_t*>(sm + d.ids), *const s_tgt = reinterpret_cast<int32_t*>(sm + d.tgt);
@@ -246,14 +248,16 @@ __device__ __forceinline__ void slice_run(int sc, const int32_t* ids, const int3
     } else __syncthreads();
     __syncthreads();
     if (VK > V) for_cells(R, VK - V, [&](int rr, int c) { sY[rr * VP + V + c] = 0.f; });   // columns V..VK-1 of dY, read by the head's backward GEMM
-    if (threadIdx.x == 0) { float s = 0; for (int j = 0; j < R; ++j) s += s_rl[j]; *loss_slot = s; }
+    if (threadIdx.x < R / G) { float s = 0; for (int j = threadIdx.x * G; j < threadIdx.x * G + G; ++j) s += s_rl[j]; loss_slot[threadIdx.x] = s; }   // a granule's rows in order
   }
   __syncthreads();
   ph(4);
   // ---- backward, last layer first. sH still holds gelu(Z[L-1]) of the last forward layer.
   {
     const int KH = d.H[L - 1];
-    gemm_m<true, false>(sH, maxHP, sY, VP, d.gh + (size_t)sc * kvm_fmlp_pad16(KH) * d.ghld, d.ghld, kvm_fmlp_pad16(KH), VN, R);
+    for (int g = 0; g < R / G; ++g)   // one partial per granule: K over the granule's rows
+      gemm_m<true, false>(sH + (size_t)g * G * maxHP, maxHP, sY + (size_t)g * G * VP, VP, d.gh + (size_t)(sc * (R / G) + g) * kvm_fmlp_pad16(KH) * d.ghld, d.ghld,
+                          kvm_fmlp_pad16(KH), VN, G);
     gemm_r<false, true>(sY, VP, sm + d.Wh, WhP, dcur, maxHP, R, kvm_fmlp_pad16(KH), VK);
     __syncthreads();
     ph(5);
@@ -265,14 +269,17 @@ __device__ __forceinline__ void slice_run(int sc, const int32_t* ids, const int3
       else for_cells(R, Hl, [&](int r, int c) { dcur[r * maxHP + c] *= gelu_g(sZ[r * HPl + c]); });
       __syncthreads();
       ph(6);
-      if (threadIdx.x < Hl) {   // the bias gradient: one thread per column sums the slice's rows (a few warps' worth of work: a reduction across lanes would cost more instructions than it saves)
+      if (threadIdx.x < Hl) {   // the bias gradient: one thread per column sums each granule's rows (a few warps' worth of work: a reduction across lanes would cost more instructions than it saves)
         const int c = threadIdx.x;
-        float v = 0.f;
-        for (int r = 0; r < R; ++r) v += dcur[r * maxHP + c];
-        d.gb[l][(size_t)sc * Hl + c] = v;
+        for (int g = 0; g < R / G; ++g) {
+          float v = 0.f;
+          for (int r = g * G; r < g * G + G; ++r) v += dcur[r * maxHP + c];
+          d.gb[l][(size_t)(sc * (R / G) + g) * Hl + c] = v;
+        }
       }
       ph(7);
-      float* const gw = d.gw[l] + (size_t)sc * kvm_fmlp_pad16(KL) * d.gwld[l];
+      const size_t gw_copy = (size_t)kvm_fmlp_pad16(KL) * d.gwld[l];
+      float* const gw = d.gw[l] + (size_t)sc * (R / G) * gw_copy;   // granule g's partial at gw + g * gw_copy
       if (l > 0) {
         const float* Hp_ = sm + (d.keepH ? d.Hk[l - 1] : d.Htmp);
         if (!d.keepH) {   // recompute H[l-1] = gelu(Z[l-1]) into sH (the forward overwrote it)
@@ -281,9 +288,11 @@ __device__ __forceinline__ void slice_run(int sc, const int32_t* ids, const int3
           __syncthreads();
         }
         ph(8);
-        gemm_m<true, false>(Hp_, maxHP, dcur, maxHP, gw, d.gwld[l], kvm_fmlp_pad16(KL), kvm_fmlp_pad16(Hl), R);   // weight gradient partial: H[l-1]^T dZ[l], K over the slice's rows
+        for (int g = 0; g < R / G; ++g)   // weight gradient partials: H[l-1]^T dZ[l], K over each granule's rows
+          gemm_m<true, false>(Hp_ + (size_t)g * G * maxHP, maxHP, dcur + (size_t)g * G * maxHP, maxHP, gw + g * gw_copy, d.gwld[l], kvm_fmlp_pad16(KL), kvm_fmlp_pad16(Hl), G);
       } else {
-        gemm_m<true, false>(sX, XP, dcur, maxHP, gw, d.gwld[0], kvm_fmlp_pad16(KL), kvm_fmlp_pad16(Hl), R);
+        for (int g = 0; g < R / G; ++g)
+          gemm_m<true, false>(sX + (size_t)g * G * XP, XP, dcur + (size_t)g * G * maxHP, maxHP, gw + g * gw_copy, d.gwld[0], kvm_fmlp_pad16(KL), kvm_fmlp_pad16(Hl), G);
       }
       ph(9);
       gemm_r<false, true, true>(dcur, maxHP, sm + d.W[l], d.WP[l], dcur, maxHP, R, kvm_fmlp_pad16(KL), Hl);       // the next activation gradient, in place: dZ[l] W[l]^T
@@ -291,30 +300,31 @@ __device__ __forceinline__ void slice_run(int sc, const int32_t* ids, const int3
       ph(10);
     }
   }
-  // embedding gradient partial: rows of one slice can name one token, and the panel's copies must agree bitwise, so atomics (whose order rounds differently run to run) are out. Each row's token chains to the next row
-  // naming it; a (token, 4-float chunk) cell sums its rows along the chain, in row order, and stores once. The slice's partial is all zero here (the previous step's owners cleared it).
+  // embedding gradient partials, one per granule: rows of one granule can name one token, and the panel's copies must agree bitwise, so atomics (whose order rounds differently run to run) are out. Each
+  // row's token chains to the next row of its granule naming it; a (token, 4-float chunk) cell sums its rows along the chain, in row order, and stores once into its granule's partial. The partials are
+  // all zero here (the previous step's owners cleared them).
   {
-    int32_t* const s_next = reinterpret_cast<int32_t*>(s_rl);          // the next row naming this row's token, or -1
-    int32_t* const s_first = reinterpret_cast<int32_t*>(s_ce);         // 1 when the row is the first naming its token
+    int32_t* const s_next = reinterpret_cast<int32_t*>(s_rl);          // the next row of the granule naming this row's token, or -1
+    int32_t* const s_first = reinterpret_cast<int32_t*>(s_ce);         // 1 when the row is the first of its granule naming its token
     for (int r = threadIdx.x; r < R; r += NT) {
-      const int id = s_ids[r]; int nx = -1, first = 1;
-      for (int q = r + 1; q < R; ++q) if (s_ids[q] == id) { nx = q; break; }
-      for (int q = 0; q < r; ++q) if (s_ids[q] == id) { first = 0; break; }
+      const int id = s_ids[r], g0 = r / G * G; int nx = -1, first = 1;
+      for (int q = r + 1; q < g0 + G; ++q) if (s_ids[q] == id) { nx = q; break; }
+      for (int q = g0; q < r; ++q) if (s_ids[q] == id) { first = 0; break; }
       s_next[r] = nx; s_first[r] = first;
     }
     __syncthreads();
-    float4* const ge = reinterpret_cast<float4*>(d.ge + (size_t)sc * V * E);
+    float4* const ge = reinterpret_cast<float4*>(d.ge + (size_t)sc * (R / G) * V * E);
     for_cells(R, E / 4, [&](int r, int ct) {
       if (!s_first[r]) return;
       float4 acc = *reinterpret_cast<const float4*>(dcur + (size_t)r * maxHP + ct * 4);
       for (int q = s_next[r]; q >= 0; q = s_next[q]) { const float4 v = *reinterpret_cast<const float4*>(dcur + (size_t)q * maxHP + ct * 4); acc.x += v.x; acc.y += v.y; acc.z += v.z; acc.w += v.w; }
-      ge[(size_t)s_ids[r] * (E / 4) + ct] = acc;
+      ge[((size_t)(r / G) * V + s_ids[r]) * (E / 4) + ct] = acc;
     });
   }
 }
 
 // One owner's share of one parameter, rows [first, last): a warp takes the rows congruent to its index minus `lead` mod 8 (warp `lead` takes row `first`), a lane its own 4-float chunks of each row: no
-// division and no per-thread walk, and each chunk's operands (every slice's partial and the old weight) are loaded together before the first use, so a chunk costs one round trip however many slices
+// division and no per-thread walk, and each chunk's operands (every granule's partial and the old weight) are loaded together before the first use, so a chunk costs one round trip however many granules
 // there are. (A cp.async of 16 bytes per operand into shared memory measured slower: R-10i, 32.7k cycles against 19.1k: request-bound at about 11 GB/s.)
 constexpr int MAX_SLICES = KVM_FMLP_MAX_SLICES;
 
@@ -343,14 +353,14 @@ __device__ __forceinline__ void sgd_share(float* w, const float* gg, int gld, si
 // One owner's share of the reduction: every parameter's rows split evenly over the d.groups owners (the inverse in `d.inv_groups` replaces a division per parameter; the shares meet exactly). Each warp runs
 // its rows of the shares one after another, so an owner costs one round trip per row its busiest warp holds. A bias (owner l % groups updates bias l) and the loss (owner 0) therefore go to the first warp
 // past the rows of the share beside them, which holds none of them while the share has fewer than 8 rows: their round trips overlap that share's instead of following it (measured: owner 0 ran 8.3 us
-// against a mean of 5.5 with both on its warp 0). The loss is loss_out[0] = sum / T, loss_out[1] = 1 / T, as softmax_ce_reduce writes them, summed in slice order.
+// against a mean of 5.5 with both on its warp 0). The loss is loss_out[0] = sum / T, loss_out[1] = 1 / T, as softmax_ce_reduce writes them, summed in granule (row) order.
 __device__ __forceinline__ void sgd_run(int owner, float* loss_out, float* sm) {
   const KvmFusedDesc& d = *wait_desc(sm);
-  const int L = d.L, E = d.E, V = d.V, nsl = d.nsl, warp = threadIdx.x >> 5; const float lr = d.lr;
+  const int L = d.L, E = d.E, V = d.V, nsl = d.T / KVM_FMLP_GRANULE, warp = threadIdx.x >> 5; const float lr = d.lr;   // nsl: the step's granules, whose partials every sum adds in row order
   const unsigned long long inv = d.inv_groups;
   const auto first = [&](int o, int rows) { return (int)(((unsigned long long)(unsigned)o * (unsigned)rows * inv) >> 32); };
   const int ef = first(owner, V), el = first(owner + 1, V);
-  if (owner == 0 && loss_out && warp == (el & 7)) {   // lane i loads slice i's sum (one round trip for all), lane 0 adds them in slice order
+  if (owner == 0 && loss_out && warp == (el & 7)) {   // lane i loads granule i's sum (one round trip for all), lane 0 adds them in row order
     const int lane = threadIdx.x & 31;
     const float v = lane < nsl ? d.loss_part[lane] : 0.f;
     float s = 0.f;

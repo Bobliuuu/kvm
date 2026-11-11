@@ -390,13 +390,14 @@ inline std::vector<int> kvm_fuse_split_fits(int L, int E, int V, const std::arra
   return fit;
 }
 
-// The grid form's gang for the shape: every worker a member (more members make every member's blocks smaller), when that member fits the budget.
-// Returns the member count, or 0 with the reason in `why`. The pass offers it only to a run the split form refused.
+// The grid form's gang for the shape: every worker a member (more members make every member's blocks smaller), up to the KVM_GRID_MAXP members
+// the flag-line barrier's polling warps cover, when that member fits the budget. Returns the member count, or 0 with the reason in `why`. The
+// pass offers it to a run the split form refused, and to every run of a bundle where one needs it (one form a bundle).
 inline int kvm_fuse_grid_fits(int L, int E, int V, const std::array<int, KVM_FUSE_MAXL>& H, int T, const KvmFuseOps& ops, const KvmFuseOptions& opts, std::string& why) {
   if (ops.fmlp_grid < 0) { why = "off (no fmlp_grid op)"; return 0; }
   if (L > KVM_GRID_MAXL) { why = std::to_string(L) + " hidden layers, at most " + std::to_string(KVM_GRID_MAXL); return 0; }
   for (int l = 1; l < L; ++l) if (H[l] != H[0]) { why = "the hidden widths differ (the op takes one)"; return 0; }
-  KvmGridDesc d{}; d.V = V; d.E = E; d.L = L; d.H = H[0]; d.T = T; d.P = opts.workers;
+  KvmGridDesc d{}; d.V = V; d.E = E; d.L = L; d.H = H[0]; d.T = T; d.P = std::min(opts.workers, KVM_GRID_MAXP);
   const int f = kvm_grid_layout(d);
   if (f < 0) { why = "the shape is outside the op's bounds (H and E multiples of 16, V of 4 up to 128, 96 rows a step)"; return 0; }
   if (f > opts.smem_floats) { why = std::to_string(f) + " floats a member at " + std::to_string(d.P) + " members, limit " + std::to_string(opts.smem_floats); return 0; }

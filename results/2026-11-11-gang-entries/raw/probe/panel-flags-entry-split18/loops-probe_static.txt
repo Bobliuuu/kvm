@@ -1,0 +1,9 @@
+_Z12probe_staticPK4PRecPKiPiP8ProbeCntPx: every block, 11240 instructions in 538 blocks
+  15 MMA loops; by kind (HMMA a pass, LDGSTS a pass):
+    HMMA   2 LDGSTS   0:   2 loops; registers used in the loop median 29, passengers median 83 (range 81-83), LDL a pass median 0 (range 0-0)
+    HMMA   8 LDGSTS   0:   5 loops; registers used in the loop median 38, passengers median 85 (range 58-110), LDL a pass median 0 (range 0-0)
+    HMMA  14 LDGSTS   0:   2 loops; registers used in the loop median 101, passengers median 95 (range 0-95), LDL a pass median 0 (range 0-0)
+    HMMA 144 LDGSTS   0:   1 loops; registers used in the loop median 115, passengers median 0 (range 0-0), LDL a pass median 0 (range 0-0)
+    HMMA 316 LDGSTS   0:   1 loops; registers used in the loop median 206, passengers median 0 (range 0-0), LDL a pass median 0 (range 0-0)
+    HMMA 470 LDGSTS   0:   4 loops; registers used in the loop median 226, passengers median 0 (range 0-0), LDL a pass median 3 (range 3-3)
+  the loop with the most reloads, at 0x00d9d0 (HMMA 470, LDL 3): 0 passengers

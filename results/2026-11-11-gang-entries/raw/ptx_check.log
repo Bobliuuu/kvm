@@ -1,0 +1,22 @@
+include/kvm_ops_gpt.cuh(573): warning #20058-D: the #pragma unroll must precede a loop
+  #pragma unroll
+          ^
+          detected during instantiation of "void kvmgpt::mm_tile_big<TA,TB,PREC,WM,WN,WTN,BF,RZ>(const float *, int, const float *, int, float *, int, const float *, const float *, int, float *, int, int, int, int, int, int, float, int, __nv_bool) [with TA=false, TB=false, PREC=false, WM=2, WN=4, WTN=32, BF=false, RZ=true]" at line 1080
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+include/kvm_ops_gpt.cuh(591): warning #20058-D: the #pragma unroll must precede a loop
+  #pragma unroll
+          ^
+          detected during instantiation of "void kvmgpt::mm_tile_big<TA,TB,PREC,WM,WN,WTN,BF,RZ>(const float *, int, const float *, int, float *, int, const float *, const float *, int, float *, int, int, int, int, int, int, float, int, __nv_bool) [with TA=false, TB=false, PREC=false, WM=2, WN=4, WTN=32, BF=false, RZ=true]" at line 1080
+
+include/kvm_ops_gpt.cuh(629): warning #20058-D: the #pragma unroll must precede a loop
+  #pragma unroll
+          ^
+          detected during instantiation of "void kvmgpt::mm_tile_big<TA,TB,PREC,WM,WN,WTN,BF,RZ>(const float *, int, const float *, int, float *, int, const float *, const float *, int, float *, int, int, int, int, int, int, float, int, __nv_bool) [with TA=false, TB=false, PREC=true, WM=2, WN=4, WTN=32, BF=false, RZ=false]" at line 1080
+
+include/kvm_ops_gpt.cuh(647): warning #20058-D: the #pragma unroll must precede a loop
+  #pragma unroll
+          ^
+          detected during instantiation of "void kvmgpt::mm_tile_big<TA,TB,PREC,WM,WN,WTN,BF,RZ>(const float *, int, const float *, int, float *, int, const float *, const float *, int, float *, int, int, int, int, int, int, float, int, __nv_bool) [with TA=false, TB=false, PREC=true, WM=2, WN=4, WTN=32, BF=false, RZ=false]" at line 1080
+

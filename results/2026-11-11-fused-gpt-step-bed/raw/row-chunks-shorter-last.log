@@ -1,0 +1,49 @@
+# row chunks whose last one is shorter (N not a multiple of the chunk: the path a hold-out d128 draw takes on an A100, 128 + 64 rows), on an RTX 5070, judged against the workload VM (precise, 3xTF32; 1xTF32 for w_small), forced with the bed's rows=R
+w_small_p k2 G16,32 rows=96: rc=0
+  VM reference: cached vm-cdd0fb5d5704c230-k2.json
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 16, 2 steps, attention in 2 query block(s) a unit, rows in chunks of 96 of 128, shared memory 67040 B
+    fgpt_bed: run 4.927 ms with its launch; in the kernel 280.4 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 16 of 16 members finished,
+  G 16: losses: 4.878237, 4.396643 (VM 4.878237, 4.396643): worst of 2 1.08e-07 relative, 1/count off by 0.0e+00: ok
+  G 16: gradients (last step): worst 3.50e-05 of its tensor's scale (w.gpt.h0.mlp.fc1.b): ok
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 2 steps, attention in 4 query block(s) a unit, rows in chunks of 96 of 128, shared memory 58848 B
+    fgpt_bed: run 4.798 ms with its launch; in the kernel 301.5 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished,
+  G 32: losses: 4.878237, 4.396643 (VM 4.878237, 4.396643): worst of 2 1.08e-07 relative, 1/count off by 0.0e+00: ok
+  G 32: gradients (last step): worst 3.52e-05 of its tensor's scale (w.gpt.h0.mlp.fc1.b): ok
+  decomposition G 32 against G 16: losses 0.00e+00, gradients 1.26e-05 of scale: ok
+w_small_p k2 G32 rows=80: rc=0
+  VM reference: cached vm-cdd0fb5d5704c230-k2.json
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 2 steps, attention in 4 query block(s) a unit, rows in chunks of 80 of 128, shared memory 51168 B
+    fgpt_bed: run 4.414 ms with its launch; in the kernel 259.4 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished,
+  G 32: losses: 4.878237, 4.396643 (VM 4.878237, 4.396643): worst of 2 1.08e-07 relative, 1/count off by 0.0e+00: ok
+  G 32: gradients (last step): worst 1.64e-05 of its tensor's scale (w.gpt.h1.attn.q.w): ok
+w_small_p k2 G32 rows=48: rc=0
+  VM reference: cached vm-cdd0fb5d5704c230-k2.json
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 2 steps, attention in 4 query block(s) a unit, rows in chunks of 48 of 128, shared memory 48480 B
+    fgpt_bed: run 4.819 ms with its launch; in the kernel 276.7 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished,
+  G 32: losses: 4.878237, 4.396643 (VM 4.878237, 4.396643): worst of 2 1.08e-07 relative, 1/count off by 0.0e+00: ok
+  G 32: gradients (last step): worst 2.83e-05 of its tensor's scale (w.gpt.h0.mlp.fc1.b): ok
+w_small_p k2 G32 rows=112: rc=0
+  VM reference: cached vm-cdd0fb5d5704c230-k2.json
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 2 steps, attention in 4 query block(s) a unit, rows in chunks of 112 of 128, shared memory 66528 
+    fgpt_bed: run 4.396 ms with its launch; in the kernel 258.3 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished,
+  G 32: losses: 4.878237, 4.396643 (VM 4.878237, 4.396643): worst of 2 1.08e-07 relative, 1/count off by 0.0e+00: ok
+  G 32: gradients (last step): worst 5.60e-05 of its tensor's scale (w.gpt.h0.mlp.fc1.b): ok
+w_small k1 G32 rows=96: rc=0
+  VM reference: cached vm-bfef8b9702cace4c-k1.json
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 1 steps, attention in 4 query block(s) a unit, rows in chunks of 96 of 128, shared memory 58848 B
+    fgpt_bed: run 4.481 ms with its launch; in the kernel 295.4 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished,
+  G 32: losses: 4.878223 (VM 4.878237): worst of 1 2.93e-06 relative, 1/count off by 0.0e+00: ok
+  G 32: gradients (last step): worst 1.16e-03 of its tensor's scale (w.gpt.h1.attn.q.b): ok
+w_b4_precise k2 G32 rows=96: rc=0
+  VM reference: cached vm-6f282415f06f5b7f-k2.json
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 2 steps, attention in 2 query block(s) a unit, rows in chunks of 96 of 256, shared memory 63968 B
+    fgpt_bed: run 4.790 ms with its launch; in the kernel 344.5 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished,
+  G 32: losses: 4.874084, 4.359669 (VM 4.874084, 4.359669): worst of 2 1.09e-07 relative, 1/count off by 0.0e+00: ok
+  G 32: gradients (last step): worst 5.38e-05 of its tensor's scale (w.gpt.h1.mlp.fc1.w): ok
+w_b4_precise k2 G32 rows=112: rc=0
+  VM reference: cached vm-6f282415f06f5b7f-k2.json
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 2 steps, attention in 2 query block(s) a unit, rows in chunks of 112 of 256, shared memory 68064 
+    fgpt_bed: run 4.767 ms with its launch; in the kernel 385.0 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished,
+  G 32: losses: 4.874084, 4.359669 (VM 4.874084, 4.359669): worst of 2 1.09e-07 relative, 1/count off by 0.0e+00: ok
+  G 32: gradients (last step): worst 2.44e-04 of its tensor's scale (w.gpt.h1.mlp.fc1.w): ok
+partial chunks: 0 failure(s)

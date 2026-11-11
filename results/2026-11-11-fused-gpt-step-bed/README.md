@@ -84,6 +84,24 @@ two clock states about 1.2x apart, so the table pairs the rounds where both exec
 
 Over all six rounds, the median ratio is x1.12 (gpt-tiny) and x1.13 (gpt-small).
 
+## The gang's barrier
+
+A step crosses 8 L + 6 gang barriers: 14 on gpt-tiny, 26 on gpt-small, whose query blocks add 2 L. The program crosses them on a flag
+line (`kvm_fgpt::cross_line`). Each member publishes its count of crossings in its own word of one 128-byte line, and warp 0 polls the
+whole line, one member a lane. That is one round trip to L2 a crossing, with no atomic. The counter barrier (`kvm_gang::barrier`) waits
+for an atomic's round trip, then a release, then a poll.
+
+| read (RTX 5070) | counter barrier | flag line | ratio |
+|---|---|---|---|
+| one crossing alone, G 32 (`bench/fused_gpt/barrier_bench.cu`, `raw/barrier-bench.log`) | 1,194 ns | 710 ns | x1.68 |
+| the executor, gpt-tiny, us a step (8 rounds in alternating order, `raw/exec-barrier-ab.log`) | 87.3 | 82.3 | x1.06 |
+| the executor, gpt-small | 187.7 | 178.7 | x1.05 |
+
+**Correctness:**
+- The bench's ordering check is clean at every G: after each crossing, every block reads every other block's value.
+- The bed's outputs are bitwise equal over five 50-step runs of each shape (`raw/bed-determinism.log`).
+- Every bar against the VM above holds, unchanged.
+
 ## Limits
 
 - **A laptop GPU, not an A100.** The A100 runs instruction-bound code at a lower clock (1.41 GHz) and tensor math much faster, and its

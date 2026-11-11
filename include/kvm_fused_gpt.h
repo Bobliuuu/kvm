@@ -81,12 +81,15 @@ struct alignas(16) KvmFgptDesc {
 KVM_FGPT_HD inline int kvm_fgpt_unit_grads(int d, int hd) { return 4 * d * hd + 3 * hd; }   // dWq, dWk, dWv [d][hd]; dbq, dbk, dbv [hd]; dWo [hd][d]
 // Attention's work items: each (sequence, head) unit cut into QB query blocks of T / QB rows, so that up to G members share it. Blocks cost
 // two more gang barriers a layer (q, k, v gathered; dK and dV partials summed); on the flag-line barrier they pay wherever a block is whole
-// mma row tiles. The default is the largest power of two with B H QB <= G and T a multiple of 16 QB. On an RTX 5070, gpt-tiny (T = 32) ran
-// x1.06 faster with 2 blocks than with 1 (and 10% slower under the counter barrier, whose crossings cost 1.7x as much).
+// mma row tiles. The default is the largest QB with B H QB <= G and T a multiple of 16 QB, any count, not only a power of two: T = 96
+// takes 3 blocks of 32 rows where powers of two stopped at 2 of 48. On an RTX 5070, gpt-tiny (T = 32) ran x1.06 faster with 2 blocks
+// than with 1 (and 10% slower under the counter barrier, whose crossings cost 1.7x as much); on an A100 the hold-out's d128 draw (T 96,
+// B 2, H 4) ran x1.07 faster with 3 than with 2, in 140,208 B of shared memory a member instead of 164,400.
 KVM_FGPT_HD inline int kvm_fgpt_qblocks(int B, int H, int T, int G) {
-  int q = 1;
-  while ((long long)B * H * q * 2 <= G && T % (16 * q * 2) == 0) q *= 2;
-  return q;
+  int best = 1;
+  for (int q = 2; (long long)B * H * q <= G && 16 * q <= T; ++q)
+    if (T % (16 * q) == 0) best = q;
+  return best;
 }
 // A bound on one member's owned parameter elements: its blocks (fc1's columns, b1 and fc2's rows a layer; wte's rows; the head's
 // columns), its attention slice and its replicated slice.

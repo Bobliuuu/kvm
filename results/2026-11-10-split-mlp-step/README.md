@@ -102,6 +102,6 @@ registers, with no spill.
 ## Not yet done
 
 - **The executor build** and `tests/static/run_check.sh` on the split form: `KVM_CHECK_MLP_HIDDEN=256 KVM_CHECK_MLP_DEPTH=4
-  tests/static/run_check.sh 16 48 107 108` (the panel's mlp256), then width 128 at depth 4. That compares split runs with the CPU golden and with
-  float64 and eager PyTorch, and checks that they repeat bitwise.
+  tests/static/run_check.sh 107 108` (the panel's mlp256, which splits only where 96 members fit), then width 128 at depth 4 at 48 107 108. That
+  compares split runs with the CPU golden and with float64 and eager PyTorch, and checks that they repeat bitwise.
 - **The A100 read** of mlp256-r1 and the hold-out's MLP draws against today's executor.

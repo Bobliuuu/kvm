@@ -96,6 +96,8 @@ KVM_FGPT_HD inline int kvm_fgpt_gang(int N, int d, int H, int F, int V, int L, i
 //    layer l is 2 l, b2 2 l + 1); hgp, each (layer, unit)'s partial of its head's gradients [L][B H][kvm_fgpt_unit_grads(d, hd)], summed by
 //    the head's owner in sequence order after the backward (a unit is QB items: one partial an item); dkv, each item's partials of dK and
 //    dV over its prefix's keys [B H QB][T][2 hd], summed by key block; gn, each member's sum of squares of the gradients it owns.
+//  * olist, osrc: each member's owned parameter elements, decoded once a run ([G][kvm_fgpt_own_stride]): the element as slot << 25 | offset,
+//    and for an attention element the offset of its first item partial in hgp (the end of a step reads one word an element, not a decode).
 //  * dy: a member's own rows of the reduce-scatter's sum.
 KVM_FGPT_HD inline int kvm_fgpt_unit_grads(int d, int hd) { return 4 * d * hd + 3 * hd; }   // dWq, dWk, dWv [d][hd]; dbq, dbk, dbv [hd]; dWo [hd][d]
 // Attention's work items: each (sequence, head) unit cut into QB query blocks of T / QB rows, so that up to G members share it. Blocks cost
@@ -108,10 +110,18 @@ KVM_FGPT_HD inline int kvm_fgpt_qblocks(int B, int H, int T, int G) {
   while ((long long)B * H * q * 2 <= G && T % (16 * q * 2) == 0) q *= 2;
   return q;
 }
+// A bound on one member's owned parameter elements: its blocks (fc1's columns, b1 and fc2's rows a layer; wte's rows; the head's
+// columns), its attention slice and its replicated slice.
+KVM_FGPT_HD inline long long kvm_fgpt_own_stride(int B, int T, int d, int H, int F, int V, int L, int G) {
+  (void)B; (void)T;
+  const long long fp = (F + G - 1) / G, vp = (V + G - 1) / G, hd = H > 0 ? d / H : 0;
+  const long long att = (long long)L * H * (4 * d * hd + 3 * hd), rep = (long long)(2 * L + 1) * 2 * d + 2LL * L * d;
+  return L * (2 * d * fp + fp) + 2 * d * vp + (att + G - 1) / G + (rep + G - 1) / G + 4;
+}
 struct KvmFgptScratch {
   long long x[KVM_FGPT_MAXL + 1], h[KVM_FGPT_MAXL], m1[KVM_FGPT_MAXL], r1[KVM_FGPT_MAXL], q[KVM_FGPT_MAXL], k[KVM_FGPT_MAXL], v[KVM_FGPT_MAXL],
       o[KVM_FGPT_MAXL], lse[KVM_FGPT_MAXL], xm[KVM_FGPT_MAXL], h2[KVM_FGPT_MAXL], m2[KVM_FGPT_MAXL], r2[KVM_FGPT_MAXL], pre[KVM_FGPT_MAXL];
-  long long hf, mf, rf, logits, ce, tl, gx, part, lnp, rpart, hgp, dkv, gn, dy, total;
+  long long hf, mf, rf, logits, ce, tl, gx, part, lnp, rpart, hgp, dkv, olist, osrc, gn, dy, total;
 };
 KVM_FGPT_HD inline KvmFgptScratch kvm_fgpt_scratch(int N, int T, int d, int H, int F, int V, int L, int G, int QB) {
   KvmFgptScratch s{};
@@ -127,7 +137,9 @@ KVM_FGPT_HD inline KvmFgptScratch kvm_fgpt_scratch(int N, int T, int d, int H, i
   s.ce = take((long long)G * N * 2); s.tl = take(N); s.gx = take(Nd); s.part = take((long long)(G > H ? G : H) * Nd);
   s.lnp = take((long long)(2 * L + 1) * G * 2 * d); s.rpart = take((long long)2 * L * G * d);
   const int hd = H > 0 ? d / H : 0, items = (int)B * H * QB;
-  s.hgp = take((long long)L * items * kvm_fgpt_unit_grads(d, hd)); s.dkv = take((long long)items * T * 2 * hd); s.gn = take(G); s.dy = take(Nd);
+  s.hgp = take((long long)L * items * kvm_fgpt_unit_grads(d, hd)); s.dkv = take((long long)items * T * 2 * hd);
+  const long long os = kvm_fgpt_own_stride(T > 0 ? N / T : 0, T, d, H, F, V, L, G);
+  s.olist = take((long long)G * os); s.osrc = take((long long)G * os); s.gn = take(G); s.dy = take(Nd);
   s.total = at;
   return s;
 }

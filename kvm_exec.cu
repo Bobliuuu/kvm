@@ -821,7 +821,7 @@ class KvmExec {
         for (int l = 0; l < r.L; ++l) { d.w[l] = param(r.w[l]); d.b[l] = param(r.b[l]); d.Y[l] = scratch(TH); }
         d.part = scratch(d.L > 1 ? (size_t)d.ka * TH : 1); d.hpart = scratch((size_t)d.kah * d.T * d.VP); d.dlog = scratch((size_t)d.T * d.VP);
         d.dyp = scratch((size_t)std::max(d.nb, 1) * TH); d.dz = scratch(TH); d.dx0 = scratch((size_t)d.nb0 * d.T * d.E); d.rloss = scratch(d.T);
-        d.ctl = reinterpret_cast<unsigned*>(scratch(2));   // zeroed once: the barrier is sense-reversing
+        d.ctl = reinterpret_cast<unsigned*>(scratch(kvm_gang::line_words(d.P)));   // the gang's flag lines, zeroed once (cudaMalloc: 256-byte aligned)
         continue;
       }
       if (r.split) {   // the split form: Q x S members, their partials, the exchanges, the gang's barrier words (kvm_fused_split.h)

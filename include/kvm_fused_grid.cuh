@@ -125,7 +125,7 @@ __device__ __forceinline__ void prefetch_desc(const KvmGridDesc* gd, float* sm) 
   for (int i = threadIdx.x; i < chunks; i += NT) kvm_fmlp::cp_async16(sm + i * 4, reinterpret_cast<const float*>(gd) + i * 4);
 }
 
-// One step of member `member` of a grid run: `ids` and `tgt` are the step's T tokens and targets, `abort` the run's error word (kvm_gang::barrier;
+// One step of member `member` of a grid run: `ids` and `tgt` are the step's T tokens and targets, `abort` the run's error word (kvm_gang::barrier_lines;
 // nullptr in a bed), `loss_out` the step's loss (member 0 writes loss_out[0] = sum / T and loss_out[1] = 1 / T, as softmax_ce_reduce does). The
 // descriptor sits at the arena's base, its cp.async issued by the caller. The members cross 4 L + 2 barriers; the last one ends the step, so every
 // update is visible to every member when any of them returns.
@@ -138,6 +138,7 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
   const int pA = d.pA, pB = d.pB;
   const float lr = d.lr, inv_t = 1.f / (float)T;
   unsigned* const ctl = d.ctl;
+  unsigned epoch = kvm_gang::lines_epoch(ctl, m);   // this member's crossings so far: its own word (consecutive steps join member to member, kvm_fuse.h)
   int* sid = reinterpret_cast<int*>(sm + d.sints);
   int* stg = sid + T;
   float* const A = sm + d.sA;   // [T][pA]: a GEMM's row operand (the embedding rows, a layer's input columns)
@@ -153,7 +154,7 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
   const bool inhd = m < d.kah;
   const int kh0 = inhd ? kvm_grid_off(H, d.kah, m) : 0, wkh = inhd ? kvm_grid_off(H, d.kah, m + 1) - kh0 : 0;
   const int e0 = (int)((long long)m * V / P), e1 = (int)((long long)(m + 1) * V / P);
-  auto cross = [&]() { return kvm_gang::barrier(ctl, P, abort); };
+  auto cross = [&]() { return kvm_gang::barrier_lines(ctl, m, P, epoch, abort); };
 
   // ---- load: the step's tokens and targets, then every block and bias this member holds and (layer 0) the step's embedding rows, behind one wait
   for (int i = tid; i < T; i += NT) { sid[i] = ids[i]; stg[i] = tgt[i]; }

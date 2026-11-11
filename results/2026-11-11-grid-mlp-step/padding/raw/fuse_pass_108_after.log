@@ -1,0 +1,1459 @@
+h48-d1/bundle W=108: 26 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 23, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x48, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h48-d2/bundle W=1: 34 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 31, new tasks 9
+--
+h48-d2/bundle W=108: 34 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 31, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x48x48, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h48-d3/bundle W=1: 42 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 39, new tasks 9
+--
+h48-d3/bundle W=108: 42 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 39, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x48x48x48, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h48-d4/bundle W=1: 50 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 47, new tasks 9
+--
+h48-d4/bundle W=108: 50 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 47, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x48x48x48x48, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h56-d1/bundle W=1: 26 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 23, new tasks 9
+--
+h56-d1/bundle W=108: 26 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 23, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x56, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h56-d2/bundle W=1: 34 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 31, new tasks 9
+--
+h56-d2/bundle W=108: 34 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 31, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x56x56, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h56-d3/bundle W=1: 42 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 39, new tasks 9
+--
+h56-d3/bundle W=108: 42 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 39, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x56x56x56, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h56-d4/bundle W=1: 50 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 47, new tasks 9
+--
+h56-d4/bundle W=108: 50 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 47, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x56x56x56x56, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h64-d1/bundle W=1: 26 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 23, new tasks 9
+--
+h64-d1/bundle W=108: 26 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 23, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x64, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h64-d2/bundle W=1: 34 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 31, new tasks 9
+--
+h64-d2/bundle W=108: 34 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 31, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x64x64, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h64-d3/bundle W=1: 42 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 39, new tasks 9
+--
+h64-d3/bundle W=108: 42 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 39, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x64x64x64, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h64-d4/bundle W=1: 50 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 47, new tasks 15
+--
+h64-d4/bundle W=108: 50 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 47, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x64x64x64x64, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h80-d1/bundle W=1: 33 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 30, new tasks 9
+--
+h80-d1/bundle W=108: 33 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 30, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x80, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h80-d2/bundle W=1: 48 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 45, new tasks 9
+--
+h80-d2/bundle W=108: 48 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 45, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x80x80, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h80-d3/bundle W=1: 63 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 60, new tasks 15
+--
+h80-d3/bundle W=108: 63 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 60, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x80x80x80, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h80-d4/bundle W=1: 78 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h80-d4/bundle W=108: 78 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 75, new tasks 111
+  [1 runs] fused, split form (no slice size fits (44240 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)): 1 steps, T=96 V=100 widths 48x80x80x80x80, gangs of 6 slices x 18 shares = 108 members, 12188 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h88-d1/bundle W=1: 33 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 30, new tasks 9
+--
+h88-d1/bundle W=108: 33 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 30, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x88, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h88-d2/bundle W=1: 48 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 45, new tasks 15
+--
+h88-d2/bundle W=108: 48 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 45, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x88x88, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h88-d3/bundle W=1: 63 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h88-d3/bundle W=108: 63 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 60, new tasks 111
+  [1 runs] fused, split form (no slice size fits (41396 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)): 1 steps, T=96 V=100 widths 48x88x88x88, gangs of 6 slices x 18 shares = 108 members, 11404 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h88-d4/bundle W=1: 78 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h88-d4/bundle W=108: 78 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 75, new tasks 111
+  [1 runs] fused, split form (no slice size fits (51184 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)): 1 steps, T=96 V=100 widths 48x88x88x88x88, gangs of 6 slices x 18 shares = 108 members, 13212 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h96-d1/bundle W=1: 33 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 30, new tasks 9
+--
+h96-d1/bundle W=108: 33 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 30, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x96, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h96-d2/bundle W=1: 48 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 45, new tasks 15
+--
+h96-d2/bundle W=108: 48 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 45, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x96x96, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h96-d3/bundle W=1: 63 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h96-d3/bundle W=108: 63 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 60, new tasks 111
+  [1 runs] fused, split form (no slice size fits (45676 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)): 1 steps, T=96 V=100 widths 48x96x96x96, gangs of 6 slices x 18 shares = 108 members, 11404 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h96-d4/bundle W=1: 78 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h96-d4/bundle W=108: 78 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 75, new tasks 111
+  [1 runs] fused, split form (no slice size fits (56976 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)): 1 steps, T=96 V=100 widths 48x96x96x96x96, gangs of 6 slices x 18 shares = 108 members, 13212 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h104-d1/bundle W=1: 33 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 30, new tasks 9
+--
+h104-d1/bundle W=108: 33 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 30, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x104, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h104-d2/bundle W=1: 48 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 45, new tasks 15
+--
+h104-d2/bundle W=108: 48 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 45, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x104x104, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h104-d3/bundle W=1: 63 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h104-d3/bundle W=108: 63 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 60, new tasks 111
+  [1 runs] fused, split form (no slice size fits (51492 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)): 1 steps, T=96 V=100 widths 48x104x104x104, gangs of 6 slices x 18 shares = 108 members, 12172 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h104-d4/bundle W=1: 78 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h104-d4/bundle W=108: 78 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 75, new tasks 111
+  [1 runs] fused, split form (no slice size fits (64688 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)): 1 steps, T=96 V=100 widths 48x104x104x104x104, gangs of 6 slices x 18 shares = 108 members, 14236 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h112-d1/bundle W=1: 33 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 30, new tasks 9
+--
+h112-d1/bundle W=108: 33 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 30, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x112, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h112-d2/bundle W=1: 48 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h112-d2/bundle W=108: 48 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 45, new tasks 111
+  [1 runs] fused, split form (no slice size fits (41320 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)): 1 steps, T=96 V=100 widths 48x112x112, gangs of 6 slices x 18 shares = 108 members, 14716 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h112-d3/bundle W=1: 63 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h112-d3/bundle W=108: 63 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 60, new tasks 111
+  [1 runs] fused, split form (no slice size fits (56284 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)): 1 steps, T=96 V=100 widths 48x112x112x112, gangs of 6 slices x 18 shares = 108 members, 12172 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h112-d4/bundle W=1: 78 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h112-d4/bundle W=108: 78 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 75, new tasks 111
+  [1 runs] fused, split form (no slice size fits (71248 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)): 1 steps, T=96 V=100 widths 48x112x112x112x112, gangs of 6 slices x 18 shares = 108 members, 14236 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h120-d1/bundle W=1: 33 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 30, new tasks 9
+--
+h120-d1/bundle W=108: 33 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 30, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x120, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h120-d2/bundle W=1: 48 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h120-d2/bundle W=108: 48 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 45, new tasks 111
+  [1 runs] fused, split form (no slice size fits (45496 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)): 1 steps, T=96 V=100 widths 48x120x120, gangs of 6 slices x 18 shares = 108 members, 10620 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h120-d3/bundle W=1: 63 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h120-d3/bundle W=108: 63 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 60, new tasks 111
+  [1 runs] fused, split form (no slice size fits (62612 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)): 1 steps, T=96 V=100 widths 48x120x120x120, gangs of 6 slices x 18 shares = 108 members, 12940 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h120-d4/bundle W=1: 78 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h120-d4/bundle W=108: 78 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 75, new tasks 111
+  [1 runs] fused, split form (no slice size fits (79728 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)): 1 steps, T=96 V=100 widths 48x120x120x120x120, gangs of 6 slices x 18 shares = 108 members, 15260 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h128-d1/bundle W=1: 33 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 30, new tasks 15
+--
+h128-d1/bundle W=108: 33 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 30, new tasks 25
+  [1 runs] fused: 1 steps, T=96 V=100 widths 48x128, 6 slices of 16 rows, 16 reduction owners
+  W=108: planned 25 tasks (0 gangs), predicted makespan 75.6 us (work 494.1 us), 115 cross-worker waits; replayed 25 records
+h128-d2/bundle W=1: 48 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h128-d2/bundle W=108: 48 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 45, new tasks 111
+  [1 runs] fused, split form (no slice size fits (48776 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)): 1 steps, T=96 V=100 widths 48x128x128, gangs of 6 slices x 18 shares = 108 members, 10620 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h128-d3/bundle W=1: 63 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h128-d3/bundle W=108: 63 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 60, new tasks 111
+  [1 runs] fused, split form (no slice size fits (67916 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)): 1 steps, T=96 V=100 widths 48x128x128x128, gangs of 6 slices x 18 shares = 108 members, 12940 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h128-d4/bundle W=1: 78 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h128-d4/bundle W=108: 78 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 75, new tasks 111
+  [1 runs] fused, split form (no slice size fits (87056 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)): 1 steps, T=96 V=100 widths 48x128x128x128x128, gangs of 6 slices x 18 shares = 108 members, 15260 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h136-d1/bundle W=1: 41 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h136-d1/bundle W=108: 41 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 38, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x136, gangs of 6 slices x 18 shares = 108 members, 10860 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h136-d2/bundle W=1: 66 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h136-d2/bundle W=108: 66 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 63, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x136x136, gangs of 6 slices x 18 shares = 108 members, 11132 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h136-d3/bundle W=1: 91 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h136-d3/bundle W=108: 91 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 88, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x136x136x136, gangs of 6 slices x 18 shares = 108 members, 13708 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h136-d4/bundle W=1: 116 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h136-d4/bundle W=108: 116 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 113, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x136x136x136x136, gangs of 6 slices x 18 shares = 108 members, 16284 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h144-d1/bundle W=1: 41 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h144-d1/bundle W=108: 41 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 38, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x144, gangs of 6 slices x 18 shares = 108 members, 10860 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h144-d2/bundle W=1: 66 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h144-d2/bundle W=108: 66 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 63, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x144x144, gangs of 6 slices x 18 shares = 108 members, 11132 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h144-d3/bundle W=1: 91 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h144-d3/bundle W=108: 91 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 88, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x144x144x144, gangs of 6 slices x 18 shares = 108 members, 13708 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h144-d4/bundle W=1: 116 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h144-d4/bundle W=108: 116 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 113, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x144x144x144x144, gangs of 6 slices x 18 shares = 108 members, 16284 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h152-d1/bundle W=1: 41 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h152-d1/bundle W=108: 41 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 38, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x152, gangs of 6 slices x 18 shares = 108 members, 10860 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h152-d2/bundle W=1: 66 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h152-d2/bundle W=108: 66 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 63, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x152x152, gangs of 6 slices x 18 shares = 108 members, 11644 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h152-d3/bundle W=1: 91 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h152-d3/bundle W=108: 91 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 88, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x152x152x152, gangs of 6 slices x 18 shares = 108 members, 14476 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h152-d4/bundle W=1: 116 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h152-d4/bundle W=108: 116 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 113, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x152x152x152x152, gangs of 6 slices x 18 shares = 108 members, 17308 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h160-d1/bundle W=1: 41 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h160-d1/bundle W=108: 41 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 38, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x160, gangs of 6 slices x 18 shares = 108 members, 10860 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h160-d2/bundle W=1: 66 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h160-d2/bundle W=108: 66 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 63, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x160x160, gangs of 6 slices x 18 shares = 108 members, 11644 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h160-d3/bundle W=1: 91 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h160-d3/bundle W=108: 91 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 88, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x160x160x160, gangs of 6 slices x 18 shares = 108 members, 14476 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h160-d4/bundle W=1: 116 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h160-d4/bundle W=108: 116 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 113, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x160x160x160x160, gangs of 6 slices x 18 shares = 108 members, 17308 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h168-d1/bundle W=1: 41 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h168-d1/bundle W=108: 41 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 38, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x168, gangs of 6 slices x 18 shares = 108 members, 10860 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h168-d2/bundle W=1: 66 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h168-d2/bundle W=108: 66 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 63, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x168x168, gangs of 6 slices x 18 shares = 108 members, 12156 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h168-d3/bundle W=1: 91 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h168-d3/bundle W=108: 91 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 88, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x168x168x168, gangs of 6 slices x 18 shares = 108 members, 15244 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h168-d4/bundle W=1: 116 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h168-d4/bundle W=108: 116 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 113, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x168x168x168x168, gangs of 6 slices x 18 shares = 108 members, 18332 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h176-d1/bundle W=1: 41 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h176-d1/bundle W=108: 41 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 38, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x176, gangs of 6 slices x 18 shares = 108 members, 10860 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h176-d2/bundle W=1: 66 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h176-d2/bundle W=108: 66 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 63, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x176x176, gangs of 6 slices x 18 shares = 108 members, 12156 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h176-d3/bundle W=1: 91 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h176-d3/bundle W=108: 91 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 88, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x176x176x176, gangs of 6 slices x 18 shares = 108 members, 15244 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h176-d4/bundle W=1: 116 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h176-d4/bundle W=108: 116 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 113, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x176x176x176x176, gangs of 6 slices x 18 shares = 108 members, 18332 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h184-d1/bundle W=1: 41 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h184-d1/bundle W=108: 41 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 38, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x184, gangs of 6 slices x 18 shares = 108 members, 10860 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h184-d2/bundle W=1: 67 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h184-d2/bundle W=108: 67 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 64, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x184x184, gangs of 6 slices x 18 shares = 108 members, 12668 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h184-d3/bundle W=1: 93 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h184-d3/bundle W=108: 93 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 90, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x184x184x184, gangs of 6 slices x 18 shares = 108 members, 16012 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h184-d4/bundle W=1: 119 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h184-d4/bundle W=108: 119 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 116, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x184x184x184x184, gangs of 6 slices x 18 shares = 108 members, 19356 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h192-d1/bundle W=1: 41 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h192-d1/bundle W=108: 41 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 38, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x192, gangs of 6 slices x 18 shares = 108 members, 10860 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h192-d2/bundle W=1: 67 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h192-d2/bundle W=108: 67 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 64, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x192x192, gangs of 6 slices x 18 shares = 108 members, 12668 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h192-d3/bundle W=1: 93 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h192-d3/bundle W=108: 93 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 90, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x192x192x192, gangs of 6 slices x 18 shares = 108 members, 16012 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h192-d4/bundle W=1: 119 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h192-d4/bundle W=108: 119 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 116, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x192x192x192x192, gangs of 6 slices x 18 shares = 108 members, 19356 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h200-d1/bundle W=1: 48 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h200-d1/bundle W=108: 48 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 45, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x200, gangs of 6 slices x 18 shares = 108 members, 10860 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h200-d2/bundle W=1: 85 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h200-d2/bundle W=108: 85 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 82, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x200x200, gangs of 6 slices x 18 shares = 108 members, 13180 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h200-d3/bundle W=1: 122 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h200-d3/bundle W=108: 122 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 119, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x200x200x200, gangs of 6 slices x 18 shares = 108 members, 16780 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h200-d4/bundle W=1: 159 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h200-d4/bundle W=108: 159 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 156, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x200x200x200x200, gangs of 6 slices x 18 shares = 108 members, 20380 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h208-d1/bundle W=1: 48 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h208-d1/bundle W=108: 48 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 45, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x208, gangs of 6 slices x 18 shares = 108 members, 10860 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h208-d2/bundle W=1: 85 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h208-d2/bundle W=108: 85 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 82, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x208x208, gangs of 6 slices x 18 shares = 108 members, 13180 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h208-d3/bundle W=1: 122 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h208-d3/bundle W=108: 122 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 119, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x208x208x208, gangs of 6 slices x 18 shares = 108 members, 16780 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h208-d4/bundle W=1: 159 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h208-d4/bundle W=108: 159 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 156, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x208x208x208x208, gangs of 6 slices x 18 shares = 108 members, 20380 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h216-d1/bundle W=1: 48 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h216-d1/bundle W=108: 48 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 45, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x216, gangs of 6 slices x 18 shares = 108 members, 10860 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h216-d2/bundle W=1: 85 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h216-d2/bundle W=108: 85 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 82, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x216x216, gangs of 6 slices x 18 shares = 108 members, 13692 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h216-d3/bundle W=1: 122 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h216-d3/bundle W=108: 122 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 119, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x216x216x216, gangs of 6 slices x 18 shares = 108 members, 17548 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h216-d4/bundle W=1: 159 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h216-d4/bundle W=108: 159 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 156, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x216x216x216x216, gangs of 6 slices x 18 shares = 108 members, 21404 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h224-d1/bundle W=1: 48 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h224-d1/bundle W=108: 48 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 45, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x224, gangs of 6 slices x 18 shares = 108 members, 10860 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h224-d2/bundle W=1: 86 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h224-d2/bundle W=108: 86 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 83, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x224x224, gangs of 6 slices x 18 shares = 108 members, 13692 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h224-d3/bundle W=1: 124 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h224-d3/bundle W=108: 124 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 121, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x224x224x224, gangs of 6 slices x 18 shares = 108 members, 17548 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h224-d4/bundle W=1: 162 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h224-d4/bundle W=108: 162 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 159, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x224x224x224x224, gangs of 6 slices x 18 shares = 108 members, 21404 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h232-d1/bundle W=1: 48 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h232-d1/bundle W=108: 48 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 45, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x232, gangs of 6 slices x 18 shares = 108 members, 10860 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h232-d2/bundle W=1: 86 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h232-d2/bundle W=108: 86 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 83, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x232x232, gangs of 6 slices x 18 shares = 108 members, 14204 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h232-d3/bundle W=1: 124 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h232-d3/bundle W=108: 124 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 121, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x232x232x232, gangs of 6 slices x 18 shares = 108 members, 18316 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h232-d4/bundle W=1: 162 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h232-d4/bundle W=108: 162 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 159, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x232x232x232x232, gangs of 6 slices x 18 shares = 108 members, 22428 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h240-d1/bundle W=1: 48 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h240-d1/bundle W=108: 48 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 45, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x240, gangs of 6 slices x 18 shares = 108 members, 10860 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h240-d2/bundle W=1: 86 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h240-d2/bundle W=108: 86 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 83, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x240x240, gangs of 6 slices x 18 shares = 108 members, 14204 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h240-d3/bundle W=1: 124 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h240-d3/bundle W=108: 124 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 121, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x240x240x240, gangs of 6 slices x 18 shares = 108 members, 18316 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h240-d4/bundle W=1: 162 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h240-d4/bundle W=108: 162 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 159, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x240x240x240x240, gangs of 6 slices x 18 shares = 108 members, 22428 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h248-d1/bundle W=1: 48 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h248-d1/bundle W=108: 48 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 45, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x248, gangs of 6 slices x 18 shares = 108 members, 10860 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h248-d2/bundle W=1: 86 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h248-d2/bundle W=108: 86 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 83, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x248x248, gangs of 6 slices x 18 shares = 108 members, 14716 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h248-d3/bundle W=1: 124 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h248-d3/bundle W=108: 124 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 121, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x248x248x248, gangs of 6 slices x 18 shares = 108 members, 19084 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h248-d4/bundle W=1: 162 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h248-d4/bundle W=108: 162 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 159, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x248x248x248x248, gangs of 6 slices x 18 shares = 108 members, 23452 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h264-d1/bundle W=1: 57 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h264-d1/bundle W=108: 57 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 54, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x264, gangs of 6 slices x 18 shares = 108 members, 10860 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h264-d2/bundle W=1: 110 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h264-d2/bundle W=108: 110 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 107, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x264x264, gangs of 6 slices x 18 shares = 108 members, 15228 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h264-d3/bundle W=1: 163 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h264-d3/bundle W=108: 163 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 160, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x264x264x264, gangs of 6 slices x 18 shares = 108 members, 19852 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h264-d4/bundle W=1: 216 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h264-d4/bundle W=108: 216 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 213, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x264x264x264x264, gangs of 6 slices x 18 shares = 108 members, 24476 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h272-d1/bundle W=1: 57 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h272-d1/bundle W=108: 57 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 54, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x272, gangs of 6 slices x 18 shares = 108 members, 10860 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h272-d2/bundle W=1: 110 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h272-d2/bundle W=108: 110 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 107, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x272x272, gangs of 6 slices x 18 shares = 108 members, 15228 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h272-d3/bundle W=1: 163 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h272-d3/bundle W=108: 163 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 160, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x272x272x272, gangs of 6 slices x 18 shares = 108 members, 19852 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h272-d4/bundle W=1: 216 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h272-d4/bundle W=108: 216 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 213, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x272x272x272x272, gangs of 6 slices x 18 shares = 108 members, 24476 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h280-d1/bundle W=1: 57 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h280-d1/bundle W=108: 57 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 54, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x280, gangs of 6 slices x 18 shares = 108 members, 10860 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h280-d2/bundle W=1: 110 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h280-d2/bundle W=108: 110 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 107, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x280x280, gangs of 6 slices x 18 shares = 108 members, 15740 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h280-d3/bundle W=1: 163 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h280-d3/bundle W=108: 163 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 160, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x280x280x280, gangs of 6 slices x 18 shares = 108 members, 20620 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h280-d4/bundle W=1: 216 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h280-d4/bundle W=108: 216 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 213, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x280x280x280x280, gangs of 6 slices x 18 shares = 108 members, 25500 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h288-d1/bundle W=1: 57 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h288-d1/bundle W=108: 57 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 54, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x288, gangs of 6 slices x 18 shares = 108 members, 10860 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h288-d2/bundle W=1: 111 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h288-d2/bundle W=108: 111 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 108, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x288x288, gangs of 6 slices x 18 shares = 108 members, 15740 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h288-d3/bundle W=1: 165 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h288-d3/bundle W=108: 165 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 162, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x288x288x288, gangs of 6 slices x 18 shares = 108 members, 20620 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h288-d4/bundle W=1: 219 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h288-d4/bundle W=108: 219 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 216, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x288x288x288x288, gangs of 6 slices x 18 shares = 108 members, 25500 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h296-d1/bundle W=1: 57 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h296-d1/bundle W=108: 57 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 54, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x296, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h296-d2/bundle W=1: 111 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h296-d2/bundle W=108: 111 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 108, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x296x296, gangs of 6 slices x 18 shares = 108 members, 24732 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h296-d3/bundle W=1: 165 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h296-d3/bundle W=108: 165 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 162, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x296x296x296, gangs of 6 slices x 18 shares = 108 members, 35004 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h296-d4/bundle W=1: 219 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h296-d4/bundle W=108: 219 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 216, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 45276 floats a member, at 10 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x296x296x296x296, gangs of 108 members (layer 0 1 x 19, hidden 19 x 3, head 19 x 1), 28704 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h304-d1/bundle W=1: 57 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h304-d1/bundle W=108: 57 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 54, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x304, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h304-d2/bundle W=1: 111 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h304-d2/bundle W=108: 111 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 108, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x304x304, gangs of 6 slices x 18 shares = 108 members, 24732 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h304-d3/bundle W=1: 165 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h304-d3/bundle W=108: 165 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 162, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x304x304x304, gangs of 6 slices x 18 shares = 108 members, 35004 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h304-d4/bundle W=1: 219 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h304-d4/bundle W=108: 219 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 216, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 45276 floats a member, at 10 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x304x304x304x304, gangs of 108 members (layer 0 1 x 19, hidden 19 x 3, head 19 x 1), 28704 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h312-d1/bundle W=1: 57 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h312-d1/bundle W=108: 57 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 54, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x312, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h312-d2/bundle W=1: 111 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h312-d2/bundle W=108: 111 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 108, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x312x312, gangs of 6 slices x 18 shares = 108 members, 25500 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h312-d3/bundle W=1: 165 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h312-d3/bundle W=108: 165 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 162, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x312x312x312, gangs of 6 slices x 18 shares = 108 members, 36284 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h312-d4/bundle W=1: 219 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h312-d4/bundle W=108: 219 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 216, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 47068 floats a member, at 10 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x312x312x312x312, gangs of 108 members (layer 0 1 x 20, hidden 20 x 3, head 20 x 1), 28368 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h320-d1/bundle W=1: 57 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h320-d1/bundle W=108: 57 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 54, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x320, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h320-d2/bundle W=1: 112 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h320-d2/bundle W=108: 112 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 109, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x320x320, gangs of 6 slices x 18 shares = 108 members, 25500 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h320-d3/bundle W=1: 167 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h320-d3/bundle W=108: 167 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 164, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x320x320x320, gangs of 6 slices x 18 shares = 108 members, 36284 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h320-d4/bundle W=1: 222 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h320-d4/bundle W=108: 222 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 219, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 47068 floats a member, at 10 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x320x320x320x320, gangs of 108 members (layer 0 1 x 20, hidden 20 x 3, head 20 x 1), 28368 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h328-d1/bundle W=1: 64 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h328-d1/bundle W=108: 64 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 61, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x328, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h328-d2/bundle W=1: 134 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h328-d2/bundle W=108: 134 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 131, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x328x328, gangs of 6 slices x 18 shares = 108 members, 26268 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h328-d3/bundle W=1: 204 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h328-d3/bundle W=108: 204 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 201, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x328x328x328, gangs of 6 slices x 18 shares = 108 members, 37564 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h328-d4/bundle W=1: 274 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h328-d4/bundle W=108: 274 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 271, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 48860 floats a member, at 12 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x328x328x328x328, gangs of 108 members (layer 0 1 x 21, hidden 21 x 3, head 21 x 1), 28368 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h336-d1/bundle W=1: 64 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h336-d1/bundle W=108: 64 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 61, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x336, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h336-d2/bundle W=1: 107 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h336-d2/bundle W=108: 107 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 104, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x336x336, gangs of 6 slices x 18 shares = 108 members, 26268 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h336-d3/bundle W=1: 150 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h336-d3/bundle W=108: 150 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 147, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x336x336x336, gangs of 6 slices x 18 shares = 108 members, 37564 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h336-d4/bundle W=1: 193 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h336-d4/bundle W=108: 193 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 190, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 48860 floats a member, at 12 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x336x336x336x336, gangs of 108 members (layer 0 1 x 21, hidden 21 x 3, head 21 x 1), 28368 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h344-d1/bundle W=1: 65 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h344-d1/bundle W=108: 65 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 62, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x344, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h344-d2/bundle W=1: 109 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h344-d2/bundle W=108: 109 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 106, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x344x344, gangs of 6 slices x 18 shares = 108 members, 27036 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h344-d3/bundle W=1: 153 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h344-d3/bundle W=108: 153 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 150, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 38844 floats a member, at 12 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x344x344x344, gangs of 108 members (layer 0 1 x 22, hidden 22 x 3, head 22 x 1), 28080 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h344-d4/bundle W=1: 197 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h344-d4/bundle W=108: 197 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 194, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 50652 floats a member, at 12 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x344x344x344x344, gangs of 108 members (layer 0 1 x 22, hidden 22 x 3, head 22 x 1), 30960 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h352-d1/bundle W=1: 65 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h352-d1/bundle W=108: 65 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 62, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x352, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h352-d2/bundle W=1: 109 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h352-d2/bundle W=108: 109 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 106, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x352x352, gangs of 6 slices x 18 shares = 108 members, 27036 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h352-d3/bundle W=1: 153 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h352-d3/bundle W=108: 153 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 150, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 38844 floats a member, at 12 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x352x352x352, gangs of 108 members (layer 0 1 x 22, hidden 22 x 3, head 22 x 1), 28080 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h352-d4/bundle W=1: 197 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h352-d4/bundle W=108: 197 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 194, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 50652 floats a member, at 12 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x352x352x352x352, gangs of 108 members (layer 0 1 x 22, hidden 22 x 3, head 22 x 1), 30960 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h360-d1/bundle W=1: 65 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h360-d1/bundle W=108: 65 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 62, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x360, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h360-d2/bundle W=1: 109 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h360-d2/bundle W=108: 109 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 106, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x360x360, gangs of 6 slices x 18 shares = 108 members, 27804 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h360-d3/bundle W=1: 153 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h360-d3/bundle W=108: 153 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 150, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 40124 floats a member, at 12 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x360x360x360, gangs of 108 members (layer 0 1 x 23, hidden 23 x 3, head 23 x 1), 28080 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h360-d4/bundle W=1: 197 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h360-d4/bundle W=108: 197 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 194, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 52444 floats a member, at 12 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x360x360x360x360, gangs of 108 members (layer 0 1 x 23, hidden 23 x 3, head 23 x 1), 30960 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h368-d1/bundle W=1: 65 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h368-d1/bundle W=108: 65 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 62, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x368, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h368-d2/bundle W=1: 110 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h368-d2/bundle W=108: 110 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 107, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x368x368, gangs of 6 slices x 18 shares = 108 members, 27804 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h368-d3/bundle W=1: 155 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h368-d3/bundle W=108: 155 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 152, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 40124 floats a member, at 12 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x368x368x368, gangs of 108 members (layer 0 1 x 23, hidden 23 x 3, head 23 x 1), 28080 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h368-d4/bundle W=1: 200 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h368-d4/bundle W=108: 200 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 197, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 52444 floats a member, at 12 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x368x368x368x368, gangs of 108 members (layer 0 1 x 23, hidden 23 x 3, head 23 x 1), 30960 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h376-d1/bundle W=1: 65 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h376-d1/bundle W=108: 65 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 62, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x376, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h376-d2/bundle W=1: 110 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h376-d2/bundle W=108: 110 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 107, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x376x376, gangs of 6 slices x 18 shares = 108 members, 28572 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h376-d3/bundle W=1: 155 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h376-d3/bundle W=108: 155 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 152, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 41404 floats a member, at 12 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x376x376x376, gangs of 108 members (layer 0 1 x 24, hidden 24 x 3, head 24 x 1), 27824 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h376-d4/bundle W=1: 200 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h376-d4/bundle W=108: 200 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 197, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 54236 floats a member, at 12 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x376x376x376x376, gangs of 108 members (layer 0 1 x 24, hidden 24 x 3, head 24 x 1), 30576 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h384-d1/bundle W=1: 65 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h384-d1/bundle W=108: 65 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 62, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x384, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h384-d2/bundle W=1: 110 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h384-d2/bundle W=108: 110 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 107, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x384x384, gangs of 6 slices x 18 shares = 108 members, 28572 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h384-d3/bundle W=1: 155 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h384-d3/bundle W=108: 155 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 152, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 41404 floats a member, at 12 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x384x384x384, gangs of 108 members (layer 0 1 x 24, hidden 24 x 3, head 24 x 1), 27824 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h384-d4/bundle W=1: 200 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h384-d4/bundle W=108: 200 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 197, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 54236 floats a member, at 12 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x384x384x384x384, gangs of 108 members (layer 0 1 x 24, hidden 24 x 3, head 24 x 1), 30576 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h392-d1/bundle W=1: 73 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h392-d1/bundle W=108: 73 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 70, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x392, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h392-d2/bundle W=1: 163 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h392-d2/bundle W=108: 163 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 160, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x392x392, gangs of 6 slices x 18 shares = 108 members, 29340 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h392-d3/bundle W=1: 253 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h392-d3/bundle W=108: 253 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 250, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 42684 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x392x392x392, gangs of 108 members (layer 0 1 x 25, hidden 25 x 4, head 25 x 1), 25616 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h392-d4/bundle W=1: 343 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h392-d4/bundle W=108: 343 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 340, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 56028 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x392x392x392x392, gangs of 108 members (layer 0 1 x 25, hidden 25 x 4, head 25 x 1), 28032 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h400-d1/bundle W=1: 73 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h400-d1/bundle W=108: 73 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 70, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x400, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h400-d2/bundle W=1: 163 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h400-d2/bundle W=108: 163 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 160, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x400x400, gangs of 6 slices x 18 shares = 108 members, 29340 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h400-d3/bundle W=1: 253 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h400-d3/bundle W=108: 253 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 250, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 42684 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x400x400x400, gangs of 108 members (layer 0 1 x 25, hidden 25 x 4, head 25 x 1), 25616 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h400-d4/bundle W=1: 343 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h400-d4/bundle W=108: 343 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 340, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 56028 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x400x400x400x400, gangs of 108 members (layer 0 1 x 25, hidden 25 x 4, head 25 x 1), 28032 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h408-d1/bundle W=1: 73 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h408-d1/bundle W=108: 73 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 70, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x408, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h408-d2/bundle W=1: 164 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h408-d2/bundle W=108: 164 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 161, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x408x408, gangs of 6 slices x 18 shares = 108 members, 30108 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h408-d3/bundle W=1: 255 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h408-d3/bundle W=108: 255 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 252, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 43964 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x408x408x408, gangs of 108 members (layer 0 1 x 26, hidden 26 x 4, head 26 x 1), 25616 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h408-d4/bundle W=1: 346 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h408-d4/bundle W=108: 346 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 343, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 57820 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x408x408x408x408, gangs of 108 members (layer 0 1 x 26, hidden 26 x 4, head 26 x 1), 28032 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h416-d1/bundle W=1: 73 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h416-d1/bundle W=108: 73 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 70, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x416, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h416-d2/bundle W=1: 164 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h416-d2/bundle W=108: 164 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 161, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x416x416, gangs of 6 slices x 18 shares = 108 members, 30108 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h416-d3/bundle W=1: 255 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h416-d3/bundle W=108: 255 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 252, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 43964 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x416x416x416, gangs of 108 members (layer 0 1 x 26, hidden 26 x 4, head 26 x 1), 25616 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h416-d4/bundle W=1: 346 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h416-d4/bundle W=108: 346 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 343, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 57820 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x416x416x416x416, gangs of 108 members (layer 0 1 x 26, hidden 26 x 4, head 26 x 1), 28032 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h424-d1/bundle W=1: 73 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h424-d1/bundle W=108: 73 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 70, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x424, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h424-d2/bundle W=1: 164 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h424-d2/bundle W=108: 164 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 161, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x424x424, gangs of 6 slices x 18 shares = 108 members, 30876 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h424-d3/bundle W=1: 255 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h424-d3/bundle W=108: 255 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 252, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 45244 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x424x424x424, gangs of 108 members (layer 0 1 x 27, hidden 27 x 4, head 27 x 1), 25616 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h424-d4/bundle W=1: 346 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h424-d4/bundle W=108: 346 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 343, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 59612 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x424x424x424x424, gangs of 108 members (layer 0 1 x 27, hidden 27 x 4, head 27 x 1), 28032 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h432-d1/bundle W=1: 73 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h432-d1/bundle W=108: 73 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 70, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x432, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h432-d2/bundle W=1: 165 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h432-d2/bundle W=108: 165 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 162, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x432x432, gangs of 6 slices x 18 shares = 108 members, 30876 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h432-d3/bundle W=1: 257 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h432-d3/bundle W=108: 257 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 254, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 45244 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x432x432x432, gangs of 108 members (layer 0 1 x 27, hidden 27 x 4, head 27 x 1), 25616 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h432-d4/bundle W=1: 349 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h432-d4/bundle W=108: 349 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 346, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 59612 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x432x432x432x432, gangs of 108 members (layer 0 1 x 27, hidden 27 x 4, head 27 x 1), 28032 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h440-d1/bundle W=1: 73 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h440-d1/bundle W=108: 73 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 70, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x440, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h440-d2/bundle W=1: 165 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h440-d2/bundle W=108: 165 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 162, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x440x440, gangs of 6 slices x 18 shares = 108 members, 31644 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h440-d3/bundle W=1: 257 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h440-d3/bundle W=108: 257 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 254, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 46524 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x440x440x440, gangs of 108 members (layer 0 1 x 28, hidden 27 x 4, head 28 x 1), 29328 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h440-d4/bundle W=1: 349 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h440-d4/bundle W=108: 349 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 346, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 61404 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x440x440x440x440, gangs of 108 members (layer 0 1 x 28, hidden 27 x 4, head 28 x 1), 33600 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h448-d1/bundle W=1: 73 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h448-d1/bundle W=108: 73 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 70, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x448, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h448-d2/bundle W=1: 133 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h448-d2/bundle W=108: 133 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 130, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x448x448, gangs of 6 slices x 18 shares = 108 members, 31644 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h448-d3/bundle W=1: 193 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h448-d3/bundle W=108: 193 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 190, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 46524 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x448x448x448, gangs of 108 members (layer 0 1 x 28, hidden 27 x 4, head 28 x 1), 29328 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h448-d4/bundle W=1: 253 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h448-d4/bundle W=108: 253 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 250, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 61404 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x448x448x448x448, gangs of 108 members (layer 0 1 x 28, hidden 27 x 4, head 28 x 1), 33600 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h456-d1/bundle W=1: 80 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h456-d1/bundle W=108: 80 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 77, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x456, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h456-d2/bundle W=1: 146 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h456-d2/bundle W=108: 146 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 143, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x456x456, gangs of 6 slices x 18 shares = 108 members, 32412 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h456-d3/bundle W=1: 212 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h456-d3/bundle W=108: 212 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 209, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 47804 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x456x456x456, gangs of 108 members (layer 0 1 x 29, hidden 27 x 4, head 29 x 1), 32048 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h456-d4/bundle W=1: 278 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h456-d4/bundle W=108: 278 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 275, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 63196 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x456x456x456x456, gangs of 108 members (layer 0 1 x 29, hidden 27 x 4, head 29 x 1), 36912 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h464-d1/bundle W=1: 80 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h464-d1/bundle W=108: 80 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 77, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x464, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h464-d2/bundle W=1: 147 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h464-d2/bundle W=108: 147 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 144, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x464x464, gangs of 6 slices x 18 shares = 108 members, 32412 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h464-d3/bundle W=1: 214 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h464-d3/bundle W=108: 214 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 211, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 47804 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x464x464x464, gangs of 108 members (layer 0 1 x 29, hidden 27 x 4, head 29 x 1), 32048 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h464-d4/bundle W=1: 281 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h464-d4/bundle W=108: 281 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 278, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 63196 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x464x464x464x464, gangs of 108 members (layer 0 1 x 29, hidden 27 x 4, head 29 x 1), 36912 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h472-d1/bundle W=1: 80 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h472-d1/bundle W=108: 80 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 77, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x472, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h472-d2/bundle W=1: 147 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h472-d2/bundle W=108: 147 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 144, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x472x472, gangs of 6 slices x 18 shares = 108 members, 33180 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h472-d3/bundle W=1: 214 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h472-d3/bundle W=108: 214 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 211, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 49084 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x472x472x472, gangs of 108 members (layer 0 1 x 30, hidden 27 x 4, head 30 x 1), 32048 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h472-d4/bundle W=1: 281 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h472-d4/bundle W=108: 281 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 278, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 64988 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x472x472x472x472, gangs of 108 members (layer 0 1 x 30, hidden 27 x 4, head 30 x 1), 36912 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h480-d1/bundle W=1: 80 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h480-d1/bundle W=108: 80 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 77, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x480, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h480-d2/bundle W=1: 148 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h480-d2/bundle W=108: 148 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 145, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x480x480, gangs of 6 slices x 18 shares = 108 members, 33180 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h480-d3/bundle W=1: 216 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h480-d3/bundle W=108: 216 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 213, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 49084 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x480x480x480, gangs of 108 members (layer 0 1 x 30, hidden 27 x 4, head 30 x 1), 32048 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h480-d4/bundle W=1: 284 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h480-d4/bundle W=108: 284 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 281, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 64988 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x480x480x480x480, gangs of 108 members (layer 0 1 x 30, hidden 27 x 4, head 30 x 1), 36912 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h488-d1/bundle W=1: 80 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h488-d1/bundle W=108: 80 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 77, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x488, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h488-d2/bundle W=1: 148 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h488-d2/bundle W=108: 148 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 145, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x488x488, gangs of 6 slices x 18 shares = 108 members, 33948 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h488-d3/bundle W=1: 216 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h488-d3/bundle W=108: 216 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 213, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 50364 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x488x488x488, gangs of 108 members (layer 0 1 x 31, hidden 27 x 4, head 31 x 1), 32048 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h488-d4/bundle W=1: 284 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h488-d4/bundle W=108: 284 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 281, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 66780 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x488x488x488x488, gangs of 108 members (layer 0 1 x 31, hidden 27 x 4, head 31 x 1), 36912 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h496-d1/bundle W=1: 80 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h496-d1/bundle W=108: 80 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 77, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x496, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h496-d2/bundle W=1: 149 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h496-d2/bundle W=108: 149 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 146, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x496x496, gangs of 6 slices x 18 shares = 108 members, 33948 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h496-d3/bundle W=1: 218 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h496-d3/bundle W=108: 218 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 215, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 50364 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x496x496x496, gangs of 108 members (layer 0 1 x 31, hidden 27 x 4, head 31 x 1), 32048 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h496-d4/bundle W=1: 287 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h496-d4/bundle W=108: 287 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 284, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 66780 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x496x496x496x496, gangs of 108 members (layer 0 1 x 31, hidden 27 x 4, head 31 x 1), 36912 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h504-d1/bundle W=1: 80 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h504-d1/bundle W=108: 80 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 77, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x504, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h504-d2/bundle W=1: 149 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h504-d2/bundle W=108: 149 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 146, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x504x504, gangs of 6 slices x 18 shares = 108 members, 34716 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h504-d3/bundle W=1: 218 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h504-d3/bundle W=108: 218 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 215, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 51644 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x504x504x504, gangs of 108 members (layer 0 1 x 32, hidden 27 x 4, head 32 x 1), 32048 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h504-d4/bundle W=1: 287 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h504-d4/bundle W=108: 287 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 284, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 68572 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x504x504x504x504, gangs of 108 members (layer 0 1 x 32, hidden 27 x 4, head 32 x 1), 36912 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h512-d1/bundle W=1: 80 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h512-d1/bundle W=108: 80 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 77, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x512, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h512-d2/bundle W=1: 149 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h512-d2/bundle W=108: 149 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 146, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x512x512, gangs of 6 slices x 18 shares = 108 members, 34716 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h512-d3/bundle W=1: 218 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h512-d3/bundle W=108: 218 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 215, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 51644 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x512x512x512, gangs of 108 members (layer 0 1 x 32, hidden 27 x 4, head 32 x 1), 32048 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h512-d4/bundle W=1: 287 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h512-d4/bundle W=108: 287 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 284, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 68572 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x512x512x512x512, gangs of 108 members (layer 0 1 x 32, hidden 27 x 4, head 32 x 1), 36912 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h520-d1/bundle W=1: 89 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h520-d1/bundle W=108: 89 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 86, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x520, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h520-d2/bundle W=1: 229 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h520-d2/bundle W=108: 229 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 226, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x520x520, gangs of 6 slices x 18 shares = 108 members, 35484 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h520-d3/bundle W=1: 369 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h520-d3/bundle W=108: 369 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 366, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 52924 floats a member, at 18 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x520x520x520, gangs of 108 members (layer 0 1 x 33, hidden 21 x 5, head 33 x 1), 29552 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h520-d4/bundle W=1: 509 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h520-d4/bundle W=108: 509 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 506, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 70364 floats a member, at 18 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x520x520x520x520, gangs of 108 members (layer 0 1 x 33, hidden 21 x 5, head 33 x 1), 33936 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h528-d1/bundle W=1: 89 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h528-d1/bundle W=108: 89 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 86, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x528, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h528-d2/bundle W=1: 230 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h528-d2/bundle W=108: 230 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 227, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x528x528, gangs of 6 slices x 18 shares = 108 members, 35484 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h528-d3/bundle W=1: 371 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h528-d3/bundle W=108: 371 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 368, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 52924 floats a member, at 18 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x528x528x528, gangs of 108 members (layer 0 1 x 33, hidden 21 x 5, head 33 x 1), 29552 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h528-d4/bundle W=1: 512 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h528-d4/bundle W=108: 512 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 509, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 70364 floats a member, at 18 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x528x528x528x528, gangs of 108 members (layer 0 1 x 33, hidden 21 x 5, head 33 x 1), 33936 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h536-d1/bundle W=1: 89 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h536-d1/bundle W=108: 89 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 86, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x536, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h536-d2/bundle W=1: 230 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h536-d2/bundle W=108: 230 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 227, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x536x536, gangs of 6 slices x 18 shares = 108 members, 36252 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h536-d3/bundle W=1: 371 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h536-d3/bundle W=108: 371 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 368, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 54204 floats a member, at 18 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x536x536x536, gangs of 108 members (layer 0 1 x 34, hidden 21 x 5, head 34 x 1), 29552 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h536-d4/bundle W=1: 512 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h536-d4/bundle W=108: 512 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 509, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 72156 floats a member, at 18 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x536x536x536x536, gangs of 108 members (layer 0 1 x 34, hidden 21 x 5, head 34 x 1), 33936 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h544-d1/bundle W=1: 89 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h544-d1/bundle W=108: 89 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 86, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x544, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h544-d2/bundle W=1: 231 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h544-d2/bundle W=108: 231 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 228, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x544x544, gangs of 6 slices x 18 shares = 108 members, 36252 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h544-d3/bundle W=1: 373 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h544-d3/bundle W=108: 373 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 370, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 54204 floats a member, at 18 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x544x544x544, gangs of 108 members (layer 0 1 x 34, hidden 21 x 5, head 34 x 1), 29552 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h544-d4/bundle W=1: 515 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h544-d4/bundle W=108: 515 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 512, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 72156 floats a member, at 18 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x544x544x544x544, gangs of 108 members (layer 0 1 x 34, hidden 21 x 5, head 34 x 1), 33936 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h552-d1/bundle W=1: 89 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h552-d1/bundle W=108: 89 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 86, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x552, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h552-d2/bundle W=1: 231 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h552-d2/bundle W=108: 231 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 228, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x552x552, gangs of 6 slices x 18 shares = 108 members, 37020 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h552-d3/bundle W=1: 373 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h552-d3/bundle W=108: 373 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 370, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 55484 floats a member, at 18 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x552x552x552, gangs of 108 members (layer 0 1 x 35, hidden 21 x 5, head 35 x 1), 29552 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h552-d4/bundle W=1: 515 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h552-d4/bundle W=108: 515 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 512, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 73948 floats a member, at 18 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x552x552x552x552, gangs of 108 members (layer 0 1 x 35, hidden 21 x 5, head 35 x 1), 33936 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h560-d1/bundle W=1: 89 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h560-d1/bundle W=108: 89 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 86, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x560, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h560-d2/bundle W=1: 176 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h560-d2/bundle W=108: 176 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 173, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x560x560, gangs of 6 slices x 18 shares = 108 members, 37020 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h560-d3/bundle W=1: 263 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h560-d3/bundle W=108: 263 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 260, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 55484 floats a member, at 18 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x560x560x560, gangs of 108 members (layer 0 1 x 35, hidden 21 x 5, head 35 x 1), 29552 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h560-d4/bundle W=1: 350 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h560-d4/bundle W=108: 350 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 347, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 73948 floats a member, at 18 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x560x560x560x560, gangs of 108 members (layer 0 1 x 35, hidden 21 x 5, head 35 x 1), 33936 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h568-d1/bundle W=1: 89 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h568-d1/bundle W=108: 89 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 86, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x568, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h568-d2/bundle W=1: 176 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h568-d2/bundle W=108: 176 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 173, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x568x568, gangs of 6 slices x 18 shares = 108 members, 37788 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h568-d3/bundle W=1: 263 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h568-d3/bundle W=108: 263 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 260, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 56764 floats a member, at 18 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x568x568x568, gangs of 108 members (layer 0 1 x 36, hidden 21 x 5, head 36 x 1), 32304 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h568-d4/bundle W=1: 350 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h568-d4/bundle W=108: 350 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 347, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 75740 floats a member, at 18 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x568x568x568x568, gangs of 108 members (layer 0 1 x 36, hidden 21 x 5, head 36 x 1), 37296 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h576-d1/bundle W=1: 89 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h576-d1/bundle W=108: 89 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 86, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x576, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h576-d2/bundle W=1: 177 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h576-d2/bundle W=108: 177 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 174, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x576x576, gangs of 6 slices x 18 shares = 108 members, 37788 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h576-d3/bundle W=1: 265 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h576-d3/bundle W=108: 265 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 262, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 56764 floats a member, at 18 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x576x576x576, gangs of 108 members (layer 0 1 x 36, hidden 21 x 5, head 36 x 1), 32304 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h576-d4/bundle W=1: 353 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h576-d4/bundle W=108: 353 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 350, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 75740 floats a member, at 18 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x576x576x576x576, gangs of 108 members (layer 0 1 x 36, hidden 21 x 5, head 36 x 1), 37296 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h584-d1/bundle W=1: 96 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h584-d1/bundle W=108: 96 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 93, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x584, gangs of 6 slices x 18 shares = 108 members, 12940 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h584-d2/bundle W=1: 188 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h584-d2/bundle W=108: 188 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 185, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 51644 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x584x584, gangs of 108 members (layer 0 1 x 37, hidden 21 x 5, head 37 x 1), 27312 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h584-d3/bundle W=1: 280 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h584-d3/bundle W=108: 280 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 277, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 80876 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x584x584x584, gangs of 108 members (layer 0 1 x 37, hidden 21 x 5, head 37 x 1), 32304 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h584-d4/bundle W=1: 372 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h584-d4/bundle W=108: 372 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 369, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 110108 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x584x584x584x584, gangs of 108 members (layer 0 1 x 37, hidden 21 x 5, head 37 x 1), 37296 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h592-d1/bundle W=1: 96 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h592-d1/bundle W=108: 96 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 93, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x592, gangs of 6 slices x 18 shares = 108 members, 12940 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h592-d2/bundle W=1: 189 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h592-d2/bundle W=108: 189 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 186, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 51644 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x592x592, gangs of 108 members (layer 0 1 x 37, hidden 21 x 5, head 37 x 1), 27312 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h592-d3/bundle W=1: 282 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h592-d3/bundle W=108: 282 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 279, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 80876 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x592x592x592, gangs of 108 members (layer 0 1 x 37, hidden 21 x 5, head 37 x 1), 32304 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h592-d4/bundle W=1: 375 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h592-d4/bundle W=108: 375 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 372, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 110108 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x592x592x592x592, gangs of 108 members (layer 0 1 x 37, hidden 21 x 5, head 37 x 1), 37296 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h600-d1/bundle W=1: 96 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h600-d1/bundle W=108: 96 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 93, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x600, gangs of 6 slices x 18 shares = 108 members, 12940 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h600-d2/bundle W=1: 189 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h600-d2/bundle W=108: 189 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 186, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 52668 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x600x600, gangs of 108 members (layer 0 1 x 38, hidden 21 x 5, head 38 x 1), 27312 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h600-d3/bundle W=1: 282 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h600-d3/bundle W=108: 282 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 279, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 82668 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x600x600x600, gangs of 108 members (layer 0 1 x 38, hidden 21 x 5, head 38 x 1), 32304 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h600-d4/bundle W=1: 375 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h600-d4/bundle W=108: 375 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 372, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 112668 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x600x600x600x600, gangs of 108 members (layer 0 1 x 38, hidden 21 x 5, head 38 x 1), 37296 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h608-d1/bundle W=1: 96 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h608-d1/bundle W=108: 96 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 93, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x608, gangs of 6 slices x 18 shares = 108 members, 12940 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h608-d2/bundle W=1: 190 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h608-d2/bundle W=108: 190 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 187, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 52668 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x608x608, gangs of 108 members (layer 0 1 x 38, hidden 21 x 5, head 38 x 1), 27312 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h608-d3/bundle W=1: 284 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h608-d3/bundle W=108: 284 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 281, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 82668 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x608x608x608, gangs of 108 members (layer 0 1 x 38, hidden 21 x 5, head 38 x 1), 32304 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h608-d4/bundle W=1: 378 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h608-d4/bundle W=108: 378 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 375, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 112668 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x608x608x608x608, gangs of 108 members (layer 0 1 x 38, hidden 21 x 5, head 38 x 1), 37296 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h616-d1/bundle W=1: 96 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h616-d1/bundle W=108: 96 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 93, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x616, gangs of 6 slices x 18 shares = 108 members, 12940 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h616-d2/bundle W=1: 191 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h616-d2/bundle W=108: 191 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 188, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 53692 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x616x616, gangs of 108 members (layer 0 1 x 39, hidden 21 x 5, head 39 x 1), 27312 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h616-d3/bundle W=1: 286 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h616-d3/bundle W=108: 286 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 283, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 84460 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x616x616x616, gangs of 108 members (layer 0 1 x 39, hidden 21 x 5, head 39 x 1), 32304 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h616-d4/bundle W=1: 381 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h616-d4/bundle W=108: 381 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 378, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 115228 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x616x616x616x616, gangs of 108 members (layer 0 1 x 39, hidden 21 x 5, head 39 x 1), 37296 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h624-d1/bundle W=1: 96 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h624-d1/bundle W=108: 96 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 93, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x624, gangs of 6 slices x 18 shares = 108 members, 12940 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h624-d2/bundle W=1: 191 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h624-d2/bundle W=108: 191 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 188, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 53692 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x624x624, gangs of 108 members (layer 0 1 x 39, hidden 21 x 5, head 39 x 1), 27312 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h624-d3/bundle W=1: 286 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h624-d3/bundle W=108: 286 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 283, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 84460 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x624x624x624, gangs of 108 members (layer 0 1 x 39, hidden 21 x 5, head 39 x 1), 32304 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h624-d4/bundle W=1: 381 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h624-d4/bundle W=108: 381 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 378, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 115228 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x624x624x624x624, gangs of 108 members (layer 0 1 x 39, hidden 21 x 5, head 39 x 1), 37296 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h632-d1/bundle W=1: 96 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h632-d1/bundle W=108: 96 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 93, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x632, gangs of 6 slices x 18 shares = 108 members, 12940 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h632-d2/bundle W=1: 192 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h632-d2/bundle W=108: 192 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 189, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 54716 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x632x632, gangs of 108 members (layer 0 1 x 40, hidden 21 x 5, head 40 x 1), 27312 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h632-d3/bundle W=1: 288 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h632-d3/bundle W=108: 288 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 285, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 86252 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x632x632x632, gangs of 108 members (layer 0 1 x 40, hidden 21 x 5, head 40 x 1), 32304 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h632-d4/bundle W=1: 384 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h632-d4/bundle W=108: 384 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 381, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 117788 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x632x632x632x632, gangs of 108 members (layer 0 1 x 40, hidden 21 x 5, head 40 x 1), 37296 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h640-d1/bundle W=1: 96 tasks, 24 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h640-d1/bundle W=108: 96 tasks, 24 buffers -> fused runs 1, unchanged runs 0, replaced tasks 93, new tasks 111
+  [1 runs] fused, split form (layer width not a multiple of 8 up to 128): 1 steps, T=96 V=100 widths 48x640, gangs of 6 slices x 18 shares = 108 members, 12940 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 44.6 us (work 4326.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h640-d2/bundle W=1: 192 tasks, 31 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h640-d2/bundle W=108: 192 tasks, 31 buffers -> fused runs 1, unchanged runs 0, replaced tasks 189, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 54716 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x640x640, gangs of 108 members (layer 0 1 x 40, hidden 21 x 5, head 40 x 1), 27312 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h640-d3/bundle W=1: 288 tasks, 38 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h640-d3/bundle W=108: 288 tasks, 38 buffers -> fused runs 1, unchanged runs 0, replaced tasks 285, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 86252 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x640x640x640, gangs of 108 members (layer 0 1 x 40, hidden 21 x 5, head 40 x 1), 32304 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+h640-d4/bundle W=1: 384 tasks, 45 buffers -> fused runs 0, unchanged runs 1, replaced tasks 0, new tasks 0
+--
+h640-d4/bundle W=108: 384 tasks, 45 buffers -> fused runs 1, unchanged runs 0, replaced tasks 381, new tasks 111
+  [1 runs] fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 117788 floats a member, at 16 shares, limit 38400, gangs of at most 108 workers)): 1 steps, T=96 V=100 widths 48x640x640x640x640, gangs of 108 members (layer 0 1 x 40, hidden 21 x 5, head 40 x 1), 37296 floats a member
+  W=108: planned 111 tasks (1 gangs), predicted makespan 64.6 us (work 6486.1 us), 214 cross-worker waits; replayed 111 records, every gang's barrier crossed
+OK

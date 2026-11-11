@@ -15,7 +15,7 @@ from .ir import Builder, FrontendError, LogicalOp, Tensor
 from .opset import ATTN_BLOCK, ATTN_Q, F_ACC, F_BIG, F_DGELU, F_EXACT, F_GELU, F_HUGE, F_PRECISE, F_TA, F_TB, F_TRUNC, MM_TILE, MMA_TILE, mm_dims, op as device_op
 
 
-_A100 = dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, row_tasks=16)   # the a100 presets below are this tiling plus one change each, so none can drift from it
+_A100 = dict(rows=128, ew_rows=128, cols=256, vocab=2048, opt_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, row_tasks=16)   # a100_pre and a100_trunc are this tiling plus one change each, so neither can drift from it
 
 @dataclass(frozen=True)
 class Tiling:

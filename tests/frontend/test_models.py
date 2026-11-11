@@ -190,8 +190,8 @@ class Features(unittest.TestCase):
             Tiling.preset('cpu', tf32_preround=True, tf32_trunc=True)
 
     def test_tf32_preround_scopes_copies_by_phase_and_caps_their_size(self):
-        # 'phase': a value read by forward and backward GEMMs gets one copy in each phase, so no copy outlives its phase; 'value' (the
-        # default) shares one copy across phases. The same GEMMs read copies either way. A GEMM with an operand copy above
+        # 'phase': a value read by forward and backward GEMMs gets one copy in each phase; 'value' (the default) shares one copy across
+        # phases. The same GEMMs read copies either way. A GEMM with an operand copy above
         # tf32_copy_max_bytes keeps rounding in its tiles: no flag 1024 and no copy for it.
         wide = models.LlamaConfig(**{**SMALL.__dict__, 'vocab': 256, 'd_model': 256, 'heads': 4, 'kv_heads': 2, 'ffn': 256, 'batch': 8, 'seq': 32})
         base = dict(mm_tile=256, mm_min_tiles=1, mm_min_eff=0.0, mm_huge_min_tiles=1, mm_huge_min_k=1, tf32_preround=True)

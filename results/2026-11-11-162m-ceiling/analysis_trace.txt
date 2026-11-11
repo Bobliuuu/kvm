@@ -1,0 +1,29 @@
+tasks 58634, workers 107, first start -> last end 240.3 ms, sum of task run times 8782 CTA-ms, busy 34.2%
+                      n  cta_ms  mean_us  qwait_us
+op                                                
+matmul_mma_bf16   30910  3512.7    113.6     726.8
+attn_bwd_dkv       4608   958.1    207.9     512.9
+round_bf16         7214   774.8    107.4     139.4
+attn_bwd_dq        4608   608.2    132.0     458.4
+adamw               881   543.1    616.4    1299.5
+attn_fwd           4608   404.3     87.7     162.0
+colsum              324   297.2    917.4      34.6
+rope_bwd            768   265.5    345.7     377.7
+rope_fwd            768   249.5    324.9     121.2
+gelu_bwd            384   220.1    573.1     166.1
+layernorm_bwd_dx    800   189.0    236.2      33.0
+norm_bwd_params      75   177.9   2372.5      45.3
+softmax_ce_bwd       32   151.0   4718.7      31.4
+attn_bwd_delta      384   116.6    303.7      29.9
+worker-time: running 34.4%; idle with a ready task waiting 19.5%; idle with nothing ready 46.1%
+backlog (>=100 ready): 47 ms, running 58, 458 starts/ms = 2.18 us per start; best 1 ms window 636 starts
+ready->start wait: median 141 us, mean 524 us
+dependency levels 390; critical path with measured run times and zero hop cost 77.2 ms
+list schedule (greedy, tape order), same tasks and measured run times:
+  107 workers, hop 0 us, one start per 0 us: 108.1 ms
+  107 workers, hop 7 us, one start per 0 us: 109.4 ms
+  107 workers, hop 28 us, one start per 0 us: 116.0 ms
+  107 workers, hop 0 us, one start per 1.6 us: 130.8 ms
+  107 workers, hop 0 us, one start per 2.2 us: 159.6 ms
+  matmul tiles x0.45 (cuBLAS-class efficiency): zero overhead 92.7 ms, one start per 1.6 us 128.0 ms
+  matmul x0.45, attention x0.5: zero overhead 81.1 ms, one start per 1.6 us 124.5 ms

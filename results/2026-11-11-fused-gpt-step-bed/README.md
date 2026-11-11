@@ -19,7 +19,7 @@ The executor runs the same program on a kernel of its own: [In the executor](#in
 
 ## Correctness
 
-Precise mode (3xTF32, so the trajectories stay comparable), 2 steps:
+Precise mode (3xTF32), 2 steps:
 
 | row | G | losses against the VM | worst gradient, of its tensor's scale | worst moment | G against the first G |
 |---|---|---|---|---|---|
@@ -33,8 +33,10 @@ The default 1xTF32 numerics, as the panel runs them:
 | gpt-tiny, all 50 steps, G 4: every step's loss against the VM | worst 6.73e-4 relative (first 4.14605 against 4.14604, last 1.24525 against 1.24471) |
 | one step, gradients and moments against the VM | gpt-tiny G 4: 9.5e-4 to 1.05e-3 of scale; gpt-small G 32: 1.16e-3 to 1.35e-3 |
 
-After the first AdamW update the 1xTF32 trajectories part from the VM's float32 one. The update is about lr x sign(g), and TF32 noise
-flips the sign where a gradient is near zero. So later steps' gradients are reported, not judged, element by element.
+After the first AdamW update the trajectories part from the VM's, in either numerics. The update is about lr x sign(g), and rounding
+flips its sign where a gradient is near zero, float32's as well as TF32's. On these two rows precise mode stayed within the bars over 2
+steps; a d128 GPT did not (within 3.8e-6 of scale after one step, 9.2e-4 after two: Reach, below). So the bed judges gradients, moments
+and the gang sizes against each other after one step, and a longer run by its losses; after more steps they are reported.
 
 ## Time
 
@@ -105,6 +107,9 @@ Under the counter barrier, 2 blocks had made gpt-tiny 10% slower.
 **Correctness:**
 - The bench's ordering check is clean at every G: after each crossing, every block reads every other block's value.
 - The bed's outputs are bitwise equal over five 50-step runs of each shape (`raw/bed-determinism.log`).
+- On `kvm_gang::barrier_lines` in place of this branch's own copy of the flag line, every output stays bitwise equal
+  (`raw/restack-bitwise.log`), and the executor's step is no slower: gpt-tiny 76.3 to 74.9 us over the 3 pairs where both arms ran in the
+  fast clock state, gpt-small 182.3 to 174.0 over 1 (`raw/restack-exec-paired.log`, a loaded laptop; unverified).
 - Every bar against the VM above holds, unchanged.
 - A member's fault ends the gang (`fgpt_bed ... fault=M:F`, `raw/abort.log`): one member given too little shared memory fails a phase
   before the first crossing, or after about ten. Every other member then leaves at its next crossing: error word 5, no member
@@ -141,6 +146,9 @@ The rest need the weights themselves streamed: at d 512 a member's MLP slices al
 | a batch-4 gpt-small (N 256: 128-row chunks by the fit), bed, precise | losses within 1.1e-7 of the VM's; after one step, gradients within 2.3e-6 of scale |
 | the same, the executor, 1xTF32, 3 steps | fused, losses within 7.0e-5 of the VM's |
 | the executor on the panel rows, us a step (8 paired rounds, against the previous head) | gpt-tiny 78.3 to 75.9 (x1.032), gpt-small 179.2 to 177.4 (x1.010); with the bias corrections' table, now filled once a run |
+| chunks whose last one is shorter (N not a multiple of the chunk, as a hold-out d128 on an A100: 128 + 64 rows), precise, against the VM (`raw/row-chunks-shorter-last.log`) | gpt-small at 96, 80, 48 and 112 rows, the batch-4 at 96 and 112: losses within 1.1e-7 over 2 steps (unverified) |
+| a d128 GPT (4 layers, 4 heads of 32, T 64, B 2: N 128, V 256; 64-row chunks by the fit), the widest the draw makes that fits this card (`raw/d128.log`) | bed, precise: after one step, gradients within 3.8e-6 of scale and moments within 6.7e-6; losses within 1.8e-7 over 2 steps. The executor, 1xTF32, 3 steps: fused, losses within 2.6e-4 of the VM's (unverified) |
+| the same d128, time (`raw/d128-time.log`) | the executor 790-808 us a step over 30 steps in the fast clock state (1,000-1,021 in the slow); the bed's phase clock 827 us at 2.40 GHz, of which the MLP's backward 21%, AdamW 14%, the attention's and the replicated parameters' sums 10% (unverified) |
 
 ## Limits
 

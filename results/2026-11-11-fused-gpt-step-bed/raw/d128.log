@@ -1,0 +1,51 @@
+# a d128 GPT (4 layers, 4 heads of 32, T 64, B 2: N 128, V 256), the widest the hold-out draws that fits an RTX 5070, judged against the workload VM
+# 1. as first run: bed precise 2 steps (G 16 is refused by the fit: no row chunk fits a member of 16), rows=48, bed 1xTF32 1 step, the executor 1xTF32 3 steps
+bed precise k2 G16,32 (fit): rc=1
+  VM reference: running the bundle's first 2 step(s) on the workload VM (pure Python; minutes on gpt-small)
+  VM reference: done in 202 s, cached as vm-c54527615033fd22-k2.json
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 2 steps, attention in 4 query block(s) a unit, rows in chunks of 64 of 128, shared memory 89696 B a member, scratch 21.95 MB, 1
+    fgpt_bed: run 7.841 ms with its launch; in the kernel 1808.9 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 2
+  G 32: losses: 5.535549, 5.250422 (VM 5.535549, 5.250423): worst of 2 1.82e-07 relative, 1/count off by 0.0e+00: ok
+  G 32: gradients (last step): worst 9.21e-04 of its tensor's scale (w.gpt.h0.mlp.fc1.w): FAIL
+  FAILED: 2
+bed precise k2 G32 rows=48: rc=1
+  VM reference: cached vm-c54527615033fd22-k2.json
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 2 steps, attention in 4 query block(s) a unit, rows in chunks of 48 of 128, shared memory 89696 B a member, scratch 21.95 MB, 1
+    fgpt_bed: run 9.081 ms with its launch; in the kernel 2054.8 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 2
+  G 32: losses: 5.535549, 5.250423 (VM 5.535549, 5.250423): worst of 2 9.08e-08 relative, 1/count off by 0.0e+00: ok
+  G 32: gradients (last step): worst 9.21e-04 of its tensor's scale (w.gpt.h0.mlp.fc1.w): FAIL
+  FAILED: 1
+bed tf32 k1 G32: rc=0
+  VM reference: running the bundle's first 1 step(s) on the workload VM (pure Python; minutes on gpt-small)
+  VM reference: done in 98 s, cached as vm-26c34e3e54386c1d-k1.json
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 1 steps, attention in 4 query block(s) a unit, rows in chunks of 64 of 128, shared memory 89696 B a member, scratch 21.95 MB, 1
+    fgpt_bed: run 4.955 ms with its launch; in the kernel 797.5 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 1
+  G 32: losses: 5.535548 (VM 5.535549): worst of 1 2.58e-07 relative, 1/count off by 0.0e+00: ok
+  G 32: gradients (last step): worst 1.10e-03 of its tensor's scale (w.gpt.h3.attn.k.w): ok
+executor tf32 3 steps: rc=0
+  VM reference: running the bundle's first 3 step(s) on the workload VM (pure Python; minutes on gpt-small)
+  VM reference: done in 295 s, cached as vm-26c34e3e54386c1d-k3.json
+    [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang)
+    [kvm_exec][I] fuse gpt: run 0: a gang of 32, 3 steps, attention in 4 query block(s) a unit, rows in chunks of 64 of 128, 21.95 MB of scratch, 89696 bytes of shared memory a member
+  exec: losses: 5.535552, 5.250449, 5.060037 (VM 5.535549, 5.250423, 5.061368): worst of 3 2.63e-04 relative, 1/count off by 0.0e+00: ok
+d128: 2 failure(s)
+# 2. precise, one step (before AdamW's first update parts the trajectories)
+1. bed precise k1 G32: rc=0
+  VM reference: running the bundle's first 1 step(s) on the workload VM (pure Python; minutes on gpt-small)
+  VM reference: done in 99 s, cached as vm-c54527615033fd22-k1.json
+  G 32: losses: 5.535549 (VM 5.535549): worst of 1 0.00e+00 relative, 1/count off by 0.0e+00: ok
+  G 32: gradients (last step): worst 3.84e-06 of its tensor's scale (w.gpt.h3.attn.k.b): ok
+  G 32: first moments (last step): worst 3.40e-06 of its tensor's scale (w.gpt.h3.attn.k.b): ok
+  G 32: second moments (last step): worst 6.73e-06 of its tensor's scale (w.gpt.h3.attn.k.b): ok
+  G 32: weights (reported): largest difference 0.05 x lr (w.gpt.h0.mlp.fc2.w)
+# 3. the judge's one-step rule (fgpt_bed.py after this change), on the same runs
+d128 precise, 2 steps: gradients reported, losses judged: ok (rc 0; 'gradients (last step): worst .* reported (after AdamW steps)')
+    G 32: gradients (last step): worst 9.21e-04 of its tensor's scale (w.gpt.h0.mlp.fc1.w): reported (after AdamW steps)
+d128 precise, 1 step: gradients judged: ok (rc 0; 'gradients (last step): worst .*: ok')
+    G 32: gradients (last step): worst 3.84e-06 of its tensor's scale (w.gpt.h3.attn.k.b): ok
+d128 precise, 1 step, tol 1e-6 (a bar the 3.8e-6 must fail): ok (rc 1; 'gradients (last step): worst .*: FAIL')
+    G 32: gradients (last step): worst 3.84e-06 of its tensor's scale (w.gpt.h3.attn.k.b): FAIL
+gpt-small precise, 2 steps, G 16 and 32: decomposition reported: ok (rc 0; 'decomposition G 32 against G 16: .* reported (after AdamW steps)')
+    G 32: gradients (last step): worst 6.78e-05 of its tensor's scale (w.gpt.h0.mlp.fc1.b): reported (after AdamW steps)
+    decomposition G 32 against G 16: losses 0.00e+00, gradients 1.52e-05 of scale: reported (after AdamW steps)
+judge check: 0 failure(s)

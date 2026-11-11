@@ -1022,12 +1022,26 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
     }
 }
 
-// Out-of-line copy of each big-tile variant for the 256x128 task's two passes (see matmul_tile). Inlined into a pass LOOP the tile spilled 28 KB (a third
-// slower), as a function it keeps its own register allocation.
+// Out-of-line copy of the 256x128 tile (see matmul_tile): inlined, it shares the register budget with everything around it; as a function
+// it keeps its own, as long as no call site in the kernel holds values live across a call (see mm_tile_big_2pass_ni).
 template <bool TA, bool TB, bool PREC, int WM, int WN, int WTN, bool BF, bool RZ>
 __device__ __noinline__ void mm_tile_big_ni(const float* A, int lda, const float* B, int ldb, float* out, int ldo, const float* bias, const float* res,
                                             int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, int act, bool accum) {
     mm_tile_big<TA, TB, PREC, WM, WN, WTN, BF, RZ>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, act, accum);
+}
+
+// Both passes of a 256x128 task with bf16 operands or 3xTF32 (two 128x128 tiles, rows m0 and m0 + 128) in one out-of-line function, with
+// the tile inlined in each, so that no call keeps anything live across it. Values live across any call site cost every out-of-line function
+// of the kernel registers in its loops: a pass loop in matmul_tile around two out-of-line calls held the passes' arguments live across
+// them, and the plain 256x128 tile's K-loop then reloaded 6 to 55 spills a slab inside matmul_tile, against none without that loop.
+template <bool TA, bool TB, bool PREC, bool BF>
+__device__ __noinline__ void mm_tile_big_2pass_ni(const float* A, int lda, const float* B, int ldb, float* out, int ldo, const float* bias,
+                                                  const float* res, int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha,
+                                                  int act, bool accum) {
+    mm_tile_big<TA, TB, PREC, 2, 4, 32, BF, false>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, act, accum);
+    if (m0 + 128 >= M) return;
+    __syncthreads();   // the second pass reuses the shared-memory ring
+    mm_tile_big<TA, TB, PREC, 2, 4, 32, BF, false>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0 + 128, n0, M, N, K, alpha, act, accum);
 }
 
 KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
@@ -1067,6 +1081,7 @@ KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
 #define KVM_GPT_ONE_BIG(F, TA, TB, P, BF, RZ) F<TA, TB, P, 2, 4, 32, BF, RZ>(KVM_GPT_ARGS)   // 8 warps as 2 (m) x 4 (n), 64 x 32 each
 #define KVM_GPT_ONE_HUGE(F, TA, TB, P, BF, RZ) F<TA, TB, P, 4, 2, 64, BF, RZ>(KVM_GPT_ARGS)   // 8 warps as 4 (m) x 2 (n), 64 x 64 each
 #define KVM_GPT_ONE_64(F, TA, TB, P, BF, RZ) F<TA, TB, P, BF, RZ>(KVM_GPT_ARGS)
+#define KVM_GPT_ONE_2PASS(F, TA, TB, P, BF, RZ) F<TA, TB, P, BF>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, act, accum)
 #define KVM_GPT_MM_T(ONE, F, P, BF, RZ)                                                                                         \
     if (!ta && !tb) ONE(F, false, false, P, BF, RZ); else if (ta && !tb) ONE(F, true, false, P, BF, RZ);                       \
     else if (!ta && tb) ONE(F, false, true, P, BF, RZ); else ONE(F, true, true, P, BF, RZ)
@@ -1085,13 +1100,10 @@ KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
         if (rz) { KVM_GPT_MM_T(KVM_GPT_ONE_HUGE, mm_tile_big_ni, false, false, true); }
         else { KVM_GPT_MM_T(KVM_GPT_ONE_HUGE, mm_tile_big_ni, false, false, false); }
     } else if (huge) {
-        // 256x128 task with bf16 operands or 3xTF32: two 128x128 passes, rows m0 and m0+128 (their warp tiles do not fit 128 accumulators plus the 3xTF32 lows).
-        for (int pass = 0; pass < 2; pass++) {
-            const int mm0 = m0 + 128 * pass;
-            if (mm0 >= M) break;
-            if (pass) __syncthreads();   // the second pass reuses the shared-memory ring
-            KVM_GPT_MM_BIG(mm_tile_big_ni)
-        }
+        // 256x128 task with bf16 operands or 3xTF32: two 128x128 passes, rows m0 and m0+128 (their warp tiles do not fit 128 accumulators plus the
+        // 3xTF32 lows), in one out-of-line call. The flag checks above leave bf16 operands or 3xTF32 here, never truncated or exact operands.
+        if (bf) { KVM_GPT_MM_T(KVM_GPT_ONE_2PASS, mm_tile_big_2pass_ni, false, true, false); }
+        else { KVM_GPT_MM_T(KVM_GPT_ONE_2PASS, mm_tile_big_2pass_ni, true, false, false); }
     } else {
         const int mm0 = m0;
         if (bf) { KVM_GPT_MM_T(KVM_GPT_ONE_64, mm_tile, false, true, false); }
@@ -1102,6 +1114,7 @@ KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
 #undef KVM_GPT_MM_BIG
 #undef KVM_GPT_MM_T
 #undef KVM_GPT_ONE_64
+#undef KVM_GPT_ONE_2PASS
 #undef KVM_GPT_ONE_BIG
 #undef KVM_GPT_ONE_HUGE
 #undef KVM_GPT_ARGS

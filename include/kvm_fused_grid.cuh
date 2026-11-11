@@ -44,6 +44,81 @@ __device__ __forceinline__ float sum_cg(const float* p, size_t stride, int n) {
   return acc[0];
 }
 
+// A GEMM for a narrow output (more 16-row blocks than 16-column blocks): warps over row blocks, each warp every column block of its rows, so a
+// 96 x 16 output runs on 6 warps where kvm_fmlp::gemm (one warp a column block) runs it on 1. Each output takes the same fragments and the same
+// k order as in kvm_fmlp::gemm, so the results are bitwise its own. Operands as there: A row-major (TA: stored [k][m]), B (TB: stored [n][k]);
+// M and N multiples of 16 (N = 16 NCB), K a multiple of 8. SGD: C -= lr * (A B).
+template <bool TA, bool TB, int NCB, bool SGD>
+__device__ __forceinline__ void gemm_tall_n(const float* A, int lda, const float* B, int ldb, float* C, int ldc, int M, int K, float lr) {
+  const int nrb = M >> 4, warp = threadIdx.x >> 5, lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3, la = lane & 7, b3 = (lane >> 3) & 1, b4 = lane >> 4;
+  const int tla = t * lda, tla4 = (t + 4) * lda, tlb = t * ldb, tlb4 = (t + 4) * ldb;
+  for (int rb = warp; rb < nrb; rb += NT / 32) {
+    const int m0 = rb * 16 + g;
+    const int a_ld = TA ? m0 : (rb * 16 + la + 8 * b3) * lda + 4 * b4;
+    float acc[NCB][2][4];
+#pragma unroll
+    for (int c = 0; c < NCB; ++c)
+#pragma unroll
+      for (int j = 0; j < 2; ++j) acc[c][j][0] = acc[c][j][1] = acc[c][j][2] = acc[c][j][3] = 0.f;
+    int ka = 0, kb = 0;
+    const int dka = TA ? 8 * lda : 0, dkb = TB ? 0 : 8 * ldb;
+    for (int kk = 0; kk < K; kk += 8, ka += dka, kb += dkb) {
+      unsigned a[4];
+      if constexpr (TA) {
+        const int i0 = ka + tla, i4 = ka + tla4;
+        a[0] = kvm_fmlp::tf32_in(A[i0 + a_ld]); a[1] = kvm_fmlp::tf32_in(A[i0 + a_ld + 8]); a[2] = kvm_fmlp::tf32_in(A[i4 + a_ld]); a[3] = kvm_fmlp::tf32_in(A[i4 + a_ld + 8]);
+      } else {
+        kvm_fmlp::ldmatrix_x4(a, A + a_ld + kk);
+        a[0] = kvm_fmlp::tf32_round(a[0]); a[1] = kvm_fmlp::tf32_round(a[1]); a[2] = kvm_fmlp::tf32_round(a[2]); a[3] = kvm_fmlp::tf32_round(a[3]);
+      }
+#pragma unroll
+      for (int c = 0; c < NCB; ++c) {
+        unsigned b00, b01, b10, b11;
+        if constexpr (TB) {
+          unsigned r[4]; kvm_fmlp::ldmatrix_x4(r, B + (c * 16 + la + 8 * b4) * ldb + 4 * b3 + kk);
+          b00 = kvm_fmlp::tf32_round(r[0]); b01 = kvm_fmlp::tf32_round(r[1]); b10 = kvm_fmlp::tf32_round(r[2]); b11 = kvm_fmlp::tf32_round(r[3]);
+        } else {
+          const int n0 = c * 16 + g;
+          b00 = kvm_fmlp::tf32_in(B[kb + tlb + n0]); b01 = kvm_fmlp::tf32_in(B[kb + tlb4 + n0]); b10 = kvm_fmlp::tf32_in(B[kb + tlb + n0 + 8]); b11 = kvm_fmlp::tf32_in(B[kb + tlb4 + n0 + 8]);
+        }
+        kvm_fmlp::mma_tf32(acc[c][0], a, b00, b01);
+        kvm_fmlp::mma_tf32(acc[c][1], a, b10, b11);
+      }
+    }
+#pragma unroll
+    for (int c = 0; c < NCB; ++c) {
+      float* c0 = C + (size_t)m0 * ldc + c * 16 + 2 * t; float* c1 = C + (size_t)(m0 + 8) * ldc + c * 16 + 2 * t;
+#pragma unroll
+      for (int j = 0; j < 2; ++j) {
+        if constexpr (SGD) {
+          float2* p0 = reinterpret_cast<float2*>(c0 + j * 8); float2* p1 = reinterpret_cast<float2*>(c1 + j * 8);
+          float2 u = *p0, v = *p1;
+          u.x -= lr * acc[c][j][0]; u.y -= lr * acc[c][j][1]; v.x -= lr * acc[c][j][2]; v.y -= lr * acc[c][j][3];
+          *p0 = u; *p1 = v;
+        } else {
+          *reinterpret_cast<float2*>(c0 + j * 8) = make_float2(acc[c][j][0], acc[c][j][1]);
+          *reinterpret_cast<float2*>(c1 + j * 8) = make_float2(acc[c][j][2], acc[c][j][3]);
+        }
+      }
+    }
+  }
+}
+// gemm_tall_n with its column-block count picked at run time: N is 16 to 128 (the layout bounds every narrow output of a grid step: layer 0's
+// columns, the embedding width, the head's rows). No barrier at its end, like kvm_fmlp::gemm: a caller whose next reader is another warp syncs.
+template <bool TA, bool TB, bool SGD = false>
+__device__ __forceinline__ void gemm_tall(const float* A, int lda, const float* B, int ldb, float* C, int ldc, int M, int N, int K, float lr = 0.f) {
+  switch (N >> 4) {
+    case 1: gemm_tall_n<TA, TB, 1, SGD>(A, lda, B, ldb, C, ldc, M, K, lr); break;
+    case 2: gemm_tall_n<TA, TB, 2, SGD>(A, lda, B, ldb, C, ldc, M, K, lr); break;
+    case 3: gemm_tall_n<TA, TB, 3, SGD>(A, lda, B, ldb, C, ldc, M, K, lr); break;
+    case 4: gemm_tall_n<TA, TB, 4, SGD>(A, lda, B, ldb, C, ldc, M, K, lr); break;
+    case 5: gemm_tall_n<TA, TB, 5, SGD>(A, lda, B, ldb, C, ldc, M, K, lr); break;
+    case 6: gemm_tall_n<TA, TB, 6, SGD>(A, lda, B, ldb, C, ldc, M, K, lr); break;
+    case 7: gemm_tall_n<TA, TB, 7, SGD>(A, lda, B, ldb, C, ldc, M, K, lr); break;
+    default: gemm_tall_n<TA, TB, 8, SGD>(A, lda, B, ldb, C, ldc, M, K, lr); break;   // N = 128: the layout's widest block (KVM_GRID_MAXN)
+  }
+}
+
 // The descriptor is copied to the arena's base before the task's waits, so its round trip overlaps them; grid_run commits and waits for it.
 __device__ __forceinline__ void prefetch_desc(const KvmGridDesc* gd, float* sm) {
   const int chunks = (int)((sizeof(KvmGridDesc) + 15) / 16);
@@ -101,7 +176,7 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
 
   // ---- forward, layer 0: its columns for every row, kept as gelu'(Z), written as H
   if (in0) {
-    kvm_fmlp::gemm<false, false, NRB, false, NRB>(A, pA, sm + d.sW0, d.pW0, B, pB, T, w0, E);
+    gemm_tall<false, false>(A, pA, sm + d.sW0, d.pW0, B, pB, T, w0, E);
     __syncthreads();
     const float* b0 = sm + d.sb0; float* g0 = sm + d.sg0; float* Y0 = d.Y[0];
     kvm_fmlp::for_cells(T, w0, [&](int r, int c) { float f, g; kvm_fmlp::gelu_fg(B[r * pB + c] + b0[c], f, g); g0[r * w0 + c] = g; Y0[(size_t)r * H + c0 + c] = f; });
@@ -169,7 +244,7 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
   if (inhd) {
     kvm_fsplit::load_rows(B, pB, d.dlog, VP, T, VP);
     __syncthreads();
-    kvm_fmlp::gemm<false, true, NRB, false, NRB>(B, pB, sm + d.sWh, d.pWh, d.dyp + kh0, H, T, wkh, VP);      // dlogits Wh_block^T
+    gemm_tall<false, true>(B, pB, sm + d.sWh, d.pWh, d.dyp + kh0, H, T, wkh, VP);                         // dlogits Wh_block^T
     __syncthreads();
     kvm_fmlp::gemm_m<true, false, true>(A, pA, B, pB, sm + d.sWh, d.pWh, wkh, VP, T, lr);                    // Wh_block -= lr H^T dlogits
   }
@@ -208,9 +283,9 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
     kvm_fmlp::for_cells(T, E >> 2, [&](int r, int c4) { kvm_fmlp::cp_async16(A + r * pA + 4 * c4, d.emb + (size_t)sid[r] * E + 4 * c4); });   // X0 again: rows not yet updated
     kvm_fmlp::cp_commit_wait();
     __syncthreads();
-    kvm_fmlp::gemm<false, true, NRB, false, NRB>(B, pB, sm + d.sW0, d.pW0, d.dx0 + (size_t)m * T * E, E, T, E, w0);   // dZ W0_block^T
+    gemm_tall<false, true>(B, pB, sm + d.sW0, d.pW0, d.dx0 + (size_t)m * T * E, E, T, E, w0);                      // dZ W0_block^T
     __syncthreads();
-    kvm_fmlp::gemm_m<true, false, true>(A, pA, B, pB, sm + d.sW0, d.pW0, E, w0, T, lr);                              // W0_block -= lr X0^T dZ
+    gemm_tall<true, false, true>(A, pA, B, pB, sm + d.sW0, d.pW0, E, w0, T, lr);                                     // W0_block -= lr X0^T dZ
     float* b0 = sm + d.sb0;
     for (int c = tid; c < w0; c += NT) { float s = 0.f; for (int r = 0; r < T; ++r) s += B[r * pB + c]; b0[c] -= lr * s; }
   }

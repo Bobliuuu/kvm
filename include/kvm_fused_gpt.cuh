@@ -34,6 +34,21 @@ constexpr int NW = NT / 32;
 // A load another member may have written, from L2 (a strong load: L1 never serves it stale). A volatile access rather than __ldcg, whose
 // `asm volatile` the compiler must treat as a write to any memory: after each one it read every value it keeps in shared memory again.
 __device__ __forceinline__ float ld(const float* p) { return *reinterpret_cast<const volatile float*>(p); }
+// a + p(0) + p(1) + ... + p(n-1), the terms read from L2 and added in that order (the rolled loop's float result, bit for bit), with up to
+// MAXN loads in flight before the first add: a sum waits for about one round trip to L2 per MAXN terms, where a rolled loop of dependent
+// adds waits for each load in turn (ptxas unrolls one at most 4 deep). `addr(m)` is term m's address. Terms past n are never added.
+template <int MAXN, class Addr>
+__device__ __forceinline__ float sum_l2(int n, const Addr& addr, float a = 0.f) {
+  for (int m0 = 0; m0 < n; m0 += MAXN) {
+    float v[MAXN];
+#pragma unroll
+    for (int k = 0; k < MAXN; ++k) v[k] = m0 + k < n ? ld(addr(m0 + k)) : 0.f;
+#pragma unroll
+    for (int k = 0; k < MAXN; ++k)
+      if (m0 + k < n) a += v[k];
+  }
+  return a;
+}
 __device__ __forceinline__ float warp_sum(float v) { for (int o = 16; o; o >>= 1) v += __shfl_xor_sync(0xffffffffu, v, o); return v; }
 __device__ __forceinline__ float warp_max(float v) { for (int o = 16; o; o >>= 1) v = fmaxf(v, __shfl_xor_sync(0xffffffffu, v, o)); return v; }
 
@@ -274,15 +289,16 @@ __device__ void rs_sum(const float* part, bool units, int P, int T, int QB, size
   for (int e = threadIdx.x; e < (r1 - r0) * d; e += NT) {
     const int c = e % d, r = r0 + e / d;
     const size_t o = (size_t)r * d + c;
-    float a = 0.f;
+    const float bv = bias ? ld(bias + c) : 0.f, rv = res ? ld(res + o) : 0.f;
+    float a;
     if (units) {
       const int s = r / T, i = r % T, TQ = T / QB, qb = i / TQ, ii = i % TQ;
-      for (int h = 0; h < P; ++h) a += ld(part + ((size_t)((s * P + h) * QB + qb) * TQ + ii) * d + c);
+      a = sum_l2<8>(P, [&](int h) { return part + ((size_t)((s * P + h) * QB + qb) * TQ + ii) * d + c; });
     } else {
-      for (int m = 0; m < P; ++m) a += ld(part + m * Nd + o);
+      a = sum_l2<16>(P, [&](int m) { return part + m * Nd + o; });
     }
-    if (bias) a += ld(bias + c);
-    if (res) a += ld(res + o);
+    if (bias) a += bv;
+    if (res) a += rv;
     out[o] = a;
   }
   __syncthreads();
@@ -1094,11 +1110,12 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
         if (i < nb) v[u] = ld(ptab[3 * KVM_FGPT_MAXP + sl[u]] + off[u]);
         else {
           const float* const part0 = X + s.hgp + osrc[i];                             // the head's items: sequence, then query block
-          for (int sqi = 0; sqi < B; ++sqi)
-            for (int qq = 0; qq < QB; ++qq) v[u] += ld(part0 + ((size_t)sqi * H * QB + qq) * hgsz);
-          ptab[3 * KVM_FGPT_MAXP + sl[u]][off[u]] = v[u];
+          v[u] = sum_l2<8>(B * QB, [&](int k) { return part0 + ((size_t)(k / QB) * H * QB + k % QB) * hgsz; });
         }
       }
+#pragma unroll
+      for (int u = 0; u < 4; ++u)                                                   // after the four sums: no store between their loads
+        if (i0 + u * NT >= nb && i0 + u * NT < nb + na) ptab[3 * KVM_FGPT_MAXP + sl[u]][off[u]] = v[u];
 #pragma unroll
       for (int u = 0; u < 4; ++u) sq += v[u] * v[u];
     }
@@ -1112,7 +1129,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
         if (okq) repl_elem(p, q, sl, off, src, stride, lnq);
         const float* const base0 = X + (lnq ? s.lnp : s.rpart) + src;
         float a = 0.f;
-        if (okq) for (int m = m0; m < m1; ++m) a += ld(base0 + (size_t)m * stride);
+        if (okq) a = sum_l2<(KVM_FGPT_MAX_GANG + 7) / 8>(m1 - m0, [&](int k) { return base0 + (size_t)(m0 + k) * stride; });
         for (int o = 1; o < 8; o <<= 1) a += __shfl_xor_sync(0xffffffffu, a, o);       // the 8 chunks, the same tree on every group
         if (okq && lane8 == 0) { ptab[3 * KVM_FGPT_MAXP + sl][off] = a; sq += a * a; }
       }
@@ -1125,8 +1142,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
     ph(MK_SQUARES);
     if (!cross()) return false;                                                       // the grad norm's partials
     ph(MK_X_NORM);
-    float norm2 = 0.f;
-    for (int m = 0; m < G; ++m) norm2 += ld(X + s.gn + m);
+    const float norm2 = sum_l2<KVM_FGPT_MAX_GANG>(G, [&](int m) { return X + s.gn + m; });
     const float norm = sqrtf(norm2);
     const float coef = d.max_norm > 0.f ? fminf(1.f, d.max_norm / (norm + 1e-6f)) : 1.f;
     // ---- AdamW on the owned elements, in the bundle's float32 operation order, with the counter after its increment: one flat index over

@@ -1,0 +1,51 @@
+# every partial sum's loads in flight before its adds (sum_l2), against the head before it, on an RTX 5070: every output by sha256 on five shapes, then the phase clock in alternating order (9 rounds of gpt-small and gpt-tiny, 4 of a d128; A = before, B = after; the card runs in two clock states about 1.2x apart, so read each arm's fastest runs)
+tiny G 32: bitwise equal (1c8d107fbc3d05bd)
+tiny G 8: bitwise equal (89033a737ae8cd2f)
+small G 32: bitwise equal (a96d16df3646e95e)
+d128-phase G 32: bitwise equal (536b36906d5155bc)
+s1-b4-precise G 32: bitwise equal (d1063715bfa69701)
+bitwise: 0 failure(s)
+t50-small round 0 A 179.2 us a step in all; the SMs ran at 2754 MHz
+t50-small round 0 B 210.1 us a step in all; the SMs ran at 2794 MHz
+t50-small round 1 B 173.4 us a step in all; the SMs ran at 2754 MHz
+t50-small round 1 A 219.9 us a step in all; the SMs ran at 2793 MHz
+t50-small round 2 A 176.5 us a step in all; the SMs ran at 2783 MHz
+t50-small round 2 B 168.2 us a step in all; the SMs ran at 2785 MHz
+t50-small round 3 B 170.9 us a step in all; the SMs ran at 2743 MHz
+t50-small round 3 A 221.3 us a step in all; the SMs ran at 2790 MHz
+t50-small round 4 A 179.0 us a step in all; the SMs ran at 2742 MHz
+t50-small round 4 B 168.8 us a step in all; the SMs ran at 2776 MHz
+t50-small round 5 B 215.0 us a step in all; the SMs ran at 2794 MHz
+t50-small round 5 A 177.1 us a step in all; the SMs ran at 2767 MHz
+t50-small round 6 A 220.7 us a step in all; the SMs ran at 2779 MHz
+t50-small round 6 B 168.5 us a step in all; the SMs ran at 2775 MHz
+t50-small round 7 B 168.4 us a step in all; the SMs ran at 2776 MHz
+t50-small round 7 A 193.3 us a step in all; the SMs ran at 2774 MHz
+t50-small round 8 A 224.9 us a step in all; the SMs ran at 2732 MHz
+t50-small round 8 B 223.6 us a step in all; the SMs ran at 2397 MHz
+t50-tiny round 0 A 99.4 us a step in all; the SMs ran at 2595 MHz
+t50-tiny round 0 B 79.1 us a step in all; the SMs ran at 2775 MHz
+t50-tiny round 1 B 78.9 us a step in all; the SMs ran at 2782 MHz
+t50-tiny round 1 A 97.1 us a step in all; the SMs ran at 2700 MHz
+t50-tiny round 2 A 93.1 us a step in all; the SMs ran at 2782 MHz
+t50-tiny round 2 B 78.2 us a step in all; the SMs ran at 2736 MHz
+t50-tiny round 3 B 94.4 us a step in all; the SMs ran at 2782 MHz
+t50-tiny round 3 A 77.9 us a step in all; the SMs ran at 2745 MHz
+t50-tiny round 4 A 83.0 us a step in all; the SMs ran at 2564 MHz
+t50-tiny round 4 B 85.2 us a step in all; the SMs ran at 2564 MHz
+t50-tiny round 5 B 83.6 us a step in all; the SMs ran at 2564 MHz
+t50-tiny round 5 A 82.2 us a step in all; the SMs ran at 2640 MHz
+t50-tiny round 6 A 97.0 us a step in all; the SMs ran at 2700 MHz
+t50-tiny round 6 B 78.4 us a step in all; the SMs ran at 2782 MHz
+t50-tiny round 7 B 79.8 us a step in all; the SMs ran at 2744 MHz
+t50-tiny round 7 A 96.0 us a step in all; the SMs ran at 2737 MHz
+t50-tiny round 8 A 81.7 us a step in all; the SMs ran at 2647 MHz
+t50-tiny round 8 B 96.9 us a step in all; the SMs ran at 2736 MHz
+d128-phase round 0 A 662.6 us a step in all; the SMs ran at 2657 MHz
+d128-phase round 0 B 632.3 us a step in all; the SMs ran at 2758 MHz
+d128-phase round 1 B 629.4 us a step in all; the SMs ran at 2773 MHz
+d128-phase round 1 A 644.0 us a step in all; the SMs ran at 2754 MHz
+d128-phase round 2 A 870.9 us a step in all; the SMs ran at 2627 MHz
+d128-phase round 2 B 671.6 us a step in all; the SMs ran at 2756 MHz
+d128-phase round 3 B 763.1 us a step in all; the SMs ran at 2766 MHz
+d128-phase round 3 A 643.2 us a step in all; the SMs ran at 2759 MHz

@@ -233,6 +233,23 @@ KVM_FGPT_HD inline int kvm_fgpt_rows_for(int N, int T, int d, int H, int F, int 
     if ((i == 0 || cand[i] < N) && kvm_fgpt_smem_floats(N, T, d, H, F, V, G, QB, cand[i]) <= smem_floats) return cand[i];
   return 0;
 }
+// ZBW's plan for a run (kvm_fused_gpt.cuh): the MLP's doers (kvm_fgpt_zbw_plan) and the attention's, from the run's shape, its row chunk and
+// the launch's dynamic shared memory in floats. The host picks the step kernel's instance with it (the one that carries ZBW's code serves
+// only a run it engages: the code alone, idle, cost the A100's step 1.4-2.0% where ZBW was off), and that instance plans with it, so the
+// two agree by construction.
+struct KvmFgptZbwRun {
+  KvmFgptZbw mlp;
+  bool attn = false;
+  KVM_FGPT_HD bool any() const { return mlp.zg > 0 || attn; }
+};
+KVM_FGPT_HD inline KvmFgptZbwRun kvm_fgpt_zbw_of(int N, int T, int d, int H, int F, int G, int QB, int rows, long long smem_floats) {
+  KvmFgptZbwRun z;
+  const int B = T > 0 ? N / T : 0, W = B * H * QB, fp = G > 0 ? (F + G - 1) / G : 0, nf = fp > 0 ? (F + fp - 1) / fp : 0;
+  const int RC = rows < N ? rows : N, hd = H > 0 ? d / H : 0;
+  z.mlp = kvm_fgpt_zbw_plan(G, W, nf, fp, d, kvm_fgpt_r16(RC), smem_floats - kvm_fgpt_smem_head(N, T, hd));
+  z.attn = KVM_FGPT_ZBW_ATTN && QB > 1 && W > 0 && 2 * W <= G;
+  return z;
+}
 // A shape's fit: the gang width G (a power of two up to min(KVM_FGPT_MAX_GANG, max_g, N)) whose members fit `smem_floats` (the fast form's
 // phases, kvm_fgpt_smem_floats) with the default query blocks and the largest row chunk that fits; G 0 when none does (the run is not
 // fused). The preferred width gives each member two rows at least (G <= N / 2) and one 8-wide MMA tile of the MLP's hidden units (G <= F / 8):

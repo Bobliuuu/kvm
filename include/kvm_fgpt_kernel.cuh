@@ -11,12 +11,12 @@ extern __shared__ __align__(128) unsigned char kvm_gpt_smem[];   // the dynamic 
 // reported as the static path reports it (KVM_ERR_BOUNDS; the slot is the member's task, then the program's code and the member), and it
 // sets the error word the gang's barriers read, so every member leaves at its next crossing.
 // Counted: the gang's crossing form, an instance each (kvm_gang::counted_form(G) picks one at launch), so each crossing site carries one form.
-template <bool Counted>
+template <bool Counted, bool Z>   // Z: ZBW's instance (kvm_fgpt_zbw_of), for a run ZBW engages
 __global__ void __launch_bounds__(KVM_FGPT_NT, 1) kvm_fgpt_kernel(const KvmFgptDesc* desc, KvmCounters* cnt, KvmHostErr* herr, int slot0) {
   if (!desc) return;
   unsigned dyn;
   asm("mov.u32 %0, %%dynamic_smem_size;" : "=r"(dyn));
   const int member = blockIdx.x;
-  kvm_fgpt::run<Counted>(*desc, member, reinterpret_cast<float*>(kvm_gpt_smem), (int)(dyn / sizeof(float)), &cnt->err_code,
+  kvm_fgpt::run<Counted, Z>(*desc, member, reinterpret_cast<float*>(kvm_gpt_smem), (int)(dyn / sizeof(float)), &cnt->err_code,
                 [=](int code) { kvm_fail(cnt, herr, KVM_ERR_BOUNDS, slot0 + member, code, member); });
 }

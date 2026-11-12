@@ -18,14 +18,15 @@
 // the arrival; a waiter's acquire load that sees every arrival, then __syncthreads, makes every member's stores visible to its block.
 #include <cstdint>
 
-// KVM_GANG_FENCE, how thread 0 releases the block's stores at an arrival (an experiment's switch: one form stays once the A100 reads them):
+// KVM_GANG_FENCE, how thread 0 releases the block's stores at an arrival. 1 by default, the form the A100's reads chose (each crossing
+// faster, the steps bitwise: results/2026-11-12-gang-one-fence); 0 and 2 stay for fence_bench.cu and the device test.
 //   0: __threadfence() and then the release operation, #54's form (in SASS two fences back to back: MEMBAR.SC.GPU, then MEMBAR.ALL.GPU);
 //   1: the release operation alone (red.release / st.release: one MEMBAR.ALL.GPU);
 //   2: CUTLASS's GenericBarrier form, fence.acq_rel.gpu and then a relaxed operation (one MEMBAR.ALL.GPU and an L1 invalidate).
 // The protocol is message passing (a member's stores, then its arrival released; the count or flags acquired, then the reads), which a
 // release paired with the pollers' acquires carries; the SC fence's total order is unused.
 #ifndef KVM_GANG_FENCE
-#define KVM_GANG_FENCE 0
+#define KVM_GANG_FENCE 1
 #endif
 static_assert(KVM_GANG_FENCE >= 0 && KVM_GANG_FENCE <= 2, "KVM_GANG_FENCE is 0, 1 or 2");
 

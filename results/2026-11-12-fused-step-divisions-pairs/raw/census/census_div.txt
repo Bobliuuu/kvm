@@ -1,0 +1,21 @@
+=== division census (23:39:38Z)
+dp         46592 instr  int-div  157  MUFU.RCP  371  I2F.RZ  276  F2I.TRUNC  434  _Z15kvm_fgpt_kernelILb0ELb1EEvPK11KvmFgptDescP11KvmCountersP10Kv
+dp         46256 instr  int-div  158  MUFU.RCP  373  I2F.RZ  276  F2I.TRUNC  436  _Z15kvm_fgpt_kernelILb1ELb1EEvPK11KvmFgptDescP11KvmCountersP10Kv
+dp         37912 instr  int-div  131  MUFU.RCP  305  I2F.RZ  214  F2I.TRUNC  346  _Z15kvm_fgpt_kernelILb0ELb0EEvPK11KvmFgptDescP11KvmCountersP10Kv
+dp         37552 instr  int-div  132  MUFU.RCP  307  I2F.RZ  214  F2I.TRUNC  348  _Z15kvm_fgpt_kernelILb1ELb0EEvPK11KvmFgptDescP11KvmCountersP10Kv
+b0         45856 instr  int-div  348  MUFU.RCP  424  I2F.RZ    0  F2I.TRUNC  349  _Z11fgpt_kernelILb0ELb0ELb1EEvPK11KvmFgptDesciPiS3_Pyii
+b0         45840 instr  int-div  346  MUFU.RCP  422  I2F.RZ    0  F2I.TRUNC  347  _Z11fgpt_kernelILb1ELb0ELb1EEvPK11KvmFgptDesciPiS3_Pyii
+b0         45496 instr  int-div  347  MUFU.RCP  424  I2F.RZ    0  F2I.TRUNC  349  _Z11fgpt_kernelILb1ELb1ELb1EEvPK11KvmFgptDesciPiS3_Pyii
+b0         45488 instr  int-div  349  MUFU.RCP  426  I2F.RZ    0  F2I.TRUNC  351  _Z11fgpt_kernelILb0ELb1ELb1EEvPK11KvmFgptDesciPiS3_Pyii
+b0         37432 instr  int-div  280  MUFU.RCP  347  I2F.RZ    0  F2I.TRUNC  281  _Z11fgpt_kernelILb0ELb0ELb0EEvPK11KvmFgptDesciPiS3_Pyii
+b0         37240 instr  int-div  278  MUFU.RCP  345  I2F.RZ    0  F2I.TRUNC  279  _Z11fgpt_kernelILb1ELb0ELb0EEvPK11KvmFgptDesciPiS3_Pyii
+b0         37088 instr  int-div  281  MUFU.RCP  349  I2F.RZ    0  F2I.TRUNC  283  _Z11fgpt_kernelILb0ELb1ELb0EEvPK11KvmFgptDesciPiS3_Pyii
+b0         36864 instr  int-div  279  MUFU.RCP  347  I2F.RZ    0  F2I.TRUNC  281  _Z11fgpt_kernelILb1ELb1ELb0EEvPK11KvmFgptDesciPiS3_Pyii
+b1         46248 instr  int-div  157  MUFU.RCP  371  I2F.RZ  276  F2I.TRUNC  434  _Z11fgpt_kernelILb0ELb0ELb1EEvPK11KvmFgptDesciPiS3_Pyii
+b1         46128 instr  int-div  155  MUFU.RCP  369  I2F.RZ  276  F2I.TRUNC  432  _Z11fgpt_kernelILb1ELb0ELb1EEvPK11KvmFgptDesciPiS3_Pyii
+b1         45896 instr  int-div  158  MUFU.RCP  373  I2F.RZ  276  F2I.TRUNC  436  _Z11fgpt_kernelILb0ELb1ELb1EEvPK11KvmFgptDesciPiS3_Pyii
+b1         45792 instr  int-div  156  MUFU.RCP  371  I2F.RZ  276  F2I.TRUNC  434  _Z11fgpt_kernelILb1ELb1ELb1EEvPK11KvmFgptDesciPiS3_Pyii
+b1         37696 instr  int-div  131  MUFU.RCP  305  I2F.RZ  214  F2I.TRUNC  346  _Z11fgpt_kernelILb0ELb0ELb0EEvPK11KvmFgptDesciPiS3_Pyii
+b1         37528 instr  int-div  129  MUFU.RCP  303  I2F.RZ  214  F2I.TRUNC  344  _Z11fgpt_kernelILb1ELb0ELb0EEvPK11KvmFgptDesciPiS3_Pyii
+b1         37360 instr  int-div  132  MUFU.RCP  307  I2F.RZ  214  F2I.TRUNC  348  _Z11fgpt_kernelILb0ELb1ELb0EEvPK11KvmFgptDesciPiS3_Pyii
+b1         37128 instr  int-div  130  MUFU.RCP  305  I2F.RZ  214  F2I.TRUNC  346  _Z11fgpt_kernelILb1ELb1ELb0EEvPK11KvmFgptDesciPiS3_Pyii

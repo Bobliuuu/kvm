@@ -1,0 +1,139 @@
+
+=== 0. div_small's test on this GPU (23:42:50Z)
+div_small: PASS, 2173941844 pairs checked (every x below 2^21 for d up to 512, grid_loop's domain, the top edge, 2^24 random pairs)
+=== 1a. the beds, bitwise over 20 steps (23:42:51Z)
+w_tiny_wl-g16: b1=b0
+w_small_wl-g32: b1=b0
+w_d128_tf32_k30-g32: b1=b0
+w_ho128_tf32_k30-g64: b1=b0
+=== 1b. the beds, 5 rotating rounds (23:43:16Z)
+w_tiny_wl-g16: b0 124.2 us; b1 x1.0588 (x1.0579-x1.0615, 5 rounds)
+w_small_wl-g32: b0 270.8 us; b1 x1.0448 (x1.0444-x1.0451, 5 rounds)
+w_d128_tf32_k30-g32: b0 828.6 us; b1 x1.0292 (x1.0235-x1.0299, 5 rounds)
+w_ho128_tf32_k30-g64: b0 925.7 us; b1 x1.0231 (x1.0217-x1.0242, 5 rounds)
+=== binaries: #62 a203b3fa bed3c2d57283, this branch 929443b8 bd60c54a0efe (23:45:39Z)
+=== 2a. the GPT rows (23:45:39Z)
+GATE ok: gpt-tiny: 20 buffers with prefix 'w.', tasks 6749 -> 6749; bitwise equal; largest relative difference 0.00e+00; largest relative L2 0.00e+00 (w.gpt.h0.attn.k.b)
+rep 0 gpt-tiny control: 6.19 ms
+rep 0 gpt-tiny cand: 5.83 ms
+rep 1 gpt-tiny control: 6.19 ms
+rep 1 gpt-tiny cand: 5.83 ms
+rep 2 gpt-tiny control: 6.19 ms
+rep 2 gpt-tiny cand: 5.83 ms
+GATE ok: gpt-small: 36 buffers with prefix 'w.', tasks 28858 -> 28858; bitwise equal; largest relative difference 0.00e+00; largest relative L2 0.00e+00 (w.gpt.h0.attn.k.b)
+rep 0 gpt-small control: 13.73 ms
+rep 0 gpt-small cand: 13.00 ms
+rep 1 gpt-small control: 13.73 ms
+rep 1 gpt-small cand: 13.00 ms
+rep 2 gpt-small control: 13.72 ms
+rep 2 gpt-small cand: 12.99 ms
+GATE ok: gpt-162m: 196 buffers with prefix 'w.', tasks 161316 -> 161316; bitwise equal; largest relative difference 0.00e+00; largest relative L2 0.00e+00 (w.gpt.h0.attn.k.b)
+rep 0 gpt-162m control: 351.07 ms
+rep 0 gpt-162m cand: 352.39 ms
+rep 1 gpt-162m control: 351.69 ms
+rep 1 gpt-162m cand: 351.85 ms
+rep 2 gpt-162m control: 351.47 ms
+rep 2 gpt-162m cand: 354.42 ms
+=== 2b. the MLP rows (23:46:22Z)
+GATE ok: mlp72-r1: 6 buffers with prefix 'w.', tasks 9600 -> 9600; bitwise equal; largest relative difference 0.00e+00; largest relative L2 0.00e+00 (w.mlp.fc0.b)
+rep 0 mlp72-r1 control: 5.58 ms
+rep 0 mlp72-r1 cand: 5.60 ms
+rep 1 mlp72-r1 control: 5.57 ms
+rep 1 mlp72-r1 cand: 5.58 ms
+rep 2 mlp72-r1 control: 5.57 ms
+rep 2 mlp72-r1 cand: 5.57 ms
+GATE ok: mlp72-r8: 48 buffers with prefix 'w.', tasks 76800 -> 76800; bitwise equal; largest relative difference 0.00e+00; largest relative L2 0.00e+00 (r0/w.mlp.fc0.b)
+rep 0 mlp72-r8 control: 5.50 ms
+rep 0 mlp72-r8 cand: 5.49 ms
+rep 1 mlp72-r8 control: 5.49 ms
+rep 1 mlp72-r8 cand: 5.50 ms
+rep 2 mlp72-r8 control: 5.50 ms
+rep 2 mlp72-r8 cand: 5.49 ms
+GATE ok: mlp72-r32: 192 buffers with prefix 'w.', tasks 307200 -> 307200; bitwise equal; largest relative difference 0.00e+00; largest relative L2 0.00e+00 (r0/w.mlp.fc0.b)
+rep 0 mlp72-r32 control: 8.22 ms
+rep 0 mlp72-r32 cand: 8.22 ms
+rep 1 mlp72-r32 control: 8.22 ms
+rep 1 mlp72-r32 cand: 8.22 ms
+rep 2 mlp72-r32 control: 8.22 ms
+rep 2 mlp72-r32 cand: 8.22 ms
+GATE ok: mlp-hetero-r8: 48 buffers with prefix 'w.', tasks 68400 -> 68400; bitwise equal; largest relative difference 0.00e+00; largest relative L2 0.00e+00 (r0/w.mlp.fc0.b)
+rep 0 mlp-hetero-r8 control: 6.28 ms
+rep 0 mlp-hetero-r8 cand: 6.29 ms
+rep 1 mlp-hetero-r8 control: 6.28 ms
+rep 1 mlp-hetero-r8 cand: 6.28 ms
+rep 2 mlp-hetero-r8 control: 6.28 ms
+rep 2 mlp-hetero-r8 cand: 6.27 ms
+GATE ok: mlp256-r1: 10 buffers with prefix 'w.', tasks 8394 -> 8394; bitwise equal; largest relative difference 0.00e+00; largest relative L2 0.00e+00 (w.mlp.fc0.b)
+rep 0 mlp256-r1 control: 4.53 ms
+rep 0 mlp256-r1 cand: 4.55 ms
+rep 1 mlp256-r1 control: 4.54 ms
+rep 1 mlp256-r1 cand: 4.54 ms
+rep 2 mlp256-r1 control: 4.54 ms
+rep 2 mlp256-r1 cand: 4.55 ms
+GATE ok: mlp1024-r1: 6 buffers with prefix 'w.', tasks 17117 -> 17117; bitwise equal; largest relative difference 0.00e+00; largest relative L2 0.00e+00 (w.mlp.fc0.b)
+rep 0 mlp1024-r1 control: 6.46 ms
+rep 0 mlp1024-r1 cand: 6.50 ms
+rep 1 mlp1024-r1 control: 6.48 ms
+rep 1 mlp1024-r1 cand: 6.49 ms
+rep 2 mlp1024-r1 control: 6.48 ms
+rep 2 mlp1024-r1 cand: 6.51 ms
+=== 2c. the MLP rows, placement pinned (--no-fuse-gpt) (23:48:09Z)
+GATE ok: mlp72-r1: 6 buffers with prefix 'w.', tasks 9600 -> 9600; bitwise equal; largest relative difference 0.00e+00; largest relative L2 0.00e+00 (w.mlp.fc0.b)
+rep 0 mlp72-r1 control: 5.57 ms
+rep 0 mlp72-r1 cand: 5.57 ms
+rep 1 mlp72-r1 control: 5.57 ms
+rep 1 mlp72-r1 cand: 5.57 ms
+rep 2 mlp72-r1 control: 5.57 ms
+rep 2 mlp72-r1 cand: 5.57 ms
+GATE ok: mlp72-r8: 48 buffers with prefix 'w.', tasks 76800 -> 76800; bitwise equal; largest relative difference 0.00e+00; largest relative L2 0.00e+00 (r0/w.mlp.fc0.b)
+rep 0 mlp72-r8 control: 5.50 ms
+rep 0 mlp72-r8 cand: 5.50 ms
+rep 1 mlp72-r8 control: 5.50 ms
+rep 1 mlp72-r8 cand: 5.50 ms
+rep 2 mlp72-r8 control: 5.50 ms
+rep 2 mlp72-r8 cand: 5.50 ms
+GATE ok: mlp72-r32: 192 buffers with prefix 'w.', tasks 307200 -> 307200; bitwise equal; largest relative difference 0.00e+00; largest relative L2 0.00e+00 (r0/w.mlp.fc0.b)
+rep 0 mlp72-r32 control: 8.24 ms
+rep 0 mlp72-r32 cand: 8.24 ms
+rep 1 mlp72-r32 control: 8.24 ms
+rep 1 mlp72-r32 cand: 8.24 ms
+rep 2 mlp72-r32 control: 8.24 ms
+rep 2 mlp72-r32 cand: 8.24 ms
+GATE ok: mlp-hetero-r8: 48 buffers with prefix 'w.', tasks 68400 -> 68400; bitwise equal; largest relative difference 0.00e+00; largest relative L2 0.00e+00 (r0/w.mlp.fc0.b)
+rep 0 mlp-hetero-r8 control: 6.28 ms
+rep 0 mlp-hetero-r8 cand: 6.27 ms
+rep 1 mlp-hetero-r8 control: 6.28 ms
+rep 1 mlp-hetero-r8 cand: 6.28 ms
+rep 2 mlp-hetero-r8 control: 6.28 ms
+rep 2 mlp-hetero-r8 cand: 6.28 ms
+GATE ok: mlp256-r1: 10 buffers with prefix 'w.', tasks 8394 -> 8394; bitwise equal; largest relative difference 0.00e+00; largest relative L2 0.00e+00 (w.mlp.fc0.b)
+rep 0 mlp256-r1 control: 4.56 ms
+rep 0 mlp256-r1 cand: 4.54 ms
+rep 1 mlp256-r1 control: 4.52 ms
+rep 1 mlp256-r1 cand: 4.54 ms
+rep 2 mlp256-r1 control: 4.53 ms
+rep 2 mlp256-r1 cand: 4.54 ms
+GATE ok: mlp1024-r1: 6 buffers with prefix 'w.', tasks 17117 -> 17117; bitwise equal; largest relative difference 0.00e+00; largest relative L2 0.00e+00 (w.mlp.fc0.b)
+rep 0 mlp1024-r1 control: 6.46 ms
+rep 0 mlp1024-r1 cand: 6.47 ms
+rep 1 mlp1024-r1 control: 6.44 ms
+rep 1 mlp1024-r1 cand: 6.48 ms
+rep 2 mlp1024-r1 control: 6.44 ms
+rep 2 mlp1024-r1 cand: 6.46 ms
+=== 3. gpt-tiny and gpt-small, eager loading (23:49:57Z)
+GATE ok: gpt-tiny: 20 buffers with prefix 'w.', tasks 6749 -> 6749; bitwise equal; largest relative difference 0.00e+00; largest relative L2 0.00e+00 (w.gpt.h0.attn.k.b)
+rep 0 gpt-tiny control: 6.20 ms
+rep 0 gpt-tiny cand: 5.84 ms
+rep 1 gpt-tiny control: 6.20 ms
+rep 1 gpt-tiny cand: 5.84 ms
+rep 2 gpt-tiny control: 6.20 ms
+rep 2 gpt-tiny cand: 5.83 ms
+GATE ok: gpt-small: 36 buffers with prefix 'w.', tasks 28858 -> 28858; bitwise equal; largest relative difference 0.00e+00; largest relative L2 0.00e+00 (w.gpt.h0.attn.k.b)
+rep 0 gpt-small control: 13.75 ms
+rep 0 gpt-small cand: 13.02 ms
+rep 1 gpt-small control: 13.75 ms
+rep 1 gpt-small cand: 13.02 ms
+rep 2 gpt-small control: 13.75 ms
+rep 2 gpt-small cand: 13.02 ms
+=== verdict: every arm ran, bitwise and gated (23:50:14Z)
+PANEL_END

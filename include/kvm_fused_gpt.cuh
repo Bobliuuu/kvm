@@ -112,7 +112,8 @@ __device__ __forceinline__ void mma_tf32(float (&c)[4], const unsigned (&a)[4], 
 // accumulates in increasing k. An operand contiguous in k (A not
 // transposed, B transposed) loads its fragments with ldmatrix (its rows 16-byte aligned: a row stride of 4 mod 8 floats keeps them
 // conflict-free); the other kind by scalar loads. epi(m, n, value) runs once for every m < M, n < N. Every thread calls it; it ends with
-// __syncthreads.
+// __syncthreads. gemm_on is its tile loop over nw warps (lw the warp's index among them), without the sync: gemm_par runs it on part of
+// the block.
 __device__ __forceinline__ unsigned tf32_rna(float x) { unsigned u; asm("cvt.rna.tf32.f32 %0, %1;\n" : "=r"(u) : "f"(x)); return u; }
 __device__ __forceinline__ void ldm_x4(unsigned (&r)[4], const float* p) {
   asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0,%1,%2,%3}, [%4];\n" : "=r"(r[0]), "=r"(r[1]), "=r"(r[2]), "=r"(r[3]) : "r"((unsigned)__cvta_generic_to_shared(p)));
@@ -148,16 +149,16 @@ __device__ __forceinline__ void mma_frag(float (&c)[4], const unsigned (&a)[4], 
   }
 }
 template <bool TA, bool TB, class Epi>
-__device__ void gemm(const float* A, int lda, const float* B, int ldb, int M, int N, int K, bool prec, Epi epi) {
-  const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3;
+__device__ __forceinline__ void gemm_on(const float* A, int lda, const float* B, int ldb, int M, int N, int K, bool prec, const Epi& epi, int lw, int nw) {
+  const int lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3;
   const int tn = (N + 7) >> 3, tiles = ((M + 15) >> 4) * tn, ks = (K + 7) >> 3;
   const int sa = TA ? 8 * lda : 8, sb = TB ? 8 : 8 * ldb;              // pointer steps a k8 step
   // the lane's ldmatrix rows: A's x4 (rows 0-7 and 8-15 of the tile at k and k + 4), B's x2 (rows 0-7 of the tile at k and k + 4)
   const int ar = (lane & 7) + ((lane >> 3) & 1) * 8, ak = (lane >> 4) * 4, br = lane & 7, bk = ((lane >> 3) & 1) * 4;
   auto base_a = [&](int m0) { return A + (TA ? t * lda + m0 + g : (m0 + ar) * lda + ak); };
   auto base_b = [&](int n0) { return B + (TB ? (n0 + br) * ldb + bk : t * ldb + n0 + g); };
-  for (int tile = warp; tile < tiles; tile += 2 * NW) {
-    const int t1 = tile + NW;
+  for (int tile = lw; tile < tiles; tile += 2 * nw) {
+    const int t1 = tile + nw;
     const bool two = t1 < tiles;
     const int m0 = (tile / tn) << 4, n0 = (tile % tn) << 3, m1 = two ? (t1 / tn) << 4 : m0, n1 = two ? (t1 % tn) << 3 : n0;
     const float* pa0 = base_a(m0); const float* pb0 = base_b(n0);
@@ -189,7 +190,61 @@ __device__ void gemm(const float* A, int lda, const float* B, int ldb, int M, in
       if (nb < M && cd + 1 < N) epi(nb, cd + 1, c1[3]);
     }
   }
+}
+template <bool TA, bool TB, class Epi>
+__device__ void gemm(const float* A, int lda, const float* B, int ldb, int M, int N, int K, bool prec, Epi epi) {
+  gemm_on<TA, TB>(A, lda, B, ldb, M, N, K, prec, epi, threadIdx.x >> 5, NW);
   __syncthreads();
+}
+
+// ---- independent GEMMs at once (KVM_FGPT_PAIR, default 1; 0 runs them one after another, for the bed's control)
+#ifndef KVM_FGPT_PAIR
+#define KVM_FGPT_PAIR 1
+#endif
+// One GEMM for gemm_par: its operands and epilogue, held until its warps run it.
+template <bool TA, bool TB, class Epi>
+struct GemmJob {
+  const float* A; int lda; const float* B; int ldb; int M, N, K; bool prec; Epi epi;
+  __device__ int tiles() const { return ((M + 15) >> 4) * ((N + 7) >> 3); }
+  __device__ int work() const { return tiles() * ((K + 7) >> 3); }   // tiles x k steps: a warp's share of the job's chain
+  __device__ void on(int lw, int nw) const { gemm_on<TA, TB>(A, lda, B, ldb, M, N, K, prec, epi, lw, nw); }
+  __device__ void alone() const { gemm<TA, TB>(A, lda, B, ldb, M, N, K, prec, epi); }
+};
+template <bool TA, bool TB, class Epi>
+__device__ __forceinline__ GemmJob<TA, TB, Epi> job(const float* A, int lda, const float* B, int ldb, int M, int N, int K, bool prec, Epi epi) {
+  return {A, lda, B, ldb, M, N, K, prec, epi};
+}
+// The jobs at once, each on warps of its own, sized in proportion to its work (tiles x k steps), at least one each; one job takes them all.
+// A tile accumulates in the same k order whichever warp runs it, so the results are gemm's bit for bit. Every job runs through this one
+// body (never also through gemm), so a call site carries one GEMM loop: two bodies a site cost the step's other phases 1.3% through code
+// generation on the instances without ZBW's code (measured on an A100). The caller guarantees that no job reads what another writes. One
+// sync at the end, as gemm's.
+template <class... J>
+__device__ __forceinline__ void gemm_par(const J&... js) {
+  constexpr int n = sizeof...(J);
+  static_assert(n >= 1 && n < NW, "gemm_par takes one job or more, fewer than the block's warps");
+  if constexpr (!KVM_FGPT_PAIR) {
+    (js.alone(), ...);
+  } else {
+    const int work[n] = {js.work()...};
+    int total = 0;
+    for (int i = 0; i < n; ++i) total += work[i];
+    int nw[n], used = 0;
+    for (int i = 0; i < n - 1; ++i) {
+      const int share = total > 0 ? (NW * work[i] + total / 2) / total : NW / n;
+      nw[i] = max(1, min(share, NW - used - (n - 1 - i)));
+      used += nw[i];
+    }
+    nw[n - 1] = NW - used;
+    const int warp = threadIdx.x >> 5;
+    int w0 = 0, i = 0;
+    auto go = [&](const auto& j) {
+      if (warp >= w0 && warp < w0 + nw[i]) j.on(warp - w0, nw[i]);
+      w0 += nw[i]; ++i;
+    };
+    (go(js), ...);
+    __syncthreads();
+  }
 }
 
 // f(r, c) over a rows x units grid, unit x = r * units + c taken by thread x % NT in turn (x = threadIdx.x, + NT, ...), the order a flat
@@ -1154,19 +1209,29 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
           stage_all(cs);
         }
         ph(MK_UB_STAGE);
-        if (!Z || !c.zbwa)                                                             // dWo rows (with ZBW for the attention, the item's doer's)
-          gemm<true, false>(O, ldh, GS, ldd, hd, D, TQ, prec, [&](int m, int n, float a) { hg[3 * D * hd + 3 * hd + m * D + n] = a; });
-        gemm<false, true>(GS, ldd, WO, ldd, TQ, hd, D, prec, [&](int m, int n, float a) { DO[m * ldh + n] = a; });                       // do
+        {   // do and P at once, with dWo's rows where the item runs them (with ZBW for the attention, the item's doer does): no job reads
+            // what another writes. Under pairing the clock's "P" mark ends this group and its "do" mark ends delta.
+          const auto j_do = job<false, true>(GS, ldd, WO, ldd, TQ, hd, D, prec, [&](int m, int n, float a) { DO[m * ldh + n] = a; });
+          const auto j_p = job<false, true>(Q, ldh, K, ldh, TQ, KE, hd, true, [&](int m, int n, float a) { S[m * ldS + n] = n <= q0 + m ? expf(a * d.scale - lse[m]) : 0.f; });
+          if (!Z || !c.zbwa) gemm_par(job<true, false>(O, ldh, GS, ldd, hd, D, TQ, prec, [&](int m, int n, float a) { hg[3 * D * hd + 3 * hd + m * D + n] = a; }), j_do, j_p);
+          else gemm_par(j_do, j_p);
+        }
+        ph(MK_UB_P);
+        // dS goes where gx's and Wo's rows were (dead after do and dWo), so dV can read P from S beside it; in place when it does not fit
+        float* const DS = KVM_FGPT_PAIR && (long long)TQ16 * ldS <= (long long)(WO - GS) + (long long)kvm_fgpt_r8(hd) * ldd ? GS : S;
+        if (DS != S) zero(DS, ldS, TQ16, KE16);                                       // its masked and padding entries, as S's
         for (int i = tid; i < TQ; i += NT) { float a = 0.f; for (int c = 0; c < hd; ++c) a += O[i * ldh + c] * DO[i * ldh + c]; delta[i] = a; }
         __syncthreads();
         ph(MK_UB_DO);
-        gemm<false, true>(Q, ldh, K, ldh, TQ, KE, hd, true, [&](int m, int n, float a) { S[m * ldS + n] = n <= q0 + m ? expf(a * d.scale - lse[m]) : 0.f; });
-        ph(MK_UB_P);
-        gemm<true, false>(S, ldS, DO, ldh, KE, hd, TQ, true, [&](int m, int n, float a) { DV[m * ldh + n] = a; });                       // dV partial = P^T do
-        gemm<false, true>(DO, ldh, Vv, ldh, TQ, KE, hd, true, [&](int m, int n, float a) { if (n <= q0 + m) S[m * ldS + n] *= a - delta[m]; });   // dS
+        {
+          const auto j_dv = job<true, false>(S, ldS, DO, ldh, KE, hd, TQ, true, [&](int m, int n, float a) { DV[m * ldh + n] = a; });   // dV partial = P^T do
+          const auto j_ds = job<false, true>(DO, ldh, Vv, ldh, TQ, KE, hd, true, [&](int m, int n, float a) { if (n <= q0 + m) DS[m * ldS + n] = S[m * ldS + n] * (a - delta[m]); });   // dS
+          if (DS != S) gemm_par(j_dv, j_ds);
+          else { gemm_par(j_dv); gemm_par(j_ds); }
+        }
         ph(MK_UB_DV_DS);
-        gemm<false, false>(S, ldS, K, ldh, TQ, hd, KE, true, [&](int m, int n, float a) { DQ[m * ldh + n] = a * d.scale; });              // dq
-        gemm<true, false>(S, ldS, Q, ldh, KE, hd, TQ, true, [&](int m, int n, float a) { DK[m * ldh + n] = a * d.scale; });               // dK partial
+        gemm_par(job<false, false>(DS, ldS, K, ldh, TQ, hd, KE, true, [&](int m, int n, float a) { DQ[m * ldh + n] = a * d.scale; }),     // dq
+                 job<true, false>(DS, ldS, Q, ldh, KE, hd, TQ, true, [&](int m, int n, float a) { DK[m * ldh + n] = a * d.scale; }));    // dK partial
         for (int e = tid; e < KE * (hd / 4); e += NT) {                                // the dK and dV partials of the prefix's keys, for the key blocks
           const int j = e / (hd / 4), c = (e % (hd / 4)) * 4;
           *reinterpret_cast<float4*>(dkv + (size_t)j * 2 * hd + c) = *reinterpret_cast<const float4*>(DK + j * ldh + c);
@@ -1189,16 +1254,17 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
         float* const HQ = ar.take((long long)TQ16 * kvm_fgpt_ldmn(D));
         float* const WQ = ar.take((long long)kvm_fgpt_r8(D) * ldh);
         if (!check()) return false;
+        float* const pu = X + s.part + (size_t)w * TQ * D;
+        const auto j_qdh = job<false, true>(DQ, ldh, WQ, ldh, TQ, D, hd, prec, [&](int m, int n, float a) { pu[(size_t)m * D + n] = a; });   // q's dh rows
         if (!Z || !c.zbwa) {
           const Copy cs[2] = {{HQ, h + (size_t)r0 * D, kvm_fgpt_ldmn(D), (size_t)D, TQ, D, TQ16, D},
                               {WQ, P(lay(l, KVM_FGPT_R_WQ)) + c0, ldh, (size_t)D, D, hd, kvm_fgpt_r8(D), kvm_fgpt_r8(hd)}};
           stage_all(cs);
-          gemm<true, false>(HQ, kvm_fgpt_ldmn(D), DQ, ldh, D, hd, TQ, prec, [&](int m, int n, float a) { hg[m * hd + n] = a; });        // dWq
+          gemm_par(job<true, false>(HQ, kvm_fgpt_ldmn(D), DQ, ldh, D, hd, TQ, prec, [&](int m, int n, float a) { hg[m * hd + n] = a; }), j_qdh);   // dWq beside it
         } else {   // h's rows are dWq's alone, which the item's doer runs
           stage(WQ, ldh, P(lay(l, KVM_FGPT_R_WQ)) + c0, (size_t)D, D, hd, kvm_fgpt_r8(D), kvm_fgpt_r8(hd));
+          gemm_par(j_qdh);
         }
-        float* const pu = X + s.part + (size_t)w * TQ * D;
-        gemm<false, true>(DQ, ldh, WQ, ldh, TQ, D, hd, prec, [&](int m, int n, float a) { pu[(size_t)m * D + n] = a; });                // q's dh rows
         ph(MK_UB_STAGE2);
       }
       if constexpr (Z) {
@@ -1235,9 +1301,9 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
         rope(DKV, ldv, TQ, k0, T, hd, rtab, -1.f);                                     // dK back through RoPE
         colsum_smem(DKV, ldv, TQ, 2 * hd, hg + 3 * D * hd + hd, scr);                  // dbk, dbv
         ph(MK_UB_DW);
-        gemm<true, false>(HK, kvm_fgpt_ldmn(D), DKV, ldv, D, 2 * hd, TQ, prec, [&](int m, int n, float a) { hg[(1 + n / hd) * D * hd + m * hd + n % hd] = a; });   // dWk, dWv
         float* const pu = X + s.part + (size_t)w * TQ * D;
-        gemm<false, true>(DKV, ldv, WKV, ldv, TQ, D, 2 * hd, prec, [&](int m, int n, float a) { const size_t i = (size_t)m * D + n; pu[i] = ld(pu + i) + a; });   // k's and v's dh rows
+        gemm_par(job<true, false>(HK, kvm_fgpt_ldmn(D), DKV, ldv, D, 2 * hd, TQ, prec, [&](int m, int n, float a) { hg[(1 + n / hd) * D * hd + m * hd + n % hd] = a; }),   // dWk, dWv
+                 job<false, true>(DKV, ldv, WKV, ldv, TQ, D, 2 * hd, prec, [&](int m, int n, float a) { const size_t i = (size_t)m * D + n; pu[i] = ld(pu + i) + a; }));   // k's and v's dh rows
         ph(MK_UB_DH);
       }
       if constexpr (Z) {

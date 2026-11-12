@@ -29,6 +29,15 @@ _NATIVE_IN = {'linear': ('x', 'w', 'res'), 'mm': ('a', 'b', 'into')}
 _WEIGHT_IN = {'linear': ('w',), 'mm': ('a', 'b')}
 _MMA_OPERANDS = {'linear': ('x', 'w'), 'mm': ('a', 'b')}   # operands that must both be bf16 storage for matmul_mma_bf16 (lower._mm_dev)
 _OPERAND_IN = {'linear': ('x',), 'mm': ('a', 'b')}        # operands that get an explicit bf16 copy when they are fp32 activations
+# A causal attention backward whose q, k and v are bf16 storage reads its output gradient as bf16 too: the bf16 tensor-core attention
+# (include/kvm_attn_bf16.cuh, ab_ok) takes a task only when q, k, v and dO are all bf16 storage, and autocast's backward hands SDPA a bf16 dO.
+_ATTN_GRAD_IN = ('do',)
+
+
+def _bf16_attention_bwd(op, cast_out):
+    """q, k and v each bf16 storage already, or the output of one of the model's bf16 casts (bf16 from apply() step 1 on)."""
+    return (op.kind == 'attention_bwd' and op.attrs.get('causal')
+            and all(n in op.ins and (op.ins[n].dtype == 'bf16' or op.ins[n].uid in cast_out) for n in ('q', 'k', 'v')))
 
 # Storage-aware (non-matmul) ops: logical op kind -> (in slots, out slots) that may hold bf16 storage. These mirror the device ops' ld_s/st_s
 # arguments (include/kvm_ops_gpt.cuh) and runtime/ref_extra._BF16_STORAGE; every other slot of these ops is fp32 (statistics, parameters).
@@ -90,9 +99,10 @@ def _narrow_operands(ops, stats):
     cast_out = {op.outs['out'].uid for op in ops if op.kind == 'cast' and op.attrs.get('dtype') == 'bf16'}
     out = []
     for op in ops:
-        if _capable(op):
+        names = _OPERAND_IN[op.kind] if _capable(op) else _ATTN_GRAD_IN if _bf16_attention_bwd(op, cast_out) else ()
+        if names:
             ins = dict(op.ins)
-            for n in _OPERAND_IN[op.kind]:
+            for n in names:
                 t = ins.get(n)
                 if t is None or t.dtype != 'f32' or t.kind == 'param' or t.uid in cast_out:
                     continue

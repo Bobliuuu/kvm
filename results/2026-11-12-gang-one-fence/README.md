@@ -55,6 +55,11 @@ the phase clock; form 1 is faster in every round:
 - gpt-tiny at a gang of 16: 133.6 → 131.6 µs a step (x1.0152);
 - the d128 hold-out draw at 64: 949.8 → 944.1 µs (x1.0063).
 
+These beds are built with plain `nvcc -O3 -std=c++17 -arch=sm_80`, not with the executor's flags (`--fmad=false -Xcompiler -ffp-contract=off
+-DKVM_LEAN`), so they run other code generation of the same step: they show the mechanism, and the panel's 9 rows above, on the executor's
+own builds, carry the gain.
+Two builds also place their code differently in GPU memory, which alone has moved a panel row by up to 5.5% (same device code, another load order), so each row's gain here carries that uncertainty.
+
 ## The device test
 
 `raw/device-test/` holds `tests/static/gang_device.sh`: `test_gang_device.cu`, built in each form and with its mutants.

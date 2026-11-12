@@ -61,6 +61,42 @@ __device__ __forceinline__ float sum_cg(const float* p, size_t stride, int n) {
     for (int u = 0; u + w < U; u += 2 * w) acc[u] += acc[u + w];
   return acc[0];
 }
+// sum_cg on four adjacent values at once (p 16-byte aligned, the stride a multiple of 4): each lane of the float4 walks its partials in sum_cg's
+// chains and tree, so each of the four sums is bitwise sum_cg's, and one 16-byte load a partial carries all four.
+template <int U = 8>
+__device__ __forceinline__ float4 sum_cg4(const float* p, size_t stride, int n) {
+  float4 acc[U];
+#pragma unroll
+  for (int u = 0; u < U; ++u) acc[u] = make_float4(0.f, 0.f, 0.f, 0.f);
+  const auto add = [](float4& a, const float4 v) { a.x += v.x; a.y += v.y; a.z += v.z; a.w += v.w; };
+  int i = 0;
+  for (; i + U <= n; i += U) {
+#pragma unroll
+    for (int u = 0; u < U; ++u) add(acc[u], __ldcg(reinterpret_cast<const float4*>(p + (size_t)(i + u) * stride)));
+  }
+#pragma unroll
+  for (int u = 0; u < U; ++u) if (i + u < n) add(acc[u], __ldcg(reinterpret_cast<const float4*>(p + (size_t)(i + u) * stride)));
+#pragma unroll
+  for (int w = 1; w < U; w <<= 1)
+#pragma unroll
+    for (int u = 0; u + w < U; u += 2 * w) add(acc[u], acc[u + w]);
+  return acc[0];
+}
+// Every cell (r, c) of a rows x width piece summed over n partials (sum_cg's arithmetic) from ptr(r, c), its first partial, then out(r, c, sum).
+// A piece of more cells than the block has threads is summed four adjacent cells a thread by sum_cg4 (width a multiple of 4: every piece is whole
+// granules of 16); otherwise one cell a thread. Each cell's sum is sum_cg's either way, so the choice moves no bit. One cell a thread, a thread
+// walked its cells in turn, an L2 round trip each, since a cell's loads cannot pass the previous cell's stores; sum_cg4 carries four in one.
+template <class Ptr, class Out>
+__device__ __forceinline__ void sum_cells(int rows, int width, size_t stride, int n, Ptr ptr, Out out) {
+  if (rows * width > NT && (width & 3) == 0)
+    kvm_fmlp::for_cells(rows, width >> 2, [&](int r, int c4) {
+      const int c = 4 * c4;
+      const float4 v = sum_cg4(ptr(r, c), stride, n);
+      out(r, c, v.x); out(r, c + 1, v.y); out(r, c + 2, v.z); out(r, c + 3, v.w);
+    });
+  else
+    kvm_fmlp::for_cells(rows, width, [&](int r, int c) { out(r, c, sum_cg(ptr(r, c), stride, n)); });
+}
 
 // A GEMM for a narrow output (more 16-row blocks than 16-column blocks): warps over row blocks, each warp every column block of its rows, so a
 // 96 x 16 output runs on 6 warps where kvm_fmlp::gemm (one warp a column block) runs it on 1. Each output takes the same fragments and the same
@@ -217,9 +253,8 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
     ph(sub_fh(l, 1));
     if (inh) {
       const float* bl = sm + d.sb[l]; float* gl = sm + d.sg[l]; float* Yl = d.Y[l];
-      kvm_fmlp::for_cells(wr, wn, [&](int r, int c) {
-        const size_t i = (size_t)(r0 + r) * Hp + n0 + c;
-        float f, g; kvm_fmlp::gelu_fg(sum_cg(d.part + i, (size_t)T * Hp, d.ka) + bl[c], f, g); gl[r * wn + c] = g; Yl[i] = f; });
+      sum_cells(wr, wn, (size_t)T * Hp, d.ka, [&](int r, int c) { return d.part + (size_t)(r0 + r) * Hp + n0 + c; }, [&](int r, int c, float z) {
+        float f, g; kvm_fmlp::gelu_fg(z + bl[c], f, g); gl[r * wn + c] = g; Yl[(size_t)(r0 + r) * Hp + n0 + c] = f; });
     }
     ph(sub_fh(l, 2));
     if (!cross()) return;
@@ -283,9 +318,8 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
     const int p = L - 1 - l;
     if (inh) {
       const float* gl = sm + d.sg[l];
-      kvm_fmlp::for_cells(wr, wn, [&](int r, int c) {
-        const size_t i = (size_t)(r0 + r) * Hp + n0 + c;
-        d.dz[i] = sum_cg(d.dyp + i, (size_t)T * Hp, nparts) * gl[r * wn + c]; });
+      sum_cells(wr, wn, (size_t)T * Hp, nparts, [&](int r, int c) { return d.dyp + (size_t)(r0 + r) * Hp + n0 + c; },
+                [&](int r, int c, float v) { d.dz[(size_t)(r0 + r) * Hp + n0 + c] = v * gl[r * wn + c]; });
     }
     ph(sub_bh(p, 0));
     if (!cross()) return;
@@ -309,9 +343,8 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
   if (in0) {
     const int nparts = L == 1 ? 1 : d.nb;
     const float* g0 = sm + d.sg0;
-    kvm_fmlp::for_cells(T, w0, [&](int r, int c) {
-      const size_t i = (size_t)r * Hp + c0 + c;
-      B[r * pB + c] = sum_cg(d.dyp + i, (size_t)T * Hp, nparts) * g0[r * w0 + c]; });
+    sum_cells(T, w0, (size_t)T * Hp, nparts, [&](int r, int c) { return d.dyp + (size_t)r * Hp + c0 + c; },
+              [&](int r, int c, float v) { B[r * pB + c] = v * g0[r * w0 + c]; });
     kvm_fmlp::for_cells(T, E >> 2, [&](int r, int c4) { kvm_fmlp::cp_async16(A + r * pA + 4 * c4, d.emb + (size_t)sid[r] * E + 4 * c4); });   // X0 again: rows not yet updated
     kvm_fmlp::cp_commit_wait();
     __syncthreads();
@@ -332,7 +365,7 @@ __device__ __forceinline__ void grid_run(int member, const int32_t* ids, const i
     if (tid == 0) { int n = 0; for (int t = 0; t < T; ++t) if (sid[t] >= e0 && sid[t] < e1) tok[n++] = t; tok[T] = n; }
     __syncthreads();
     const int ntok = tok[T];
-    kvm_fmlp::for_cells(ntok, E, [&](int i, int c) { ts[i * E + c] = sum_cg(d.dx0 + (size_t)tok[i] * E + c, (size_t)T * E, d.nb0); });
+    sum_cells(ntok, E, (size_t)T * E, d.nb0, [&](int i, int c) { return d.dx0 + (size_t)tok[i] * E + c; }, [&](int i, int c, float v) { ts[i * E + c] = v; });
     __syncthreads();
     for (int v = e0 + warp; v < e1; v += NT / 32)
       for (int c = lane; c < E; c += 32) {

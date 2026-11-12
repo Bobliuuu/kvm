@@ -1,0 +1,4 @@
+3224d5f843c70d5691c598e1d9f5e10b  fgpt_bed_base
+6d86b333e32ad6c46fea2612ce91beb5  fgpt_bed_lever2
+9ac698a7aee119839f2bda40a3ab355e  fgpt_bed_zfix
+NVIDIA A100-SXM4-40GB, 210 MHz, 1410 MHz, 31.93 W

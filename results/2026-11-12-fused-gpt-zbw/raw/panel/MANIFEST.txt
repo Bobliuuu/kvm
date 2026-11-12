@@ -1,0 +1,12 @@
+a4445fd62f72c4d96fe2da2fdbc4e72c  /root/builds/88b85b9248c6da2081db2b4c/kvm_exec
+bed3c2d5728380295b9fa19ff56b915f  /root/builds/a203b3fa135aa5959c8852df/kvm_exec
+h72 741381622a44
+h256 ab1c342bdd36
+h1024 f075d28b1b14
+w_tiny 0daafc38a504
+w_small 31561d4f0c3e
+w_162m_3 3685bbaf9d0a
+h72_r8 8a93fbd3602b
+h72_r32 a9cd201c1c64
+hetero_r8 87619bebdc84
+NVIDIA A100-SXM4-40GB, 210 MHz, 1410 MHz, 32.47 W

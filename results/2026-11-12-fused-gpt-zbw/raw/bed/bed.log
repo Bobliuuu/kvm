@@ -1,0 +1,14 @@
+== 1. bitwise, 20 steps (15:11:19Z)
+w_small_wl-g32: lever2=equal zfix=equal; zfix: no (the step without ZBW's code) (      3 rc 0 )
+w_d128_tf32_k30-g32: lever2=equal zfix=equal; zfix: no (the step without ZBW's code) (      3 rc 0 )
+w_tiny_wl-g16: lever2=equal zfix=equal; zfix: yes (its code, for the run it engages) (      3 rc 0 )
+w_k4-g32: lever2=equal zfix=equal; zfix: yes (its code, for the run it engages) (      3 rc 0 )
+w_ho128_tf32_k30-g64: lever2=equal zfix=equal; zfix: yes (its code, for the run it engages) (      3 rc 0 )
+== 2. timing, 5 rounds (15:12:23Z)
+w_small_wl-g32:  base 276.1 us (5 rounds)  lever2 281.7 us (base/lever2 x0.9801, x0.9791-x0.9805)  zfix 275.7 us (base/zfix x1.0015, x1.0011-x1.0018)  lever2/zfix x1.0218
+w_d128_tf32_k30-g32:  base 838.4 us (5 rounds)  lever2 850.4 us (base/lever2 x0.9862, x0.9847-x0.9869)  zfix 835.3 us (base/zfix x1.0036, x1.0031-x1.0043)  lever2/zfix x1.0178
+w_tiny_wl-g16:  base 133.5 us (5 rounds)  lever2 127.8 us (base/lever2 x1.0446, x1.0438-x1.0478)  zfix 127.6 us (base/zfix x1.0462, x1.0455-x1.0487)  lever2/zfix x1.0016
+w_k4-g32:  base 353.0 us (5 rounds)  lever2 336.7 us (base/lever2 x1.0484, x1.0478-x1.0490)  zfix 336.9 us (base/zfix x1.0478, x1.0474-x1.0487)  lever2/zfix x0.9994
+w_ho128_tf32_k30-g64:  base 949.6 us (5 rounds)  lever2 927.0 us (base/lever2 x1.0244, x1.0235-x1.0255)  zfix 926.8 us (base/zfix x1.0246, x1.0235-x1.0255)  lever2/zfix x1.0002
+=== verdict: bitwise on every shape (15:20:08Z)
+BED_END

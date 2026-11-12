@@ -1,0 +1,6 @@
+[fgpt_bed 06:25:31Z] model: L 4, d 128, heads 4 x 32, MLP 512, V 256, 2 x 64 rows; 20 steps; work /root/work/zbwloc/run-20261112T062521Z/bit-w_d128_tf32_k30-g32
+[fgpt_bed 06:25:31Z] G 32: /root/work/zbwloc/fgpt_bed_base /root/work/zbwloc/run-20261112T062521Z/bit-w_d128_tf32_k30-g32 32
+[fgpt_bed 06:25:33Z]   fgpt_bed: NVIDIA A100-SXM4-40GB (sm_80, 108 SMs), G 32, 20 steps, attention in 4 query block(s) a unit, rows in chunks of 128 of 128, shared memory 127952 B a member, scratch 21.95 MB, 1 member(s) an SM at most
+[fgpt_bed 06:25:33Z]   fgpt_bed: warmed the GPU for 503 ms
+[fgpt_bed 06:25:33Z]   fgpt_bed: run 17.012 ms with its launch; in the kernel 827.1 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 20
+[fgpt_bed 06:25:33Z] OK

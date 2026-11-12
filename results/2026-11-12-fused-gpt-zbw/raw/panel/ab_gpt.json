@@ -1,0 +1,107 @@
+[
+ {
+  "row": "gpt-tiny",
+  "control": "/root/work/panel9/w_tiny/bundle",
+  "cand": "/root/work/panel9/w_tiny/bundle",
+  "tasks": {
+   "control": 6749,
+   "cand": 6749
+  },
+  "ms": {
+   "control": {
+    "median": 6.509,
+    "best": 6.505,
+    "all": [
+     6.509,
+     6.516,
+     6.505
+    ]
+   },
+   "cand": {
+    "median": 6.201,
+    "best": 6.193,
+    "all": [
+     6.201,
+     6.193,
+     6.211
+    ]
+   }
+  },
+  "paired_ratio_median": 1.0496694081599742,
+  "best_ratio": 1.0503794606814145,
+  "gate_max_rel": 0.0,
+  "gate_rel_l2": 0.0,
+  "gate_rel_l2_buffer": "w.gpt.h0.attn.k.b",
+  "gate_tol": 0.0
+ },
+ {
+  "row": "gpt-small",
+  "control": "/root/work/panel9/w_small/bundle",
+  "cand": "/root/work/panel9/w_small/bundle",
+  "tasks": {
+   "control": 28858,
+   "cand": 28858
+  },
+  "ms": {
+   "control": {
+    "median": 13.786,
+    "best": 13.783,
+    "all": [
+     13.783,
+     13.786,
+     13.788
+    ]
+   },
+   "cand": {
+    "median": 13.733,
+    "best": 13.726,
+    "all": [
+     13.726,
+     13.794,
+     13.733
+    ]
+   }
+  },
+  "paired_ratio_median": 1.0040049515764946,
+  "best_ratio": 1.0041527028996065,
+  "gate_max_rel": 0.0,
+  "gate_rel_l2": 0.0,
+  "gate_rel_l2_buffer": "w.gpt.h0.attn.k.b",
+  "gate_tol": 0.0
+ },
+ {
+  "row": "gpt-162m",
+  "control": "/root/work/panel9/w_162m_3/bundle",
+  "cand": "/root/work/panel9/w_162m_3/bundle",
+  "tasks": {
+   "control": 161316,
+   "cand": 161316
+  },
+  "ms": {
+   "control": {
+    "median": 353.22,
+    "best": 352.904,
+    "all": [
+     352.904,
+     353.754,
+     353.22
+    ]
+   },
+   "cand": {
+    "median": 352.673,
+    "best": 352.199,
+    "all": [
+     352.199,
+     352.673,
+     352.986
+    ]
+   }
+  },
+  "paired_ratio_median": 1.0020017092609574,
+  "best_ratio": 1.0020017092609574,
+  "gate_max_rel": 0.0,
+  "gate_rel_l2": 0.0,
+  "gate_rel_l2_buffer": "w.gpt.h0.attn.k.b",
+  "gate_tol": 0.0
+ }
+]

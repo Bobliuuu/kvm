@@ -1,0 +1,6 @@
+fgpt_bed: NVIDIA A100-SXM4-40GB (sm_80, 108 SMs), G 16, 20 steps, attention in 2 query block(s) a unit, rows in chunks of 32 of 32, shared memory 30448 B a member, scratch 0.37 MB, 1 member(s) an SM at most
+fgpt_bed: ZBW: 12 doers (members without an attention item) for 16 owners, 2 owner(s) a pass, 32 of 32 columns a block
+fgpt_bed: ZBW for the attention: members 4-7 run the 4 items' dWo, dWq and dbq
+fgpt_bed: warmed the GPU for 511 ms
+fgpt_bed: run 2.514 ms with its launch; in the kernel 123.1 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 16 of 16 members finished, step counter 0 -> 20
+rc 0

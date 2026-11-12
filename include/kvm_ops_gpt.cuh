@@ -1030,7 +1030,7 @@ __device__ __noinline__ void mm_tile_big_ni(const float* A, int lda, const float
     mm_tile_big<TA, TB, PREC, WM, WN, WTN, BF, RZ>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, act, accum);
 }
 
-KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
+KVM_GPT_DEVI void matmul_tile_ours(const KvmCtx& ctx, const int32_t* a) {   // this set's tiles, every task; the op is matmul_tile below
     Chk k(ctx);
     int m0 = a[6], n0 = a[7], M = a[8], N = a[9], K = a[10], fl = a[11];
     bool ta = fl & 1, tb = fl & 2, accum = fl & 4, gelu = fl & 8, prec = fl & 16, big = fl & 32, huge = fl & 64, bf = fl & 128, trunc = fl & 256, dg = fl & 512, exact = fl & 1024;
@@ -1180,7 +1180,7 @@ KVM_GPT_DEVI void mm_epilogue_staged(const float (&acc)[4][WTN / 8][4], void* ou
 // ---- The #16 tile set, beside the tiles matmul_tile dispatches to ---------------------------------------------------------------
 // Jerry's fast 1xTF32 big tiles (mm_tf32_tile) and their dispatch, as he wrote them (Bobliuuu/kvm e7186a7; the staged epilogue above),
 // so tests/gpu_ops/bench_mm.cu can time both tile sets in one binary on the same task words. Templates and an inline dispatch:
-// none of it is compiled into a binary that does not call it (the executor does not). The A/B decides which set stays.
+// none of it is compiled into a binary that does not call it. The executor's matmul_tile routes to it where it measured faster (below).
 #define KVM_GPT_TF32_TILE 1   // kvmgpt::j16::mm_tf32_tile exists (benchmarks that also build against older trees test this)
 namespace j16 {
 // Operand rounding of this set (the same bits as kvmgpt::f2tf32_op for every input):
@@ -1371,14 +1371,14 @@ __device__ __noinline__ void mm_tf32_tile(const float* A, int lda, const float* 
 KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
     const int fl = a[11], m0 = a[6], n0 = a[7], M = a[8], N = a[9], K = a[10];
     const bool ta = fl & 1, tb = fl & 2, big = fl & 32, huge = fl & 64, plain = (fl & (16 | 128 | 256 | 512 | 1024)) == 0;
-    if (!(big || huge) || !plain) { kvmgpt::matmul_tile(ctx, a); return; }
+    if (!(big || huge) || !plain) { kvmgpt::matmul_tile_ours(ctx, a); return; }
     Chk k(ctx);
     int lda = 0, ldb = 0;
     const float* A = k.mat(a[0], ta ? K : M, ta ? M : K, &lda);
     const float* B = k.mat(a[1], tb ? N : K, tb ? K : N, &ldb);
     const bool fast = !k.bad && aligned16(A, lda) && aligned16(B, ldb) && (K & 3) == 0 && (m0 & 3) == 0 && (n0 & 3) == 0 &&
                       (!ta || (M & 3) == 0) && (tb || (N & 3) == 0);
-    if (!fast) { kvmgpt::matmul_tile(ctx, a); return; }   // also every argument error: kvmgpt::matmul_tile reports it
+    if (!fast) { kvmgpt::matmul_tile_ours(ctx, a); return; }   // also every argument error: kvmgpt::matmul_tile_ours reports it
     const bool deep = dyn_smem_bytes() >= 3 * (256 + 128) * 32 * 4;
     (void)deep;
 #define KVM_GPT_MMF(TA, TB, ...) mm_tf32_tile<TA, TB, false, __VA_ARGS__>(A, lda, B, ldb, m0, n0, M, N, K, ctx, a)
@@ -1390,7 +1390,7 @@ KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
 #if KVM_GPT_MMA_SMEM >= 3 * (128 + 128) * 32 * 4
         KVM_GPT_MMF_T(2, 4, 32, 32, 3);                                  // 128 x 128, BK 32 x 3 stages (96 KiB)
 #else
-        kvmgpt::matmul_tile(ctx, a);
+        kvmgpt::matmul_tile_ours(ctx, a);
 #endif
     }
 #if KVM_GPT_MMA_SMEM >= 3 * (256 + 128) * 32 * 4                         // only builds whose launch can have it compile the deep tile
@@ -1400,13 +1400,40 @@ KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
 #if KVM_GPT_MMA_SMEM >= 4 * (256 + 128) * 16 * 4
         KVM_GPT_MMF_T(4, 2, 64, 16, 4);                                  // 256 x 128, BK 16 x 4 stages (96 KiB)
 #else
-        kvmgpt::matmul_tile(ctx, a);
+        kvmgpt::matmul_tile_ours(ctx, a);
 #endif
     }
 #undef KVM_GPT_MMF_T
 #undef KVM_GPT_MMF
 }
 }   // namespace j16
+
+// The matmul_tile op. A plain 1xTF32 128x128 (flag 32) or 256x128 (flag 64) task runs #16's mm_tf32_tile (j16::matmul_tile, which hands
+// unaligned operands to ours) where that tile measured faster than ours in this op's own kernel; every other task runs ours. Both sets
+// round every operand the same way (to nearest, ties away) and accumulate each output in increasing k, so they give the same bits.
+// A100, the 162M shapes, tests/gpu_ops/bench_mm.cu (j16 over ours, both rounded, same kernel): 256x128 TN x1.65-1.78, NN x1.37-1.51,
+// NT x1.10-1.20 up to K = 3072 but x0.92 at K = 50304 (the head's input gradient, which ours keeps); 128x128 x1.04-1.27.
+// j16 reads its epilogue operands from the task words after its k loop, as an out-of-line function, so its loop keeps its registers.
+// -DKVM_GPT_J16_ROUTE=0 runs ours for every task. On sm_90a, ours sends plain 1xTF32 tasks to the TMA + wgmma path, so the route is off.
+#ifndef KVM_GPT_J16_ROUTE
+#define KVM_GPT_J16_ROUTE 1
+#endif
+// The route takes only tasks ours would accept and #16's set computes the same: no flag bit beyond the transposes, the accumulate, the
+// gelu epilogue and exactly one of the two big tiles, and a shape in range. Every other task, invalid ones included, goes to ours,
+// which serves it or reports its error, since #16's set validates neither the flags nor the tile's origin.
+KVM_GPT_DEVI bool j16_route(const int32_t* a) {
+#ifdef KVM_HOPPER_DEVICE
+    return false;
+#endif
+    const int fl = a[11], m0 = a[6], n0 = a[7], M = a[8], N = a[9], K = a[10];
+    const bool ta = fl & 1, tb = fl & 2, big = fl & 32, huge = fl & 64;
+    if (!KVM_GPT_J16_ROUTE || (fl & ~(1 | 2 | 4 | 8 | 32 | 64)) != 0 || big == huge || (ta && tb)) return false;   // TT was not measured
+    if (M <= 0 || N <= 0 || K <= 0 || m0 < 0 || m0 >= M || n0 < 0 || n0 >= N) return false;
+    return !(huge && tb && K > 4096);
+}
+KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
+    if (j16_route(a)) j16::matmul_tile(ctx, a); else matmul_tile_ours(ctx, a);
+}
 
 // ---- normalization: one warp per row ----------------------------------------------------------------------------------
 // Fast path: every lane keeps up to KVM_GPT_NORM_NV float4 of its row in registers (rows up to 128*NV = 1024 columns), so global

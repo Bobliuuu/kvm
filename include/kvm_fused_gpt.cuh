@@ -247,14 +247,31 @@ __device__ __forceinline__ void gemm_par(const J&... js) {
   }
 }
 
+// x / d for 0 <= x < 2^21 and d > 0 (inv = __fdividef(1.f, d)), exact: below 2^21 (so below a quotient of 2^21 too) the float quotient is
+// off by at most one, since its relative error stays under 2^-21, and one integer step fixes it: about 6 instructions against the ~20 of an
+// integer division by a run-time value. The range is the caller's to keep, with no run-time check: nvcc does not fold a check for x >= 2^21
+// away for the thread index, so a checked form keeps a whole integer division beside the float path at every call site, and runs slower
+// than the division it replaces. tests/static/test_div_small.cu checks every x below 2^21 for d up to 512, grid_loop's own domain (x up to
+// 1024, d up to 2^20), the range's top edge and random pairs inside it.
+constexpr int kDivSmallMax = 1 << 21;
+__device__ __forceinline__ int div_small(int x, int d, float inv) {
+  int q = __float2int_rz(__int2float_rz(x) * inv);
+  const int r = x - q * d;
+  q += (r >= d) - (r < 0);
+  return q;
+}
 // f(r, c) over a rows x units grid, unit x = r * units + c taken by thread x % NT in turn (x = threadIdx.x, + NT, ...), the order a flat
-// loop takes them, with (r, c) stepped instead of divided out: integer division by a runtime value is a ~20-instruction sequence, and these
-// loops ran one a unit (one division a call instead).
+// loop takes them, with (r, c) stepped instead of divided out, and the call's two divisions through div_small: every staging pass, zero()
+// and row loop runs this, so its two divisions by a run-time value run on every thread at every call site. Both stay in div_small's range:
+// NT by the assert below, the thread index by CUDA's limit of 1024 threads a block.
 template <class F>
 __device__ __forceinline__ void grid_loop(int rows, int units, F&& f) {
+  static_assert(NT > 0 && NT <= 1024, "grid_loop's NT is a block's thread count (CUDA allows at most 1024), which keeps both divisions in div_small's range");
   if (rows <= 0 || units <= 0) return;
-  const int dr = NT / units, dc = NT % units;
-  for (int r = threadIdx.x / units, c = threadIdx.x % units; r < rows;) {
+  const float inv = __fdividef(1.f, (float)units);
+  const int dr = div_small(NT, units, inv), dc = NT - dr * units;
+  int r = div_small(static_cast<int>(threadIdx.x), units, inv), c = threadIdx.x - r * units;
+  while (r < rows) {
     f(r, c);
     r += dr; c += dc;
     if (c >= units) { c -= units; ++r; }

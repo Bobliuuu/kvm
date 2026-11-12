@@ -1339,6 +1339,8 @@ namespace j16 {
 // one fewer than the integer-compare form it replaces, and bitwise the operands cuBLAS TF32 feeds its tensor cores (results/
 // 2026-11-09-a100-matmul-parity: 0 difference on 4096^3). (Round-toward-zero would save the add but triples the error: 7.6e-4 vs 2.7e-4.)
 KVM_GPT_DEVI unsigned f2tf32_op(float x) { const unsigned u = __float_as_uint(x); return fabsf(x) < __int_as_float(0x7f800000) ? u + 0x1000u : u; }
+// A tile's shared memory: its cp.async stages, which also hold its staged epilogue's slab (64 x (BN + 8) floats, at most 34,816 B here)
+__host__ __device__ constexpr unsigned stages_bytes(int bm, int bn, int bk, int nst) { return (unsigned)(nst * (bm + bn) * bk * 4); }
 
 
 // ---- mm_tf32_tile: the fast path of the 128x128 (flag 32) and 256x128 (flag 64) 1xTF32 tiles ------------------------------------
@@ -1529,8 +1531,10 @@ KVM_GPT_DEVI bool matmul_tile(const KvmCtx& ctx, const int32_t* a) {
     const bool fast = !k.bad && aligned16(A, lda) && aligned16(B, ldb) && (K & 3) == 0 && (m0 & 3) == 0 && (n0 & 3) == 0 &&
                       (!ta || (M & 3) == 0) && (tb || (N & 3) == 0);
     if (!fast) return false;   // also every argument error: kvmgpt::matmul_tile_ours reports it
-    const bool deep = dyn_smem_bytes() >= 3 * (256 + 128) * 32 * 4;
-    (void)deep;
+    // A variant runs only where this launch holds its stages. A launch sized to its bundle's tasks for our tiles (each task's own
+    // footprint) can be smaller than this set's stages, which our big tiles at BK 16 x 4 make it: a bundle of 128x128 tasks then launches
+    // with 69,632 B, and this set's 128x128 tile stages 98,304 B. Below its variant's stages the task stays with ours (false).
+    const unsigned have = dyn_smem_bytes();
 #define KVM_GPT_MMF(TA, TB, ...) mm_tf32_tile<TA, TB, false, __VA_ARGS__>(A, lda, B, ldb, m0, n0, M, N, K, ctx, a)
 #define KVM_GPT_MMF_T(...)                                                                                                   \
     if (!ta && !tb) KVM_GPT_MMF(false, false, __VA_ARGS__); else if (ta && !tb) KVM_GPT_MMF(true, false, __VA_ARGS__);      \
@@ -1538,17 +1542,19 @@ KVM_GPT_DEVI bool matmul_tile(const KvmCtx& ctx, const int32_t* a) {
     // each variant is compiled only where KVM_GPT_MMA_SMEM holds its stages (its static_assert); a build too small for one hands the task to ours
     if (big) {
 #if KVM_GPT_MMA_SMEM >= 3 * (128 + 128) * 32 * 4
-        KVM_GPT_MMF_T(2, 4, 32, 32, 3);                                  // 128 x 128, BK 32 x 3 stages (96 KiB)
+        if (have >= stages_bytes(128, 128, 32, 3)) { KVM_GPT_MMF_T(2, 4, 32, 32, 3); }   // 128 x 128, BK 32 x 3 stages (96 KiB)
+        else return false;
 #else
         return false;
 #endif
     }
 #if KVM_GPT_MMA_SMEM >= 3 * (256 + 128) * 32 * 4                         // only builds whose launch can have it compile the deep tile
-    else if (deep) { KVM_GPT_MMF_T(4, 2, 64, 32, 3); }                   // 256 x 128, BK 32 x 3 stages (144 KiB)
+    else if (have >= stages_bytes(256, 128, 32, 3)) { KVM_GPT_MMF_T(4, 2, 64, 32, 3); }   // 256 x 128, BK 32 x 3 stages (144 KiB)
 #endif
     else {
 #if KVM_GPT_MMA_SMEM >= 4 * (256 + 128) * 16 * 4
-        KVM_GPT_MMF_T(4, 2, 64, 16, 4);                                  // 256 x 128, BK 16 x 4 stages (96 KiB)
+        if (have >= stages_bytes(256, 128, 16, 4)) { KVM_GPT_MMF_T(4, 2, 64, 16, 4); }   // 256 x 128, BK 16 x 4 stages (96 KiB)
+        else return false;
 #else
         return false;
 #endif

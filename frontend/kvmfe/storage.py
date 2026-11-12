@@ -145,12 +145,14 @@ def apply(ops: list[LogicalOp], weights: bool = True) -> tuple[list[LogicalOp], 
         x, out = op.ins['x'], op.outs['out']
         out.dtype = 'bf16'
         p = prod.get(x.uid, [])
-        slot = _out_slot(ops[p[0]], x) if len(p) == 1 and p[0] not in out_of else None
+        slot = _out_slot(ops[p[0]], x) if len(p) == 1 else None
+        if slot is not None and slot in out_of.get(p[0], {}):   # one fold per output slot (a second cast of the same value narrows);
+            slot = None                                          # a producer with several outputs folds each one's cast (attention_bwd: dq, dk, dv)
         others = [(j, n) for j, n in readers_of.get(x.uid, []) if j != i]
         aware = all(j > p[0] and ops[j].kind != 'cast' and n in (_native(ops[j]) or ((), ()))[0]
                     and not any(t is x for t in ops[j].outs.values()) for j, n in others) if slot is not None else False
         if slot is not None and aware and x.dtype == 'f32' and p[0] < i:
-            out_of[p[0]] = (slot, out)
+            out_of.setdefault(p[0], {})[slot] = out
             drop.add(i)
             for j, n in others:
                 redirect.setdefault(j, {})[n] = out
@@ -253,8 +255,7 @@ def _fold(ops, drop, out_of, redirect=None):
             continue
         ins, outs = op.ins, op.outs
         if i in out_of:
-            slot, tensor = out_of[i]
-            outs = {**outs, slot: tensor}
+            outs = {**outs, **out_of[i]}
         if redirect and i in redirect:
             ins = {**ins, **redirect[i]}
         if ins is not op.ins or outs is not op.outs:

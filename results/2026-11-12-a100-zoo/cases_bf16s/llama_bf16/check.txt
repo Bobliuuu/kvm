@@ -1,0 +1,9 @@
+lowp: 1266 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 10 loss buffers
+  ok   losses rel L2 <= 0.001: worst 3.18e-04
+  ok   119 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act62 4.97e-06
+  info: post-optimizer weights/moments differ by up to 9.68e-03 (v.llama.h0.mlp.down.w) after the run
+  info: weights differ from the golden by 1.75e-03 (llama.wte); gradients differ per step by up to 2.5e-02, relative L2 of worst tensor, per step [0.0, 0.0011, 0.0055, 0.0065, 0.0077, 0.0079]
+  ok   optimizer replay reproduces the golden weights (validates the replay) <= 1e-05: worst 1.18e-07 (llama.h0.attn.o.w)
+  ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 1.19e-07 (llama.h1.attn.v.w)
+  ok   no NaN/Inf in any GPU buffer: []
+PASS

@@ -134,6 +134,14 @@ int main(int argc, char** argv) {
             if (vb != va) { printf("  FAIL: the rewrite changed a final version\n"); ++failures; }
             else if (!vb.empty()) printf("  final versions kept: %zu variable(s), e.g. variable %d at %d\n", vb.size(), vb.begin()->first, vb.begin()->second);
             if (bad_member || (int)members.size() != P.fused_runs) { printf("  FAIL: %d malformed gang members, %zu gangs for %d runs\n", bad_member, members.size(), P.fused_runs); ++failures; }
+            // each run's form: the fused step's (a row chunk, no 2-D fit) or F's (its fit's gang is the run's, every half's layout within it)
+            int bad_form = P.f2d.size() != P.runs.size() || P.rows.size() != P.runs.size();
+            for (size_t ri = 0; !bad_form && ri < P.runs.size(); ++ri) {
+                const kvm_f2d::Fit& f = P.f2d[ri];
+                if (f.G) bad_form += f.G != P.gang[ri] || P.rows[ri] != 0 || f.gta * f.gca > f.G || f.gtm * f.gcm > f.G || f.gca % 3 || f.smem_floats <= 0;
+                else bad_form += P.rows[ri] <= 0;
+            }
+            if (bad_form) { printf("  FAIL: %d run(s) with an inconsistent form\n", bad_form); ++failures; }
             // the fused kernel's launch (KvmExec::run_fgpt) takes task kept + (the members of earlier runs) + m as member m of its run: the members
             // follow every kept task, in run and member order. A bundle whose runs all fuse is its gangs alone, which is the fused path's bundle.
             {
@@ -154,7 +162,7 @@ int main(int argc, char** argv) {
             }
             // refusals of the rewrite, on a run it fuses by default: a budget no gang fits, and a dumped activation the fused step would leave stale
             if (P.fused_runs) {
-                KvmFuseGptOptions tight; tight.smem_floats = 1000;
+                KvmFuseGptOptions tight; tight.smem_floats = 1000; tight.f2d_smem_floats = 1000;
                 const KvmFuseGptPlan T = kvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, tight);
                 KvmFuseGptOptions dump; if (!r.runs.empty()) dump.keep = {*r.runs[0].shape.interior.begin()};
                 const KvmFuseGptPlan D = kvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, dump);

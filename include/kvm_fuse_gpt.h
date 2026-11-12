@@ -16,11 +16,14 @@
 // ===== Output =====
 // A description of each matched run (KvmFuseGptRun: the shapes, every parameter with its gradient and moments, the step's tasks), and the
 // rewrite (kvm_fuse_gpt) of each run that fits into the G members of one fgpt_step gang, which the executor launches as one kernel
-// (KvmExec::run_fgpt). Host only: tests/static/test_fuse_gpt.cpp drives it with plain g++ on real bundles.
+// (KvmExec::run_fgpt). A run takes the fused step's form (kvm_fused_gpt.h) where a gang of it fits; where none does (its N-wide phases
+// outgrow a member's shared memory, as a d 384 GPT's do on an A100), F's 2-D form (kvm_f2d.h), each half of a layer on a layout of its
+// own. Host only: tests/static/test_fuse_gpt.cpp drives it with plain g++ on real bundles.
 #include <set>
 #include <string>
 #include <vector>
 #include "kvm_fuse.h"
+#include "kvm_f2d.h"
 #include "kvm_fused_gpt.h"
 
 struct KvmFuseGptOps {   // operator ids (from the registry, by name); a missing op leaves its id at -1 and the template never matches it
@@ -748,7 +751,8 @@ inline KvmFuseGptResult kvm_fuse_gpt_scan(const std::vector<KvmTaskDesc>& tasks,
 }
 
 struct KvmFuseGptOptions {
-  int smem_floats = KVM_FGPT_SMEM_FLOATS;   // shared memory a gang member may use (the device's budget)
+  int smem_floats = KVM_FGPT_SMEM_FLOATS;   // shared memory a gang member may use (the device's budget for the fused step's kernel)
+  int f2d_smem_floats = KVM_FGPT_SMEM_FLOATS;   // the same for F's kernel (its own static shared memory), so each form is judged by its own
   int workers = 108;                        // workers the run has: a gang wider than them cannot start together
   std::vector<int> keep;                    // buffers read after the run (a dump): a run that would leave one of them stale is not fused
 };
@@ -759,7 +763,8 @@ struct KvmFuseGptPlan {
   std::vector<int32_t> succ, args;
   std::vector<KvmFuseGptRun> runs;
   std::vector<int> gang;                    // each fused run's member count G
-  std::vector<int> rows;                    // each fused run's row chunk for its N-wide phases (kvm_fgpt_fit: N, or 128 or 64 below it)
+  std::vector<int> rows;                    // each fused run's row chunk for its N-wide phases (kvm_fgpt_fit: N, or 128 or 64 below it; 0 in F's form)
+  std::vector<kvm_f2d::Fit> f2d;            // each fused run's 2-D form (kvm_f2d::fit); its G is 0 for a run in the fused step's form
   std::vector<std::string> report;          // one line per component
   int fused_runs = 0, unchanged_runs = 0, replaced_tasks = 0, new_tasks = 0;
 };
@@ -780,12 +785,18 @@ inline KvmFuseGptPlan kvm_fuse_gpt(const std::vector<KvmTaskDesc>& tasks, const 
     const KvmGptStep& s = r.shape;
     std::string why;
     const KvmFgptFit fit = fgpt_step_op < 0 ? KvmFgptFit{} : kvm_fgpt_fit(s.N, s.T, s.d, s.H, s.F, s.V, opt.smem_floats, opt.workers);
-    const int G = fit.G;
     const std::string unrun = kvm_fgpt_unrunnable(s.d, s.H, s.L, s.mm_numerics);
+    // where no gang of the fused step's form fits, F's 2-D form may: each half's own layout keeps a member's tiles small
+    kvm_f2d::Fit f2d;
+    const char* f2d_why = nullptr;
+    if (fgpt_step_op >= 0 && unrun.empty() && s.L <= KVM_FGPT_MAXL && !fit.G)
+      f2d_why = kvm_f2d::fit(s.N, s.T, s.B, s.d, s.H, s.F, s.V, s.L, s.mm_numerics, opt.f2d_smem_floats, opt.workers, f2d);
+    const int G = fit.G ? fit.G : f2d.G;
     if (fgpt_step_op < 0) why = "the registry has no fgpt_step op";
     else if (!unrun.empty()) why = "the fused step cannot run it: " + unrun;
     else if (s.L > KVM_FGPT_MAXL) why = "does not fit a gang: " + std::to_string(s.L) + " layers, more than the " + std::to_string(KVM_FGPT_MAXL) + " the fused step's scratch holds";
-    else if (!G) why = "does not fit a gang: no gang of at most " + std::to_string(opt.workers) + " members fits its phases in " + std::to_string(opt.smem_floats) + " floats of shared memory a member";
+    else if (!G) why = "does not fit a gang: no gang of at most " + std::to_string(opt.workers) + " members fits its phases in " + std::to_string(opt.smem_floats) +
+                       " floats of shared memory a member, nor F's 2-D form (" + (f2d_why ? f2d_why : "not tried") + ")";
     if (why.empty()) {   // the gang writes the parameters, moments, gradients, step counter and losses; activations and the windows' copies go stale
       std::set<int> written;
       for (const KvmGptUpdate& u : s.updates) written.insert({u.p, u.g, u.m, u.v});
@@ -798,9 +809,15 @@ inline KvmFuseGptPlan kvm_fuse_gpt(const std::vector<KvmTaskDesc>& tasks, const 
     snprintf(head, sizeof head, "component %d: ", r.component);
     if (!why.empty()) { line[r.component] = head + std::string("unchanged: a GPT run, but ") + why; continue; }
     run_of_comp[r.component] = (int)P.runs.size();
-    P.runs.push_back(r); P.gang.push_back(G); P.rows.push_back(fit.rows);
+    P.runs.push_back(r); P.gang.push_back(G); P.rows.push_back(fit.G ? fit.rows : 0); P.f2d.push_back(fit.G ? kvm_f2d::Fit{} : f2d);
     line[r.component] += ", fused as a gang of " + std::to_string(G);
-    if (fit.rows < s.N) line[r.component] += " (its N-wide phases in chunks of " + std::to_string(fit.rows) + " of " + std::to_string(s.N) + " rows)";
+    if (fit.G && fit.rows < s.N) line[r.component] += " (its N-wide phases in chunks of " + std::to_string(fit.rows) + " of " + std::to_string(s.N) + " rows)";
+    if (!fit.G) {
+      char form[160];
+      snprintf(form, sizeof form, " in F's 2-D form (attention %d x %d, MLP %d x %d, %d query block(s) a unit, %lld floats of shared memory a member)",
+               f2d.gta, f2d.gca, f2d.gtm, f2d.gcm, f2d.qb, f2d.smem_floats);
+      line[r.component] += form;
+    }
     P.replaced_tasks += (int)comps[r.component].size(); P.new_tasks += G;
   }
   for (size_t ci = 0; ci < comps.size(); ++ci) {

@@ -1,0 +1,4 @@
+tiny-g16: 5 paired rounds, f0/f1 x1.0152 (x1.0129-x1.0160); medians f0 133.6 f1 131.6 us a step; f1 faster in 5 of 5
+ho128-g64: 5 paired rounds, f0/f1 x1.0063 (x1.0047-x1.0067); medians f0 949.8 f1 944.1 us a step; f1 faster in 5 of 5
+      2 1407 MHz       2 1410 MHz 
+BED_END

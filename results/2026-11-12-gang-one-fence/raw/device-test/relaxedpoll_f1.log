@@ -1,0 +1,66 @@
+NVIDIA A100-SXM4-40GB: 108 co-resident blocks of 256 threads
+counted barrier, side by side, reads from L2 (ld.global.cg): 108 blocks in 7 gang(s) (sizes 1 2 3 5 8 13 76), 96 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 75 member(s) gave up at a crossing (the widest gang has 75 others; members of other gangs may give up too once the word is set)
+counted barrier, one gang, reads from L2 (ld.global.cg): 108 blocks in 1 gang(s) (sizes 108), 128 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 107 member(s) gave up at a crossing (the widest gang has 107 others; members of other gangs may give up too once the word is set)
+flag-line barrier, side by side, reads from L2 (ld.global.cg): 108 blocks in 7 gang(s) (sizes 1 2 3 5 8 13 76), 96 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 75 member(s) gave up at a crossing (the widest gang has 75 others; members of other gangs may give up too once the word is set)
+flag-line barrier, one gang, reads from L2 (ld.global.cg): 108 blocks in 1 gang(s) (sizes 108), 128 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 107 member(s) gave up at a crossing (the widest gang has 107 others; members of other gangs may give up too once the word is set)
+cross<8> barrier, side by side, reads from L2 (ld.global.cg): 108 blocks in 7 gang(s) (sizes 1 2 3 5 8 13 76), 96 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 75 member(s) gave up at a crossing (the widest gang has 75 others; members of other gangs may give up too once the word is set)
+cross<8> barrier, one gang, reads from L2 (ld.global.cg): 108 blocks in 1 gang(s) (sizes 108), 128 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 107 member(s) gave up at a crossing (the widest gang has 107 others; members of other gangs may give up too once the word is set)
+cross<KVM_GANG_LINES_MAX> barrier, side by side, reads from L2 (ld.global.cg): 108 blocks in 7 gang(s) (sizes 1 2 3 5 8 13 76), 96 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 75 member(s) gave up at a crossing (the widest gang has 75 others; members of other gangs may give up too once the word is set)
+cross<KVM_GANG_LINES_MAX> barrier, one gang, reads from L2 (ld.global.cg): 108 blocks in 1 gang(s) (sizes 108), 128 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 107 member(s) gave up at a crossing (the widest gang has 107 others; members of other gangs may give up too once the word is set)
+counted barrier, side by side, reads through L1 (ld.global.ca): 108 blocks in 7 gang(s) (sizes 1 2 3 5 8 13 76), 96 words a gang, 2000 rounds of two crossings
+  launch 0: 757278720 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 757278720 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 75 member(s) gave up at a crossing (the widest gang has 75 others; members of other gangs may give up too once the word is set)
+counted barrier, one gang, reads through L1 (ld.global.ca): 108 blocks in 1 gang(s) (sizes 108), 128 words a gang, 2000 rounds of two crossings
+  launch 0: 1473251328 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 1473251328 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 107 member(s) gave up at a crossing (the widest gang has 107 others; members of other gangs may give up too once the word is set)
+flag-line barrier, side by side, reads through L1 (ld.global.ca): 108 blocks in 7 gang(s) (sizes 1 2 3 5 8 13 76), 96 words a gang, 2000 rounds of two crossings
+  launch 0: 757278720 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 757278720 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 75 member(s) gave up at a crossing (the widest gang has 75 others; members of other gangs may give up too once the word is set)
+flag-line barrier, one gang, reads through L1 (ld.global.ca): 108 blocks in 1 gang(s) (sizes 108), 128 words a gang, 2000 rounds of two crossings
+  launch 0: 1473251328 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 1473251328 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 107 member(s) gave up at a crossing (the widest gang has 107 others; members of other gangs may give up too once the word is set)
+cross<8> barrier, side by side, reads through L1 (ld.global.ca): 108 blocks in 7 gang(s) (sizes 1 2 3 5 8 13 76), 96 words a gang, 2000 rounds of two crossings
+  launch 0: 757278720 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 757278720 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 75 member(s) gave up at a crossing (the widest gang has 75 others; members of other gangs may give up too once the word is set)
+cross<8> barrier, one gang, reads through L1 (ld.global.ca): 108 blocks in 1 gang(s) (sizes 108), 128 words a gang, 2000 rounds of two crossings
+  launch 0: 1473251328 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 1473251328 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 107 member(s) gave up at a crossing (the widest gang has 107 others; members of other gangs may give up too once the word is set)
+cross<KVM_GANG_LINES_MAX> barrier, side by side, reads through L1 (ld.global.ca): 108 blocks in 7 gang(s) (sizes 1 2 3 5 8 13 76), 96 words a gang, 2000 rounds of two crossings
+  launch 0: 757278720 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 757278720 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 75 member(s) gave up at a crossing (the widest gang has 75 others; members of other gangs may give up too once the word is set)
+cross<KVM_GANG_LINES_MAX> barrier, one gang, reads through L1 (ld.global.ca): 108 blocks in 1 gang(s) (sizes 108), 128 words a gang, 2000 rounds of two crossings
+  launch 0: 1473251328 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1 (from the first's words, starts staggered up to 1 ms): 1473251328 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 107 member(s) gave up at a crossing (the widest gang has 107 others; members of other gangs may give up too once the word is set)
+FAIL

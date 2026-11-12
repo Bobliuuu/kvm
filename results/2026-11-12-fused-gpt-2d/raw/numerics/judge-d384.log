@@ -1,0 +1,12 @@
+[fgpt_bed 04:13:17Z] VM reference: cached vm-3db4acfa7f449ce3-k1.json
+[fgpt_bed 04:13:47Z] model: L 3, d 384, heads 6 x 64, MLP 1536, V 256, 4 x 96 rows; 1 steps; work /root/work/f2d-step/port-d384
+[fgpt_bed 04:13:48Z] G 96: /root/work/f2d/runPORT-20261112T033301Z/f2d_bed /root/work/f2d-step/port-d384 96
+[fgpt_bed 04:13:49Z]   f2d_bed: NVIDIA A100-SXM4-40GB (sm_80, 108 SMs): L 3, d 384, H 6 x 64, F 1536, V 256, 4 x 96 rows, 1 step(s) from 0; gang 96 (counted); attention 6 x 12, MLP 6 x 16, KC 32, 3 query block(s) a unit, 16 vocabulary shards of 16; shared 148.8 KB a member, F's buffers 223.2 MB; 1xTF32 build
+[fgpt_bed 04:13:49Z]   f2d_bed: warmed the GPU for 506 ms
+[fgpt_bed 04:13:49Z]   f2d_bed: run 3.096 ms with its launch; in the kernel 3000.3 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 96 of 96 members finished, step counter 0 -> 1
+[fgpt_bed 04:13:55Z] G 96: losses: 5.600117 (VM 5.600113): worst of 1 5.96e-07 relative, 1/count off by 0.0e+00: ok
+[fgpt_bed 04:13:55Z] G 96: gradients (last step): worst 1.30e-03 of its tensor's scale (w.gpt.h0.attn.q.b): FAIL
+[fgpt_bed 04:13:55Z] G 96: first moments (last step): worst 1.30e-03 of its tensor's scale (w.gpt.h0.attn.q.b): FAIL
+[fgpt_bed 04:13:55Z] G 96: second moments (last step): worst 1.70e-03 of its tensor's scale (w.gpt.h0.n1.g): FAIL
+[fgpt_bed 04:13:55Z] G 96: weights (reported): largest difference 1.98 x lr (w.gpt.h0.attn.proj.w)
+[fgpt_bed 04:13:55Z] FAILED: 1

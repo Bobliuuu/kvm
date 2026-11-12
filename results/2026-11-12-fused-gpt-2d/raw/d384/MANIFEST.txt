@@ -1,0 +1,4 @@
+e6455180e6788561f818c58d022683ae  /root/builds/ee481fa1490c83f35629dcda/kvm_exec
+48ee77d7f93534bc72f60a76d63ef71f  /root/builds/479574faa92669a764a5e487/kvm_exec
+bae00104e576e8867948cd947ae89fa2  /root/work/lfl/f2d_bed
+NVIDIA A100-SXM4-40GB, 1095 MHz, 1410 MHz, 37.40 W, 400.00 W

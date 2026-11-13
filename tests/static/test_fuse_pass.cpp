@@ -2,7 +2,8 @@
 //   g++ -std=c++17 -O2 -Iinclude tests/static/test_fuse_pass.cpp -o /tmp/test_fuse_pass && /tmp/test_fuse_pass BUNDLE_DIR[@FORM]...   (build from the repo root)
 // FORM, when given, is what the pass must make of every run of the bundle at the largest worker count (108, an A100's default): none (no run fused), block (the one-block
 // form, fmlp_slice and fmlp_sgd), split (the split form's fmlp_split gangs, its members holding their weights), split-streamed (the same gangs, their
-// members streaming their weights: kvm_fused_split.h) or grid (the grid form's fmlp_grid gangs). A bundle given without one is only reported.
+// members streaming their weights: kvm_fused_split.h), grid (the grid form's fmlp_grid gangs) or batch (the batched form's fmlp_batch gangs:
+// every run of the bundle in one gang a step). A bundle given without one is only reported.
 // Checks on a fired bundle: the DAG is acyclic; every kept task keeps its op and arguments; every replaced step became its slices and groups, each slice before every group; the static
 // planner accepts the result on the bundle's registry signatures, with the fused ops' signatures added; every gang's members sit on distinct workers; and the emitted records
 // replay as the device runs them (tests/static/replay.h): no deadlock through any gang's barrier, every edge of the DAG honoured.
@@ -151,7 +152,7 @@ int main(int argc, char** argv) {
     // --smem FLOATS: the shared-memory budget of a fused block (default: the pass's, an A100's); a smaller GPU's budget changes the forms
     int smem_floats = KvmFuseOptions{}.smem_floats, first_arg = 1;
     if (argc > 2 && !strcmp(argv[1], "--smem")) { smem_floats = atoi(argv[2]); first_arg = 3; }
-    if (argc <= first_arg || smem_floats <= 0) { fprintf(stderr, "usage: %s [--smem FLOATS] BUNDLE_DIR[@none|block|split|split-streamed|grid]...\n", argv[0]); return 2; }
+    if (argc <= first_arg || smem_floats <= 0) { fprintf(stderr, "usage: %s [--smem FLOATS] BUNDLE_DIR[@none|block|split|split-streamed|grid|batch]...\n", argv[0]); return 2; }
     const kvm_test_registry::Registry& R = kvm_test_registry::registry();
     KvmFuseOps ops;
     ops.noop = R.require("noop");
@@ -171,8 +172,9 @@ int main(int argc, char** argv) {
     ops.fmlp_sgd = R.require("fmlp_sgd");
     ops.fmlp_split = R.require("fmlp_split");
     ops.fmlp_grid = R.require("fmlp_grid");
-    const int slice_id = ops.fmlp_slice, sgd_id = ops.fmlp_sgd, split_id = ops.fmlp_split, grid_id = ops.fmlp_grid;
-    const auto gang_op = [&](int op) { return op == split_id || op == grid_id; };
+    ops.fmlp_batch = R.require("fmlp_batch");
+    const int slice_id = ops.fmlp_slice, sgd_id = ops.fmlp_sgd, split_id = ops.fmlp_split, grid_id = ops.fmlp_grid, batch_id = ops.fmlp_batch;
+    const auto gang_op = [&](int op) { return op == split_id || op == grid_id || op == batch_id; };
     const KvmSOpLookup op_of = R.lookup();
     static constexpr int kWorkers[] = {1, 4, 8, 48, 107, 108};   // 108: the A100's grid, the executor's default worker count
     int failures = 0;
@@ -181,7 +183,7 @@ int main(int argc, char** argv) {
         const std::string spec = argv[ai]; const size_t at = spec.rfind('@');
         const bool has_form = at != std::string::npos && spec.find('/', at) == std::string::npos;
         const std::string dir = has_form ? spec.substr(0, at) : spec, expect = has_form ? spec.substr(at + 1) : "";
-        if (has_form && expect != "none" && expect != "block" && expect != "split" && expect != "split-streamed" && expect != "grid") { fprintf(stderr, "%s: unknown form \"%s\" (none, block, split, split-streamed or grid)\n", spec.c_str(), expect.c_str()); return 2; }
+        if (has_form && expect != "none" && expect != "block" && expect != "split" && expect != "split-streamed" && expect != "grid" && expect != "batch") { fprintf(stderr, "%s: unknown form \"%s\" (none, block, split, split-streamed, grid or batch)\n", spec.c_str(), expect.c_str()); return 2; }
         const std::string meta = slurp(dir + "/metadata.json");
         auto tasks = load<KvmTaskDesc>(dir + "/tasks.bin"); auto succ = load<int32_t>(dir + "/successors.bin"); auto args = load<int32_t>(dir + "/args.bin");
         const auto bufs = load_bufs(meta);
@@ -196,14 +198,15 @@ int main(int argc, char** argv) {
         for (const auto& kv : counts) printf("  [%d runs] %s\n", kv.second, kv.first.c_str());
         if (!r.dropped.empty()) printf("  nothing fused: %s\n", r.dropped.c_str());
         if (!expect.empty() && W == kWorkers[sizeof kWorkers / sizeof kWorkers[0] - 1]) {
-            int block = 0, split = 0, grid = 0;
-            for (const auto& d : r.tasks) { block += d.op_id == slice_id || d.op_id == sgd_id; split += d.op_id == split_id; grid += d.op_id == grid_id; }
-            const char* got = !r.fused_runs ? "none" : r.unchanged_runs || (block > 0) + (split > 0) + (grid > 0) > 1 ? "mixed" : block ? "block" : split ? (r.entry.stream ? "split-streamed" : "split") : "grid";
+            int block = 0, split = 0, grid = 0, batch = 0;
+            for (const auto& d : r.tasks) { block += d.op_id == slice_id || d.op_id == sgd_id; split += d.op_id == split_id; grid += d.op_id == grid_id; batch += d.op_id == batch_id; }
+            const char* got = !r.fused_runs ? "none" : r.unchanged_runs || (block > 0) + (split > 0) + (grid > 0) + (batch > 0) > 1 ? "mixed" : block ? "block" : split ? (r.entry.stream ? "split-streamed" : "split") : grid ? "grid" : "batch";
             if (expect != got) { printf("  FAIL: expected %s at W=%d, got %s (%d of %d runs fused)\n", expect.c_str(), W, got, r.fused_runs, r.fused_runs + r.unchanged_runs); ++failures; }
             else printf("  expected %s at W=%d: ok\n", expect.c_str(), W);
             // the static kernel entry the executor launches (kvm_fuse_entry): each fused form on its own entry, an unfused bundle on the generic one
-            const KvmFuseEntry::Kind want = expect == "split" || expect == "split-streamed" ? KvmFuseEntry::split : expect == "grid" ? KvmFuseEntry::grid : expect == "block" ? KvmFuseEntry::block : KvmFuseEntry::generic;
-            if (r.entry.kind != want) { printf("  FAIL: entry at W=%d is %s\n", W, kvm_fuse_entry_name(r.entry).c_str()); ++failures; }
+            const KvmFuseEntry::Kind want = expect == "split" || expect == "split-streamed" ? KvmFuseEntry::split : expect == "grid" ? KvmFuseEntry::grid : expect == "block" ? KvmFuseEntry::block : expect == "batch" ? KvmFuseEntry::batch : KvmFuseEntry::generic;
+            // "batch" is either batched entry: the split arithmetic's or the grid arithmetic's (the batched check below reads each run's)
+            if (r.entry.kind != want && !(want == KvmFuseEntry::batch && r.entry.kind == KvmFuseEntry::batch_grid)) { printf("  FAIL: entry at W=%d is %s\n", W, kvm_fuse_entry_name(r.entry).c_str()); ++failures; }
             else printf("  entry at W=%d: %s: ok\n", W, kvm_fuse_entry_name(r.entry).c_str());
         }
         if (!r.fused_runs) continue;
@@ -269,6 +272,49 @@ int main(int argc, char** argv) {
                 if (!alone) { printf("  FAIL: a softmax CE task with %d argument words (its op takes %d) was not left alone: fused runs %d, %zu warning(s)\n", t.args_words, t.args_words - delta, q.fused_runs, q.warnings.size()); ++failures; }
             }
         }
+        // A batched entry: the bundle's one batch carries every run; each run's arithmetic is the one its shape takes alone at these workers, the
+        // split form's Sv or the grid form's P (gate 2: a run's arithmetic is its shape's alone, so R copies here compute the bits one run computes
+        // on its form); each run names an i32 token and target buffer of T and an f32 loss pair for every step; and each step is one gang of all
+        // W members, numbered 0..W-1.
+        if (r.entry.kind == KvmFuseEntry::batch || r.entry.kind == KvmFuseEntry::batch_grid) {
+            std::string bad;
+            const auto fail = [&](const std::string& w) { if (bad.empty()) bad = w; };
+            if (r.batches.size() != 1) fail(std::to_string(r.batches.size()) + " batches, not 1");
+            else {
+                const KvmFuseBatch& bt = r.batches[0];
+                if (bt.runs.size() != r.runs.size() || bt.steps.size() != bt.runs.size()) fail("the batch carries " + std::to_string(bt.runs.size()) + " of " + std::to_string(r.runs.size()) + " runs");
+                for (size_t i = 0; i < bt.runs.size() && i < bt.steps.size(); ++i) {
+                    const KvmFuseRun& run = r.runs[bt.runs[i]];
+                    std::string w; const std::vector<int> fit = kvm_fuse_split_fits(run.L, run.E, run.V, run.H, run.T, ops, opts, w);
+                    if (!run.batch || run.B != W) fail("run " + std::to_string(i) + " is not a batched run of " + std::to_string(W) + " members");
+                    if (run.Sv > 0) {   // the split form's arithmetic: the share count the shape takes alone
+                        if (fit.empty() || run.Sv != fit.back()) fail("run " + std::to_string(i) + " at Sv " + std::to_string(run.Sv) + ", its shape alone takes " + (fit.empty() ? std::string("none (") + w + ")" : std::to_string(fit.back())));
+                    } else {   // the grid form's: the gang the shape takes alone, when the split form cannot hold it
+                        std::string gw; const int P = kvm_fuse_grid_fits(run.L, run.E, run.V, run.H, run.T, ops, opts, gw);
+                        if (!fit.empty() || run.P != P || P <= 0) fail("run " + std::to_string(i) + " at a grid of " + std::to_string(run.P) + ", its shape alone takes " + (fit.empty() ? "a grid of " + std::to_string(P) : "the split form"));
+                    }
+                    if ((int)bt.steps[i].size() != run.steps) fail("run " + std::to_string(i) + " names buffers for " + std::to_string(bt.steps[i].size()) + " of " + std::to_string(run.steps) + " steps");
+                    for (const auto& io : bt.steps[i]) for (int k = 0; k < 3; ++k) {
+                        const int b = io[k], dt = k < 2 ? 1 : 0; const long long n = k < 2 ? run.T : 2;
+                        if (b < 0 || b >= (int)bufs.size() || bufs[b].dtype != dt || (long long)bufs[b].rows * bufs[b].cols < n) fail("run " + std::to_string(i) + ": buffer " + std::to_string(b) + " is not its step's " + (k == 0 ? "tokens" : k == 1 ? "targets" : "loss"));
+                    }
+                }
+                std::map<int, std::set<int>> members; std::map<int, int> gang_step;
+                for (const auto& d : r.tasks) {
+                    if (d.op_id != batch_id) continue;
+                    const int32_t* a = &r.args[d.args_off];
+                    if (d.args_words != 5 || a[0] != 0 || a[3] != W || a[2] < 0 || a[2] >= W || a[4] < 0 || a[4] >= r.runs[0].steps) { fail("a member's arguments are not (0, gang, 0..W-1, W, step)"); continue; }
+                    if (!members[a[1]].insert(a[2]).second) fail("gang " + std::to_string(a[1]) + " holds member " + std::to_string(a[2]) + " twice");
+                    if (gang_step.count(a[1]) && gang_step[a[1]] != a[4]) fail("gang " + std::to_string(a[1]) + " spans two steps");
+                    gang_step[a[1]] = a[4];
+                }
+                if ((int)members.size() != r.runs[0].steps) fail(std::to_string(members.size()) + " gangs for " + std::to_string(r.runs[0].steps) + " steps");
+                for (const auto& kv : members) if ((int)kv.second.size() != W) fail("gang " + std::to_string(kv.first) + " has " + std::to_string(kv.second.size()) + " of " + std::to_string(W) + " members");
+            }
+            if (!bad.empty()) { printf("  FAIL: W=%d: batched: %s\n", W, bad.c_str()); ++failures; }
+            else if (r.runs[0].Sv) printf("  batched gangs at W=%d: %zu runs, %d virtual shares, one gang of %d a step: ok\n", W, r.runs.size(), r.runs[0].Sv, W);
+            else printf("  batched gangs at W=%d: %zu runs, the grid's arithmetic at %d members, one gang of %d a step: ok\n", W, r.runs.size(), r.runs[0].P, W);
+        }
         // structural checks of the rewritten bundle
         if (!acyclic(r.tasks, r.succ)) { printf("  FAIL: the rewritten bundle has a cycle\n"); ++failures; continue; }
         // kept tasks keep their op and arguments: the multiset of (op, args) over tasks that are not fused equals the original minus the replaced tasks
@@ -281,7 +327,7 @@ int main(int argc, char** argv) {
         if (extra || lost != r.replaced_tasks) { printf("  FAIL: kept tasks changed: %d replaced, %d lost, %d invented\n", r.replaced_tasks, lost, extra); ++failures; continue; }
         // the planner places every task, and every gang's members on distinct workers
         KvmSConfig cfg; cfg.workers = W;
-        const KvmSCostFn cost = [&](int op, const int32_t*) { return op == slice_id ? 60.0 : op == sgd_id ? 8.0 : op == split_id ? 40.0 : op == grid_id ? 60.0 : op == 0 ? 0.1 : 3.0; };
+        const KvmSCostFn cost = [&](int op, const int32_t*) { return op == slice_id ? 60.0 : op == sgd_id ? 8.0 : op == split_id ? 40.0 : op == grid_id ? 60.0 : op == batch_id ? 80.0 : op == 0 ? 0.1 : 3.0; };
         KvmSPlan p;
         try { p = kvm_static_plan(r.tasks, r.succ, r.args, cfg, op_of, cost); }
         catch (const std::exception& e) { printf("  FAIL: the planner refused the rewritten bundle at W=%d: %s\n", W, e.what()); ++failures; continue; }

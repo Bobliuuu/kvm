@@ -1,10 +1,12 @@
 // grid_bed: the grid MLP step for MLPs too wide for the split step: one copy of the model, each weight matrix cut K x N over the gang's P blocks.
 //   nvcc -O3 -arch=sm_80 -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -Iinclude bench/fused_mlp/grid_bed.cu -o grid_bed
-//   ./grid_bed [--hidden 1024] [--depth 2] [--members 108] [--steps 50] [--check 3] [--embed 48] [--vocab 100] [--seed 1]
+//   ./grid_bed [--hidden 1024] [--depth 2] [--members 108] [--steps 50] [--check 3] [--embed 48] [--vocab 100] [--seed 1] [--dump FILE]
 // The step is include/kvm_fused_grid.cuh's grid_run (kvm_fused_grid.h has the design), looped over the steps on one gang of P blocks, so this bed
 // times and checks the code an executor op would run. The model and data are mlp_ref.h's, drawn as split_bed draws them, so the two beds train the
 // same model on one seed and shape. Prints block 0's per-phase cycles (each phase ends at its last warp's end), the step time by the kernel's own
-// %globaltimer, and, with --check K, the first K steps against the float64 reference.
+// %globaltimer, and, with --check K, the first K steps against the float64 reference. --dump writes the losses and the model after the check's
+// steps as raw floats, in split_bed's order (each step's loss and 1 / T, then every layer's W and b, the head and the embedding), so another
+// form's dump of the same shape, seed and steps compares to it byte for byte.
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -55,13 +57,15 @@ __global__ void __launch_bounds__(NT, 1) grid_kernel(const KvmGridDesc* gd, cons
 
 int main(int argc, char** argv) {
   KvmGridDesc d{}; d.V = 100; d.E = 48; d.L = 2; d.H = 1024; d.T = kvm_fgrid::T96; d.P = 108; d.lr = LR;
-  int steps = 50, check = 3; unsigned seed = 1;
+  int steps = 50, check = 3; unsigned seed = 1; std::string dump;
   for (int i = 1; i + 1 < argc; i += 2) {
     const std::string a = argv[i]; const int v = atoi(argv[i + 1]);
-    if (a == "--hidden") d.H = v; else if (a == "--depth") d.L = v; else if (a == "--members") d.P = v; else if (a == "--steps") steps = v;
+    if (a == "--dump") dump = argv[i + 1];
+    else if (a == "--hidden") d.H = v; else if (a == "--depth") d.L = v; else if (a == "--members") d.P = v; else if (a == "--steps") steps = v;
     else if (a == "--check") check = v; else if (a == "--embed") d.E = v; else if (a == "--vocab") d.V = v; else if (a == "--seed") seed = (unsigned)v;
     else { fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
   }
+  if (!dump.empty() && check < 1) { fprintf(stderr, "--dump writes the model after the check's steps: give --check 1 or more\n"); return 2; }
   const int total = kvm_grid_layout(d);
   if (total < 0) { fprintf(stderr, "a shape the grid step does not take (kvm_grid_layout): H a multiple of 8, E of 16 (E at most 128), V a multiple of 4 (padded at most 128), depth 1-%d, T = 96\n", KVM_GRID_MAXL); return 2; }
   const size_t smem_bytes = (size_t)total * sizeof(float);
@@ -118,6 +122,15 @@ int main(int argc, char** argv) {
     printf("check after %d steps: loss max rel %.2e; update rel L2 (worst layer) W %.2e, b %.2e; Wh %.2e, emb %.2e (TF32 operands: a few 1e-3 expected)\n", check, worst, eW, eb, eWh, eemb);
     bad = !(worst <= 1e-3 && eW <= 2e-2 && eb <= 2e-2 && eWh <= 2e-2 && eemb <= 2e-2);   // a NaN fails too
     printf("%s\n", bad ? "CHECK FAILED" : "check ok");
+    if (!dump.empty()) {   // the check's losses, then every layer's W and b, the head and the embedding, as raw floats in that order (split_bed's)
+      FILE* f = fopen(dump.c_str(), "wb");
+      if (!f) { fprintf(stderr, "cannot write %s\n", dump.c_str()); return 2; }
+      size_t n = fwrite(loss.data(), 4, loss.size(), f), want = loss.size();
+      for (int l = 0; l < d.L; ++l) { n += fwrite(gW[l].data(), 4, gW[l].size(), f) + fwrite(gb[l].data(), 4, gb[l].size(), f); want += gW[l].size() + gb[l].size(); }
+      n += fwrite(gWh.data(), 4, gWh.size(), f) + fwrite(gemb.data(), 4, gemb.size(), f); want += gWh.size() + gemb.size();
+      if (fclose(f) != 0 || n != want) { fprintf(stderr, "short write to %s (%zu of %zu floats)\n", dump.c_str(), n, want); return 2; }
+      printf("dumped %zu floats to %s\n", want, dump.c_str());
+    }
   }
   // timing: a warm launch, then the timed one
   upload(); launch(std::min(steps, 20));

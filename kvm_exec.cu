@@ -114,9 +114,10 @@ static double kvm_static_cost(int op, const int32_t* a) {
 }
 
 // A bundle whose ops the cost model all prices and whose mean estimated task cost (kvm_static_cost) is at most this runs on the static path by default; above it, on the dynamic path (main()). The crossover measured on
-// frontend GPTs outside the panel (Nov 10, A100, fusion off, static against dynamic on one binary): mean 4.7-5.6 us static x1.26-1.28, 5.7 us even, 6.6-8.3 us static x0.62-0.71.
+// frontend GPTs outside the panel (Nov 11, A100-SXM4-80GB, 24 single bundles with means from 4.54 to 10.67 us, both paths on one binary, weights bitwise between them):
+// static faster up to 6.67 us (x1.015-1.119), dynamic faster from 7.04 us (x1.08-1.63). 6.85 is the middle of that gap, where no bundle read takes its slower path.
 #ifndef KVM_STATIC_MAX_MEAN_US
-#define KVM_STATIC_MAX_MEAN_US 6.0
+#define KVM_STATIC_MAX_MEAN_US 6.85
 #endif
 
 // ---------------- bundles ----------------
@@ -1709,7 +1710,7 @@ int main(int argc, char** argv) {
       } else {
         const double mean = static_mean_us(bundles[0]);
         opt_static = mean <= KVM_STATIC_MAX_MEAN_US;
-        KLOG(2, "path: %s (mean estimated task %.2f us %s %.1f)", opt_static ? "static" : "dynamic", mean, opt_static ? "<=" : ">", (double)KVM_STATIC_MAX_MEAN_US);
+        KLOG(2, "path: %s (mean estimated task %.2f us %s %.2f)", opt_static ? "static" : "dynamic", mean, opt_static ? "<=" : ">", (double)KVM_STATIC_MAX_MEAN_US);
       }
     }
     if (opt_static && !static_feasible(bundles[0])) throw std::runtime_error("--static: a task waits for a version no task of this bundle publishes");

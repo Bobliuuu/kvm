@@ -1683,8 +1683,9 @@ KVM_GPT_DEVI bool matmul_tile(const KvmCtx& ctx, const int32_t* a) {
 // The matmul_tile op. A plain 1xTF32 128x128 (flag 32) or 256x128 (flag 64) task runs #16's mm_tf32_tile (j16::matmul_tile, which hands
 // unaligned operands to ours) where that tile measured faster than ours in this op's own kernel; every other task runs ours. Both sets
 // round every operand the same way (to nearest, ties away) and accumulate each output in increasing k, so they give the same bits.
-// A100, the 162M shapes, tests/gpu_ops/bench_mm.cu (j16 over ours, both rounded, same kernel): 256x128 TN x1.65-1.78, NN x1.37-1.51,
-// NT x1.10-1.20 up to K = 3072 but x0.92 at K = 50304 (the head's input gradient, which ours keeps); 128x128 x1.04-1.27.
+// A100, the 162M shapes, tests/gpu_ops/bench_mm.cu (j16 over ours, both rounded, same kernel): 128x128 x1.01-1.27 (TN x1.25-1.27), so
+// those go to #16's tile. 256x128 tasks stay with ours: with CUTLASS's mainloop for rounded operands and its own epilogue, ours runs them
+// 1.21-1.35 times faster than #16's tile (j16 over ours x0.74-0.83: NN, NT and TN at K 768-4096).
 // j16 reads its epilogue operands from the task words after its k loop, as an out-of-line function, so its loop keeps its registers.
 // -DKVM_GPT_J16_ROUTE=0 runs ours for every task. On sm_90a, ours sends plain 1xTF32 tasks to the TMA + wgmma path, so the route is off.
 #ifndef KVM_GPT_J16_ROUTE
@@ -1701,7 +1702,7 @@ KVM_GPT_DEVI bool j16_route(const int32_t* a) {
     const bool ta = fl & 1, tb = fl & 2, big = fl & 32, huge = fl & 64;
     if (!KVM_GPT_J16_ROUTE || (fl & ~(1 | 2 | 4 | 8 | 32 | 64)) != 0 || big == huge || (ta && tb)) return false;   // TT was not measured
     if (M <= 0 || N <= 0 || K <= 0 || m0 < 0 || m0 >= M || n0 < 0 || n0 >= N) return false;
-    return !(huge && tb && K > 4096);
+    return big;   // the 128x128 tile only (see above); a 256x128 task runs ours
 }
 template <bool HUGE_FAST = false>   // see matmul_tile_ours
 KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {

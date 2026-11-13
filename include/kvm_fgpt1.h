@@ -9,6 +9,10 @@
 // each judged against a float64 reference at x1.000 the gang's. 8 (GELU's tanh by __expf) is left out: it read slower.
 #define KVM_FGPT1_EXEC_FAST 23
 #define KVM_FGPT1_ROW_MAX 32   // the most keys a softmax row (T) the relaxed softmax takes, and half the logits the relaxed CE takes
+#ifndef KVM_FGPT1_MAXD
+#define KVM_FGPT1_MAXD 32      // the widest model (d) the form takes: its row helpers unroll this many columns a row and no more (LNAN, Nov 13:
+#endif                         // three unrolled column groups of four sitting empty at d 32 cost the LayerNorm 29%); a wider run takes its gang
+static_assert(KVM_FGPT1_MAXD % 32 == 0 && KVM_FGPT1_MAXD >= 32 && KVM_FGPT1_MAXD <= 128, "KVM_FGPT1_MAXD: 32, 64, 96 or 128 columns");
 
 // Shared-memory layout of one shape, in floats from the block's start, computed alike on host and device. Every GEMM operand is padded as
 // kvm_fgpt pads it: rows to whole 16-row tiles, k-contiguous rows to a 4 mod 8 pitch (kvm_fgpt_ldk), n-contiguous to 8 mod 16 (ldmn).
@@ -106,7 +110,7 @@ KVM_FGPT_HD inline KvmFgpt1Layout kvm_fgpt1_layout(int N, int T, int d, int H, i
 KVM_FGPT_HD inline int kvm_fgpt1_check_layout(const KvmFgpt1Layout& y, int N, int T, int B, int d, int H, int hd, int F, int V, int mm_numerics,
                                               int fast, long long smem_floats) {
   const bool fast_ok = ((fast & 1) == 0 || T <= KVM_FGPT1_ROW_MAX) && ((fast & 2) == 0 || (V <= 2 * KVM_FGPT1_ROW_MAX && V % 4 == 0)) &&
-                       ((fast & 4) == 0 || (d <= 128 && d % 4 == 0));
+                       ((fast & 4) == 0 || d % 4 == 0) && d <= KVM_FGPT1_MAXD;
   // whole GEMM tiles in every product of the step (rows and d, F, T a multiple of 16; V and the head width of 8): its GEMMs run without
   // bounds branches in their epilogues (kvm_fused_gpt.cuh's gemm_on<..., Full>)
   const bool whole = N % 16 == 0 && T % 16 == 0 && d % 16 == 0 && F % 16 == 0 && V % 8 == 0 && hd % 8 == 0;

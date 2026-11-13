@@ -284,7 +284,7 @@ __device__ __forceinline__ void ce_rows_fast(const float* logits, int ldV, int N
 // most 128 (the caller checks). Whole warps enter the loop. Ends with __syncthreads.
 template <class XV4>
 __device__ void ln_rows_fast(XV4 xv4, const float* g, const float* be, float* y, int ldy, float* mean, float* rstd, int N, int d, float eps) {
-  constexpr int LPR = 8, G4 = 4;   // up to four 16-byte groups a lane: 128 columns
+  constexpr int LPR = 8, G4 = KVM_FGPT1_MAXD / 32;   // 16-byte groups a lane, LPR x 4 x G4 = KVM_FGPT1_MAXD columns at most
   const float inv_d = 1.f / (float)d;
   const int U = (LPR * N + 31) & ~31;
   for (int u = threadIdx.x; u < U; u += NT) {
@@ -407,25 +407,26 @@ __device__ float forward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
   auto P = [&](int slot) { return sm + y.p[slot]; };
   auto lay = [&](int l, int role) { return kvm_fgpt_slot_layer(l, role); };
   // ---- the embedding: the step's rows of wte, from global (wte is not resident), as run reads them: a warp a row and lanes over its
-  // columns (D at most 128), every row's loads issued before any store, so the gather costs one trip to L2, not three, and no division
+  // columns (D at most KVM_FGPT1_MAXD, CJ a lane), every row's loads issued before any store, so the gather costs one trip to L2, not three,
+  // and no division
   {
-    constexpr int RW = 4;   // rows a warp at a time: 4 x 12 warps cover gpt-tiny's 32 rows in one pass
+    constexpr int RW = 4, CJ = KVM_FGPT1_MAXD / 32;   // rows a warp at a time: 4 x 12 warps cover gpt-tiny's 32 rows in one pass
     const int w = tid >> 5, lane = tid & 31;
     float* const x0 = sm + y.x[0];
     for (int r0 = w; r0 < N; r0 += RW * NW) {
-      float v[RW][4];
+      float v[RW][CJ];
 #pragma unroll
       for (int k = 0; k < RW; ++k) {
         const int r = r0 + k * NW;
         const float* const src = r < N ? d.p[0] + (size_t)ids[r] * D : nullptr;
 #pragma unroll
-        for (int j = 0; j < 4; ++j) { const int c = lane + 32 * j; v[k][j] = r < N && c < D ? __ldcg(src + c) : 0.f; }
+        for (int j = 0; j < CJ; ++j) { const int c = lane + 32 * j; v[k][j] = r < N && c < D ? __ldcg(src + c) : 0.f; }
       }
 #pragma unroll
       for (int k = 0; k < RW; ++k) {
         const int r = r0 + k * NW;
 #pragma unroll
-        for (int j = 0; j < 4; ++j) { const int c = lane + 32 * j; if (r < N && c < D) x0[r * D + c] = v[k][j]; }
+        for (int j = 0; j < CJ; ++j) { const int c = lane + 32 * j; if (r < N && c < D) x0[r * D + c] = v[k][j]; }
       }
     }
   }
@@ -661,7 +662,7 @@ __device__ void colsum_qkv(const float* X, int ld, int R, int D, float* oq, floa
 // gG and gB, four threads a column on the threads the rows leave free (or after them). x, dy and gx at pitch d. Ends with __syncthreads.
 __device__ void ln_bwd_fast(const float* x, const float* dy, const float* g, const float* mean, const float* rstd, float* gx, bool acc,
                             float* gG, float* gB, int N, int d) {
-  constexpr int LPR = 8, G4 = 4;
+  constexpr int LPR = 8, G4 = KVM_FGPT1_MAXD / 32;   // as ln_rows_fast's
   const float inv_d = 1.f / (float)d;
   const int U = (LPR * N + 31) & ~31, UC = (4 * d + 31) & ~31;
   const int c0 = NT - U >= UC ? U : 0;                                                 // the column sums' first thread
@@ -946,22 +947,25 @@ __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
   }
   // ---- the embedding: wte's gradient row v is the sum of gx's rows r with ids[r] == v, in row order
   {   // a warp a vocabulary row at a time, lanes over the columns; each 32-row chunk's matches come from one ballot, taken in row order,
-      // so a row's chain is its matches, not N compares (the compares cost 5 us). D at most 128.
+      // so a row's chain is its matches, not N compares (the compares cost 5 us). D at most KVM_FGPT1_MAXD, CJ a lane.
     float* const gw = G(0);
     const int w = tid >> 5, lane = tid & 31;
     for (int v = w; v < V; v += NT / 32) {
-      float acc[4] = {0.f, 0.f, 0.f, 0.f};
+      constexpr int CJ = KVM_FGPT1_MAXD / 32;
+      float acc[CJ];
+#pragma unroll
+      for (int k = 0; k < CJ; ++k) acc[k] = 0.f;
       for (int r0 = 0; r0 < N; r0 += 32) {
         unsigned m = __ballot_sync(0xffffffffu, r0 + lane < N && ids[r0 + lane] == v);
         while (m) {
           const int rr = r0 + __ffs(m) - 1;
           m &= m - 1;
 #pragma unroll
-          for (int k = 0; k < 4; ++k) if (lane + 32 * k < D) acc[k] += gx[rr * D + lane + 32 * k];
+          for (int k = 0; k < CJ; ++k) if (lane + 32 * k < D) acc[k] += gx[rr * D + lane + 32 * k];
         }
       }
 #pragma unroll
-      for (int k = 0; k < 4; ++k) if (lane + 32 * k < D) gw[(size_t)v * D + lane + 32 * k] = acc[k];
+      for (int k = 0; k < CJ; ++k) if (lane + 32 * k < D) gw[(size_t)v * D + lane + 32 * k] = acc[k];
     }
     __syncthreads();
   }

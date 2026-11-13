@@ -319,7 +319,11 @@ struct KvmCtx {
   }
 };
 
-#define KVM_OP(n) template <int KVM_SELF = KVM_OP_##n> __device__ __forceinline__ void op_##n(const KvmCtx& c, const int32_t* a)
+// The kernel an op body is compiled into: the dynamic executor's (kvm_exec_kernel) or the static schedule's (kvm_static_kernel). In these
+// whole-program kernels every form an op compiles grows the kernel that dispatches it, so an op may compile a leaner form into one of them
+// (matmul_tile leaves its 256x128 fast forms out of the static kernel, whose rows never take that tile).
+enum KvmKernelKind : int { KVM_IN_EXEC = 0, KVM_IN_STATIC = 1 };
+#define KVM_OP(n) template <int KVM_SELF = KVM_OP_##n, int KVM_KERNEL = KVM_IN_EXEC> __device__ __forceinline__ void op_##n(const KvmCtx& c, const int32_t* a)
 #define ARG_BUF(i) c.template buf<KVM_SELF, (i)>(a)
 #define ARG_BUF_OPT(i) c.template buf_opt<KVM_SELF, (i)>(a)   /* .p == nullptr: absent */
 #define ARG_IBUF(i) c.template ibuf<KVM_SELF, (i)>(a)
@@ -456,9 +460,11 @@ KVM_OP(spin) {
 // Adding an operator = one X line in kvm_ops.def + one KVM_OP(name) above; a missing KVM_OP is a compile error here.
 // Not inlined: with every op body inlined into the worker loop, the loop's own state (the run's flags and pointers, the task it owes, its ticket) was spilled to the stack
 // around every op and reloaded one dependent load at a time on every hop. As its own function the dispatch gets the op bodies' register allocation and the loop keeps its own.
+// KERNEL: the kernel calling it (KvmKernelKind), passed to every op as KVM_KERNEL.
+template <int KERNEL>
 __device__ __noinline__ void kvm_dispatch(int op, const KvmCtx c, const int32_t* a) {
   switch (op) {
-#define X(n, id, sig) case id: op_##n(c, a); break;
+#define X(n, id, sig) case id: op_##n<KVM_OP_##n, KERNEL>(c, a); break;
 #include "kvm_ops_list.inc"
 #undef X
     default: c.fail(KVM_ERR_BAD_OP, op);
@@ -634,7 +640,7 @@ __device__ void kvm_run_task(const KvmDevState& S, int slot, KvmShared& sh) {
 #ifdef KVM_PROF_GAP
     if (!S.noop_ops)
 #endif
-    kvm_dispatch(d.op_id, c, S.args + d.args_off);
+    kvm_dispatch<KVM_IN_EXEC>(d.op_id, c, S.args + d.args_off);
   }
   // Every warp makes ITS OWN op stores visible GPU-wide before the barrier: bar.sync orders them only within the block, and the single
   // fence of the publishing / releasing thread orders just that thread's stores, so without this a successor or a version reader on

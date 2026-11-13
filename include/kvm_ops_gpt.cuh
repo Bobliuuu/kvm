@@ -1043,7 +1043,9 @@ KVM_GPT_DEVI void mm_cut_mainloop(const float* A, int lda, const float* B, int l
 // the 64x64 tile. BK=16, 3-stage cp.async pipeline (3 x 16 KiB = 48 KiB), 8 warps as 2 (m) x 4 (n), each owning a 64x32 sub-tile
 // = 4 m16 x 4 n8 fragments over the whole K (no split-K); the epilogue runs straight from the accumulator registers.
 // CUT: the mainloop is CUTLASS's (mm_cut_mainloop: the 256x128 tile, rounded operands, K a multiple of BK, aligned; mm_tile_big_ni checks).
-template <bool TA, bool TB, bool PREC, int WM, int WN, int WTN, bool BF = false, bool RZ = false, bool CUT = false>   // RZ: operands truncated by the tensor core, not rounded to tf32 (matmul_tile flag 256). BF: bf16 operands (see below). WM x WN warps, each owning a 64 x WTN sub-tile; tile = 64*WM x WTN*WN
+// HUGE_FAST: the 256x128 tile's fast forms (CUT through mm_tile_big_ni, the unguarded next-stage load, its own epilogue), compiled only where
+// matmul_tile is asked for them (see matmul_tile). Every form gives the same bits.
+template <bool TA, bool TB, bool PREC, int WM, int WN, int WTN, bool BF = false, bool RZ = false, bool CUT = false, bool HUGE_FAST = false>   // RZ: operands truncated by the tensor core, not rounded to tf32 (matmul_tile flag 256). BF: bf16 operands (see below). WM x WN warps, each owning a 64 x WTN sub-tile; tile = 64*WM x WTN*WN
 KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, float* out, int ldo, const float* bias, const float* res,
                               int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, int act, bool accum) {
     constexpr int BK = KVM_GPT_BIG_BK, NST = KVM_GPT_BIG_NST, BM = 64 * WM, BN = WTN * WN, NJ = WTN / 8, ATILE = BM * BK, TILE = ATILE, STAGE = (BM + BN) * BK;
@@ -1051,7 +1053,7 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
     static_assert(NST * STAGE * 4 <= kvm_gpt_bigtile_smem(BM, BN), "the launch is sized by kvm_gpt_bigtile_smem");
     float* sm = reinterpret_cast<float*>(kvm_gpt_smem);   // [stage][A | B]
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, wmi = warp / WN, wni = warp % WN, g = lane >> 2, t = lane & 3;
-    static_assert(!CUT || (WM == 4 && WN == 2 && WTN == 64 && !PREC && !BF && !RZ), "CUTLASS's mainloop: the 256x128 tile with rounded operands");
+    static_assert(!CUT || (HUGE_FAST && WM == 4 && WN == 2 && WTN == 64 && !PREC && !BF && !RZ), "CUTLASS's mainloop: the 256x128 tile's fast form, rounded operands");
     const int ewm = CUT ? warp % WM : wmi, ewn = CUT ? warp / WM : wni;   // the warp's tile in the epilogue: this loop's, or CUTLASS's (mm_cut_mainloop)
     const bool va = aligned16(A, lda) && (!TA || (m0 & 3) == 0), vb = aligned16(B, ldb) && (TB || (n0 & 3) == 0);   // tile origin column too
     float acc[4][NJ][4];
@@ -1110,7 +1112,7 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
                         // The 256x128 tile loads the next stage's first fragments on its last stage too (unused, from the ring's next slot):
                         // unguarded, those loads share the step's basic block with its MMAs and interleave with them, where the guard set them
                         // apart after the barrier (an A100: x1.10 on gpt-162m's 256x128 tiles, the same bits). Other tiles keep it.
-                        else if (WM == 4 || it + 1 < nk) load_step(it + 1, 0, (kq + 1) % 2);
+                        else if ((HUGE_FAST && WM == 4) || it + 1 < nk) load_step(it + 1, 0, (kq + 1) % 2);
                         slab_mma<false, 4, NJ>(acc, rA[kq % 2], rAl[kq % 2], rB[kq % 2], rBl[kq % 2]);
                         if constexpr (decltype(spread_tag)::value) {
                             if (kq + 1 < K8 && it + NST - 1 < nk) {
@@ -1190,7 +1192,7 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
     KVM_GPT_PROBE(2);
     cp_wait<0>();
     constexpr int CLD = BN + 8;   // row stride of the accumulator tile in shared memory (padded against bank conflicts)
-    if constexpr (WM == 4 && WN == 2 && WTN == 64) {   // the 256x128 tile: its own epilogue for the step's common kinds
+    if constexpr (HUGE_FAST && WM == 4 && WN == 2 && WTN == 64) {   // the 256x128 tile's fast form: its own epilogue for the step's common kinds
         if (huge_epilogue_fast<CLD>(acc, ewm, ewn, g, t, sm, m0, n0, M, N, out, ldo, bias, res, ldr, pre, alpha, act, accum)) return;
     }
     // Accumulators through shared memory (the register epilogue below costs one 8-byte store per accumulator pair, in instructions the
@@ -1261,16 +1263,16 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
 
 // Out-of-line copy of the 256x128 tile (see matmul_tile): inlined, it shares the register budget with everything around it; as a function
 // it keeps its own, as long as no call site in the kernel holds values live across a call (see mm_tile_big_2pass_ni).
-template <bool TA, bool TB, bool PREC, int WM, int WN, int WTN, bool BF, bool RZ>
+template <bool TA, bool TB, bool PREC, int WM, int WN, int WTN, bool BF, bool RZ, bool HUGE_FAST = false>
 __device__ __noinline__ void mm_tile_big_ni(const float* A, int lda, const float* B, int ldb, float* out, int ldo, const float* bias, const float* res,
                                             int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, int act, bool accum) {
-    if constexpr (WM == 4 && WN == 2 && WTN == 64 && !PREC && !BF && !RZ) {   // rounded operands: CUTLASS's mainloop where it gives this loop's bits
+    if constexpr (HUGE_FAST && WM == 4 && WN == 2 && WTN == 64 && !PREC && !BF && !RZ) {   // rounded operands: CUTLASS's mainloop where it gives this loop's bits
         if (K % KVM_GPT_BIG_BK == 0 && aligned16(A, lda) && aligned16(B, ldb) && ((TA ? M : K) & 3) == 0 && ((TB ? K : N) & 3) == 0) {
-            mm_tile_big<TA, TB, PREC, WM, WN, WTN, BF, RZ, true>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, act, accum);
+            mm_tile_big<TA, TB, PREC, WM, WN, WTN, BF, RZ, true, HUGE_FAST>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, act, accum);
             return;
         }
     }
-    mm_tile_big<TA, TB, PREC, WM, WN, WTN, BF, RZ>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, act, accum);
+    mm_tile_big<TA, TB, PREC, WM, WN, WTN, BF, RZ, false, HUGE_FAST>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, act, accum);
 }
 
 // Both passes of a 256x128 task with bf16 operands or 3xTF32 (two 128x128 tiles, rows m0 and m0 + 128) in one out-of-line function, with
@@ -1287,6 +1289,11 @@ __device__ __noinline__ void mm_tile_big_2pass_ni(const float* A, int lda, const
     mm_tile_big<TA, TB, PREC, 2, 4, 32, BF, false>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0 + 128, n0, M, N, K, alpha, act, accum);
 }
 
+// HUGE_FAST compiles the 256x128 tile's fast forms (CUTLASS's mainloop for rounded operands, the unguarded next-stage load, its own epilogue)
+// into this instantiation; without it the 256x128 tile is the plain form, with the same bits. The executor asks for them in its dynamic kernel
+// only: the static kernel's rows never take the 256x128 tile, and compiled into it the forms re-dealt its register allocation, so its other
+// tiles spilled more (1.2-2.9% slower on three static-path rows of the A100 panel). The tests and benches ask for them explicitly.
+template <bool HUGE_FAST = false>
 KVM_GPT_DEVI void matmul_tile_ours(const KvmCtx& ctx, const int32_t* a) {   // this set's tiles, every task; the op is matmul_tile below
     Chk k(ctx);
     int m0 = a[6], n0 = a[7], M = a[8], N = a[9], K = a[10], fl = a[11];
@@ -1323,7 +1330,7 @@ KVM_GPT_DEVI void matmul_tile_ours(const KvmCtx& ctx, const int32_t* a) {   // t
 // no 3xTF32 form and RZ only exists for the big tiles (validated above).
 #define KVM_GPT_ARGS A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, mm0, n0, M, N, K, alpha, act, accum
 #define KVM_GPT_ONE_BIG(F, TA, TB, P, BF, RZ) F<TA, TB, P, 2, 4, 32, BF, RZ>(KVM_GPT_ARGS)   // 8 warps as 2 (m) x 4 (n), 64 x 32 each
-#define KVM_GPT_ONE_HUGE(F, TA, TB, P, BF, RZ) F<TA, TB, P, 4, 2, 64, BF, RZ>(KVM_GPT_ARGS)   // 8 warps as 4 (m) x 2 (n), 64 x 64 each
+#define KVM_GPT_ONE_HUGE(F, TA, TB, P, BF, RZ) F<TA, TB, P, 4, 2, 64, BF, RZ, HUGE_FAST>(KVM_GPT_ARGS)   // 8 warps as 4 (m) x 2 (n), 64 x 64 each
 #define KVM_GPT_ONE_64(F, TA, TB, P, BF, RZ) F<TA, TB, P, BF, RZ>(KVM_GPT_ARGS)
 #define KVM_GPT_ONE_2PASS(F, TA, TB, P, BF, RZ) F<TA, TB, P, BF>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, act, accum)
 #define KVM_GPT_MM_T(ONE, F, P, BF, RZ)                                                                                         \
@@ -1696,9 +1703,10 @@ KVM_GPT_DEVI bool j16_route(const int32_t* a) {
     if (M <= 0 || N <= 0 || K <= 0 || m0 < 0 || m0 >= M || n0 < 0 || n0 >= N) return false;
     return !(huge && tb && K > 4096);
 }
+template <bool HUGE_FAST = false>   // see matmul_tile_ours
 KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
     if (j16_route(a) && j16::matmul_tile(ctx, a)) return;
-    matmul_tile_ours(ctx, a);   // the one call to ours: one inlined copy a matmul site
+    matmul_tile_ours<HUGE_FAST>(ctx, a);   // the one call to ours: one inlined copy a matmul site
 }
 
 // ---- normalization: one warp per row ----------------------------------------------------------------------------------
@@ -3487,12 +3495,23 @@ KVM_GPT_DEVI void gather_rows(const KvmCtx& ctx, const int32_t* a) {
 }  // namespace kvmgpt
 
 // ---- per-op entry points (same X-macro convention as the executor) -------------------------------------------------------
-#ifdef KVM_OP   // inside kvm_exec.cuh: the executor's dispatcher calls op_<name>
-#define X(name, id, sig) KVM_OP(name) { kvmgpt::name(c, a); }
+// Each entry calls its op; matmul_tile's also says whether its 256x128 fast forms are compiled in (see matmul_tile): in the executor's
+// dynamic kernel and in the tests, not in the executor's static kernel.
+namespace kvmgpt {
+enum KvmGptOpId : int {
+#define X(name, id, sig) kOp_##name = id,
 #include "kvm_ops_gpt.def"
 #undef X
-#else           // standalone (tests): kvm_op_<name> and a switch dispatcher
-#define X(name, id, sig) KVM_GPT_DEVI void kvm_op_##name(const KvmCtx& ctx, const int32_t* args) { kvmgpt::name(ctx, args); }
+};
+}  // namespace kvmgpt
+#ifdef KVM_OP   // inside kvm_exec.cuh: the executor's dispatcher calls op_<name>, once for each kernel it is compiled into (KVM_KERNEL)
+#define X(name, id, sig) KVM_OP(name) {                                                                                          \
+    if constexpr (id == kvmgpt::kOp_matmul_tile) kvmgpt::matmul_tile<KVM_KERNEL == KVM_IN_EXEC>(c, a); else kvmgpt::name(c, a); }
+#include "kvm_ops_gpt.def"
+#undef X
+#else           // standalone (tests): kvm_op_<name> and a switch dispatcher, with the dynamic kernel's forms
+#define X(name, id, sig) KVM_GPT_DEVI void kvm_op_##name(const KvmCtx& ctx, const int32_t* args) {                                \
+    if constexpr (id == kvmgpt::kOp_matmul_tile) kvmgpt::matmul_tile<true>(ctx, args); else kvmgpt::name(ctx, args); }
 #include "kvm_ops_gpt.def"
 #undef X
 // Returns false for an op id outside the GPT library (ids 32..63).

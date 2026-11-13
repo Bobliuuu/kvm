@@ -26,7 +26,7 @@
 #define CK(x) do { cudaError_t e_ = (x); if (e_ != cudaSuccess) { printf("CUDA error %s at %s:%d\n", cudaGetErrorString(e_), __FILE__, __LINE__); exit(2); } } while (0)
 
 __global__ void __launch_bounds__(256, MM_MINB) k_mm(KvmCtx c, const int32_t* w, int words) {
-    kvmgpt::matmul_tile(c, w + (size_t)blockIdx.x * words);
+    kvmgpt::matmul_tile_ours<true>(c, w + (size_t)blockIdx.x * words);   // our set on every task, in the dynamic kernel's forms (matmul_tile routes some to #16's)
 }
 __global__ void __launch_bounds__(256, MM_MINB) k_mm_j16(KvmCtx c, const int32_t* w, int words) {
     const int32_t* const a = w + (size_t)blockIdx.x * words;
@@ -173,7 +173,7 @@ int main() {
         for (int i = 0; i < 1000; i++) cublasSgemm(g_h, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &one, x, n, y, n, &zero, z, n);
         CK(cudaDeviceSynchronize()); cudaFree(x); cudaFree(y); cudaFree(z);
     }
-    printf("tile A/B: ours = kvmgpt::matmul_tile at %d B of shared memory; j16 = kvmgpt::j16::matmul_tile (#16) at %d B%s and %d B; %d paired reps\n",
+    printf("tile A/B: ours = kvmgpt::matmul_tile_ours at %d B of shared memory; j16 = kvmgpt::j16::matmul_tile (#16) at %d B%s and %d B; %d paired reps\n",
            SMEM_OURS, SMEM_J16_DEEP, KVM_GPT_MMA_SMEM >= 147456 ? "" : " (not built: -DKVM_GPT_MMA_SMEM=147456)", SMEM_J16_SHIP, reps());
     const bool rz = getenv("MM_RZ") != nullptr;
     if (want("gpt162")) {   // the gpt_162m GEMMs (4096 tokens): forward NN, input-grad NT, weight-grad TN, at 128x128 and 256x128

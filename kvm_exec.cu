@@ -1340,8 +1340,21 @@ class KvmExec {
     // before timing): the very first launch of a kernel costs ~1.5 ms before any record runs.
     { KvmStaticDev warm = S; warm.nworkers = 0; entry<<<1, KVM_THREADS, static_smem, stream_>>>(warm); CK(cudaGetLastError()); CK(cudaStreamSynchronize(stream_)); }
     clock_warmup();
+    // Every worker of a static schedule waits on others (a gang's crossings, the schedule's task flags), so the launch is cooperative: a GPU that
+    // cannot hold every worker at once refuses it (cudaErrorCooperativeLaunchTooLarge), where a plain launch could hang beside a co-tenant or
+    // under MPS. The residency check above holds either way. KVM_FGPT_COOP=0 launches plainly, the fused GPT kernel's switch, so one A/B prices
+    // both kinds of gang (a row runs one or the other).
+    const char* const coop_env = std::getenv("KVM_FGPT_COOP");
+    const bool coop = !(coop_env && std::atoi(coop_env) == 0);
+    KLOG(2, "static kernel: workers launch %s", coop ? "cooperatively" : "plainly (KVM_FGPT_COOP=0)");
     CK(cudaEventRecord(e0_, stream_));
-    entry<<<sc.workers, KVM_THREADS, static_smem, stream_>>>(S);
+    if (coop) {
+      cudaLaunchConfig_t lc = {}; lc.gridDim = dim3(sc.workers); lc.blockDim = dim3(KVM_THREADS); lc.dynamicSmemBytes = static_smem; lc.stream = stream_;
+      cudaLaunchAttribute at = {}; at.id = cudaLaunchAttributeCooperative; at.val.cooperative = 1; lc.attrs = &at; lc.numAttrs = 1;
+      CK(cudaLaunchKernelEx(&lc, entry, S));
+    } else {
+      entry<<<sc.workers, KVM_THREADS, static_smem, stream_>>>(S);
+    }
     CK(cudaGetLastError());
     CK(cudaEventRecord(e1_, stream_));
     started_ = true;

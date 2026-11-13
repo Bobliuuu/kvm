@@ -1,0 +1,18 @@
+== the port, d384 tf32 (/root/work/f2d-step/port-d384/out-G96)
+55ddd5fd1d013513c86d40ddfc5ccdc1  losses.bin
+188e92b094fd1dee9d36edbc2c36360d  p.bin
+a24f6820395765176d3701e377f2362e  m.bin
+01ee144b1791bba73aaf2597670af89d  v.bin
+f5cb3d2bd3d41f95377db8e356ee9a95  g.bin
+== the development bed's step in slots form (/root/work/f2d/port2-20261112T044439Z/w-priv-slots/out-G96)
+55ddd5fd1d013513c86d40ddfc5ccdc1  losses.bin
+188e92b094fd1dee9d36edbc2c36360d  p.bin
+a24f6820395765176d3701e377f2362e  m.bin
+01ee144b1791bba73aaf2597670af89d  v.bin
+f5cb3d2bd3d41f95377db8e356ee9a95  g.bin
+== the development bed's step in fused form (/root/work/f2d-step/w_d384_tf32-k1/out-G96)
+55ddd5fd1d013513c86d40ddfc5ccdc1  losses.bin
+d142308a6e572df6d2836b301db53157  p.bin
+95015ab87438111b44d2853aab9129e1  m.bin
+a0b7f3c3d3864ffcff169a7463824d2b  v.bin
+f5cb3d2bd3d41f95377db8e356ee9a95  g.bin

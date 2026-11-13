@@ -1,0 +1,12 @@
+[fgpt_bed 04:17:44Z] VM reference: cached vm-3db4acfa7f449ce3-k1.json
+[fgpt_bed 04:18:14Z] model: L 3, d 384, heads 6 x 64, MLP 1536, V 256, 4 x 96 rows; 1 steps; work /root/work/f2d-step/port-d384-exec
+[fgpt_bed 04:18:15Z] exec: /root/builds/479574faa92669a764a5e487/kvm_exec --dump-bin /root/work/f2d-step/port-d384-exec/exec-out 55 /root/work/f2d-step/w_d384_tf32/bundle
+[fgpt_bed 04:18:16Z]   OK: 96/96 tasks, 10.692 ms
+[fgpt_bed 04:18:16Z]   [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang)
+[fgpt_bed 04:18:16Z]   [kvm_exec][I] fuse gpt: component 0: GPT run of 3 steps, 5832 tasks: L 3, d 384, heads 6 x 64, MLP 1536, vocabulary 256, 4 sequences of 96 (N 384), 52 parameters, 1995 tasks a step, GEMM numerics 0, fused as a gang of 96 in F's 2-D form (attention 6 x 12, MLP 6 x 16, 3 query block(s) a unit, 38080 floats of shared memory a member)
+[fgpt_bed 04:18:16Z]   [kvm_exec][I] fuse gpt: 1 run(s) fused, 0 unchanged; 5832 tasks replaced by 96
+[fgpt_bed 04:18:16Z]   [kvm_exec][I] fuse gpt: run 0: F's 2-D form, a gang of 96 (attention 6 x 12, MLP 6 x 16), 3 steps, 3 query block(s) a unit, 16 vocabulary shards, 223.23 MB of buffers, 152320 bytes of shared memory a member
+[fgpt_bed 04:18:16Z]   [kvm_exec][I] fused GPT kernel: 1 run(s), 96 members, 1 resident blocks/SM, 152320 bytes of dynamic shared memory a member; F's 2-D form; crossings on the counted barrier
+[fgpt_bed 04:18:16Z]   [kvm_exec][I] fused GPT run done: 96 members in 10.692 ms
+[fgpt_bed 04:18:16Z] exec: losses: 5.600117 (VM 5.600113): worst of 1 5.96e-07 relative, 1/count off by 0.0e+00: ok
+[fgpt_bed 04:18:16Z] OK

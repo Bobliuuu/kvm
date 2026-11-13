@@ -1,0 +1,18 @@
+gpt-tiny             main    13.040 ms  stack     6.980 ms  paired x1.871  bar x1.00  gate losses within 0.002  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+gpt-small            main    28.420 ms  stack    15.800 ms  paired x1.800  bar x1.00  gate losses within 0.002  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+gpt-162m             main   348.800 ms  stack   348.630 ms  paired x0.999  bar x0.99  gate bitwise  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+mlp72-r1             main     6.460 ms  stack     5.860 ms  paired x1.104  bar x0.99  gate bitwise  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+mlp72-r8             main     6.440 ms  stack     5.830 ms  paired x1.105  bar x0.99  gate bitwise  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+mlp72-r32            MISSING
+mlp-hetero-r8        main     7.190 ms  stack     6.570 ms  paired x1.093  bar x0.99  gate bitwise  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+mlp256-r1            main    12.460 ms  stack     4.850 ms  paired x2.569  bar x1.00  gate losses within 0.002  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+mlp1024-r1           main    15.420 ms  stack     6.780 ms  paired x2.273  bar x1.00  gate losses within 0.002  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+ho-mlp-h576-d1-r1    main     7.240 ms  stack     1.890 ms  paired x3.831  bar x1.00  gate losses within 0.002  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+ho-mlp-h200-d1-r16   main     7.570 ms  stack     4.090 ms  paired x1.851  bar x1.00  gate losses within 0.002  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+ho-mlp-h128-d4-r1    main    40.880 ms  stack    15.960 ms  paired x2.563  bar x1.00  gate losses within 0.002  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+ho-mlp-h224-d2-r8    main     8.280 ms  stack     7.990 ms  paired x1.036  bar x1.00  gate losses within 0.002  slow runs 0/5 vs 0/5 (Fisher p 1.000): ok
+(for reference, not the verdict) the 9 panel rows: geometric mean of the paired medians x1.5041 over 8
+(for reference, not the verdict) the hold-out draws: geometric mean of the paired medians x2.0832 over 4
+  FAIL: mlp72-r32: missing (no timing file of its own: its gate or its run failed)
+  FAIL: run_check h256d4: rc=1
+verdict: FAIL: 2 problem(s); 13 rows, 4 run_checks, 5 forms expected

@@ -1,0 +1,13 @@
+GATE ok: pr39-mlp-hetero-r8: 1600 buffers with prefix 'loss.', tasks 76400 -> 76400; equal within 0.002
+rep 0 pr39-mlp-hetero-r8 control: 26.79 ms
+rep 0 pr39-mlp-hetero-r8 cand: 7.18 ms
+rep 1 pr39-mlp-hetero-r8 control: 26.75 ms
+rep 1 pr39-mlp-hetero-r8 cand: 7.16 ms
+rep 2 pr39-mlp-hetero-r8 control: 26.77 ms
+rep 2 pr39-mlp-hetero-r8 cand: 7.19 ms
+rep 3 pr39-mlp-hetero-r8 control: 26.77 ms
+rep 3 pr39-mlp-hetero-r8 cand: 7.17 ms
+rep 4 pr39-mlp-hetero-r8 control: 26.76 ms
+rep 4 pr39-mlp-hetero-r8 cand: 7.18 ms
+{"row": "pr39-mlp-hetero-r8", "control": "/root/reads/m39/pr39/panel/hetero_r8", "cand": "/root/reads/m39/pr39/panel/hetero_r8", "tasks": {"control": 76400, "cand": 76400}, "ms": {"control": {"median": 26.768, "best": 26.755, "all": [26.79, 26.75, 26.77, 26.77, 26.76]}, "cand": {"median": 7.176, "best": 7.161, "all": [7.18, 7.16, 7.19, 7.17, 7.18]}}, "paired_ratio_median": 3.7328595317725752, "best_ratio": 3.7362100265326075}
+rc 0

@@ -1,0 +1,63 @@
+{
+ "env": {
+  "torch": "2.15.0+cu132",
+  "cuda": "13.2",
+  "gpu": "NVIDIA A100-SXM4-80GB",
+  "sms": 108
+ },
+ "gate": {
+  "fp64_loss_max_rel": {
+   "executor": 0.0003195072757633955,
+   "eager": 0.00028741208875517483
+  },
+  "exec_vs_eager_loss_max_rel": 0.00039484023285960094,
+  "exec_vs_eager_weight_rel_l2": {
+   "w.mlp.wte": 2.620823641590114e-05,
+   "w.mlp.fc0.w": 5.352454079021018e-06,
+   "w.mlp.fc0.b": 0.00011178289449353089,
+   "w.mlp.fc1.w": 2.881471518412216e-06,
+   "w.mlp.fc1.b": 6.45679866458273e-05,
+   "w.mlp.head.w": 3.91863006075027e-06
+  },
+  "loss_first_last": [
+   4.9461541175842285,
+   0.1677635908126831
+  ],
+  "exec_vs_eager_weight_rel_l2_max": 0.00011178289449353089
+ },
+ "args": {
+  "work": "/root/reads/vsread/form1-20261111T133749Z/h224-d2",
+  "exe": "/root/builds/f590861a18c7331e8a759a42/kvm_exec",
+  "hidden": 224,
+  "depth": 2,
+  "steps": 50,
+  "runs": "1",
+  "reps": 1,
+  "tiling": "a100",
+  "no_golden": true,
+  "skip": "seq_graph,multi_graph,batched,batched_compile,eager,compile,compile_graph",
+  "out": "/root/reads/vsread/form1-20261111T133749Z/h224-d2.json"
+ },
+ "rows": [
+  {
+   "hidden": 224,
+   "depth": 2,
+   "steps": 50,
+   "runs": 1,
+   "tasks_per_step_per_run": 87,
+   "reps": 1,
+   "loss_max_rel_vs_eager": {},
+   "setup_s": 0.8,
+   "us_per_step": {
+    "executor": {
+     "best": 69.56,
+     "median": 69.56,
+     "worst": 69.56,
+     "all": [
+      69.6
+     ]
+    }
+   }
+  }
+ ]
+}

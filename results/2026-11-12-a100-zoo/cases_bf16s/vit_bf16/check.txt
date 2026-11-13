@@ -1,0 +1,21 @@
+lowp: 863 f32 buffers (14 signal-free skipped: ['act146', 'act225', 'act304', 'act383', 'act462', 'act541']; 1 structurally-zero-gradient parameters judged in absolute terms), 10 loss buffers
+  ok   losses rel L2 <= 0.001: worst 6.00e-04
+  ok   77 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act66 3.20e-05
+  info: post-optimizer weights/moments differ by up to 3.93e-03 (m.vit.h0.attn.v.w) after the run
+  info: weights differ from the golden by 9.78e-01 (vit.h0.attn.k.b); gradients differ per step by up to 1.9e+00, relative L2 of worst tensor, per step [0.002, 0.2948, 1.2956, 1.2172, 1.4524, 1.2086]
+  ok   optimizer replay reproduces the golden weights (validates the replay) <= 1e-05: worst 1.74e-07 (vit.h0.attn.o.b)
+  ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 1.27e-07 (vit.h0.attn.o.b)
+  ok   vit.h0.attn.k.b weight (structurally zero gradient) within the optimizer envelope: |w_gpu - w_golden| max 2.017e-02, |w_gpu| max 1.780e-02, envelope T = 10 steps * 3.0e-03 = 3.000e-02
+  ok   vit.h0.attn.k.b moments at the noise level of the live gradients: |m_gpu| max 1.130e-07 (golden 9.044e-08) vs 7.754e-04, sqrt|v_gpu| max 3.823e-07 (golden 2.446e-07) vs 1.120e-03
+  ok   act146 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 4.169e-05 (golden 4.151e-05) vs 8.137e-01
+  ok   act225 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 6.407e-05 (golden 3.326e-05) vs 8.137e-01
+  ok   act304 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 2.724e-05 (golden 5.189e-05) vs 8.137e-01
+  ok   act383 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 6.336e-05 (golden 5.704e-05) vs 8.137e-01
+  ok   act462 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 5.066e-05 (golden 8.166e-05) vs 8.137e-01
+  ok   act541 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 1.054e-04 (golden 8.452e-05) vs 8.137e-01
+  ok   act620 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 1.910e-04 (golden 1.483e-04) vs 8.137e-01
+  ok   act67 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 2.235e-05 (golden 2.235e-05) vs 8.137e-01
+  ok   act699 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 1.552e-04 (golden 1.101e-04) vs 8.137e-01
+  ok   act778 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 1.220e-04 (golden 9.358e-05) vs 8.137e-01
+  ok   no NaN/Inf in any GPU buffer: []
+PASS

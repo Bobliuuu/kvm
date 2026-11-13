@@ -1,0 +1,33 @@
+ptxas info    : Function properties for _Z12split_kernelILi18ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 233 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Function properties for _Z12split_kernelILi16ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 229 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Function properties for _Z12split_kernelILi12ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 229 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Function properties for _Z12split_kernelILi10ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 229 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Function properties for _Z12split_kernelILi9ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 229 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Function properties for _Z12split_kernelILi8ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 229 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Function properties for _Z12split_kernelILi6ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 230 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Function properties for _Z12split_kernelILi5ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 230 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Function properties for _Z12split_kernelILi4ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 232 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Function properties for _Z12split_kernelILi3ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 232 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]
+ptxas info    : Function properties for _Z12split_kernelILi2ELi6EEvPK12KvmSplitDescPKiS4_Pfii6Timing
+    24 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 232 registers, used 1 barriers, 24 bytes cumulative stack size, 256 bytes smem, 416 bytes cmem[0], 84 bytes cmem[2]

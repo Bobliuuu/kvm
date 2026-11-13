@@ -1,0 +1,13 @@
+GATE ok: mlp72-r32: 6400 buffers with prefix 'loss.', tasks 307200 -> 307200; equal within 0.002
+rep 0 mlp72-r32 control: 9.13 ms
+rep 0 mlp72-r32 cand: 10.04 ms
+rep 1 mlp72-r32 control: 9.19 ms
+rep 1 mlp72-r32 cand: 10.02 ms
+rep 2 mlp72-r32 control: 9.20 ms
+rep 2 mlp72-r32 cand: 10.05 ms
+rep 3 mlp72-r32 control: 9.15 ms
+rep 3 mlp72-r32 cand: 10.05 ms
+rep 4 mlp72-r32 control: 9.17 ms
+rep 4 mlp72-r32 cand: 10.03 ms
+{"row": "mlp72-r32", "control": "/root/reads/panel-count1/h72_r32", "cand": "/root/reads/panel-count1/h72_r32", "tasks": {"control": 307200, "cand": 307200}, "ms": {"control": {"median": 9.168, "best": 9.131, "all": [9.13, 9.19, 9.2, 9.15, 9.17]}, "cand": {"median": 10.045, "best": 10.016, "all": [10.04, 10.02, 10.05, 10.05, 10.03]}}, "paired_ratio_median": 0.9139667032200178, "best_ratio": 0.9116413738019169}
+rc 0

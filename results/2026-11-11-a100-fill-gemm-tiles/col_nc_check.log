@@ -1,0 +1,35 @@
+# col_nc_check.py (each reduced column's strip, NC, and each GEMM's tile class), on the read's bundles: the split's (the base of this PR)
+# against this branch's, the read's frontend (dea7662: main with the PRs it merges beside, without #39): every panel bundle, both draws and the 12 hold-out shapes (A100 host, CPU, Nov 11 14:09Z).
+=== this PR: the split -> this branch, 31 bundle pairs
+h1024: 102400 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class unchanged: gate 0
+h256: 51200 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class unchanged: gate 0
+h72: 28800 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class unchanged: gate 0
+panel: 921600 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class unchanged: gate 0
+panel: 230400 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class unchanged: gate 0
+het_h104: 41600 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class unchanged: gate 0
+het_h48: 19200 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class unchanged: gate 0
+het_h56: 22400 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class unchanged: gate 0
+het_h64: 25600 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class unchanged: gate 0
+het_h72: 28800 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class unchanged: gate 0
+het_h80: 32000 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class unchanged: gate 0
+het_h88: 35200 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class unchanged: gate 0
+het_h96: 38400 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class unchanged: gate 0
+panel: 243200 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class unchanged: gate 0
+w_162m_3: 121344 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class unchanged: gate 0
+w_small: 1792 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class unchanged: gate 0
+w_tiny: 480 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class unchanged: gate 0
+w_ho-gpt-d384-h6-l3-t96-b4: 15744 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class changed {'128x128': (24570, 12960), '64x64': (1440, 47880)}: gate 1e-2
+w_ho-gpt-d512-h8-l1-t64-b2: 7680 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class changed {'128x128': (6960, 3840), '64x64': (5520, 18000)}: gate 1e-2
+w_ho-gpt-d192-h3-l1-t32-b1-v64: 2880 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class changed {'128x128': (720, 0), '64x64': (2910, 5070)}: gate 1e-2
+w_ho-gpt-d192-h3-l2-t64-b4-v256: 5376 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class changed {'128x128': (2880, 0), '64x64': (10560, 20640)}: gate 1e-2
+w_ho-gpt-d192-h3-l4-t128-b2-v512: 10368 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class changed {'128x128': (6240, 0), '64x64': (19080, 40920)}: gate 1e-2
+w_ho-gpt-d256-h4-l1-t128-b4-v512: 3840 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class changed {'128x128': (6240, 0), '64x64': (1920, 26880)}: gate 1e-2
+w_ho-gpt-d256-h4-l2-t32-b2-v128: 7168 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class changed {'128x128': (1920, 0), '64x64': (8580, 16260)}: gate 1e-2
+w_ho-gpt-d256-h4-l3-t96-b4-v256: 10496 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class changed {'128x128': (7200, 0), '64x64': (29280, 58080)}: gate 1e-2
+w_ho-gpt-d384-h6-l1-t64-b1-v64: 5760 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class changed {'128x128': (3240, 2160), '64x64': (3630, 7950)}: gate 1e-2
+w_ho-gpt-d384-h6-l3-t96-b4-v256: 15744 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class changed {'128x128': (24570, 12960), '64x64': (1440, 47880)}: gate 1e-2
+w_ho-gpt-d384-h6-l4-t128-b4-v512: 20736 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class changed {'128x128': (40080, 20160), '64x64': (0, 79680)}: gate 1e-2
+w_ho-gpt-d512-h8-l1-t64-b2-v256: 7680 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class changed {'128x128': (6960, 3840), '64x64': (5520, 18000)}: gate 1e-2
+w_ho-gpt-d512-h8-l2-t128-b4-v512: 14336 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class changed {'128x128': (14880, 0), '64x64': (0, 59520)}: gate 1e-2
+w_ho-gpt-d512-h8-l4-t32-b1-v128: 27648 reduced columns, 0 with another NC, 0 not in both; GEMM tiles by class changed {'128x128': (23040, 15360), '64x64': (18060, 48780)}: gate 1e-2
+col_nc_check rc=0

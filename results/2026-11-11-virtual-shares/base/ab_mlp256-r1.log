@@ -1,0 +1,13 @@
+GATE ok: mlp256-r1: 10 buffers with prefix 'w.', tasks 8394 -> 8394; bitwise equal
+rep 0 mlp256-r1 control: 4.83 ms
+rep 0 mlp256-r1 cand: 4.86 ms
+rep 1 mlp256-r1 control: 4.84 ms
+rep 1 mlp256-r1 cand: 4.84 ms
+rep 2 mlp256-r1 control: 4.84 ms
+rep 2 mlp256-r1 cand: 4.86 ms
+rep 3 mlp256-r1 control: 4.83 ms
+rep 3 mlp256-r1 cand: 6.01 ms
+rep 4 mlp256-r1 control: 4.84 ms
+rep 4 mlp256-r1 cand: 4.83 ms
+{"row": "mlp256-r1", "control": "/root/reads/panel-count1/h256/bundle", "cand": "/root/reads/panel-count1/h256/bundle", "tasks": {"control": 8394, "cand": 8394}, "ms": {"control": {"median": 4.836, "best": 4.825, "all": [4.83, 4.84, 4.84, 4.83, 4.84]}, "cand": {"median": 4.858, "best": 4.832, "all": [4.86, 4.84, 4.86, 6.01, 4.83]}}, "paired_ratio_median": 0.9954751131221719, "best_ratio": 0.9985513245033113}
+rc 0

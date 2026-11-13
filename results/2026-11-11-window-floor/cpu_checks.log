@@ -1,0 +1,7 @@
+# Host-only checks of this branch (b4675fe), on the A100 host's CPU, Nov 11 13:10-13:19Z, nvcc 12.8, PTX only (no ptxas runs).
+$ nvcc -arch=compute_80 -code=compute_80 -std=c++17 -Iinclude -DKVM_LEAN tests/gpu/test_window_sizing.cu -o test_window_sizing && ./test_window_sizing
+101182 checks, 0 failed
+$ nvcc -arch=compute_80 -code=compute_80 -std=c++17 -Iinclude -DKVM_LEAN -c kvm_exec.cu -o kvm_exec.o
+rc=0 (warnings only: "#pragma unroll must precede a loop" in mm_tile_big, as on main)
+$ nvcc -arch=compute_80 -code=compute_80 -std=c++17 -I. -Iinclude -DKVM_LEAN -c demo/kvm_run.cu -o kvm_run.o
+rc=0 (the same warnings)

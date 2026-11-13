@@ -1,0 +1,7 @@
+# CPU checks of this branch's tree (its mm_min_tiles line on #41's code at a65f90b; #41's later results commit changes no code), Nov 11:
+# python3 -I -m unittest discover -s tests | tests/frontend | tests/dist -p 'test_*.py'
+# tests and tests/dist ran on a CPU host whose Python has no numpy (14:55-14:58Z); tests/frontend needs numpy, so it ran on the A100 host's CPU
+# (15:02-15:05Z), on the same tree (lower.py, pipeline.py and test_clip_chunks.py equal by md5).
+RESULT tests rc=0 Ran 157 tests in 5.699s OK
+RESULT tests/frontend rc=0 Ran 148 tests in 153.892s OK
+RESULT tests/dist rc=0 Ran 74 tests in 163.564s OK

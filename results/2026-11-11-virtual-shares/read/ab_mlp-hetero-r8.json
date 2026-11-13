@@ -1,0 +1,37 @@
+[
+ {
+  "row": "mlp-hetero-r8",
+  "control": "/root/reads/panel-count1/hetero_r8",
+  "cand": "/root/reads/panel-count1/hetero_r8",
+  "tasks": {
+   "control": 68400,
+   "cand": 68400
+  },
+  "ms": {
+   "control": {
+    "median": 7.187,
+    "best": 7.173,
+    "all": [
+     7.19,
+     7.18,
+     7.17,
+     7.19,
+     7.2
+    ]
+   },
+   "cand": {
+    "median": 6.568,
+    "best": 6.554,
+    "all": [
+     6.56,
+     6.58,
+     6.57,
+     6.58,
+     6.55
+    ]
+   }
+  },
+  "paired_ratio_median": 1.0935076782727688,
+  "best_ratio": 1.0944461397619774
+ }
+]

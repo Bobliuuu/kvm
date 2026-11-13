@@ -1,0 +1,7 @@
+{"variables": [],
+ "buffers": [{"name": "a", "rows": 2, "cols": 2}],
+ "graphs": [{"name": "diamond", "tasks": [
+   {"id": "t0", "op": "noop"},
+   {"id": "t1", "op": "noop", "after": ["t0"], "priority": 10},
+   {"id": "t2", "op": "noop", "after": ["t0"]},
+   {"id": "t3", "op": "noop", "after": ["t1", "t2"]}]}]}

@@ -14,9 +14,21 @@
 //    buffers are not reused;
 //  * the answer is the block's OR at the exit barrier (__syncthreads_or), so neither form holds static shared memory: every kernel entry
 //    that calls one keeps the static shared memory its worker declares, which the fused steps' budget assumes.
-// Ordering (PTX memory model, gpu scope): __syncthreads, then thread 0's __threadfence, orders the block's prior stores before its arrival
-// (a release); a waiter's acquire load that sees every arrival, then __syncthreads, makes every member's stores visible to its block.
+// Ordering (PTX memory model, gpu scope): __syncthreads, then thread 0's release at its arrival, orders the block's prior stores before
+// the arrival; a waiter's acquire load that sees every arrival, then __syncthreads, makes every member's stores visible to its block.
 #include <cstdint>
+
+// KVM_GANG_FENCE, how thread 0 releases the block's stores at an arrival. 1 by default, the form the A100's reads chose (each crossing
+// faster, the steps bitwise: results/2026-11-12-gang-one-fence); 0 and 2 stay for fence_bench.cu and the device test.
+//   0: __threadfence() and then the release operation, #54's form (in SASS two fences back to back: MEMBAR.SC.GPU, then MEMBAR.ALL.GPU);
+//   1: the release operation alone (red.release / st.release: one MEMBAR.ALL.GPU);
+//   2: CUTLASS's GenericBarrier form, fence.acq_rel.gpu and then a relaxed operation (one MEMBAR.ALL.GPU and an L1 invalidate).
+// The protocol is message passing (a member's stores, then its arrival released; the count or flags acquired, then the reads), which a
+// release paired with the pollers' acquires carries; the SC fence's total order is unused.
+#ifndef KVM_GANG_FENCE
+#define KVM_GANG_FENCE 1
+#endif
+static_assert(KVM_GANG_FENCE >= 0 && KVM_GANG_FENCE <= 2, "KVM_GANG_FENCE is 0, 1 or 2");
 
 namespace kvm_gang {
 
@@ -30,6 +42,11 @@ __device__ __forceinline__ unsigned long long ld_acquire(const unsigned long lon
 __device__ __forceinline__ void red_release_add(unsigned long long* p, unsigned long long v) {
     asm volatile("red.release.gpu.global.add.u64 [%0], %1;" ::"l"(p), "l"(v) : "memory");
 }
+__device__ __forceinline__ void st_relaxed(unsigned* p, unsigned v) { asm volatile("st.relaxed.gpu.global.u32 [%0], %1;" ::"l"(p), "r"(v) : "memory"); }
+__device__ __forceinline__ void red_relaxed_add(unsigned long long* p, unsigned long long v) {
+    asm volatile("red.relaxed.gpu.global.add.u64 [%0], %1;" ::"l"(p), "l"(v) : "memory");
+}
+__device__ __forceinline__ void fence_acq_rel() { asm volatile("fence.acq_rel.gpu;" ::: "memory"); }
 
 // The flag-line form. Member m's thread 0 publishes its epoch, the count of its crossings, in word m of `lines` (line_words(members)
 // words, 128-byte aligned, zeroed once), and warp w polls line w, lane l acquiring member 32 w + l's word, until every member's epoch has
@@ -39,13 +56,23 @@ __device__ __forceinline__ void red_release_add(unsigned long long* p, unsigned 
 // of the block calls it, and the block has a warp for each line: members <= 32 * (blockDim.x / 32).
 __host__ __device__ constexpr int line_words(int members) { return (members + 31) / 32 * 32; }
 __device__ __forceinline__ unsigned lines_epoch(const unsigned* lines, int member) { return *(const volatile unsigned*)(lines + member); }
+// A member's arrival on its flag line (arrive_count is the counted form's): thread 0, after the caller's __syncthreads, releases every
+// store the block made before it, in the form KVM_GANG_FENCE names.
+__device__ __forceinline__ void arrive_line(unsigned* word, unsigned epoch) {
+#if KVM_GANG_FENCE == 0
+    __threadfence();
+    st_release(word, epoch);
+#elif KVM_GANG_FENCE == 1
+    st_release(word, epoch);
+#else
+    fence_acq_rel();
+    st_relaxed(word, epoch);
+#endif
+}
 __device__ __forceinline__ bool barrier_lines(unsigned* lines, int member, int members, unsigned& epoch, const int* abort = nullptr) {
     __syncthreads();
     ++epoch;
-    if (threadIdx.x == 0) {
-        __threadfence();
-        st_release(lines + member, epoch);
-    }
+    if (threadIdx.x == 0) arrive_line(lines + member, epoch);
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
     int gave = 0;
     if (warp < (members + 31) / 32) {
@@ -76,14 +103,24 @@ __device__ __forceinline__ unsigned long long counted_base(const unsigned* ctl, 
     const unsigned long long v = *reinterpret_cast<const volatile unsigned long long*>(ctl);
     return v - v % (unsigned long long)members;
 }
+__device__ __forceinline__ void arrive_count(unsigned long long* count) {
+#if KVM_GANG_FENCE == 0
+    __threadfence();
+    red_release_add(count, 1ull);
+#elif KVM_GANG_FENCE == 1
+    red_release_add(count, 1ull);
+#else
+    fence_acq_rel();
+    red_relaxed_add(count, 1ull);
+#endif
+}
 __device__ __forceinline__ bool barrier_counted(unsigned* ctl, int members, unsigned long long& target, const int* abort = nullptr) {
     unsigned long long* const count = reinterpret_cast<unsigned long long*>(ctl);
     int gave = 0;
     __syncthreads();
     target += (unsigned long long)members;
     if (threadIdx.x == 0) {
-        __threadfence();
-        red_release_add(count, 1ull);
+        arrive_count(count);
         for (unsigned spin = 1; (long long)(ld_acquire(count) - target) < 0; ++spin)
             if (abort && (spin & 4095u) == 0 && *(const volatile int*)abort) { gave = 1; break; }
     }

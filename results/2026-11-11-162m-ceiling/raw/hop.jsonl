@@ -1,0 +1,16 @@
+{"case":"ping_rel_acq","pairs":1,"pollers":0,"reps":1,"rounds":2000,"hop_ns_median":658.2,"hop_ns_min":658.2,"hop_cycles_median":927.9,"implied_mhz":1410,"same_sm_pairs":0,"pairs_total":1,"mismatches":0}
+{"case":"ping_fence_rel_acq","pairs":1,"pollers":0,"reps":1,"rounds":2000,"hop_ns_median":808.4,"hop_ns_min":808.4,"hop_cycles_median":1139.9,"implied_mhz":1410,"same_sm_pairs":0,"pairs_total":1,"mismatches":0}
+{"case":"ping_atom_acq","pairs":1,"pollers":0,"reps":1,"rounds":2000,"hop_ns_median":672.0,"hop_ns_min":672.0,"hop_cycles_median":947.5,"implied_mhz":1410,"same_sm_pairs":0,"pairs_total":1,"mismatches":0}
+{"case":"ping_rel_cg","pairs":1,"pollers":0,"reps":1,"rounds":2000,"hop_ns_median":734.2,"hop_ns_min":734.2,"hop_cycles_median":1035.2,"implied_mhz":1410,"same_sm_pairs":0,"pairs_total":1,"mismatches":0}
+{"case":"ping_rel_cv","pairs":1,"pollers":0,"reps":1,"rounds":2000,"hop_ns_median":798.5,"hop_ns_min":798.5,"hop_cycles_median":1125.7,"implied_mhz":1410,"same_sm_pairs":0,"pairs_total":1,"mismatches":0}
+{"case":"ping_data_rel_acq","pairs":1,"pollers":0,"reps":1,"rounds":2000,"hop_ns_median":858.1,"hop_ns_min":858.1,"hop_cycles_median":1210.1,"implied_mhz":1410,"same_sm_pairs":0,"pairs_total":1,"mismatches":0}
+{"case":"ping_data_fence","pairs":1,"pollers":0,"reps":1,"rounds":2000,"hop_ns_median":964.1,"hop_ns_min":964.1,"hop_cycles_median":1359.5,"implied_mhz":1410,"same_sm_pairs":0,"pairs_total":1,"mismatches":0}
+{"case":"ping_join","pairs":1,"pollers":0,"reps":1,"rounds":2000,"hop_ns_median":1399.0,"hop_ns_min":1399.0,"hop_cycles_median":1972.8,"implied_mhz":1410,"same_sm_pairs":0,"pairs_total":1,"mismatches":0}
+{"case":"ping_rel_acq_8pairs","pairs":8,"pollers":0,"reps":1,"rounds":2000,"hop_ns_median":689.4,"hop_ns_min":592.9,"hop_cycles_median":972.4,"implied_mhz":1410,"same_sm_pairs":0,"pairs_total":8,"mismatches":0}
+{"case":"ping_rel_acq_32pairs","pairs":32,"pollers":0,"reps":1,"rounds":2000,"hop_ns_median":694.0,"hop_ns_min":548.4,"hop_cycles_median":978.7,"implied_mhz":1410,"same_sm_pairs":0,"pairs_total":32,"mismatches":0}
+{"case":"ping_rel_acq_pollers104","pairs":2,"pollers":104,"reps":1,"rounds":2000,"hop_ns_median":684.5,"hop_ns_min":657.7,"hop_cycles_median":965.2,"implied_mhz":1410,"same_sm_pairs":0,"pairs_total":2,"mismatches":0}
+{"case":"ping_rel_cg_pollers104","pairs":2,"pollers":104,"reps":1,"rounds":2000,"hop_ns_median":791.0,"hop_ns_min":733.4,"hop_cycles_median":1115.5,"implied_mhz":1410,"same_sm_pairs":0,"pairs_total":2,"mismatches":0}
+{"case":"ping_join_pollers104","pairs":2,"pollers":104,"reps":1,"rounds":2000,"hop_ns_median":1494.8,"hop_ns_min":1397.8,"hop_cycles_median":2108.2,"implied_mhz":1410,"same_sm_pairs":0,"pairs_total":2,"mismatches":0}
+{"case":"barrier_256_threads","n":1000,"cycles_median":38.1}
+{"case":"graph_edge","nodes":1024,"launch_to_sync_us":1073.04,"edge_us":1.048,"counter":5120,"expected":5120}
+{"case":"graph_edge","nodes":4096,"launch_to_sync_us":4264.53,"edge_us":1.041,"counter":20480,"expected":20480}

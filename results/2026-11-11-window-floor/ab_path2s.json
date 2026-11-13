@@ -1,0 +1,39 @@
+[
+ {
+  "row": "h640-d4-r16",
+  "control": "h640-d4-r16/bundle (16 runs of h640-d4)",
+  "cand": "h640-d4-r16/bundle (16 runs of h640-d4)",
+  "tasks": {
+   "control": 307200,
+   "cand": 307200
+  },
+  "ms": {
+   "control": {
+    "median": 88.721,
+    "best": 88.566,
+    "all": [
+     88.83,
+     88.721,
+     88.739,
+     88.566,
+     88.61
+    ]
+   },
+   "cand": {
+    "median": 79.477,
+    "best": 79.431,
+    "all": [
+     79.572,
+     79.477,
+     79.474,
+     79.431,
+     79.627
+    ]
+   }
+  },
+  "paired_ratio_median": 1.1163103791033884,
+  "best_ratio": 1.1150054764512596,
+  "gate_max_rel": 0.0,
+  "gate_tol": 0.0
+ }
+]

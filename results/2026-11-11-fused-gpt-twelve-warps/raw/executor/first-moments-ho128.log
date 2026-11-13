@@ -1,0 +1,80 @@
+   control: [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang); gangs [64]; /root/builds/e5b215c6ad3c05c5612594e8/kvm_exec
+   candidate: [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang); gangs [64]; /root/builds/68a5d88f397bcef25685e10c/kvm_exec
+== ho128-golden1: 1 step(s), 68 trained parameters, one bundle, two executors
+   loss at step 0: float64 5.552339859, control 5.552337170, candidate 5.552337170, eager TF32 5.552336216
+   first moments, relative L2 against float64 (a flag: the candidate above 2x the larger reference):
+     parameter                          candidate     control  eager TF32
+     gpt.h0.attn.k.b                    7.706e-04   7.706e-04   7.668e-04
+     gpt.h0.attn.k.w                    7.890e-04   7.890e-04   7.945e-04
+     gpt.h0.attn.proj.b                 6.047e-04   6.047e-04   6.882e-04
+     gpt.h0.attn.proj.w                 7.103e-04   7.103e-04   7.528e-04
+     gpt.h0.attn.q.b                    7.358e-04   7.358e-04   7.185e-04
+     gpt.h0.attn.q.w                    7.961e-04   7.961e-04   7.987e-04
+     gpt.h0.attn.v.b                    7.586e-04   7.586e-04   1.006e-03
+     gpt.h0.attn.v.w                    7.806e-04   7.806e-04   8.451e-04
+     gpt.h0.mlp.fc1.b                   6.398e-04   6.398e-04   7.130e-04
+     gpt.h0.mlp.fc1.w                   6.331e-04   6.331e-04   6.408e-04
+     gpt.h0.mlp.fc2.b                   6.086e-04   6.086e-04   6.686e-04
+     gpt.h0.mlp.fc2.w                   6.299e-04   6.299e-04   6.400e-04
+     gpt.h0.n1.b                        7.273e-04   7.273e-04   1.025e-03
+     gpt.h0.n1.g                        7.594e-04   7.594e-04   7.319e-04
+     gpt.h0.n2.b                        6.774e-04   6.774e-04   8.203e-04
+     gpt.h0.n2.g                        5.582e-04   5.582e-04   5.517e-04
+     gpt.h1.attn.k.b                    7.269e-04   7.269e-04   6.646e-04
+     gpt.h1.attn.k.w                    8.865e-04   8.865e-04   8.952e-04
+     gpt.h1.attn.proj.b                 5.019e-04   5.019e-04   6.082e-04
+     gpt.h1.attn.proj.w                 6.911e-04   6.911e-04   7.453e-04
+     gpt.h1.attn.q.b                    7.797e-04   7.797e-04   8.082e-04
+     gpt.h1.attn.q.w                    8.747e-04   8.747e-04   8.752e-04
+     gpt.h1.attn.v.b                    6.584e-04   6.584e-04   6.874e-04
+     gpt.h1.attn.v.w                    7.043e-04   7.043e-04   7.534e-04
+     gpt.h1.mlp.fc1.b                   5.618e-04   5.618e-04   6.254e-04
+     gpt.h1.mlp.fc1.w                   6.660e-04   6.660e-04   6.668e-04
+     gpt.h1.mlp.fc2.b                   5.076e-04   5.076e-04   5.488e-04
+     gpt.h1.mlp.fc2.w                   6.636e-04   6.636e-04   6.671e-04
+     gpt.h1.n1.b                        7.519e-04   7.519e-04   7.998e-04
+     gpt.h1.n1.g                        6.491e-04   6.491e-04   6.833e-04
+     gpt.h1.n2.b                        6.372e-04   6.372e-04   6.985e-04
+     gpt.h1.n2.g                        7.135e-04   7.135e-04   7.846e-04
+     gpt.h2.attn.k.b                    7.573e-04   7.573e-04   8.259e-04
+     gpt.h2.attn.k.w                    9.559e-04   9.559e-04   9.702e-04
+     gpt.h2.attn.proj.b                 5.144e-04   5.144e-04   5.535e-04
+     gpt.h2.attn.proj.w                 7.212e-04   7.212e-04   7.517e-04
+     gpt.h2.attn.q.b                    1.044e-03   1.044e-03   9.766e-04
+     gpt.h2.attn.q.w                    9.716e-04   9.716e-04   9.748e-04
+     gpt.h2.attn.v.b                    7.079e-04   7.080e-04   7.343e-04
+     gpt.h2.attn.v.w                    7.569e-04   7.569e-04   7.866e-04
+     gpt.h2.mlp.fc1.b                   6.076e-04   6.076e-04   5.885e-04
+     gpt.h2.mlp.fc1.w                   6.822e-04   6.822e-04   6.838e-04
+     gpt.h2.mlp.fc2.b                   4.616e-04   4.616e-04   4.740e-04
+     gpt.h2.mlp.fc2.w                   6.708e-04   6.708e-04   6.696e-04
+     gpt.h2.n1.b                        6.333e-04   6.333e-04   6.450e-04
+     gpt.h2.n1.g                        8.351e-04   8.351e-04   9.318e-04
+     gpt.h2.n2.b                        6.701e-04   6.701e-04   7.304e-04
+     gpt.h2.n2.g                        6.683e-04   6.683e-04   6.890e-04
+     gpt.h3.attn.k.b                    9.393e-04   9.393e-04   8.562e-04
+     gpt.h3.attn.k.w                    9.854e-04   9.854e-04   9.804e-04
+     gpt.h3.attn.proj.b                 4.292e-04   4.292e-04   4.315e-04
+     gpt.h3.attn.proj.w                 7.555e-04   7.555e-04   7.709e-04
+     gpt.h3.attn.q.b                    8.598e-04   8.598e-04   8.960e-04
+     gpt.h3.attn.q.w                    1.028e-03   1.028e-03   1.003e-03
+     gpt.h3.attn.v.b                    5.200e-04   5.200e-04   5.182e-04
+     gpt.h3.attn.v.w                    6.991e-04   6.991e-04   7.097e-04
+     gpt.h3.mlp.fc1.b                   5.638e-04   5.638e-04   5.848e-04
+     gpt.h3.mlp.fc1.w                   6.904e-04   6.904e-04   6.913e-04
+     gpt.h3.mlp.fc2.b                   3.810e-04   3.810e-04   3.789e-04
+     gpt.h3.mlp.fc2.w                   6.819e-04   6.819e-04   6.854e-04
+     gpt.h3.n1.b                        5.541e-04   5.541e-04   5.839e-04
+     gpt.h3.n1.g                        6.548e-04   6.548e-04   6.702e-04
+     gpt.h3.n2.b                        7.147e-04   7.147e-04   6.767e-04
+     gpt.h3.n2.g                        7.425e-04   7.425e-04   7.312e-04
+     gpt.head.w                         5.511e-04   5.511e-04   5.531e-04
+     gpt.nf.b                           3.630e-04   3.630e-04   3.626e-04
+     gpt.nf.g                           5.870e-04   5.870e-04   5.975e-04
+     gpt.wte                            5.695e-04   5.695e-04   5.718e-04
+   geomean over the first-moment buffers: candidate 6.7769e-04, control 6.7769e-04, eager TF32 7.0372e-04
+   context, the step-1 weights: all-weights relative L2 candidate 1.864e-03, control 1.864e-03, eager TF32 1.881e-03; weights more than lr (0.003) off float64 candidate 154, control 154, eager TF32 153
+   candidate as the candidate: geomean within 1.05x the larger other, 0 flagged []
+   control as the candidate: geomean within 1.05x the larger other, 0 flagged []
+   eager TF32 as the candidate: geomean within 1.05x the larger other, 0 flagged []
+   distances at full precision: /root/work/w12x/run-20261111T155134Z/num1-ho128.json

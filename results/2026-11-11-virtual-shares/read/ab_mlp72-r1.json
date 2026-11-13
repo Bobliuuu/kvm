@@ -1,0 +1,37 @@
+[
+ {
+  "row": "mlp72-r1",
+  "control": "/root/reads/panel-count1/h72/bundle",
+  "cand": "/root/reads/panel-count1/h72/bundle",
+  "tasks": {
+   "control": 9600,
+   "cand": 9600
+  },
+  "ms": {
+   "control": {
+    "median": 6.462,
+    "best": 6.439,
+    "all": [
+     6.47,
+     6.46,
+     6.44,
+     6.45,
+     6.52
+    ]
+   },
+   "cand": {
+    "median": 5.859,
+    "best": 5.827,
+    "all": [
+     5.86,
+     5.87,
+     5.85,
+     5.83,
+     5.86
+    ]
+   }
+  },
+  "paired_ratio_median": 1.1041133299197816,
+  "best_ratio": 1.1050283164578685
+ }
+]

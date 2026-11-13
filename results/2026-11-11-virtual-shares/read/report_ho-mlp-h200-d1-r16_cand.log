@@ -1,0 +1,25 @@
+OK: 11216/11216 tasks, 5.100 ms
+[kvm_exec][I] device NVIDIA A100-SXM4-80GB, 108 SMs, 1 resident blocks/SM with 147456 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] /root/reads/vsread/bundles-4cec0fbd9b692803/ho200_r16: 38400 tasks, 182432 edges, 416000 arg words
+[kvm_exec][I] path: static (mean estimated task 3.88 us <= 6.0)
+[kvm_exec][I] fuse: component 0: fused, split form (layer width not a multiple of 8 up to 128): 50 steps, T=96 V=100 widths 48x200, gangs of 6 slices x 2 shares = 12 members, 26332 floats a member (18 virtual shares, the run's own)
+[kvm_exec][I] fuse: component 1: fused, split form (layer width not a multiple of 8 up to 128): 50 steps, T=96 V=100 widths 48x200, gangs of 6 slices x 2 shares = 12 members, 26332 floats a member (18 virtual shares, the run's own)
+[kvm_exec][I] fuse: component 2: fused, split form (layer width not a multiple of 8 up to 128): 50 steps, T=96 V=100 widths 48x200, gangs of 6 slices x 2 shares = 12 members, 26332 floats a member (18 virtual shares, the run's own)
+[kvm_exec][I] fuse: component 3: fused, split form (layer width not a multiple of 8 up to 128): 50 steps, T=96 V=100 widths 48x200, gangs of 6 slices x 2 shares = 12 members, 26332 floats a member (18 virtual shares, the run's own)
+[kvm_exec][I] fuse: component 4: fused, split form (layer width not a multiple of 8 up to 128): 50 steps, T=96 V=100 widths 48x200, gangs of 6 slices x 2 shares = 12 members, 26332 floats a member (18 virtual shares, the run's own)
+[kvm_exec][I] fuse: component 5: fused, split form (layer width not a multiple of 8 up to 128): 50 steps, T=96 V=100 widths 48x200, gangs of 6 slices x 2 shares = 12 members, 26332 floats a member (18 virtual shares, the run's own)
+[kvm_exec][I] fuse: component 6: fused, split form (layer width not a multiple of 8 up to 128): 50 steps, T=96 V=100 widths 48x200, gangs of 6 slices x 2 shares = 12 members, 26332 floats a member (18 virtual shares, the run's own)
+[kvm_exec][I] fuse: component 7: fused, split form (layer width not a multiple of 8 up to 128): 50 steps, T=96 V=100 widths 48x200, gangs of 6 slices x 2 shares = 12 members, 26332 floats a member (18 virtual shares, the run's own)
+[kvm_exec][I] fuse: component 8: fused, split form (layer width not a multiple of 8 up to 128): 50 steps, T=96 V=100 widths 48x200, gangs of 6 slices x 2 shares = 12 members, 26332 floats a member (18 virtual shares, the run's own)
+[kvm_exec][I] fuse: component 9: fused, split form (layer width not a multiple of 8 up to 128): 50 steps, T=96 V=100 widths 48x200, gangs of 6 slices x 2 shares = 12 members, 26332 floats a member (18 virtual shares, the run's own)
+[kvm_exec][I] fuse: component 10: fused, split form (layer width not a multiple of 8 up to 128): 50 steps, T=96 V=100 widths 48x200, gangs of 6 slices x 2 shares = 12 members, 26332 floats a member (18 virtual shares, the run's own)
+[kvm_exec][I] fuse: component 11: fused, split form (layer width not a multiple of 8 up to 128): 50 steps, T=96 V=100 widths 48x200, gangs of 6 slices x 2 shares = 12 members, 26332 floats a member (18 virtual shares, the run's own)
+[kvm_exec][I] fuse: component 12: fused, split form (layer width not a multiple of 8 up to 128): 50 steps, T=96 V=100 widths 48x200, gangs of 6 slices x 2 shares = 12 members, 26332 floats a member (18 virtual shares, the run's own)
+[kvm_exec][I] fuse: component 13: fused, split form (layer width not a multiple of 8 up to 128): 50 steps, T=96 V=100 widths 48x200, gangs of 6 slices x 2 shares = 12 members, 26332 floats a member (18 virtual shares, the run's own)
+[kvm_exec][I] fuse: component 14: fused, split form (layer width not a multiple of 8 up to 128): 50 steps, T=96 V=100 widths 48x200, gangs of 6 slices x 2 shares = 12 members, 26332 floats a member (18 virtual shares, the run's own)
+[kvm_exec][I] fuse: component 15: fused, split form (layer width not a multiple of 8 up to 128): 50 steps, T=96 V=100 widths 48x200, gangs of 6 slices x 2 shares = 12 members, 26332 floats a member (18 virtual shares, the run's own)
+[kvm_exec][I] fuse: shared-memory budget 40416 floats (161664 bytes) a fused block
+[kvm_exec][I] fuse: 16 run(s) fused, 0 unchanged; 36784 tasks replaced by 11216; static kernel entry: split, 18 shares
+[kvm_exec][I] static schedule: 11216 tasks -> 11216 records on 108/108 workers, 28367 of 28624 edges cross workers, 10913 records publish; runs partitioned: no; plan 3605.1 us, work 387201.6 us (compiled in 0.016 s)
+[kvm_exec][I] static kernel: entry split, 18 shares, 1 resident blocks/SM, 147456 bytes of dynamic shared memory, launching 108 workers
+[kvm_exec][I] static run done: 11216 tasks in 5.100 ms on 108 workers

@@ -1,0 +1,11 @@
+GATE 1+2 ok: (no CPU golden at this size) 4 replicated copies bitwise equal to the single run (56 buffers)
+env {'torch': '2.15.0+cu132', 'cuda': '13.2', 'gpu': 'NVIDIA A100-SXM4-80GB', 'sms': 108}
+GATE 3: executor vs eager, loss max rel 1.26e-04, weights max rel L2 2.03e-05, loss 4.5131 -> 0.2163; vs float64: executor 1.42e-04, eager 1.22e-04
+{"runs": 1, "steps": 50, "executor": 47.3}
+
+best-of-1 us per step, all R runs advance one step; last block: variant / executor (>1: executor faster)
+   R        executor
+   1            47.3
+ratio
+   1           1.00x
+rc 0

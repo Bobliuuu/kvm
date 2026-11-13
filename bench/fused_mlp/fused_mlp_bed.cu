@@ -42,7 +42,8 @@ struct Globals {
   const KvmFusedDesc* d;                 // the run's descriptor (device memory, as the op reads it)
   int bt, nsl;
   int* ids, *tgt;                        // [steps][BT]
-  float* loss;                           // [steps * nsl]: each slice's sum of row losses
+  float* loss;                           // [steps * ngr]: each granule's sum of row losses (KVM_FMLP_GRANULE rows, kvm_fused_mlp.h)
+  int ngr;                               // gradient granules a step
   int* progress;                         // [nsl * 32] (one 128-byte line per slice)
   long long* ph;                         // [NPH] accumulated cycles per phase (slice 0, thread 0)
   int steps;
@@ -58,7 +59,7 @@ __global__ void __launch_bounds__(256) fused_kernel(const Globals g) {
   int* pc = g.progress;
   for (int st = 0; st < g.steps; ++st) {
     kvm_fmlp::prefetch_desc(g.d, sm);
-    kvm_fmlp::slice_run(sc, g.ids + (size_t)st * bt, g.tgt + (size_t)st * bt, g.loss + (size_t)st * nsl + sc, sm, ph, kvm_fmlp::NoFail{});
+    kvm_fmlp::slice_run(sc, g.ids + (size_t)st * bt, g.tgt + (size_t)st * bt, g.loss + (size_t)st * g.ngr + (size_t)sc * (g.ngr / nsl), sm, ph, kvm_fmlp::NoFail{});
     __threadfence();
     __syncthreads(); ph(11);
     if (threadIdx.x == 0) st_rel(pc + (size_t)sc * 32, 2 * st + 1);
@@ -197,18 +198,20 @@ int main(int argc, char** argv) {
   for (int l = 0; l < s.L; ++l) { ref.w[l] = mk((size_t)s.K(l) * s.H[l], 0.13f); ref.b[l] = mk(s.H[l], 0.02f); }
   std::vector<int> ids((size_t)steps * bt), tgt((size_t)steps * bt);
   { std::uniform_int_distribution<int> d(0, V - 1); for (auto& x : ids) x = d(rng); for (auto& x : tgt) x = d(rng); }
-  Globals g{}; g.bt = bt; g.nsl = s.nsl; g.steps = steps;
+  const int ngr = bt / KVM_FMLP_GRANULE;   // the step's gradient granules: one partial each (kvm_fused_mlp.h)
+  if (bt % KVM_FMLP_GRANULE || ngr > KVM_FMLP_MAX_SLICES) { fprintf(stderr, "tokens must be a multiple of %d, at most %d granules\n", KVM_FMLP_GRANULE, KVM_FMLP_MAX_SLICES); return 2; }
+  Globals g{}; g.bt = bt; g.nsl = s.nsl; g.ngr = ngr; g.steps = steps;
   auto dm = [](size_t n) { float* p; CK(cudaMalloc(&p, n * 4)); CK(cudaMemset(p, 0, n * 4)); return p; };
-  d.we = dm((size_t)V * E); d.ge = dm((size_t)s.nsl * V * E); d.wh = dm((size_t)s.H[s.L - 1] * V); d.loss_part = dm(s.nsl);
-  d.ghld = kvm_fmlp_pad16(V); d.gh = dm((size_t)s.nsl * rnd16(s.H[s.L - 1]) * d.ghld);
+  d.we = dm((size_t)V * E); d.ge = dm((size_t)ngr * V * E); d.wh = dm((size_t)s.H[s.L - 1] * V); d.loss_part = dm(ngr);
+  d.ghld = kvm_fmlp_pad16(V); d.gh = dm((size_t)ngr * rnd16(s.H[s.L - 1]) * d.ghld);
   for (int l = 0; l < s.L; ++l) {
     d.w[l] = dm((size_t)s.K(l) * s.H[l]); d.b[l] = dm(s.H[l]); d.gwld[l] = kvm_fmlp_pad16(s.H[l]);
-    d.gw[l] = dm((size_t)s.nsl * rnd16(s.K(l)) * d.gwld[l]); d.gb[l] = dm((size_t)s.nsl * s.H[l]);
+    d.gw[l] = dm((size_t)ngr * rnd16(s.K(l)) * d.gwld[l]); d.gb[l] = dm((size_t)ngr * s.H[l]);
   }
   KvmFusedDesc* ddesc; CK(cudaMalloc(&ddesc, sizeof(KvmFusedDesc))); CK(cudaMemcpy(ddesc, &d, sizeof(KvmFusedDesc), cudaMemcpyHostToDevice));
   g.d = ddesc;
   CK(cudaMalloc(&g.ph, NPH * 8)); CK(cudaMemset(g.ph, 0, NPH * 8));
-  CK(cudaMalloc(&g.ids, (size_t)steps * bt * 4)); CK(cudaMalloc(&g.tgt, (size_t)steps * bt * 4)); CK(cudaMalloc(&g.loss, (size_t)steps * s.nsl * 4)); CK(cudaMalloc(&g.progress, (size_t)s.nsl * 32 * 4));
+  CK(cudaMalloc(&g.ids, (size_t)steps * bt * 4)); CK(cudaMalloc(&g.tgt, (size_t)steps * bt * 4)); CK(cudaMalloc(&g.loss, (size_t)steps * ngr * 4)); CK(cudaMalloc(&g.progress, (size_t)s.nsl * 32 * 4));
   CK(cudaMemcpy(g.ids, ids.data(), (size_t)steps * bt * 4, cudaMemcpyHostToDevice)); CK(cudaMemcpy(g.tgt, tgt.data(), (size_t)steps * bt * 4, cudaMemcpyHostToDevice));
   const int smem_bytes = total_floats * 4 + 4096;
   CK(cudaFuncSetAttribute(fused_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes));
@@ -218,7 +221,7 @@ int main(int argc, char** argv) {
   auto reset = [&]() {
     CK(cudaMemcpy(d.we, ref.we.data(), (size_t)V * E * 4, cudaMemcpyHostToDevice)); CK(cudaMemcpy(d.wh, ref.wh.data(), (size_t)s.H[s.L - 1] * V * 4, cudaMemcpyHostToDevice));
     for (int l = 0; l < s.L; ++l) { CK(cudaMemcpy(d.w[l], ref.w[l].data(), (size_t)s.K(l) * s.H[l] * 4, cudaMemcpyHostToDevice)); CK(cudaMemcpy(d.b[l], ref.b[l].data(), s.H[l] * 4, cudaMemcpyHostToDevice)); }
-    CK(cudaMemset(d.ge, 0, (size_t)s.nsl * V * E * 4)); CK(cudaMemset(g.progress, 0, (size_t)s.nsl * 32 * 4)); CK(cudaDeviceSynchronize());
+    CK(cudaMemset(d.ge, 0, (size_t)ngr * V * E * 4)); CK(cudaMemset(g.progress, 0, (size_t)s.nsl * 32 * 4)); CK(cudaDeviceSynchronize());
   };
   double best = 1e30;
   for (int rep = 0; rep <= reps; ++rep) {
@@ -227,7 +230,7 @@ int main(int argc, char** argv) {
     float ms = 0; CK(cudaEventElapsedTime(&ms, e0, e1)); CK(cudaGetLastError());
     if (rep) { best = std::min(best, (double)ms); printf("rep %d: %.3f ms = %.2f us/step\n", rep, ms, ms * 1000.f / steps); }
     else printf("warm-up (rep 0): %.3f ms\n", ms);
-    CK(cudaMemset(g.progress, 0, (size_t)s.nsl * 32 * 4)); CK(cudaMemset(d.ge, 0, (size_t)s.nsl * V * E * 4));
+    CK(cudaMemset(g.progress, 0, (size_t)s.nsl * 32 * 4)); CK(cudaMemset(d.ge, 0, (size_t)ngr * V * E * 4));
   }
   printf("best: %.2f us/step\n", best * 1000. / steps);
   {
@@ -242,11 +245,11 @@ int main(int argc, char** argv) {
     reset();
     int s0 = g.steps; g.steps = check;
     fused_kernel<<<s.nsl, 256, smem_bytes>>>(g); CK(cudaDeviceSynchronize()); g.steps = s0;
-    std::vector<float> dl((size_t)check * s.nsl);
+    std::vector<float> dl((size_t)check * ngr);
     CK(cudaMemcpy(dl.data(), g.loss, dl.size() * 4, cudaMemcpyDeviceToHost));
     double worst = 0;
     for (int st = 0; st < check; ++st) {
-      double dev = 0; for (int c = 0; c < s.nsl; ++c) dev += dl[(size_t)st * s.nsl + c];
+      double dev = 0; for (int c = 0; c < ngr; ++c) dev += dl[(size_t)st * ngr + c];
       dev /= bt;
       double rf = ref_step(ref, ids.data() + (size_t)st * bt, tgt.data() + (size_t)st * bt);
       double rel = std::fabs(dev - rf) / std::max(1e-9, std::fabs(rf));

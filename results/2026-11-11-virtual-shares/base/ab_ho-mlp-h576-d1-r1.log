@@ -1,0 +1,13 @@
+GATE ok: ho-mlp-h576-d1-r1: 4 buffers with prefix 'w.', tasks 4450 -> 4450; bitwise equal
+rep 0 ho-mlp-h576-d1-r1 control: 1.87 ms
+rep 0 ho-mlp-h576-d1-r1 cand: 1.90 ms
+rep 1 ho-mlp-h576-d1-r1 control: 1.88 ms
+rep 1 ho-mlp-h576-d1-r1 cand: 1.90 ms
+rep 2 ho-mlp-h576-d1-r1 control: 1.87 ms
+rep 2 ho-mlp-h576-d1-r1 cand: 1.90 ms
+rep 3 ho-mlp-h576-d1-r1 control: 1.87 ms
+rep 3 ho-mlp-h576-d1-r1 cand: 1.90 ms
+rep 4 ho-mlp-h576-d1-r1 control: 1.88 ms
+rep 4 ho-mlp-h576-d1-r1 cand: 1.92 ms
+{"row": "ho-mlp-h576-d1-r1", "control": "/root/reads/vsread/bundles-4cec0fbd9b692803/ho576/bundle", "cand": "/root/reads/vsread/bundles-4cec0fbd9b692803/ho576/bundle", "tasks": {"control": 4450, "cand": 4450}, "ms": {"control": {"median": 1.874, "best": 1.87, "all": [1.87, 1.88, 1.87, 1.87, 1.88]}, "cand": {"median": 1.899, "best": 1.897, "all": [1.9, 1.9, 1.9, 1.9, 1.92]}}, "paired_ratio_median": 0.9847288046340179, "best_ratio": 0.9857670005271482}
+rc 0

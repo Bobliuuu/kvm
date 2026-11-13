@@ -2,12 +2,16 @@
 // the crossing that picks one by the gang's size (`cross`: at LinesMax 8, so every GPU's gangs take both forms, and at the shipped
 // KVM_GANG_LINES_MAX): gangs of several sizes on disjoint blocks of one co-resident grid exchange slots through global memory for many
 // rounds, and every member checks every value it reads. Each form runs twice: the gangs of a fused step's widths side by side, then one
-// gang of every block (more than 32 members on most GPUs, so the flag lines poll several lines).
+// gang of every block (more than 32 members on most GPUs, so the flag lines poll several lines). Every form and layout runs with two kinds
+// of reads: from L2 (ld.global.cg), which sees whether the writers' stores reached the coherence point before their arrivals, and through
+// L1 (ld.global.ca), where each slot stays cached from the round before, so a reader whose L1 is not invalidated after its crossing reads
+// the old round (the SMs' L1s are not coherent; the waiters' acquire loads invalidate it).
 //   nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude tests/static/test_gang_device.cu -o test_gang_device && ./test_gang_device [rounds]
+//   tests/static/gang_device.sh OUTDIR builds it with every KVM_GANG_FENCE and with the mutants it must catch, runs them and judges each
 //   compute-sanitizer --tool memcheck ./test_gang_device 50     (and racecheck, synccheck)
 // Each round, each member:
 //  * writes its slot;
-//  * crosses the barrier, then reads every member's slot of its gang (L2 loads, ld.global.cg);
+//  * crosses the barrier, then reads every member's slot of its gang (L2 or L1 loads, above);
 //  * crosses again, so no member overwrites a slot another is still reading.
 // A value written before a crossing and missing after it is a barrier that let a member through too early.
 // The second launch reuses the control words as the first left them (neither form needs a reset), with staggered starts: member m waits
@@ -29,6 +33,8 @@ constexpr int NT = 256, SLOT = 64;   // floats a slot
 
 __device__ __forceinline__ float val(int round, int member, int k) { return (float)((round * 31 + member * 7 + k) % 251); }
 __device__ __forceinline__ float ld_cg(const float* p) { float v; asm volatile("ld.global.cg.f32 %0, [%1];" : "=f"(v) : "l"(p)); return v; }
+__device__ __forceinline__ float ld_ca(const float* p) { float v; asm volatile("ld.global.ca.f32 %0, [%1];" : "=f"(v) : "l"(p)); return v; }
+constexpr const char* reads_name(bool l1) { return l1 ? "reads through L1 (ld.global.ca)" : "reads from L2 (ld.global.cg)"; }
 
 struct Gangs { const int* first; const int* size; int n; };   // gang g: blocks [first[g], first[g] + size[g])
 
@@ -38,7 +44,7 @@ struct Gangs { const int* first; const int* size; int n; };   // gang g: blocks 
 constexpr int lines_max(int form) { return form == 0 ? 0 : form == 1 ? 1 << 30 : form == 2 ? 8 : KVM_GANG_LINES_MAX; }
 constexpr const char* form_name(int form) { return form == 0 ? "counted" : form == 1 ? "flag-line" : form == 2 ? "cross<8>" : "cross<KVM_GANG_LINES_MAX>"; }
 
-template <int FORM>
+template <int FORM, bool L1>
 __global__ void __launch_bounds__(NT, 1) gang_kernel(Gangs gs, unsigned* ctl, int words, float* slots, int rounds, unsigned long long* errors,
                                                      int* abort_word, int abort_test, int stagger, int* gave_up) {
     int g = 0;
@@ -71,7 +77,8 @@ __global__ void __launch_bounds__(NT, 1) gang_kernel(Gangs gs, unsigned* ctl, in
         if (!cross()) { if (threadIdx.x == 0) atomicAdd(gave_up, 1); return; }
         for (int i = threadIdx.x; i < members * SLOT; i += NT) {
             const int m = i / SLOT, k = i % SLOT;
-            if (ld_cg(gang_slots + (size_t)m * SLOT + k) != val(r, m, k)) ++bad;
+            const float* const p = gang_slots + (size_t)m * SLOT + k;
+            if ((L1 ? ld_ca(p) : ld_cg(p)) != val(r, m, k)) ++bad;
         }
         if (!cross()) { if (threadIdx.x == 0) atomicAdd(gave_up, 1); return; }
     }
@@ -80,10 +87,10 @@ __global__ void __launch_bounds__(NT, 1) gang_kernel(Gangs gs, unsigned* ctl, in
 
 // One form on one gang layout: two clean launches (the second from the words the first left, its starts staggered), then the abort path.
 // Returns the failures.
-template <int FORM>
+template <int FORM, bool L1>
 int run_form(const char* layout, const std::vector<int>& first, const std::vector<int>& size, int W, int rounds) {
     const int ng = (int)first.size(), maxm = *std::max_element(size.begin(), size.end()), words = kvm_gang::line_words(maxm);
-    printf("%s barrier, %s: %d blocks in %d gang(s) (sizes", form_name(FORM), layout, W, ng);
+    printf("%s barrier, %s, %s: %d blocks in %d gang(s) (sizes", form_name(FORM), layout, reads_name(L1), W, ng);
     for (int s : size) printf(" %d", s);
     printf("), %d words a gang, %d rounds of two crossings\n", words, rounds);
     int *dfirst, *dsize; unsigned* ctl; float* slots; unsigned long long* err; int *abort_word, *gave_up;
@@ -99,7 +106,7 @@ int run_form(const char* layout, const std::vector<int>& first, const std::vecto
         CK(cudaMemset(err, 0, sizeof(unsigned long long))); CK(cudaMemset(slots, 0xff, (size_t)W * SLOT * sizeof(float)));
         int stagger = launch;
         void* args[] = {&gs, &ctl, (void*)&words, &slots, (void*)&rounds, &err, &abort_word, &no, &stagger, &gave_up};
-        CK(cudaLaunchCooperativeKernel((void*)gang_kernel<FORM>, dim3(W), dim3(NT), args, 0, 0)); CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
+        CK(cudaLaunchCooperativeKernel((void*)gang_kernel<FORM, L1>, dim3(W), dim3(NT), args, 0, 0)); CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
         unsigned long long bad = 0; CK(cudaMemcpy(&bad, err, sizeof(bad), cudaMemcpyDeviceToHost));
         std::vector<unsigned> h((size_t)words * ng); CK(cudaMemcpy(h.data(), ctl, h.size() * sizeof(unsigned), cudaMemcpyDeviceToHost));
         const unsigned want = 2u * rounds * (launch + 1);   // every member's crossings so far
@@ -125,7 +132,7 @@ int run_form(const char* layout, const std::vector<int>& first, const std::vecto
         CK(cudaMemset(abort_word, 0, sizeof(int))); CK(cudaMemset(gave_up, 0, sizeof(int)));
         int yes = 1;
         void* args[] = {&gs, &ctl, (void*)&words, &slots, (void*)&rounds, &err, &abort_word, &yes, &no, &gave_up};
-        CK(cudaLaunchCooperativeKernel((void*)gang_kernel<FORM>, dim3(W), dim3(NT), args, 0, 0)); CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
+        CK(cudaLaunchCooperativeKernel((void*)gang_kernel<FORM, L1>, dim3(W), dim3(NT), args, 0, 0)); CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
         int gu = 0; CK(cudaMemcpy(&gu, gave_up, sizeof(int), cudaMemcpyDeviceToHost));
         const int expect = size[ng - 1] - 1;   // the widest gang's members but the one that quit
         printf("  abort launch: ended (no hang); %d member(s) gave up at a crossing (the widest gang has %d others; members of other gangs may give up too once the word is set)\n", gu, expect);
@@ -135,30 +142,38 @@ int run_form(const char* layout, const std::vector<int>& first, const std::vecto
     return fails;
 }
 
+// Every form on both layouts, with one kind of reads. Returns the failures.
+template <bool L1>
+int run_forms(const std::vector<int>& first, const std::vector<int>& size, int W, int rounds) {
+    const std::vector<int> one_first{0}, one_size{W};
+    int fails = 0;
+    fails += run_form<0, L1>("side by side", first, size, W, rounds);
+    fails += run_form<0, L1>("one gang", one_first, one_size, W, rounds);
+    fails += run_form<1, L1>("side by side", first, size, W, rounds);
+    fails += run_form<1, L1>("one gang", one_first, one_size, W, rounds);
+    fails += run_form<2, L1>("side by side", first, size, W, rounds);
+    fails += run_form<2, L1>("one gang", one_first, one_size, W, rounds);
+    fails += run_form<3, L1>("side by side", first, size, W, rounds);
+    fails += run_form<3, L1>("one gang", one_first, one_size, W, rounds);
+    return fails;
+}
+
+template <int FORM, bool L1>
+int occupancy() { int n = 0; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&n, gang_kernel<FORM, L1>, NT, 0)); return n; }
+
 int main(int argc, char** argv) {
     const int rounds = argc > 1 ? atoi(argv[1]) : 2000;
     cudaDeviceProp prop; CK(cudaGetDeviceProperties(&prop, 0));
-    int occ0 = 0, occ1 = 0;
-    int occ2 = 0, occ3 = 0;
-    CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ0, gang_kernel<0>, NT, 0)); CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ1, gang_kernel<1>, NT, 0));
-    CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ2, gang_kernel<2>, NT, 0)); CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ3, gang_kernel<3>, NT, 0));
-    const int W = std::min(prop.multiProcessorCount, std::min(std::min(occ0, occ1), std::min(occ2, occ3)) * prop.multiProcessorCount);
+    const int occ = std::min({occupancy<0, false>(), occupancy<1, false>(), occupancy<2, false>(), occupancy<3, false>(),
+                              occupancy<0, true>(), occupancy<1, true>(), occupancy<2, true>(), occupancy<3, true>()});
+    const int W = std::min(prop.multiProcessorCount, occ * prop.multiProcessorCount);
     printf("%s: %d co-resident blocks of %d threads\n", prop.name, W, NT);
     // gang sizes 1, 2, 3, 5, 8, 13, then one gang of what is left: gangs of a fused step's widths side by side; then one gang of every block
     std::vector<int> first, size;
     int at = 0;
     for (int s : {1, 2, 3, 5, 8, 13}) if (at + s <= W) { first.push_back(at); size.push_back(s); at += s; }
     if (at < W) { first.push_back(at); size.push_back(W - at); at = W; }
-    const std::vector<int> one_first{0}, one_size{W};
-    int fails = 0;
-    fails += run_form<0>("side by side", first, size, W, rounds);
-    fails += run_form<0>("one gang", one_first, one_size, W, rounds);
-    fails += run_form<1>("side by side", first, size, W, rounds);
-    fails += run_form<1>("one gang", one_first, one_size, W, rounds);
-    fails += run_form<2>("side by side", first, size, W, rounds);
-    fails += run_form<2>("one gang", one_first, one_size, W, rounds);
-    fails += run_form<3>("side by side", first, size, W, rounds);
-    fails += run_form<3>("one gang", one_first, one_size, W, rounds);
-    printf("%s\n", fails ? "FAIL" : "PASS: in every form (counted, flag lines, cross at 8 and at KVM_GANG_LINES_MAX) every member read every slot of its round, every gang's control words are as clean runs leave them (staggered starts included), and an aborted gang ends");
+    const int fails = run_forms<false>(first, size, W, rounds) + run_forms<true>(first, size, W, rounds);
+    printf("%s\n", fails ? "FAIL" : "PASS: in every form (counted, flag lines, cross at 8 and at KVM_GANG_LINES_MAX) every member read every slot of its round, from L2 and through L1, every gang's control words are as clean runs leave them (staggered starts included), and an aborted gang ends");
     return fails ? 1 : 0;
 }

@@ -1,0 +1,3 @@
+2026-11-11 13:27:44,675 INFO kvm.compiler: compiled 4398 tasks (0 gates), 25768 edges, 1060 buffers, 1 variables in 0.07s (parse 0.05s, graph+versions 0.01s, pack 0.01s)
+2026-11-11 13:27:44,690 INFO kvm.compiler: wrote bundle to /root/reads/vsread/bundles-4cec0fbd9b692803/.tmp-ho224-446086/bundle
+mlp tiling a100 hidden 224 depth 2 steps 50 tasks 4398 tasks/step 87

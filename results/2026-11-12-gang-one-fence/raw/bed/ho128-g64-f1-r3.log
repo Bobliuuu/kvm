@@ -1,0 +1,59 @@
+[fgpt_bed 15:57:57Z] model: L 4, d 128, heads 4 x 32, MLP 512, V 256, 2 x 96 rows; 20 steps; work /root/work/relbed12/run-20261112T155128Z/work-ho128-f1
+[fgpt_bed 15:57:57Z] G 64: /root/work/relbed12/fgpt_bed_f1 /root/work/relbed12/run-20261112T155128Z/work-ho128-f1 64 clock
+[fgpt_bed 15:57:58Z]   fgpt_bed: NVIDIA A100-SXM4-40GB (sm_80, 108 SMs), G 64, 20 steps, attention in 6 query block(s) a unit, rows in chunks of 128 of 192, shared memory 120528 B a member, scratch 33.29 MB, 1 member(s) an SM at most
+[fgpt_bed 15:57:58Z]   fgpt_bed: warmed the GPU for 510 ms
+[fgpt_bed 15:57:58Z]   fgpt_bed: run 18.939 ms with its launch; in the kernel 0.0 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 0 -> 20
+[fgpt_bed 15:57:58Z]   fgpt_bed: phase clock (globaltimer), 944.1 us a step in all; the SMs ran at 1407 MHz (cycles over nanoseconds, members' mean)
+[fgpt_bed 15:57:58Z]     phase                                   mean us    largest   share
+[fgpt_bed 15:57:58Z]     input + embedding                          5.45       5.63    0.6%
+[fgpt_bed 15:57:58Z]     LN1                                       14.39      16.13    1.5%
+[fgpt_bed 15:57:58Z]       wait: all-gather h                       8.29      10.91    0.9%
+[fgpt_bed 15:57:58Z]       item: stage h rows, W                   17.75      23.91    1.9%
+[fgpt_bed 15:57:58Z]       item: q k v GEMM                         8.59      11.62    0.9%
+[fgpt_bed 15:57:58Z]       item: RoPE + keep q k v                  3.56       4.92    0.4%
+[fgpt_bed 15:57:58Z]       wait: all-gather q k v                  15.82      45.82    1.7%
+[fgpt_bed 15:57:58Z]       item: stage + scores                    18.67      26.01    2.0%
+[fgpt_bed 15:57:58Z]       item: softmax                            6.79       9.68    0.7%
+[fgpt_bed 15:57:58Z]       item: P V                                4.74       8.35    0.5%
+[fgpt_bed 15:57:58Z]       item: proj partial                       5.04       7.37    0.5%
+[fgpt_bed 15:57:58Z]     attention, rest                            0.74       1.18    0.1%
+[fgpt_bed 15:57:58Z]       wait: reduce-scatter proj               19.71      54.99    2.1%
+[fgpt_bed 15:57:58Z]     proj sum + LN2                            21.67      22.99    2.3%
+[fgpt_bed 15:57:58Z]       wait: all-gather h2                      6.94       8.76    0.7%
+[fgpt_bed 15:57:58Z]     fc1 + GELU + fc2                          83.43      85.81    8.8%
+[fgpt_bed 15:57:58Z]       wait: reduce-scatter fc2                 8.28      11.06    0.9%
+[fgpt_bed 15:57:58Z]     fc2 sum                                   20.77      21.81    2.2%
+[fgpt_bed 15:57:58Z]     final LN                                   5.30       6.09    0.6%
+[fgpt_bed 15:57:58Z]       wait: all-gather hf                      1.73       2.87    0.2%
+[fgpt_bed 15:57:58Z]     logits + CE stats                         15.32      15.56    1.6%
+[fgpt_bed 15:57:58Z]       wait: CE exchange                        2.19       2.56    0.2%
+[fgpt_bed 15:57:58Z]     lse, loss                                 13.46      15.77    1.4%
+[fgpt_bed 15:57:58Z]     head backward                             22.15      24.27    2.3%
+[fgpt_bed 15:57:58Z]       wait: reduce-scatter dhf                 1.98       2.87    0.2%
+[fgpt_bed 15:57:58Z]     dhf sum + LNf backward                    11.00      11.67    1.2%
+[fgpt_bed 15:57:58Z]       wait: all-gather gx (fc2)                7.23       9.78    0.8%
+[fgpt_bed 15:57:58Z]     MLP backward                             199.11     204.54   21.1%
+[fgpt_bed 15:57:58Z]       wait: reduce-scatter dh2                10.24      16.13    1.1%
+[fgpt_bed 15:57:58Z]     dh2 sum + LN2 backward                    37.67      39.48    4.0%
+[fgpt_bed 15:57:58Z]       wait: all-gather gx (proj)               7.35       9.63    0.8%
+[fgpt_bed 15:57:58Z]       item: stage gx, Wo, o, q, k, v          27.68      37.53    2.9%
+[fgpt_bed 15:57:58Z]       item: dWo, do, delta                    18.17      24.58    1.9%
+[fgpt_bed 15:57:58Z]       item: q side: dWq, q's dh rows          17.96      25.34    1.9%
+[fgpt_bed 15:57:58Z]       item: P                                  6.03       8.86    0.6%
+[fgpt_bed 15:57:58Z]       item: dV, dS                             7.85      12.08    0.8%
+[fgpt_bed 15:57:58Z]       item: dQ, dK, partials kept              8.95      15.72    0.9%
+[fgpt_bed 15:57:58Z]       item: RoPE back, dbq                     5.76       9.01    0.6%
+[fgpt_bed 15:57:58Z]       wait: dK dV partials                    39.82     132.61    4.2%
+[fgpt_bed 15:57:58Z]       item: key side: sums, RoPE, dbk dbv      25.70      37.07    2.7%
+[fgpt_bed 15:57:58Z]       item: dWk dWv, k v dh rows              32.74      45.36    3.5%
+[fgpt_bed 15:57:58Z]     attention backward, rest                   0.85       1.59    0.1%
+[fgpt_bed 15:57:58Z]       wait: reduce-scatter dh                 27.72      85.96    2.9%
+[fgpt_bed 15:57:58Z]     dh sum + LN1 backward                     24.72      26.42    2.6%
+[fgpt_bed 15:57:58Z]       wait: all-gather gx (emb)                1.62       2.41    0.2%
+[fgpt_bed 15:57:58Z]     embedding gradient                        17.27      17.92    1.8%
+[fgpt_bed 15:57:58Z]     attention + replicated sums, squares      31.36      35.64    3.3%
+[fgpt_bed 15:57:58Z]     norm partial                               0.70       0.97    0.1%
+[fgpt_bed 15:57:58Z]       wait: norm                               5.54       8.50    0.6%
+[fgpt_bed 15:57:58Z]     AdamW                                     34.34      36.25    3.6%
+[fgpt_bed 15:57:58Z]       wait: step end                           3.92       5.99    0.4%
+[fgpt_bed 15:57:58Z] OK

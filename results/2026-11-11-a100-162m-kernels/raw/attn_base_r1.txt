@@ -1,0 +1,12 @@
+device: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz; B=4 T=1024 H=12 Hkv=12 hd=64, 128 rows per task
+PASS  bench check: fwd o  relerr 1.57e-03
+PASS  bench check: dq  relerr 2.00e-03
+PASS  bench check: dk  relerr 2.34e-03
+PASS  bench check: dv  relerr 2.31e-03
+BENCH  fwd                      384 tasks     422.5 us [422.1..425.0]    15.25 TFLOP/s
+BENCH  bwd delta                 32 tasks     208.7 us [208.5..208.9]     0.00 TFLOP/s
+BENCH  bwd dq                   384 tasks     558.3 us [557.7..559.1]    14.42 TFLOP/s
+BENCH  bwd dkv                  384 tasks     881.3 us [880.2..882.3]     9.14 TFLOP/s
+BENCH  bwd (delta+dq+dkv)       800 tasks    1804.1 us [1802.4..1805.5]     8.93 TFLOP/s
+
+4 passed, 0 failed

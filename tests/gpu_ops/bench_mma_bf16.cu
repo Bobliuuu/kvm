@@ -143,6 +143,12 @@ int main() {
     g_bf_out = !(getenv("MMA_OUT") && !strcmp(getenv("MMA_OUT"), "f32"));
     cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0));
     printf("device %s SMs %d  out=%s\n", pr.name, pr.multiProcessorCount, g_bf_out ? "bf16" : "f32");
+    if (const char* cu = getenv("MMA_SHAPE")) {   // MMA_SHAPE=M,N,K: just this shape, all four transpose combinations (MMA_ONLY_NN=1: NN only)
+        int M, N, K; if (sscanf(cu, "%d,%d,%d", &M, &N, &K) == 3) {
+            for (int o = 0; o < 4; o++) { if (getenv("MMA_ONLY_NN") && o) break; run(M, N, K, o & 1, o >> 1, MMA, "custom"); }
+            printf("%s (%d failed)\n", g_fail ? "FAIL" : "OK", g_fail); return g_fail != 0;
+        }
+    }
     if (strcmp(set, "gpt")) {
         for (int o = 0; o < 4; o++) run(4096, 4096, 4096, o & 1, o >> 1, MMA, "4096^3");
         run(4096, 4096, 4096, 0, 0, OLD_BF16, "4096^3");

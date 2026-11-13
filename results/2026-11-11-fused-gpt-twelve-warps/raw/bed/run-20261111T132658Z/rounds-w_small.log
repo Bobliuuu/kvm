@@ -1,0 +1,15 @@
+w_small round 1 NT256 290.5 us a step in all; the SMs ran at 1408 MHz
+w_small round 1 NT384 276.4 us a step in all; the SMs ran at 1408 MHz
+w_small round 1 NT512 294.3 us a step in all; the SMs ran at 1408 MHz
+w_small round 2 NT384 276.3 us a step in all; the SMs ran at 1408 MHz
+w_small round 2 NT512 294.2 us a step in all; the SMs ran at 1408 MHz
+w_small round 2 NT256 289.5 us a step in all; the SMs ran at 1408 MHz
+w_small round 3 NT512 294.1 us a step in all; the SMs ran at 1408 MHz
+w_small round 3 NT256 289.8 us a step in all; the SMs ran at 1408 MHz
+w_small round 3 NT384 276.4 us a step in all; the SMs ran at 1408 MHz
+w_small round 4 NT256 290.6 us a step in all; the SMs ran at 1408 MHz
+w_small round 4 NT384 276.3 us a step in all; the SMs ran at 1408 MHz
+w_small round 4 NT512 293.9 us a step in all; the SMs ran at 1408 MHz
+w_small round 5 NT384 276.3 us a step in all; the SMs ran at 1408 MHz
+w_small round 5 NT512 294.1 us a step in all; the SMs ran at 1408 MHz
+w_small round 5 NT256 290.5 us a step in all; the SMs ran at 1408 MHz

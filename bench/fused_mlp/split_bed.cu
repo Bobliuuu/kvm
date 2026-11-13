@@ -1,6 +1,11 @@
 // split_bed: a fused MLP training step for widths one block cannot hold, each row slice spread over S blocks by hidden unit, at depth 1-4.
 //   nvcc -O3 -arch=sm_80 -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -Iinclude bench/fused_mlp/split_bed.cu -o split_bed
-//   ./split_bed [--hidden 576] [--depth 1] [--shares 5] [--slices 6] [--steps 50] [--check 3] [--embed 48] [--vocab 100] [--seed 1]
+//   ./split_bed [--hidden 576] [--depth 1] [--shares 5] [--virtual SV] [--slices 6] [--steps 50] [--check 3] [--embed 48] [--vocab 100] [--seed 1]
+//               [--warm-ms 500] [--dump FILE]
+//
+// --virtual SV runs the step's arithmetic at SV virtual shares (kvm_fused_split.h) carried by the --shares physical ones (default: SV = shares).
+// Every physical count up to SV computes the same bits: --dump writes the losses and the model after the check's steps as raw floats, for a
+// byte comparison across physical counts. --warm-ms runs warm launches until that long has passed (the SM clock ramps on short runs).
 //
 // The model is the panel's MLP: embedding V x E, `depth` hidden layers of H units (linear with bias, then tanh GELU), a head H x V without bias,
 // softmax cross-entropy over the batch's T = 16 x slices tokens, SGD (lr 0.05). Block (q, s) of the Q x S grid takes slice q's 16 rows and
@@ -22,6 +27,7 @@
 // Prints block 0's per-phase cycles (each phase ends at its last warp's end), the step time by the kernel's own %globaltimer, and, with
 // --check K, the first K steps against an fp64 CPU reference.
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -74,7 +80,7 @@ __global__ void __launch_bounds__(NT, 1) split_kernel(const KvmSplitDesc* gd, co
   }
 }
 
-// The instantiated (shares, slices) pairs, the op's own (KVM_SPLIT_SHARE_LIST x KVM_SPLIT_Q): a run-time bound on the partial-sum loops would serialize
+// The instantiated (virtual shares, slices) pairs, the op's own (KVM_SPLIT_SHARE_LIST x KVM_SPLIT_Q): a run-time bound on the partial-sum loops would serialize
 // each cell's loads (measured on the fused slice's owners: about 7.6 GB/s an SM, latency-bound).
 using KernelFn = void (*)(const KvmSplitDesc*, const int*, const int*, float*, int, int, Timing);
 static KernelFn pick_kernel(int S, int Q) {
@@ -88,25 +94,27 @@ static KernelFn pick_kernel(int S, int Q) {
 }
 
 int main(int argc, char** argv) {
-  KvmSplitDesc d{}; d.V = 100; d.E = 48; d.L = 1; d.H = 576; d.S = 5; d.Q = 6; d.lr = LR;
-  int steps = 50, check = 3; unsigned seed = 1;
+  KvmSplitDesc d{}; d.V = 100; d.E = 48; d.L = 1; d.H = 576; d.S = 5; d.Sv = 0; d.Q = 6; d.lr = LR;
+  int steps = 50, check = 3, warm_ms = 500; unsigned seed = 1; std::string dump;
   for (int i = 1; i + 1 < argc; i += 2) {
     const std::string a = argv[i]; const int v = atoi(argv[i + 1]);
-    if (a == "--hidden") d.H = v; else if (a == "--depth") d.L = v; else if (a == "--shares") d.S = v; else if (a == "--slices") d.Q = v; else if (a == "--steps") steps = v;
-    else if (a == "--check") check = v; else if (a == "--embed") d.E = v; else if (a == "--vocab") d.V = v; else if (a == "--seed") seed = (unsigned)v;
+    if (a == "--hidden") d.H = v; else if (a == "--depth") d.L = v; else if (a == "--shares") d.S = v; else if (a == "--virtual") d.Sv = v; else if (a == "--slices") d.Q = v;
+    else if (a == "--steps") steps = v; else if (a == "--check") check = v; else if (a == "--embed") d.E = v; else if (a == "--vocab") d.V = v; else if (a == "--seed") seed = (unsigned)v;
+    else if (a == "--warm-ms") warm_ms = v; else if (a == "--dump") dump = argv[i + 1];
     else { fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
   }
-  const int total = kvm_split_layout(d);
-  if (total < 0) { fprintf(stderr, "a shape fmlp_split does not take (kvm_split_layout): H a multiple of 8, E of 16 (at most 128), V of 4 (padded at most 128), the widest share at most 128, depth 1-%d, shares 1-%d\n", MAXL, KVM_SPLIT_MAXS); return 2; }
-  int wmax = 0; for (int s = 0; s < d.S; ++s) wmax = std::max(wmax, d.share0[s + 1] - d.share0[s]);
-  const KernelFn kern = pick_kernel(d.S, d.Q);
-  if (!kern) { fprintf(stderr, "no kernel instantiated for %d shares and %d slices (pick_kernel: S in 2-6, 8, 9, 10, 12, 18 with 6 slices)\n", d.S, d.Q); return 2; }
+  if (!dump.empty() && check < 1) { fprintf(stderr, "--dump writes the model after the check's steps: give --check 1 or more\n"); return 2; }
+  const int total = kvm_split_layout(d);   // fills Sv = S when --virtual is not given
+  if (total < 0) { fprintf(stderr, "a shape fmlp_split does not take (kvm_split_layout): H a multiple of 8, E of 16 (at most 128), V of 4 (padded at most 128), the widest share at most 128, depth 1-%d, 1 <= shares <= virtual shares <= %d\n", MAXL, KVM_SPLIT_MAXS); return 2; }
+  int wmax = 0; for (int s = 0; s < d.S; ++s) wmax = std::max(wmax, d.share0[d.vs0[s + 1]] - d.share0[d.vs0[s]]);
+  const KernelFn kern = pick_kernel(d.Sv, d.Q);
+  if (!kern) { fprintf(stderr, "no kernel instantiated for %d virtual shares and %d slices (pick_kernel: Sv in 2-6, 8, 9, 10, 12, 16, 18 with 6 slices)\n", d.Sv, d.Q); return 2; }
   const size_t smem_bytes = (size_t)total * sizeof(float);
   cudaDeviceProp prop; CK(cudaGetDeviceProperties(&prop, 0));
   int clock_khz = 0; CK(cudaDeviceGetAttribute(&clock_khz, cudaDevAttrClockRate, 0));
-  const int nslot = d.Q * d.S, T = d.T;
-  printf("%s, %d SMs, %zu KB shared memory a block (opt-in); model E %d V %d H %d depth %d, T %d (%d slices of %d), S %d shares (width <= %d, padded %d): %d blocks, %.1f KB a block, %d barriers a step\n",
-         prop.name, prop.multiProcessorCount, (size_t)prop.sharedMemPerBlockOptin / 1024, d.E, d.V, d.H, d.L, T, d.Q, R, d.S, wmax, d.HP, nslot, smem_bytes / 1024.0, 2 * d.L + 1);
+  const int nslot = d.Q * d.S, vslot = d.Q * d.Sv, T = d.T;   // a member's partials, and a virtual share's
+  printf("%s, %d SMs, %zu KB shared memory a block (opt-in); model E %d V %d H %d depth %d, T %d (%d slices of %d), S %d shares carrying %d virtual (width <= %d, padded %d): %d blocks, %.1f KB a block, %d barriers a step\n",
+         prop.name, prop.multiProcessorCount, (size_t)prop.sharedMemPerBlockOptin / 1024, d.E, d.V, d.H, d.L, T, d.Q, R, d.S, d.Sv, wmax, d.HP, nslot, smem_bytes / 1024.0, 2 * d.L + 1);
   cudaFuncAttributes fa; CK(cudaFuncGetAttributes(&fa, (const void*)kern));   // the kernel's static shared memory (the phase stamps) counts against the same limit
   if (smem_bytes + fa.sharedSizeBytes > prop.sharedMemPerBlockOptin) {
     printf("does not fit: %zu dynamic + %zu static > %zu bytes a block; raise --shares\n", smem_bytes, (size_t)fa.sharedSizeBytes, (size_t)prop.sharedMemPerBlockOptin); return 3; }
@@ -126,8 +134,8 @@ int main(int argc, char** argv) {
     if (l + 1 < d.L) d.XH[l] = dalloc((size_t)d.Q * R * d.HR);   // zero once: the pad columns past H are never written
   }
   d.wh = dalloc(Wh.size()); d.we = dalloc(emb.size());
-  d.P = dalloc((size_t)nslot * R * d.VP); d.dWh = dalloc((size_t)nslot * d.HP * d.VP); d.dX0 = dalloc((size_t)nslot * R * d.E);
-  for (int k = 0; k < 2; ++k) d.XD[k] = d.L > 1 ? dalloc((size_t)nslot * R * d.HR) : nullptr;   // layer l's reduce-scatter in XD[l & 1]
+  d.P = dalloc((size_t)vslot * R * d.VP); d.dWh = dalloc((size_t)nslot * d.HP * d.VP); d.dX0 = dalloc((size_t)vslot * R * d.E);
+  for (int k = 0; k < 2; ++k) d.XD[k] = d.L > 1 ? dalloc((size_t)vslot * R * d.HR) : nullptr;   // layer l's reduce-scatter in XD[l & 1]
   d.loss_part = dalloc(d.Q);
   const size_t lines = kvm_gang::line_words(nslot) * sizeof(unsigned);
   CK(cudaMalloc(&d.ctl, lines)); CK(cudaMemset(d.ctl, 0, lines));   // once: the gang's control words (kvm_gang::cross) need no reset between launches
@@ -162,9 +170,22 @@ int main(int argc, char** argv) {
     printf("check after %d steps: loss max rel %.2e; update rel L2 (worst layer) W %.2e, b %.2e; Wh %.2e, emb %.2e (TF32 operands: a few 1e-3 expected)\n", check, worst, eW, eb, eWh, eemb);
     bad = worst > 1e-3 || eW > 2e-2 || eb > 2e-2 || eWh > 2e-2 || eemb > 2e-2;
     printf("%s\n", bad ? "CHECK FAILED" : "check ok");
+    if (!dump.empty()) {   // the check's losses, then every layer's W and b, the head and the embedding, as raw floats in that order
+      FILE* f = fopen(dump.c_str(), "wb");
+      if (!f) { fprintf(stderr, "cannot write %s\n", dump.c_str()); return 2; }
+      size_t n = fwrite(loss.data(), 4, loss.size(), f), want = loss.size();
+      for (int l = 0; l < d.L; ++l) { n += fwrite(gW[l].data(), 4, gW[l].size(), f) + fwrite(gb[l].data(), 4, gb[l].size(), f); want += gW[l].size() + gb[l].size(); }
+      n += fwrite(gWh.data(), 4, gWh.size(), f) + fwrite(gemb.data(), 4, gemb.size(), f); want += gWh.size() + gemb.size();
+      if (fclose(f) != 0 || n != want) { fprintf(stderr, "short write to %s (%zu of %zu floats)\n", dump.c_str(), n, want); return 2; }
+      printf("dumped %zu floats to %s\n", want, dump.c_str());
+    }
   }
-  // timing: a warm launch, then the timed one
-  upload(); launch(std::min(steps, 20));
+  // timing: warm launches until warm_ms has passed (the SM clock ramps on short runs), then the timed one
+  {
+    const auto t0 = std::chrono::steady_clock::now(); int warm = 0;
+    do { upload(); launch(std::min(steps, 20)); ++warm; } while (std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() < warm_ms);
+    printf("warm: %d launches, %.0f ms\n", warm, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
+  }
   upload();
   cudaEvent_t e0, e1; CK(cudaEventCreate(&e0)); CK(cudaEventCreate(&e1));
   CK(cudaEventRecord(e0)); launch(steps); CK(cudaEventRecord(e1)); CK(cudaEventSynchronize(e1));

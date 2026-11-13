@@ -13,7 +13,12 @@
 
 #define KVM_FMLP_MAXL 6              // hidden layers
 #define KVM_FMLP_MAX_SLICE_ROWS 32   // rows per slice (the mma fragment height is 16: a slice is a multiple of 16; the cross-entropy gives each row 8 of the 256 threads, so 32 rows at most)
-#define KVM_FMLP_MAX_SLICES 8        // slices of one run (fmlp_sgd loads every slice's partial together in registers)
+#define KVM_FMLP_MAX_SLICES 8        // slices of one run, and gradient granules of one step (fmlp_sgd loads every granule's partial together in registers)
+// A step's cross-row sums (weight and bias gradients, the embedding rows' gradients, the loss) are taken over granules of 16 rows: each slice writes one
+// partial per granule it holds, and fmlp_sgd sums the T / 16 granules' partials in row order. The slice size then decides only how a step is spread over
+// workers, never its arithmetic, so a run's result is the same whatever the pass chose for it (the MLP bench's gate 2 asserts four replicated copies of a
+// run bitwise equal to the run alone, and the pass picks 32-row slices when 16-row ones would not all get a worker).
+#define KVM_FMLP_GRANULE 16
 #define KVM_FMLP_NPHASES 16          // phase timers of the slice body (--fuse-phases)
 #define KVM_FMLP_MAX_GROUPS 16       // reduction owners of one run: a next-step slice waits for all of them, and one record holds 16 waits inline
 #define KVM_FMLP_SMEM_FLOATS 38400   // shared memory a fused block may use (153.6 KB of the A100's 160 KB: the static worker's own arena stays out of it)
@@ -34,10 +39,10 @@ struct alignas(16) KvmFusedDesc {   // copied to shared memory with 16-byte cp.a
   unsigned long long inv_groups;     // ceil(2^32 / groups): fmlp_sgd splits every parameter over the owners with one multiply and shift (exact for rows < 2^16)
   // parameters in global memory, row-major and contiguous
   float* we, *w[KVM_FMLP_MAXL], *b[KVM_FMLP_MAXL], *wh;
-  // per-slice partial gradients in global memory (nsl copies each, one slice after the other)
+  // per-granule partial gradients in global memory (T / KVM_FMLP_GRANULE copies each, in row order: slice sc's granule g is copy sc * R / 16 + g)
   float* ge, *gw[KVM_FMLP_MAXL], *gb[KVM_FMLP_MAXL], *gh;
   int gwld[KVM_FMLP_MAXL], ghld;     // row pitch of gw[l] and gh
-  float* loss_part;                  // [nsl]: each slice's sum of row losses
+  float* loss_part;                  // [T / KVM_FMLP_GRANULE]: each granule's sum of row losses
 };
 
 KVM_FMLP_HD inline constexpr int kvm_fmlp_pad8(int x) { return (x + 7) & ~7; }

@@ -1,0 +1,5 @@
+cuobjdump -res-usage of this branch's kvm_exec (the panel's flags, sm_80; binary md5 48ee77d7f93534bc72f60a76d63ef71f), the 2-D form's kernel:
+ Function _Z14kvm_f2d_kernelILb1EEvN7kvm_f2d5SDescEP11KvmCountersP10KvmHostErri:
+  REG:255 STACK:96 SHARED:128 LOCAL:0 CONSTANT[2]:200 CONSTANT[0]:14212 TEXTURE:0 SURFACE:0 SAMPLER:0
+ Function _Z14kvm_f2d_kernelILb0EEvN7kvm_f2d5SDescEP11KvmCountersP10KvmHostErri:
+  REG:255 STACK:96 SHARED:128 LOCAL:0 CONSTANT[2]:200 CONSTANT[0]:14212 TEXTURE:0 SURFACE:0 SAMPLER:0

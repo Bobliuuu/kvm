@@ -1,0 +1,10 @@
+[kvm_exec][I] window sizing: 15600 tasks, 494336 words as one record (live_cap 16384, ring 1048576 words, successor ring 2097152 words)
+[kvm_exec][I] device NVIDIA A100-SXM4-80GB, 108 SMs, 1 resident blocks/SM with 147456 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] /root/reads/gangfix/bundles-ddf9d6b225d9c667/ho128/bundle: 15600 tasks, 74924 edges, 169800 arg words
+[kvm_exec][I] fuse: component 0: fused, split form (no slice size fits (87056 floats of shared memory at the smallest slice, at most 8 slices, limit 40416)): 200 steps, T=96 V=100 widths 48x128x128x128x128, gangs of 6 slices x 18 shares = 108 members, 15276 floats a member
+[kvm_exec][I] fuse: shared-memory budget 40416 floats (161664 bytes) a fused block
+[kvm_exec][I] fuse: 1 run(s) fused, 0 unchanged; 15199 tasks replaced by 22001; static kernel entry: split, 18 shares
+[kvm_exec][I] static schedule: 22001 tasks -> 22001 records on 108/108 workers, 42800 of 64693 edges cross workers, 400 records publish; runs partitioned: no; plan 8700.1 us, work 864800.1 us (compiled in 0.034 s)
+[kvm_exec][I] static kernel: entry split, 18 shares, 1 resident blocks/SM, 147456 bytes of dynamic shared memory, launching 108 workers
+[kvm_exec][I] static run done: 22001 tasks in 19.870 ms on 108 workers
+rc 0

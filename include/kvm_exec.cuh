@@ -50,7 +50,10 @@
 #endif
 #define KVM_NBUCKETS   32          // priority levels 0..31; larger runs first (validated, never silently clamped)
 static_assert(KVM_NBUCKETS == 32, "kvm_pop maps one bucket to each lane of a warp");
-#define KVM_SMEM_FLOATS 1024
+#define KVM_SMEM_FLOATS 512     // the block's float scratch (KvmCtx::smem). Its users need two KVM_THREADS-float halves (the loss reduction, the
+                                // 16x16 matmul's tiles). At 1024 the executor's static shared memory put a 96 KiB launch 1,792 B over the A100's
+                                // 100 KB carveout (98,304 + 4,864 + the 1 KB the block reserves), so it ran with 60 KB of L1 instead of 92.
+static_assert(2 * KVM_THREADS <= KVM_SMEM_FLOATS, "KvmCtx::smem holds two KVM_THREADS-float halves");
 #define KVM_PG_SUBS 6              // KVM_PROF_GAP: sub-steps a phase records (they go to gp[9..14])
 #define KVM_MAX_ARGS   20          // arguments per operator (3 bits each in a 64-bit type mask); slots hold KVM_ARG_STRIDE words
 #define KVM_REC_MAGIC  0x4b564d52  // "KVMR"

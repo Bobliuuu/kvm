@@ -86,6 +86,6 @@ def compile_game(gc: GameConfig, tiling: Tiling):
     b = build_game(gc)
     period = 1_000_000 // gc.hz
     low = lower_program(b.ops, tiling, 'shape', 0, prefix='game.act')
-    spec = to_workload(low, {'game': GraphPolicy(gc.priority, lambda t: (t.op.step + 1) * period)})
+    spec = to_workload(low, {'game': GraphPolicy(gc.priority, lambda t: (t.op.step + 1) * period, rank_levels=0)})
     log.info('game: %d frames at %d Hz (period %d us): %d tasks, %d edges', gc.frames, gc.hz, period, len(low.tasks), low.edges)
     return low, spec

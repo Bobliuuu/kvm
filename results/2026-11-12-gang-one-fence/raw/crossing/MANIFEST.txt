@@ -1,0 +1,5 @@
+353618a fixup! perf(gang): switch the crossing's arrival fence, bench its three forms
+86473f1995642cf190678b5583eaad8f  fence_bench
+be99bd6b942c14ee22bdff5df1cc2668  fgpt_bed_f0
+25d441aa3bae9904d121d5ec57d4a79c  fgpt_bed_f1
+NVIDIA A100-SXM4-40GB, 255 MHz, 1410 MHz, 34.97 W

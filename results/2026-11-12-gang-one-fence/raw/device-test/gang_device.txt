@@ -1,0 +1,9 @@
+binary            rc  wrong from L2  wrong thru L1  verdict
+prod_f0            0              0              0  ok: passes as it must
+prod_f1            0              0              0  ok: passes as it must
+prod_f2            0              0              0  ok: passes as it must
+nowait             1     2147483647     2147483647  ok: caught from L2 and through L1
+relaxedpoll_f0     0              0              0  reported (rc 0)
+relaxedpoll_f1     1              0     2147483647  ok: caught through L1
+relaxedpoll_f2     0              0              0  reported (rc 0)
+gang_device: every judged binary behaved as it must

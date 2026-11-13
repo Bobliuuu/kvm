@@ -1210,20 +1210,38 @@ class KvmExec {
       if (c) CK(cudaMemsetAsync(c, 0, 32 * sizeof(unsigned), stream_));
     CK(cudaStreamSynchronize(stream_));
     clock_warmup();
+    // A gang's members (the fused step's and F's 2-D form's) and a one-block run's helpers wait on one another, so their launches are cooperative: a GPU that cannot hold every
+    // block at once refuses the launch (cudaErrorCooperativeLaunchTooLarge), where a plain launch could hang beside a co-tenant or under MPS.
+    // The residency checks above hold either way. KVM_FGPT_COOP=0 launches them plainly, for the A/B of the attribute's cost.
+    const char* const coop_env = std::getenv("KVM_FGPT_COOP");
+    const bool coop = !(coop_env && std::atoi(coop_env) == 0);
+    KLOG(2, "fused GPT kernel: gangs (the fused step's, F's) and one-block runs with helpers launch %s", coop ? "cooperatively" : "plainly (KVM_FGPT_COOP=0)");
+    const auto launch_waiting = [&](auto kern, int blocks, int threads, int smem, auto... args) {   // args as the kernel takes them
+      if (coop) {
+        cudaLaunchConfig_t lc = {}; lc.gridDim = dim3(blocks); lc.blockDim = dim3(threads); lc.dynamicSmemBytes = smem; lc.stream = stream_;
+        cudaLaunchAttribute at = {}; at.id = cudaLaunchAttributeCooperative; at.val.cooperative = 1; lc.attrs = &at; lc.numAttrs = 1;
+        CK(cudaLaunchKernelEx(&lc, kern, args...));
+      } else {
+        kern<<<blocks, threads, smem, stream_>>>(args...);
+      }
+    };
     CK(cudaEventRecord(e0_, stream_));
     for (size_t r = 0, slot0 = 0; r < plan.runs.size(); slot0 += plan.gang[r], ++r) {
       KvmFgptDesc* const dr = st.desc + r;
       switch (instance(r)) {
-        case 0: kvm_fgpt_kernel<false, false><<<plan.gang[r], KVM_FGPT_NT, st.smem_bytes, stream_>>>(dr, dcnt, S_.herr, (int)slot0); break;
-        case 1: kvm_fgpt_kernel<true, false><<<plan.gang[r], KVM_FGPT_NT, st.smem_bytes, stream_>>>(dr, dcnt, S_.herr, (int)slot0); break;
-        case 2: kvm_fgpt_kernel<false, true><<<plan.gang[r], KVM_FGPT_NT, st.smem_bytes, stream_>>>(dr, dcnt, S_.herr, (int)slot0); break;
-        case 3: kvm_fgpt_kernel<true, true><<<plan.gang[r], KVM_FGPT_NT, st.smem_bytes, stream_>>>(dr, dcnt, S_.herr, (int)slot0); break;
-        case 6: kvm_fgpt1_kernel<<<1 + st.helpers, KVM_FGPT_NT, st.smem1_bytes, stream_>>>(dr, dcnt, S_.herr, (int)slot0); break;
+        case 0: launch_waiting(kvm_fgpt_kernel<false, false>, plan.gang[r], KVM_FGPT_NT, st.smem_bytes, dr, dcnt, S_.herr, (int)slot0); break;
+        case 1: launch_waiting(kvm_fgpt_kernel<true, false>, plan.gang[r], KVM_FGPT_NT, st.smem_bytes, dr, dcnt, S_.herr, (int)slot0); break;
+        case 2: launch_waiting(kvm_fgpt_kernel<false, true>, plan.gang[r], KVM_FGPT_NT, st.smem_bytes, dr, dcnt, S_.herr, (int)slot0); break;
+        case 3: launch_waiting(kvm_fgpt_kernel<true, true>, plan.gang[r], KVM_FGPT_NT, st.smem_bytes, dr, dcnt, S_.herr, (int)slot0); break;
+        case 6:
+          if (st.helpers) launch_waiting(kvm_fgpt1_kernel, 1 + st.helpers, KVM_FGPT_NT, st.smem1_bytes, dr, dcnt, S_.herr, (int)slot0);
+          else kvm_fgpt1_kernel<<<1, KVM_FGPT_NT, st.smem1_bytes, stream_>>>(dr, dcnt, S_.herr, (int)slot0);   // one block waits on nothing
+          break;
         default: {   // F's form: its descriptor by value, with the run's error word, which every crossing reads
           kvm_f2d::SDesc fd = st.f2d[r];
           kvm_f2d::set_abort(fd, &dcnt->err_code);
-          if (instance(r) == 5) kvm_f2d_kernel<true><<<plan.gang[r], KVM_F2D_NT, st.smem_bytes, stream_>>>(fd, dcnt, S_.herr, (int)slot0);
-          else kvm_f2d_kernel<false><<<plan.gang[r], KVM_F2D_NT, st.smem_bytes, stream_>>>(fd, dcnt, S_.herr, (int)slot0);
+          if (instance(r) == 5) launch_waiting(kvm_f2d_kernel<true>, plan.gang[r], KVM_F2D_NT, st.smem_bytes, fd, dcnt, S_.herr, (int)slot0);
+          else launch_waiting(kvm_f2d_kernel<false>, plan.gang[r], KVM_F2D_NT, st.smem_bytes, fd, dcnt, S_.herr, (int)slot0);
         }
       }
     }

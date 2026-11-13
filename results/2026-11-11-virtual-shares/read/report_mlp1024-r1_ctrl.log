@@ -1,0 +1,9 @@
+OK: 17117/17117 tasks, 19.048 ms
+[kvm_exec][I] device NVIDIA A100-SXM4-80GB, 108 SMs, 1 resident blocks/SM with 147456 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] /root/reads/panel-count1/h1024/bundle: 17117 tasks, 277429 edges, 184150 arg words
+[kvm_exec][I] path: static (mean estimated task 5.01 us <= 6.0)
+[kvm_exec][I] fuse: component 0 (17117 tasks): unchanged: step 0: a GEMM's tile set does not cover its grid
+[kvm_exec][I] fuse: 0 run(s) fused, 1 unchanged; 0 tasks replaced by 0
+[kvm_exec][I] static schedule: 17117 tasks -> 25543 records on 108/108 workers, 266431 of 277429 edges cross workers, 16816 records publish; runs partitioned: no; plan 3607.0 us, work 85717.4 us (compiled in 0.056 s)
+[kvm_exec][I] static kernel: 1 resident blocks/SM, 147456 bytes of dynamic shared memory, launching 108 workers
+[kvm_exec][I] static run done: 17117 tasks in 19.048 ms on 108 workers

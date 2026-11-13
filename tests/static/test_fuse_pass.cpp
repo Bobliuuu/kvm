@@ -104,13 +104,23 @@ int main(int argc, char** argv) {
             else printf("  entry at W=%d: %s: ok\n", W, kvm_fuse_entry_name(r.entry).c_str());
         }
         if (!r.fused_runs) continue;
-        // a fused bundle runs on one entry: never `mixed` (the pass leaves such a bundle unfused), and a split entry's share count is every split
-        // member's own: its `members` argument is Q x the entry's S
+        // a fused bundle runs on one entry: never `mixed` (the pass leaves such a bundle unfused). A split entry is instantiated for its runs'
+        // virtual share count, and each gang carries it on its own run's physical shares (kvm_fused_split.h): a member's `members` argument is
+        // Q x its run's S, with 1 <= S <= Sv = the entry's count (kvm_s_fmlp_split refuses anything else)
         if (r.entry.kind == KvmFuseEntry::mixed) { printf("  FAIL: W=%d: a fused bundle with no entry (%s)\n", W, r.entry.why.c_str()); ++failures; }
         if (r.entry.kind == KvmFuseEntry::split) {
             int bad = 0;
-            for (const auto& d : r.tasks) if (d.op_id == split_id && r.args[d.args_off + 3] != KVM_SPLIT_Q * r.entry.S) ++bad;
-            if (bad) { printf("  FAIL: W=%d: %d split member(s) in gangs other than %d x %d\n", W, bad, KVM_SPLIT_Q, r.entry.S); ++failures; }
+            std::set<int> phys;
+            for (const auto& d : r.tasks) {
+                if (d.op_id != split_id) continue;
+                const int run = r.args[d.args_off], members = r.args[d.args_off + 3];
+                const bool ok = run >= 0 && run < (int)r.runs.size() && r.runs[run].Sv == r.entry.S && r.runs[run].S >= 1 && r.runs[run].S <= r.runs[run].Sv &&
+                                members == KVM_SPLIT_Q * r.runs[run].S;
+                bad += !ok;
+                if (ok) phys.insert(r.runs[run].S);
+            }
+            if (bad) { printf("  FAIL: W=%d: %d split member(s) whose gang is not %d x its run's physical shares, up to the entry's %d virtual\n", W, bad, KVM_SPLIT_Q, r.entry.S); ++failures; }
+            else { std::string ps; for (int x : phys) ps += (ps.empty() ? "" : ", ") + std::to_string(x); printf("  split gangs at W=%d: %d virtual shares on %s physical: ok\n", W, r.entry.S, ps.c_str()); }
         }
         // structural checks of the rewritten bundle
         if (!acyclic(r.tasks, r.succ)) { printf("  FAIL: the rewritten bundle has a cycle\n"); ++failures; continue; }

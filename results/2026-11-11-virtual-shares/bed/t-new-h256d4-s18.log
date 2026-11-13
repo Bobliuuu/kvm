@@ -1,0 +1,21 @@
+NVIDIA A100-SXM4-80GB, 108 SMs, 163 KB shared memory a block (opt-in); model E 48 V 100 H 256 depth 4, T 96 (6 slices of 16), S 18 shares carrying 18 virtual (width <= 16, padded 16): 108 blocks, 91.7 KB a block, 9 barriers a step
+check step 0: loss 4.605093, fp64 4.605093
+check after 1 steps: loss max rel 1.30e-08; update rel L2 (worst layer) W 3.23e-03, b 8.18e-04; Wh 3.81e-04, emb 1.67e-02 (TF32 operands: a few 1e-3 expected)
+check ok
+warm: 220 launches, 500 ms
+timed: 200 steps: 87.89 us a step in the kernel (block 0's %globaltimer over its counted loop), 88.98 us by events (launch and host delays included)
+block 0 by phase (cycles a step; 6 of the step's 9 barriers sit inside the forward and backward phases):
+  load (weights, embedding rows)            12213  ( 9.9%)
+  forward (GEMMs, GELU, all-gathers)        35030  (28.4%)
+  logits partial GEMM (to L2)                 849  ( 0.7%)
+  barrier: logits                            3481  ( 2.8%)
+  logits summed, cross-entropy              11468  ( 9.3%)
+  backward (GEMMs, reduce-scatters)         43795  (35.5%)
+  barrier: partials                          3553  ( 2.9%)
+  owners: parameters                         5067  ( 4.1%)
+  owners: embedding + last barrier           8036  ( 6.5%)
+  total                                    123492 cycles
+block 0's phases: from the last warp's end of the previous phase to the last warp's end of this one (per-warp stamps)
+blocks ran on 108 distinct SMs of 108 blocks (one block a SM)
+effective SM clock 1405 MHz (block 0's cycles over its kernel time), rated 1410 MHz: at the rated clock
+rc 0

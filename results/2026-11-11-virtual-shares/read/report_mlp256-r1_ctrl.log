@@ -1,0 +1,9 @@
+OK: 8394/8394 tasks, 15.415 ms
+[kvm_exec][I] device NVIDIA A100-SXM4-80GB, 108 SMs, 1 resident blocks/SM with 147456 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] /root/reads/panel-count1/h256/bundle: 8394 tasks, 50620 edges, 93050 arg words
+[kvm_exec][I] path: static (mean estimated task 4.30 us <= 6.0)
+[kvm_exec][I] fuse: component 0 (8394 tasks): unchanged: step 0: SGD does not cover its whole parameter
+[kvm_exec][I] fuse: 0 run(s) fused, 1 unchanged; 0 tasks replaced by 0
+[kvm_exec][I] static schedule: 8394 tasks -> 8494 records on 108/108 workers, 44647 of 50620 edges cross workers, 8042 records publish; runs partitioned: no; plan 4361.3 us, work 36063.3 us (compiled in 0.019 s)
+[kvm_exec][I] static kernel: 1 resident blocks/SM, 147456 bytes of dynamic shared memory, launching 108 workers
+[kvm_exec][I] static run done: 8394 tasks in 15.415 ms on 108 workers

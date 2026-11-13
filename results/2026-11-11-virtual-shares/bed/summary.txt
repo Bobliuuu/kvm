@@ -1,0 +1,12 @@
+t-new-h200d1-s18   check ok | 28.92 us a step in the kernel | effective SM clock 1405 MHz
+t-new-h200d1-s2    check ok | 40.33 us a step in the kernel | effective SM clock 1409 MHz
+t-new-h224d2-s18   check ok | 47.29 us a step in the kernel | effective SM clock 1405 MHz
+t-new-h224d2-s4    check ok | 66.63 us a step in the kernel | effective SM clock 1409 MHz
+t-new-h256d4-s18   check ok | 87.89 us a step in the kernel | effective SM clock 1405 MHz
+t-new-h256d4-s4     |  | 
+t-old-h200d1-s18   check ok | 28.82 us a step in the kernel | effective SM clock 1405 MHz
+t-old-h200d1-s2    check ok | 34.22 us a step in the kernel | effective SM clock 1409 MHz
+t-old-h224d2-s18   check ok | 45.99 us a step in the kernel | effective SM clock 1405 MHz
+t-old-h224d2-s4    check ok | 59.79 us a step in the kernel | effective SM clock 1409 MHz
+t-old-h256d4-s18   check ok | 88.11 us a step in the kernel | effective SM clock 1405 MHz
+t-old-h256d4-s4     |  | 

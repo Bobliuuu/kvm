@@ -42,7 +42,7 @@ struct KvmFgpt1Layout {
   int nh;                    // NH: a norm's output, recomputed where a GEMM reads it: r16(N) rows at ldk(d)
   int a, a_floats;           // region A
   int part, part_floats;     // region PART
-  int gx, dy;                // the backward's residual-stream gradient and a norm's output gradient, N x d each
+  int gx, dy;                // the backward's residual-stream gradient and a norm's output gradient, N x d each at pitch ldd
   int ring, ring_floats;     // AdamW's ring: the activations' span, x[0] through dy
   int head;                  // the head, resident for the run (loaded at its start, updated in place, stored back at its end): r8(d) rows
                              // at ldmn(V), its padding zero
@@ -98,7 +98,7 @@ KVM_FGPT_HD inline KvmFgpt1Layout kvm_fgpt1_layout(int N, int T, int d, int H, i
   y.a = take(y.a_floats);
   y.part_floats = (int)((mx((long long)(H > 1 ? H : 1) * N * d, (long long)N * y.ldV) + 3) & ~3LL);
   y.part = take(y.part_floats);
-  y.gx = take((long long)N * d); y.dy = take((long long)N * d);
+  y.gx = take((long long)N * y.ldd); y.dy = take((long long)N * y.ldd);   // at ldd, as the GEMMs that read them want (a padded pitch)
   y.ring = y.x[0]; y.ring_floats = (int)(at - y.x[0]);
   y.head = take((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldmn(V));
   y.total = at;

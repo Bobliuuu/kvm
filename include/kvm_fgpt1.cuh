@@ -670,9 +670,10 @@ __device__ void colsum_qkv(const float* X, int ld, int R, int D, float* oq, floa
 
 // LayerNorm backward, relaxed: eight lanes a row (ln_rows_fast's layout), dx = rstd (dy g - mean(dy g) - xh mean(dy g xh)) with xh =
 // (x - mean) rstd, added to gx when acc, stored otherwise; and the gain's and bias's gradients (sums over the rows of dy xh and of dy) into
-// gG and gB, four threads a column on the threads the rows leave free (or after them). x, dy and gx at pitch d. Ends with __syncthreads.
+// gG and gB, four threads a column on the threads the rows leave free (or after them). x at pitch d, dy and gx at ldg (the layout's
+// ldd: a padded pitch). Ends with __syncthreads.
 __device__ void ln_bwd_fast(const float* x, const float* dy, const float* g, const float* mean, const float* rstd, float* gx, bool acc,
-                            float* gG, float* gB, int N, int d) {
+                            float* gG, float* gB, int N, int d, int ldg) {
   constexpr int LPR = 8, G4 = KVM_FGPT1_MAXD / 32;   // as ln_rows_fast's
   const float inv_d = 1.f / (float)d;
   const int U = (LPR * N + 31) & ~31, UC = (4 * d + 31) & ~31;
@@ -687,7 +688,7 @@ __device__ void ln_bwd_fast(const float* x, const float* dy, const float* g, con
     for (int k = 0; k < G4; ++k) {
       const int c = 4 * (j + LPR * k);
       if (on && c < d) {
-        const float4 xv = *reinterpret_cast<const float4*>(x + (size_t)r * d + c), dv = *reinterpret_cast<const float4*>(dy + (size_t)r * d + c),
+        const float4 xv = *reinterpret_cast<const float4*>(x + (size_t)r * d + c), dv = *reinterpret_cast<const float4*>(dy + (size_t)r * ldg + c),
                      gv = *reinterpret_cast<const float4*>(g + c);
         gs[k] = make_float4(dv.x * gv.x, dv.y * gv.y, dv.z * gv.z, dv.w * gv.w);
         xh[k] = make_float4((xv.x - mu) * rs, (xv.y - mu) * rs, (xv.z - mu) * rs, (xv.w - mu) * rs);
@@ -701,7 +702,7 @@ __device__ void ln_bwd_fast(const float* x, const float* dy, const float* g, con
     for (int k = 0; k < G4; ++k) {
       const int c = 4 * (j + LPR * k);
       if (on && c < d) {
-        float4* const o = reinterpret_cast<float4*>(gx + (size_t)r * d + c);
+        float4* const o = reinterpret_cast<float4*>(gx + (size_t)r * ldg + c);
         const float4 v = make_float4(rs * (gs[k].x - s1 - xh[k].x * s2), rs * (gs[k].y - s1 - xh[k].y * s2), rs * (gs[k].z - s1 - xh[k].z * s2),
                                      rs * (gs[k].w - s1 - xh[k].w * s2));
         if (acc) { const float4 w = *o; *o = make_float4(w.x + v.x, w.y + v.y, w.z + v.z, w.w + v.w); } else *o = v;
@@ -713,7 +714,7 @@ __device__ void ln_bwd_fast(const float* x, const float* dy, const float* g, con
     const bool on = c < d;
     float sg = 0.f, sb = 0.f;
     if (on)
-      for (int r = q; r < N; r += 4) { const float dv = dy[(size_t)r * d + c]; sg += dv * (x[(size_t)r * d + c] - mean[r]) * rstd[r]; sb += dv; }
+      for (int r = q; r < N; r += 4) { const float dv = dy[(size_t)r * ldg + c]; sg += dv * (x[(size_t)r * d + c] - mean[r]) * rstd[r]; sb += dv; }
     sg = group_sum<4>(sg); sb = group_sum<4>(sb);
     if (on && q == 0) { gG[c] = sg; gB[c] = sb; }
   }
@@ -787,20 +788,20 @@ __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
     __syncthreads();
     float* const gh = G(hs); const float* const W = sm + y.head; const int ldw = y.pld[hs];
     gemm_par(fjob<true, false, 3>(nh, ldd, DL, ldl, D, V, N, prec, [=](int m, int n, float a) { gh[(size_t)m * V + n] = a; }),
-             fjob<false, true, 1>(DL, ldl, W, ldw, N, D, V, prec, [=](int m, int n, float a) { dy[(size_t)m * D + n] = a; }));
+             fjob<false, true, 1>(DL, ldl, W, ldw, N, D, V, prec, [=](int m, int n, float a) { dy[(size_t)m * ldd + n] = a; }));
     (void)hs;
   }
   ph(MK_HEADB);
   // ---- the final norm: gx = its backward (stored); nf's gradients
   {
     const int nfg = kvm_fgpt_slot_nfg(L), nfb = kvm_fgpt_slot_nfb(L);
-    ln_bwd_fast(sm + y.x[L], dy, P(nfg), sm + y.stf, sm + y.stf + N, gx, false, G(nfg), G(nfb), N, D);
+    ln_bwd_fast(sm + y.x[L], dy, P(nfg), sm + y.stf, sm + y.stf + N, gx, false, G(nfg), G(nfb), N, D, ldd);
   }
   ph(MK_LNFB);
   for (int l = L - 1; l >= 0; --l) {
     // ---- the MLP: b2's gradient is gx's column sums; U = gelu(pre) into A; dW2 = U^T gx and DU = (gx W2^T) gelu'(pre) (into pre, in place)
     float* const pre = sm + y.pre[l]; float* const U = sm + y.a;
-    colsum_fast(gx, D, N, D, G(lay(l, KVM_FGPT_R_B2)), false);
+    colsum_fast(gx, ldd, N, D, G(lay(l, KVM_FGPT_R_B2)), false);
     if (l != L - 1) {   // the last layer's U is still in A from the forward (fc2's operand); an earlier layer's is recomputed
       grid_loop(N16, ldF, [=](int r, int c) {
         const float z = pre[r * ldF + c];
@@ -812,8 +813,8 @@ __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
     }
     {
       float* const gw2 = G(lay(l, KVM_FGPT_R_W2)); const float* const W2 = P(lay(l, KVM_FGPT_R_W2)); const int ldw2 = y.pld[lay(l, KVM_FGPT_R_W2)];
-      gemm_par(fjob<true, false, 1>(U, ldF, gx, D, F, D, N, prec, [=](int m, int n, float a) { gw2[(size_t)m * D + n] = a; }),
-               fjob<false, true>(gx, D, W2, ldw2, N, F, D, prec, [=](int m, int n, float a) {
+      gemm_par(fjob<true, false, 1>(U, ldF, gx, ldd, F, D, N, prec, [=](int m, int n, float a) { gw2[(size_t)m * D + n] = a; }),
+               fjob<false, true>(gx, ldd, W2, ldw2, N, F, D, prec, [=](int m, int n, float a) {
                  const float q = pre[m * ldF + n];   // the last layer's pre holds gelu'(z) from the forward, an earlier layer's z
                  pre[m * ldF + n] = a * (l == L - 1 ? q : gelu_grad(q));
                }));
@@ -829,16 +830,16 @@ __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
       ph(MK_MLPB);   // db1, LN2's output again
       float* const gw1 = G(lay(l, KVM_FGPT_R_W1)); const float* const W1 = P(lay(l, KVM_FGPT_R_W1)); const int ldw1 = y.pld[lay(l, KVM_FGPT_R_W1)];
       gemm_par(fjob<true, false, 1>(nh, ldd, pre, ldF, D, F, N, prec, [=](int m, int n, float a) { gw1[(size_t)m * F + n] = a; }),
-               fjob<false, true>(pre, ldF, W1, ldw1, N, D, F, prec, [=](int m, int n, float a) { dy[(size_t)m * D + n] = a; }));
+               fjob<false, true>(pre, ldF, W1, ldw1, N, D, F, prec, [=](int m, int n, float a) { dy[(size_t)m * ldd + n] = a; }));
       ph(MK_X_DH2);   // dW1 | dh2
       // LN2's backward, added to gx (the gradient at xm)
-      ln_bwd_fast(xm, dy, g2, st, st + N, gx, true, G(lay(l, KVM_FGPT_R_N2G)), G(lay(l, KVM_FGPT_R_N2B)), N, D);
+      ln_bwd_fast(xm, dy, g2, st, st + N, gx, true, G(lay(l, KVM_FGPT_R_N2G)), G(lay(l, KVM_FGPT_R_N2B)), N, D, ldd);
     }
     ph(MK_LN2B);   // LN2's backward
     // ---- attention: bo's gradient is gx's column sums; dWo = O^T gx; dO = gx Wo^T (into PART at pitch ldd)
     float* const dO = sm + y.part; const float* const O = sm + y.o[l]; float* const qkv = sm + y.qkv[l];
     float* const dqkv = pre;                                                            // pre (DU) is dead: dq | dk | dv of every row, at pitch ldq
-    colsum_fast(gx, D, N, D, G(lay(l, KVM_FGPT_R_BO)), false);
+    colsum_fast(gx, ldd, N, D, G(lay(l, KVM_FGPT_R_BO)), false);
     float* const gwo = G(lay(l, KVM_FGPT_R_WO)); const float* const Wo = P(lay(l, KVM_FGPT_R_WO)); const int ldwo = y.pld[lay(l, KVM_FGPT_R_WO)];
     // each (sequence, head): P again from q, k and the forward's log-sum-exps; dV = P^T dO; dP = dO V^T; dS = P (dP - delta);
     // dQ = dS K scale; dK = dS^T Q scale. Attention's products are 3xTF32 as the forward's.
@@ -855,8 +856,8 @@ __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
       const float* const O0 = O + (size_t)(0 / H) * T * ldd + (0 % H) * hd; const float* const O1 = O + (size_t)(1 / H) * T * ldd + (1 % H) * hd;
       float* const dq0 = dqkv + (size_t)(0 / H) * T * ldq + (0 % H) * hd; float* const dq1 = dqkv + (size_t)(1 / H) * T * ldq + (1 % H) * hd;
       // dWo and dO, and P again for both blocks (it needs only q, k and the forward's log-sum-exps), in one pass
-      gemm_par(fjob<true, false>(O, ldd, gx, D, D, D, N, prec, [=](int m, int n, float a) { gwo[(size_t)m * D + n] = a; }),
-               fjob<false, true>(gx, D, Wo, ldwo, N, D, D, prec, [=](int m, int n, float a) { dO[m * ldd + n] = a; }),
+      gemm_par(fjob<true, false>(O, ldd, gx, ldd, D, D, N, prec, [=](int m, int n, float a) { gwo[(size_t)m * D + n] = a; }),
+               fjob<false, true>(gx, ldd, Wo, ldwo, N, D, D, prec, [=](int m, int n, float a) { dO[m * ldd + n] = a; }),
                fjob<false, true>(q0, ldq, k0, ldq, T, T, hd, true, [=](int m, int n, float a) { P0[m * ldS + n] = n <= m ? __expf(a * scale - l0[m]) : 0.f; }),
                fjob<false, true>(q1, ldq, k1, ldq, T, T, hd, true, [=](int m, int n, float a) { P1[m * ldS + n] = n <= m ? __expf(a * scale - l1[m]) : 0.f; }));
       ph(MK_UB_STAGE);   // dbo, dWo | dO | P
@@ -907,8 +908,8 @@ __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
       }
       ph(MK_UB_DV_DS);   // RoPE back, LN1's output again
     } else {
-      gemm_par(fjob<true, false>(O, ldd, gx, D, D, D, N, prec, [=](int m, int n, float a) { gwo[(size_t)m * D + n] = a; }),
-               fjob<false, true>(gx, D, Wo, ldwo, N, D, D, prec, [=](int m, int n, float a) { dO[m * ldd + n] = a; }));
+      gemm_par(fjob<true, false>(O, ldd, gx, ldd, D, D, N, prec, [=](int m, int n, float a) { gwo[(size_t)m * D + n] = a; }),
+               fjob<false, true>(gx, ldd, Wo, ldwo, N, D, D, prec, [=](int m, int n, float a) { dO[m * ldd + n] = a; }));
       ph(MK_UB_STAGE);   // dbo, dWo | dO
       float* const Pm = sm + y.a; float* const dS = sm + y.a + (size_t)T16 * ldS;
       for (int blk = 0; blk < B * H; ++blk) {
@@ -953,9 +954,9 @@ __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
                  float* const o = part == 0 ? gq : part == 1 ? gk : gv;
                  o[(size_t)m * D + (n - part * D)] = a;
                }),
-               fjob<false, true>(dqkv, ldq, Wqkv, ldw, N, D, 3 * D, prec, [=](int m, int n, float a) { dy[(size_t)m * D + n] = a; }));
+               fjob<false, true>(dqkv, ldq, Wqkv, ldw, N, D, 3 * D, prec, [=](int m, int n, float a) { dy[(size_t)m * ldd + n] = a; }));
       ph(MK_UB_DQ_DK);   // dbq dbk dbv, (LN1's output again,) dWqkv | dh1
-      ln_bwd_fast(x, dy, g1, st, st + N, gx, true, G(lay(l, KVM_FGPT_R_N1G)), G(lay(l, KVM_FGPT_R_N1B)), N, D);
+      ln_bwd_fast(x, dy, g1, st, st + N, gx, true, G(lay(l, KVM_FGPT_R_N1G)), G(lay(l, KVM_FGPT_R_N1B)), N, D, ldd);
     }
     ph(MK_ATTNB);
   }
@@ -975,7 +976,7 @@ __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
           const int rr = r0 + __ffs(m) - 1;
           m &= m - 1;
 #pragma unroll
-          for (int k = 0; k < CJ; ++k) if (lane + 32 * k < D) acc[k] += gx[rr * D + lane + 32 * k];
+          for (int k = 0; k < CJ; ++k) if (lane + 32 * k < D) acc[k] += gx[rr * ldd + lane + 32 * k];
         }
       }
 #pragma unroll

@@ -2263,9 +2263,9 @@ KVM_GPT_DEVI void acc_to_a(const float (&c)[4], unsigned (&h)[4], unsigned (&l)[
 //   (2t+8, 2t+9): one permutation of k, on both operands, so the sum is the same sum;
 //   over keys or queries (P V, dS K, P^T dO, dS^T Q) the accumulators of n-tiles 2j and 2j+1 are the bf16 A fragment as they stand, and
 //   frag_kn's rows of k8 steps 2j and 2j+1 (16j + 2t, +1 and 16j + 8 + 2t, +1) its B.
-// The default path (KVM_GPT_ATTN_BF2 0) is not touched: every call site keeps its 3xTF32 code under #else.
+// KVM_GPT_ATTN_BF2 0 builds 3xTF32 products: every call site keeps that code under #else.
 #ifndef KVM_GPT_ATTN_BF2
-#define KVM_GPT_ATTN_BF2 0
+#define KVM_GPT_ATTN_BF2 1   // the default: the per-op paths' attention products as the bf16 split (0: 3xTF32)
 #endif
 #if KVM_GPT_ATTN_BF2
 KVM_GPT_DEVI void split_bf2(float x0, float x1, unsigned& hi, unsigned& lo) {   // x0 in the low half (the even k), x1 in the high half

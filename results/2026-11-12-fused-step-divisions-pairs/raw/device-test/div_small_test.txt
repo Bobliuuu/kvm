@@ -1,0 +1,1 @@
+div_small: PASS, 2173941844 pairs checked (every x below 2^21 for d up to 512, grid_loop's domain, the top edge, 2^24 random pairs)

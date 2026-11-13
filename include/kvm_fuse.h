@@ -67,6 +67,7 @@ struct KvmFuseRun {
   int steps = 0;
   int split = 0, S = 0, Q = 0, Sv = 0;  // the split form: S shares x Q slices a gang, carrying the run's Sv virtual shares (its arithmetic: kvm_fused_split.h;
                                         // slice_rows = KVM_SPLIT_R; nsl and groups unused)
+  int kc = 0;                           // the split form's member: 0 holds its weights for the step, else streams them in tiles of kc rows (the same bits)
   int grid = 0, P = 0;                  // the grid form: one gang of P members a step over one copy of the model (nsl and groups unused)
 };
 // A run whose steps run as gangs (the split or the grid form), and the size of its gangs.
@@ -82,6 +83,7 @@ inline int kvm_fuse_members(const KvmFuseRun& r) { return r.split ? r.Q * r.S : 
 struct KvmFuseEntry {
   enum Kind { generic, block, split, grid, mixed } kind = generic;
   int S = 0;           // the split entry's virtual share count (its instantiation; each gang's physical count is the descriptor's)
+  bool stream = false; // the split entry's member streams its weights (KvmFuseRun::kc > 0): an entry of its own (kvm_static_gang_split_stream)
   std::string why;     // mixed: what keeps the bundle off a gang entry
 };
 struct KvmFuseResult {
@@ -102,7 +104,11 @@ inline KvmFuseEntry kvm_fuse_entry(const KvmFuseResult& r, const KvmFuseOps& ops
   KvmFuseEntry e;
   int nsplit = 0, ngrid = 0, nblock = 0;
   for (const KvmFuseRun& run : r.runs) {
-    if (run.split) { if (nsplit++ && run.Sv != e.S) { e.kind = KvmFuseEntry::mixed; e.why = "split runs at " + std::to_string(e.S) + " and " + std::to_string(run.Sv) + " virtual shares"; return e; } e.S = run.Sv; }
+    if (run.split) {
+      if (nsplit++ && run.Sv != e.S) { e.kind = KvmFuseEntry::mixed; e.why = "split runs at " + std::to_string(e.S) + " and " + std::to_string(run.Sv) + " virtual shares"; return e; }
+      if (nsplit > 1 && (run.kc > 0) != e.stream) { e.kind = KvmFuseEntry::mixed; e.why = "split runs with resident and streamed weights"; return e; }
+      e.S = run.Sv; e.stream = run.kc > 0;
+    }
     else if (run.grid) ++ngrid;
     else ++nblock;
   }
@@ -124,7 +130,7 @@ inline std::string kvm_fuse_entry_name(const KvmFuseEntry& e) {
   switch (e.kind) {
     case KvmFuseEntry::generic: return "generic";
     case KvmFuseEntry::block: return "one-block";
-    case KvmFuseEntry::split: return "split, " + std::to_string(e.S) + " shares";
+    case KvmFuseEntry::split: return "split, " + std::to_string(e.S) + " shares" + (e.stream ? ", weights streamed" : "");
     case KvmFuseEntry::grid: return "grid";
     default: return "mixed (" + e.why + ")";
   }
@@ -590,28 +596,59 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
     // must depend on its shape alone (the MLP bench's gate 2, bench/exec_vs_torch/run_mlp.py, asserts four replicated copies of a run bitwise
     // equal to the run alone). Runs whose Sv differ leave the bundle unfused (kvm_fuse_entry: an entry runs one virtual count).
     // The physical count S, the members a gang carries Sv on, is free (kvm_fused_split.h: every S up to Sv computes the same bits), so it is chosen
-    // for the bundle: the fewest waves of gangs over the workers, then the widest gangs, among the counts whose member fits the budget. A run alone
-    // takes S = Sv; 16 runs of h200-d1 take 2, so their gangs run 2 waves deep instead of 16.
+    // for the bundle: the fewest waves of whole gangs, then the widest gangs, among the counts whose member fits the budget. A wave holds whole gangs,
+    // since a gang's members meet at its barriers: a gang that doesn't fit beside the others waits for the wave to end. A run alone takes S = Sv;
+    // 16 runs of h200-d1 take 2, so their gangs run 2 waves deep instead of 16.
+    // The member may also stream its weights (kvm_fused_split.h, KvmFuseRun::kc): the same bits again, in a memory that no longer grows with the
+    // run's weights, so a count the resident member cannot hold fits (h296-d3: resident from 16 shares, streamed from 3). A narrow member does
+    // more of its run's work, though: on the A100, 4 runs of h296-d3 at 4 streamed shares cost x2.65 of the run alone a wave, 1 run x2.08, and 18
+    // streamed shares x1.17 (the A100's split bed, Nov 12). So a bundle streams only when that cuts its waves at least KVM_SPLIT_STREAM_WAVE_CUT-fold, and
+    // only at a virtual count the streamed entry is built for (KVM_SPLIT_STREAM_LIST). Measured on the A100's executor against the resident form:
+    // h296-d3 x4 and h232-d3 x8 (4 waves to 1) x1.72 and x1.33; h552-d2 x16, 16 waves to 6 in gangs of 30 (2.7-fold), x0.91, so it stays resident,
+    // as a 2-fold cut does (h224-d2 x8 and h400-d2 x4).
     {
       int nsplit = 0, Sv = 0;
       for (const Plan& p : plans) if (p.run.split) { ++nsplit; Sv = std::max(Sv, p.split_fit.back()); }
-      int pick = 0, pick_waves = 0;
-      for (int S = 1; nsplit && S <= Sv; ++S) {
-        bool ok = true;
-        for (const Plan& p : plans) {
-          if (!p.run.split || !ok) continue;
-          const int sv = p.split_fit.back();
-          KvmSplitDesc d{}; d.V = p.run.V; d.E = p.run.E; d.L = p.run.L; d.H = p.run.H[0]; d.S = std::min(S, sv); d.Sv = sv; d.Q = KVM_SPLIT_Q;
-          const int f = kvm_split_layout(d);
-          ok = f > 0 && f <= opts.smem_floats;
+      // the count with the fewest waves, then the widest, whose members all fit; `built`: only a virtual count the streamed entry is built for
+      const auto choose = [&](bool stream, bool built, int& pick_waves) {
+        int pick = 0; pick_waves = 0;
+        for (int S = 1; nsplit && S <= Sv; ++S) {
+          bool ok = true;
+          for (const Plan& p : plans) {
+            if (!p.run.split || !ok) continue;
+            const int sv = p.split_fit.back();
+            KvmSplitDesc d{}; d.V = p.run.V; d.E = p.run.E; d.L = p.run.L; d.H = p.run.H[0]; d.S = std::min(S, sv); d.Sv = sv; d.Q = KVM_SPLIT_Q;
+            if (stream) ok = (!built || kvm_split_stream_built(sv)) && kvm_split_layout(d) > 0 && kvm_split_stream_kc(d, opts.smem_floats) > 0;
+            else { const int f = kvm_split_layout(d); ok = f > 0 && f <= opts.smem_floats; }
+          }
+          if (!ok) continue;
+          int waves = 0, room = 0;   // whole gangs a wave, in plan order (kvm_fuse_split_fits: a gang never exceeds the workers)
+          for (const Plan& p : plans) if (p.run.split) {
+            const int gang = KVM_SPLIT_Q * std::min(S, p.split_fit.back());
+            if (gang > room) { ++waves; room = opts.workers; }
+            room -= gang;
+          }
+          if (!pick || waves < pick_waves || (waves == pick_waves && S > pick)) { pick = S; pick_waves = waves; }
         }
-        if (!ok) continue;
-        int members = 0;
-        for (const Plan& p : plans) if (p.run.split) members += KVM_SPLIT_Q * std::min(S, p.split_fit.back());
-        const int waves = (members + opts.workers - 1) / opts.workers;
-        if (!pick || waves < pick_waves || (waves == pick_waves && S > pick)) { pick = S; pick_waves = waves; }
+        return pick;
+      };
+      int resident_waves = 0, stream_waves = 0;
+      const int resident = choose(false, true, resident_waves), streamed = choose(true, true, stream_waves);
+      const bool stream = streamed && (!resident || stream_waves * KVM_SPLIT_STREAM_WAVE_CUT <= resident_waves);
+      if (nsplit && !stream && resident) {   // a cut the streamed member would make at a count it is not built for: said, not lost silently
+        int any_waves = 0;                    // (below the A100's 108 workers a run's own count is 16, and the entry is built for 18)
+        if (choose(true, false, any_waves) && any_waves * KVM_SPLIT_STREAM_WAVE_CUT <= resident_waves)
+          R.report.push_back("split runs: streaming would cut their waves from " + std::to_string(resident_waves) + " to " + std::to_string(any_waves) +
+                             ", but no streamed entry is built for " + std::to_string(Sv) + " virtual shares (KVM_SPLIT_STREAM_LIST): resident");
       }
-      for (Plan& p : plans) if (p.run.split) { p.run.Sv = p.split_fit.back(); p.run.S = std::min(pick ? pick : p.run.Sv, p.run.Sv); }
+      const int pick = stream ? streamed : resident;
+      for (Plan& p : plans) if (p.run.split) {
+        p.run.Sv = p.split_fit.back(); p.run.S = std::min(pick ? pick : p.run.Sv, p.run.Sv); p.run.kc = 0;
+        if (stream) {
+          KvmSplitDesc d{}; d.V = p.run.V; d.E = p.run.E; d.L = p.run.L; d.H = p.run.H[0]; d.S = p.run.S; d.Sv = p.run.Sv; d.Q = KVM_SPLIT_Q;
+          p.run.kc = kvm_split_stream_kc(d, opts.smem_floats);   // > 0: choose() laid out this count
+        }
+      }
     }
     for (size_t i = 0; i < plans.size(); ++i) {
       KvmFuseRun& r = plans[i].run;
@@ -628,11 +665,12 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
       if (r.split) {
         r.slice_rows = KVM_SPLIT_R;
         KvmSplitDesc d{}; d.V = r.V; d.E = r.E; d.L = r.L; d.H = r.H[0]; d.S = r.S; d.Sv = r.Sv; d.Q = r.Q;
-        const int floats = kvm_split_layout(d);
+        const int floats = kvm_split_layout(d, r.kc);
         std::string shape = std::to_string(r.E);
         for (int l = 0; l < r.L; ++l) shape += "x" + std::to_string(r.H[l]);
         R.report.push_back("component " + std::to_string(plan_comp[i]) + ": fused, split form (" + plans[i].split_why + "): " + std::to_string(plans[i].steps.size()) + " steps, T=" + std::to_string(r.T) + " V=" + std::to_string(r.V) + " widths " + shape + ", gangs of " + std::to_string(r.Q) + " slices x " + std::to_string(r.S) + " shares = " + std::to_string(r.Q * r.S) + " members, " + std::to_string(floats) + " floats a member" +
-                           (r.S < r.Sv ? " (" + std::to_string(r.Sv) + " virtual shares, the run's own)" : ""));
+                           (r.S < r.Sv ? " (" + std::to_string(r.Sv) + " virtual shares, the run's own)" : "") +
+                           (r.kc ? ", weights streamed in tiles of " + std::to_string(r.kc) + " rows" : ""));
         continue;
       }
       r.nsl = r.T / r.slice_rows;

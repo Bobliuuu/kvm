@@ -1,0 +1,8 @@
+NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs): 4000 crossings a launch (two a round, data checked between), ns a crossing (median of 5 launches)
+    G    counter  flag line   ratio errors
+    2       1140        571    2.00 0/0
+    4       1166        660    1.77 0/0
+    8       1170        684    1.71 0/0
+   16       1170        697    1.68 0/0
+   32       1173        721    1.63 0/0
+   33       1174        792    1.48 0/0

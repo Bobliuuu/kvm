@@ -178,18 +178,44 @@ __device__ __forceinline__ void gemm_on(const float* A, int lda, const float* B,
     const float* pa0 = base_a(m0); const float* pb0 = base_b(n0);
     const float* pa1 = base_a(m1); const float* pb1 = base_b(n1);
     float c0[4] = {0.f, 0.f, 0.f, 0.f}, c1[4] = {0.f, 0.f, 0.f, 0.f};
-#pragma unroll 1
-    for (int k = 0; k < ks; ++k) {
-      Frag<TA, TB> f0;
-      f0.load(pa0, pb0, lda, ldb);
-      if (two) {
-        Frag<TA, TB> f1;
+    if constexpr (Full) {
+      // A whole-tile caller (the one-block form) tests the warp's tile count once and runs a k loop for each case, so no k step branches
+      // around its MMAs (each tile accumulates as before: the same bits).
+      const auto k1 = [&]() {
+        Frag<TA, TB> f0;
+        f0.load(pa0, pb0, lda, ldb);
+        mma_frag<RND>(c0, f0.a, f0.b, prec);
+        pa0 += sa; pb0 += sb;
+      };
+      const auto k2 = [&]() {
+        Frag<TA, TB> f0, f1;
+        f0.load(pa0, pb0, lda, ldb);
         f1.load(pa1, pb1, lda, ldb);
         mma_frag<RND>(c1, f1.a, f1.b, prec);
-        pa1 += sa; pb1 += sb;
+        mma_frag<RND>(c0, f0.a, f0.b, prec);
+        pa0 += sa; pb0 += sb; pa1 += sa; pb1 += sb;
+      };
+      if (two) {
+#pragma unroll 1
+        for (int k = 0; k < ks; ++k) k2();
+      } else {
+#pragma unroll 1
+        for (int k = 0; k < ks; ++k) k1();
       }
-      mma_frag<RND>(c0, f0.a, f0.b, prec);
-      pa0 += sa; pb0 += sb;
+    } else {
+#pragma unroll 1
+      for (int k = 0; k < ks; ++k) {
+        Frag<TA, TB> f0;
+        f0.load(pa0, pb0, lda, ldb);
+        if (two) {
+          Frag<TA, TB> f1;
+          f1.load(pa1, pb1, lda, ldb);
+          mma_frag<RND>(c1, f1.a, f1.b, prec);
+          pa1 += sa; pb1 += sb;
+        }
+        mma_frag<RND>(c0, f0.a, f0.b, prec);
+        pa0 += sa; pb0 += sb;
+      }
     }
     const int ma = m0 + g, mb = ma + 8, cc = n0 + 2 * t;
     if constexpr (Full) {

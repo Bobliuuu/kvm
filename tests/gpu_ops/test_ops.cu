@@ -9,6 +9,14 @@
 #endif
 #include "harness.cuh"
 #include "refs.hpp"
+// The bf16 split's own case: attention's products as a bf16 hi/lo split (KVM_GPT_ATTN_BF2) have a worst product error of 3 x 2^-16,
+// against 3xTF32's 3 x 2^-20, so attn_case's fixed bounds are 3xTF32's times 16, and its T=1 noise bound adds the split's own terms.
+// The default build (3xTF32) keeps every bound exactly as it was.
+#if KVM_GPT_ATTN_BF2
+static constexpr double kAttnTol = 16.0;
+#else
+static constexpr double kAttnTol = 1.0;
+#endif
 
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -365,7 +373,7 @@ static void attn_case(AttnCfg c) {
     Rng r(61 + c.hd + c.T + 7919 * c.seed);
     int B = c.B, T = c.T, H = c.H, Hkv = c.Hkv, hd = c.hd, R = B * T;
     double scale = 1.0 / sqrt((double)hd);
-    char nm[96]; snprintf(nm, sizeof nm, "attn B=%d T=%d H=%d Hkv=%d hd=%d", B, T, H, Hkv, hd);
+    char nm[96]; snprintf(nm, sizeof nm, "attn%s B=%d T=%d H=%d Hkv=%d hd=%d", KVM_GPT_ATTN_BF2 ? " [bf2]" : "", B, T, H, Hkv, hd);
     if (hd > KVM_GPT_MAX_HD) { skip(nm, "head size above this build's KVM_GPT_MAX_HD (not compiled)"); return; }
     Dev dv;
     int q = dv.addf(R, H * hd, H * hd + 4), k = dv.addf(R, Hkv * hd, Hkv * hd + 4), v = dv.addf(R, Hkv * hd, Hkv * hd + 8), o = dv.addf(R, H * hd);
@@ -381,8 +389,8 @@ static void attn_case(AttnCfg c) {
     D ro, rl, rdq, rdk, rdv;
     D Dq = dbl(hq), Dk = dbl(hk), Dv = dbl(hv), Ddo = dbl(hdo);
     attn_d(B, T, H, Hkv, hd, scale, Dq, Dk, Dv, ro, rl, &Ddo, &rdq, &rdk, &rdv);
-    check(std::string(nm) + " fwd o", dv.down(o), ro, 2e-5);
-    check(std::string(nm) + " fwd lse", dv.down(lse), rl, 2e-5);
+    check(std::string(nm) + " fwd o", dv.down(o), ro, 2e-5 * kAttnTol);
+    check(std::string(nm) + " fwd lse", dv.down(lse), rl, 2e-5 * kAttnTol);
     Batch b2; for (int r0 = 0; r0 < R; r0 += 40) b2.add(OP_attn_bwd_delta, A().b(o).b(dO).b(delta).i(r0).i(std::min(R, r0 + 40)).i(T).i(H).i(hd));
     e |= run(dv, b2);
     Batch b3;
@@ -399,7 +407,13 @@ static void attn_case(AttnCfg c) {
         // |dP - delta| <= eps * sum_d |dO_d v_d| with eps = (hd + 8) 2^-22: hd terms of a 3xTF32 product (2^-22 per term, the dropped
         // low*low term) plus the fp32 delta dot and o's own 2^-23 deviation from v (the +8). Then dq_d = scale dS k_d and dk_d = sum over the
         // heads of the kv group scale dS_h q_{h,d}, so each element's bound is that sum times the other operand's magnitude.
+#if KVM_GPT_ATTN_BF2
+        // The bf16 split: dP's products carry up to 3 x 2^-16 of sum |dO_d v_d|, and o = v_hi + v_lo (p = 1 is exact in bf16) deviates
+        // from v by up to 2^-16 |v|, which delta carries: 4 x 2^-16 more.
+        const double eps = (hd + 8) * std::ldexp(1.0, -22) + 4 * std::ldexp(1.0, -16); const int grp = H / Hkv;
+#else
         const double eps = (hd + 8) * std::ldexp(1.0, -22); const int grp = H / Hkv;
+#endif
         D bq(hq.size()), bk(hk.size(), 0.0);
         for (int bb = 0; bb < B; bb++) for (int h = 0; h < H; h++) {
             const int g = h / grp; double sum = 0;
@@ -424,10 +438,10 @@ static void attn_case(AttnCfg c) {
         char d[128]; snprintf(d, sizeof d, "worst |noise|/bound %.3f at %s[%zu] (bound %.2e)", worst, which, at, std::string(which) == "dq" ? bq[at] : bk[at]);
         verdict(std::string(nm) + " bwd dq,dk rounding noise within derived bound", worst < 1.0, d);
     } else {
-        check(std::string(nm) + " bwd dq", dv.down(dq), rdq, 3e-5);
-        check(std::string(nm) + " bwd dk", dv.down(dk), rdk, 3e-5);
+        check(std::string(nm) + " bwd dq", dv.down(dq), rdq, 3e-5 * kAttnTol);
+        check(std::string(nm) + " bwd dk", dv.down(dk), rdk, 3e-5 * kAttnTol);
     }
-    check(std::string(nm) + " bwd dv", dv.down(dvv), rdv, 3e-5);
+    check(std::string(nm) + " bwd dv", dv.down(dvv), rdv, 3e-5 * kAttnTol);
     auto g1 = dv.down(dk); run(dv, b3);
     check_true(std::string(nm) + " bwd bitwise deterministic", g1 == dv.down(dk));
     check_true(std::string(nm) + " err==0", e == 0);

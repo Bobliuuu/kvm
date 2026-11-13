@@ -1514,19 +1514,21 @@ __device__ __noinline__ void mm_tf32_tile(const float* A, int lda, const float* 
 
 
 // Its dispatch: the cases #16's matmul_tile sends to mm_tf32_tile (big or huge tile, plain 1xTF32: none of flags 16, 128, 256, 512, 1024;
-// operands in whole aligned 16-byte chunks); every other task goes to kvmgpt::matmul_tile. The 256 x 128 tile takes BK 32 x 3 stages
-// when the launch has 144 KiB of shared memory and the build compiled it (KVM_GPT_MMA_SMEM >= 147456), else BK 16 x 4 stages (96 KiB).
-KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
+// operands in whole aligned 16-byte chunks); it returns false for every other task, which kvmgpt::matmul_tile then runs on ours. The
+// 256 x 128 tile takes BK 32 x 3 stages when the launch has 144 KiB of shared memory and the build compiled it (KVM_GPT_MMA_SMEM >=
+// 147456), else BK 16 x 4 stages (96 KiB). It never calls ours itself: ours is the op's largest body, and every call to it inlined a copy
+// into the executor's op switch, three to five a matmul site (main's kvm_dispatch: 500k PTX lines, ptxas 3.5 h).
+KVM_GPT_DEVI bool matmul_tile(const KvmCtx& ctx, const int32_t* a) {
     const int fl = a[11], m0 = a[6], n0 = a[7], M = a[8], N = a[9], K = a[10];
     const bool ta = fl & 1, tb = fl & 2, big = fl & 32, huge = fl & 64, plain = (fl & (16 | 128 | 256 | 512 | 1024)) == 0;
-    if (!(big || huge) || !plain) { kvmgpt::matmul_tile_ours(ctx, a); return; }
+    if (!(big || huge) || !plain) return false;
     Chk k(ctx);
     int lda = 0, ldb = 0;
     const float* A = k.mat(a[0], ta ? K : M, ta ? M : K, &lda);
     const float* B = k.mat(a[1], tb ? N : K, tb ? K : N, &ldb);
     const bool fast = !k.bad && aligned16(A, lda) && aligned16(B, ldb) && (K & 3) == 0 && (m0 & 3) == 0 && (n0 & 3) == 0 &&
                       (!ta || (M & 3) == 0) && (tb || (N & 3) == 0);
-    if (!fast) { kvmgpt::matmul_tile_ours(ctx, a); return; }   // also every argument error: kvmgpt::matmul_tile_ours reports it
+    if (!fast) return false;   // also every argument error: kvmgpt::matmul_tile_ours reports it
     const bool deep = dyn_smem_bytes() >= 3 * (256 + 128) * 32 * 4;
     (void)deep;
 #define KVM_GPT_MMF(TA, TB, ...) mm_tf32_tile<TA, TB, false, __VA_ARGS__>(A, lda, B, ldb, m0, n0, M, N, K, ctx, a)
@@ -1538,7 +1540,7 @@ KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
 #if KVM_GPT_MMA_SMEM >= 3 * (128 + 128) * 32 * 4
         KVM_GPT_MMF_T(2, 4, 32, 32, 3);                                  // 128 x 128, BK 32 x 3 stages (96 KiB)
 #else
-        kvmgpt::matmul_tile_ours(ctx, a);
+        return false;
 #endif
     }
 #if KVM_GPT_MMA_SMEM >= 3 * (256 + 128) * 32 * 4                         // only builds whose launch can have it compile the deep tile
@@ -1548,11 +1550,12 @@ KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
 #if KVM_GPT_MMA_SMEM >= 4 * (256 + 128) * 16 * 4
         KVM_GPT_MMF_T(4, 2, 64, 16, 4);                                  // 256 x 128, BK 16 x 4 stages (96 KiB)
 #else
-        kvmgpt::matmul_tile_ours(ctx, a);
+        return false;
 #endif
     }
 #undef KVM_GPT_MMF_T
 #undef KVM_GPT_MMF
+    return true;
 }
 }   // namespace j16
 
@@ -1580,7 +1583,8 @@ KVM_GPT_DEVI bool j16_route(const int32_t* a) {
     return !(huge && tb && K > 4096);
 }
 KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
-    if (j16_route(a)) j16::matmul_tile(ctx, a); else matmul_tile_ours(ctx, a);
+    if (j16_route(a) && j16::matmul_tile(ctx, a)) return;
+    matmul_tile_ours(ctx, a);   // the one call to ours: one inlined copy a matmul site
 }
 
 // ---- normalization: one warp per row ----------------------------------------------------------------------------------

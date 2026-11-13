@@ -91,13 +91,13 @@ __device__ __noinline__ void kvm_s_fmlp_split(int member, int members, const int
 // The same member with its weights streamed (kvm_fused_split.h: the same bits, in a memory that does not grow with the run's weights), on an
 // entry of its own so the resident member's registers stay as they are. Besides the resident entry's checks, a descriptor not laid out for
 // streaming (kvm_split_is_streamed) fails the run before any barrier: this member would read its staging tiles where the layout put weights.
-template <int S_>
+template <int S_, bool ODX>
 __device__ __noinline__ void kvm_s_fmlp_split_stream(int member, int members, const int32_t* ids, const int32_t* tgt, float* loss, float* arena, KvmCtx* c) {
   kvm_fmlp::cp_commit_wait();
   __syncthreads();
   const KvmSplitDesc& d = *reinterpret_cast<const KvmSplitDesc*>(arena);
   if (d.Q != KVM_SPLIT_Q || d.Sv != S_ || d.S < 1 || d.S > d.Sv || members != d.Q * d.S || member < 0 || member >= members || !kvm_split_is_streamed(d)) { c->fail(KVM_ERR_BAD_OP, KVM_OP_fmlp_split); return; }
-  kvm_fsplit::split_run<S_, KVM_SPLIT_Q, true>(member, ids, tgt, loss, arena, &c->cnt->err_code, kvm_fsplit::NoPhases{});
+  kvm_fsplit::split_run<S_, KVM_SPLIT_Q, true, ODX>(member, ids, tgt, loss, arena, &c->cnt->err_code, kvm_fsplit::NoPhases{});
 }
 
 // One member of a grid step (a gang op, like fmlp_split). A member count that disagrees with the descriptor fails the run before any barrier;
@@ -128,7 +128,7 @@ __device__ __noinline__ void kvm_dispatch_fused(int op, const KvmCtx c, const in
 // noops. No fused entry's name contains `kvm_static_kernel`, which the SASS census reads the generic kernel by.
 enum class KvmSEntry { generic, block, split, grid, split_stream };
 
-template <KvmSEntry E, int S_ = 0>
+template <KvmSEntry E, int S_ = 0, bool ODX = true>   // ODX: split_stream's member with the owner-side backward compiled in (kvm_fused_split.cuh)
 __device__ void kvm_static_worker(const KvmStaticDev& Sref, KvmSShared& sh) {
   const KvmStaticDev S = Sref;   // a register copy of the launch state: fields then read from registers, not through the __grid_constant__ reference (the same copy measured x1.04-1.09 on the dynamic worker)
   const int w = blockIdx.x;
@@ -175,7 +175,7 @@ __device__ void kvm_static_worker(const KvmStaticDev& Sref, KvmSShared& sh) {
         if (r->op == KVM_OP_fmlp_split) kvm_s_fmlp_split<S_>(r->args[2], r->args[3], reinterpret_cast<const int32_t*>(r->bufs[r->args[4]].p), reinterpret_cast<const int32_t*>(r->bufs[r->args[5]].p), reinterpret_cast<float*>(r->bufs[r->args[6]].p), arena, &c);
         else kvm_dispatch_fused(r->op, c, r->args);
       } else if constexpr (E == KvmSEntry::split_stream) {
-        if (r->op == KVM_OP_fmlp_split) kvm_s_fmlp_split_stream<S_>(r->args[2], r->args[3], reinterpret_cast<const int32_t*>(r->bufs[r->args[4]].p), reinterpret_cast<const int32_t*>(r->bufs[r->args[5]].p), reinterpret_cast<float*>(r->bufs[r->args[6]].p), arena, &c);
+        if (r->op == KVM_OP_fmlp_split) kvm_s_fmlp_split_stream<S_, ODX>(r->args[2], r->args[3], reinterpret_cast<const int32_t*>(r->bufs[r->args[4]].p), reinterpret_cast<const int32_t*>(r->bufs[r->args[5]].p), reinterpret_cast<float*>(r->bufs[r->args[6]].p), arena, &c);
         else kvm_dispatch_fused(r->op, c, r->args);
       } else {
         if (r->op == KVM_OP_fmlp_grid) kvm_s_fmlp_grid(r->args[2], r->args[3], reinterpret_cast<const int32_t*>(r->bufs[r->args[4]].p), reinterpret_cast<const int32_t*>(r->bufs[r->args[5]].p), reinterpret_cast<float*>(r->bufs[r->args[6]].p), arena, &c);
@@ -211,6 +211,14 @@ __global__ void __launch_bounds__(KVM_THREADS, KVM_MIN_BLOCKS) kvm_static_gang_s
   __shared__ KvmSShared sh;
   kvm_static_worker<KvmSEntry::split_stream, S_>(S, sh);
 }
+// The partials member's streamed entry (a bundle none of whose gangs takes the owner-side dX, kvm_split_odx): split_run without the owner-side
+// backward compiled in, so its code is the streamed member's as it was before it: beside that code, a gang of shares of different widths ran 1.6%
+// slower on the executor (h440-d2 x8 against the streamed member alone, Nov 15).
+template <int S_>
+__global__ void __launch_bounds__(KVM_THREADS, KVM_MIN_BLOCKS) kvm_static_gang_split_stream_part(const __grid_constant__ KvmStaticDev S) {
+  __shared__ KvmSShared sh;
+  kvm_static_worker<KvmSEntry::split_stream, S_, false>(S, sh);
+}
 __global__ void __launch_bounds__(KVM_THREADS, KVM_MIN_BLOCKS) kvm_static_gang_grid(const __grid_constant__ KvmStaticDev S) {
   __shared__ KvmSShared sh;
   kvm_static_worker<KvmSEntry::grid>(S, sh);
@@ -227,7 +235,7 @@ inline KvmStaticEntryFn kvm_static_entry_fn(const KvmFuseEntry& e) {
     case KvmFuseEntry::split:
       if (e.stream) {   // the streamed member's entries: only the counts it is built for (KVM_SPLIT_STREAM_LIST; the pass streams no other)
         switch (e.S) {
-#define X(S_) case S_: return kvm_static_gang_split_stream<S_>;
+#define X(S_) case S_: return e.odx ? kvm_static_gang_split_stream<S_> : kvm_static_gang_split_stream_part<S_>;
           KVM_SPLIT_STREAM_LIST
 #undef X
         }

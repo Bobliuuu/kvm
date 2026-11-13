@@ -146,3 +146,32 @@ KVM_SPLIT_HD inline bool kvm_split_stream_built(int Sv) {
     default: return false;
   }
 }
+// The owner-side dX and dW's switches (kvm_fused_split.cuh's split_run documents what each does), defined here, where the device and the host's
+// pass both read them.
+#ifndef KVM_SPLIT_ODX
+#define KVM_SPLIT_ODX 2
+#endif
+#ifndef KVM_SPLIT_OWNDW
+#define KVM_SPLIT_OWNDW 1
+#endif
+#define KVM_SPLIT_ODXW_U 64                       // KVM_SPLIT_ODX 2: a chunk's units of W's rows
+#define KVM_SPLIT_ODXW_P (KVM_SPLIT_ODXW_U + 4)   // and its pitch (17 16-byte chunks a row: ldmatrix conflict-free)
+// Whether a streamed gang (`d` laid out for the streamed member) takes the owner-side dX on its hidden layers: one choice for the whole gang,
+// from the layout and the gang's widest physical share (HP), never from a member's own width. A hidden layer's two backward paths exchange
+// through different slots: an owner-side member writes its dZ columns into the slice's slot (q, 0) and reads every column of it back after
+// the barrier, and a partials member writes its virtual shares' full-width partials and sums all Sv of them. So a gang whose members chose
+// differently summed partials no member wrote and read dZ columns a partial overwrote (the executor, Nov 13: h552-d2 x16 at 5
+// streamed shares of 18 virtual, widths 88-128, its two narrow members owner-side, every copy differing from its run alone). A member
+// narrower than HP needs less than the widest, so what the gang takes fits every member. The owner-side dW stays a share's own choice
+// (split_run's owndw_ok): a share's members, all of its width, compute its dW and its owners read it, so its slots never cross shares.
+KVM_SPLIT_HD inline bool kvm_split_odx(const KvmSplitDesc& d) {
+  if (d.L < 2) return false;   // the owner-side dX runs on hidden layers above 0 only
+  const int R = KVM_SPLIT_R, own_cap = d.Whs + d.HP * d.VP - d.Ws[0];   // the free span: the staging tiles through the head's weights
+  if (KVM_SPLIT_ODX == 2) return 2 * (d.HP + R) * KVM_SPLIT_ODXW_P <= own_cap;   // whole-row chunks: two slots
+  if (KVM_SPLIT_ODX == 1) {                                                         // a share at a time: a ring of 2 to 4 virtual-share slots
+    int wt = 0;
+    for (int t = 0; t < d.Sv; ++t) wt = wt > d.share0[t + 1] - d.share0[t] ? wt : d.share0[t + 1] - d.share0[t];
+    return (2 * kvm_split_stream_rows(d) * d.HP) / ((d.HP + R) * (wt + 4)) >= 2;
+  }
+  return false;
+}

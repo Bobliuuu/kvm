@@ -370,6 +370,24 @@ struct KvmConfig {
   int aging_us = 0;             // 0: strict priority; else one priority level per aging_us of waiting
   // A bundle of `tasks` tasks and `words` record words (KvmBundle::words()) goes in as one record: else it is cut into windows that drain.
   bool fits_one_record(long long tasks, long long words) const { return tasks <= live_cap && tasks <= max_tasks && words <= ring_words / 2; }
+  // Record words of a bundle with `tasks` tasks, `edges` edges and `args` argument words, as KvmBundle::words() counts them once it is read.
+  static long long record_words(long long tasks, long long edges, long long args) { return (KVM_REC_HDR + tasks * KVM_TASK_WORDS + edges + args + 7) & ~7ll; }
+  // Grow the capacities so such a bundle goes in as one record when it would otherwise be cut: a cut bundle runs window by window, each drained
+  // before the next (a 9,800-task bundle of 4 replicated runs ran its runs one after another in 10 windows, x4 slower). Above `max_live` tasks
+  // (a power of two, at most 2^20) or 2^26 words the capacities stay and the bundle streams. The ready rings cost 4 KiB of device memory per
+  // live_cap slot per scheduler class (KVM_NBUCKETS rings of 4 x live_cap 32-byte cells; a FIFO run needs one), so a caller with several classes
+  // passes a smaller max_live. Returns whether anything grew. kvm_exec's CLI and demo/kvm_run size their runs with it.
+  bool size_for_one_record(long long tasks, long long edges, long long args, long long max_live = 1 << 20) {
+    const long long words = record_words(tasks, edges, args);
+    if (tasks < 1 || edges < 0 || args < 0 || tasks > std::min<long long>(max_live, 1 << 20) || words >= (1ll << 26)) return false;
+    if (fits_one_record(tasks, words) && edges + 2 <= (long long)succ_cap) return false;
+    auto p2 = [](long long v) { long long r = 2; while (r < v) r <<= 1; return r; };
+    live_cap = (int)std::max<long long>(live_cap, p2(tasks));
+    max_tasks = std::max(max_tasks, live_cap);
+    ring_words = (int)std::max<long long>(ring_words, p2(2 * words + 128));
+    succ_cap = std::max<unsigned>(succ_cap, (unsigned)p2(edges + 2));
+    return true;
+  }
 #ifdef KVM_PROF_GAP
   int noop_ops = 0;             // profiling only: run the graph with every op body skipped (--noop-ops)
 #endif
@@ -1593,14 +1611,9 @@ int main(int argc, char** argv) {
     if (!sized && dirs.size() == 1) {
       Json m = JsonParser(read_file(dirs[0] + "/metadata.json")).parse();
       const long long nt = (long long)m.num("task_count", -1), ne = (long long)m.num("edge_count", -1), nw = (long long)m.num("args_words", -1);
-      const long long words = (KVM_REC_HDR + nt * KVM_TASK_WORDS + ne + nw + 7) & ~7ll;   // KvmBundle::words() of the bundle once read
-      auto p2 = [](long long v) { long long r = 2; while (r < v) r <<= 1; return r; };
-      if (ne >= 0 && nw >= 0 && (!cfg.fits_one_record(nt, words) || ne + 2 > (long long)cfg.succ_cap) && nt <= (1 << 20) && words < (1ll << 26)) {
-        cfg.live_cap = (int)std::max<long long>(cfg.live_cap, p2(nt)); cfg.max_tasks = std::max(cfg.max_tasks, cfg.live_cap);
-        cfg.ring_words = (int)std::max<long long>(cfg.ring_words, p2(2 * words + 128));
-        cfg.succ_cap = std::max<unsigned>(cfg.succ_cap, (unsigned)p2(ne + 2));
-        KLOG(2, "window sizing: %lld tasks, %lld words as one record (live_cap %d, ring %d words, successor ring %u words)", nt, words, cfg.live_cap, cfg.ring_words, cfg.succ_cap);
-      }
+      if (cfg.size_for_one_record(nt, ne, nw))
+        KLOG(2, "window sizing: %lld tasks, %lld words as one record (live_cap %d, ring %d words, successor ring %u words)", nt, KvmConfig::record_words(nt, ne, nw),
+             cfg.live_cap, cfg.ring_words, cfg.succ_cap);
     }
     KvmExec ex(cfg);
     std::vector<KvmBundle> bundles;

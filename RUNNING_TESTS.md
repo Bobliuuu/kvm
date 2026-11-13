@@ -12,6 +12,7 @@ result README or a local run recorded one; the GPU box is shared, so queueing fo
 | `python3 -I -m unittest discover -s tests/frontend` | frontend: autodiff vs finite differences of float64 oracles (6 model families), dataflow fuzz, golden models, manifest, serve, game CLI, generic training (any module, MSE/CE, four never-shipped models): 78 tests (not found by the command above: no `__init__.py`) | about 30 s (measured) |
 | `python3 -I -m unittest discover -s tests/dist -p 'test_*.py'` | partitioner and simulator (CPU) | seconds (32 tests, 4 s measured) |
 | `c++ -std=c++17 -Iinclude tests/host/test_adapt.cpp -o /tmp/t && /tmp/t` | adaptive controller, 8 host unit tests | seconds |
+| `nvcc -arch=compute_80 -code=compute_80 -std=c++17 -Iinclude -DKVM_LEAN tests/gpu/test_window_sizing.cu -o /tmp/w && /tmp/w` | window sizing shared by the CLI and `demo/kvm_run` (`KvmConfig::size_for_one_record`), 989 host checks; no GPU, no ptxas | about 2 min (the build) |
 | `dist/run_multigpu_tests.sh --cpu-only` | CPU stages of the distributed suite (simulator, transport, launcher) | minutes |
 | `for f in $(git ls-files '*.sh'); do bash -n "$f"; done` | shell syntax of every script | seconds |
 

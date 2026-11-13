@@ -21,6 +21,9 @@ Run one step for the gradient bars, in either numerics: after the first AdamW up
 lr x sign(g), so rounding flips it where a gradient is near zero, TF32's and float32's alike), and later steps' gradients and moments are
 not comparable element by element. They are reported, and a run of several steps is judged by its losses. Measured on a d128 GPT in
 precise mode (3xTF32): gradients within 3.8e-6 of each tensor's scale after one step, 9.2e-4 after two.
+The step-1 bars hold for 3xTF32 or exact GEMMs (16 or 1024 in the tiles' numerics), the arithmetic they were set on. With 1xTF32 GEMMs
+(gpt-tiny's bundle: numerics 0) the production kernel itself reads 8.7e-4 of scale on one tensor after one step, so there they are
+reported, not judged: such a run is judged against float64, relative to the production kernel's own distance to it.
 --resync K judges a later step as strictly as the first: the bed starts from the VM's own weights and moments after K steps, its step
 counter K steps on, and runs step K + 1 alone, so no earlier update can part the two trajectories.
 --time-only skips the VM and every judgment: it writes the bed's inputs and runs it, for its time (and with --bed-args clock, the bed's
@@ -86,6 +89,13 @@ def vm_reference(spec: dict, wdir: Path, steps: int, work: Path) -> dict:
     return out
 
 
+def gemm_numerics(spec: dict) -> int:
+    """The GEMM tiles' numerics bits (16 precise = 3xTF32, 256 truncated, 1024 exact): one value on every tile, as the matcher requires."""
+    bits = {t['args'].get('flags', 0) & (16 | 256 | 1024) for g in spec['graphs'] for t in g['tasks'] if t['op'] == 'matmul_tile'}
+    assert len(bits) == 1, f'GEMM numerics differ between tiles: {sorted(bits)}'
+    return bits.pop()
+
+
 def write_inputs(model: ref.Model, spec: dict, work: Path, state: dict | None = None, done: int = 0) -> tuple[list[str], list[int]]:
     """meta.txt and the binaries the bed reads; returns the parameter names and sizes in slot order. With `state` (a VM reference after
     `done` steps), the weights and moments are the VM's at that point and the step counter starts `done` steps later."""
@@ -98,10 +108,7 @@ def write_inputs(model: ref.Model, spec: dict, work: Path, state: dict | None = 
     tgt = [int(x) for x in model.init[wt['src']]]
     assert all(float(x) == int(x) for x in model.init[wi['src']]), 'token stream is not integral'
     step0 = int(model.init[model.step_buf][0]) + done
-    # the GEMM tiles' numerics bits (16 precise = 3xTF32, 256 truncated, 1024 exact): one value on every tile, as the matcher requires
-    bits = {t['args'].get('flags', 0) & (16 | 256 | 1024) for g in spec['graphs'] for t in g['tasks'] if t['op'] == 'matmul_tile'}
-    assert len(bits) == 1, f'GEMM numerics differ between tiles: {sorted(bits)}'
-    mm_numerics = bits.pop()
+    mm_numerics = gemm_numerics(spec)
     lines = [f'N {model.N}', f'T {model.T}', f'B {model.B}', f'd {model.d}', f'H {model.H}', f'hd {model.hd}', f'F {model.F}',
              f'V {model.V}', f'L {model.L}', f'steps {model.steps}', f'ln_eps {model.ln_eps!r}', f'theta {model.theta!r}',
              f'scale {model.scale!r}', f'lr {model.lr!r}', f'beta1 {model.b1!r}', f'beta2 {model.b2!r}', f'adam_eps {model.eps!r}',
@@ -154,9 +161,9 @@ def judge_losses(losses: list, vmr: dict, tol: float) -> tuple[bool, str]:
                   f'worst of {len(losses)} {lw:.2e} relative, 1/count off by {inv:.1e}: {"ok" if good else "FAIL"}')
 
 
-def judge(run: dict, vmr: dict, names: list[str], tol: float, lr: float, grads_judged: bool) -> tuple[bool, list[str]]:
-    """Every step's loss against the VM; the last step's gradients and moments too where they are comparable element by element
-    (grads_judged: a single step, before any AdamW update parts the trajectories), else reported only."""
+def judge(run: dict, vmr: dict, names: list[str], tol: float, lr: float, unjudged: str | None) -> tuple[bool, list[str]]:
+    """Every step's loss against the VM; the last step's gradients and moments too where their bars hold (unjudged None: a single step,
+    before any AdamW update parts the trajectories, in the numerics the bars were set on), else reported, with `unjudged` the reason."""
     ok, line = judge_losses(run['losses'], vmr, tol)
     lines = [line]
     for what, key, limit in (('gradients', 'g', tol), ('first moments', 'm', tol), ('second moments', 'v', 2 * tol)):
@@ -167,11 +174,11 @@ def judge(run: dict, vmr: dict, names: list[str], tol: float, lr: float, grads_j
             if e > worst:
                 worst, wname = e, n
         good = worst < limit
-        if grads_judged:
+        if unjudged is None:
             ok &= good
             lines.append(f'{what} (last step): worst {worst:.2e} of its tensor\'s scale ({wname}): {"ok" if good else "FAIL"}')
         else:
-            lines.append(f'{what} (last step): worst {worst:.2e} of its tensor\'s scale ({wname}): reported (after AdamW steps)')
+            lines.append(f'{what} (last step): worst {worst:.2e} of its tensor\'s scale ({wname}): reported ({unjudged})')
     wl = 0.0
     wname = ''
     for n in names:
@@ -240,6 +247,9 @@ def main() -> int:
     log(f'model: L {model.L}, d {model.d}, heads {model.H} x {model.hd}, MLP {model.F}, V {model.V}, {model.B} x {model.T} rows; '
         f'{a.steps} steps; work {work}')
     names, sizes = write_inputs(model, spec, work, start, k0)
+    numerics = gemm_numerics(spec)
+    unjudged = ('after AdamW steps' if a.steps != 1 else None if numerics & (16 | 1024) else
+                f'1xTF32 GEMMs, numerics {numerics}: the bars are 3xTF32\'s; judge against float64, relative to the production kernel')
     runs, fail = {}, 0
     for G in [int(x) for x in a.gangs.split(',')] if a.bed else []:
         cmd = a.launcher.split() + [a.bed, str(work), str(G), *a.bed_args.split()]
@@ -260,7 +270,7 @@ def main() -> int:
         for key in ('p', 'm', 'v', 'g'):
             run[key] = split(read_f32(out / f'{key}.bin'), names, sizes)
         runs[G] = run
-        ok, lines = judge(run, vmr, names, a.tol, model.lr, grads_judged=a.steps == 1)
+        ok, lines = judge(run, vmr, names, a.tol, model.lr, unjudged)
         for line in lines:
             log(f'G {G}: {line}')
         fail += not ok

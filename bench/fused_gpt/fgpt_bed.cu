@@ -18,6 +18,7 @@
 #define BED_NAME "fgpt_bed"
 #include "bed_common.cuh"
 #include "kvm_fused_gpt.cuh"
+#include "kvm_fgpt1.cuh"
 
 static const char* const kMarks[kvm_fgpt::MK_COUNT] = {
     "input + embedding", "LN1", "  wait: all-gather h", "  item: stage h rows, W", "  item: q k v GEMM", "  item: RoPE + keep q k v",
@@ -30,6 +31,25 @@ static const char* const kMarks[kvm_fgpt::MK_COUNT] = {
     "  item: key side: sums, RoPE, dbk dbv", "  item: dWk dWv, k v dh rows", "  doer: dW1 (MLP); dWq, dbq (attention)", "attention backward, rest", "  wait: reduce-scatter dh",
     "dh sum + LN1 backward", "  wait: all-gather gx (emb)", "embedding gradient", "attention + replicated sums, squares", "norm partial",
     "  wait: norm", "AdamW", "  wait: step end"};
+// The one-block form (form=1) marks its backward finer, in slots the gang's own marks name for its waits and items, in the enum's order, so
+// its table reads in step order under these names.
+static const char* mark_name1(int k) {
+  using namespace kvm_fgpt;
+  switch (k) {
+    case MK_X_GFC2: return "MLP bwd: db2, dW2 | dU";
+    case MK_MLPB: return "MLP bwd: db1, LN2 again";
+    case MK_X_DH2: return "MLP bwd: dW1 | dh2";
+    case MK_LN2B: return "MLP bwd: LN2 backward";
+    case MK_UB_STAGE: return "attn bwd: dbo, dWo | dO | P";
+    case MK_UB_DO: return "attn bwd: dV | dP";
+    case MK_UB_STAGE2: return "attn bwd: delta, dS";
+    case MK_UB_P: return "attn bwd: dQ | dK";
+    case MK_UB_DV_DS: return "attn bwd: RoPE back, LN1 again";
+    case MK_UB_DQ_DK: return "attn bwd: dbqkv, dWqkv | dh1";
+    case MK_ATTNB: return "attn bwd: LN1 backward";
+    default: return kMarks[k];
+  }
+}
 
 // `acc` (plain run): member 0's in-kernel nanoseconds, start to end, so the run's time excludes the launch.
 template <bool CLOCK, bool COUNTED, bool Z>   // COUNTED: the gang's crossing form (kvm_gang::counted_form(G)); Z: ZBW's instance (kvm_fgpt_zbw_of); both picked at launch
@@ -47,11 +67,38 @@ __global__ void __launch_bounds__(KVM_FGPT_NT, 1) fgpt_kernel(const KvmFgptDesc*
     r = kvm_fgpt::run<COUNTED, Z>(*d, blockIdx.x, sm, sf, err, fail, ph);
     ph.stop(d->G);
   } else {
-    const unsigned long long t0 = gtimer();
+    __shared__ unsigned long long t0;   // the run's start in shared memory, not two 64-bit registers held across the run (+0.6% a step)
+    __shared__ long long c0;
+    if (threadIdx.x == 0) { t0 = gtimer(); c0 = clock64(); }
     r = kvm_fgpt::run<COUNTED, Z>(*d, blockIdx.x, sm, sf, err, fail);
-    if (threadIdx.x == 0 && blockIdx.x == 0 && acc) acc[0] = gtimer() - t0;
+    if (threadIdx.x == 0 && blockIdx.x == 0 && acc) { acc[0] = gtimer() - t0; acc[1] = (unsigned long long)(clock64() - c0); }
   }
   if (threadIdx.x == 0) ok[blockIdx.x] = r ? 1 : 0;
+}
+
+// form=1 (kvm_fgpt1.cuh): the whole step in one block, its state on chip. Same arguments and outputs as the gang's kernel, one block.
+template <bool CLOCK>
+__global__ void __launch_bounds__(KVM_FGPT_NT, 1) fgpt1_kernel(const KvmFgptDesc* d, int smem_floats, int* err, int* ok, unsigned long long* acc,
+                                                               int fault_member, int fault_floats) {
+  extern __shared__ float sm[];
+  (void)fault_member; (void)fault_floats;
+  const auto fail = [err](int code) { atomicCAS(err, 0, code); };
+  bool r;
+  if constexpr (CLOCK) {
+    __shared__ unsigned long long sacc[kvm_fgpt::MK_COUNT];
+    PhaseClock<kvm_fgpt::MK_COUNT> ph{acc, sacc, 0, 0, 0};
+    ph.start();
+    r = kvm_fgpt1::run1(*d, sm, smem_floats, fail, ph);
+    ph.stop(1);
+  } else {
+    __shared__ unsigned long long t0;   // the run's start in shared memory, not two 64-bit registers held across the run (+0.6% a step)
+    __shared__ long long c0;
+    if (threadIdx.x == 0) { t0 = gtimer(); c0 = clock64(); }
+    auto ph = [](int) {};
+    r = kvm_fgpt1::run1(*d, sm, smem_floats, fail, ph);
+    if (threadIdx.x == 0 && acc) { acc[0] = gtimer() - t0; acc[1] = (unsigned long long)(clock64() - c0); }
+  }
+  if (threadIdx.x == 0) ok[0] = r ? 1 : 0;
 }
 
 int main(int argc, char** argv) {
@@ -59,11 +106,12 @@ int main(int argc, char** argv) {
   const std::string dir = argv[1];
   const int G = atoi(argv[2]);
   bool clocked = false;
-  int qb_arg = 0, rows_arg = 0, fault_member = -1, fault_floats = 0;
+  int qb_arg = 0, rows_arg = 0, fault_member = -1, fault_floats = 0, form = 0;
   for (int i = 3; i < argc; ++i) {
     if (!strcmp(argv[i], "clock")) clocked = true;
     else if (!strncmp(argv[i], "qb=", 3)) qb_arg = atoi(argv[i] + 3);
     else if (!strncmp(argv[i], "rows=", 5)) rows_arg = atoi(argv[i] + 5);
+    else if (!strncmp(argv[i], "form=", 5)) form = atoi(argv[i] + 5);
     else if (!strncmp(argv[i], "fault=", 6)) { if (sscanf(argv[i] + 6, "%d:%d", &fault_member, &fault_floats) != 2) die("fault=M:F, a member and its floats"); }
     else { fprintf(stderr, "fgpt_bed: unknown argument %s\n", argv[i]); return 2; }
   }
@@ -105,10 +153,25 @@ int main(int argc, char** argv) {
     cudaFuncAttributes fa, fz; CK(cudaFuncGetAttributes(&fa, pick(false))); CK(cudaFuncGetAttributes(&fz, pick(true)));
     budget = ((long long)optin - (long long)(fa.sharedSizeBytes > fz.sharedSizeBytes ? fa.sharedSizeBytes : fz.sharedSizeBytes)) / 4;
   }
+  if (form != 0 && (form != 1 || G != 1)) die("form=1 runs the step in one block: G must be 1");
+  if (form == 1) {   // the one-block form's own layout; the gang's row chunk and fit don't apply
+    const kvm_fgpt1::Layout y1 = kvm_fgpt1::kvm_fgpt1_layout(h.N, h.T, h.d, h.H, h.F, h.V, h.L);
+    int dev1 = 0, optin1 = 0;
+    CK(cudaGetDevice(&dev1));
+    CK(cudaDeviceGetAttribute(&optin1, cudaDevAttrMaxSharedMemoryPerBlockOptin, dev1));
+    cudaFuncAttributes f1; CK(cudaFuncGetAttributes(&f1, clocked ? (void*)fgpt1_kernel<true> : (void*)fgpt1_kernel<false>));
+    const long long budget1 = ((long long)optin1 - (long long)f1.sharedSizeBytes) / 4;
+    printf("fgpt_bed: form 1 (one block, state on chip): %lld floats of shared memory of this GPU's %lld a block; %d registers a thread, %zu B local; "
+           "relaxed numerics mask %d (KVM_FGPT1_FAST: 1 softmax, 2 CE, 4 LayerNorm, 8 GELU; 0 keeps run's bits)\n",
+           y1.total, budget1, f1.numRegs, (size_t)f1.localSizeBytes, kvm_fgpt1::kFast);
+    if (y1.total == 0 || y1.total > budget1) { fprintf(stderr, "fgpt_bed: form 1 does not fit this shape in one block\n"); return 3; }
+    budget = y1.total;
+    h.rows = h.N;
+  } else
   h.rows = rows_arg > 0 ? rows_arg : kvm_fgpt_rows_for(h.N, h.T, h.d, h.H, h.F, h.V, G, h.qb, budget);
   if (h.rows <= 0) { fprintf(stderr, "fgpt_bed: no row chunk (N, 128 or 64) fits a member of a gang of %d in this GPU's %lld floats a block: a larger gang may\n", G, budget); return 3; }
   if (h.rows > h.N || (h.rows < h.N && h.rows % 16)) die("rows must be N or a multiple of 16 below it");
-  const long long smem_floats = kvm_fgpt_smem_floats(h.N, h.T, h.d, h.H, h.F, h.V, G, h.qb, h.rows);
+  const long long smem_floats = form == 1 ? budget : kvm_fgpt_smem_floats(h.N, h.T, h.d, h.H, h.F, h.V, G, h.qb, h.rows);
   const size_t smem = (size_t)smem_floats * 4;
   int smem_arg = (int)smem_floats;
   if (smem_floats > budget) {
@@ -116,7 +179,7 @@ int main(int argc, char** argv) {
     return 3;
   }
   const KvmFgptZbwRun zplan = kvm_fgpt_zbw_of(h.N, h.T, h.d, h.H, h.F, G, h.qb, h.rows, smem_floats);   // as the executor picks it
-  kern = pick(zplan.any());
+  kern = form == 1 ? (clocked ? (void*)fgpt1_kernel<true> : (void*)fgpt1_kernel<false>) : pick(zplan.any());
   KvmFgptDesc* dd;
   CK(cudaMalloc(&dd, sizeof(KvmFgptDesc)));
   CK(cudaMemcpy(dd, &h, sizeof(KvmFgptDesc), cudaMemcpyHostToDevice));
@@ -142,7 +205,7 @@ int main(int argc, char** argv) {
     else printf("fgpt_bed: ZBW for the attention: off\n");
   }
   unsigned long long* dacc = nullptr;
-  const size_t acc_words = clocked ? (size_t)G * (kvm_fgpt::MK_COUNT + 2) : 1;
+  const size_t acc_words = clocked ? (size_t)G * (kvm_fgpt::MK_COUNT + 2) : 2;   // plain: member 0's nanoseconds and SM cycles
   CK(cudaMalloc(&dacc, acc_words * 8)); CK(cudaMemset(dacc, 0, acc_words * 8));
   bed_warm(sms);
   void* args[] = {&dd, &smem_arg, &derr, &dok, &dacc, &fault_member, &fault_floats};
@@ -162,11 +225,20 @@ int main(int argc, char** argv) {
   CK(cudaMemcpy(&step, run.dstep, 4, cudaMemcpyDeviceToHost));
   int done = 0;
   for (int b = 0; b < G; ++b) done += ok[b];
-  unsigned long long kern_ns = 0;
-  if (!clocked) CK(cudaMemcpy(&kern_ns, dacc, 8, cudaMemcpyDeviceToHost));
+  unsigned long long plain[2] = {0, 0};   // member 0's in-kernel nanoseconds and SM cycles, start to end (plain run)
+  if (!clocked) CK(cudaMemcpy(plain, dacc, 16, cudaMemcpyDeviceToHost));
   printf("fgpt_bed: run %.3f ms with its launch; in the kernel %.1f us a step (member 0's globaltimer; a hint, not a chip's verdict); error word %d, "
-         "%d of %d members finished, step counter %d -> %d\n", ms, kern_ns / 1000.0 / h.steps, err, done, G, step0, step);
-  if (clocked) bed_phase_table(dacc, G, kvm_fgpt::MK_COUNT, h.steps, kMarks);   // the phase table: microseconds a step, the members' mean and largest
+         "%d of %d members finished, step counter %d -> %d\n", ms, plain[0] / 1000.0 / h.steps, err, done, G, step0, step);
+  if (!clocked && plain[0] > 0) {   // the run's own clock: a ratio of cycles holds across the SM clock's states (1,410 or about 1,095 MHz)
+    const double mhz = 1e3 * (double)plain[1] / (double)plain[0];
+    printf("fgpt_bed: in the kernel %.2f kcycles a step at %.0f MHz (member 0's clock64 over its globaltimer)%s\n", plain[1] / 1000.0 / h.steps,
+           mhz, mhz < 1380.0 ? "; SLOW CLOCK STATE: under 1,380 MHz, rerun before quoting this run's microseconds" : "");
+  }
+  if (clocked) {   // the phase table: microseconds a step, the members' mean and largest
+    const char* names[kvm_fgpt::MK_COUNT];
+    for (int k = 0; k < kvm_fgpt::MK_COUNT; ++k) names[k] = form == 1 ? mark_name1(k) : kMarks[k];
+    bed_phase_table(dacc, G, kvm_fgpt::MK_COUNT, h.steps, names);
+  }
   // ---- outputs
   bed_write(dir, model, run, clocked, err, done, step, ms);
   return err || done != G ? 1 : 0;

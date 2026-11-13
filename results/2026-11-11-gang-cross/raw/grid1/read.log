@@ -1,0 +1,77 @@
+beds_next: run /root/work/grid1/run-20261111T064816Z
+beds_next: flag lines grid_bed b925e4b27c873e50 split_bed 5108f5a8cabbb265; counter grid_bed 2c6216364cff1387 split_bed 915f9ef021edf60f 2026-11-11T06:48:16Z
+grid_h1024_d2_p108_new_r1 rc=0: check ok; 160.02 us a step in the kernel
+grid_h1024_d2_p108_ctrl_r1 rc=0: check ok; 134.45 us a step in the kernel
+split_h256_d4_s18_new_r1 rc=0: check ok; 126.44 us a step in the kernel
+split_h256_d4_s18_ctrl_r1 rc=0: check ok; 108.68 us a step in the kernel
+split_h256_d4_s16_new_r1 rc=0: check ok; 116.63 us a step in the kernel
+split_h256_d4_s16_ctrl_r1 rc=0: check ok; 101.73 us a step in the kernel
+split_h576_d1_s18_new_r1 rc=0: check ok; 43.85 us a step in the kernel
+split_h576_d1_s18_ctrl_r1 rc=0: check ok; 39.52 us a step in the kernel
+grid_h496_d3_p108_new_r1 rc=0: check ok; 180.82 us a step in the kernel
+grid_h496_d3_p108_ctrl_r1 rc=0: check ok; 157.42 us a step in the kernel
+grid_h512_d4_p108_new_r1 rc=0: check ok; 231.41 us a step in the kernel
+grid_h512_d4_p108_ctrl_r1 rc=0: check ok; 202.66 us a step in the kernel
+grid_h600_d3_p108_new_r1 rc=0: check ok; 190.18 us a step in the kernel
+grid_h1024_d2_p108_ctrl_r2 rc=0: check ok; 134.04 us a step in the kernel
+grid_h1024_d2_p108_new_r2 rc=0: check ok; 160.04 us a step in the kernel
+split_h256_d4_s18_ctrl_r2 rc=0: check ok; 108.58 us a step in the kernel
+split_h256_d4_s18_new_r2 rc=0: check ok; 130.39 us a step in the kernel
+split_h256_d4_s16_ctrl_r2 rc=0: check ok; 102.11 us a step in the kernel
+split_h256_d4_s16_new_r2 rc=0: check ok; 116.66 us a step in the kernel
+split_h576_d1_s18_ctrl_r2 rc=0: check ok; 39.84 us a step in the kernel
+split_h576_d1_s18_new_r2 rc=0: check ok; 42.83 us a step in the kernel
+grid_h496_d3_p108_ctrl_r2 rc=0: check ok; 156.04 us a step in the kernel
+grid_h496_d3_p108_new_r2 rc=0: check ok; 180.36 us a step in the kernel
+grid_h512_d4_p108_ctrl_r2 rc=0: check ok; 202.32 us a step in the kernel
+grid_h512_d4_p108_new_r2 rc=0: check ok; 230.53 us a step in the kernel
+grid_h600_d3_p108_new_r2 rc=0: check ok; 180.32 us a step in the kernel
+grid_h1024_d2_p108_new_r3 rc=0: check ok; 159.91 us a step in the kernel
+grid_h1024_d2_p108_ctrl_r3 rc=0: check ok; 133.62 us a step in the kernel
+split_h256_d4_s18_new_r3 rc=0: check ok; 127.95 us a step in the kernel
+split_h256_d4_s18_ctrl_r3 rc=0: check ok; 108.44 us a step in the kernel
+split_h256_d4_s16_new_r3 rc=0: check ok; 115.29 us a step in the kernel
+split_h256_d4_s16_ctrl_r3 rc=0: check ok; 101.70 us a step in the kernel
+split_h576_d1_s18_new_r3 rc=0: check ok; 42.75 us a step in the kernel
+split_h576_d1_s18_ctrl_r3 rc=0: check ok; 39.81 us a step in the kernel
+grid_h496_d3_p108_new_r3 rc=0: check ok; 179.31 us a step in the kernel
+grid_h496_d3_p108_ctrl_r3 rc=0: check ok; 156.35 us a step in the kernel
+grid_h512_d4_p108_new_r3 rc=0: check ok; 225.63 us a step in the kernel
+grid_h512_d4_p108_ctrl_r3 rc=0: check ok; 202.16 us a step in the kernel
+grid_h600_d3_p108_new_r3 rc=0: check ok; 188.74 us a step in the kernel
+grid_h1024_d2_p108_ctrl_r4 rc=0: check ok; 133.62 us a step in the kernel
+grid_h1024_d2_p108_new_r4 rc=0: check ok; 159.55 us a step in the kernel
+split_h256_d4_s18_ctrl_r4 rc=0: check ok; 108.52 us a step in the kernel
+split_h256_d4_s18_new_r4 rc=0: check ok; 131.29 us a step in the kernel
+split_h256_d4_s16_ctrl_r4 rc=0: check ok; 101.57 us a step in the kernel
+split_h256_d4_s16_new_r4 rc=0: check ok; 116.04 us a step in the kernel
+split_h576_d1_s18_ctrl_r4 rc=0: check ok; 39.67 us a step in the kernel
+split_h576_d1_s18_new_r4 rc=0: check ok; 43.14 us a step in the kernel
+grid_h496_d3_p108_ctrl_r4 rc=0: check ok; 156.48 us a step in the kernel
+grid_h496_d3_p108_new_r4 rc=0: check ok; 179.42 us a step in the kernel
+grid_h512_d4_p108_ctrl_r4 rc=0: check ok; 202.96 us a step in the kernel
+grid_h512_d4_p108_new_r4 rc=0: check ok; 231.50 us a step in the kernel
+grid_h600_d3_p108_new_r4 rc=0: check ok; 189.21 us a step in the kernel
+grid_h1024_d2_p108_new_r5 rc=0: check ok; 159.93 us a step in the kernel
+grid_h1024_d2_p108_ctrl_r5 rc=0: check ok; 133.97 us a step in the kernel
+split_h256_d4_s18_new_r5 rc=0: check ok; 130.34 us a step in the kernel
+split_h256_d4_s18_ctrl_r5 rc=0: check ok; 108.46 us a step in the kernel
+split_h256_d4_s16_new_r5 rc=0: check ok; 116.29 us a step in the kernel
+split_h256_d4_s16_ctrl_r5 rc=0: check ok; 101.54 us a step in the kernel
+split_h576_d1_s18_new_r5 rc=0: check ok; 42.00 us a step in the kernel
+split_h576_d1_s18_ctrl_r5 rc=0: check ok; 39.96 us a step in the kernel
+grid_h496_d3_p108_new_r5 rc=0: check ok; 180.85 us a step in the kernel
+grid_h496_d3_p108_ctrl_r5 rc=0: check ok; 156.41 us a step in the kernel
+grid_h512_d4_p108_new_r5 rc=0: check ok; 230.56 us a step in the kernel
+grid_h512_d4_p108_ctrl_r5 rc=0: check ok; 202.41 us a step in the kernel
+grid_h600_d3_p108_new_r5 rc=0: check ok; 188.69 us a step in the kernel
+BEDS_NEXT_GPU_END
+grid_h1024_d2_p108     candidate median   159.93 us (n 5, slow 0)  control median   133.97 us (n 5, slow 0)  paired x0.838  Fisher p 1.000  check lines 5 identical
+split_h256_d4_s18      candidate median   130.34 us (n 5, slow 0)  control median   108.52 us (n 5, slow 0)  paired x0.833  Fisher p 1.000  check lines 5 identical
+split_h256_d4_s16      candidate median   116.29 us (n 5, slow 0)  control median   101.70 us (n 5, slow 0)  paired x0.875  Fisher p 1.000  check lines 5 identical
+split_h576_d1_s18      candidate median    42.83 us (n 5, slow 0)  control median    39.81 us (n 5, slow 0)  paired x0.930  Fisher p 1.000  check lines 5 identical
+grid_h496_d3_p108      candidate median   180.36 us (n 5, slow 0)  control median   156.41 us (n 5, slow 0)  paired x0.871  Fisher p 1.000  check lines 5 identical
+grid_h512_d4_p108      candidate median   230.56 us (n 5, slow 0)  control median   202.41 us (n 5, slow 0)  paired x0.878  Fisher p 1.000  check lines 5 identical
+grid_h600_d3_p108      candidate median   188.74 us (n 5, slow 0)
+verdict: PASS: 0 problem(s) (a row with a failed check, missing rounds or a slow mode; a missing end), 7 rows expected
+BEDS_NEXT_END

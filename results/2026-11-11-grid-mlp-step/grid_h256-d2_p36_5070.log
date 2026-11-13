@@ -1,0 +1,2 @@
+NVIDIA GeForce RTX 5070 Laptop GPU, 36 SMs, 99 KB shared memory a block (opt-in); model E 48 V 100 H 256 depth 2, T 96; 36 members: layer 0 1 x 16, hidden 16 x 2, head 16 x 1; 98.9 KB a block, 10 barriers a step
+does not fit: 101312 dynamic + 128 static > 101376 bytes a block; raise --members

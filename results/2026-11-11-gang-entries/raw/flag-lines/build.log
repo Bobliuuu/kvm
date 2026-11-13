@@ -1,0 +1,7 @@
+build: old 0923b9b, new 63b5425, nvcc Build cuda_12.8.r12.8/compiler.35583870_0, 2026-11-11T02:59:46Z
+ptx-check (new, the panel's flags, PTX only) rc=0 in 145 s; warnings: 5
+new beds built: grid_bed c838496f76add29e, split_bed (Q 2) 5315226d3c211102; spills: 1 lines non-zero
+barrier test and bench built (sm_120)
+sm_80 grid_bed: 00ca9c5389ecf191, registers Used 223 registers , non-zero spill lines 0
+sm_80 split_bed: 196b80ce7999b699, registers Used 252 registers Used 254 registers , non-zero spill lines 0
+build: done in 247 s

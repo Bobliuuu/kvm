@@ -101,7 +101,7 @@ static double kvm_tile_mflop(int op, const int32_t* a) {
 static const std::map<std::string, double>& kvm_static_costs() {
   static const std::map<std::string, double> base = {{"noop", 0.1}, {"matmul_tile", 4.0}, {"adamw", 5.0}, {"gradnorm_partial", 2.0}, {"gradnorm_finish", 2.0}, {"colsum", 2.0},
     {"layernorm_fwd", 7.0}, {"layernorm_bwd_dx", 8.0}, {"norm_bwd_params", 5.0}, {"attn_fwd", 8.0}, {"attn_bwd_dq", 9.0}, {"attn_bwd_dkv", 10.0}, {"attn_bwd_delta", 6.0},
-    {"rope_fwd", 4.0}, {"rope_bwd", 4.0}, {"embedding_fwd", 3.0}, {"embedding_bwd", 3.0}, {"softmax_ce_fwd", 3.0}, {"softmax_ce_bwd", 3.0}, {"softmax_ce_reduce", 2.0}, {"gelu_bwd", 3.0}, {"gelu_fwd", 3.0}, {"select_window", 2.0}, {"counter_inc", 1.0}, {"fmlp_slice", 60.0}, {"fmlp_sgd", 8.0}, {"fmlp_split", 40.0},
+    {"rope_fwd", 4.0}, {"rope_bwd", 4.0}, {"embedding_fwd", 3.0}, {"embedding_bwd", 3.0}, {"softmax_ce_fwd", 3.0}, {"softmax_ce_bwd", 3.0}, {"softmax_ce_reduce", 2.0}, {"gelu_bwd", 3.0}, {"gelu_fwd", 3.0}, {"select_window", 2.0}, {"counter_inc", 1.0}, {"fmlp_slice", 60.0}, {"fmlp_sgd", 8.0}, {"fmlp_split", 40.0}, {"fmlp_grid", 60.0},
     {"sgd_range", 4.0}, {"softmax_ce_fused", 4.0}};
   return base;
 }
@@ -859,30 +859,46 @@ class KvmExec {
     ops.noop = kvm_op_by_name("noop"); ops.select_window = kvm_op_by_name("select_window"); ops.embedding_fwd = kvm_op_by_name("embedding_fwd"); ops.matmul_tile = kvm_op_by_name("matmul_tile");
     ops.softmax_ce_fwd = kvm_op_by_name("softmax_ce_fwd"); ops.softmax_ce_reduce = kvm_op_by_name("softmax_ce_reduce"); ops.softmax_ce_bwd = kvm_op_by_name("softmax_ce_bwd"); ops.softmax_ce_fused = kvm_op_by_name("softmax_ce_fused");
     ops.gelu_bwd = kvm_op_by_name("gelu_bwd"); ops.colsum = kvm_op_by_name("colsum"); ops.embedding_bwd = kvm_op_by_name("embedding_bwd"); ops.sgd = kvm_op_by_name("sgd"); ops.sgd_range = kvm_op_by_name("sgd_range");
-    ops.fmlp_slice = kvm_op_by_name("fmlp_slice"); ops.fmlp_sgd = kvm_op_by_name("fmlp_sgd"); ops.fmlp_split = kvm_op_by_name("fmlp_split");
+    ops.fmlp_slice = kvm_op_by_name("fmlp_slice"); ops.fmlp_sgd = kvm_op_by_name("fmlp_sgd"); ops.fmlp_split = kvm_op_by_name("fmlp_split"); ops.fmlp_grid = kvm_op_by_name("fmlp_grid");
     std::vector<KvmFuseBuf> infos(bufs_.size());
     for (size_t i = 0; i < bufs_.size(); ++i) infos[i] = KvmFuseBuf{bufs_[i].rows, bufs_[i].cols, bufs_[i].ld, bufs_[i].dtype};
     const KvmSOpLookup op_of = [](int id) { const KvmOpInfo* i = kvm_op(id); KvmSOpInfo v; if (i) { v.arity = i->arity; v.types = i->types; kvm_static_gang_args(i->sig, v); } return v; };
     KvmFuseOptions opts; opts.workers = workers; opts.keep = keep; opts.smem_floats = fused_smem_floats();
     KvmFuseResult r = kvm_fuse_mlp(b.tasks, b.succ, b.args, infos, ops, op_of, opts);
     for (const std::string& line : r.report) KLOG(2, "fuse: %s", line.c_str());
+    if (!r.dropped.empty()) KLOG(1, "fuse: nothing fused: %s, and each fused form runs on a static-kernel entry of its own", r.dropped.c_str());
     if (r.fused_runs) KLOG(2, "fuse: shared-memory budget %d floats (%d bytes) a fused block", opts.smem_floats, opts.smem_floats * 4);
-    KLOG(2, "fuse: %d run(s) fused, %d unchanged; %d tasks replaced by %d", r.fused_runs, r.unchanged_runs, r.replaced_tasks, r.new_tasks);
+    KLOG(2, "fuse: %d run(s) fused, %d unchanged; %d tasks replaced by %d; static kernel entry: %s", r.fused_runs, r.unchanged_runs, r.replaced_tasks, r.new_tasks, kvm_fuse_entry_name(r.entry).c_str());
     return r;
   }
 
-  struct FusedState { KvmFusedDesc* desc = nullptr; KvmSplitDesc* split = nullptr; std::vector<void*> allocs; int smem_bytes = 0; };
+  struct FusedState { KvmFusedDesc* desc = nullptr; KvmSplitDesc* split = nullptr; KvmGridDesc* grid = nullptr; std::vector<void*> allocs; int smem_bytes = 0; };
   // One descriptor per fused run, with its partial-gradient scratch (zeroed), and the shared memory the largest run's slice (or split member) needs. A run's index is its descriptor's in both
   // tables, the one its form uses (kvm_fuse.h's ops carry it as `desc`); the other table's entry is unused. Buffers are already device-allocated (after prepare()).
   FusedState make_fused_state(const std::vector<KvmFuseRun>& runs) {
     FusedState st;
     std::vector<KvmFusedDesc> descs(runs.size());
     std::vector<KvmSplitDesc> splits(runs.size());
-    bool any_split = false;
+    std::vector<KvmGridDesc> grids(runs.size());
+    bool any_split = false, any_grid = false;
     const auto scratch = [&](size_t floats) { float* p; CK(cudaMalloc(&p, floats * sizeof(float))); CK(cudaMemset(p, 0, floats * sizeof(float))); st.allocs.push_back(p); return p; };
     const auto param = [&](int idx) { return static_cast<float*>(bufs_[idx].p); };
     for (size_t i = 0; i < runs.size(); ++i) {
       const KvmFuseRun& r = runs[i];
+      if (r.grid) {   // the grid form: one copy of the model over P members, its partials and exchanges, the gang's barrier words (kvm_fused_grid.h)
+        KvmGridDesc& d = grids[i]; any_grid = true;
+        d.V = r.V; d.E = r.E; d.L = r.L; d.H = r.H[0]; d.T = r.T; d.P = r.P; d.lr = r.lr;
+        const int floats = kvm_grid_layout(d);
+        if (floats < 0 || floats > r.smem_floats) throw std::runtime_error("fuse: a grid run's layout does not fit what the pass sized it for");
+        st.smem_bytes = std::max(st.smem_bytes, floats * (int)sizeof(float));
+        const size_t TH = (size_t)d.T * d.Hp;   // the step's activations and partials, at the padded width
+        d.emb = param(r.wte); d.wh = param(r.head);
+        for (int l = 0; l < r.L; ++l) { d.w[l] = param(r.w[l]); d.b[l] = param(r.b[l]); d.Y[l] = scratch(TH); }
+        d.part = scratch(d.L > 1 ? (size_t)d.ka * TH : 1); d.hpart = scratch((size_t)d.kah * d.T * d.VP); d.dlog = scratch((size_t)d.T * d.VP);
+        d.dyp = scratch((size_t)std::max(d.nb, 1) * TH); d.dz = scratch(TH); d.dx0 = scratch((size_t)d.nb0 * d.T * d.E); d.rloss = scratch(d.T);
+        d.ctl = reinterpret_cast<unsigned*>(scratch(kvm_gang::line_words(d.P)));   // the gang's control words (kvm_gang::cross), zeroed once (cudaMalloc: 256-byte aligned)
+        continue;
+      }
       if (r.split) {   // the split form: Q x S members, their partials, the exchanges, the gang's barrier words (kvm_fused_split.h)
         KvmSplitDesc& d = splits[i]; any_split = true;
         d.V = r.V; d.E = r.E; d.L = r.L; d.H = r.H[0]; d.S = r.S; d.Q = r.Q; d.lr = r.lr;
@@ -899,7 +915,7 @@ class KvmExec {
         for (int k = 0; k < 2; ++k) d.XD[k] = r.L > 1 ? scratch((size_t)nslot * R * d.HR) : nullptr;
         d.P = scratch((size_t)nslot * R * d.VP); d.dWh = scratch((size_t)nslot * d.HP * d.VP); d.dX0 = scratch((size_t)nslot * R * d.E);
         d.loss_part = scratch(d.Q);
-        d.ctl = reinterpret_cast<unsigned*>(scratch(kvm_gang::line_words(nslot)));   // the gang's flag lines, zeroed once (cudaMalloc: 256-byte aligned)
+        d.ctl = reinterpret_cast<unsigned*>(scratch(kvm_gang::line_words(nslot)));   // the gang's control words (kvm_gang::cross), zeroed once (cudaMalloc: 256-byte aligned)
         continue;
       }
       KvmFusedDesc& d = descs[i];
@@ -927,12 +943,17 @@ class KvmExec {
       CK(cudaMemcpy(st.split, splits.data(), splits.size() * sizeof(KvmSplitDesc), cudaMemcpyHostToDevice));
       st.allocs.push_back(st.split);
     }
+    if (any_grid) {
+      CK(cudaMalloc(&st.grid, grids.size() * sizeof(KvmGridDesc)));
+      CK(cudaMemcpy(st.grid, grids.data(), grids.size() * sizeof(KvmGridDesc), cudaMemcpyHostToDevice));
+      st.allocs.push_back(st.grid);
+    }
     return st;
   }
 
   // STATIC SCHEDULE: compile `b` (kvm_static.h) into one program per worker and run them all in one launch (kvm_static.cuh), instead of start()/submit():
   // no admission, no ready queue, no per-edge atomics. Fills the same KvmResult (no per-task trace; final versions from the plan).
-  struct StaticOptions { int workers = 0; double comm_us = 1.5; const char* trace_csv = nullptr; bool spin_idle = false, partition = true, fuse_phases = false; const std::vector<KvmFuseRun>* fused = nullptr; };
+  struct StaticOptions { int workers = 0; double comm_us = 1.5; const char* trace_csv = nullptr; bool spin_idle = false, partition = true, fuse_phases = false; const std::vector<KvmFuseRun>* fused = nullptr; KvmFuseEntry entry; };
   const KvmResult& run_static(const KvmBundle& b, const StaticOptions& o) {
     if (started_ || finished_) throw std::logic_error("run_static replaces start()");
     std::string why = b.validate(nbufs(), cfg_.num_vars, 0);
@@ -966,18 +987,35 @@ class KvmExec {
     CK(cudaMalloc(&dcnt, sizeof(KvmCounters))); CK(cudaMemset(dcnt, 0, sizeof(KvmCounters)));
     if (o.trace_csv) { CK(cudaMalloc(&dtrace, (size_t)nrec * KVM_S_TRACE_WORDS * 8)); CK(cudaMemset(dtrace, 0, (size_t)nrec * KVM_S_TRACE_WORDS * 8)); }
     CK(cudaMalloc(&dfinished, sizeof(int))); CK(cudaMemset(dfinished, 0, sizeof(int)));
-    S.recs = drecs; S.offs = doffs; S.progress = dprog; S.nworkers = sc.workers; S.nactive = used; S.spin_idle = o.spin_idle; S.finished = dfinished; S.timeout_ns = cfg_.timeout_us * 1000ull; S.cnt = dcnt; S.herr = S_.herr; S.fused = fused.desc; S.split = fused.split; S.trace = dtrace; S.trace_on = dtrace != nullptr;
+    S.recs = drecs; S.offs = doffs; S.progress = dprog; S.nworkers = sc.workers; S.nactive = used; S.spin_idle = o.spin_idle; S.finished = dfinished; S.timeout_ns = cfg_.timeout_us * 1000ull; S.cnt = dcnt; S.herr = S_.herr; S.fused = fused.desc; S.split = fused.split; S.grid = fused.grid; S.trace = dtrace; S.trace_on = dtrace != nullptr;
+    // The entry the pass chose (kvm_fuse_entry): every fused form runs on an entry of its own, and the generic one refuses the fused ops, so
+    // a fused task bound for it is a host bug, caught here before any launch. The fused budget subtracted the generic entry's static shared
+    // memory (fused_smem_floats), so the chosen entry may hold no more than that.
+    const KvmStaticEntryFn entry = kvm_static_entry_fn(o.entry);
+    if (!entry) throw std::logic_error("static kernel: no entry for " + kvm_fuse_entry_name(o.entry));
+    if (o.entry.kind == KvmFuseEntry::generic)
+      for (size_t t = 0; t < b.tasks.size(); ++t)
+        if (b.tasks[t].op_id == KVM_OP_fmlp_slice || b.tasks[t].op_id == KVM_OP_fmlp_sgd || b.tasks[t].op_id == KVM_OP_fmlp_split || b.tasks[t].op_id == KVM_OP_fmlp_grid)
+          throw std::logic_error("static kernel: task " + std::to_string(t) + " is a fused op (" + kvm_op(b.tasks[t].op_id)->name + "), which the generic entry refuses");
+    {
+      cudaFuncAttributes fe, fg; CK(cudaFuncGetAttributes(&fe, entry)); CK(cudaFuncGetAttributes(&fg, kvm_static_kernel));
+      if (fe.sharedSizeBytes > fg.sharedSizeBytes) throw std::logic_error("static kernel: entry " + kvm_fuse_entry_name(o.entry) + " holds " + std::to_string(fe.sharedSizeBytes) + " bytes of static shared memory, the generic one " + std::to_string(fg.sharedSizeBytes) + ": the fused budget assumed at most the generic one's");
+    }
     CK(cudaStreamSynchronize(0));
-    if (static_smem > 0) CK(cudaFuncSetAttribute(kvm_static_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)static_smem));
-    int occ = 0; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, kvm_static_kernel, KVM_THREADS, static_smem));
+    if (static_smem > 0) CK(cudaFuncSetAttribute(entry, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)static_smem));
+    int occ = 0; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, entry, KVM_THREADS, static_smem));
     if (occ < 1) throw std::runtime_error("static kernel does not fit on an SM");
-    KLOG(2, "static kernel: %d resident blocks/SM, %zu bytes of dynamic shared memory, launching %d workers", occ, static_smem, sc.workers);
-    // Warm-up launch with nworkers = 0: every block returns at once, but the union kernel's code is uploaded and started outside the timed window (like a graph captured
-    // before timing): the very first launch of this kernel costs ~1.5 ms before any record runs.
-    { KvmStaticDev warm = S; warm.nworkers = 0; kvm_static_kernel<<<1, KVM_THREADS, static_smem, stream_>>>(warm); CK(cudaGetLastError()); CK(cudaStreamSynchronize(stream_)); }
+    // A static schedule assumes every worker resident at once: a worker that never starts would hang a gang at its barrier (which has no timeout).
+    if ((long long)occ * sms_ < sc.workers)
+      throw std::runtime_error("static kernel: entry " + kvm_fuse_entry_name(o.entry) + " holds " + std::to_string(occ) + " block(s) an SM at " + std::to_string(static_smem) + " bytes of dynamic shared memory, " +
+                               std::to_string((long long)occ * sms_) + " resident in all, fewer than the plan's " + std::to_string(sc.workers) + " workers");
+    KLOG(2, "static kernel: entry %s, %d resident blocks/SM, %zu bytes of dynamic shared memory, launching %d workers", kvm_fuse_entry_name(o.entry).c_str(), occ, static_smem, sc.workers);
+    // Warm-up launch with nworkers = 0: every block returns at once, but the entry's code is uploaded and started outside the timed window (like a graph captured
+    // before timing): the very first launch of a kernel costs ~1.5 ms before any record runs.
+    { KvmStaticDev warm = S; warm.nworkers = 0; entry<<<1, KVM_THREADS, static_smem, stream_>>>(warm); CK(cudaGetLastError()); CK(cudaStreamSynchronize(stream_)); }
     clock_warmup();
     CK(cudaEventRecord(e0_, stream_));
-    kvm_static_kernel<<<sc.workers, KVM_THREADS, static_smem, stream_>>>(S);
+    entry<<<sc.workers, KVM_THREADS, static_smem, stream_>>>(S);
     CK(cudaGetLastError());
     CK(cudaEventRecord(e1_, stream_));
     started_ = true;
@@ -1674,6 +1712,7 @@ int main(int argc, char** argv) {
         const int workers = so.workers ? std::min(so.workers, ex.grid()) : ex.grid();
         fused = ex.fuse_bundle(bundles[0], workers, dump_idx);   // --dump-buffers keeps the fused path: a gate must read the path that is timed; the buffers no fused run writes dump as they started
         if (fused.fused_runs) { bundles[0].tasks = fused.tasks; bundles[0].succ = fused.succ; bundles[0].args = fused.args; so.fused = &fused.runs; }
+        so.entry = fused.entry;
       }
       resp = &ex.run_static(bundles[0], so);
     } else {

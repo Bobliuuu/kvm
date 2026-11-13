@@ -13,19 +13,40 @@
 #     (99 KB) has not; use 48 there.
 #   * A width one block cannot hold takes the split form (gangs of 6 x S fmlp_split members), which fires only where a gang fits the
 #     workers, and a worker count where the pass does not fire fails the check: KVM_CHECK_MLP_HIDDEN=256 tests/static/run_check.sh 16 48 107;
-#     the panel's mlp256 shape needs 16 shares or more (96 members), so KVM_CHECK_MLP_HIDDEN=256 KVM_CHECK_MLP_DEPTH=4 tests/static/run_check.sh
-#     107 108; and KVM_CHECK_MLP_DEPTH=4 with 128 at 48 107 108 for the deepest.
+#     on an A100 the panel's mlp256 shape (h256 d4) takes 8 shares at 48 workers, 12 at 72, 16 at 96-107 and 18 at 108, and the grid form
+#     at 36: KVM_CHECK_MLP_HIDDEN=256 KVM_CHECK_MLP_DEPTH=4 tests/static/run_check.sh 107 108; and KVM_CHECK_MLP_DEPTH=4 with 128 at 48 107
+#     108 for the deepest.
+#     On the h256 d4 bundle the float64 bound (2 x eager's distance + 1e-4) sits inside TF32's spread: its first SGD step drops the loss
+#     8x, and on an A100 (Nov 11) the per-op path itself read 2.98e-4 against the bound's 2.10e-4, the split form 1.59e-4 at 12 and 18
+#     shares and 5.05-5.12e-4 at 8 and 16, the grid 3.48e-4 (each the run's worst step, which the bound reads). Read that check beside the
+#     per-op path's own distance (--no-fuse).
+#   * A width the split form cannot hold either takes the grid form (one gang of every worker a step, fmlp_grid), sized for the run's workers:
+#     KVM_CHECK_MLP_HIDDEN=1024 tests/static/run_check.sh 107 108 (the panel's mlp1024 shape).
+#   The MLP bundle's CPU golden is a pure-Python run: h256 d4 took 44 s on a quiet laptop and over 60 s (compile_workload.py's default
+#   budget) on an A100 host busy with builds. KVM_CHECK_GOLDEN_TIMEOUT sets its budget in seconds (default 1800). KVM_CHECK_MLP_DIR takes a
+#   golden made beforehand (gen_mlp.py's output, golden included), so the GPU lock is not held while it runs: the check still makes its
+#   own bundle, without a golden, and uses the given one only when every other file of the output matches its own byte for byte.
 set -euo pipefail
 EXE="${KVM_EXE:-./kvm_exec}"; [ -x "$EXE" ] || { echo "no executor at $EXE (set KVM_EXE)"; exit 2; }
 WORKERS=("${@:-1 4 16 107}"); read -r -a WORKERS <<< "${WORKERS[*]}"
 PY="${KVM_PY:-python3}"
 MLP_H="${KVM_CHECK_MLP_HIDDEN:-72}"; [[ "$MLP_H" =~ ^[0-9]+$ ]] || { echo "KVM_CHECK_MLP_HIDDEN must be a width, got $MLP_H"; exit 2; }
 MLP_D="${KVM_CHECK_MLP_DEPTH:-2}"; [[ "$MLP_D" =~ ^[1-9]$ ]] || { echo "KVM_CHECK_MLP_DEPTH must be a depth 1-9, got $MLP_D"; exit 2; }
+GOLDEN_S="${KVM_CHECK_GOLDEN_TIMEOUT:-1800}"; [[ "$GOLDEN_S" =~ ^[0-9]+$ ]] || { echo "KVM_CHECK_GOLDEN_TIMEOUT must be seconds, got $GOLDEN_S"; exit 2; }
 "$PY" -c 'import numpy, torch' 2> /dev/null || { echo "no numpy and torch in $PY (set KVM_PY)"; exit 2; }
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/kvm-static-check.XXXXXX")"; trap 'rm -rf "$TMP"' EXIT
 "$PY" bench/vs_pytorch/gen.py "$TMP/gpt" --model gpt_tiny --steps 3 --tiling a100 > /dev/null
 echo "MLP bundle: hidden $MLP_H, depth $MLP_D, 3 steps"
-"$PY" -I bench/exec_vs_torch/gen_mlp.py "$TMP/mlp" --steps 3 --hidden "$MLP_H" --depth "$MLP_D" > /dev/null
+if [ -n "${KVM_CHECK_MLP_DIR:-}" ]; then
+  [ -f "$KVM_CHECK_MLP_DIR/bundle/golden.json" ] || { echo "no golden at $KVM_CHECK_MLP_DIR/bundle (KVM_CHECK_MLP_DIR)"; exit 2; }
+  "$PY" -I bench/exec_vs_torch/gen_mlp.py "$TMP/mlp" --steps 3 --hidden "$MLP_H" --depth "$MLP_D" --no-golden > /dev/null
+  diff -rq -x golden.json "$TMP/mlp" "$KVM_CHECK_MLP_DIR" > /dev/null \
+    || { echo "KVM_CHECK_MLP_DIR $KVM_CHECK_MLP_DIR is not this tree's hidden $MLP_H depth $MLP_D bundle (files differ)"; exit 2; }
+  cp "$KVM_CHECK_MLP_DIR/bundle/golden.json" "$TMP/mlp/bundle/"
+  echo "MLP golden: from $KVM_CHECK_MLP_DIR (the bundle matches this tree's byte for byte)"
+else
+  "$PY" -I bench/exec_vs_torch/gen_mlp.py "$TMP/mlp" --steps 3 --hidden "$MLP_H" --depth "$MLP_D" --golden-timeout "$GOLDEN_S" > /dev/null
+fi
 if command -v g++ > /dev/null; then g++ -std=c++17 -O2 -Iinclude tests/static/test_static_plan.cpp -o "$TMP/plan_test"; "$TMP/plan_test" "$TMP/gpt/bundle"; "$TMP/plan_test" "$TMP/mlp/bundle"; fi
 fails=0
 fail() { echo "FAIL: $*"; fails=$((fails + 1)); }

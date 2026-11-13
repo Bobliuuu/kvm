@@ -1,0 +1,4 @@
+# the bed on kvm_gang::barrier_lines (after) against the bed on this branch's own flag line before it (before): every output of 50-step runs, by sha256
+tiny G 32: bitwise equal (1c8d107fbc3d05bd)
+tiny G 8: bitwise equal (89033a737ae8cd2f)
+small G 32: bitwise equal (a96d16df3646e95e)

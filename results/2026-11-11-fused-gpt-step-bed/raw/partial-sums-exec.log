@@ -1,0 +1,26 @@
+# the executor's test build with every partial sum's loads in flight before its adds, end to end on four GPT workloads against the workload VM (1xTF32), and the static path's refusal of a bundle holding an fgpt_step member (RTX 5070)
+w_tiny 50 steps: rc=0
+  VM reference: cached vm-bf1de47c5338fe7f-k50.json
+    [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang)
+    [kvm_exec][I] fuse gpt: run 0: a gang of 32, 50 steps, attention in 2 query block(s) a unit, rows in chunks of 32 of 32, 0.43 MB of scratch, 29872 bytes of shared memory a member
+  exec: losses (first and last three): 4.146049, 3.993769, 3.768156, 1.332575, 1.284201, 1.245289 (VM 4.146039, 3.993824, 3.768175, 1.332614, 1.283695, 1.244709): worst of 50 6.90e-04 relative, 1/coun
+w_small 3 steps: rc=0
+  VM reference: cached vm-bfef8b9702cace4c-k3.json
+    [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang)
+    [kvm_exec][I] fuse gpt: run 0: a gang of 32, 50 steps, attention in 4 query block(s) a unit, rows in chunks of 128 of 128, 4.44 MB of scratch, 75184 bytes of shared memory a member
+  exec: losses: 4.878223, 4.396643, 4.250735 (VM 4.878237, 4.396643, 4.250421): worst of 3 7.39e-05 relative, 1/count off by 0.0e+00: ok
+w_b4_tf32 3 steps: rc=0
+  VM reference: cached vm-cd765cc245cf5757-k3.json
+    [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang)
+    [kvm_exec][I] fuse gpt: run 0: a gang of 32, 3 steps, attention in 2 query block(s) a unit, rows in chunks of 128 of 256, 6.52 MB of scratch, 76720 bytes of shared memory a member
+  exec: losses: 4.874073, 4.359650, 4.134085 (VM 4.874084, 4.359669, 4.133796): worst of 3 6.99e-05 relative, 1/count off by 0.0e+00: ok
+w_d128_tf32 3 steps: rc=0
+  VM reference: cached vm-26c34e3e54386c1d-k3.json
+    [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang)
+    [kvm_exec][I] fuse gpt: run 0: a gang of 32, 3 steps, attention in 4 query block(s) a unit, rows in chunks of 64 of 128, 21.95 MB of scratch, 90672 bytes of shared memory a member
+  exec: losses: 5.535552, 5.250449, 5.060037 (VM 5.535549, 5.250423, 5.061368): worst of 3 2.63e-04 relative, 1/count off by 0.0e+00: ok
+== the static path's guard: a one-task bundle whose task is an fgpt_step member
+[kvm_exec][I] path: static (the bundle has gang ops, which only the static plan runs)
+[kvm_exec][E] static kernel: task 0 is a fused GPT member (fgpt_step), which only the fused GPT kernel runs (run_fgpt)
+guard: refused before launch, rc=1 (ok)
+exec e2e: 0 failure(s)

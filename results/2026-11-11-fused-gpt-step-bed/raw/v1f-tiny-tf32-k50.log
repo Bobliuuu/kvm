@@ -1,0 +1,13 @@
+[fgpt_bed 00:35:39Z] VM reference: running the bundle's first 50 step(s) on the workload VM (pure Python; minutes on gpt-small)
+[fgpt_bed 00:35:59Z] VM reference: done in 20 s, cached as vm-bf1de47c5338fe7f-k50.json
+[fgpt_bed 00:35:59Z] model: L 1, d 32, heads 2 x 16, MLP 128, V 64, 1 x 32 rows; 50 steps; work <work>/fgpt-bed-w_tiny-k50
+[fgpt_bed 00:35:59Z] G 4: <work>/bin/fgpt_bed_sm120 <work>/fgpt-bed-w_tiny-k50 4
+[fgpt_bed 00:36:00Z]   fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 4, 50 steps, shared memory 41568 B a member, scratch 0.11 MB, 1 member(s) an SM at most
+[fgpt_bed 00:36:00Z]   fgpt_bed: warmed the GPU for 506 ms
+[fgpt_bed 00:36:00Z]   fgpt_bed: run 9.462 ms with its launch; in the kernel 101.9 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 4 of 4 members finished, step counter 0 -> 50
+[fgpt_bed 00:36:00Z] G 4: losses: 4.146049, 3.993769, 3.768158, 3.865714, 3.639060, 3.857899, 3.747219, 3.593868, 3.586852, 3.370603, 3.441806, 3.394345, 3.376608, 3.318669, 3.103095, 3.166810, 3.047666, 2.907009, 2.932487, 2.975497, 2.736153, 2.899431, 2.830684, 2.771151, 2.631930, 2.501645, 2.498435, 2.543515, 2.471840, 2.396839, 2.229013, 2.260646, 2.224394, 2.090987, 2.095260, 2.042985, 1.902030, 1.944074, 1.874081, 1.814275, 1.753892, 1.654720, 1.629461, 1.578776, 1.520749, 1.458656, 1.385574, 1.332542, 1.284177, 1.245247 (VM 4.146039, 3.993824, 3.768175, 3.865537, 3.639912, 3.857614, 3.746862, 3.593679, 3.586653, 3.370918, 3.441456, 3.393754, 3.376261, 3.318457, 3.102854, 3.166320, 3.047378, 2.906621, 2.932164, 2.975128, 2.735875, 2.899390, 2.830455, 2.770578, 2.632267, 2.501172, 2.498492, 2.542780, 2.471707, 2.396602, 2.228899, 2.260273, 2.224279, 2.089580, 2.095227, 2.042283, 1.901498, 1.944528, 1.874228, 1.814212, 1.753474, 1.653865, 1.629589, 1.579091, 1.521099, 1.458905, 1.384676, 1.332614, 1.283695, 1.244709): worst 6.73e-04 relative, 1/count off by 0.0e+00: ok
+[fgpt_bed 00:36:00Z] G 4: gradients (last step): worst 4.01e-01 of its tensor's scale (w.gpt.head.w): FAIL
+[fgpt_bed 00:36:00Z] G 4: first moments (last step): worst 3.48e-01 of its tensor's scale (w.gpt.wte): FAIL
+[fgpt_bed 00:36:00Z] G 4: second moments (last step): worst 8.69e-02 of its tensor's scale (w.gpt.h0.attn.k.w): FAIL
+[fgpt_bed 00:36:00Z] G 4: weights (reported): largest difference 32.53 x lr (w.gpt.head.w)
+[fgpt_bed 00:36:00Z] FAILED: 1

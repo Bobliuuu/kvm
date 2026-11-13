@@ -1,0 +1,7 @@
+# the gang's abort on an RTX 5070, on this branch's bed (kvm_gang::barrier_lines): fgpt_bed DIR 32 fault=M:F gives member M only F floats of shared memory, so it fails one phase (error 5, KVM_FGPT_E_SCRATCH) while the others go on to their next crossing; each shape beside a clean control
+small G 32 fault 5:14800 (after ~10 crossings, at the MLP backward): rc=1, 1.09 s wall; error word 5, 0 of 32 members finished
+small G 32 fault 0:100 (before the first crossing): rc=1, 1.05 s wall; error word 5, 0 of 32 members finished
+small G 32 fault -1:0 (control, no fault): rc=0, 1.07 s wall; error word 0, 32 of 32 members finished
+tiny G 32 fault 31:4324 (mid-run, at the MLP backward): rc=1, 1.06 s wall; error word 5, 0 of 32 members finished
+tiny G 32 fault -1:0 (control, no fault): rc=0, 1.05 s wall; error word 0, 32 of 32 members finished
+final bed: 0 failure(s)

@@ -1,0 +1,13 @@
+gpt-tiny exec /root/work/panel-count1/w_tiny/bundle
+gpt-small exec /root/work/panel-count1/w_small/bundle
+gpt-162m exec /root/work/panel-count1/w_162m_3/bundle
+mlp72-r1 mlp /root/work/panel-count1/h72/bundle
+mlp72-r8 mlp /root/work/panel-count1/h72_r8
+mlp72-r32 mlp /root/work/panel-count1/h72_r32
+mlp-hetero-r8 mlp /root/work/panel-count1/hetero_r8
+mlp256-r1 mlp /root/work/panel-count1/h256/bundle
+mlp1024-r1 mlp /root/work/panel-count1/h1024/bundle
+ho-mlp-h576-d1-r1 mlp /root/work/count1x/bundles-582ca6abf5a3dda3/ho576/bundle
+ho-mlp-h200-d1-r16 mlp /root/work/count1x/bundles-582ca6abf5a3dda3/ho200_r16
+ho-mlp-h128-d4-r1 mlp /root/work/count1x/bundles-582ca6abf5a3dda3/ho128/bundle
+ho-mlp-h224-d2-r8 mlp /root/work/count1x/bundles-582ca6abf5a3dda3/ho224_r8

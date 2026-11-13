@@ -1,0 +1,47 @@
+[
+ {
+  "row": "ho-gpt-d128",
+  "control": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_ho128/bundle",
+  "cand": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_ho128/bundle",
+  "tasks": {
+   "control": 40023,
+   "cand": 40023
+  },
+  "ms": {
+   "control": {
+    "median": 31.456,
+    "best": 31.446,
+    "all": [
+     31.479,
+     31.453,
+     31.45,
+     31.446,
+     31.456,
+     31.451,
+     31.496,
+     31.474,
+     31.483
+    ]
+   },
+   "cand": {
+    "median": 30.617,
+    "best": 30.595,
+    "all": [
+     30.595,
+     30.608,
+     30.646,
+     30.612,
+     30.642,
+     30.624,
+     30.608,
+     30.642,
+     30.617
+    ]
+   }
+  },
+  "paired_ratio_median": 1.0272442179537438,
+  "best_ratio": 1.027815002451381,
+  "gate_max_rel": 0.0,
+  "gate_tol": 0.0
+ }
+]

@@ -1,0 +1,37 @@
+[
+ {
+  "row": "ho-mlp-h576-d1-r1",
+  "control": "/root/work/count1x/bundles-582ca6abf5a3dda3/ho576/bundle",
+  "cand": "/root/work/count1x/bundles-582ca6abf5a3dda3/ho576/bundle",
+  "tasks": {
+   "control": 4450,
+   "cand": 4450
+  },
+  "ms": {
+   "control": {
+    "median": 1.873,
+    "best": 1.869,
+    "all": [
+     1.87,
+     1.88,
+     1.87,
+     1.87,
+     1.91
+    ]
+   },
+   "cand": {
+    "median": 1.835,
+    "best": 1.821,
+    "all": [
+     1.83,
+     1.84,
+     1.83,
+     1.84,
+     1.82
+    ]
+   }
+  },
+  "paired_ratio_median": 1.019073569482289,
+  "best_ratio": 1.0263591433278418
+ }
+]

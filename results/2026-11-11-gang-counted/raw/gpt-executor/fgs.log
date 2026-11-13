@@ -1,0 +1,21 @@
+SASS: kvm_fgpt_kernel's program touches 170 registers (10 LDL, 5 STL); its worst MMA loop reloads 7 a pass; prediction <= 100 in all and <= 100 a loop: holds
+SASS static kernel: kvm_dispatch                    197842  3784  5086  2015     252       0  -
+/root/work/gangcnt/fgs/run-20261111T142648Z/w_tiny/bundle: 21 op ids used, each both trees' id for its name
+/root/work/gangcnt/fgs/run-20261111T142648Z/w_small/bundle: 21 op ids used, each both trees' id for its name
+/root/work/gangcnt/fgs/run-20261111T142648Z/w_ho128/bundle: 21 op ids used, each both trees' id for its name
+PATH w_tiny: fused GPT kernel, a gang of 16; OK: 16/16 tasks, 8.254 ms
+PATH w_small: fused GPT kernel, a gang of 32; OK: 32/32 tasks, 17.940 ms
+BED w_tiny: phase clock (globaltimer), 138.2 us a step in all; the SMs ran at 1409 MHz (cycles over nanoseconds, members' mean)
+BED w_small: phase clock (globaltimer), 293.4 us a step in all; the SMs ran at 1408 MHz (cycles over nanoseconds, members' mean)
+HOLDOUT PATH: fused; rows in chunks of 128 of 192; OK: 64/64 tasks, 31.230 ms
+FGS1_GPU_END
+gpt-tiny   the stack's top   132.5 us a step, counted crossing   133.3 (predicted 131-134), paired x0.994 (predicted x0.995-1.005); --no-fuse on the same binary x1.867; run_gpt: executor 164.7 us, eager 3826.0 us (x23.23), graph 428.8 us (x2.60); the merged panel's PyTorch best 185.1 us
+gpt-tiny     against the stack's top: best x0.994, median x0.994, paired x0.994; slow runs control 0/9, candidate 0/9 (Fisher p 1.000)
+gpt-tiny     fused against --no-fuse, one binary (the stack's top): best x1.864, median x1.869, paired x1.867; slow runs control 0/9, candidate 0/9 (Fisher p 1.000)
+gpt-small  the stack's top   286.5 us a step, counted crossing   288.9 (predicted 284-289), paired x0.992 (predicted x0.995-1.005); --no-fuse on the same binary x1.904; run_gpt: executor 357.1 us, eager 6214.8 us (x17.40), graph 817.0 us (x2.29); the merged panel's PyTorch best 417.3 us
+gpt-small    against the stack's top: best x0.992, median x0.992, paired x0.992; slow runs control 0/9, candidate 0/9 (Fisher p 1.000)
+gpt-small    fused against --no-fuse, one binary (the stack's top): best x1.903, median x1.904, paired x1.904; slow runs control 0/9, candidate 0/9 (Fisher p 1.000)
+HOLDOUT ho-gpt-d128 (judged, gated at 1e-2): the stack's top 1048.9 us a step, counted crossing 1041.5 (predicted 1,015-1,040), paired x1.006 (predicted x1.01-1.03); run_gpt: eager 10590.4 us (x8.32), graph 1770.6 us (x1.39); PyTorch's best on this draw 1,018.2 us (compile_graph, M1)
+HOLDOUT ho-gpt-d128   against the stack's top: best x1.006, median x1.007, paired x1.006; slow runs control 0/9, candidate 0/9 (Fisher p 1.000)
+levers verdict: HOLDS
+FGS1_END

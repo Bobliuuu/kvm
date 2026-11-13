@@ -1,0 +1,47 @@
+[
+ {
+  "row": "ho-mlp-h576-d1-r1",
+  "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho576/bundle",
+  "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho576/bundle",
+  "tasks": {
+   "control": 4450,
+   "cand": 4450
+  },
+  "ms": {
+   "control": {
+    "median": 1.882,
+    "best": 1.867,
+    "all": [
+     1.882,
+     1.88,
+     1.872,
+     1.892,
+     1.892,
+     1.867,
+     1.9,
+     1.882,
+     1.877
+    ]
+   },
+   "cand": {
+    "median": 1.827,
+    "best": 1.822,
+    "all": [
+     1.827,
+     1.829,
+     1.823,
+     1.836,
+     1.825,
+     1.841,
+     1.822,
+     1.826,
+     1.841
+    ]
+   }
+  },
+  "paired_ratio_median": 1.030103995621237,
+  "best_ratio": 1.0246981339187706,
+  "gate_max_rel": 0.0,
+  "gate_tol": 0.0
+ }
+]

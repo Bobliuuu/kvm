@@ -1,0 +1,8 @@
+env {'torch': '2.15.0+cu132', 'cuda': '13.2', 'gpu': 'NVIDIA A100-SXM4-80GB', 'sms': 108}
+eager: built in 1 s, loss 5.55234 -> 1.20774
+graph: built in 0 s, loss 5.55234 -> 1.20774
+GATE: executor vs eager loss max rel 8.08e-03; modes vs eager {'eager': '0.0e+00', 'graph': '0.0e+00'}
+us/step best (median, worst) over 5 interleaved reps; ratio = mode / executor
+  eager             10590.4 (12515.6, 14963.4)     8.32x
+  graph              1770.6 (1775.4, 1778.1)     1.39x
+  executor           1273.2 (1274.3, 1274.4)     1.00x

@@ -1,0 +1,92 @@
+[
+ {
+  "row": "gpt-tiny",
+  "control": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_tiny/bundle",
+  "cand": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_tiny/bundle",
+  "tasks": {
+   "control": 6749,
+   "cand": 6749
+  },
+  "ms": {
+   "control": {
+    "median": 12.383,
+    "best": 12.342,
+    "all": [
+     12.365,
+     12.383,
+     12.39,
+     12.362,
+     12.404,
+     12.342,
+     12.395,
+     12.345,
+     12.39
+    ]
+   },
+   "cand": {
+    "median": 6.627,
+    "best": 6.62,
+    "all": [
+     6.627,
+     6.62,
+     6.628,
+     6.623,
+     6.644,
+     6.62,
+     6.627,
+     6.644,
+     6.628
+    ]
+   }
+  },
+  "paired_ratio_median": 1.8669476219145094,
+  "best_ratio": 1.8643504531722055,
+  "gate_max_rel": 3.0439155557803957e-05,
+  "gate_tol": 0.002
+ },
+ {
+  "row": "gpt-small",
+  "control": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_small/bundle",
+  "cand": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_small/bundle",
+  "tasks": {
+   "control": 28858,
+   "cand": 28858
+  },
+  "ms": {
+   "control": {
+    "median": 27.27,
+    "best": 27.252,
+    "all": [
+     27.27,
+     27.276,
+     27.271,
+     27.284,
+     27.268,
+     27.266,
+     27.263,
+     27.292,
+     27.252
+    ]
+   },
+   "cand": {
+    "median": 14.326,
+    "best": 14.317,
+    "all": [
+     14.329,
+     14.329,
+     14.317,
+     14.323,
+     14.317,
+     14.317,
+     14.328,
+     14.326,
+     14.333
+    ]
+   }
+  },
+  "paired_ratio_median": 1.9044492561290771,
+  "best_ratio": 1.9034713976391702,
+  "gate_max_rel": 0.0003368175073842486,
+  "gate_tol": 0.002
+ }
+]

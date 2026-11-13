@@ -466,10 +466,12 @@ enum KvmFgptMark : int {
 struct NoPhases { __device__ __forceinline__ void operator()(int) const {} };
 
 // ---- the gang's barrier -------------------------------------------------------------------------------------------------------------------
-// kvm_gang::barrier_lines: each member publishes its count of crossings in its own word of the gang's flag lines (d.ctl), and a warp polls
-// each line, one member a lane. One round trip to L2 a crossing and no atomic (the counter barrier, kvm_gang::barrier, waits for an
-// atomic's, a release and a poll). A run starts from the member's own word, so the lines need no reset between runs.
-static_assert(KVM_FGPT_MAX_GANG <= 32 * (KVM_FGPT_NT / 32), "kvm_gang::barrier_lines polls each line of 32 members with a warp of the block");
+// The gang's crossing on its control words (d.ctl), in the form its size takes (kvm_gang::counted_form): the flag lines up to
+// KVM_GANG_LINES_MAX members, the counted barrier past them. The program is instantiated per form (run<Counted>, the launch picking by G),
+// so each crossing site carries one form's code: through kvm_gang::cross, both forms inline at every site behind a run-time branch added
+// 1,020 instructions to this program and cost 16- and 32-member gangs 0.6-0.9% on the A100. A run starts from the words as the last run left
+// them, so they need no reset between runs.
+static_assert(KVM_GANG_LINES_MAX <= 32 * (KVM_FGPT_NT / 32), "the flag lines poll each line of 32 members with a warp of the block");
 
 // The run's constants: thread 0 builds one copy a block after the scratch layout, and the program reads them by reference (run, below).
 struct Ctx {
@@ -510,7 +512,7 @@ static_assert(KVM_FGPT_LAYOUT_FLOATS % 4 == 0, "the constants after the layout a
 // error word, which the gang barrier only reads. A member that finds a fault reports it once, from thread 0, through `fail(code)` (a
 // KvmFgptError), and returns; the caller's report must set the error word (the executor's kvm_fail does), so every other member leaves at its
 // next crossing. Returns false when the run failed. Every thread of the block calls it.
-template <class FAIL, class PH>
+template <bool Counted, class FAIL, class PH>
 __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floats, const int* abort, FAIL fail, PH& ph) {
   const int tid = threadIdx.x;
   // the scratch layout and the run's constants, one copy a block at the head of shared memory, written once by thread 0
@@ -591,8 +593,13 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
   float* const& gx = c.gx;
   float* const& dy = c.dy;
   const float& inv_n = c.inv_n;
-  unsigned epoch = kvm_gang::lines_epoch(d.ctl, member);                             // this member's crossings so far (the gang's words are equal)
-  auto cross = [&]() { return kvm_gang::barrier_lines(d.ctl, member, G, epoch, abort); };
+  [[maybe_unused]] unsigned epoch = 0;                                               // the flag lines' place in the gang's crossings, or
+  [[maybe_unused]] unsigned long long target = 0;                                    // the count's: read before this member's first arrival
+  if constexpr (Counted) target = kvm_gang::counted_base(d.ctl, G); else epoch = kvm_gang::lines_epoch(d.ctl, member);
+  auto cross = [&]() {
+    if constexpr (Counted) return kvm_gang::barrier_counted(d.ctl, G, target, abort);
+    else return kvm_gang::barrier_lines(d.ctl, member, G, epoch, abort);
+  };
   // row strides: q | k | v, a d-wide block, the T x T scores and a head-wide block (the last two are read transposed: whole 16-row tiles)
   const int& ldd = c.ldd;
   rope_table(rtab, T, hd, d.theta);
@@ -1304,10 +1311,10 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
   return true;
 }
 
-template <class FAIL>
+template <bool Counted, class FAIL>
 __device__ __forceinline__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floats, const int* abort, FAIL fail) {
   NoPhases ph;
-  return run(d, member, smem, smem_floats, abort, fail, ph);
+  return run<Counted>(d, member, smem, smem_floats, abort, fail, ph);
 }
 
 }  // namespace kvm_fgpt

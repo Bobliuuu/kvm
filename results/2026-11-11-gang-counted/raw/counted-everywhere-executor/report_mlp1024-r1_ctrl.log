@@ -1,0 +1,10 @@
+OK: 5501/5501 tasks, 8.404 ms
+[kvm_exec][I] device NVIDIA A100-SXM4-80GB, 108 SMs, 1 resident blocks/SM with 147456 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] /root/work/panel-count1/h1024/bundle: 17117 tasks, 277429 edges, 184150 arg words
+[kvm_exec][I] path: static (mean estimated task 5.01 us <= 6.0)
+[kvm_exec][I] fuse: component 0: fused, grid form (layer width not a multiple of 8 up to 128; split form: no share count fits (at best 99292 floats a member, at 16 shares, limit 40416, gangs of at most 108 workers)): 50 steps, T=96 V=100 widths 48x1024x1024, gangs of 108 members (layer 0 1 x 64, hidden 13 x 8, head 64 x 1), 37104 floats a member
+[kvm_exec][I] fuse: shared-memory budget 40416 floats (161664 bytes) a fused block
+[kvm_exec][I] fuse: 1 run(s) fused, 0 unchanged; 17016 tasks replaced by 5501; static kernel entry: grid
+[kvm_exec][I] static schedule: 5501 tasks -> 5501 records on 108/108 workers, 10700 of 16093 edges cross workers, 100 records publish; runs partitioned: no; plan 3175.1 us, work 324200.1 us (compiled in 0.008 s)
+[kvm_exec][I] static kernel: entry grid, 1 resident blocks/SM, 148416 bytes of dynamic shared memory, launching 108 workers
+[kvm_exec][I] static run done: 5501 tasks in 8.404 ms on 108 workers

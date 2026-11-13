@@ -1,0 +1,10 @@
+== mlp256-r1 15:23:23 20.42 24.44 27.14 load; throttled periods so far 22653
+GATE ok: mlp256-r1: 10 buffers with prefix 'w.', tasks 8394 -> 8394; bitwise equal; largest relative difference 0.00e+00
+{"row": "mlp256-r1", "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h256/bundle", "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h256/bundle", "tasks": {"control": 8394, "cand": 8394}, "ms": {"control": {"median": 4.822, "best": 4.815, "all": [4.822, 4.82, 4.823, 4.843, 4.815, 4.817, 4.819, 4.824, 4.853]}, "cand": {"median": 4.679, "best": 4.658, "all": [4.681, 4.679, 4.665, 4.658, 4.675, 4.698, 4.678, 4.698, 4.695]}}, "paired_ratio_median": 1.0301346441547339, "best_ratio": 1.0337054529841134, "gate_max_rel": 0.0, "gate_tol": 0.0}
+ROW mlp256-r1 rc 0
+== ho-mlp-h576-d1-r1 15:23:51 40.41 28.17 28.25 load; throttled periods so far 22653
+GATE ok: ho-mlp-h576-d1-r1: 4 buffers with prefix 'w.', tasks 4450 -> 4450; bitwise equal; largest relative difference 0.00e+00
+{"row": "ho-mlp-h576-d1-r1", "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho576/bundle", "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/ho576/bundle", "tasks": {"control": 4450, "cand": 4450}, "ms": {"control": {"median": 1.882, "best": 1.867, "all": [1.882, 1.88, 1.872, 1.892, 1.892, 1.867, 1.9, 1.882, 1.877]}, "cand": {"median": 1.827, "best": 1.822, "all": [1.827, 1.829, 1.823, 1.836, 1.825, 1.841, 1.822, 1.826, 1.841]}}, "paired_ratio_median": 1.030103995621237, "best_ratio": 1.0246981339187706, "gate_max_rel": 0.0, "gate_tol": 0.0}
+ROW ho-mlp-h576-d1-r1 rc 0
+throttled periods at the end 22653 of 315125
+GANG_CNT_R_END

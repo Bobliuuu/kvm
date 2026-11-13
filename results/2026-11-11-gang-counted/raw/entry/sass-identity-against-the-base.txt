@@ -1,0 +1,17 @@
+functions: 19 in A, 20 in B; identical 6; differ 12; in one only 3
+excluding names with 'kvm_fgpt_kernel': identical 6, differ 12, in one only 0
+  DIFFERS _Z20kvm_static_gang_grid12KvmStaticDev: 26728 -> 26672 instructions
+  DIFFERS _Z21kvm_static_gang_splitILi10EEv12KvmStaticDev: 11584 -> 11456 instructions
+  DIFFERS _Z21kvm_static_gang_splitILi12EEv12KvmStaticDev: 11536 -> 11512 instructions
+  DIFFERS _Z21kvm_static_gang_splitILi16EEv12KvmStaticDev: 11760 -> 11736 instructions
+  DIFFERS _Z21kvm_static_gang_splitILi18EEv12KvmStaticDev: 11736 -> 11712 instructions
+  DIFFERS _Z21kvm_static_gang_splitILi2EEv12KvmStaticDev: 11736 -> 11736 instructions
+  DIFFERS _Z21kvm_static_gang_splitILi3EEv12KvmStaticDev: 11640 -> 11648 instructions
+  DIFFERS _Z21kvm_static_gang_splitILi4EEv12KvmStaticDev: 11752 -> 11752 instructions
+  DIFFERS _Z21kvm_static_gang_splitILi5EEv12KvmStaticDev: 11664 -> 11672 instructions
+  DIFFERS _Z21kvm_static_gang_splitILi6EEv12KvmStaticDev: 11648 -> 11520 instructions
+  DIFFERS _Z21kvm_static_gang_splitILi8EEv12KvmStaticDev: 11520 -> 11416 instructions
+  DIFFERS _Z21kvm_static_gang_splitILi9EEv12KvmStaticDev: 11544 -> 11416 instructions
+  ONLY IN B _Z15kvm_fgpt_kernelILb0EEvPK11KvmFgptDescP11KvmCountersP10KvmHostErri: 41120 instructions
+  ONLY IN B _Z15kvm_fgpt_kernelILb1EEvPK11KvmFgptDescP11KvmCountersP10KvmHostErri: 40688 instructions
+  ONLY IN A _Z15kvm_fgpt_kernelPK11KvmFgptDescP11KvmCountersP10KvmHostErri: 41120 instructions

@@ -1,0 +1,39 @@
+[
+ {
+  "row": "mlp256-r1",
+  "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h256/bundle",
+  "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h256/bundle",
+  "tasks": {
+   "control": 8394,
+   "cand": 8394
+  },
+  "ms": {
+   "control": {
+    "median": 4.816,
+    "best": 4.807,
+    "all": [
+     4.807,
+     4.816,
+     4.827,
+     4.816,
+     4.889
+    ]
+   },
+   "cand": {
+    "median": 4.694,
+    "best": 4.666,
+    "all": [
+     4.695,
+     4.692,
+     4.694,
+     4.695,
+     4.666
+    ]
+   }
+  },
+  "paired_ratio_median": 1.0264279624893435,
+  "best_ratio": 1.0302186026575224,
+  "gate_max_rel": 0.0,
+  "gate_tol": 0.0
+ }
+]

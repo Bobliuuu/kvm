@@ -71,8 +71,8 @@ __device__ __forceinline__ void split_run(int member, const int32_t* ids, const 
   const float inv_t = 1.f / (float)T, lr = d.lr;
   const int erow0 = (int)((long long)member * V / members), erow1 = (int)((long long)(member + 1) * V / members);
   unsigned* const ctl = d.ctl;
-  unsigned epoch = kvm_gang::cross_epoch(ctl, member, members);   // this member's crossings so far on the flag lines (consecutive steps join member to member, kvm_fuse.h)
-  static_assert(Q * SV <= 32 * (NT / 32), "the flag-line form polls each 32 members with one warp of the block");
+  unsigned long long at = kvm_gang::cross_start(ctl, member, members);   // this member's place in the gang's crossings (consecutive steps join member to member, kvm_fuse.h)
+  static_assert(KVM_GANG_LINES_MAX <= 32 * (NT / 32), "kvm_gang::cross polls each flag line of 32 members with one warp of the block");
   // ---- load: the share's columns of every layer (zero past w, and past H in the hidden layers' rows), its head rows (zero past V), the slice's
   // embedding rows, the step's tokens and the slice's targets. The pads are written each step: the owners' scratch sits over the weights.
   for (int l = 0; l < L; ++l) {
@@ -104,7 +104,7 @@ __device__ __forceinline__ void split_run(int member, const int32_t* ids, const 
     if (l + 1 < L) {   // the all-gather: this member's columns of H to L2, then the slice's whole H back as the next layer's input
       float* xh = d.XH[l] + (size_t)q * R * HR;
       kvm_fmlp::for_cells(R, w >> 2, [&](int r, int c4) { *reinterpret_cast<float4*>(xh + (size_t)r * HR + h0 + 4 * c4) = *reinterpret_cast<const float4*>(Hs + r * HP + 4 * c4); });
-      if (!kvm_gang::cross(ctl, member, members, epoch, abort)) return;
+      if (!kvm_gang::cross(ctl, member, members, at, abort)) return;
       if (KVM_SPLIT_XREAD_ASYNC) { copy_rows(Hin, HR, xh, HR, R, HR); kvm_fmlp::cp_commit_wait(); } else load_rows(Hin, HR, xh, HR, R, HR);   // pad columns past H stay zero in L2
       __syncthreads();
       A = Hin; lda = HR; K = H;
@@ -116,7 +116,7 @@ __device__ __forceinline__ void split_run(int member, const int32_t* ids, const 
     kvm_fmlp::gemm_r<false, false>(Hs + c, HP, Whs + c * VP, VP, d.P + (size_t)(q * SV + t) * R * VP, VP, R, VP, d.share0[t + 1] - d.share0[t]);
   }
   ph(2);
-  if (!kvm_gang::cross(ctl, member, members, epoch, abort)) return;
+  if (!kvm_gang::cross(ctl, member, members, at, abort)) return;
   ph(3);
   // ---- the slice's SV partials summed in virtual-share order, four logits a thread at a time; then the cross-entropy
   kvm_fmlp::for_cells(R, VP / 4, [&](int r, int v4) {
@@ -179,7 +179,7 @@ __device__ __forceinline__ void split_run(int member, const int32_t* ids, const 
         float* xd = d.XD[l & 1] + (size_t)(q * SV + t) * R * HR;   // alternating with the layer: a slot is rewritten only after the next barrier (kvm_fused_split.h)
         for (int n0 = 0; n0 < HR; n0 += 128) kvm_fmlp::gemm_r<false, true>(dZ + c, HP, Ws + n0 * HP + c, HP, xd + n0, HR, R, min(128, HR - n0), wt);
       }
-      if (!kvm_gang::cross(ctl, member, members, epoch, abort)) return;
+      if (!kvm_gang::cross(ctl, member, members, at, abort)) return;
       kvm_fmlp::for_cells(R, HP / 4, [&](int r, int c4) {   // the reduce-scatter: this member's columns of the slice's SV partials, in virtual-share order
         float4 x[SV];
 #pragma unroll
@@ -195,7 +195,7 @@ __device__ __forceinline__ void split_run(int member, const int32_t* ids, const 
     }
   }
   ph(5);
-  if (!kvm_gang::cross(ctl, member, members, epoch, abort)) return;
+  if (!kvm_gang::cross(ctl, member, members, at, abort)) return;
   ph(6);
   // ---- owners, parameters: the Q members of share s split its parameters in groups of four, every layer's and the head's in one index; each sums
   // the Q slices' partials in slice order
@@ -261,7 +261,7 @@ __device__ __forceinline__ void split_run(int member, const int32_t* ids, const 
     }
   }
   if (member == 0 && tid == 0) { float sum = 0.f; for (int t = 0; t < Q; ++t) sum += __ldcg(d.loss_part + t); if (loss_out) { loss_out[0] = sum * inv_t; loss_out[1] = inv_t; } }
-  if (!kvm_gang::cross(ctl, member, members, epoch, abort)) return;
+  if (!kvm_gang::cross(ctl, member, members, at, abort)) return;
   ph(8);
 }
 

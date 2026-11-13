@@ -1,0 +1,39 @@
+[
+ {
+  "row": "mlp72-r32",
+  "control": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h72_r32",
+  "cand": "/root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/h72_r32",
+  "tasks": {
+   "control": 307200,
+   "cand": 307200
+  },
+  "ms": {
+   "control": {
+    "median": 8.255,
+    "best": 8.251,
+    "all": [
+     8.26,
+     8.255,
+     8.251,
+     8.259,
+     8.255
+    ]
+   },
+   "cand": {
+    "median": 8.256,
+    "best": 8.255,
+    "all": [
+     8.256,
+     8.255,
+     8.259,
+     8.256,
+     8.255
+    ]
+   }
+  },
+  "paired_ratio_median": 1.0,
+  "best_ratio": 0.9995154451847363,
+  "gate_max_rel": 0.0,
+  "gate_tol": 0.0
+ }
+]

@@ -57,8 +57,8 @@ struct alignas(16) KvmFgptDesc {
   size_t xch_floats;
   float* bc;                                  // [2 steps]: each step's AdamW bias corrections, 1 - beta1^t and 1 - beta2^t, filled by member 0
                                               // at the run's start (a double pow is microseconds where FP64 is slow; once a run, not a step)
-  unsigned* ctl;                              // the gang barrier's flag lines (kvm_gang::barrier_lines): kvm_gang::line_words(KVM_FGPT_MAX_GANG)
-                                              // words, one a member, 128-byte aligned, zeroed once
+  unsigned* ctl;                              // the gang's control words (kvm_gang::cross): kvm_gang::line_words(KVM_FGPT_MAX_GANG) words,
+                                              // 128-byte aligned, zeroed once
 };
 
 // The device program's global scratch: offsets in floats into KvmFgptDesc::xch, laid out by the host for the run's shape and gang, every

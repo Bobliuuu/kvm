@@ -1,0 +1,37 @@
+[
+ {
+  "row": "ho-mlp-h200-d1-r16",
+  "control": "/root/work/count1x/bundles-582ca6abf5a3dda3/ho200_r16",
+  "cand": "/root/work/count1x/bundles-582ca6abf5a3dda3/ho200_r16",
+  "tasks": {
+   "control": 38400,
+   "cand": 38400
+  },
+  "ms": {
+   "control": {
+    "median": 3.388,
+    "best": 3.386,
+    "all": [
+     3.39,
+     3.39,
+     3.39,
+     3.39,
+     3.39
+    ]
+   },
+   "cand": {
+    "median": 3.404,
+    "best": 3.401,
+    "all": [
+     3.4,
+     3.44,
+     3.4,
+     3.4,
+     3.41
+    ]
+   }
+  },
+  "paired_ratio_median": 0.9950058754406581,
+  "best_ratio": 0.9955895324904441
+ }
+]

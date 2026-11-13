@@ -1,0 +1,21 @@
+_Z15kvm_fgpt_kernelPK11KvmFgptDescP11KvmCountersP10KvmHostErri: every block, 41120 instructions in 2985 blocks
+  14 functions (cubin symbols; 11 are ptxas's internal helpers, folded below), 279 calls between functions, 61 CALLs inside their own function; registers R0-R175, R1 aside
+  function                         instr  HMMA   LDL   STL touched avoided  avoided registers held across a call by
+  (kernel)                            16     0     0     0       3     172  _ZN8kvm_fgpt3runIZ15kvm_fgpt_kernelPK11KvmFgptDescP11KvmCountersP10KvmHostErriEUliE_NS_8NoPhasesEEEbRS2_iPfiPKiT_RT0_ 126; held by none 46
+  kvm_fail                            27     0     0     0      12     163  _ZN8kvm_fgpt3runIZ15kvm_fgpt_kernelPK11KvmFgptDescP11KvmCountersP10KvmHostErriEUliE_NS_8NoPhasesEEEbRS2_iPfiPKiT_RT0_ 117; held by none 46
+  _ZN8kvm_fgpt3runIZ15kvm_fgpt_k   40499   178    10     5     171       4  ; held by none 4
+  (11 internal helpers: 578 instructions, at most 24 registers each)
+  calls: caller -> callee, sites, registers live across them (min-max, R1 aside), the widest site
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_9_$__cuda_sm70_votesync_any         16 site(s)   74-102 live, widest at 0x09a580
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_8_$__cuda_sm70_votesync_all         16 site(s)   73-101 live, widest at 0x09a520
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_7_$__cuda_sm70_shflsync_idx_p       64 site(s)   93- 95 live, widest at 0x09e4f0
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_1_$__cuda_sm20_div_rn_f64_full       1 site(s)   94- 94 live, widest at 0x03c3f0
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_5_$__cuda_sm3x_div_rn_noftz_f32_s   33 site(s)   12- 93 live, widest at 0x095c50
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_4_$__cuda_sm20_sqrt_rn_f32_slowpa    8 site(s)   40- 92 live, widest at 0x095b10
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_0_$__cuda_sm20_dblrcp_rn_slowpath    2 site(s)   82- 91 live, widest at 0x03c530
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_6_$__cuda_sm70_shflsync_bfly_p     103 site(s)   23- 90 live, widest at 0x09c630
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_accurate_pow                         1 site(s)   85- 85 live, widest at 0x00a880
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_2_$__cuda_sm20_div_s64              16 site(s)    4- 80 live, widest at 0x005a50
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> __internal_3_$__cuda_sm20_rcp_rn_f32_slowpat    3 site(s)   39- 43 live, widest at 0x027750
+    _ZN8kvm_fgpt3runIZ15kvm_fgpt -> kvm_fail                                       15 site(s)    1-  1 live, widest at 0x0990c0
+    (kernel)                     -> _ZN8kvm_fgpt3runIZ15kvm_fgpt_kernelPK11KvmFg    1 site(s)    0-  0 live, widest at 0x0000d0

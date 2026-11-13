@@ -1,0 +1,37 @@
+[
+ {
+  "row": "ho-mlp-h224-d2-r8",
+  "control": "/root/work/count1x/bundles-582ca6abf5a3dda3/ho224_r8",
+  "cand": "/root/work/count1x/bundles-582ca6abf5a3dda3/ho224_r8",
+  "tasks": {
+   "control": 35184,
+   "cand": 35184
+  },
+  "ms": {
+   "control": {
+    "median": 6.61,
+    "best": 6.606,
+    "all": [
+     6.61,
+     6.62,
+     6.61,
+     6.61,
+     6.61
+    ]
+   },
+   "cand": {
+    "median": 6.609,
+    "best": 6.607,
+    "all": [
+     6.61,
+     6.61,
+     6.62,
+     6.61,
+     6.61
+    ]
+   }
+  },
+  "paired_ratio_median": 0.9996975654014818,
+  "best_ratio": 0.9998486453761162
+ }
+]

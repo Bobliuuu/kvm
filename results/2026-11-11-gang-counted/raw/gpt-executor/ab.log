@@ -1,0 +1,40 @@
+GATE ok: gpt-tiny: 50 buffers with prefix 'loss.', tasks 6749 -> 6749; equal within 0.002; largest relative difference 0.00e+00
+rep 0 gpt-tiny control: 6.63 ms
+rep 0 gpt-tiny cand: 6.66 ms
+rep 1 gpt-tiny control: 6.63 ms
+rep 1 gpt-tiny cand: 6.66 ms
+rep 2 gpt-tiny control: 6.63 ms
+rep 2 gpt-tiny cand: 6.66 ms
+rep 3 gpt-tiny control: 6.64 ms
+rep 3 gpt-tiny cand: 6.67 ms
+rep 4 gpt-tiny control: 6.62 ms
+rep 4 gpt-tiny cand: 6.67 ms
+rep 5 gpt-tiny control: 6.62 ms
+rep 5 gpt-tiny cand: 6.66 ms
+rep 6 gpt-tiny control: 6.62 ms
+rep 6 gpt-tiny cand: 6.66 ms
+rep 7 gpt-tiny control: 6.63 ms
+rep 7 gpt-tiny cand: 6.67 ms
+rep 8 gpt-tiny control: 6.62 ms
+rep 8 gpt-tiny cand: 6.67 ms
+{"row": "gpt-tiny", "control": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_tiny/bundle", "cand": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_tiny/bundle", "tasks": {"control": 6749, "cand": 6749}, "ms": {"control": {"median": 6.626, "best": 6.622, "all": [6.627, 6.629, 6.626, 6.638, 6.623, 6.623, 6.622, 6.63, 6.624]}, "cand": {"median": 6.664, "best": 6.66, "all": [6.66, 6.661, 6.663, 6.665, 6.67, 6.663, 6.664, 6.669, 6.674]}}, "paired_ratio_median": 0.9941520467836258, "best_ratio": 0.9942942942942943, "gate_max_rel": 0.0, "gate_tol": 0.002}
+GATE ok: gpt-small: 50 buffers with prefix 'loss.', tasks 28858 -> 28858; equal within 0.002; largest relative difference 0.00e+00
+rep 0 gpt-small control: 14.32 ms
+rep 0 gpt-small cand: 14.44 ms
+rep 1 gpt-small control: 14.33 ms
+rep 1 gpt-small cand: 14.44 ms
+rep 2 gpt-small control: 14.32 ms
+rep 2 gpt-small cand: 14.44 ms
+rep 3 gpt-small control: 14.32 ms
+rep 3 gpt-small cand: 14.44 ms
+rep 4 gpt-small control: 14.33 ms
+rep 4 gpt-small cand: 14.44 ms
+rep 5 gpt-small control: 14.32 ms
+rep 5 gpt-small cand: 14.44 ms
+rep 6 gpt-small control: 14.33 ms
+rep 6 gpt-small cand: 14.44 ms
+rep 7 gpt-small control: 14.32 ms
+rep 7 gpt-small cand: 14.44 ms
+rep 8 gpt-small control: 14.33 ms
+rep 8 gpt-small cand: 14.45 ms
+{"row": "gpt-small", "control": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_small/bundle", "cand": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_small/bundle", "tasks": {"control": 28858, "cand": 28858}, "ms": {"control": {"median": 14.324, "best": 14.318, "all": [14.322, 14.329, 14.318, 14.321, 14.326, 14.324, 14.327, 14.318, 14.33]}, "cand": {"median": 14.444, "best": 14.439, "all": [14.44, 14.444, 14.444, 14.439, 14.442, 14.439, 14.444, 14.444, 14.447]}}, "paired_ratio_median": 0.9918997507615618, "best_ratio": 0.991619918276889, "gate_max_rel": 0.0, "gate_tol": 0.002}

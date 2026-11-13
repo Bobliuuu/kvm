@@ -1,0 +1,20 @@
+GATE ok: ho-gpt-d128: 30 buffers with prefix 'loss.', tasks 40023 -> 40023; equal within 0.01; largest relative difference 0.00e+00
+rep 0 ho-gpt-d128 control: 31.51 ms
+rep 0 ho-gpt-d128 cand: 31.35 ms
+rep 1 ho-gpt-d128 control: 31.48 ms
+rep 1 ho-gpt-d128 cand: 31.25 ms
+rep 2 ho-gpt-d128 control: 31.46 ms
+rep 2 ho-gpt-d128 cand: 31.24 ms
+rep 3 ho-gpt-d128 control: 31.42 ms
+rep 3 ho-gpt-d128 cand: 31.24 ms
+rep 4 ho-gpt-d128 control: 31.44 ms
+rep 4 ho-gpt-d128 cand: 31.24 ms
+rep 5 ho-gpt-d128 control: 31.48 ms
+rep 5 ho-gpt-d128 cand: 31.24 ms
+rep 6 ho-gpt-d128 control: 31.48 ms
+rep 6 ho-gpt-d128 cand: 31.23 ms
+rep 7 ho-gpt-d128 control: 31.46 ms
+rep 7 ho-gpt-d128 cand: 31.26 ms
+rep 8 ho-gpt-d128 control: 31.47 ms
+rep 8 ho-gpt-d128 cand: 31.26 ms
+{"row": "ho-gpt-d128", "control": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_ho128/bundle", "cand": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_ho128/bundle", "tasks": {"control": 40023, "cand": 40023}, "ms": {"control": {"median": 31.466, "best": 31.423, "all": [31.508, 31.479, 31.463, 31.423, 31.438, 31.477, 31.476, 31.456, 31.466]}, "cand": {"median": 31.244, "best": 31.225, "all": [31.354, 31.246, 31.243, 31.244, 31.238, 31.244, 31.225, 31.261, 31.264]}}, "paired_ratio_median": 1.0064611054247699, "best_ratio": 1.0063410728582864, "gate_max_rel": 0.0, "gate_tol": 0.01}

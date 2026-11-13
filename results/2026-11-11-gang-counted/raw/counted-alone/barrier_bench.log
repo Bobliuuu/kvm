@@ -1,0 +1,12 @@
+NVIDIA A100-SXM4-80GB (sm_80, 108 SMs): 4000 crossings a launch (two a round, data checked between), ns a crossing (median of 5 launches)
+    G      cross    counter flag lines errors (cross/counter/flag lines)
+    2        948       1676        994 0/0/0
+    4       1069       1982       1055 0/0/0
+    8       1206       2107       1161 0/0/0
+   16       1290       2177       1226 0/0/0
+   32       1346       2195       1312 0/0/0
+   33       1365       2212       1578 0/0/0
+   48       1402       2220       1882 0/0/0
+   64       1406       2215       2159 0/0/0
+   96       1498       2299       2968 0/0/0
+  108       1551       2355       4425 0/0/0

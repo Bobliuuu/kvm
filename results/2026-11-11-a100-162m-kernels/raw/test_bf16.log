@@ -1,0 +1,957 @@
+device: NVIDIA A100-SXM4-40GB, 108 SMs, cc 8.0, mma smem 98304 B
+PASS  mma_bf16 ta=0 tb=0 128x256x32 mode=0  relerr 2.220e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 128x256x32 mode=1  relerr 9.194e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 128x256x32 mode=2  relerr 3.453e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 128x256x32 mode=2 pre  relerr 3.158e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 128x256x32 mode=3  relerr 2.036e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 128x256x32 mode=3 pre  relerr 3.296e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 128x256x32 mode=4  relerr 1.228e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 128x256x32 mode=4 pre  relerr 1.069e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 128x256x32 mode=5  relerr 1.073e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 128x256x32 mode=5 pre  relerr 3.238e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 130x260x40 mode=0  relerr 2.122e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 130x260x40 mode=1  relerr 8.705e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 130x260x40 mode=2  relerr 3.163e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 130x260x40 mode=2 pre  relerr 3.037e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 130x260x40 mode=3  relerr 2.525e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 130x260x40 mode=3 pre  relerr 2.676e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 130x260x40 mode=4  relerr 1.029e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 130x260x40 mode=4 pre  relerr 1.113e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 130x260x40 mode=5  relerr 1.213e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 130x260x40 mode=5 pre  relerr 3.092e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 1x1x8 mode=0  relerr 1.553e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 1x1x8 mode=1  relerr 0.000e+00 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 1x1x8 mode=2  relerr 2.888e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 1x1x8 mode=2 pre  relerr 2.025e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 1x1x8 mode=3  relerr 2.984e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 1x1x8 mode=3 pre  relerr 2.583e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 1x1x8 mode=4  relerr 1.021e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 1x1x8 mode=4 pre  relerr 4.139e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 1x1x8 mode=5  relerr 2.031e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 1x1x8 mode=5 pre  relerr 1.992e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 200x300x96 mode=0  relerr 2.917e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 200x300x96 mode=1  relerr 1.345e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 200x300x96 mode=2  relerr 2.118e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 200x300x96 mode=2 pre  relerr 2.104e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 200x300x96 mode=3  relerr 2.092e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 200x300x96 mode=3 pre  relerr 2.001e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 200x300x96 mode=4  relerr 1.607e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 200x300x96 mode=4 pre  relerr 1.512e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 200x300x96 mode=5  relerr 1.727e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 200x300x96 mode=5 pre  relerr 2.061e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 64x64x16 mode=0  relerr 2.739e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 64x64x16 mode=1  relerr 8.114e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 64x64x16 mode=2  relerr 2.230e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 64x64x16 mode=2 pre  relerr 2.261e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 64x64x16 mode=3  relerr 2.770e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 64x64x16 mode=3 pre  relerr 2.158e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 64x64x16 mode=4  relerr 1.245e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 64x64x16 mode=4 pre  relerr 1.032e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 64x64x16 mode=5  relerr 8.724e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 64x64x16 mode=5 pre  relerr 2.710e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 5x7x3 mode=0  relerr 1.700e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 5x7x3 mode=1  relerr 0.000e+00 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 5x7x3 mode=2  relerr 2.525e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 5x7x3 mode=2 pre  relerr 2.682e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 5x7x3 mode=3  relerr 1.283e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 5x7x3 mode=3 pre  relerr 1.821e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 5x7x3 mode=4  relerr 7.487e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 5x7x3 mode=4 pre  relerr 3.490e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 5x7x3 mode=5  relerr 2.379e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 5x7x3 mode=5 pre  relerr 1.378e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 256x512x128 mode=0  relerr 2.272e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 256x512x128 mode=1  relerr 3.567e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 256x512x128 mode=2  relerr 3.216e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 256x512x128 mode=2 pre  relerr 3.537e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 256x512x128 mode=3  relerr 2.708e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 256x512x128 mode=3 pre  relerr 2.779e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 256x512x128 mode=4  relerr 3.114e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 256x512x128 mode=4 pre  relerr 3.018e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 256x512x128 mode=5  relerr 1.454e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 256x512x128 mode=5 pre  relerr 2.894e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 17x33x24 mode=0  relerr 2.987e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 17x33x24 mode=1  relerr 5.619e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 17x33x24 mode=2  relerr 2.638e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 17x33x24 mode=2 pre  relerr 2.856e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 17x33x24 mode=3  relerr 2.158e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 17x33x24 mode=3 pre  relerr 2.775e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 17x33x24 mode=4  relerr 8.826e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 17x33x24 mode=4 pre  relerr 9.796e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 17x33x24 mode=5  relerr 8.310e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 17x33x24 mode=5 pre  relerr 2.539e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 131x9x1000 mode=0  relerr 2.195e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 131x9x1000 mode=1  relerr 6.720e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 131x9x1000 mode=2  relerr 2.991e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 131x9x1000 mode=2 pre  relerr 2.646e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 131x9x1000 mode=3  relerr 2.448e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 131x9x1000 mode=3 pre  relerr 1.880e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 131x9x1000 mode=4  relerr 5.594e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 131x9x1000 mode=4 pre  relerr 7.086e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 131x9x1000 mode=5  relerr 5.987e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 131x9x1000 mode=5 pre  relerr 2.308e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 300x513x72 mode=0  relerr 2.931e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 300x513x72 mode=1  relerr 1.276e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 300x513x72 mode=2  relerr 2.211e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 300x513x72 mode=2 pre  relerr 2.289e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 300x513x72 mode=3  relerr 1.979e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 300x513x72 mode=3 pre  relerr 2.156e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=0 300x513x72 mode=4  relerr 1.777e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 300x513x72 mode=4 pre  relerr 1.473e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 300x513x72 mode=5  relerr 1.894e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=0 300x513x72 mode=5 pre  relerr 2.194e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 128x256x32 mode=0  relerr 2.545e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 128x256x32 mode=1  relerr 1.629e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 128x256x32 mode=2  relerr 3.238e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 128x256x32 mode=2 pre  relerr 3.008e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 128x256x32 mode=3  relerr 3.151e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 128x256x32 mode=3 pre  relerr 3.231e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 128x256x32 mode=4  relerr 1.415e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 128x256x32 mode=4 pre  relerr 1.181e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 128x256x32 mode=5  relerr 8.561e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 128x256x32 mode=5 pre  relerr 3.030e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 130x260x40 mode=0  relerr 2.148e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 130x260x40 mode=1  relerr 1.526e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 130x260x40 mode=2  relerr 2.664e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 130x260x40 mode=2 pre  relerr 2.988e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 130x260x40 mode=3  relerr 3.075e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 130x260x40 mode=3 pre  relerr 2.929e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 130x260x40 mode=4  relerr 1.909e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 130x260x40 mode=4 pre  relerr 1.380e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 130x260x40 mode=5  relerr 1.004e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 130x260x40 mode=5 pre  relerr 2.921e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 1x1x8 mode=0  relerr 1.992e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 1x1x8 mode=1  relerr 0.000e+00 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 1x1x8 mode=2  relerr 7.148e-04 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 1x1x8 mode=2 pre  relerr 1.464e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 1x1x8 mode=3  relerr 1.873e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 1x1x8 mode=3 pre  relerr 7.900e-04 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 1x1x8 mode=4  relerr 1.049e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 1x1x8 mode=4 pre  relerr 2.683e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 1x1x8 mode=5  relerr 2.679e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 1x1x8 mode=5 pre  relerr 4.088e-04 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 200x300x96 mode=0  relerr 2.885e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 200x300x96 mode=1  relerr 2.694e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 200x300x96 mode=2  relerr 1.867e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 200x300x96 mode=2 pre  relerr 3.554e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 200x300x96 mode=3  relerr 3.583e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 200x300x96 mode=3 pre  relerr 3.161e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 200x300x96 mode=4  relerr 2.120e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 200x300x96 mode=4 pre  relerr 2.178e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 200x300x96 mode=5  relerr 1.559e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 200x300x96 mode=5 pre  relerr 3.094e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 64x64x16 mode=0  relerr 2.120e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 64x64x16 mode=1  relerr 5.643e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 64x64x16 mode=2  relerr 2.388e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 64x64x16 mode=2 pre  relerr 2.826e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 64x64x16 mode=3  relerr 2.562e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 64x64x16 mode=3 pre  relerr 2.653e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 64x64x16 mode=4  relerr 8.784e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 64x64x16 mode=4 pre  relerr 9.213e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 64x64x16 mode=5  relerr 9.403e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 64x64x16 mode=5 pre  relerr 2.666e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 5x7x3 mode=0  relerr 1.986e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 5x7x3 mode=1  relerr 0.000e+00 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 5x7x3 mode=2  relerr 2.796e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 5x7x3 mode=2 pre  relerr 1.155e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 5x7x3 mode=3  relerr 2.565e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 5x7x3 mode=3 pre  relerr 2.543e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 5x7x3 mode=4  relerr 4.780e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 5x7x3 mode=4 pre  relerr 5.980e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 5x7x3 mode=5  relerr 6.968e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 5x7x3 mode=5 pre  relerr 3.498e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 256x512x128 mode=0  relerr 2.364e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 256x512x128 mode=1  relerr 2.604e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 256x512x128 mode=2  relerr 2.892e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 256x512x128 mode=2 pre  relerr 2.824e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 256x512x128 mode=3  relerr 2.555e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 256x512x128 mode=3 pre  relerr 3.359e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 256x512x128 mode=4  relerr 2.496e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 256x512x128 mode=4 pre  relerr 3.227e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 256x512x128 mode=5  relerr 1.760e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 256x512x128 mode=5 pre  relerr 3.061e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 17x33x24 mode=0  relerr 1.977e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 17x33x24 mode=1  relerr 1.014e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 17x33x24 mode=2  relerr 2.068e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 17x33x24 mode=2 pre  relerr 2.264e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 17x33x24 mode=3  relerr 2.664e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 17x33x24 mode=3 pre  relerr 2.933e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 17x33x24 mode=4  relerr 5.770e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 17x33x24 mode=4 pre  relerr 7.872e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 17x33x24 mode=5  relerr 5.419e-08 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 17x33x24 mode=5 pre  relerr 3.323e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 131x9x1000 mode=0  relerr 2.107e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 131x9x1000 mode=1  relerr 1.357e-06 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 131x9x1000 mode=2  relerr 1.870e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 131x9x1000 mode=2 pre  relerr 2.652e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 131x9x1000 mode=3  relerr 3.683e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 131x9x1000 mode=3 pre  relerr 1.975e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 131x9x1000 mode=4  relerr 1.372e-06 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 131x9x1000 mode=4 pre  relerr 1.586e-06 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 131x9x1000 mode=5  relerr 7.790e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 131x9x1000 mode=5 pre  relerr 3.225e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 300x513x72 mode=0  relerr 3.225e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 300x513x72 mode=1  relerr 2.432e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 300x513x72 mode=2  relerr 2.226e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 300x513x72 mode=2 pre  relerr 2.341e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 300x513x72 mode=3  relerr 2.091e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 300x513x72 mode=3 pre  relerr 2.179e-03 (tol 1e-02)
+PASS  mma_bf16 ta=0 tb=1 300x513x72 mode=4  relerr 2.422e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 300x513x72 mode=4 pre  relerr 1.907e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 300x513x72 mode=5  relerr 1.803e-07 (tol 1e-04)
+PASS  mma_bf16 ta=0 tb=1 300x513x72 mode=5 pre  relerr 2.236e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 128x256x32 mode=0  relerr 2.294e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 128x256x32 mode=1  relerr 8.687e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 128x256x32 mode=2  relerr 2.833e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 128x256x32 mode=2 pre  relerr 2.744e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 128x256x32 mode=3  relerr 2.598e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 128x256x32 mode=3 pre  relerr 3.216e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 128x256x32 mode=4  relerr 1.462e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 128x256x32 mode=4 pre  relerr 1.274e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 128x256x32 mode=5  relerr 9.546e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 128x256x32 mode=5 pre  relerr 2.595e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 130x260x40 mode=0  relerr 2.229e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 130x260x40 mode=1  relerr 1.025e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 130x260x40 mode=2  relerr 3.190e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 130x260x40 mode=2 pre  relerr 3.042e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 130x260x40 mode=3  relerr 3.151e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 130x260x40 mode=3 pre  relerr 3.005e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 130x260x40 mode=4  relerr 1.630e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 130x260x40 mode=4 pre  relerr 1.101e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 130x260x40 mode=5  relerr 1.036e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 130x260x40 mode=5 pre  relerr 2.797e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 1x1x8 mode=0  relerr 2.224e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 1x1x8 mode=1  relerr 0.000e+00 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 1x1x8 mode=2  relerr 1.416e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 1x1x8 mode=2 pre  relerr 7.069e-04 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 1x1x8 mode=3  relerr 5.939e-04 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 1x1x8 mode=3 pre  relerr 1.064e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 1x1x8 mode=4  relerr 7.941e-09 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 1x1x8 mode=4 pre  relerr 1.175e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 1x1x8 mode=5  relerr 3.918e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 1x1x8 mode=5 pre  relerr 2.143e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 200x300x96 mode=0  relerr 2.824e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 200x300x96 mode=1  relerr 1.275e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 200x300x96 mode=2  relerr 2.076e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 200x300x96 mode=2 pre  relerr 1.891e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 200x300x96 mode=3  relerr 2.036e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 200x300x96 mode=3 pre  relerr 2.029e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 200x300x96 mode=4  relerr 1.282e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 200x300x96 mode=4 pre  relerr 1.406e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 200x300x96 mode=5  relerr 1.307e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 200x300x96 mode=5 pre  relerr 3.432e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 64x64x16 mode=0  relerr 2.452e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 64x64x16 mode=1  relerr 5.270e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 64x64x16 mode=2  relerr 2.180e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 64x64x16 mode=2 pre  relerr 2.180e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 64x64x16 mode=3  relerr 2.853e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 64x64x16 mode=3 pre  relerr 2.196e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 64x64x16 mode=4  relerr 1.139e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 64x64x16 mode=4 pre  relerr 8.599e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 64x64x16 mode=5  relerr 7.685e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 64x64x16 mode=5 pre  relerr 2.256e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 5x7x3 mode=0  relerr 1.654e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 5x7x3 mode=1  relerr 2.783e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 5x7x3 mode=2  relerr 2.472e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 5x7x3 mode=2 pre  relerr 2.225e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 5x7x3 mode=3  relerr 3.064e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 5x7x3 mode=3 pre  relerr 2.479e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 5x7x3 mode=4  relerr 5.171e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 5x7x3 mode=4 pre  relerr 2.785e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 5x7x3 mode=5  relerr 5.613e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 5x7x3 mode=5 pre  relerr 1.899e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 256x512x128 mode=0  relerr 2.246e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 256x512x128 mode=1  relerr 3.194e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 256x512x128 mode=2  relerr 3.374e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 256x512x128 mode=2 pre  relerr 3.216e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 256x512x128 mode=3  relerr 2.391e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 256x512x128 mode=3 pre  relerr 2.853e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 256x512x128 mode=4  relerr 2.923e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 256x512x128 mode=4 pre  relerr 3.326e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 256x512x128 mode=5  relerr 1.400e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 256x512x128 mode=5 pre  relerr 2.805e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 17x33x24 mode=0  relerr 2.058e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 17x33x24 mode=1  relerr 4.690e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 17x33x24 mode=2  relerr 2.271e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 17x33x24 mode=2 pre  relerr 1.945e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 17x33x24 mode=3  relerr 2.017e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 17x33x24 mode=3 pre  relerr 2.091e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 17x33x24 mode=4  relerr 7.615e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 17x33x24 mode=4 pre  relerr 6.731e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 17x33x24 mode=5  relerr 1.179e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 17x33x24 mode=5 pre  relerr 2.816e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 131x9x1000 mode=0  relerr 2.270e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 131x9x1000 mode=1  relerr 5.842e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 131x9x1000 mode=2  relerr 1.800e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 131x9x1000 mode=2 pre  relerr 2.184e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 131x9x1000 mode=3  relerr 1.952e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 131x9x1000 mode=3 pre  relerr 3.104e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 131x9x1000 mode=4  relerr 6.432e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 131x9x1000 mode=4 pre  relerr 8.305e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 131x9x1000 mode=5  relerr 5.694e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 131x9x1000 mode=5 pre  relerr 1.762e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 300x513x72 mode=0  relerr 2.741e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 300x513x72 mode=1  relerr 1.133e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 300x513x72 mode=2  relerr 2.164e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 300x513x72 mode=2 pre  relerr 2.180e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 300x513x72 mode=3  relerr 2.311e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 300x513x72 mode=3 pre  relerr 2.246e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=0 300x513x72 mode=4  relerr 1.460e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 300x513x72 mode=4 pre  relerr 1.194e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 300x513x72 mode=5  relerr 1.447e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=0 300x513x72 mode=5 pre  relerr 2.290e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 128x256x32 mode=0  relerr 2.321e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 128x256x32 mode=1  relerr 1.313e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 128x256x32 mode=2  relerr 2.150e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 128x256x32 mode=2 pre  relerr 3.468e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 128x256x32 mode=3  relerr 3.109e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 128x256x32 mode=3 pre  relerr 3.234e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 128x256x32 mode=4  relerr 1.182e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 128x256x32 mode=4 pre  relerr 1.485e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 128x256x32 mode=5  relerr 1.160e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 128x256x32 mode=5 pre  relerr 2.693e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 130x260x40 mode=0  relerr 2.312e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 130x260x40 mode=1  relerr 8.870e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 130x260x40 mode=2  relerr 3.396e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 130x260x40 mode=2 pre  relerr 3.152e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 130x260x40 mode=3  relerr 3.124e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 130x260x40 mode=3 pre  relerr 2.963e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 130x260x40 mode=4  relerr 1.107e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 130x260x40 mode=4 pre  relerr 1.217e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 130x260x40 mode=5  relerr 1.470e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 130x260x40 mode=5 pre  relerr 3.409e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 1x1x8 mode=0  relerr 2.283e-04 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 1x1x8 mode=1  relerr 3.933e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 1x1x8 mode=2  relerr 8.815e-05 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 1x1x8 mode=2 pre  relerr 2.475e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 1x1x8 mode=3  relerr 1.811e-06 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 1x1x8 mode=3 pre  relerr 3.310e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 1x1x8 mode=4  relerr 3.465e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 1x1x8 mode=4 pre  relerr 5.647e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 1x1x8 mode=5  relerr 6.799e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 1x1x8 mode=5 pre  relerr 1.000e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 200x300x96 mode=0  relerr 2.739e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 200x300x96 mode=1  relerr 2.306e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 200x300x96 mode=2  relerr 1.878e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 200x300x96 mode=2 pre  relerr 1.876e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 200x300x96 mode=3  relerr 1.998e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 200x300x96 mode=3 pre  relerr 2.484e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 200x300x96 mode=4  relerr 2.317e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 200x300x96 mode=4 pre  relerr 2.363e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 200x300x96 mode=5  relerr 1.497e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 200x300x96 mode=5 pre  relerr 1.967e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 64x64x16 mode=0  relerr 2.074e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 64x64x16 mode=1  relerr 6.652e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 64x64x16 mode=2  relerr 2.513e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 64x64x16 mode=2 pre  relerr 2.630e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 64x64x16 mode=3  relerr 2.574e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 64x64x16 mode=3 pre  relerr 2.388e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 64x64x16 mode=4  relerr 9.160e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 64x64x16 mode=4 pre  relerr 1.065e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 64x64x16 mode=5  relerr 8.621e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 64x64x16 mode=5 pre  relerr 2.402e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 5x7x3 mode=0  relerr 2.024e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 5x7x3 mode=1  relerr 0.000e+00 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 5x7x3 mode=2  relerr 1.724e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 5x7x3 mode=2 pre  relerr 2.154e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 5x7x3 mode=3  relerr 1.417e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 5x7x3 mode=3 pre  relerr 1.772e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 5x7x3 mode=4  relerr 5.971e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 5x7x3 mode=4 pre  relerr 4.653e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 5x7x3 mode=5  relerr 9.313e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 5x7x3 mode=5 pre  relerr 1.727e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 256x512x128 mode=0  relerr 2.404e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 256x512x128 mode=1  relerr 3.297e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 256x512x128 mode=2  relerr 3.270e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 256x512x128 mode=2 pre  relerr 3.280e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 256x512x128 mode=3  relerr 2.616e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 256x512x128 mode=3 pre  relerr 3.152e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 256x512x128 mode=4  relerr 2.310e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 256x512x128 mode=4 pre  relerr 2.761e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 256x512x128 mode=5  relerr 1.344e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 256x512x128 mode=5 pre  relerr 2.636e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 17x33x24 mode=0  relerr 2.137e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 17x33x24 mode=1  relerr 1.028e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 17x33x24 mode=2  relerr 2.234e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 17x33x24 mode=2 pre  relerr 2.151e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 17x33x24 mode=3  relerr 2.622e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 17x33x24 mode=3 pre  relerr 2.931e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 17x33x24 mode=4  relerr 8.837e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 17x33x24 mode=4 pre  relerr 6.947e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 17x33x24 mode=5  relerr 8.274e-08 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 17x33x24 mode=5 pre  relerr 2.483e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 131x9x1000 mode=0  relerr 2.205e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 131x9x1000 mode=1  relerr 4.941e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 131x9x1000 mode=2  relerr 2.322e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 131x9x1000 mode=2 pre  relerr 3.045e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 131x9x1000 mode=3  relerr 1.982e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 131x9x1000 mode=3 pre  relerr 1.730e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 131x9x1000 mode=4  relerr 6.078e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 131x9x1000 mode=4 pre  relerr 5.831e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 131x9x1000 mode=5  relerr 5.610e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 131x9x1000 mode=5 pre  relerr 2.658e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 300x513x72 mode=0  relerr 3.059e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 300x513x72 mode=1  relerr 1.469e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 300x513x72 mode=2  relerr 2.051e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 300x513x72 mode=2 pre  relerr 2.107e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 300x513x72 mode=3  relerr 1.971e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 300x513x72 mode=3 pre  relerr 2.079e-03 (tol 1e-02)
+PASS  mma_bf16 ta=1 tb=1 300x513x72 mode=4  relerr 1.359e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 300x513x72 mode=4 pre  relerr 1.294e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 300x513x72 mode=5  relerr 1.534e-07 (tol 1e-04)
+PASS  mma_bf16 ta=1 tb=1 300x513x72 mode=5 pre  relerr 2.257e-03 (tol 1e-02)
+  matmul_mma_bf16: 240 configurations, worst relerr 3.683e-03
+PASS  mma_bf16 stores only bf16-representable values  
+PASS  mma_bf16 flags 16 -> E_SHAPE  
+PASS  mma_bf16 m0 >= M -> E_RANGE  
+PASS  mma_bf16 K beyond A -> E_RANGE  
+PASS  mma_bf16 i32 operand -> E_DTYPE  
+PASS  layernorm_fwd d=20 [in f32, out f32]  relerr 5.235e-08 (tol 2e-05)
+PASS  layernorm_fwd d=20 [in f32, out f32] err==0  
+PASS  layernorm_bwd_dx d=20 [in f32, out f32]  relerr 4.630e-08 (tol 2e-05)
+PASS  norm_bwd_params dgamma d=20 [in f32, out f32]  relerr 8.288e-08 (tol 3e-05)
+PASS  norm_bwd_params dbeta d=20 [in f32, out f32]  relerr 6.141e-08 (tol 3e-05)
+PASS  norm bwd d=20 [in f32, out f32] err==0  
+PASS  rmsnorm_fwd d=20 [in f32, out f32]  relerr 4.194e-08 (tol 2e-05)
+PASS  rmsnorm_fwd d=20 [in f32, out f32] err==0  
+PASS  rmsnorm_bwd_dx d=20 [in f32, out f32]  relerr 5.505e-08 (tol 2e-05)
+PASS  norm_bwd_params dgamma d=20 [in f32, out f32]  relerr 1.133e-07 (tol 3e-05)
+PASS  norm bwd d=20 [in f32, out f32] err==0  
+PASS  layernorm_fwd d=22 [in f32, out f32]  relerr 8.258e-08 (tol 2e-05)
+PASS  layernorm_fwd d=22 [in f32, out f32] err==0  
+PASS  layernorm_bwd_dx d=22 [in f32, out f32]  relerr 1.052e-07 (tol 2e-05)
+PASS  norm_bwd_params dgamma d=22 [in f32, out f32]  relerr 1.050e-07 (tol 3e-05)
+PASS  norm_bwd_params dbeta d=22 [in f32, out f32]  relerr 1.092e-07 (tol 3e-05)
+PASS  norm bwd d=22 [in f32, out f32] err==0  
+PASS  rmsnorm_fwd d=22 [in f32, out f32]  relerr 1.340e-07 (tol 2e-05)
+PASS  rmsnorm_fwd d=22 [in f32, out f32] err==0  
+PASS  rmsnorm_bwd_dx d=22 [in f32, out f32]  relerr 6.974e-08 (tol 2e-05)
+PASS  norm_bwd_params dgamma d=22 [in f32, out f32]  relerr 9.613e-08 (tol 3e-05)
+PASS  norm bwd d=22 [in f32, out f32] err==0  
+PASS  layernorm_fwd d=96 [in f32, out f32]  relerr 6.678e-08 (tol 2e-05)
+PASS  layernorm_fwd d=96 [in f32, out f32] err==0  
+PASS  layernorm_bwd_dx d=96 [in f32, out f32]  relerr 5.222e-08 (tol 2e-05)
+PASS  norm_bwd_params dgamma d=96 [in f32, out f32]  relerr 6.673e-08 (tol 3e-05)
+PASS  norm_bwd_params dbeta d=96 [in f32, out f32]  relerr 9.600e-08 (tol 3e-05)
+PASS  norm bwd d=96 [in f32, out f32] err==0  
+PASS  rmsnorm_fwd d=96 [in f32, out f32]  relerr 9.767e-08 (tol 2e-05)
+PASS  rmsnorm_fwd d=96 [in f32, out f32] err==0  
+PASS  rmsnorm_bwd_dx d=96 [in f32, out f32]  relerr 9.467e-08 (tol 2e-05)
+PASS  norm_bwd_params dgamma d=96 [in f32, out f32]  relerr 1.874e-07 (tol 3e-05)
+PASS  norm bwd d=96 [in f32, out f32] err==0  
+PASS  layernorm_fwd d=768 [in f32, out f32]  relerr 8.681e-08 (tol 2e-05)
+PASS  layernorm_fwd d=768 [in f32, out f32] err==0  
+PASS  layernorm_bwd_dx d=768 [in f32, out f32]  relerr 1.142e-07 (tol 2e-05)
+PASS  norm_bwd_params dgamma d=768 [in f32, out f32]  relerr 7.586e-08 (tol 3e-05)
+PASS  norm_bwd_params dbeta d=768 [in f32, out f32]  relerr 8.086e-08 (tol 3e-05)
+PASS  norm bwd d=768 [in f32, out f32] err==0  
+PASS  rmsnorm_fwd d=768 [in f32, out f32]  relerr 6.733e-08 (tol 2e-05)
+PASS  rmsnorm_fwd d=768 [in f32, out f32] err==0  
+PASS  rmsnorm_bwd_dx d=768 [in f32, out f32]  relerr 8.081e-08 (tol 2e-05)
+PASS  norm_bwd_params dgamma d=768 [in f32, out f32]  relerr 6.712e-08 (tol 3e-05)
+PASS  norm bwd d=768 [in f32, out f32] err==0  
+PASS  colsum [in f32, out f32]  relerr 1.308e-07 (tol 3e-05)
+PASS  colsum err==0 [in f32, out f32]  
+PASS  gelu_bwd acc=0 [in f32, out f32]  relerr 2.142e-07 (tol 2e-05)
+PASS  gelu_bwd err==0 [in f32, out f32]  
+PASS  gelu_bwd acc=1 [in f32, out f32]  relerr 2.180e-07 (tol 2e-05)
+PASS  gelu_bwd err==0 [in f32, out f32]  
+PASS  residual_add [in f32, out f32]  relerr 5.056e-08 (tol 2e-05)
+PASS  residual_add err==0 [in f32, out f32]  
+PASS  embedding_fwd [in f32, out f32]  relerr 2.813e-08 (tol 2e-05)
+PASS  embedding_fwd err==0 [in f32, out f32]  
+PASS  rope_fwd [in f32, out f32]  relerr 4.706e-08 (tol 5e-05)
+PASS  rope err==0 [in f32, out f32]  
+PASS  rope_bwd [in f32, out f32]  relerr 6.028e-08 (tol 5e-05)
+PASS  rope err==0 [in f32, out f32]  
+PASS  softmax_ce_fwd V=50 [in f32, out f32] loss  got 8.973940 ref 8.973939
+PASS  softmax_ce_bwd V=50 [in f32, out f32]  relerr 1.223e-07 (tol 3e-05)
+PASS  softmax_ce_bwd err==0 [in f32, out f32]  
+PASS  softmax_ce_fwd V=64 [in f32, out f32] loss  got 7.490830 ref 7.490830
+PASS  softmax_ce_bwd V=64 [in f32, out f32]  relerr 2.535e-07 (tol 3e-05)
+PASS  softmax_ce_bwd err==0 [in f32, out f32]  
+PASS  softmax_ce_fwd V=130 [in f32, out f32] loss  got 4.984287 ref 4.984288
+PASS  softmax_ce_bwd V=130 [in f32, out f32]  relerr 1.266e-07 (tol 3e-05)
+PASS  softmax_ce_bwd err==0 [in f32, out f32]  
+PASS  softmax_ce_fwd V=4101 [in f32, out f32] loss  got 10.898985 ref 10.898984
+PASS  softmax_ce_bwd V=4101 [in f32, out f32]  relerr 1.454e-07 (tol 3e-05)
+PASS  softmax_ce_bwd err==0 [in f32, out f32]  
+PASS  layernorm_fwd d=20 [in bf16, out f32]  relerr 7.071e-08 (tol 2e-05)
+PASS  layernorm_fwd d=20 [in bf16, out f32] err==0  
+PASS  layernorm_bwd_dx d=20 [in bf16, out f32]  relerr 1.961e-07 (tol 2e-05)
+PASS  norm_bwd_params dgamma d=20 [in bf16, out f32]  relerr 1.036e-07 (tol 3e-05)
+PASS  norm_bwd_params dbeta d=20 [in bf16, out f32]  relerr 0.000e+00 (tol 3e-05)
+PASS  norm bwd d=20 [in bf16, out f32] err==0  
+PASS  rmsnorm_fwd d=20 [in bf16, out f32]  relerr 4.457e-08 (tol 2e-05)
+PASS  rmsnorm_fwd d=20 [in bf16, out f32] err==0  
+PASS  rmsnorm_bwd_dx d=20 [in bf16, out f32]  relerr 6.448e-08 (tol 2e-05)
+PASS  norm_bwd_params dgamma d=20 [in bf16, out f32]  relerr 6.943e-08 (tol 3e-05)
+PASS  norm bwd d=20 [in bf16, out f32] err==0  
+PASS  layernorm_fwd d=22 [in bf16, out f32]  relerr 6.654e-08 (tol 2e-05)
+PASS  layernorm_fwd d=22 [in bf16, out f32] err==0  
+PASS  layernorm_bwd_dx d=22 [in bf16, out f32]  relerr 1.140e-07 (tol 2e-05)
+PASS  norm_bwd_params dgamma d=22 [in bf16, out f32]  relerr 7.622e-08 (tol 3e-05)
+PASS  norm_bwd_params dbeta d=22 [in bf16, out f32]  relerr 0.000e+00 (tol 3e-05)
+PASS  norm bwd d=22 [in bf16, out f32] err==0  
+PASS  rmsnorm_fwd d=22 [in bf16, out f32]  relerr 6.911e-08 (tol 2e-05)
+PASS  rmsnorm_fwd d=22 [in bf16, out f32] err==0  
+PASS  rmsnorm_bwd_dx d=22 [in bf16, out f32]  relerr 4.816e-08 (tol 2e-05)
+PASS  norm_bwd_params dgamma d=22 [in bf16, out f32]  relerr 1.147e-07 (tol 3e-05)
+PASS  norm bwd d=22 [in bf16, out f32] err==0  
+PASS  layernorm_fwd d=96 [in bf16, out f32]  relerr 8.805e-08 (tol 2e-05)
+PASS  layernorm_fwd d=96 [in bf16, out f32] err==0  
+PASS  layernorm_bwd_dx d=96 [in bf16, out f32]  relerr 1.111e-07 (tol 2e-05)
+PASS  norm_bwd_params dgamma d=96 [in bf16, out f32]  relerr 6.206e-08 (tol 3e-05)
+PASS  norm_bwd_params dbeta d=96 [in bf16, out f32]  relerr 0.000e+00 (tol 3e-05)
+PASS  norm bwd d=96 [in bf16, out f32] err==0  
+PASS  rmsnorm_fwd d=96 [in bf16, out f32]  relerr 7.264e-08 (tol 2e-05)
+PASS  rmsnorm_fwd d=96 [in bf16, out f32] err==0  
+PASS  rmsnorm_bwd_dx d=96 [in bf16, out f32]  relerr 8.358e-08 (tol 2e-05)
+PASS  norm_bwd_params dgamma d=96 [in bf16, out f32]  relerr 8.728e-08 (tol 3e-05)
+PASS  norm bwd d=96 [in bf16, out f32] err==0  
+PASS  layernorm_fwd d=768 [in bf16, out f32]  relerr 9.164e-08 (tol 2e-05)
+PASS  layernorm_fwd d=768 [in bf16, out f32] err==0  
+PASS  layernorm_bwd_dx d=768 [in bf16, out f32]  relerr 1.147e-07 (tol 2e-05)
+PASS  norm_bwd_params dgamma d=768 [in bf16, out f32]  relerr 1.395e-07 (tol 3e-05)
+PASS  norm_bwd_params dbeta d=768 [in bf16, out f32]  relerr 0.000e+00 (tol 3e-05)
+PASS  norm bwd d=768 [in bf16, out f32] err==0  
+PASS  rmsnorm_fwd d=768 [in bf16, out f32]  relerr 9.644e-08 (tol 2e-05)
+PASS  rmsnorm_fwd d=768 [in bf16, out f32] err==0  
+PASS  rmsnorm_bwd_dx d=768 [in bf16, out f32]  relerr 1.121e-07 (tol 2e-05)
+PASS  norm_bwd_params dgamma d=768 [in bf16, out f32]  relerr 8.812e-08 (tol 3e-05)
+PASS  norm bwd d=768 [in bf16, out f32] err==0  
+PASS  colsum [in bf16, out f32]  relerr 0.000e+00 (tol 3e-05)
+PASS  colsum err==0 [in bf16, out f32]  
+PASS  gelu_bwd acc=0 [in bf16, out f32]  relerr 1.905e-07 (tol 2e-05)
+PASS  gelu_bwd err==0 [in bf16, out f32]  
+PASS  gelu_bwd acc=1 [in bf16, out f32]  relerr 2.010e-07 (tol 2e-05)
+PASS  gelu_bwd err==0 [in bf16, out f32]  
+PASS  residual_add [in bf16, out f32]  relerr 0.000e+00 (tol 2e-05)
+PASS  residual_add err==0 [in bf16, out f32]  
+PASS  embedding_fwd [in bf16, out f32]  relerr 4.065e-08 (tol 2e-05)
+PASS  embedding_fwd err==0 [in bf16, out f32]  
+PASS  rope_fwd [in bf16, out f32]  relerr 6.535e-08 (tol 5e-05)
+PASS  rope err==0 [in bf16, out f32]  
+PASS  rope_bwd [in bf16, out f32]  relerr 6.952e-08 (tol 5e-05)
+PASS  rope err==0 [in bf16, out f32]  
+PASS  softmax_ce_fwd V=50 [in bf16, out f32] loss  got 5.630424 ref 5.630424
+PASS  softmax_ce_bwd V=50 [in bf16, out f32]  relerr 3.887e-07 (tol 3e-05)
+PASS  softmax_ce_bwd err==0 [in bf16, out f32]  
+PASS  softmax_ce_fwd V=64 [in bf16, out f32] loss  got 7.587626 ref 7.587626
+PASS  softmax_ce_bwd V=64 [in bf16, out f32]  relerr 2.622e-07 (tol 3e-05)
+PASS  softmax_ce_bwd err==0 [in bf16, out f32]  
+PASS  softmax_ce_fwd V=130 [in bf16, out f32] loss  got 7.659607 ref 7.659607
+PASS  softmax_ce_bwd V=130 [in bf16, out f32]  relerr 2.234e-07 (tol 3e-05)
+PASS  softmax_ce_bwd err==0 [in bf16, out f32]  
+PASS  softmax_ce_fwd V=4101 [in bf16, out f32] loss  got 12.179655 ref 12.179655
+PASS  softmax_ce_bwd V=4101 [in bf16, out f32]  relerr 6.996e-08 (tol 3e-05)
+PASS  softmax_ce_bwd err==0 [in bf16, out f32]  
+PASS  layernorm_fwd d=20 [in f32, out bf16]  relerr 2.361e-03 (tol 6e-03)
+PASS  layernorm_fwd d=20 [in f32, out bf16] err==0  
+PASS  layernorm_bwd_dx d=20 [in f32, out bf16]  relerr 2.283e-03 (tol 6e-03)
+PASS  norm_bwd_params dgamma d=20 [in f32, out bf16]  relerr 5.130e-08 (tol 3e-05)
+PASS  norm_bwd_params dbeta d=20 [in f32, out bf16]  relerr 5.387e-08 (tol 3e-05)
+PASS  norm bwd d=20 [in f32, out bf16] err==0  
+PASS  rmsnorm_fwd d=20 [in f32, out bf16]  relerr 2.313e-03 (tol 6e-03)
+PASS  rmsnorm_fwd d=20 [in f32, out bf16] err==0  
+PASS  rmsnorm_bwd_dx d=20 [in f32, out bf16]  relerr 1.233e-03 (tol 6e-03)
+PASS  norm_bwd_params dgamma d=20 [in f32, out bf16]  relerr 9.335e-08 (tol 3e-05)
+PASS  norm bwd d=20 [in f32, out bf16] err==0  
+PASS  layernorm_fwd d=22 [in f32, out bf16]  relerr 1.967e-03 (tol 6e-03)
+PASS  layernorm_fwd d=22 [in f32, out bf16] err==0  
+PASS  layernorm_bwd_dx d=22 [in f32, out bf16]  relerr 2.722e-03 (tol 6e-03)
+PASS  norm_bwd_params dgamma d=22 [in f32, out bf16]  relerr 1.043e-07 (tol 3e-05)
+PASS  norm_bwd_params dbeta d=22 [in f32, out bf16]  relerr 3.796e-08 (tol 3e-05)
+PASS  norm bwd d=22 [in f32, out bf16] err==0  
+PASS  rmsnorm_fwd d=22 [in f32, out bf16]  relerr 2.466e-03 (tol 6e-03)
+PASS  rmsnorm_fwd d=22 [in f32, out bf16] err==0  
+PASS  rmsnorm_bwd_dx d=22 [in f32, out bf16]  relerr 2.617e-03 (tol 6e-03)
+PASS  norm_bwd_params dgamma d=22 [in f32, out bf16]  relerr 1.936e-07 (tol 3e-05)
+PASS  norm bwd d=22 [in f32, out bf16] err==0  
+PASS  layernorm_fwd d=96 [in f32, out bf16]  relerr 3.128e-03 (tol 6e-03)
+PASS  layernorm_fwd d=96 [in f32, out bf16] err==0  
+PASS  layernorm_bwd_dx d=96 [in f32, out bf16]  relerr 1.961e-03 (tol 6e-03)
+PASS  norm_bwd_params dgamma d=96 [in f32, out bf16]  relerr 6.869e-08 (tol 3e-05)
+PASS  norm_bwd_params dbeta d=96 [in f32, out bf16]  relerr 5.442e-08 (tol 3e-05)
+PASS  norm bwd d=96 [in f32, out bf16] err==0  
+PASS  rmsnorm_fwd d=96 [in f32, out bf16]  relerr 1.478e-03 (tol 6e-03)
+PASS  rmsnorm_fwd d=96 [in f32, out bf16] err==0  
+PASS  rmsnorm_bwd_dx d=96 [in f32, out bf16]  relerr 1.547e-03 (tol 6e-03)
+PASS  norm_bwd_params dgamma d=96 [in f32, out bf16]  relerr 1.042e-07 (tol 3e-05)
+PASS  norm bwd d=96 [in f32, out bf16] err==0  
+PASS  layernorm_fwd d=768 [in f32, out bf16]  relerr 2.568e-03 (tol 6e-03)
+PASS  layernorm_fwd d=768 [in f32, out bf16] err==0  
+PASS  layernorm_bwd_dx d=768 [in f32, out bf16]  relerr 2.206e-03 (tol 6e-03)
+PASS  norm_bwd_params dgamma d=768 [in f32, out bf16]  relerr 1.532e-07 (tol 3e-05)
+PASS  norm_bwd_params dbeta d=768 [in f32, out bf16]  relerr 4.781e-08 (tol 3e-05)
+PASS  norm bwd d=768 [in f32, out bf16] err==0  
+PASS  rmsnorm_fwd d=768 [in f32, out bf16]  relerr 2.079e-03 (tol 6e-03)
+PASS  rmsnorm_fwd d=768 [in f32, out bf16] err==0  
+PASS  rmsnorm_bwd_dx d=768 [in f32, out bf16]  relerr 1.999e-03 (tol 6e-03)
+PASS  norm_bwd_params dgamma d=768 [in f32, out bf16]  relerr 1.020e-07 (tol 3e-05)
+PASS  norm bwd d=768 [in f32, out bf16] err==0  
+PASS  colsum [in f32, out bf16]  relerr 8.209e-08 (tol 3e-05)
+PASS  colsum err==0 [in f32, out bf16]  
+PASS  gelu_bwd acc=0 [in f32, out bf16]  relerr 2.011e-03 (tol 6e-03)
+PASS  gelu_bwd err==0 [in f32, out bf16]  
+PASS  gelu_bwd acc=1 [in f32, out bf16]  relerr 2.578e-03 (tol 6e-03)
+PASS  gelu_bwd err==0 [in f32, out bf16]  
+PASS  residual_add [in f32, out bf16]  relerr 2.699e-03 (tol 6e-03)
+PASS  residual_add err==0 [in f32, out bf16]  
+PASS  embedding_fwd [in f32, out bf16]  relerr 2.225e-03 (tol 6e-03)
+PASS  embedding_fwd err==0 [in f32, out bf16]  
+PASS  rope_fwd [in f32, out bf16]  relerr 2.604e-03 (tol 6e-03)
+PASS  rope err==0 [in f32, out bf16]  
+PASS  rope_bwd [in f32, out bf16]  relerr 2.604e-03 (tol 6e-03)
+PASS  rope err==0 [in f32, out bf16]  
+PASS  softmax_ce_fwd V=50 [in f32, out bf16] loss  got 9.433007 ref 9.433007
+PASS  softmax_ce_bwd V=50 [in f32, out bf16]  relerr 1.599e-03 (tol 8e-03)
+PASS  softmax_ce_bwd err==0 [in f32, out bf16]  
+PASS  softmax_ce_fwd V=64 [in f32, out bf16] loss  got 8.428571 ref 8.428571
+PASS  softmax_ce_bwd V=64 [in f32, out bf16]  relerr 1.574e-03 (tol 8e-03)
+PASS  softmax_ce_bwd err==0 [in f32, out bf16]  
+PASS  softmax_ce_fwd V=130 [in f32, out bf16] loss  got 7.846516 ref 7.846516
+PASS  softmax_ce_bwd V=130 [in f32, out bf16]  relerr 2.199e-03 (tol 8e-03)
+PASS  softmax_ce_bwd err==0 [in f32, out bf16]  
+PASS  softmax_ce_fwd V=4101 [in f32, out bf16] loss  got 10.180105 ref 10.180105
+PASS  softmax_ce_bwd V=4101 [in f32, out bf16]  relerr 1.250e-03 (tol 8e-03)
+PASS  softmax_ce_bwd err==0 [in f32, out bf16]  
+PASS  layernorm_fwd d=20 [in bf16, out bf16]  relerr 1.897e-03 (tol 6e-03)
+PASS  layernorm_fwd d=20 [in bf16, out bf16] err==0  
+PASS  layernorm_bwd_dx d=20 [in bf16, out bf16]  relerr 2.593e-03 (tol 6e-03)
+PASS  norm_bwd_params dgamma d=20 [in bf16, out bf16]  relerr 9.265e-08 (tol 3e-05)
+PASS  norm_bwd_params dbeta d=20 [in bf16, out bf16]  relerr 0.000e+00 (tol 3e-05)
+PASS  norm bwd d=20 [in bf16, out bf16] err==0  
+PASS  rmsnorm_fwd d=20 [in bf16, out bf16]  relerr 2.368e-03 (tol 6e-03)
+PASS  rmsnorm_fwd d=20 [in bf16, out bf16] err==0  
+PASS  rmsnorm_bwd_dx d=20 [in bf16, out bf16]  relerr 1.203e-03 (tol 6e-03)
+PASS  norm_bwd_params dgamma d=20 [in bf16, out bf16]  relerr 1.469e-07 (tol 3e-05)
+PASS  norm bwd d=20 [in bf16, out bf16] err==0  
+PASS  layernorm_fwd d=22 [in bf16, out bf16]  relerr 1.508e-03 (tol 6e-03)
+PASS  layernorm_fwd d=22 [in bf16, out bf16] err==0  
+PASS  layernorm_bwd_dx d=22 [in bf16, out bf16]  relerr 3.052e-03 (tol 6e-03)
+PASS  norm_bwd_params dgamma d=22 [in bf16, out bf16]  relerr 9.583e-08 (tol 3e-05)
+PASS  norm_bwd_params dbeta d=22 [in bf16, out bf16]  relerr 0.000e+00 (tol 3e-05)
+PASS  norm bwd d=22 [in bf16, out bf16] err==0  
+PASS  rmsnorm_fwd d=22 [in bf16, out bf16]  relerr 2.720e-03 (tol 6e-03)
+PASS  rmsnorm_fwd d=22 [in bf16, out bf16] err==0  
+PASS  rmsnorm_bwd_dx d=22 [in bf16, out bf16]  relerr 9.613e-04 (tol 6e-03)
+PASS  norm_bwd_params dgamma d=22 [in bf16, out bf16]  relerr 9.989e-08 (tol 3e-05)
+PASS  norm bwd d=22 [in bf16, out bf16] err==0  
+PASS  layernorm_fwd d=96 [in bf16, out bf16]  relerr 1.910e-03 (tol 6e-03)
+PASS  layernorm_fwd d=96 [in bf16, out bf16] err==0  
+PASS  layernorm_bwd_dx d=96 [in bf16, out bf16]  relerr 2.162e-03 (tol 6e-03)
+PASS  norm_bwd_params dgamma d=96 [in bf16, out bf16]  relerr 5.986e-08 (tol 3e-05)
+PASS  norm_bwd_params dbeta d=96 [in bf16, out bf16]  relerr 0.000e+00 (tol 3e-05)
+PASS  norm bwd d=96 [in bf16, out bf16] err==0  
+PASS  rmsnorm_fwd d=96 [in bf16, out bf16]  relerr 2.678e-03 (tol 6e-03)
+PASS  rmsnorm_fwd d=96 [in bf16, out bf16] err==0  
+PASS  rmsnorm_bwd_dx d=96 [in bf16, out bf16]  relerr 2.421e-03 (tol 6e-03)
+PASS  norm_bwd_params dgamma d=96 [in bf16, out bf16]  relerr 8.283e-08 (tol 3e-05)
+PASS  norm bwd d=96 [in bf16, out bf16] err==0  
+PASS  layernorm_fwd d=768 [in bf16, out bf16]  relerr 1.308e-03 (tol 6e-03)
+PASS  layernorm_fwd d=768 [in bf16, out bf16] err==0  
+PASS  layernorm_bwd_dx d=768 [in bf16, out bf16]  relerr 1.958e-03 (tol 6e-03)
+PASS  norm_bwd_params dgamma d=768 [in bf16, out bf16]  relerr 1.206e-07 (tol 3e-05)
+PASS  norm_bwd_params dbeta d=768 [in bf16, out bf16]  relerr 0.000e+00 (tol 3e-05)
+PASS  norm bwd d=768 [in bf16, out bf16] err==0  
+PASS  rmsnorm_fwd d=768 [in bf16, out bf16]  relerr 1.329e-03 (tol 6e-03)
+PASS  rmsnorm_fwd d=768 [in bf16, out bf16] err==0  
+PASS  rmsnorm_bwd_dx d=768 [in bf16, out bf16]  relerr 1.965e-03 (tol 6e-03)
+PASS  norm_bwd_params dgamma d=768 [in bf16, out bf16]  relerr 1.255e-07 (tol 3e-05)
+PASS  norm bwd d=768 [in bf16, out bf16] err==0  
+PASS  colsum [in bf16, out bf16]  relerr 0.000e+00 (tol 3e-05)
+PASS  colsum err==0 [in bf16, out bf16]  
+PASS  gelu_bwd acc=0 [in bf16, out bf16]  relerr 2.326e-03 (tol 6e-03)
+PASS  gelu_bwd err==0 [in bf16, out bf16]  
+PASS  gelu_bwd acc=1 [in bf16, out bf16]  relerr 2.789e-03 (tol 6e-03)
+PASS  gelu_bwd err==0 [in bf16, out bf16]  
+PASS  residual_add [in bf16, out bf16]  relerr 3.145e-03 (tol 6e-03)
+PASS  residual_add err==0 [in bf16, out bf16]  
+PASS  embedding_fwd [in bf16, out bf16]  relerr 2.047e-03 (tol 6e-03)
+PASS  embedding_fwd err==0 [in bf16, out bf16]  
+PASS  rope_fwd [in bf16, out bf16]  relerr 2.169e-03 (tol 6e-03)
+PASS  rope err==0 [in bf16, out bf16]  
+PASS  rope_bwd [in bf16, out bf16]  relerr 1.914e-03 (tol 6e-03)
+PASS  rope err==0 [in bf16, out bf16]  
+PASS  softmax_ce_fwd V=50 [in bf16, out bf16] loss  got 7.864902 ref 7.864902
+PASS  softmax_ce_bwd V=50 [in bf16, out bf16]  relerr 2.352e-03 (tol 8e-03)
+PASS  softmax_ce_bwd err==0 [in bf16, out bf16]  
+PASS  softmax_ce_fwd V=64 [in bf16, out bf16] loss  got 8.127807 ref 8.127807
+PASS  softmax_ce_bwd V=64 [in bf16, out bf16]  relerr 2.299e-03 (tol 8e-03)
+PASS  softmax_ce_bwd err==0 [in bf16, out bf16]  
+PASS  softmax_ce_fwd V=130 [in bf16, out bf16] loss  got 10.106126 ref 10.106126
+PASS  softmax_ce_bwd V=130 [in bf16, out bf16]  relerr 2.140e-03 (tol 8e-03)
+PASS  softmax_ce_bwd err==0 [in bf16, out bf16]  
+PASS  softmax_ce_fwd V=4101 [in bf16, out bf16] loss  got 12.430503 ref 12.430503
+PASS  softmax_ce_bwd V=4101 [in bf16, out bf16]  relerr 1.010e-03 (tol 8e-03)
+PASS  softmax_ce_bwd err==0 [in bf16, out bf16]  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 fp32 baseline err==0  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 fp32 baseline o vs f64  relerr 4.714e-07 (tol 2e-05)
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 fp32 baseline dq vs f64  relerr 6.252e-07 (tol 1e-04)
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in f out 0] err==0  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in f out 0] fwd o bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in f out 0] fwd lse bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in f out 0] fwd o vs f64  relerr 4.714e-07 (tol 2e-05)
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in f out 0] delta bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in f out 0] dq bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in f out 0] dk bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in f out 0] dv bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in f out 0] dv vs f64  relerr 1.519e-06 (tol 1e-04)
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 0 out f] err==0  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 0 out f] fwd o bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 0 out f] fwd lse bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 0 out f] fwd o vs f64  relerr 2.341e-03 (tol 6e-03)
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 0 out f] delta bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 0 out f] dq bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 0 out f] dk bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 0 out f] dv bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 0 out f] dv vs f64  relerr 3.581e-03 (tol 1e-02)
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in f out f] err==0  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in f out f] fwd o bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in f out f] fwd lse bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in f out f] fwd o vs f64  relerr 2.341e-03 (tol 6e-03)
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in f out f] delta bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in f out f] dq bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in f out f] dk bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in f out f] dv bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in f out f] dv vs f64  relerr 3.581e-03 (tol 1e-02)
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 5 out a] err==0  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 5 out a] fwd o bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 5 out a] fwd lse bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 5 out a] fwd o vs f64  relerr 4.714e-07 (tol 2e-05)
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 5 out a] delta bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 5 out a] dq bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 5 out a] dk bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 5 out a] dv bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 5 out a] dv vs f64  relerr 3.581e-03 (tol 6e-03)
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in a out 5] err==0  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in a out 5] fwd o bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in a out 5] fwd lse bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in a out 5] fwd o vs f64  relerr 2.341e-03 (tol 6e-03)
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in a out 5] delta bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in a out 5] dq bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in a out 5] dk bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in a out 5] dv bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in a out 5] dv vs f64  relerr 1.519e-06 (tol 6e-03)
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 2 out 1] err==0  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 2 out 1] fwd o bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 2 out 1] fwd lse bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 2 out 1] fwd o vs f64  relerr 2.341e-03 (tol 6e-03)
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 2 out 1] delta bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 2 out 1] dq bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 2 out 1] dk bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 2 out 1] dv bitwise  
+PASS  attn bf16 B=2 T=150 H=4 Hkv=2 hd=64 [in 2 out 1] dv vs f64  relerr 1.519e-06 (tol 6e-03)
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 fp32 baseline err==0  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 fp32 baseline o vs f64  relerr 1.793e-07 (tol 2e-05)
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 fp32 baseline dq vs f64  relerr 3.155e-07 (tol 1e-04)
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in f out 0] err==0  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in f out 0] fwd o bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in f out 0] fwd lse bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in f out 0] fwd o vs f64  relerr 1.793e-07 (tol 2e-05)
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in f out 0] delta bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in f out 0] dq bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in f out 0] dk bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in f out 0] dv bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in f out 0] dv vs f64  relerr 3.402e-07 (tol 1e-04)
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 0 out f] err==0  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 0 out f] fwd o bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 0 out f] fwd lse bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 0 out f] fwd o vs f64  relerr 2.151e-03 (tol 6e-03)
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 0 out f] delta bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 0 out f] dq bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 0 out f] dk bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 0 out f] dv bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 0 out f] dv vs f64  relerr 1.807e-03 (tol 1e-02)
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in f out f] err==0  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in f out f] fwd o bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in f out f] fwd lse bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in f out f] fwd o vs f64  relerr 2.151e-03 (tol 6e-03)
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in f out f] delta bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in f out f] dq bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in f out f] dk bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in f out f] dv bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in f out f] dv vs f64  relerr 1.807e-03 (tol 1e-02)
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 5 out a] err==0  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 5 out a] fwd o bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 5 out a] fwd lse bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 5 out a] fwd o vs f64  relerr 1.793e-07 (tol 2e-05)
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 5 out a] delta bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 5 out a] dq bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 5 out a] dk bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 5 out a] dv bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 5 out a] dv vs f64  relerr 1.807e-03 (tol 6e-03)
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in a out 5] err==0  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in a out 5] fwd o bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in a out 5] fwd lse bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in a out 5] fwd o vs f64  relerr 2.151e-03 (tol 6e-03)
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in a out 5] delta bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in a out 5] dq bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in a out 5] dk bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in a out 5] dv bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in a out 5] dv vs f64  relerr 3.402e-07 (tol 6e-03)
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 2 out 1] err==0  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 2 out 1] fwd o bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 2 out 1] fwd lse bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 2 out 1] fwd o vs f64  relerr 2.151e-03 (tol 6e-03)
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 2 out 1] delta bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 2 out 1] dq bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 2 out 1] dk bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 2 out 1] dv bitwise  
+PASS  attn bf16 B=1 T=33 H=2 Hkv=1 hd=32 [in 2 out 1] dv vs f64  relerr 3.402e-07 (tol 6e-03)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 fp32 baseline err==0  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 fp32 baseline o vs f64  relerr 5.959e-07 (tol 2e-05)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 fp32 baseline dq vs f64  relerr 5.734e-07 (tol 1e-04)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out 0] err==0  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out 0] fwd o bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out 0] fwd lse bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out 0] fwd o vs f64  relerr 5.959e-07 (tol 2e-05)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out 0] delta bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out 0] dq bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out 0] dk bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out 0] dv bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out 0] dv vs f64  relerr 1.928e-06 (tol 1e-04)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 0 out f] err==0  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 0 out f] fwd o bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 0 out f] fwd lse bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 0 out f] fwd o vs f64  relerr 2.004e-03 (tol 6e-03)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 0 out f] delta bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 0 out f] dq bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 0 out f] dk bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 0 out f] dv bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 0 out f] dv vs f64  relerr 2.073e-03 (tol 1e-02)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out f] err==0  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out f] fwd o bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out f] fwd lse bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out f] fwd o vs f64  relerr 2.004e-03 (tol 6e-03)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out f] delta bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out f] dq bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out f] dk bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out f] dv bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in f out f] dv vs f64  relerr 2.073e-03 (tol 1e-02)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 5 out a] err==0  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 5 out a] fwd o bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 5 out a] fwd lse bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 5 out a] fwd o vs f64  relerr 5.959e-07 (tol 2e-05)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 5 out a] delta bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 5 out a] dq bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 5 out a] dk bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 5 out a] dv bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 5 out a] dv vs f64  relerr 2.073e-03 (tol 6e-03)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in a out 5] err==0  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in a out 5] fwd o bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in a out 5] fwd lse bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in a out 5] fwd o vs f64  relerr 2.004e-03 (tol 6e-03)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in a out 5] delta bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in a out 5] dq bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in a out 5] dk bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in a out 5] dv bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in a out 5] dv vs f64  relerr 1.928e-06 (tol 6e-03)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 2 out 1] err==0  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 2 out 1] fwd o bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 2 out 1] fwd lse bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 2 out 1] fwd o vs f64  relerr 2.004e-03 (tol 6e-03)
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 2 out 1] delta bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 2 out 1] dq bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 2 out 1] dk bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 2 out 1] dv bitwise  
+PASS  attn bf16 B=1 T=257 H=2 Hkv=2 hd=16 [in 2 out 1] dv vs f64  relerr 1.928e-06 (tol 6e-03)
+PASS  attn_fwd bf16 q with ld % 4 != 0 -> E_SHAPE  
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in f out 0] err==0  
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in f out 0] o vs f64  relerr 8.201e-04 (tol 1e-02)
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in f out 0] lse vs f64  relerr 1.226e-07 (tol 1e-05)
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in f out 0] dq vs f64  relerr 1.966e-03 (tol 1e-02)
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in f out 0] dk vs f64  relerr 1.913e-03 (tol 1e-02)
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in f out 0] dv vs f64  relerr 1.884e-03 (tol 1e-02)
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in f out f] err==0  
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in f out f] o vs f64  relerr 2.627e-03 (tol 1e-02)
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in f out f] lse vs f64  relerr 1.226e-07 (tol 1e-05)
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in f out f] dq vs f64  relerr 2.783e-03 (tol 1e-02)
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in f out f] dk vs f64  relerr 2.755e-03 (tol 1e-02)
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in f out f] dv vs f64  relerr 2.855e-03 (tol 1e-02)
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in f out 1] err==0  
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in f out 1] o vs f64  relerr 2.627e-03 (tol 1e-02)
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in f out 1] lse vs f64  relerr 1.226e-07 (tol 1e-05)
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in f out 1] dq vs f64  relerr 2.363e-03 (tol 1e-02)
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in f out 1] dk vs f64  relerr 2.618e-03 (tol 1e-02)
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in f out 1] dv vs f64  relerr 1.884e-03 (tol 1e-02)
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in 7 out a] err==0  
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in 7 out a] o vs f64  relerr 8.201e-04 (tol 1e-02)
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in 7 out a] lse vs f64  relerr 1.226e-07 (tol 1e-05)
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in 7 out a] dq vs f64  relerr 2.645e-03 (tol 1e-02)
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in 7 out a] dk vs f64  relerr 5.964e-04 (tol 1e-02)
+PASS  attn tc B=2 T=150 H=4 Hkv=2 hd=64 [in 7 out a] dv vs f64  relerr 2.370e-03 (tol 1e-02)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in f out 0] err==0  
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in f out 0] o vs f64  relerr 1.028e-03 (tol 1e-02)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in f out 0] lse vs f64  relerr 1.742e-07 (tol 1e-05)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in f out 0] dq vs f64  relerr 2.186e-03 (tol 1e-02)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in f out 0] dk vs f64  relerr 2.005e-03 (tol 1e-02)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in f out 0] dv vs f64  relerr 2.299e-03 (tol 1e-02)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in f out f] err==0  
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in f out f] o vs f64  relerr 2.603e-03 (tol 1e-02)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in f out f] lse vs f64  relerr 1.742e-07 (tol 1e-05)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in f out f] dq vs f64  relerr 4.245e-03 (tol 1e-02)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in f out f] dk vs f64  relerr 3.024e-03 (tol 1e-02)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in f out f] dv vs f64  relerr 2.682e-03 (tol 1e-02)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in f out 1] err==0  
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in f out 1] o vs f64  relerr 2.603e-03 (tol 1e-02)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in f out 1] lse vs f64  relerr 1.742e-07 (tol 1e-05)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in f out 1] dq vs f64  relerr 3.619e-03 (tol 1e-02)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in f out 1] dk vs f64  relerr 2.884e-03 (tol 1e-02)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in f out 1] dv vs f64  relerr 2.299e-03 (tol 1e-02)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in 7 out a] err==0  
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in 7 out a] o vs f64  relerr 1.028e-03 (tol 1e-02)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in 7 out a] lse vs f64  relerr 1.742e-07 (tol 1e-05)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in 7 out a] dq vs f64  relerr 2.281e-03 (tol 1e-02)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in 7 out a] dk vs f64  relerr 7.479e-04 (tol 1e-02)
+PASS  attn tc B=1 T=257 H=2 Hkv=2 hd=64 [in 7 out a] dv vs f64  relerr 1.625e-03 (tol 1e-02)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in f out 0] err==0  
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in f out 0] o vs f64  relerr 0.000e+00 (tol 1e-02)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in f out 0] lse vs f64  relerr 0.000e+00 (tol 1e-05)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in f out 0] dq vs f64  relerr 0.000e+00 (tol 1e-02)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in f out 0] dk vs f64  relerr 0.000e+00 (tol 1e-02)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in f out 0] dv vs f64  relerr 0.000e+00 (tol 1e-02)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in f out f] err==0  
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in f out f] o vs f64  relerr 0.000e+00 (tol 1e-02)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in f out f] lse vs f64  relerr 0.000e+00 (tol 1e-05)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in f out f] dq vs f64  relerr 0.000e+00 (tol 1e-02)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in f out f] dk vs f64  relerr 0.000e+00 (tol 1e-02)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in f out f] dv vs f64  relerr 0.000e+00 (tol 1e-02)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in f out 1] err==0  
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in f out 1] o vs f64  relerr 0.000e+00 (tol 1e-02)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in f out 1] lse vs f64  relerr 0.000e+00 (tol 1e-05)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in f out 1] dq vs f64  relerr 0.000e+00 (tol 1e-02)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in f out 1] dk vs f64  relerr 0.000e+00 (tol 1e-02)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in f out 1] dv vs f64  relerr 0.000e+00 (tol 1e-02)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in 7 out a] err==0  
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in 7 out a] o vs f64  relerr 0.000e+00 (tol 1e-02)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in 7 out a] lse vs f64  relerr 0.000e+00 (tol 1e-05)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in 7 out a] dq vs f64  relerr 0.000e+00 (tol 1e-02)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in 7 out a] dk vs f64  relerr 0.000e+00 (tol 1e-02)
+PASS  attn tc B=1 T=1 H=1 Hkv=1 hd=64 [in 7 out a] dv vs f64  relerr 0.000e+00 (tol 1e-02)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in f out 0] err==0  
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in f out 0] o vs f64  relerr 9.087e-04 (tol 1e-02)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in f out 0] lse vs f64  relerr 1.686e-07 (tol 1e-05)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in f out 0] dq vs f64  relerr 1.797e-03 (tol 1e-02)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in f out 0] dk vs f64  relerr 1.584e-03 (tol 1e-02)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in f out 0] dv vs f64  relerr 9.914e-04 (tol 1e-02)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in f out f] err==0  
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in f out f] o vs f64  relerr 2.463e-03 (tol 1e-02)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in f out f] lse vs f64  relerr 1.686e-07 (tol 1e-05)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in f out f] dq vs f64  relerr 3.980e-03 (tol 1e-02)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in f out f] dk vs f64  relerr 3.525e-03 (tol 1e-02)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in f out f] dv vs f64  relerr 2.988e-03 (tol 1e-02)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in f out 1] err==0  
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in f out 1] o vs f64  relerr 2.463e-03 (tol 1e-02)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in f out 1] lse vs f64  relerr 1.686e-07 (tol 1e-05)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in f out 1] dq vs f64  relerr 2.708e-03 (tol 1e-02)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in f out 1] dk vs f64  relerr 2.922e-03 (tol 1e-02)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in f out 1] dv vs f64  relerr 9.914e-04 (tol 1e-02)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in 7 out a] err==0  
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in 7 out a] o vs f64  relerr 9.087e-04 (tol 1e-02)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in 7 out a] lse vs f64  relerr 1.686e-07 (tol 1e-05)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in 7 out a] dq vs f64  relerr 2.073e-03 (tol 1e-02)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in 7 out a] dk vs f64  relerr 6.024e-04 (tol 1e-02)
+PASS  attn tc B=1 T=128 H=3 Hkv=1 hd=64 [in 7 out a] dv vs f64  relerr 2.988e-03 (tol 1e-02)
+
+953 passed, 0 failed

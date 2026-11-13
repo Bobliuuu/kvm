@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import log
+from .analyze import step_ranks
 from .dataflow import build_edges
 from .ir import FrontendError, LogicalOp, Tensor
 from .lower import TileTask, Tiling, lower_op
@@ -32,11 +33,15 @@ def init_values(init, rows, cols):
     raise FrontendError(f'unknown init {init!r}')
 
 
+PRIORITY_MAX = 31          # the executor's highest ready-queue bucket (include/kvm_exec.cuh: KVM_NBUCKETS 32, never silently clamped)
+
+
 @dataclass
 class GraphPolicy:
     priority: int = 0
     deadline_us: callable = lambda task: -1          # TileTask -> int (relative to admission, -1 none)
     weights_read: tuple | None = None               # (policy, version): declare a versioned read of 'weights' on weight readers
+    rank_levels: int = PRIORITY_MAX                  # levels above `priority` that a task's remaining path inside its step adds (0: none)
 
 
 @dataclass
@@ -97,9 +102,30 @@ def _init_entry(b, data_files):
     return {'kind': 'file', 'path': path}
 
 
+def task_levels(low: Lowered, policies: dict[str, GraphPolicy]) -> list[int]:
+    """Each task's priority above its graph's: floor(L x its rank / the longest rank in its step), L its graph's rank_levels, so a step's
+    longest chain runs at the top level and a task off every long chain near 0. The executor pops the highest non-empty bucket first
+    (FIFO inside one): among ready tasks, the ones with the most work still behind them start first."""
+    for g, pol in policies.items():
+        if not 0 <= pol.rank_levels <= PRIORITY_MAX or (pol.rank_levels and not 0 <= pol.priority <= PRIORITY_MAX - pol.rank_levels):
+            raise FrontendError(f'graph {g!r}: priority {pol.priority} + rank_levels {pol.rank_levels} must stay within 0..{PRIORITY_MAX}')
+    levels = [0] * len(low.tasks)
+    if not any(policies[t.op.graph].rank_levels for t in low.tasks if t.op.graph in policies):
+        return levels
+    rank, top = step_ranks(low), {}
+    for i, t in enumerate(low.tasks):
+        k = (t.op.graph, t.op.step)
+        top[k] = max(top.get(k, 0.0), rank[i])
+    for i, t in enumerate(low.tasks):
+        L, k = policies[t.op.graph].rank_levels if t.op.graph in policies else 0, (t.op.graph, t.op.step)
+        levels[i] = min(L, int(L * (rank[i] / top[k]))) if L and top[k] > 0 else 0     # the ratio first: x / x is exactly 1, so the top task gets L
+    return levels
+
+
 def to_workload(low: Lowered, policies: dict[str, GraphPolicy]):
     """Build the workload dict. `policies` maps graph name -> GraphPolicy; every graph used by a task must be present."""
     plan, bufs = low.plan, []
+    levels = task_levels(low, policies)
     used = {plan.buf(r.t) for t in low.tasks for r in (*t.reads, *t.writes)}
     used |= {plan.buf(v) for t in low.tasks for v in t.args.values() if isinstance(v, Tensor)}
     for name, b in plan.buffers.items():
@@ -123,8 +149,8 @@ def to_workload(low: Lowered, policies: dict[str, GraphPolicy]):
             e['args'] = {k: (plan.buf(v) if isinstance(v, Tensor) else v) for k, v in t.args.items()}
         if low.preds[i]:
             e['after'] = sorted(low.ids[j] for j in low.preds[i] if low.tasks[j].op.graph == g)
-        if pol.priority:
-            e['priority'] = pol.priority
+        if pol.priority + levels[i]:
+            e['priority'] = pol.priority + levels[i]
         dl = pol.deadline_us(t)
         if dl >= 0:
             e['deadline_us'] = dl

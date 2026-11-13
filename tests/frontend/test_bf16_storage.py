@@ -124,6 +124,18 @@ class Bf16Storage(unittest.TestCase):
                 self.assertNotIn(op.ins['x'].uid, cast_out, op.name)
         self.assertGreater(st['redirected'], 0)
 
+    def test_every_output_of_a_producer_folds_its_cast(self):
+        # attention_bwd writes dq, dk and dv; when each is cast to bf16 (q and k after RoPE, v by its projection), each cast folds into its own
+        # output slot, as autocast's SDPA backward returns all three in bf16. One fold per producer left two of them fp32 plus a round_bf16 task.
+        ops = build_training(GPT(dataclasses.replace(BASE, precision='bf16s')), TrainConfig(steps=1)).b.ops
+        new, _ = storage.apply(ops)
+        bwd = [op for op in new if op.kind == 'attention_bwd']
+        self.assertTrue(bwd)
+        for op in bwd:
+            self.assertEqual({n: op.outs[n].dtype for n in ('dq', 'dk', 'dv')}, {'dq': 'bf16', 'dk': 'bf16', 'dv': 'bf16'}, op.name)
+        produced = {t.uid for op in bwd for t in op.outs.values()}
+        self.assertFalse([op.name for op in new if op.kind == 'cast' and op.ins['x'].uid in produced], 'no narrowing cast left after a fold')
+
     def test_weights_false_has_no_shadows(self):
         ops = build_training(GPT(dataclasses.replace(BASE, precision='bf16s')), TrainConfig(steps=1)).b.ops
         new, st = storage.apply(ops, weights=False)

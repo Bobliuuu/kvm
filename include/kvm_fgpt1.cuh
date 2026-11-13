@@ -404,11 +404,13 @@ __device__ void load_params(const KvmFgptDesc& d, float* sm, const Layout& y) {
 }
 
 // The forward of one step and its loss, from the step's tokens to d.loss[step]. kvm_fgpt::run's forward at G 1, phase for phase.
-template <class PH>
+// PREC, the GEMMs' numerics (3xTF32 when set, else 1xTF32), is fixed at compile time: run1 calls the one instance its run needs, so each
+// linear GEMM's k loop holds one product form, without a run-time branch between the two and the warp sync it costs a tile a k step.
+template <bool PREC, class PH>
 __device__ float forward(const KvmFgptDesc& d, float* sm, const Layout& y, int step, PH& ph) {
   const int tid = threadIdx.x, NW = NT / 32;
   const int N = d.N, T = d.T, B = d.B, D = d.d, H = d.H, hd = d.hd, F = d.F, V = d.V, L = d.L;
-  const bool prec = (d.mm_numerics & 16) != 0;
+  constexpr bool prec = PREC;
   const int* const ids = reinterpret_cast<const int*>(sm + y.ids) + (step & 1) * N;   // this step's slot (run1 fills it)
   const int* const tgt = reinterpret_cast<const int*>(sm + y.tgt) + (step & 1) * N;
   const float* const rtab = sm + y.rtab;
@@ -760,11 +762,11 @@ __device__ void param_homes(const KvmFgptDesc& d, float* sm, const Layout& y, Pa
 }
 
 // One step's backward from the forward's state on chip, its gradients into d.g. inv_n: the loss's 1 / (targeted rows).
-template <class PH>
+template <bool PREC, class PH>   // PREC as forward's
 __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int step, float inv_n, PH& ph) {
   const int tid = threadIdx.x;
   const int N = d.N, T = d.T, B = d.B, D = d.d, H = d.H, hd = d.hd, F = d.F, V = d.V, L = d.L;
-  const bool prec = (d.mm_numerics & 16) != 0, rnd = !prec;   // rnd: the GEMM-only operands are stored rounded (fjob's RND)
+  constexpr bool prec = PREC, rnd = !prec;   // rnd: the GEMM-only operands are stored rounded (fjob's RND)
   const int* const tgt = reinterpret_cast<const int*>(sm + y.tgt) + (step & 1) * N;
   const int* const ids = reinterpret_cast<const int*>(sm + y.ids) + (step & 1) * N;
   const float* const rtab = sm + y.rtab;
@@ -1201,6 +1203,7 @@ __device__ bool run1(const KvmFgptDesc& d, float* sm, long long smem_floats, FAI
     if (e) { if (tid == 0) next_flag = e; }
     else for (int r = tid; r < N; r += NT) { ids0[r] = __ldcg(d.ids_src + bi + r); tgt0[r] = __ldcg(d.tgt_src + bt + r); }
   }
+  const bool prec_run = (d.mm_numerics & 16) != 0;   // the run's GEMM numerics (matmul_tile's 3xTF32 flag): which instance runs
   for (int step = 0; step < d.steps; ++step) {
     const long long t = (long long)t0 + step;
     int* const ids = ids0 + (step & 1) * N;
@@ -1230,10 +1233,10 @@ __device__ bool run1(const KvmFgptDesc& d, float* sm, long long smem_floats, FAI
         asm volatile("cp.async.commit_group;\n" ::: "memory");
       }
     }
-    const float inv_n = forward(d, sm, y, step, ph);
+    const float inv_n = prec_run ? forward<true>(d, sm, y, step, ph) : forward<false>(d, sm, y, step, ph);
     if constexpr (kC3) {
       __syncthreads();
-      backward(d, sm, y, step, inv_n, ph);
+      if (prec_run) backward<true>(d, sm, y, step, inv_n, ph); else backward<false>(d, sm, y, step, inv_n, ph);
       adamw(d, home, step, reinterpret_cast<float*>(sm + y.red), sm + y.ring, y.ring_floats, ph);
     } else {
       (void)inv_n;

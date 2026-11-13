@@ -43,6 +43,9 @@
 // differently grouped sums (equal to rounding, not bitwise), which is a write race and breaks the reproducibility contract.
 // Mirrored by ATTN_BLOCK in frontend/kvmfe/opset.py. The bidirectional attn_full_* ops keep their own 32-row blocks.
 #define KVM_GPT_ATTN_ROWS 128
+#ifndef KVM_GPT_DELTA_U
+#define KVM_GPT_DELTA_U 4   // attn_bwd_delta: (row, head) pairs in flight per warp
+#endif
 static_assert(KVM_GPT_THREADS / 32 * 16 == KVM_GPT_ATTN_ROWS, "attention: one m16 row tile per warp");
 
 
@@ -2544,6 +2547,8 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
     }
 }
 
+#include "kvm_attn_bf16.cuh"   // bf16-storage attention on bf16 tensor-core tiles (head size 64); namespace kvmgpt
+
 // Head sizes above KVM_GPT_MAX_HD are not compiled at all (they would fix the persistent kernel's registers at the hd=128 level and
 // need a 104 KiB launch); a task asking for one fails with KVM_GPT_E_SHAPE.
 template <int HD> KVM_GPT_DEVI void attn_fwd_g(const AttnArgs& A) { if constexpr (HD <= KVM_GPT_MAX_HD) attn_fwd_t<HD>(A); }
@@ -2590,6 +2595,7 @@ KVM_GPT_DEVI void attn_fwd(const KvmCtx& ctx, const int32_t* a) {
     if (obf) A.sd |= KVM_ATT_O;
     A.lsew = k.fvec(a[4], (long)(A.b + 1) * A.H * A.T);
     if (k.bad) return;
+    if (ab_ok(A, hd, false)) { attn_fwd_b(A); return; }
     KVM_GPT_HD_SWITCH(hd, attn_fwd_g, A)
 }
 KVM_GPT_DEVI void attn_bwd_delta(const KvmCtx& ctx, const int32_t* a) {
@@ -2604,8 +2610,46 @@ KVM_GPT_DEVI void attn_bwd_delta(const KvmCtx& ctx, const int32_t* a) {
     if (k.bad) return;
     int lane = threadIdx.x & 31, w = threadIdx.x >> 5;
     const int n = (r1 - r0) * H;
+    if (hd % 8 == 0 && hd <= 256 && (hd & (hd - 1)) == 0 && (((uintptr_t)o | (uintptr_t)d) & 15) == 0 && ((ldo | ldd) & 7) == 0) {
+        // hd/8 lanes per (row, head), each loading 8 consecutive elements of o and do as 16-byte pieces (a warp moves 512 bytes per load, not 64: the
+        // scalar loop below is latency bound at a few KB in flight per SM) and summing them in order; a butterfly over the group finishes the row.
+        // One summation order for fp32 and bf16 storage, so the two stay bitwise equal.
+        constexpr int U = KVM_GPT_DELTA_U, NW = KVM_GPT_THREADS / 32;
+        const int cpr = hd >> 3, ppw = 32 / cpr, sub = lane / cpr, cl = lane % cpr;
+        auto ld8 = [&](const void* p, size_t i, bool bf, float (&x)[8]) {
+            if (bf) {
+                const uint4 u = *reinterpret_cast<const uint4*>(reinterpret_cast<const uint16_t*>(p) + i);
+                x[0] = bf_lo(u.x); x[1] = bf_hi(u.x); x[2] = bf_lo(u.y); x[3] = bf_hi(u.y); x[4] = bf_lo(u.z); x[5] = bf_hi(u.z); x[6] = bf_lo(u.w); x[7] = bf_hi(u.w);
+            } else {
+                const float4 a = *reinterpret_cast<const float4*>(reinterpret_cast<const float*>(p) + i), b = *reinterpret_cast<const float4*>(reinterpret_cast<const float*>(p) + i + 4);
+                x[0] = a.x; x[1] = a.y; x[2] = a.z; x[3] = a.w; x[4] = b.x; x[5] = b.y; x[6] = b.z; x[7] = b.w;
+            }
+        };
+        for (int base = w * ppw; base < n; base += NW * ppw * U) {
+            float xo[U][8], xd[U][8];
+#pragma unroll
+            for (int u = 0; u < U; u++) {
+                const int e = base + u * NW * ppw + sub, r = r0 + e / H, h = e % H;
+                if (e < n) { ld8(o, (size_t)r * ldo + h * hd + cl * 8, ob, xo[u]); ld8(d, (size_t)r * ldd + h * hd + cl * 8, db, xd[u]); }
+                else {
+#pragma unroll
+                    for (int j = 0; j < 8; j++) { xo[u][j] = 0.f; xd[u][j] = 0.f; }
+                }
+            }
+#pragma unroll
+            for (int u = 0; u < U; u++) {
+                float sacc = 0.f;
+#pragma unroll
+                for (int j = 0; j < 8; j++) sacc += xo[u][j] * xd[u][j];
+                for (int m = 1; m < cpr; m <<= 1) sacc += __shfl_xor_sync(0xffffffffu, sacc, m);
+                const int e = base + u * NW * ppw + sub, r = r0 + e / H, h = e % H;
+                if (cl == 0 && e < n) del[((size_t)(r / T) * H + h) * T + r % T] = sacc;
+            }
+        }
+        return;
+    }
     if (hd <= 64) {   // up to two scalars per lane: U (row, head) pairs in flight per warp (the loop below is one dependent round trip per pair)
-        constexpr int U = 4, NV = 2;
+        constexpr int U = KVM_GPT_DELTA_U, NV = 2;
         for (int ee = w; ee < n; ee += KVM_GPT_THREADS / 32 * U) {
             float ov[U][NV], dv[U][NV];
 #pragma unroll
@@ -2656,6 +2700,7 @@ KVM_GPT_DEVI void attn_bwd_dq(const KvmCtx& ctx, const int32_t* a) {
     A.dq = (float*)k.mat_s(a[6], R, (long)A.H * hd, &A.lddq, &qbf);
     if (qbf) A.sd |= KVM_ATT_DQ;
     if (k.bad) return;
+    if (ab_ok(A, hd, true)) { attn_dq_b(A); return; }
     KVM_GPT_HD_SWITCH(hd, attn_dq_g, A)
 }
 KVM_GPT_DEVI void attn_bwd_dkv(const KvmCtx& ctx, const int32_t* a) {
@@ -2682,6 +2727,7 @@ KVM_GPT_DEVI void attn_bwd_dkv(const KvmCtx& ctx, const int32_t* a) {
     if (kbf) A.sd |= KVM_ATT_DK;
     if (vbf) A.sd |= KVM_ATT_DV;
     if (k.bad) return;
+    if (ab_ok(A, hd, true)) { attn_dkv_b(A); return; }
     KVM_GPT_HD_SWITCH(hd, attn_dkv_g, A)
 }
 

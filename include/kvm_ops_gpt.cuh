@@ -70,10 +70,16 @@ static_assert(KVM_GPT_THREADS / 32 * 16 == KVM_GPT_ATTN_ROWS, "attention: one m1
 #define KVM_GPT_BIG_STREAM_KMAX 0x40000000   // big tiles: the same switch (0: never, default: always)
 #endif
 #ifndef KVM_GPT_BIG_BK
-#define KVM_GPT_BIG_BK 32    // k per pipeline stage of the big tiles (16 or 32); 32 x 3 stages is the matrix's best on the A100 (0.76-0.83x cuBLAS against 0.41-0.55x for 16 x 3-4 at two blocks per SM)
+#define KVM_GPT_BIG_BK 16    // k per pipeline stage of the big tiles (16 or 32). A100, one block per SM, the 256x128 tile at the 162M row's shapes
+                             // (Nov 10, tests/gpu_ops/bench_tile.cu): BK 16 x 4 stages 0.69-0.72x cuBLAS NN and 0.55x TN at 96 KiB, against
+                             // BK 32 x 3's 0.73x and 0.56x at 144 KiB; BK 32 x 2 (96 KiB) 0.41-0.45x and 0.31x. A 144 KiB launch leaves every
+                             // op 28 KB of L1 (the same executor launched at 90 KB ran gpt-tiny x1.12 on an A100). The 0.41-0.55x measured
+                             // earlier for BK 16 was read at two blocks per SM, where 128 registers make the 256x128 tile spill.
 #endif
 #ifndef KVM_GPT_BIG_NST
-#define KVM_GPT_BIG_NST 3    // pipeline stages of the big tiles (3 stages of (BM+BN) x 32 floats; 128x128: 96 KiB, 256x128: 144 KiB, so one block per SM)
+#define KVM_GPT_BIG_NST 4    // pipeline stages of the big tiles (4 stages of (BM+BN) x 16 floats: 128x128 64 KiB, 256x128 96 KiB, one block
+                             // per SM). Small-memory parts (99 KiB opt-in, sm_86/sm_89/sm_120) build -DKVM_GPT_BIG_NST=3: 96 KiB plus the
+                             // kernel's static shared memory is over their limit.
 #endif
 // Dynamic shared memory an op needs for a launch of the op set: 104 KiB covers hd=128 attention backward/forward (6 tiles of
 // 32 x 132 floats = 101 KiB); 56 KiB covers every other op (matmul 48 KiB, attention up to hd=64 at 52 KiB), so two blocks per SM still
@@ -84,8 +90,9 @@ static_assert(KVM_GPT_THREADS / 32 * 16 == KVM_GPT_ATTN_ROWS, "attention: one m1
 // cuBLAS faster in isolation, but the executor then launches with 144 KiB of shared memory, the L1 carveout shrinks for every other op, and
 // the gpt_162m step got slower (f32 249 vs 229 ms, bf16s 270 vs 257 ms; results/2026-11-09-a100-matmul-parity). mm_tf32_tile picks by
 // the launch's %dynamic_smem_size, so either build stays correct.
-// #13's tiles: the 256 x 128 tile's BK 32 x 3 stages (KVM_GPT_BIG_BK, KVM_GPT_BIG_NST) set the executor's launch to 144 KiB whatever
-// KVM_GPT_MMA_SMEM says (kvm_gpt_smem_bytes); tests/gpu_ops/bench_mm.cu prices both tile sets, and the panel read prices the carveout.
+// #13's tiles: the big tiles' stages (KVM_GPT_BIG_BK x KVM_GPT_BIG_NST) enter the executor's launch through kvm_gpt_smem_bytes. At the
+// default BK 16 x 4 the 256 x 128 tile needs 96 KiB, the same as KVM_GPT_MMA_SMEM's tiles, so a default build launches with 96 KiB;
+// BK 32 x 3 (-DKVM_GPT_BIG_BK=32 -DKVM_GPT_BIG_NST=3) would set it to 144 KiB, at the L1 cost above.
 #ifndef KVM_GPT_MMA_SMEM
 #define KVM_GPT_MMA_SMEM (96 * 1024)   // matmul_mma_bf16 (kvm_mma_bf16.cuh): 4 stages of 128 x 256 x 32 bf16; fits the 99 KiB opt-in limit of sm_86/sm_120
 #endif
@@ -106,8 +113,9 @@ __host__ __device__ constexpr int kvm_gpt_smem_bytes(int max_hd) {
 #define KVM_GPT_SMEM_SMALL (8 * 1024)   // every other op of the pack: block reductions and attn_decode's 4 KiB, well under it
 __host__ __device__ constexpr int kvm_gpt_tile64_smem() { return KVM_GPT_TILE64_NST * 2 * 2048 * 4; }   // stages; the k-halves' partials reuse them
 __host__ __device__ constexpr int kvm_gpt_bigtile_smem(int bm, int bn) {   // 128x128 / 256x128: stages, or the accumulators staged for the epilogue
-    return bm * (bn + 8) * 4 <= kvm_gpt_smem_bytes(64) && bm * (bn + 8) * 4 > KVM_GPT_BIG_NST * (bm + bn) * KVM_GPT_BIG_BK * 4
-               ? bm * (bn + 8) * 4 : KVM_GPT_BIG_NST * (bm + bn) * KVM_GPT_BIG_BK * 4;
+    const int stages = KVM_GPT_BIG_NST * (bm + bn) * KVM_GPT_BIG_BK * 4, one = bm * (bn + 8) * 4, half = bm / 2 * (bn + 8) * 4;
+    const int staged = one <= kvm_gpt_smem_bytes(64) ? one : (bm / 64) % 2 == 0 && half <= kvm_gpt_smem_bytes(64) ? half : 0;   // mm_tile_big's PASSES
+    return staged > stages ? staged : stages;
 }
 __host__ __device__ constexpr int kvm_gpt_attn_smem(int hd) { return 3 * 2 * 32 * (hd + 4) * 4; }   // 3 stages of two 32 x (hd+4) tiles
 // matmul_tile by its flags (a[11]): 64 (256x128) without 16 (3xTF32) or 128 (bf16 operands) is one 256x128 tile; 32, or 64 with either,
@@ -1023,19 +1031,29 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
     KVM_GPT_PROBE(2);
     cp_wait<0>();
     constexpr int CLD = BN + 8;   // row stride of the accumulator tile in shared memory (padded against bank conflicts)
-    static_assert(BM * CLD * 4 > kvm_gpt_smem_bytes(64) || BM * CLD * 4 <= kvm_gpt_bigtile_smem(BM, BN), "the staged epilogue is sized by kvm_gpt_bigtile_smem");
-    if constexpr (BM * CLD * 4 <= kvm_gpt_smem_bytes(64)) {   // accumulators through shared memory (the register epilogue below costs one 8-byte store per accumulator pair, in instructions the block's 8 warps share)
-        __syncthreads();   // all warps done reading the last stage; shared memory now takes the accumulators
+    // Accumulators through shared memory (the register epilogue below costs one 8-byte store per accumulator pair, in instructions the
+    // block's 8 warps share): the whole tile in one pass when its rows fit the launch's shared memory, else in two passes of BM/2 rows
+    // (the 256 x 128 tile at 96 KiB: 2 x 69,632 B instead of 139,264). Each element gets the same operations in the same order either way.
+    constexpr int PASSES = BM * CLD * 4 <= kvm_gpt_smem_bytes(64) ? 1 : (WM % 2 == 0 && BM / 2 * CLD * 4 <= kvm_gpt_smem_bytes(64)) ? 2 : 0;
+    if constexpr (PASSES > 0) {
+        constexpr int PR = BM / PASSES, PW = WM / PASSES;   // rows a pass stages; warp rows (64 each) a pass holds
+        static_assert(PR * CLD * 4 <= kvm_gpt_bigtile_smem(BM, BN), "the staged epilogue is sized by kvm_gpt_bigtile_smem");
 #pragma unroll
-        for (int i = 0; i < 4; i++)
+        for (int pass = 0; pass < PASSES; pass++) {
+            __syncthreads();   // the last stage (or the previous pass's rows) is read by everyone; shared memory now takes this pass's accumulators
+            if (wmi / PW == pass) {
 #pragma unroll
-            for (int j = 0; j < NJ; j++) {   // c0,c1 = (row g, cols 2t,2t+1); c2,c3 = (row g+8, ...)
-                const int r = wmi * 64 + i * 16 + g, c = wni * WTN + j * 8 + 2 * t;
-                *reinterpret_cast<float2*>(sm + r * CLD + c) = make_float2(acc[i][j][0], acc[i][j][1]);
-                *reinterpret_cast<float2*>(sm + (r + 8) * CLD + c) = make_float2(acc[i][j][2], acc[i][j][3]);
+                for (int i = 0; i < 4; i++)
+#pragma unroll
+                    for (int j = 0; j < NJ; j++) {   // c0,c1 = (row g, cols 2t,2t+1); c2,c3 = (row g+8, ...)
+                        const int r = (wmi % PW) * 64 + i * 16 + g, c = wni * WTN + j * 8 + 2 * t;
+                        *reinterpret_cast<float2*>(sm + r * CLD + c) = make_float2(acc[i][j][0], acc[i][j][1]);
+                        *reinterpret_cast<float2*>(sm + (r + 8) * CLD + c) = make_float2(acc[i][j][2], acc[i][j][3]);
+                    }
             }
-        __syncthreads();
-        tile_wb<BM, BN, 1, CLD>(sm, m0, n0, M, N, out, ldo, bias, res, ldr, pre, ldp, alpha, act, accum);
+            __syncthreads();
+            tile_wb<PR, BN, 1, CLD>(sm, m0 + pass * PR, n0, M, N, out, ldo, bias, res, ldr, pre, ldp, alpha, act, accum);
+        }
         return;
     }
     // Epilogue from registers: thread holds (row g | g+8, columns 2t, 2t+1) of every fragment. Pairs of columns go out as float2

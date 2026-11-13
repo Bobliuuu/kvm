@@ -731,13 +731,14 @@ struct ParamHome {
   int cols[KVM_FGPT_MAXP]; float inv_cols[KVM_FGPT_MAXP]; float wd[KVM_FGPT_MAXP]; float lrwd[KVM_FGPT_MAXP];   // lr x wd: run's first product
   bool vec4;   // every slot's size, columns and pitch a multiple of 4, every home 16-byte aligned: the update goes float4 a lane
   int off[KVM_FGPT_MAXP + 1];   // one flat index over every parameter element: slot s holds [off[s], off[s + 1])
+  float* home[KVM_FGPT_MAXP];   // each slot's global home (d.p), row-major [rows x cols]: the helper update's reload reads it from here, not from d
 };
 __device__ void param_homes(const KvmFgptDesc& d, float* sm, const Layout& y, ParamHome& h) {
   const int D = d.d, L = d.L;
   h.off[0] = 0;
   for (int s = 0; s < kvm_fgpt_nparams(L); ++s) {
     h.base[s] = y.p[s] >= 0 ? sm + y.p[s] : nullptr; h.pitch[s] = y.pld[s];
-    h.g[s] = d.g[s]; h.m[s] = d.m[s]; h.v[s] = d.v[s]; h.wd[s] = d.wd[s];
+    h.g[s] = d.g[s]; h.m[s] = d.m[s]; h.v[s] = d.v[s]; h.wd[s] = d.wd[s]; h.home[s] = d.p[s];
     h.cols[s] = d.pcols[s]; h.inv_cols[s] = __fdividef(1.f, (float)d.pcols[s]); h.lrwd[s] = __fmul_rn(d.lr, d.wd[s]);
     h.off[s + 1] = h.off[s] + d.prows[s] * d.pcols[s];
   }
@@ -1148,6 +1149,166 @@ __device__ void adamw(const KvmFgptDesc& d, const ParamHome& h, int step, float*
 
 // C2's run: the run's steps, each the forward and its loss, the parameters resident and unchanged (C3 adds the backward and AdamW). The
 // step counter advances as run's does. False on a fault (fail(code) called once).
+//
+// The helper update: when the launch has blocks beside block 0, they run the update. Block 0 runs the step
+// and its clip's norm (upd_norm: adamw's own norm pass, so the coef bit for bit), publishes go = step + 1 with the coef, and reloads its
+// resident parameters once every helper is done; helper j of the K = gridDim.x - 1 holds p, m and v of a contiguous slice of the flat
+// float4 groups in its own shared memory for the run and updates them with adam1 (the same expression an element, so the same bits),
+// storing p to its global home. The control words are d.ctl's first (the one-block form runs no gang): the mode block 0 picks once,
+// go, done (K (step + 1) once every helper is through step), the coef. A fault in block 0 publishes kUpdAbort, and the helpers leave.
+// The clip's norm stays on block 0: on the helpers (each computing block 0's per-thread partials in its order, then crossing) it cost more
+// than it saved, and with its loads issued together it only matched block 0's pass (both measured on the A100 bed).
+namespace upd {
+constexpr int MODE = 0, GO = 1, DONE = 2, COEF = 3;
+constexpr unsigned kOff = 1, kOn = 2, kAbort = 0xffffffffu;
+__device__ __forceinline__ unsigned ld_acq(const unsigned* p) {
+  unsigned v; asm volatile("ld.acquire.gpu.global.u32 %0, [%1];" : "=r"(v) : "l"(p) : "memory"); return v;
+}
+__device__ __forceinline__ void st_rel(unsigned* p, unsigned v) { asm volatile("st.release.gpu.global.u32 [%0], %1;" :: "l"(p), "r"(v) : "memory"); }
+__device__ __forceinline__ unsigned wait_ge(const unsigned* p, unsigned v) { unsigned x; while ((x = ld_acq(p)) < v) { } return x; }
+// A block's release, after the __syncthreads that orders its threads' stores before thread 0's: one GPU-scope fence by thread 0 (the gang's
+// form, kvm_gang.cuh's form 2), cumulative over what the barrier made thread 0 observe. Every thread's own __threadfence (MEMBAR.SC.GPU,
+// 384 of them a crossing) cost the handoff about 3 us a step on the A100 bed.
+__device__ __forceinline__ void fence_rel() { asm volatile("fence.acq_rel.gpu;" ::: "memory"); }
+__device__ __forceinline__ void slice(int t4, int K, int j, int& g0, int& g1) { const int per = (t4 + K - 1) / K; g0 = min(t4, j * per); g1 = min(t4, g0 + per); }
+// A helper's shared memory in floats (upd_helper's layout): the largest slice's p, m and v (S float4 each), the gradient and home pointers
+// (np each), off (np + 1 ints), lr x wd (np) and its step's two bias corrections. Block 0 offloads only when it fits the launch's dynamic
+// shared memory (one helper and gpt-tiny's 4,216 groups would need 202 KB), so a helper never writes past its own.
+KVM_FGPT_HD inline long long helper_floats(int t4, int K, int np) {
+  const long long S = K > 0 ? (t4 + K - 1) / K : t4;
+  return 3 * 4 * S + 2 * 2 * (long long)np + (np + 1) + np + 2;
+}
+}  // namespace upd
+
+// Block 0's resident copy from the homes the helpers wrote (the helper update), by cp.async over the flat float4 index, adamw's addressing from the
+// shared-memory homes (a GPU-scope acquire leaves L1 cold, so walking the descriptor's tables here cost an L2 round trip a slot: S2,
+// Nov 13 08:46Z, 22 us for the handoff). wte (slot 0) lives in global and is skipped. Committed, not waited.
+__device__ void upd_reload(const ParamHome& h, int np) {
+  const int t4 = h.off[np] / 4, i0 = h.off[1] / 4;
+  int s = 1;
+  for (int i = i0 + threadIdx.x; i < t4; i += NT) {
+    while (4 * i >= h.off[s + 1]) ++s;
+    const int le = 4 * i - h.off[s], cols = h.cols[s];
+    const int r = div_small(le, cols, h.inv_cols[s]), c = le - r * cols;
+    cp16(h.base[s] + (size_t)r * h.pitch[s] + c, h.home[s] + le, true);
+  }
+  asm volatile("cp.async.commit_group;\n" ::: "memory");
+}
+
+// Block 0's clip under the helper update: adamw's vec4 norm pass as it is (each thread's groups tid + k NT in k order, block_sum2, the clip), so the
+// same coef; no ring copies (the helpers hold the moments).
+template <class PH>
+__device__ float upd_norm(const KvmFgptDesc& d, const ParamHome& h, float* red, PH& ph) {
+  constexpr int KG = 12;
+  const int t4 = h.off[kvm_fgpt_nparams(d.L)] / 4, tid = threadIdx.x;
+  float4 gk[KG];
+  float sq = 0.f;
+  int s = 0;
+#pragma unroll
+  for (int k = 0; k < KG; ++k) {
+    const int i = tid + k * NT;
+    if (i < t4) {
+      while (4 * i >= h.off[s + 1]) ++s;
+      gk[k] = __ldcg(reinterpret_cast<const float4*>(h.g[s] + (4 * i - h.off[s])));
+    } else gk[k] = make_float4(0.f, 0.f, 0.f, 0.f);
+  }
+#pragma unroll
+  for (int k = 0; k < KG; ++k) sq += (gk[k].x * gk[k].x + gk[k].y * gk[k].y) + (gk[k].z * gk[k].z + gk[k].w * gk[k].w);
+  double sd = sq, dummy = 0.0;
+  block_sum2(sd, dummy, reinterpret_cast<double*>(red));
+  const float norm = sqrtf((float)sd);
+  const float coef = d.max_norm > 0.f ? fminf(1.f, d.max_norm / (norm + 1e-6f)) : 1.f;
+  ph(MK_SQUARES);
+  return coef;
+}
+
+// A helper's run (blockIdx.x >= 1): its slice of p, m and v into shared memory, then each step's update after go, then m and v home. Every
+// table it walks a step lives in its own shared memory, filled once a run: a GPU-scope acquire leaves L1 cold, and a walk over the
+// descriptor's tables after one cost an L2 round trip a slot (22 us a handoff on the A100 bed). Its shared memory (upd::helper_floats): P, M, V (S float4
+// each), then the gradient and home pointers (np each), off (np + 1 ints), lr x wd (np) and the step's two bias corrections (as adamw takes
+// them), which thread 0 loads a step ahead, after its done: a table of every step's would grow with the run past the shared memory.
+__device__ void upd_helper(const KvmFgptDesc& d, float* sm) {
+  const int tid = threadIdx.x, K = (int)gridDim.x - 1, j = (int)blockIdx.x - 1;
+  unsigned* const ctl = d.ctl;
+  __shared__ unsigned mode;
+  if (tid == 0) mode = upd::wait_ge(ctl + upd::MODE, 1u);
+  __syncthreads();
+  if (mode != upd::kOn) return;   // no offload this run (or block 0 faulted before choosing)
+  const int np = kvm_fgpt_nparams(d.L), steps = d.steps;
+  int t4 = 0;
+  for (int s = 0; s < np; ++s) t4 += d.prows[s] * d.pcols[s] / 4;
+  int g0, g1;
+  upd::slice(t4, K, j, g0, g1);
+  const int S = g1 - g0;
+  float4* const P = reinterpret_cast<float4*>(sm);
+  float4* const M = P + S;
+  float4* const V = M + S;
+  float** const gp = reinterpret_cast<float**>(V + S);
+  float** const pp = gp + np;
+  int* const off = reinterpret_cast<int*>(pp + np);
+  float* const lw = reinterpret_cast<float*>(off + np + 1);
+  float* const bcs = lw + np;
+  // step k's bias corrections from the table block 0 wrote before it released the mode, as adamw takes them
+  const auto load_bc = [&](int k) {
+#pragma unroll
+    for (int e = 0; e < 2; ++e) {
+      float b = __ldcg(d.bc + 2 * k + e);
+      if constexpr ((kFast & 16) != 0) b = __frcp_rn(b);
+      bcs[e] = b;
+    }
+  };
+  if (tid == 0) {
+    off[0] = 0;
+    for (int s = 0; s < np; ++s) { off[s + 1] = off[s] + d.prows[s] * d.pcols[s]; gp[s] = d.g[s]; pp[s] = d.p[s]; lw[s] = __fmul_rn(d.lr, d.wd[s]); }
+    load_bc(0);
+  }
+  __syncthreads();
+  {
+    int s = 0;
+    for (int i = g0 + tid; i < g1; i += NT) {
+      while (4 * i >= off[s + 1]) ++s;
+      const int le = 4 * i - off[s], q = i - g0;
+      P[q] = __ldcg(reinterpret_cast<const float4*>(pp[s] + le));
+      M[q] = __ldcg(reinterpret_cast<const float4*>(d.m[s] + le));
+      V[q] = __ldcg(reinterpret_cast<const float4*>(d.v[s] + le));
+    }
+  }
+  const float b1 = d.beta1, b2 = d.beta2, lr = d.lr, eps = d.adam_eps;
+  const float ob1 = __fsub_rn(1.f, b1), ob2 = __fsub_rn(1.f, b2);
+  __syncthreads();
+  __shared__ unsigned go;
+  for (int step = 0; step < steps; ++step) {
+    if (tid == 0) go = upd::wait_ge(ctl + upd::GO, (unsigned)step + 1);
+    __syncthreads();
+    if (go == upd::kAbort) return;
+    const float coef = __uint_as_float(__ldcg(ctl + upd::COEF));   // block 0's, released with go
+    const float bc1 = bcs[0], bc2 = bcs[1];   // read before the barrier below, after which thread 0 loads the next step's
+    int s = 0;
+    for (int i = g0 + tid; i < g1; i += NT) {
+      while (4 * i >= off[s + 1]) ++s;
+      const int le = 4 * i - off[s], q = i - g0;
+      const float4 g = __ldcg(reinterpret_cast<const float4*>(gp[s] + le));
+      float4 m = M[q], v = V[q], p = P[q];
+      const float w = lw[s];
+      adam1(g.x, m.x, v.x, p.x, coef, b1, ob1, b2, ob2, lr, w, bc1, bc2, eps);
+      adam1(g.y, m.y, v.y, p.y, coef, b1, ob1, b2, ob2, lr, w, bc1, bc2, eps);
+      adam1(g.z, m.z, v.z, p.z, coef, b1, ob1, b2, ob2, lr, w, bc1, bc2, eps);
+      adam1(g.w, m.w, v.w, p.w, coef, b1, ob1, b2, ob2, lr, w, bc1, bc2, eps);
+      M[q] = m; V[q] = v; P[q] = p;
+      __stcg(reinterpret_cast<float4*>(pp[s] + le), p);
+    }
+    __syncthreads();   // the block's p stores, then one release for all of them
+    if (tid == 0) { upd::fence_rel(); atomicAdd(ctl + upd::DONE, 1u); if (step + 1 < steps) load_bc(step + 1); }
+  }
+  int s = 0;
+  for (int i = g0 + tid; i < g1; i += NT) {   // the moments home (the parameters are there already)
+    while (4 * i >= off[s + 1]) ++s;
+    const int le = 4 * i - off[s], q = i - g0;
+    __stcg(reinterpret_cast<float4*>(d.m[s] + le), M[q]);
+    __stcg(reinterpret_cast<float4*>(d.v[s] + le), V[q]);
+  }
+}
+
 template <class FAIL, class PH>
 __device__ bool run1(const KvmFgptDesc& d, float* sm, long long smem_floats, FAIL fail, PH& ph) {
   const int tid = threadIdx.x;
@@ -1161,7 +1322,11 @@ __device__ bool run1(const KvmFgptDesc& d, float* sm, long long smem_floats, FAI
   // the shape, mask and numerics this form takes, and its layout against the shared memory given (kvm_fgpt1.h: the pass and the executor ask
   // the same question before launching)
   const int bad = kvm_fgpt1_check_layout(y, d.N, d.T, d.B, d.d, d.H, d.hd, d.F, d.V, d.mm_numerics, kFast, smem_floats);
-  if (bad) { if (tid == 0) fail(bad); return false; }
+  const bool helpers = gridDim.x > 1;   // the launch's other blocks run the update (upd_helper)
+  if (bad) {
+    if (tid == 0) { fail(bad); if (helpers) { upd::st_rel(d.ctl + upd::GO, upd::kAbort); upd::st_rel(d.ctl + upd::MODE, upd::kAbort); } }
+    return false;
+  }
   zero_n(sm, y.total);                                                                // every pad an exact zero
   __syncthreads();
   rope_table(sm + y.rtab, d.T, d.hd, d.theta);
@@ -1185,6 +1350,20 @@ __device__ bool run1(const KvmFgptDesc& d, float* sm, long long smem_floats, FAI
     if (tid == 0) param_homes(d, sm, y, home);
     __syncthreads();
   }
+  // The helper update's mode, once a run: on when adamw would take its vec4 path (so upd_norm's order is adamw's) and every home and resident copy
+  // moves in 16-byte units (upd_reload's cp.async, all of it through L2)
+  bool offload = false;
+  if constexpr (kC3) {
+    if (helpers) {
+      const int t4 = home.off[kvm_fgpt_nparams(d.L)] / 4;
+      bool al = true;
+      for (int s = 0; s < kvm_fgpt_nparams(d.L); ++s) al = al && (reinterpret_cast<size_t>(d.p[s]) & 15) == 0;
+      offload = home.vec4 && al && t4 <= 12 * NT && y.ring_floats >= 8 * kAdamRing * NT &&
+                upd::helper_floats(t4, (int)gridDim.x - 1, kvm_fgpt_nparams(d.L)) <= smem_floats;
+    }
+  }
+  if (helpers) __syncthreads();   // the bias corrections' table, which the helpers read once they see the mode
+  if (helpers && tid == 0) { upd::fence_rel(); upd::st_rel(d.ctl + upd::MODE, offload ? upd::kOn : upd::kOff); }   // a run without the update releases them too
   int* const ids0 = reinterpret_cast<int*>(sm + y.ids);
   int* const tgt0 = reinterpret_cast<int*>(sm + y.tgt);
   __shared__ int flag, next_flag;
@@ -1219,7 +1398,10 @@ __device__ bool run1(const KvmFgptDesc& d, float* sm, long long smem_floats, FAI
         if (tg != -1 && (tg < 0 || tg >= V)) atomicCAS(&flag, 0, KVM_FGPT_E_TARGET);
       }
     __syncthreads();
-    if (flag) { if (tid == 0) fail(flag); return false; }
+    if (flag) {
+      if (tid == 0) { fail(flag); if (offload) upd::st_rel(d.ctl + upd::GO, upd::kAbort); }
+      return false;
+    }
     if (step + 1 < d.steps) {   // the next step's tokens into the other slot, waited for at its start
       long long bi, bt;
       const int e = window_err(t + 1, bi, bt);
@@ -1237,7 +1419,23 @@ __device__ bool run1(const KvmFgptDesc& d, float* sm, long long smem_floats, FAI
     if constexpr (kC3) {
       __syncthreads();
       if (prec_run) backward<true>(d, sm, y, step, inv_n, ph); else backward<false>(d, sm, y, step, inv_n, ph);
-      adamw(d, home, step, reinterpret_cast<float*>(sm + y.red), sm + y.ring, y.ring_floats, ph);
+      if (offload) {
+        const float coef = upd_norm(d, home, reinterpret_cast<float*>(sm + y.red), ph);
+        __syncthreads();   // the block's gradient stores, then one release for all of them
+        if (tid == 0) {
+          d.ctl[upd::COEF] = __float_as_uint(coef);
+          upd::fence_rel();
+          upd::st_rel(d.ctl + upd::GO, (unsigned)step + 1);
+          upd::wait_ge(d.ctl + upd::DONE, (unsigned)(gridDim.x - 1) * (unsigned)(step + 1));
+        }
+        __syncthreads();
+        upd_reload(home, kvm_fgpt_nparams(d.L));   // the resident copy (the head included) from the homes the helpers just wrote
+        asm volatile("cp.async.wait_all;\n" ::: "memory");
+        __syncthreads();
+        ph(MK_ADAMW);
+      } else {
+        adamw(d, home, step, reinterpret_cast<float*>(sm + y.red), sm + y.ring, y.ring_floats, ph);
+      }
     } else {
       (void)inv_n;
     }

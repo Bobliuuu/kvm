@@ -1036,10 +1036,20 @@ class KvmExec {
   // a parameter, gradient or moment that is not contiguous f32, or a stream that is not i32, is refused here, loudly. A run in F's 2-D form
   // (plan.f2d[i].G > 0) also gets F's descriptor (kvm_f2d::build over the same buffers), which its kernel takes by value. zbw: a fused-step
   // run on ZBW's instance.
-  struct FgptState { KvmFgptDesc* desc = nullptr; std::vector<kvm_f2d::SDesc> f2d; std::vector<void*> allocs; int smem_bytes = 0, smem1_bytes = 0; std::vector<char> zbw; };
+  // upd_ctl: each one-block run's helper-update control words (kvm_fgpt1.cuh's upd), reset before the timed launches; helpers, the update's blocks
+  // beside each one-block run (KVM_FGPT1_HELPERS, 16 unless set: on the A100 bed 16 read 1% under 8; 0 runs the update on the run's own block)
+  struct FgptState {
+    KvmFgptDesc* desc = nullptr; std::vector<kvm_f2d::SDesc> f2d; std::vector<void*> allocs; int smem_bytes = 0, smem1_bytes = 0; std::vector<char> zbw;
+    std::vector<unsigned*> upd_ctl; int helpers = 0;
+  };
   FgptState make_fgpt_state(const KvmFuseGptPlan& plan) {
     FgptState st;
     std::vector<KvmFgptDesc> descs(plan.runs.size());
+    st.upd_ctl.assign(plan.runs.size(), nullptr);
+    {   // the helper update (kvm_fgpt1.cuh's upd): each one-block run's update on helper blocks
+      const char* hv = std::getenv("KVM_FGPT1_HELPERS");
+      st.helpers = hv ? std::max(0, std::atoi(hv)) : 16;
+    }
     st.f2d.resize(plan.runs.size());
     const auto alloc = [&](size_t bytes) { void* p; CK(cudaMalloc(&p, bytes)); CK(cudaMemset(p, 0, bytes)); st.allocs.push_back(p); return p; };
     const auto need = [&](int b, int dtype, const char* what) {
@@ -1080,8 +1090,10 @@ class KvmExec {
       float** dl = static_cast<float**>(alloc(lp.size() * sizeof(float*)));
       CK(cudaMemcpy(dl, lp.data(), lp.size() * sizeof(float*), cudaMemcpyHostToDevice));
       d.loss = dl;
-      if (plan.one_block[i]) {   // the one-block form: no gang, so no scratch and no crossing words; its bias corrections, and one block's shared memory
+      if (plan.one_block[i]) {   // the one-block form: no gang; its bias corrections, the helper update's control words, and one block's shared memory
         d.bc = static_cast<float*>(alloc(2 * (size_t)run.steps * sizeof(float)));   // filled by its block at the run's start
+        d.ctl = static_cast<unsigned*>(alloc(32 * sizeof(unsigned)));                   // the helper update's mode, go, done and coef
+        st.upd_ctl[i] = d.ctl;
         const long long floats = kvm_fgpt1_layout(d.N, d.T, d.d, d.H, d.F, d.V, d.L, KVM_FGPT1_EXEC_FAST).total;
         st.smem1_bytes = std::max(st.smem1_bytes, (int)(floats * (long long)sizeof(float)));
         KLOG(2, "fuse gpt: run %zu: the one-block form (relaxed numerics mask %d), %d steps, its whole state in %lld floats (%lld bytes) of one block's "
@@ -1173,6 +1185,8 @@ class KvmExec {
       CK(cudaFuncSetAttribute(reinterpret_cast<const void*>(kvm_fgpt1_kernel), cudaFuncAttributeMaxDynamicSharedMemorySize, st.smem1_bytes));
       int o = 0; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&o, reinterpret_cast<const void*>(kvm_fgpt1_kernel), KVM_FGPT_NT, st.smem1_bytes));
       if (o < 1) throw std::runtime_error("fused GPT kernel: the one-block form cannot be resident with " + std::to_string(st.smem1_bytes) + " bytes of shared memory");
+      if (st.helpers > o * sms_ - 1) st.helpers = std::max(0, o * sms_ - 1);   // every block of a run resident at once (the helpers wait on block 0)
+      KLOG(2, "fused GPT kernel: one-block runs with %d update helper block(s)%s", st.helpers, st.helpers ? ", the update on them" : " (the update on the run's own block)");
     }
     KvmCounters* dcnt; CK(cudaMalloc(&dcnt, sizeof(KvmCounters))); CK(cudaMemset(dcnt, 0, sizeof(KvmCounters)));
     CK(cudaStreamSynchronize(0));
@@ -1192,6 +1206,9 @@ class KvmExec {
     if (form_used[5]) kvm_f2d_kernel<true><<<1, KVM_F2D_NT, st.smem_bytes, stream_>>>(kvm_f2d::SDesc{}, dcnt, S_.herr, 0);
     if (form_used[6]) kvm_fgpt1_kernel<<<1, KVM_FGPT_NT, st.smem1_bytes, stream_>>>(nullptr, dcnt, S_.herr, 0);
     CK(cudaGetLastError()); CK(cudaStreamSynchronize(stream_));
+    for (unsigned* c : st.upd_ctl)   // the helper update's words at zero before each launch: go and done count this launch's steps from 0
+      if (c) CK(cudaMemsetAsync(c, 0, 32 * sizeof(unsigned), stream_));
+    CK(cudaStreamSynchronize(stream_));
     clock_warmup();
     CK(cudaEventRecord(e0_, stream_));
     for (size_t r = 0, slot0 = 0; r < plan.runs.size(); slot0 += plan.gang[r], ++r) {
@@ -1201,7 +1218,7 @@ class KvmExec {
         case 1: kvm_fgpt_kernel<true, false><<<plan.gang[r], KVM_FGPT_NT, st.smem_bytes, stream_>>>(dr, dcnt, S_.herr, (int)slot0); break;
         case 2: kvm_fgpt_kernel<false, true><<<plan.gang[r], KVM_FGPT_NT, st.smem_bytes, stream_>>>(dr, dcnt, S_.herr, (int)slot0); break;
         case 3: kvm_fgpt_kernel<true, true><<<plan.gang[r], KVM_FGPT_NT, st.smem_bytes, stream_>>>(dr, dcnt, S_.herr, (int)slot0); break;
-        case 6: kvm_fgpt1_kernel<<<1, KVM_FGPT_NT, st.smem1_bytes, stream_>>>(dr, dcnt, S_.herr, (int)slot0); break;
+        case 6: kvm_fgpt1_kernel<<<1 + st.helpers, KVM_FGPT_NT, st.smem1_bytes, stream_>>>(dr, dcnt, S_.herr, (int)slot0); break;
         default: {   // F's form: its descriptor by value, with the run's error word, which every crossing reads
           kvm_f2d::SDesc fd = st.f2d[r];
           kvm_f2d::set_abort(fd, &dcnt->err_code);
@@ -1223,6 +1240,16 @@ class KvmExec {
     CK(cudaMemcpy(res_.version.data(), S_.version, cfg_.num_vars * 4, cudaMemcpyDeviceToHost));
     for (const KvmTaskDesc& d : b.tasks) if (d.pub_var >= 0) res_.version[d.pub_var] = std::max(res_.version[d.pub_var], d.pub_ver);   // member 0 carries its run's last version
     finished_ = true;
+    for (size_t i = 0; i < st.upd_ctl.size(); ++i) {   // the helper update: the path each one-block run took (its block 0 chooses: kvm_fgpt1.cuh's upd)
+      if (!st.upd_ctl[i] || !st.helpers) continue;
+      unsigned mode = 0; CK(cudaMemcpy(&mode, st.upd_ctl[i] + kvm_fgpt1::upd::MODE, sizeof mode, cudaMemcpyDeviceToHost));
+      if (mode == kvm_fgpt1::upd::kOn)
+        KLOG(2, "fused GPT kernel: run %zu: its update on its %d helper blocks%s", i, st.helpers, res_.err_code ? ", until the run faulted (its error word)" : "");
+      else if (mode == kvm_fgpt1::upd::kOff)
+        KLOG(1, "fused GPT kernel: run %zu: its update on its own block, not its %d helpers: declined (parameters not 16-byte vectors, over 12 float4 "
+                "groups a thread, a moment ring under its size, or slices past a helper's shared memory)", i, st.helpers);
+      else KLOG(1, "fused GPT kernel: run %zu: the run faulted before its block chose where its update runs (mode word %u)", i, mode);
+    }
     CK(cudaFree(dcnt));
     for (void* p : st.allocs) CK(cudaFree(p));
     if (res_.ok()) KLOG(2, "fused GPT run done: %d members in %.3f ms", members, res_.kernel_ms);

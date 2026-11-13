@@ -15,6 +15,7 @@
 #include "kvm_fused_mlp.cuh"
 #include "kvm_fused_split.cuh"
 #include "kvm_fused_grid.cuh"
+#include "kvm_fused_grid_virtual.cuh"
 #include "kvm_fused_batch.cuh"
 
 // The dynamic shared-memory arena every op takes from offset 0 (the same declaration as kvm_ops_gpt.cuh's, repeated so a build without the gpt pack, like tests/gpu/build_core.sh, still has it).
@@ -112,6 +113,17 @@ __device__ __noinline__ void kvm_s_fmlp_grid(int member, int members, const int3
   kvm_fgrid::grid_run(member, ids, tgt, loss, arena, &c->cnt->err_code, kvm_fgrid::NoPhases{});
 }
 
+// One block of a virtual grid step (kvm_fused_grid_virtual.cuh: grid_run_chunked, each block a contiguous chunk of the gang's roles). A block
+// count that disagrees with the descriptor's physical count, or a descriptor not laid out chunked, fails the run before any barrier, as for the
+// resident member.
+__device__ __noinline__ void kvm_s_fmlp_grid_virtual(int member, int members, const int32_t* ids, const int32_t* tgt, float* loss, float* arena, KvmCtx* c) {
+  kvm_fmlp::cp_commit_wait();
+  __syncthreads();
+  const KvmGridDesc& d = *reinterpret_cast<const KvmGridDesc*>(arena);
+  if (d.phys < 1 || d.phys >= d.P || d.G < 1 || members != d.phys || member < 0 || member >= members) { c->fail(KVM_ERR_BAD_OP, KVM_OP_fmlp_grid); return; }
+  kvm_fgrid::grid_run_chunked(member, ids, tgt, loss, arena, &c->cnt->err_code, kvm_fgrid::NoPhases{});
+}
+
 // One member of a batched step (a gang op of every worker, like fmlp_grid): step `step` of every run the descriptor carries
 // (kvm_fused_batch.h), each run's buffers of that step taken from the descriptor's runs. The descriptor is copied from global memory, as the
 // batched bed's kernel copies it; no arena prefetch (the step's tiles use the whole arena). A member count or step the descriptor disagrees
@@ -140,10 +152,11 @@ __device__ __noinline__ void kvm_dispatch_fused(int op, const KvmCtx c, const in
 
 // The kernel entries (kvm_fuse_entry picks one per bundle). `generic` runs every op but the fused ones, which its dispatch refuses, so it
 // holds no fused function and a fused task runs only where its own functions are the entry's large callees. `block` runs the one-block
-// form (fmlp_slice, fmlp_sgd); `split` (at S_ shares; `split_stream`, its member streaming its weights), `grid` and `batch` their gang
-// op; each, through kvm_dispatch_fused, the steps' windows and noops. No fused entry's name contains `kvm_static_kernel`, which the SASS
-// census reads the generic kernel by.
-enum class KvmSEntry { generic, block, split, grid, batch, batch_grid, split_stream };
+// form (fmlp_slice, fmlp_sgd); `split` (at S_ shares; `split_stream`, the member streaming its weights), `grid` (`grid_virtual`, its members
+// carried by fewer blocks) and `batch` their gang op;
+// each, through kvm_dispatch_fused, the steps' windows and noops. No fused entry's name contains `kvm_static_kernel`, which the SASS census
+// reads the generic kernel by.
+enum class KvmSEntry { generic, block, split, grid, batch, batch_grid, split_stream, grid_virtual };
 
 template <KvmSEntry E, int S_ = 0>
 __device__ void kvm_static_worker(const KvmStaticDev& Sref, KvmSShared& sh) {
@@ -168,7 +181,7 @@ __device__ void kvm_static_worker(const KvmStaticDev& Sref, KvmSShared& sh) {
     if constexpr (E == KvmSEntry::generic) {}
     else if constexpr (E == KvmSEntry::block) { if (r->op == KVM_OP_fmlp_slice || r->op == KVM_OP_fmlp_sgd) kvm_fmlp::prefetch_desc(S.fused + r->args[0], reinterpret_cast<float*>(kvm_gpt_smem)); }
     else if constexpr (E == KvmSEntry::split || E == KvmSEntry::split_stream) { if (r->op == KVM_OP_fmlp_split) kvm_fsplit::prefetch_desc(S.split + r->args[0], reinterpret_cast<float*>(kvm_gpt_smem)); }
-    else if constexpr (E == KvmSEntry::grid) { if (r->op == KVM_OP_fmlp_grid) kvm_fgrid::prefetch_desc(S.grid + r->args[0], reinterpret_cast<float*>(kvm_gpt_smem)); }
+    else if constexpr (E == KvmSEntry::grid || E == KvmSEntry::grid_virtual) { if (r->op == KVM_OP_fmlp_grid) kvm_fgrid::prefetch_desc(S.grid + r->args[0], reinterpret_cast<float*>(kvm_gpt_smem)); }
     const int nw = r->nwait;
     if (nw) {   // only a record with waits needs the hand-over barrier (a plain chain continues directly)
       if (threadIdx.x < nw) {   // one lane of warp 0 per wait: a fan-in of up to KVM_S_WAITS costs one poll, not one per source
@@ -196,6 +209,9 @@ __device__ void kvm_static_worker(const KvmStaticDev& Sref, KvmSShared& sh) {
         else kvm_dispatch_fused(r->op, c, r->args);
       } else if constexpr (E == KvmSEntry::grid) {
         if (r->op == KVM_OP_fmlp_grid) kvm_s_fmlp_grid(r->args[2], r->args[3], reinterpret_cast<const int32_t*>(r->bufs[r->args[4]].p), reinterpret_cast<const int32_t*>(r->bufs[r->args[5]].p), reinterpret_cast<float*>(r->bufs[r->args[6]].p), arena, &c);
+        else kvm_dispatch_fused(r->op, c, r->args);
+      } else if constexpr (E == KvmSEntry::grid_virtual) {
+        if (r->op == KVM_OP_fmlp_grid) kvm_s_fmlp_grid_virtual(r->args[2], r->args[3], reinterpret_cast<const int32_t*>(r->bufs[r->args[4]].p), reinterpret_cast<const int32_t*>(r->bufs[r->args[5]].p), reinterpret_cast<float*>(r->bufs[r->args[6]].p), arena, &c);
         else kvm_dispatch_fused(r->op, c, r->args);
       } else {
         if (r->op == KVM_OP_fmlp_batch) kvm_s_fmlp_batch<E == KvmSEntry::batch_grid>(S.batch + r->args[0], r->args[2], r->args[3], r->args[4], arena, &c);
@@ -235,6 +251,10 @@ __global__ void __launch_bounds__(KVM_THREADS, KVM_MIN_BLOCKS) kvm_static_gang_g
   __shared__ KvmSShared sh;
   kvm_static_worker<KvmSEntry::grid>(S, sh);
 }
+__global__ void __launch_bounds__(KVM_THREADS, KVM_MIN_BLOCKS) kvm_static_gang_grid_virtual(const __grid_constant__ KvmStaticDev S) {
+  __shared__ KvmSShared sh;
+  kvm_static_worker<KvmSEntry::grid_virtual>(S, sh);
+}
 __global__ void __launch_bounds__(KVM_THREADS, KVM_MIN_BLOCKS) kvm_static_gang_batch(const __grid_constant__ KvmStaticDev S) {
   __shared__ KvmSShared sh;
   kvm_static_worker<KvmSEntry::batch>(S, sh);
@@ -252,6 +272,7 @@ inline KvmStaticEntryFn kvm_static_entry_fn(const KvmFuseEntry& e) {
     case KvmFuseEntry::generic: return kvm_static_kernel;
     case KvmFuseEntry::block: return kvm_static_block;
     case KvmFuseEntry::grid: return kvm_static_gang_grid;
+    case KvmFuseEntry::grid_virtual: return kvm_static_gang_grid_virtual;
     case KvmFuseEntry::batch: return kvm_static_gang_batch;
     case KvmFuseEntry::batch_grid: return kvm_static_gang_batch_grid;
     case KvmFuseEntry::split:

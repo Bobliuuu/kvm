@@ -1,0 +1,662 @@
+# 2026-11-11T12:30:34Z head b95cc18, Python 3.12.16, numpy 2.5.4, torch 2.15.0+cu132, no GPU visible
+
+## python3 -I -m unittest discover -s tests
+.............................................................................................................................................................
+----------------------------------------------------------------------
+Ran 157 tests in 6.082s
+
+OK
+rc 0
+
+## python3 -I -m unittest discover -s tests/dist
+..........................................................................
+----------------------------------------------------------------------
+Ran 74 tests in 256.582s
+
+OK
+rc 0
+
+## python3 -I -m unittest discover -s tests/frontend
+............................................................................INFO model gpt_tiny: 0.02M parameters, 20 tensors
+INFO fusion: 140 logical ops -> 136 ({'ce_fused': 2, 'mm_dgelu': 2})
+INFO memory plan: persistent 0.2 MiB, activation pool 0.2 MiB in 60 slots (120 tensors; 0.4 MiB without reuse)
+INFO dataflow: 528 tasks + 0 joins, 3715 edges
+INFO lowered 136 logical ops -> 528 tile tasks (+0 joins), 3715 edges
+INFO serve serve_s0: prompt 3 tokens, 3 new, weights at_least version 0
+INFO fusion: 65 logical ops -> 65 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 20 slots (81 tensors; 0.0 MiB without reuse)
+INFO dataflow: 73 tasks + 0 joins, 231 edges
+INFO lowered 65 logical ops -> 73 tile tasks (+0 joins), 231 edges
+INFO serve serve_s2: prompt 3 tokens, 3 new, weights at_least version 4
+INFO fusion: 65 logical ops -> 65 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 20 slots (81 tensors; 0.0 MiB without reuse)
+INFO dataflow: 73 tasks + 0 joins, 231 edges
+INFO lowered 65 logical ops -> 73 tile tasks (+0 joins), 231 edges
+INFO serve serve_s4: prompt 3 tokens, 3 new, weights at_least version 8
+INFO fusion: 65 logical ops -> 65 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 20 slots (81 tensors; 0.0 MiB without reuse)
+INFO dataflow: 73 tasks + 0 joins, 231 edges
+INFO lowered 65 logical ops -> 73 tile tasks (+0 joins), 231 edges
+INFO fusion: 32 logical ops -> 32 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 0 slots (0 tensors; 0.0 MiB without reuse)
+INFO dataflow: 64 tasks + 0 joins, 232 edges
+INFO lowered 32 logical ops -> 64 tile tasks (+0 joins), 232 edges
+INFO game: 8 frames at 35 Hz (period 28571 us): 64 tasks, 232 edges
+INFO wrote /tmp/tmp66umkcuz/workloads/train.json (0.18 MiB, 0 data files)
+INFO wrote /tmp/tmp66umkcuz/workloads/serve_s0.json (0.03 MiB, 0 data files)
+INFO wrote /tmp/tmp66umkcuz/workloads/serve_s2.json (0.03 MiB, 0 data files)
+INFO wrote /tmp/tmp66umkcuz/workloads/serve_s4.json (0.03 MiB, 0 data files)
+INFO wrote /tmp/tmp66umkcuz/workloads/game.json (0.01 MiB, 0 data files)
+INFO compiled 64 tasks (0 gates), 232 edges, 5 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO wrote bundle to /tmp/tmp66umkcuz/bundles/game
+INFO bundle game: 64 tasks, 232 edges (base {'frame': 0})
+INFO compiled 73 tasks (0 gates), 231 edges, 48 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO wrote bundle to /tmp/tmp66umkcuz/bundles/serve_s0
+INFO bundle serve_s0: 73 tasks, 231 edges (base {'weights': 0})
+INFO compiled 528 tasks (0 gates), 3715 edges, 127 buffers, 1 variables in 0.01s (parse 0.01s, graph+versions 0.00s, pack 0.00s)
+INFO wrote bundle to /tmp/tmp66umkcuz/bundles/train_w0
+INFO bundle train_w0: 528 tasks, 3715 edges (base {'weights': 0})
+INFO compiled 73 tasks (0 gates), 231 edges, 48 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO wrote bundle to /tmp/tmp66umkcuz/bundles/serve_s2
+INFO bundle serve_s2: 73 tasks, 231 edges (base {'weights': 4})
+INFO compiled 528 tasks (0 gates), 3715 edges, 127 buffers, 1 variables in 0.01s (parse 0.01s, graph+versions 0.00s, pack 0.00s)
+INFO wrote bundle to /tmp/tmp66umkcuz/bundles/train_w1
+INFO bundle train_w1: 528 tasks, 3715 edges (base {'weights': 4})
+INFO compiled 73 tasks (0 gates), 231 edges, 48 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO wrote bundle to /tmp/tmp66umkcuz/bundles/serve_s4
+INFO bundle serve_s4: 73 tasks, 231 edges (base {'weights': 8})
+INFO demo: {'train': (528, 3715), 'serve_s0': (73, 231), 'serve_s2': (73, 231), 'serve_s4': (73, 231), 'game': (64, 232)}
+INFO manifest: 6 admissions, 216 buffers (20 shared) -> /tmp/tmp66umkcuz/MANIFEST.json
+INFO compiled 64 tasks (0 gates), 232 edges, 5 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO compiled 73 tasks (0 gates), 231 edges, 48 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO compiled 73 tasks (0 gates), 231 edges, 48 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO compiled 73 tasks (0 gates), 231 edges, 48 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO compiled 528 tasks (0 gates), 3715 edges, 127 buffers, 1 variables in 0.01s (parse 0.01s, graph+versions 0.00s, pack 0.00s)
+INFO compiled 64 tasks (0 gates), 232 edges, 5 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO admitted batch 0: 64 tasks
+INFO ran game -> versions {'frame': 8}
+INFO compiled 73 tasks (0 gates), 231 edges, 48 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO admitted batch 1: 73 tasks
+INFO ran serve_s0 -> versions {'frame': 8, 'weights': 0}
+INFO compiled 528 tasks (0 gates), 3715 edges, 127 buffers, 1 variables in 0.01s (parse 0.01s, graph+versions 0.00s, pack 0.00s)
+INFO admitted batch 2: 528 tasks
+INFO ran train_w0 -> versions {'frame': 8, 'weights': 4}
+INFO compiled 73 tasks (0 gates), 231 edges, 48 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO admitted batch 3: 73 tasks
+INFO ran serve_s2 -> versions {'frame': 8, 'weights': 4}
+INFO compiled 528 tasks (0 gates), 3715 edges, 127 buffers, 1 variables in 0.01s (parse 0.01s, graph+versions 0.00s, pack 0.00s)
+INFO admitted batch 4: 528 tasks
+INFO ran train_w1 -> versions {'frame': 8, 'weights': 8}
+INFO compiled 73 tasks (0 gates), 231 edges, 48 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+INFO admitted batch 5: 73 tasks
+INFO ran serve_s4 -> versions {'frame': 8, 'weights': 8}
+...INFO model llama_tiny: 0.07M parameters, 21 tensors
+INFO fusion: 510 logical ops -> 505 ({'ce_fused': 5})
+INFO memory plan: persistent 0.8 MiB, activation pool 0.5 MiB in 64 slots (445 tensors; 3.5 MiB without reuse)
+INFO dataflow: 4130 tasks + 0 joins, 40232 edges
+INFO lowered 505 logical ops -> 4130 tile tasks (+0 joins), 40232 edges
+INFO refvm: executed 4130 tasks (program order, f64)
+INFO model llama_gqa_tied: 0.07M parameters, 20 tensors
+INFO fusion: 505 logical ops -> 500 ({'ce_fused': 5})
+INFO memory plan: persistent 0.8 MiB, activation pool 0.5 MiB in 63 slots (440 tensors; 3.4 MiB without reuse)
+INFO dataflow: 3970 tasks + 0 joins, 39155 edges
+INFO lowered 500 logical ops -> 3970 tile tasks (+0 joins), 39155 edges
+INFO refvm: executed 3970 tasks (program order, f64)
+INFO model moe_tiny: 0.07M parameters, 22 tensors
+INFO fusion: 670 logical ops -> 665 ({'ce_fused': 5})
+INFO memory plan: persistent 0.9 MiB, activation pool 0.6 MiB in 67 slots (530 tensors; 5.4 MiB without reuse)
+INFO dataflow: 4950 tasks + 5 joins, 47987 edges
+INFO lowered 665 logical ops -> 4950 tile tasks (+5 joins), 47987 edges
+INFO refvm: executed 4955 tasks (program order, f64)
+INFO model mlp_tiny: 0.00M parameters, 6 tensors
+INFO fusion: 145 logical ops -> 140 ({'ce_fused': 5})
+INFO memory plan: persistent 0.0 MiB, activation pool 0.0 MiB in 16 slots (105 tensors; 0.2 MiB without reuse)
+INFO dataflow: 320 tasks + 0 joins, 1918 edges
+INFO lowered 140 logical ops -> 320 tile tasks (+0 joins), 1918 edges
+INFO refvm: executed 320 tasks (program order, f64)
+INFO model vit_tiny: 0.01M parameters, 23 tensors
+INFO fusion: 375 logical ops -> 365 ({'ce_fused': 5, 'mm_dgelu': 5})
+INFO memory plan: persistent 0.2 MiB, activation pool 0.4 MiB in 52 slots (310 tensors; 2.8 MiB without reuse)
+INFO dataflow: 2035 tasks + 0 joins, 22387 edges
+INFO lowered 365 logical ops -> 2035 tile tasks (+0 joins), 22387 edges
+INFO refvm: executed 2035 tasks (program order, f64)
+.INFO model mlp_tiny: 0.00M parameters, 6 tensors
+INFO fusion: 58 logical ops -> 56 ({'ce_fused': 2})
+INFO memory plan: persistent 0.0 MiB, activation pool 0.0 MiB in 16 slots (42 tensors; 0.1 MiB without reuse)
+INFO dataflow: 128 tasks + 0 joins, 646 edges
+INFO lowered 56 logical ops -> 128 tile tasks (+0 joins), 646 edges
+INFO refvm: executed 128 tasks (program order, f64)
+INFO refvm: executed 128 tasks (random order, f64)
+INFO model vit_tiny: 0.01M parameters, 23 tensors
+INFO fusion: 150 logical ops -> 146 ({'ce_fused': 2, 'mm_dgelu': 2})
+INFO memory plan: persistent 0.2 MiB, activation pool 0.4 MiB in 52 slots (124 tensors; 1.1 MiB without reuse)
+INFO dataflow: 814 tasks + 0 joins, 7645 edges
+INFO lowered 146 logical ops -> 814 tile tasks (+0 joins), 7645 edges
+INFO refvm: executed 814 tasks (program order, f64)
+INFO refvm: executed 814 tasks (random order, f64)
+INFO model sm: 0.02M parameters, 22 tensors
+INFO fusion: 268 logical ops -> 266 ({'ce_fused': 2})
+INFO memory plan: persistent 0.2 MiB, activation pool 0.2 MiB in 67 slots (212 tensors; 0.5 MiB without reuse)
+INFO dataflow: 782 tasks + 0 joins, 5545 edges
+INFO lowered 266 logical ops -> 782 tile tasks (+0 joins), 5545 edges
+INFO refvm: executed 782 tasks (program order, f64)
+INFO refvm: executed 782 tasks (random order, f64)
+INFO model s: 0.01M parameters, 12 tensors
+INFO fusion: 120 logical ops -> 118 ({'ce_fused': 2})
+INFO memory plan: persistent 0.1 MiB, activation pool 0.1 MiB in 33 slots (104 tensors; 0.3 MiB without reuse)
+INFO dataflow: 386 tasks + 0 joins, 2577 edges
+INFO lowered 118 logical ops -> 386 tile tasks (+0 joins), 2577 edges
+INFO refvm: executed 386 tasks (program order, f64)
+INFO refvm: executed 386 tasks (random order, f64)
+.INFO model t: 0.07M parameters, 21 tensors
+INFO fusion: 204 logical ops -> 202 ({'ce_fused': 2})
+INFO memory plan: persistent 0.8 MiB, activation pool 0.5 MiB in 64 slots (178 tensors; 1.3 MiB without reuse)
+INFO dataflow: 1584 tasks + 0 joins, 12955 edges
+INFO lowered 202 logical ops -> 1584 tile tasks (+0 joins), 12955 edges
+INFO serve sv0: prompt 4 tokens, 4 new, weights exact version 0
+INFO fusion: 162 logical ops -> 162 (nothing fused)
+INFO memory plan: persistent 0.3 MiB, activation pool 0.0 MiB in 21 slots (169 tensors; 0.0 MiB without reuse)
+INFO dataflow: 212 tasks + 0 joins, 978 edges
+INFO lowered 162 logical ops -> 212 tile tasks (+0 joins), 978 edges
+INFO serve sv2: prompt 4 tokens, 4 new, weights exact version 4
+INFO fusion: 162 logical ops -> 162 (nothing fused)
+INFO memory plan: persistent 0.3 MiB, activation pool 0.0 MiB in 21 slots (169 tensors; 0.0 MiB without reuse)
+INFO dataflow: 212 tasks + 0 joins, 978 edges
+INFO lowered 162 logical ops -> 212 tile tasks (+0 joins), 978 edges
+INFO refvm: executed 2008 tasks (random order, f64)
+.INFO model t: 0.04M parameters, 11 tensors
+INFO fusion: 118 logical ops -> 116 ({'ce_fused': 2})
+INFO memory plan: persistent 0.4 MiB, activation pool 0.3 MiB in 40 slots (102 tensors; 0.7 MiB without reuse)
+INFO dataflow: 866 tasks + 0 joins, 7086 edges
+INFO lowered 116 logical ops -> 866 tile tasks (+0 joins), 7086 edges
+INFO serve sv0: prompt 1 tokens, 3 new, weights exact version 0
+INFO fusion: 57 logical ops -> 57 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 10 slots (57 tensors; 0.0 MiB without reuse)
+INFO dataflow: 72 tasks + 0 joins, 296 edges
+INFO lowered 57 logical ops -> 72 tile tasks (+0 joins), 296 edges
+INFO serve sv2: prompt 1 tokens, 3 new, weights exact version 4
+INFO fusion: 57 logical ops -> 57 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 10 slots (57 tensors; 0.0 MiB without reuse)
+INFO dataflow: 72 tasks + 0 joins, 296 edges
+INFO lowered 57 logical ops -> 72 tile tasks (+0 joins), 296 edges
+INFO refvm: executed 1010 tasks (random order, f64)
+.INFO model sm: 0.02M parameters, 22 tensors
+INFO fusion: 242 logical ops -> 240 ({'ce_fused': 2})
+INFO memory plan: persistent 0.2 MiB, activation pool 0.2 MiB in 73 slots (189 tensors; 0.5 MiB without reuse)
+INFO dataflow: 626 tasks + 0 joins, 4157 edges
+INFO lowered 240 logical ops -> 626 tile tasks (+0 joins), 4157 edges
+INFO refvm: executed 626 tasks (program order, f64)
+.INFO model gpt_tiny: 0.02M parameters, 20 tensors
+INFO fusion: 70 logical ops -> 68 ({'ce_fused': 1, 'mm_dgelu': 1})
+INFO fusion: 68 logical ops -> 68 (nothing fused)
+INFO memory plan: persistent 0.2 MiB, activation pool 0.1 MiB in 43 slots (60 tensors; 0.2 MiB without reuse)
+INFO dataflow: 264 tasks + 0 joins, 1344 edges
+INFO lowered 68 logical ops -> 264 tile tasks (+0 joins), 1344 edges
+.INFO model gpt_tiny: 0.02M parameters, 20 tensors
+INFO fusion: 70 logical ops -> 70 (nothing fused)
+INFO memory plan: persistent 0.2 MiB, activation pool 0.1 MiB in 44 slots (61 tensors; 0.2 MiB without reuse)
+INFO dataflow: 272 tasks + 0 joins, 1400 edges
+INFO lowered 70 logical ops -> 272 tile tasks (+0 joins), 1400 edges
+INFO model gpt_tiny: 0.02M parameters, 20 tensors
+INFO fusion: 70 logical ops -> 68 ({'ce_fused': 1, 'mm_dgelu': 1})
+INFO memory plan: persistent 0.2 MiB, activation pool 0.1 MiB in 43 slots (60 tensors; 0.2 MiB without reuse)
+INFO dataflow: 264 tasks + 0 joins, 1344 edges
+INFO lowered 68 logical ops -> 264 tile tasks (+0 joins), 1344 edges
+INFO refvm: executed 272 tasks (program order, f64)
+INFO refvm: executed 264 tasks (program order, f64)
+.INFO model s: 0.01M parameters, 12 tensors
+INFO fusion: 120 logical ops -> 118 ({'ce_fused': 2})
+INFO memory plan: persistent 0.1 MiB, activation pool 0.1 MiB in 33 slots (104 tensors; 0.3 MiB without reuse)
+INFO dataflow: 386 tasks + 0 joins, 2577 edges
+INFO lowered 118 logical ops -> 386 tile tasks (+0 joins), 2577 edges
+INFO model s: 0.01M parameters, 12 tensors
+INFO fusion: 120 logical ops -> 114 ({'linear_silu_mul': 2, 'ce_fused': 2, 'mm_silu_mul_bwd': 2})
+INFO fusion: 114 logical ops -> 114 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.1 MiB in 32 slots (102 tensors; 0.3 MiB without reuse)
+INFO dataflow: 370 tasks + 0 joins, 2476 edges
+INFO lowered 114 logical ops -> 370 tile tasks (+0 joins), 2476 edges
+INFO refvm: executed 386 tasks (program order, f64)
+INFO refvm: executed 370 tasks (program order, f64)
+INFO model sm: 0.02M parameters, 22 tensors
+INFO fusion: 268 logical ops -> 266 ({'ce_fused': 2})
+INFO memory plan: persistent 0.2 MiB, activation pool 0.2 MiB in 67 slots (212 tensors; 0.5 MiB without reuse)
+INFO dataflow: 782 tasks + 0 joins, 5545 edges
+INFO lowered 266 logical ops -> 782 tile tasks (+0 joins), 5545 edges
+INFO model sm: 0.02M parameters, 22 tensors
+INFO fusion: 268 logical ops -> 250 ({'linear_silu_mul': 8, 'ce_fused': 2, 'mm_silu_mul_bwd': 8})
+INFO fusion: 250 logical ops -> 250 (nothing fused)
+INFO memory plan: persistent 0.2 MiB, activation pool 0.2 MiB in 67 slots (204 tensors; 0.5 MiB without reuse)
+INFO dataflow: 734 tasks + 0 joins, 5161 edges
+INFO lowered 250 logical ops -> 734 tile tasks (+0 joins), 5161 edges
+INFO refvm: executed 782 tasks (program order, f64)
+INFO refvm: executed 734 tasks (program order, f64)
+.INFO model s: 0.01M parameters, 12 tensors
+INFO fusion: 120 logical ops -> 118 ({'ce_fused': 2})
+INFO memory plan: persistent 0.1 MiB, activation pool 0.2 MiB in 41 slots (104 tensors; 0.6 MiB without reuse)
+INFO dataflow: 532 tasks + 0 joins, 3847 edges
+INFO lowered 118 logical ops -> 532 tile tasks (+0 joins), 3847 edges
+INFO model s: 0.01M parameters, 12 tensors
+INFO fusion: 208 logical ops -> 204 ({'ce_fused': 4})
+INFO memory plan: persistent 0.1 MiB, activation pool 0.1 MiB in 41 slots (182 tensors; 0.6 MiB without reuse)
+INFO dataflow: 592 tasks + 0 joins, 4415 edges
+INFO lowered 204 logical ops -> 592 tile tasks (+0 joins), 4415 edges
+INFO refvm: executed 532 tasks (program order, f64)
+INFO refvm: executed 592 tasks (program order, f64)
+INFO refvm: executed 532 tasks (program order, f64)
+INFO refvm: executed 592 tasks (program order, f64)
+.INFO model s: 0.01M parameters, 12 tensors
+INFO fusion: 120 logical ops -> 118 ({'ce_fused': 2})
+INFO memory plan: persistent 0.1 MiB, activation pool 0.1 MiB in 33 slots (104 tensors; 0.3 MiB without reuse)
+INFO dataflow: 386 tasks + 0 joins, 2577 edges
+INFO lowered 118 logical ops -> 386 tile tasks (+0 joins), 2577 edges
+INFO refvm: executed 386 tasks (program order, f64)
+INFO model s: 0.01M parameters, 12 tensors
+INFO fusion: 122 logical ops -> 120 ({'ce_fused': 2})
+INFO memory plan: persistent 0.1 MiB, activation pool 0.1 MiB in 33 slots (104 tensors; 0.3 MiB without reuse)
+INFO dataflow: 388 tasks + 0 joins, 2579 edges
+INFO lowered 120 logical ops -> 388 tile tasks (+0 joins), 2579 edges
+INFO refvm: executed 388 tasks (program order, f64)
+.INFO model mlp_tiny: 0.00M parameters, 6 tensors
+.INFO model mlp_tiny: 0.00M parameters, 6 tensors
+INFO fusion: 87 logical ops -> 84 ({'ce_fused': 3})
+INFO memory plan: persistent 0.0 MiB, activation pool 0.0 MiB in 16 slots (63 tensors; 0.1 MiB without reuse)
+INFO dataflow: 192 tasks + 0 joins, 1070 edges
+INFO lowered 84 logical ops -> 192 tile tasks (+0 joins), 1070 edges
+INFO model mlp_tiny: 0.00M parameters, 6 tensors
+INFO fusion: 90 logical ops -> 87 ({'ce_fused': 3})
+INFO memory plan: persistent 0.0 MiB, activation pool 0.0 MiB in 16 slots (63 tensors; 0.1 MiB without reuse)
+INFO dataflow: 195 tasks + 0 joins, 1127 edges
+INFO lowered 87 logical ops -> 195 tile tasks (+0 joins), 1127 edges
+INFO refvm: executed 192 tasks (program order, f64)
+INFO refvm: executed 195 tasks (program order, f64)
+INFO model mlp_tiny: 0.00M parameters, 6 tensors
+INFO fusion: 90 logical ops -> 87 ({'ce_fused': 3})
+INFO memory plan: persistent 0.0 MiB, activation pool 0.0 MiB in 16 slots (63 tensors; 0.1 MiB without reuse)
+INFO dataflow: 195 tasks + 0 joins, 1127 edges
+INFO lowered 87 logical ops -> 195 tile tasks (+0 joins), 1127 edges
+INFO refvm: executed 195 tasks (program order, f64)
+INFO model mlp_tiny: 0.00M parameters, 6 tensors
+INFO fusion: 60 logical ops -> 58 ({'ce_fused': 2})
+INFO memory plan: persistent 0.0 MiB, activation pool 0.0 MiB in 16 slots (42 tensors; 0.1 MiB without reuse)
+INFO dataflow: 130 tasks + 0 joins, 680 edges
+INFO lowered 58 logical ops -> 130 tile tasks (+0 joins), 680 edges
+INFO refvm: executed 130 tasks (program order, f64)
+INFO model mlp_tiny: 0.00M parameters, 6 tensors
+INFO fusion: 60 logical ops -> 58 ({'ce_fused': 2})
+INFO memory plan: persistent 0.0 MiB, activation pool 0.0 MiB in 16 slots (42 tensors; 0.1 MiB without reuse)
+INFO dataflow: 130 tasks + 0 joins, 680 edges
+INFO lowered 58 logical ops -> 130 tile tasks (+0 joins), 680 edges
+INFO refvm: executed 130 tasks (program order, f64)
+.INFO model s: 0.01M parameters, 12 tensors
+INFO fusion: 60 logical ops -> 59 ({'ce_fused': 1})
+INFO memory plan: persistent 0.1 MiB, activation pool 0.2 MiB in 52 slots (52 tensors; 0.2 MiB without reuse)
+INFO dataflow: 193 tasks + 0 joins, 806 edges
+INFO lowered 59 logical ops -> 193 tile tasks (+0 joins), 806 edges
+INFO model s: 0.01M parameters, 12 tensors
+INFO fusion: 60 logical ops -> 57 ({'linear_silu_mul': 1, 'ce_fused': 1, 'mm_silu_mul_bwd': 1})
+INFO fusion: 57 logical ops -> 57 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.2 MiB in 51 slots (51 tensors; 0.2 MiB without reuse)
+INFO dataflow: 185 tasks + 0 joins, 771 edges
+INFO lowered 57 logical ops -> 185 tile tasks (+0 joins), 771 edges
+INFO model s: 0.01M parameters, 12 tensors
+INFO fusion: 60 logical ops -> 59 ({'ce_fused': 1})
+INFO memory plan: persistent 0.1 MiB, activation pool 0.2 MiB in 52 slots (52 tensors; 0.2 MiB without reuse)
+INFO dataflow: 193 tasks + 0 joins, 806 edges
+INFO lowered 59 logical ops -> 193 tile tasks (+0 joins), 806 edges
+.INFO model sm: 0.02M parameters, 22 tensors
+INFO fusion: 134 logical ops -> 133 ({'ce_fused': 1})
+INFO memory plan: persistent 0.2 MiB, activation pool 0.2 MiB in 67 slots (106 tensors; 0.3 MiB without reuse)
+INFO dataflow: 391 tasks + 0 joins, 2053 edges
+INFO lowered 133 logical ops -> 391 tile tasks (+0 joins), 2053 edges
+INFO refvm: executed 391 tasks (program order, f64)
+INFO model sm: 0.02M parameters, 22 tensors
+INFO fusion: 173 logical ops -> 172 ({'ce_fused': 1})
+INFO memory plan: persistent 0.2 MiB, activation pool 0.2 MiB in 66 slots (147 tensors; 0.4 MiB without reuse)
+INFO dataflow: 477 tasks + 0 joins, 2715 edges
+INFO lowered 172 logical ops -> 477 tile tasks (+0 joins), 2715 edges
+INFO refvm: executed 477 tasks (program order, f64)
+.INFO model s: 0.03M parameters, 30 tensors
+INFO fusion: 144 logical ops -> 143 ({'ce_fused': 1})
+INFO memory plan: persistent 0.3 MiB, activation pool 0.2 MiB in 67 slots (126 tensors; 0.4 MiB without reuse)
+INFO dataflow: 473 tasks + 0 joins, 2433 edges
+INFO lowered 143 logical ops -> 473 tile tasks (+0 joins), 2433 edges
+INFO model s: 0.03M parameters, 30 tensors
+INFO fusion: 183 logical ops -> 182 ({'ce_fused': 1})
+INFO memory plan: persistent 0.3 MiB, activation pool 0.1 MiB in 48 slots (174 tensors; 0.6 MiB without reuse)
+INFO dataflow: 560 tasks + 0 joins, 3298 edges
+INFO lowered 182 logical ops -> 560 tile tasks (+0 joins), 3298 edges
+INFO refvm: executed 473 tasks (program order, f64)
+INFO refvm: executed 560 tasks (program order, f64)
+.INFO model s: 0.53M parameters, 12 tensors
+INFO tf32 copies (scope value): 48 GEMMs read 42 copies (2.5M elements rounded); 0 GEMMs keep rounding in their tiles (an operand above 256 MiB)
+INFO fusion: 162 logical ops -> 160 ({'ce_fused': 2})
+INFO memory plan: persistent 6.0 MiB, activation pool 12.2 MiB in 67 slots (146 tensors; 27.1 MiB without reuse)
+INFO dataflow: 10974 tasks + 9 joins, 94410 edges
+INFO lowered 160 logical ops -> 10974 tile tasks (+9 joins), 94410 edges
+INFO model s: 0.53M parameters, 12 tensors
+INFO tf32 copies (scope value): 48 GEMMs read 42 copies (2.5M elements rounded); 0 GEMMs keep rounding in their tiles (an operand above 256 MiB)
+INFO fusion: 162 logical ops -> 160 ({'ce_fused': 2})
+INFO memory plan: persistent 6.0 MiB, activation pool 27.1 MiB in 146 slots (146 tensors; 27.1 MiB without reuse)
+INFO dataflow: 10974 tasks + 16 joins, 71221 edges
+INFO lowered 160 logical ops -> 10974 tile tasks (+16 joins), 71221 edges
+INFO refvm: executed 10983 tasks (program order, f64)
+INFO refvm: executed 10983 tasks (random order, f64)
+INFO refvm: executed 10990 tasks (program order, f64)
+INFO model s: 0.53M parameters, 12 tensors
+INFO tf32 copies (scope phase): 48 GEMMs read 68 copies (4.1M elements rounded); 0 GEMMs keep rounding in their tiles (an operand above 256 MiB)
+INFO fusion: 188 logical ops -> 186 ({'ce_fused': 2})
+INFO memory plan: persistent 6.0 MiB, activation pool 9.8 MiB in 57 slots (172 tensors; 33.1 MiB without reuse)
+INFO dataflow: 11806 tasks + 9 joins, 103250 edges
+INFO lowered 186 logical ops -> 11806 tile tasks (+9 joins), 103250 edges
+INFO model s: 0.53M parameters, 12 tensors
+INFO tf32 copies (scope phase): 48 GEMMs read 68 copies (4.1M elements rounded); 0 GEMMs keep rounding in their tiles (an operand above 256 MiB)
+INFO fusion: 188 logical ops -> 186 ({'ce_fused': 2})
+INFO memory plan: persistent 6.0 MiB, activation pool 33.1 MiB in 172 slots (172 tensors; 33.1 MiB without reuse)
+INFO dataflow: 11806 tasks + 16 joins, 77109 edges
+INFO lowered 186 logical ops -> 11806 tile tasks (+16 joins), 77109 edges
+INFO refvm: executed 11815 tasks (program order, f64)
+INFO refvm: executed 11815 tasks (random order, f64)
+INFO refvm: executed 11822 tasks (program order, f64)
+.INFO model s: 0.53M parameters, 12 tensors
+INFO tf32 copies (scope value): 48 GEMMs read 42 copies (2.5M elements rounded); 0 GEMMs keep rounding in their tiles (an operand above 256 MiB)
+INFO fusion: 162 logical ops -> 160 ({'ce_fused': 2})
+INFO memory plan: persistent 6.0 MiB, activation pool 12.2 MiB in 67 slots (146 tensors; 27.1 MiB without reuse)
+INFO dataflow: 10974 tasks + 9 joins, 94410 edges
+INFO lowered 160 logical ops -> 10974 tile tasks (+9 joins), 94410 edges
+INFO model s: 0.53M parameters, 12 tensors
+INFO fusion: 120 logical ops -> 118 ({'ce_fused': 2})
+INFO memory plan: persistent 6.0 MiB, activation pool 8.8 MiB in 52 slots (104 tensors; 17.6 MiB without reuse)
+INFO dataflow: 9630 tasks + 12 joins, 98032 edges
+INFO lowered 118 logical ops -> 9630 tile tasks (+12 joins), 98032 edges
+.INFO model gpt_wide: 0.92M parameters, 20 tensors
+INFO tf32 copies (scope value): 21 GEMMs read 19 copies (2.0M elements rounded); 0 GEMMs keep rounding in their tiles (an operand above 256 MiB)
+INFO fusion: 89 logical ops -> 87 ({'ce_fused': 1, 'mm_dgelu': 1})
+INFO memory plan: persistent 10.5 MiB, activation pool 18.0 MiB in 73 slots (79 tensors; 20.3 MiB without reuse)
+INFO dataflow: 7119 tasks + 15 joins, 41532 edges
+INFO lowered 87 logical ops -> 7119 tile tasks (+15 joins), 41532 edges
+INFO model gpt_wide: 0.92M parameters, 20 tensors
+INFO tf32 copies (scope value): 21 GEMMs read 19 copies (2.0M elements rounded); 0 GEMMs keep rounding in their tiles (an operand above 256 MiB)
+INFO fusion: 89 logical ops -> 87 ({'ce_fused': 1, 'mm_dgelu': 1})
+INFO memory plan: persistent 10.5 MiB, activation pool 18.0 MiB in 73 slots (79 tensors; 20.3 MiB without reuse)
+INFO dataflow: 7119 tasks + 15 joins, 41532 edges
+INFO lowered 87 logical ops -> 7119 tile tasks (+15 joins), 41532 edges
+.INFO model s: 0.53M parameters, 12 tensors
+INFO tf32 copies (scope phase): 24 GEMMs read 34 copies (2.0M elements rounded); 0 GEMMs keep rounding in their tiles (an operand above 256 MiB)
+INFO fusion: 94 logical ops -> 93 ({'ce_fused': 1})
+INFO memory plan: persistent 6.0 MiB, activation pool 9.8 MiB in 57 slots (86 tensors; 16.5 MiB without reuse)
+INFO dataflow: 5903 tasks + 8 joins, 31634 edges
+INFO lowered 93 logical ops -> 5903 tile tasks (+8 joins), 31634 edges
+INFO model s: 0.53M parameters, 12 tensors
+INFO tf32 copies (scope value): 24 GEMMs read 21 copies (1.2M elements rounded); 0 GEMMs keep rounding in their tiles (an operand above 256 MiB)
+INFO fusion: 81 logical ops -> 80 ({'ce_fused': 1})
+INFO memory plan: persistent 6.0 MiB, activation pool 12.2 MiB in 67 slots (73 tensors; 13.5 MiB without reuse)
+INFO dataflow: 5487 tasks + 8 joins, 27442 edges
+INFO lowered 80 logical ops -> 5487 tile tasks (+8 joins), 27442 edges
+INFO model s: 0.53M parameters, 12 tensors
+INFO tf32 copies (scope value): 0 GEMMs read 0 copies (0.0M elements rounded); 24 GEMMs keep rounding in their tiles (an operand above 0 MiB)
+INFO fusion: 60 logical ops -> 59 ({'ce_fused': 1})
+INFO memory plan: persistent 6.0 MiB, activation pool 8.8 MiB in 52 slots (52 tensors; 8.8 MiB without reuse)
+INFO dataflow: 4815 tasks + 11 joins, 28491 edges
+INFO lowered 59 logical ops -> 4815 tile tasks (+11 joins), 28491 edges
+.INFO model s: 0.53M parameters, 12 tensors
+INFO fusion: 60 logical ops -> 59 ({'ce_fused': 1})
+INFO memory plan: persistent 6.0 MiB, activation pool 8.8 MiB in 52 slots (52 tensors; 8.8 MiB without reuse)
+INFO dataflow: 4859 tasks + 12 joins, 34092 edges
+INFO lowered 59 logical ops -> 4859 tile tasks (+12 joins), 34092 edges
+INFO model s: 0.53M parameters, 12 tensors
+INFO fusion: 60 logical ops -> 59 ({'ce_fused': 1})
+INFO memory plan: persistent 6.0 MiB, activation pool 8.8 MiB in 52 slots (52 tensors; 8.8 MiB without reuse)
+INFO dataflow: 4815 tasks + 11 joins, 28491 edges
+INFO lowered 59 logical ops -> 4815 tile tasks (+11 joins), 28491 edges
+INFO model s: 0.01M parameters, 12 tensors
+INFO fusion: 60 logical ops -> 59 ({'ce_fused': 1})
+INFO memory plan: persistent 0.1 MiB, activation pool 0.2 MiB in 52 slots (52 tensors; 0.2 MiB without reuse)
+INFO dataflow: 193 tasks + 0 joins, 806 edges
+INFO lowered 59 logical ops -> 193 tile tasks (+0 joins), 806 edges
+INFO model s: 0.53M parameters, 12 tensors
+INFO fusion: 60 logical ops -> 59 ({'ce_fused': 1})
+INFO memory plan: persistent 6.0 MiB, activation pool 8.8 MiB in 52 slots (52 tensors; 8.8 MiB without reuse)
+INFO dataflow: 4859 tasks + 12 joins, 34092 edges
+INFO lowered 59 logical ops -> 4859 tile tasks (+12 joins), 34092 edges
+.INFO model t: 0.00M parameters, 6 tensors
+INFO fusion: 35 logical ops -> 34 ({'ce_fused': 1})
+INFO memory plan: persistent 0.0 MiB, activation pool 0.1 MiB in 27 slots (27 tensors; 0.1 MiB without reuse)
+INFO dataflow: 88 tasks + 0 joins, 220 edges
+INFO lowered 34 logical ops -> 88 tile tasks (+0 joins), 220 edges
+INFO refvm: executed 88 tasks (program order, f64)
+INFO model t: 0.01M parameters, 23 tensors
+INFO fusion: 91 logical ops -> 90 ({'ce_fused': 1})
+INFO memory plan: persistent 0.2 MiB, activation pool 0.9 MiB in 79 slots (79 tensors; 0.9 MiB without reuse)
+INFO dataflow: 649 tasks + 0 joins, 3056 edges
+INFO lowered 90 logical ops -> 649 tile tasks (+0 joins), 3056 edges
+INFO refvm: executed 649 tasks (program order, f64)
+INFO model s: 0.01M parameters, 12 tensors
+INFO fusion: 78 logical ops -> 77 ({'ce_fused': 1})
+INFO memory plan: persistent 0.1 MiB, activation pool 0.2 MiB in 70 slots (70 tensors; 0.2 MiB without reuse)
+INFO dataflow: 265 tasks + 0 joins, 908 edges
+INFO lowered 77 logical ops -> 265 tile tasks (+0 joins), 908 edges
+INFO refvm: executed 265 tasks (program order, f64)
+INFO model sm: 0.02M parameters, 22 tensors
+INFO fusion: 170 logical ops -> 169 ({'ce_fused': 1})
+INFO memory plan: persistent 0.2 MiB, activation pool 0.4 MiB in 142 slots (142 tensors; 0.4 MiB without reuse)
+INFO dataflow: 511 tasks + 0 joins, 1928 edges
+INFO lowered 169 logical ops -> 511 tile tasks (+0 joins), 1928 edges
+INFO refvm: executed 511 tasks (program order, f64)
+.INFO model t: 0.00M parameters, 6 tensors
+INFO fusion: 725 logical ops -> 700 ({'ce_fused': 25})
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 16 slots (525 tensors; 1.0 MiB without reuse)
+INFO dataflow: 1600 tasks + 0 joins, 10398 edges
+INFO lowered 700 logical ops -> 1600 tile tasks (+0 joins), 10398 edges
+INFO model t: 0.00M parameters, 6 tensors
+INFO fusion: 900 logical ops -> 875 ({'ce_fused': 25})
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 16 slots (675 tensors; 1.5 MiB without reuse)
+INFO dataflow: 2225 tasks + 0 joins, 11941 edges
+INFO lowered 875 logical ops -> 2225 tile tasks (+0 joins), 11941 edges
+INFO refvm: executed 1600 tasks (program order, f64)
+INFO refvm: executed 2225 tasks (program order, f64)
+.INFO model llama_tiny: 0.07M parameters, 21 tensors
+INFO fusion: 102 logical ops -> 101 ({'ce_fused': 1})
+INFO memory plan: persistent 0.8 MiB, activation pool 0.7 MiB in 89 slots (89 tensors; 0.7 MiB without reuse)
+INFO dataflow: 826 tasks + 0 joins, 4300 edges
+INFO lowered 101 logical ops -> 826 tile tasks (+0 joins), 4300 edges
+INFO refvm: executed 826 tasks (program order, f64)
+.INFO model t: 0.03M parameters, 11 tensors
+INFO fusion: 59 logical ops -> 58 ({'ce_fused': 1})
+INFO memory plan: persistent 0.4 MiB, activation pool 0.4 MiB in 51 slots (51 tensors; 0.4 MiB without reuse)
+INFO dataflow: 416 tasks + 0 joins, 2178 edges
+INFO lowered 58 logical ops -> 416 tile tasks (+0 joins), 2178 edges
+INFO refvm: executed 416 tasks (program order, f64)
+.INFO model mlp_tiny: 0.00M parameters, 6 tensors
+INFO fusion: 29 logical ops -> 28 ({'ce_fused': 1})
+INFO memory plan: persistent 0.0 MiB, activation pool 0.0 MiB in 21 slots (21 tensors; 0.0 MiB without reuse)
+INFO dataflow: 64 tasks + 0 joins, 196 edges
+INFO lowered 28 logical ops -> 64 tile tasks (+0 joins), 196 edges
+INFO refvm: executed 64 tasks (program order, f64)
+.INFO model t: 0.00M parameters, 4 tensors
+INFO fusion: 21 logical ops -> 20 ({'ce_fused': 1})
+INFO memory plan: persistent 0.0 MiB, activation pool 0.0 MiB in 15 slots (15 tensors; 0.0 MiB without reuse)
+INFO dataflow: 40 tasks + 0 joins, 110 edges
+INFO lowered 20 logical ops -> 40 tile tasks (+0 joins), 110 edges
+INFO refvm: executed 40 tasks (program order, f64)
+INFO model t: 0.00M parameters, 4 tensors
+INFO fusion: 21 logical ops -> 20 ({'ce_fused': 1})
+INFO memory plan: persistent 0.0 MiB, activation pool 0.0 MiB in 15 slots (15 tensors; 0.0 MiB without reuse)
+INFO dataflow: 40 tasks + 0 joins, 110 edges
+INFO lowered 20 logical ops -> 40 tile tasks (+0 joins), 110 edges
+INFO refvm: executed 40 tasks (program order, f64)
+INFO model t: 0.00M parameters, 4 tensors
+INFO fusion: 21 logical ops -> 20 ({'ce_fused': 1})
+INFO memory plan: persistent 0.0 MiB, activation pool 0.0 MiB in 15 slots (15 tensors; 0.0 MiB without reuse)
+INFO dataflow: 40 tasks + 0 joins, 110 edges
+INFO lowered 20 logical ops -> 40 tile tasks (+0 joins), 110 edges
+INFO refvm: executed 40 tasks (program order, f64)
+.INFO model moe_tiny: 0.07M parameters, 22 tensors
+INFO fusion: 134 logical ops -> 133 ({'ce_fused': 1})
+INFO memory plan: persistent 0.8 MiB, activation pool 1.1 MiB in 106 slots (106 tensors; 1.1 MiB without reuse)
+INFO dataflow: 990 tasks + 1 joins, 5103 edges
+INFO lowered 133 logical ops -> 990 tile tasks (+1 joins), 5103 edges
+INFO refvm: executed 991 tasks (program order, f64)
+.INFO model t: 0.05M parameters, 22 tensors
+INFO fusion: 134 logical ops -> 133 ({'ce_fused': 1})
+INFO memory plan: persistent 0.6 MiB, activation pool 0.6 MiB in 106 slots (106 tensors; 0.6 MiB without reuse)
+INFO dataflow: 718 tasks + 0 joins, 3464 edges
+INFO lowered 133 logical ops -> 718 tile tasks (+0 joins), 3464 edges
+INFO refvm: executed 718 tasks (program order, f64)
+.INFO model vit_tiny: 0.01M parameters, 23 tensors
+INFO fusion: 75 logical ops -> 73 ({'ce_fused': 1, 'mm_dgelu': 1})
+INFO memory plan: persistent 0.2 MiB, activation pool 0.6 MiB in 62 slots (62 tensors; 0.6 MiB without reuse)
+INFO dataflow: 407 tasks + 0 joins, 2384 edges
+INFO lowered 73 logical ops -> 407 tile tasks (+0 joins), 2384 edges
+INFO refvm: executed 407 tasks (program order, f64)
+.INFO model t: 0.03M parameters, 39 tensors
+INFO fusion: 122 logical ops -> 119 ({'ce_fused': 1, 'mm_dgelu': 2})
+INFO memory plan: persistent 0.3 MiB, activation pool 0.3 MiB in 101 slots (101 tensors; 0.3 MiB without reuse)
+INFO dataflow: 415 tasks + 0 joins, 1973 edges
+INFO lowered 119 logical ops -> 415 tile tasks (+0 joins), 1973 edges
+INFO refvm: executed 415 tasks (program order, f64)
+..INFO model mlp_tiny: 0.00M parameters, 6 tensors
+INFO fusion: 870 logical ops -> 840 ({'ce_fused': 30})
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 16 slots (630 tensors; 1.2 MiB without reuse)
+INFO dataflow: 1920 tasks + 0 joins, 12518 edges
+INFO lowered 840 logical ops -> 1920 tile tasks (+0 joins), 12518 edges
+INFO refvm: executed 1920 tasks (program order, f64)
+INFO model vit_tiny: 0.01M parameters, 23 tensors
+INFO fusion: 1500 logical ops -> 1460 ({'ce_fused': 20, 'mm_dgelu': 20})
+INFO memory plan: persistent 0.3 MiB, activation pool 0.4 MiB in 52 slots (1240 tensors; 11.1 MiB without reuse)
+INFO dataflow: 8140 tasks + 0 joins, 96097 edges
+INFO lowered 1460 logical ops -> 8140 tile tasks (+0 joins), 96097 edges
+INFO refvm: executed 8140 tasks (program order, f64)
+INFO model s: 0.01M parameters, 12 tensors
+INFO fusion: 600 logical ops -> 590 ({'ce_fused': 10})
+INFO memory plan: persistent 0.1 MiB, activation pool 0.1 MiB in 33 slots (520 tensors; 1.6 MiB without reuse)
+INFO dataflow: 1930 tasks + 0 joins, 15873 edges
+INFO lowered 590 logical ops -> 1930 tile tasks (+0 joins), 15873 edges
+INFO refvm: executed 1930 tasks (program order, f64)
+INFO model sm: 0.02M parameters, 22 tensors
+INFO fusion: 1340 logical ops -> 1330 ({'ce_fused': 10})
+INFO memory plan: persistent 0.2 MiB, activation pool 0.2 MiB in 67 slots (1060 tensors; 2.7 MiB without reuse)
+INFO dataflow: 3910 tasks + 0 joins, 33481 edges
+INFO lowered 1330 logical ops -> 3910 tile tasks (+0 joins), 33481 edges
+INFO refvm: executed 3910 tasks (program order, f64)
+........INFO serve al: prompt 2 tokens, 1 new, weights at_least version 4
+INFO fusion: 55 logical ops -> 55 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 10 slots (72 tensors; 0.0 MiB without reuse)
+INFO dataflow: 63 tasks + 0 joins, 224 edges
+INFO lowered 55 logical ops -> 63 tile tasks (+0 joins), 224 edges
+.INFO model t: 0.03M parameters, 36 tensors
+INFO fusion: 242 logical ops -> 236 ({'ce_fused': 2, 'mm_dgelu': 4})
+INFO memory plan: persistent 0.3 MiB, activation pool 0.4 MiB in 103 slots (206 tensors; 0.7 MiB without reuse)
+INFO dataflow: 874 tasks + 0 joins, 6290 edges
+INFO lowered 236 logical ops -> 874 tile tasks (+0 joins), 6290 edges
+INFO serve sv0: prompt 3 tokens, 3 new, weights exact version 0
+INFO fusion: 113 logical ops -> 113 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 19 slots (146 tensors; 0.0 MiB without reuse)
+INFO dataflow: 129 tasks + 0 joins, 464 edges
+INFO lowered 113 logical ops -> 129 tile tasks (+0 joins), 464 edges
+INFO serve sv1: prompt 3 tokens, 3 new, weights exact version 2
+INFO fusion: 113 logical ops -> 113 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 19 slots (146 tensors; 0.0 MiB without reuse)
+INFO dataflow: 129 tasks + 0 joins, 464 edges
+INFO lowered 113 logical ops -> 129 tile tasks (+0 joins), 464 edges
+INFO serve sv2: prompt 3 tokens, 3 new, weights exact version 4
+INFO fusion: 113 logical ops -> 113 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 19 slots (146 tensors; 0.0 MiB without reuse)
+INFO dataflow: 129 tasks + 0 joins, 464 edges
+INFO lowered 113 logical ops -> 129 tile tasks (+0 joins), 464 edges
+INFO refvm: executed 1261 tasks (random order, f64)
+INFO refvm: executed 1261 tasks (random order, f64)
+INFO refvm: executed 1261 tasks (random order, f64)
+.INFO model t: 0.03M parameters, 36 tensors
+INFO fusion: 363 logical ops -> 354 ({'ce_fused': 3, 'mm_dgelu': 6})
+INFO memory plan: persistent 0.3 MiB, activation pool 0.4 MiB in 103 slots (309 tensors; 1.1 MiB without reuse)
+INFO dataflow: 1311 tasks + 0 joins, 10525 edges
+INFO lowered 354 logical ops -> 1311 tile tasks (+0 joins), 10525 edges
+INFO serve sv0: prompt 3 tokens, 4 new, weights exact version 0
+INFO fusion: 142 logical ops -> 142 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 19 slots (183 tensors; 0.0 MiB without reuse)
+INFO dataflow: 162 tasks + 0 joins, 593 edges
+INFO lowered 142 logical ops -> 162 tile tasks (+0 joins), 593 edges
+INFO serve sv3: prompt 3 tokens, 4 new, weights exact version 6
+INFO fusion: 142 logical ops -> 142 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 19 slots (183 tensors; 0.0 MiB without reuse)
+INFO dataflow: 162 tasks + 0 joins, 593 edges
+INFO lowered 142 logical ops -> 162 tile tasks (+0 joins), 593 edges
+INFO refvm: executed 1635 tasks (random order, f64)
+.INFO serve one: prompt 1 tokens, 2 new, weights exact version 0
+INFO fusion: 58 logical ops -> 58 (nothing fused)
+INFO memory plan: persistent 0.1 MiB, activation pool 0.0 MiB in 9 slots (74 tensors; 0.0 MiB without reuse)
+INFO dataflow: 66 tasks + 0 joins, 224 edges
+INFO lowered 58 logical ops -> 66 tile tasks (+0 joins), 224 edges
+INFO refvm: executed 66 tasks (program order, f64)
+.....INFO model mlp_tiny: 0.00M parameters, 6 tensors
+INFO fusion: 29 logical ops -> 28 ({'ce_fused': 1})
+INFO memory plan: persistent 0.0 MiB, activation pool 0.0 MiB in 21 slots (21 tensors; 0.0 MiB without reuse)
+INFO dataflow: 64 tasks + 0 joins, 196 edges
+INFO lowered 28 logical ops -> 64 tile tasks (+0 joins), 196 edges
+INFO refvm: executed 64 tasks (program order, f64)
+.INFO model gpt_tiny: 0.02M parameters, 20 tensors
+INFO fusion: 70 logical ops -> 68 ({'ce_fused': 1, 'mm_dgelu': 1})
+INFO memory plan: persistent 0.2 MiB, activation pool 0.2 MiB in 60 slots (60 tensors; 0.2 MiB without reuse)
+INFO dataflow: 264 tasks + 0 joins, 1225 edges
+INFO lowered 68 logical ops -> 264 tile tasks (+0 joins), 1225 edges
+INFO refvm: executed 264 tasks (program order, f64)
+.INFO model lb: 0.01M parameters, 12 tensors
+INFO fusion: 78 logical ops -> 77 ({'ce_fused': 1})
+INFO memory plan: persistent 0.1 MiB, activation pool 0.2 MiB in 70 slots (70 tensors; 0.2 MiB without reuse)
+INFO dataflow: 265 tasks + 0 joins, 908 edges
+INFO lowered 77 logical ops -> 265 tile tasks (+0 joins), 908 edges
+INFO refvm: executed 265 tasks (program order, f64)
+.INFO model llama_tiny: 0.07M parameters, 21 tensors
+INFO fusion: 102 logical ops -> 101 ({'ce_fused': 1})
+INFO memory plan: persistent 0.8 MiB, activation pool 0.7 MiB in 89 slots (89 tensors; 0.7 MiB without reuse)
+INFO dataflow: 826 tasks + 0 joins, 4300 edges
+INFO lowered 101 logical ops -> 826 tile tasks (+0 joins), 4300 edges
+INFO refvm: executed 826 tasks (program order, f64)
+.INFO model llama_gqa_tied: 0.07M parameters, 20 tensors
+INFO fusion: 101 logical ops -> 100 ({'ce_fused': 1})
+INFO memory plan: persistent 0.8 MiB, activation pool 0.7 MiB in 88 slots (88 tensors; 0.7 MiB without reuse)
+INFO dataflow: 794 tasks + 0 joins, 4191 edges
+INFO lowered 100 logical ops -> 794 tile tasks (+0 joins), 4191 edges
+INFO refvm: executed 794 tasks (program order, f64)
+.INFO model s: 0.01M parameters, 12 tensors
+INFO fusion: 60 logical ops -> 59 ({'ce_fused': 1})
+INFO memory plan: persistent 0.1 MiB, activation pool 0.2 MiB in 52 slots (52 tensors; 0.2 MiB without reuse)
+INFO dataflow: 193 tasks + 0 joins, 806 edges
+INFO lowered 59 logical ops -> 193 tile tasks (+0 joins), 806 edges
+INFO refvm: executed 193 tasks (program order, f64)
+.INFO model mlp_tiny: 0.00M parameters, 6 tensors
+INFO fusion: 29 logical ops -> 28 ({'ce_fused': 1})
+INFO memory plan: persistent 0.0 MiB, activation pool 0.0 MiB in 21 slots (21 tensors; 0.0 MiB without reuse)
+INFO dataflow: 64 tasks + 0 joins, 196 edges
+INFO lowered 28 logical ops -> 64 tile tasks (+0 joins), 196 edges
+INFO refvm: executed 64 tasks (program order, f64)
+.INFO model mb: 0.00M parameters, 6 tensors
+INFO fusion: 35 logical ops -> 34 ({'ce_fused': 1})
+INFO memory plan: persistent 0.0 MiB, activation pool 0.1 MiB in 27 slots (27 tensors; 0.1 MiB without reuse)
+INFO dataflow: 88 tasks + 0 joins, 220 edges
+INFO lowered 34 logical ops -> 88 tile tasks (+0 joins), 220 edges
+INFO refvm: executed 88 tasks (program order, f64)
+.INFO model moe_tiny: 0.07M parameters, 22 tensors
+INFO fusion: 134 logical ops -> 133 ({'ce_fused': 1})
+INFO memory plan: persistent 0.8 MiB, activation pool 1.1 MiB in 106 slots (106 tensors; 1.1 MiB without reuse)
+INFO dataflow: 990 tasks + 1 joins, 5103 edges
+INFO lowered 133 logical ops -> 990 tile tasks (+1 joins), 5103 edges
+INFO refvm: executed 991 tasks (program order, f64)
+.INFO model sm: 0.02M parameters, 22 tensors
+INFO fusion: 134 logical ops -> 133 ({'ce_fused': 1})
+INFO memory plan: persistent 0.2 MiB, activation pool 0.3 MiB in 106 slots (106 tensors; 0.3 MiB without reuse)
+INFO dataflow: 391 tasks + 0 joins, 1747 edges
+INFO lowered 133 logical ops -> 391 tile tasks (+0 joins), 1747 edges
+INFO refvm: executed 391 tasks (program order, f64)
+.INFO model vit_tiny: 0.01M parameters, 23 tensors
+INFO fusion: 75 logical ops -> 73 ({'ce_fused': 1, 'mm_dgelu': 1})
+INFO memory plan: persistent 0.2 MiB, activation pool 0.6 MiB in 62 slots (62 tensors; 0.6 MiB without reuse)
+INFO dataflow: 407 tasks + 0 joins, 2384 edges
+INFO lowered 73 logical ops -> 407 tile tasks (+0 joins), 2384 edges
+INFO refvm: executed 407 tasks (program order, f64)
+.
+----------------------------------------------------------------------
+Ran 137 tests in 171.774s
+
+OK
+rc 0

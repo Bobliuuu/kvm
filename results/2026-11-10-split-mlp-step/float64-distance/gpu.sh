@@ -1,0 +1,5 @@
+#!/bin/bash
+for W in 107 96 108 72 48 36; do "/root/builds/414a742c5983f0d6454d01a8/kvm_exec" --static --workers $W --dump-buffers "/root/reads/goldens/h256d4/bundle" > "/root/reads/split3d/run-20261111T085625Z/fu$W.out" 2> "/root/reads/split3d/run-20261111T085625Z/fu$W.log"; echo "default static W=$W rc=$?: $(grep -oE 'fuse: [0-9]+ run\(s\) fused' "/root/reads/split3d/run-20261111T085625Z/fu$W.log" | tail -1); $(grep -oE 'static kernel: entry [a-z-]+(, [0-9]+ shares)?' "/root/reads/split3d/run-20261111T085625Z/fu$W.log" | head -1)"; done
+for W in 107 108; do "/root/builds/414a742c5983f0d6454d01a8/kvm_exec" --static --no-fuse --workers $W --dump-buffers "/root/reads/goldens/h256d4/bundle" > "/root/reads/split3d/run-20261111T085625Z/st$W.out" 2> "/root/reads/split3d/run-20261111T085625Z/st$W.log"; echo "static --no-fuse W=$W rc=$?"; done
+"/root/builds/414a742c5983f0d6454d01a8/kvm_exec" --dynamic --dump-buffers "/root/reads/goldens/h256d4/bundle" > "/root/reads/split3d/run-20261111T085625Z/dyn.out" 2> "/root/reads/split3d/run-20261111T085625Z/dyn.log"; echo "dynamic rc=$?"
+date -u +%FT%TZ > "/root/reads/split3d/run-20261111T085625Z/gpu.end"

@@ -12,6 +12,7 @@
 // waiter's barrier extends that to all of its threads (kvm_exec.cuh's argument, unchanged).
 #include "kvm_static.h"
 #include "kvm_fused_mlp.cuh"
+#include "kvm_fused_split.cuh"
 
 // The dynamic shared-memory arena every op takes from offset 0 (the same declaration as kvm_ops_gpt.cuh's, repeated so a build without the gpt pack, like tests/gpu/build_core.sh, still has it).
 extern __shared__ __align__(128) unsigned char kvm_gpt_smem[];
@@ -29,6 +30,7 @@ struct KvmStaticDev {
   KvmHostErr* herr;
   unsigned long long* trace;      // [nrecs * KVM_S_TRACE_WORDS]: start, waits done, op done, published (nullptr when off)
   const KvmFusedDesc* fused;      // the fused runs of this bundle (kvm_fuse.h); nullptr when it has none
+  const KvmSplitDesc* split;      // the split fused runs of this bundle (kvm_fuse.h's split form); nullptr when it has none
   long long* fuse_phases;         // [nworkers * KVM_FMLP_NPHASES]: per worker, cycles in each phase of its slices (--fuse-phases; nullptr when off)
 };
 #define KVM_S_LINE_WORDS 32         // one watermark per 128-byte line: one writer, a few pollers, no false sharing
@@ -69,6 +71,22 @@ __device__ __noinline__ void kvm_s_fmlp_slice(int sc, const int32_t* ids, const 
   kvm_fmlp::slice_run(sc, ids, tgt, nullptr, arena, kvm_fmlp::PhaseTimer{ph, ph_last}, [c](int code, int v) { c->fail(code, v); });
 }
 __device__ __noinline__ void kvm_s_fmlp_sgd(int owner, float* loss, float* arena) { kvm_fmlp::sgd_run(owner, loss, arena); }
+// One member of a split step (a gang op: the planner placed its members on distinct workers at one point of every program, kvm_static_plan). The
+// descriptor's S and Q pick the instantiation. A pair outside KVM_SPLIT_SHARE_LIST x KVM_SPLIT_Q, or a member count that disagrees with them,
+// fails the run before any barrier. Every member reads the same descriptor, so all of them fail alike. Any other failure ends the gang at its next
+// crossing: the barrier watches the run's error word.
+__device__ __noinline__ void kvm_s_fmlp_split(int member, int members, const int32_t* ids, const int32_t* tgt, float* loss, float* arena, KvmCtx* c) {
+  kvm_fmlp::cp_commit_wait();
+  __syncthreads();
+  const KvmSplitDesc& d = *reinterpret_cast<const KvmSplitDesc*>(arena);
+  if (d.Q != KVM_SPLIT_Q || members != d.Q * d.S || member < 0 || member >= members) { c->fail(KVM_ERR_BAD_OP, KVM_OP_fmlp_split); return; }
+  switch (d.S) {
+#define X(S_) case S_: kvm_fsplit::split_run<S_, KVM_SPLIT_Q>(member, ids, tgt, loss, arena, &c->cnt->err_code, kvm_fsplit::NoPhases{}); return;
+    KVM_SPLIT_SHARE_LIST
+#undef X
+    default: c->fail(KVM_ERR_BAD_OP, KVM_OP_fmlp_split);
+  }
+}
 
 __device__ void kvm_static_worker(const KvmStaticDev& Sref, KvmSShared& sh) {
   const KvmStaticDev S = Sref;   // a register copy of the launch state: fields then read from registers, not through the __grid_constant__ reference (the same copy measured x1.04-1.09 on the dynamic worker)
@@ -89,6 +107,7 @@ __device__ void kvm_static_worker(const KvmStaticDev& Sref, KvmSShared& sh) {
     if (S.trace_on && threadIdx.x == 0) S.trace[(size_t)(first + pc) * KVM_S_TRACE_WORDS] = kvm_now();
     if (pc + 1 < n) kvm_s_fetch(prog + pc + 1, &sh.rec[(pc + 1) & 1]);   // the next record is copied beside this one's waits and op body
     if (r->op == KVM_OP_fmlp_slice || r->op == KVM_OP_fmlp_sgd) kvm_fmlp::prefetch_desc(S.fused + r->args[0], reinterpret_cast<float*>(kvm_gpt_smem));   // a fused op's descriptor: its round trip overlaps this record's waits
+    else if (r->op == KVM_OP_fmlp_split) kvm_fsplit::prefetch_desc(S.split + r->args[0], reinterpret_cast<float*>(kvm_gpt_smem));
     const int nw = r->nwait;
     if (nw) {   // only a record with waits needs the hand-over barrier (a plain chain continues directly)
       if (threadIdx.x < nw) {   // one lane of warp 0 per wait: a fan-in of up to KVM_S_WAITS costs one poll, not one per source
@@ -104,6 +123,7 @@ __device__ void kvm_static_worker(const KvmStaticDev& Sref, KvmSShared& sh) {
       float* const arena = reinterpret_cast<float*>(kvm_gpt_smem);
       if (r->op == KVM_OP_fmlp_slice) kvm_s_fmlp_slice(r->args[1], reinterpret_cast<const int32_t*>(r->bufs[r->args[2]].p), reinterpret_cast<const int32_t*>(r->bufs[r->args[3]].p), arena, S.fuse_phases ? S.fuse_phases + (size_t)w * KVM_FMLP_NPHASES : nullptr, &sh.t_phase, &c);
       else if (r->op == KVM_OP_fmlp_sgd) kvm_s_fmlp_sgd(r->args[1], reinterpret_cast<float*>(r->bufs[r->args[2]].p), arena);
+      else if (r->op == KVM_OP_fmlp_split) kvm_s_fmlp_split(r->args[2], r->args[3], reinterpret_cast<const int32_t*>(r->bufs[r->args[4]].p), reinterpret_cast<const int32_t*>(r->bufs[r->args[5]].p), reinterpret_cast<float*>(r->bufs[r->args[6]].p), arena, &c);
       else kvm_dispatch(r->op, c, r->args);
     }
     if (threadIdx.x == 0 && ((pc & 63) == 63) && *(volatile int*)&S.cnt->err_code) sh.stop = 1;   // a failure elsewhere ends the run within 64 records

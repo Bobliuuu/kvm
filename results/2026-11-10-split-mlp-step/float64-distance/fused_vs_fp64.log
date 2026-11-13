@@ -1,0 +1,19 @@
+default static W=107 rc=0: fuse: 1 run(s) fused; static kernel: entry split, 16 shares
+default static W=96 rc=0: fuse: 1 run(s) fused; static kernel: entry split, 16 shares
+default static W=108 rc=0: fuse: 1 run(s) fused; static kernel: entry split, 18 shares
+default static W=72 rc=0: fuse: 1 run(s) fused; static kernel: entry split, 12 shares
+default static W=48 rc=0: fuse: 1 run(s) fused; static kernel: entry split, 8 shares
+default static W=36 rc=0: fuse: 1 run(s) fused; static kernel: entry grid
+static --no-fuse W=107 rc=0
+static --no-fuse W=108 rc=0
+dynamic rc=0
+fused_vs_fp64: 3 steps; eager vs float64 5.48e-05, so the executor may sit at 2.10e-04; loss vs eager <= 0.003, weights vs eager <= 0.001 relative L2
+FAIL: /root/reads/split3d/run-20261111T085625Z/fu107.out: vs float64 5.12e-04 (bound 2.10e-04); loss vs eager 5.67e-04; weights vs eager 6.08e-04 relative L2
+FAIL: /root/reads/split3d/run-20261111T085625Z/fu96.out: vs float64 5.12e-04 (bound 2.10e-04); loss vs eager 5.67e-04; weights vs eager 6.08e-04 relative L2
+ok: /root/reads/split3d/run-20261111T085625Z/fu108.out: vs float64 1.59e-04 (bound 2.10e-04); loss vs eager 1.76e-04; weights vs eager 5.84e-04 relative L2
+ok: /root/reads/split3d/run-20261111T085625Z/fu72.out: vs float64 1.59e-04 (bound 2.10e-04); loss vs eager 1.62e-04; weights vs eager 5.89e-04 relative L2
+FAIL: /root/reads/split3d/run-20261111T085625Z/fu48.out: vs float64 5.05e-04 (bound 2.10e-04); loss vs eager 5.60e-04; weights vs eager 6.04e-04 relative L2
+FAIL: /root/reads/split3d/run-20261111T085625Z/fu36.out: vs float64 3.48e-04 (bound 2.10e-04); loss vs eager 4.02e-04; weights vs eager 5.79e-04 relative L2
+FAIL: /root/reads/split3d/run-20261111T085625Z/st107.out: vs float64 2.98e-04 (bound 2.10e-04); loss vs eager 3.53e-04; weights vs eager 6.04e-04 relative L2
+FAIL: /root/reads/split3d/run-20261111T085625Z/st108.out: vs float64 2.98e-04 (bound 2.10e-04); loss vs eager 3.53e-04; weights vs eager 6.04e-04 relative L2
+FAIL: /root/reads/split3d/run-20261111T085625Z/dyn.out: vs float64 2.98e-04 (bound 2.10e-04); loss vs eager 3.53e-04; weights vs eager 6.04e-04 relative L2

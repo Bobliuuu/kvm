@@ -1,0 +1,17 @@
+OK: 33608/33608 tasks, 6.782 ms
+[kvm_exec][I] device NVIDIA A100-SXM4-80GB, 108 SMs, 1 resident blocks/SM with 147456 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] /root/reads/panel-count1/h72_r8: 76800 tasks, 337248 edges, 808000 arg words
+[kvm_exec][I] path: static (mean estimated task 3.72 us <= 6.0)
+[kvm_exec][I] fuse: component 0: fused: 200 steps, T=96 V=100 widths 48x72x72, 6 slices of 16 rows, 13 reduction owners
+[kvm_exec][I] fuse: component 1: fused: 200 steps, T=96 V=100 widths 48x72x72, 6 slices of 16 rows, 13 reduction owners
+[kvm_exec][I] fuse: component 2: fused: 200 steps, T=96 V=100 widths 48x72x72, 6 slices of 16 rows, 13 reduction owners
+[kvm_exec][I] fuse: component 3: fused: 200 steps, T=96 V=100 widths 48x72x72, 6 slices of 16 rows, 13 reduction owners
+[kvm_exec][I] fuse: component 4: fused: 200 steps, T=96 V=100 widths 48x72x72, 6 slices of 16 rows, 13 reduction owners
+[kvm_exec][I] fuse: component 5: fused: 200 steps, T=96 V=100 widths 48x72x72, 6 slices of 16 rows, 13 reduction owners
+[kvm_exec][I] fuse: component 6: fused: 200 steps, T=96 V=100 widths 48x72x72, 6 slices of 16 rows, 13 reduction owners
+[kvm_exec][I] fuse: component 7: fused: 200 steps, T=96 V=100 widths 48x72x72, 6 slices of 16 rows, 13 reduction owners
+[kvm_exec][I] fuse: shared-memory budget 40416 floats (161664 bytes) a fused block
+[kvm_exec][I] fuse: 8 run(s) fused, 0 unchanged; 73592 tasks replaced by 33608; static kernel entry: one-block
+[kvm_exec][I] static schedule: 33608 tasks -> 33608 records on 108/108 workers, 265883 of 268280 edges cross workers, 33599 records publish; runs partitioned: no; plan 14203.6 us, work 748800.8 us (compiled in 0.074 s)
+[kvm_exec][I] static kernel: entry one-block, 1 resident blocks/SM, 147456 bytes of dynamic shared memory, launching 108 workers
+[kvm_exec][I] static run done: 33608 tasks in 6.782 ms on 108 workers

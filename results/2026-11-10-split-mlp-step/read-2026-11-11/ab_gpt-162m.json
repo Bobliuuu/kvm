@@ -1,0 +1,37 @@
+[
+ {
+  "row": "gpt-162m",
+  "control": "/root/reads/panel-count1/w_162m_3/bundle",
+  "cand": "/root/reads/panel-count1/w_162m_3/bundle",
+  "tasks": {
+   "control": 161316,
+   "cand": 161316
+  },
+  "ms": {
+   "control": {
+    "median": 348.2,
+    "best": 347.664,
+    "all": [
+     348.09,
+     349.01,
+     348.2,
+     347.66,
+     349.84
+    ]
+   },
+   "cand": {
+    "median": 348.61,
+    "best": 347.46,
+    "all": [
+     347.46,
+     350.04,
+     348.61,
+     348.02,
+     349.38
+    ]
+   }
+  },
+  "paired_ratio_median": 0.9989713293987161,
+  "best_ratio": 1.0005871179416337
+ }
+]

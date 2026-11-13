@@ -1,0 +1,10 @@
+OK: 5501/5501 tasks, 2.320 ms
+[kvm_exec][I] device NVIDIA A100-SXM4-80GB, 108 SMs, 1 resident blocks/SM with 147456 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] /root/reads/gangfix/bundles-ddf9d6b225d9c667/ho576/bundle: 4450 tasks, 25934 edges, 50350 arg words
+[kvm_exec][I] path: static (mean estimated task 4.15 us <= 6.0)
+[kvm_exec][I] fuse: component 0: fused, split form (layer width not a multiple of 8 up to 128): 50 steps, T=96 V=100 widths 48x576, gangs of 6 slices x 18 shares = 108 members, 9596 floats a member
+[kvm_exec][I] fuse: shared-memory budget 40416 floats (161664 bytes) a fused block
+[kvm_exec][I] fuse: 1 run(s) fused, 0 unchanged; 4349 tasks replaced by 5501; static kernel entry: split, 18 shares
+[kvm_exec][I] static schedule: 5501 tasks -> 5501 records on 108/108 workers, 10700 of 16093 edges cross workers, 100 records publish; runs partitioned: no; plan 2175.1 us, work 216200.1 us (compiled in 0.008 s)
+[kvm_exec][I] static kernel: entry split, 18 shares, 1 resident blocks/SM, 147456 bytes of dynamic shared memory, launching 108 workers
+[kvm_exec][I] static run done: 5501 tasks in 2.320 ms on 108 workers

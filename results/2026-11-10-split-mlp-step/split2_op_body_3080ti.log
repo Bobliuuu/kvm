@@ -1,0 +1,115 @@
+=== op body h576-d1 S=10
+NVIDIA GeForce RTX 3080 Ti, 80 SMs, 99 KB shared memory a block (opt-in); model E 48 V 100 H 576 depth 1, T 96 (6 slices of 16), S 10 shares (width <= 64, padded 64): 60 blocks, 63.6 KB a block, 3 barriers a step
+check step 0: loss 4.601133, fp64 4.601133
+check step 1: loss 4.610467, fp64 4.610466
+check step 2: loss 4.611679, fp64 4.611685
+check after 3 steps: loss max rel 1.33e-06; update rel L2 (worst layer) W 4.37e-04, b 3.04e-04; Wh 3.93e-04, emb 5.80e-04 (TF32 operands: a few 1e-3 expected)
+check ok
+timed: 100 steps: 25.47 us a step in the kernel (block 0's %globaltimer over its counted loop), 25.68 us by events (launch and host delays included)
+block 0 by phase (cycles a step; 0 of the step's 3 barriers sit inside the forward and backward phases):
+  load (weights, embedding rows)            10251  (20.8%)
+  forward (GEMMs, GELU, all-gathers)         4019  ( 8.1%)
+  logits partial GEMM (to L2)                3108  ( 6.3%)
+  barrier: logits                            1832  ( 3.7%)
+  logits summed, cross-entropy              10157  (20.6%)
+  backward (GEMMs, reduce-scatters)          8093  (16.4%)
+  barrier: partials                          2888  ( 5.9%)
+  owners: parameters                         3986  ( 8.1%)
+  owners: embedding + last barrier           5001  (10.1%)
+  total                                     49334 cycles
+block 0's phases: from the last warp's end of the previous phase to the last warp's end of this one (per-warp stamps)
+blocks ran on 60 distinct SMs of 60 blocks (one block a SM)
+effective SM clock 1937 MHz (block 0's cycles over its kernel time), rated 1665 MHz: the GPU boosted above its rated clock
+rc=0
+=== op body h256-d2 S=8
+NVIDIA GeForce RTX 3080 Ti, 80 SMs, 99 KB shared memory a block (opt-in); model E 48 V 100 H 256 depth 2, T 96 (6 slices of 16), S 8 shares (width <= 32, padded 32): 48 blocks, 87.6 KB a block, 5 barriers a step
+check step 0: loss 4.607465, fp64 4.607465
+check step 1: loss 4.605780, fp64 4.605781
+check step 2: loss 4.602200, fp64 4.602201
+check after 3 steps: loss max rel 2.68e-07; update rel L2 (worst layer) W 5.70e-04, b 5.17e-04; Wh 4.53e-04, emb 1.46e-03 (TF32 operands: a few 1e-3 expected)
+check ok
+timed: 100 steps: 37.92 us a step in the kernel (block 0's %globaltimer over its counted loop), 38.21 us by events (launch and host delays included)
+block 0 by phase (cycles a step; 2 of the step's 5 barriers sit inside the forward and backward phases):
+  load (weights, embedding rows)            10915  (14.8%)
+  forward (GEMMs, GELU, all-gathers)        12682  (17.2%)
+  logits partial GEMM (to L2)                2145  ( 2.9%)
+  barrier: logits                            1872  ( 2.5%)
+  logits summed, cross-entropy               9341  (12.7%)
+  backward (GEMMs, reduce-scatters)         23179  (31.5%)
+  barrier: partials                          2319  ( 3.1%)
+  owners: parameters                         5441  ( 7.4%)
+  owners: embedding + last barrier           5725  ( 7.8%)
+  total                                     73618 cycles
+block 0's phases: from the last warp's end of the previous phase to the last warp's end of this one (per-warp stamps)
+blocks ran on 48 distinct SMs of 48 blocks (one block a SM)
+effective SM clock 1941 MHz (block 0's cycles over its kernel time), rated 1665 MHz: the GPU boosted above its rated clock
+rc=0
+=== op body h224-d2 S=8
+NVIDIA GeForce RTX 3080 Ti, 80 SMs, 99 KB shared memory a block (opt-in); model E 48 V 100 H 224 depth 2, T 96 (6 slices of 16), S 8 shares (width <= 32, padded 32): 48 blocks, 81.6 KB a block, 5 barriers a step
+check step 0: loss 4.600525, fp64 4.600524
+check step 1: loss 4.606173, fp64 4.606172
+check step 2: loss 4.606907, fp64 4.606907
+check after 3 steps: loss max rel 1.32e-07; update rel L2 (worst layer) W 5.68e-04, b 4.73e-04; Wh 4.33e-04, emb 1.49e-03 (TF32 operands: a few 1e-3 expected)
+check ok
+timed: 100 steps: 36.31 us a step in the kernel (block 0's %globaltimer over its counted loop), 36.57 us by events (launch and host delays included)
+block 0 by phase (cycles a step; 2 of the step's 5 barriers sit inside the forward and backward phases):
+  load (weights, embedding rows)            10746  (15.2%)
+  forward (GEMMs, GELU, all-gathers)        13276  (18.8%)
+  logits partial GEMM (to L2)                2048  ( 2.9%)
+  barrier: logits                            1829  ( 2.6%)
+  logits summed, cross-entropy               9214  (13.1%)
+  backward (GEMMs, reduce-scatters)         21609  (30.7%)
+  barrier: partials                          2209  ( 3.1%)
+  owners: parameters                         4008  ( 5.7%)
+  owners: embedding + last barrier           5549  ( 7.9%)
+  total                                     70489 cycles
+block 0's phases: from the last warp's end of the previous phase to the last warp's end of this one (per-warp stamps)
+blocks ran on 48 distinct SMs of 48 blocks (one block a SM)
+effective SM clock 1941 MHz (block 0's cycles over its kernel time), rated 1665 MHz: the GPU boosted above its rated clock
+rc=0
+=== op body h128-d3 S=8
+NVIDIA GeForce RTX 3080 Ti, 80 SMs, 99 KB shared memory a block (opt-in); model E 48 V 100 H 128 depth 3, T 96 (6 slices of 16), S 8 shares (width <= 16, padded 16): 48 blocks, 50.5 KB a block, 7 barriers a step
+check step 0: loss 4.607480, fp64 4.607478
+check step 1: loss 4.604633, fp64 4.604633
+check step 2: loss 4.607759, fp64 4.607760
+check after 3 steps: loss max rel 2.69e-07; update rel L2 (worst layer) W 9.01e-04, b 6.39e-04; Wh 4.23e-04, emb 4.92e-03 (TF32 operands: a few 1e-3 expected)
+check ok
+timed: 100 steps: 35.95 us a step in the kernel (block 0's %globaltimer over its counted loop), 36.21 us by events (launch and host delays included)
+block 0 by phase (cycles a step; 4 of the step's 7 barriers sit inside the forward and backward phases):
+  load (weights, embedding rows)             9827  (14.1%)
+  forward (GEMMs, GELU, all-gathers)        15792  (22.6%)
+  logits partial GEMM (to L2)                 985  ( 1.4%)
+  barrier: logits                            2071  ( 3.0%)
+  logits summed, cross-entropy               9307  (13.3%)
+  backward (GEMMs, reduce-scatters)         21042  (30.1%)
+  barrier: partials                          2105  ( 3.0%)
+  owners: parameters                         3158  ( 4.5%)
+  owners: embedding + last barrier           5510  ( 7.9%)
+  total                                     69798 cycles
+block 0's phases: from the last warp's end of the previous phase to the last warp's end of this one (per-warp stamps)
+blocks ran on 48 distinct SMs of 48 blocks (one block a SM)
+effective SM clock 1941 MHz (block 0's cycles over its kernel time), rated 1665 MHz: the GPU boosted above its rated clock
+rc=0
+=== op body h128-d4 S=8
+NVIDIA GeForce RTX 3080 Ti, 80 SMs, 99 KB shared memory a block (opt-in); model E 48 V 100 H 128 depth 4, T 96 (6 slices of 16), S 8 shares (width <= 16, padded 16): 48 blocks, 59.6 KB a block, 9 barriers a step
+check step 0: loss 4.605144, fp64 4.605144
+check step 1: loss 4.606098, fp64 4.606097
+check step 2: loss 4.604439, fp64 4.604438
+check after 3 steps: loss max rel 2.04e-07; update rel L2 (worst layer) W 2.30e-03, b 8.42e-04; Wh 4.34e-04, emb 1.65e-02 (TF32 operands: a few 1e-3 expected)
+check ok
+timed: 100 steps: 44.37 us a step in the kernel (block 0's %globaltimer over its counted loop), 44.66 us by events (launch and host delays included)
+block 0 by phase (cycles a step; 6 of the step's 9 barriers sit inside the forward and backward phases):
+  load (weights, embedding rows)            10723  (12.4%)
+  forward (GEMMs, GELU, all-gathers)        22590  (26.2%)
+  logits partial GEMM (to L2)                 985  ( 1.1%)
+  barrier: logits                            2137  ( 2.5%)
+  logits summed, cross-entropy               9356  (10.9%)
+  backward (GEMMs, reduce-scatters)         29055  (33.7%)
+  barrier: partials                          2114  ( 2.5%)
+  owners: parameters                         3365  ( 3.9%)
+  owners: embedding + last barrier           5823  ( 6.8%)
+  total                                     86149 cycles
+block 0's phases: from the last warp's end of the previous phase to the last warp's end of this one (per-warp stamps)
+blocks ran on 48 distinct SMs of 48 blocks (one block a SM)
+effective SM clock 1942 MHz (block 0's cycles over its kernel time), rated 1665 MHz: the GPU boosted above its rated clock
+rc=0

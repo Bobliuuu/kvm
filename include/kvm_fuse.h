@@ -89,6 +89,9 @@ struct KvmFuseResult {
   std::vector<int32_t> succ, args;
   std::vector<KvmFuseRun> runs;
   std::vector<std::string> report;     // one line per component (and per reason it did not fire)
+  std::vector<std::string> warnings;   // the unchanged runs whose steps matched the template's model (embedding, GELU layers, head) and then
+                                       // missed: a run the fused step was written for, falling silently to the per-op path (a lowering the
+                                       // matcher does not read yet). The caller logs them as warnings; a shape the template refuses is not one.
   int fused_runs = 0, unchanged_runs = 0, replaced_tasks = 0, new_tasks = 0;
   std::set<int> interior;              // buffers no longer written by a fused run (its activations and gradients): a reader of them after the run reads their initial values
   KvmFuseEntry entry;                  // the static kernel entry the rewritten bundle runs on (kvm_fuse_entry)
@@ -153,6 +156,7 @@ class Parser {
     std::vector<int> replaced;     // every task of this step the fused tasks take over
     std::set<int> interior;        // buffers only this step's replaced tasks may touch
     int barrier_end = -1;          // the noop that ends the step, if the bundle has one: kept as the join into the next step
+    bool model = false;            // its embedding, GELU layers and head matched the template (set before the loss is read)
   };
 
   bool parse(const std::vector<int>& comp, size_t& pos, Step& s, std::string& why) const {
@@ -191,25 +195,33 @@ class Parser {
     if (!buf_is(s.head, K, s.V) || !buf_is(g.out, s.T, s.V)) { why = "head GEMM buffer shapes"; return false; }
     const int Y = g.out; s.interior.insert(Y);
     s.replaced.insert(s.replaced.end(), g.tasks.begin(), g.tasks.end());
-    // ---- softmax CE: fwd (logits, tgt, rowloss, lse, r0, r1, V, ignore), reduce (rowloss, tgt, loss, N, ignore), bwd (logits, tgt, lse, loss, dlogits, r0, r1, V, ignore, scale)
+    s.model = true;   // the step's model matched: a mismatch from here on is a near miss (KvmFuseResult::warnings)
+    // ---- softmax CE: fwd (logits, tgt, rowloss, lse, r0, r1, V, ignore), reduce (rowloss, tgt, loss, N, ignore), bwd (logits, tgt, lse, loss, dlogits, r0, r1, V, ignore, scale).
+    // A tiling may lower the fwd, bwd and fused ops in row blocks (the frontend's Tiling.ce_rows: rows [r0, r1) a task, each row's arithmetic
+    // unchanged); the reduce is one task over every row. `row_blocks` reads such a run of tasks; the first block's arguments stand for all.
     int dY = -1;
-    if (c + 2 <= comp.size() && op(comp[c]) == ops_.softmax_ce_fused) {       // softmax_ce_fused(logits, tgt, rowloss, lse, dlogits, r0, r1, V, ignore, N, scale), then the reduce
-      if (op(comp[c + 1]) != ops_.softmax_ce_reduce) { why = "expected the reduce after the fused softmax CE"; return false; }
-      const int* f = argp(comp[c]), *r = argp(comp[c + 1]);
+    if (c < comp.size() && op(comp[c]) == ops_.softmax_ce_fused) {       // softmax_ce_fused(logits, tgt, rowloss, lse, dlogits, r0, r1, V, ignore, N, scale) blocks, then the reduce
+      const int nf = row_blocks(comp, c, ops_.softmax_ce_fused, 11, 5, s.T);
+      if (nf == 0) { why = "the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments"; return false; }
+      if (c + nf >= comp.size() || op(comp[c + nf]) != ops_.softmax_ce_reduce) { why = "expected the reduce after the fused softmax CE"; return false; }
+      const int* f = argp(comp[c]), *r = argp(comp[c + nf]);
       s.tgt = f[1]; s.loss = r[2]; dY = f[4];
-      if (f[0] != Y || f[5] != 0 || f[6] != s.T || f[7] != s.V || f[8] != -1 || f[9] != s.T || afloat(f[10]) != 1.f || r[0] != f[2] || r[1] != s.tgt || r[3] != s.T || r[4] != -1) { why = "fused softmax CE shape"; return false; }
+      if (f[0] != Y || f[7] != s.V || f[8] != -1 || f[9] != s.T || afloat(f[10]) != 1.f || r[0] != f[2] || r[1] != s.tgt || r[3] != s.T || r[4] != -1) { why = "fused softmax CE shape"; return false; }
       s.interior.insert(f[2]); s.interior.insert(f[3]); s.interior.insert(dY);
-      s.replaced.push_back(comp[c]); s.replaced.push_back(comp[c + 1]);
-      c += 2;
+      for (int i = 0; i <= nf; ++i) s.replaced.push_back(comp[c + i]);
+      c += nf + 1;
     } else {
-      if (c + 3 > comp.size() || op(comp[c]) != ops_.softmax_ce_fwd || op(comp[c + 1]) != ops_.softmax_ce_reduce || op(comp[c + 2]) != ops_.softmax_ce_bwd) { why = "expected softmax CE after the head"; return false; }
-      const int* f = argp(comp[c]), *r = argp(comp[c + 1]), *bwd = argp(comp[c + 2]);
+      const int nw = row_blocks(comp, c, ops_.softmax_ce_fwd, 8, 4, s.T);
+      const size_t cr = c + nw;   // the reduce
+      const int nb = nw ? row_blocks(comp, cr + 1, ops_.softmax_ce_bwd, 10, 5, s.T) : 0;
+      if (nw == 0 || cr >= comp.size() || op(comp[cr]) != ops_.softmax_ce_reduce || nb == 0) { why = "expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)"; return false; }
+      const int* f = argp(comp[c]), *r = argp(comp[cr]), *bwd = argp(comp[cr + 1]);
       s.tgt = f[1]; s.loss = r[2]; dY = bwd[4];
-      if (f[0] != Y || f[4] != 0 || f[5] != s.T || f[6] != s.V || f[7] != -1 || r[0] != f[2] || r[1] != s.tgt || r[3] != s.T || r[4] != -1) { why = "softmax CE fwd or reduce shape"; return false; }
-      if (bwd[0] != Y || bwd[1] != s.tgt || bwd[2] != f[3] || bwd[3] != s.loss || bwd[5] != 0 || bwd[6] != s.T || bwd[7] != s.V || bwd[8] != -1 || afloat(bwd[9]) != 1.f) { why = "softmax CE bwd shape"; return false; }
+      if (f[0] != Y || f[6] != s.V || f[7] != -1 || r[0] != f[2] || r[1] != s.tgt || r[3] != s.T || r[4] != -1) { why = "softmax CE fwd or reduce shape"; return false; }
+      if (bwd[0] != Y || bwd[1] != s.tgt || bwd[2] != f[3] || bwd[3] != s.loss || bwd[7] != s.V || bwd[8] != -1 || afloat(bwd[9]) != 1.f) { why = "softmax CE bwd shape"; return false; }
       s.interior.insert(f[2]); s.interior.insert(f[3]); s.interior.insert(dY);
-      for (int i = 0; i < 3; ++i) s.replaced.push_back(comp[c + i]);
-      c += 3;
+      for (size_t i = c; i < cr + 1 + (size_t)nb; ++i) s.replaced.push_back(comp[i]);
+      c = cr + 1 + nb;
     }
     if (!buf_is(s.loss, 1, 2)) { why = "loss buffer shape"; return false; }
     // ---- backward: the head's weight gradient (A^T dY), the gradient of the last activation (dY W^T)
@@ -297,6 +309,25 @@ class Parser {
   bool buf_is(int b, int rows, int cols) const {
     if (b < 0 || b >= (int)bufs_.size() || bufs_[b].dtype != 0 || (bufs_[b].ld != bufs_[b].cols && bufs_[b].rows > 1)) return false;
     return (rows < 0 || bufs_[b].rows == rows) && bufs_[b].cols == cols;
+  }
+  // A loss op lowered as one task or over consecutive row blocks: the tasks of op `id` from comp[c] on, rows [r0, r1) in argument words ri
+  // and ri + 1. They must start at row 0, each block where the one before ended, and end at row T, with at least `arity` argument words,
+  // and every word but the rows equal to the first block's. Returns how many tasks that is; 0 when comp[c] is not that op or its blocks
+  // are not such a cover (a gap, an overlap, a short or long cover, another argument).
+  int row_blocks(const std::vector<int>& comp, size_t c, int id, int arity, int ri, int T) const {
+    if (c >= comp.size() || op(comp[c]) != id) return 0;
+    const int words = tasks_[comp[c]].args_words;
+    if (words < arity || ri + 1 >= words) return 0;
+    const int* a0 = argp(comp[c]);
+    int k = 0;
+    for (int next = 0; next < T; ++k) {
+      if (c + k >= comp.size() || op(comp[c + k]) != id || tasks_[comp[c + k]].args_words != words) return 0;
+      const int* a = argp(comp[c + k]);
+      for (int i = 0; i < words; ++i) if (i != ri && i != ri + 1 && a[i] != a0[i]) return 0;
+      if (a[ri] != next || a[ri + 1] <= next || a[ri + 1] > T) return 0;
+      next = a[ri + 1];
+    }
+    return k;
   }
   // Consumes the contiguous tiles of one GEMM at comp[c]. All tiles must name the same GEMM and cover its M x N grid exactly once, with the base 64 x 64 tile.
   bool read_gemm(const std::vector<int>& comp, size_t& c, Gemm& g, std::string& why) const {
@@ -410,6 +441,19 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
   using Step = kvm_fuse::Parser::Step;
   KvmFuseResult R;
   const int nt = (int)tasks.size();
+  // The pass reads each task's argument words up to its op's arity, and it runs before the executor's validation. So a bundle with a task
+  // whose word count is not its op's arity, or whose words lie outside the argument array, is left alone, never read past and never made
+  // valid by replacing the task: validation then names it, fused or not.
+  for (int i = 0; i < nt; ++i) {
+    const KvmSOpInfo o = op_of(tasks[i].op_id);
+    const long long off = tasks[i].args_off, words = tasks[i].args_words;
+    if (off < 0 || words < 0 || off + words > (long long)args.size() || (o.arity >= 0 && words != o.arity)) {
+      R.tasks = tasks; R.succ = succ; R.args = args;
+      R.report.push_back("task " + std::to_string(i) + " (op " + std::to_string(tasks[i].op_id) + ") has " + std::to_string(words) + " argument words at " + std::to_string(off) +
+                         (o.arity >= 0 ? ", its op takes " + std::to_string(o.arity) : std::string()) + ": the pass leaves the bundle alone");
+      return R;
+    }
+  }
   // every reference to each buffer, so an interior buffer can be checked to be touched by its step alone
   std::vector<std::vector<int>> refs(bufs.size());
   for (int i = 0; i < nt; ++i) {
@@ -425,16 +469,35 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
   std::vector<int> plan_comp;   // the component each plan came from (for the report)
   const kvm_fuse::Parser parser(tasks, args, bufs, ops);
   const auto comps = kvm_fuse_components(tasks, succ);
+  // Why the template cannot take a step of this model, from its shapes alone (empty: it can). A refusal for this reason is by design.
+  const auto uncovered = [&](const Step& s) -> std::string {
+    for (int l = 0; l < s.L; ++l) if (s.H[l] % 8 || s.H[l] > 128) return "layer width not a multiple of 8 up to 128";
+    if (s.E % 8 || s.E == 0) return "embedding width not a multiple of 8";
+    if (s.V % 4 || s.V == 0 || s.V > 128) return "vocabulary not a multiple of 4 up to 128";
+    bool any = false;
+    for (int r : kvm_fuse_slice_choices) any |= s.T % r == 0 && r <= s.T && s.T / r <= KVM_FMLP_MAX_SLICES && kvm_fuse_layout_floats(s.L, s.E, s.V, s.H, s.T, r) <= opts.smem_floats;
+    if (!any) return "no slice size fits (" + std::to_string(kvm_fuse_layout_floats(s.L, s.E, s.V, s.H, s.T, kvm_fuse_slice_choices[0])) + " floats of shared memory at the smallest slice, at most " + std::to_string(KVM_FMLP_MAX_SLICES) + " slices, limit " + std::to_string(opts.smem_floats) + ")";
+    return "";
+  };
   for (size_t ci = 0; ci < comps.size(); ++ci) {
     const std::vector<int>& comp = comps[ci];
     Plan pl; std::string why;
     size_t pos = 0;
+    // A refusal of a run the fused step was written for (a step matched the template's model, the embedding, the GELU layers and the head,
+    // in shapes the template covers) is a silent fall to the per-op path and goes to KvmFuseResult::warnings. A shape the template leaves
+    // out, or a buffer the caller keeps, is a refusal by design, whichever check meets it first.
+    bool near = false, intended = false;
     while (pos < comp.size()) {
       Step st;
-      if (!parser.parse(comp, pos, st, why)) { why = "step " + std::to_string(pl.steps.size()) + ": " + why; break; }
+      if (!parser.parse(comp, pos, st, why)) {
+        const Step* m = st.model ? &st : pl.steps.empty() ? nullptr : &pl.steps[0];   // a step whose model matched, if any
+        near = m && uncovered(*m).empty();
+        why = "step " + std::to_string(pl.steps.size()) + ": " + why; break;
+      }
       pl.steps.push_back(std::move(st));
     }
     if (why.empty() && pl.steps.empty()) why = "no training step found";
+    if (why.empty()) near = uncovered(pl.steps[0]).empty();   // every step matched: a near miss only in shapes the template covers
     // Every step's closing barrier but the last is replaced too: the fused tasks' own edges order the steps, and a join in the middle would sit on the critical path. The last one stays: it publishes the run's final version.
     if (why.empty()) for (size_t si = 0; si + 1 < pl.steps.size(); ++si) if (pl.steps[si].barrier_end >= 0) { pl.steps[si].replaced.push_back(pl.steps[si].barrier_end); pl.steps[si].barrier_end = -1; }
     if (why.empty()) {
@@ -448,7 +511,7 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
         for (int b : s.interior) { for (int t : refs[b]) if (!mine.count(t)) { why = "step " + std::to_string(si) + ": interior buffer " + std::to_string(b) + " is used outside the step"; break; } if (!why.empty()) break; }
       }
     }
-    if (why.empty()) {
+    if (why.empty()) {   // the shapes the template covers (a refusal here is by design)
       const Step& s = pl.steps[0];
       std::string one;   // why the one-block form cannot take the run (empty: it can)
       for (int l = 0; l < s.L; ++l) if (s.H[l] % 8 || s.H[l] > 128) { one = "layer width not a multiple of 8 up to 128"; break; }
@@ -469,14 +532,19 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
           std::string gw;
           const int P = kvm_fuse_grid_fits(s.L, s.E, s.V, s.H, s.T, ops, opts, gw);
           if (P) { take(); pl.run.grid = 1; pl.run.P = P; pl.split_why = one + "; split form: " + sw; }
-          else why = one + "; split form: " + sw + "; grid form: " + gw;
+          else { why = one + "; split form: " + sw + "; grid form: " + gw; intended = true; }   // no form takes the shape: a refusal by design
         }
       }
     }
     if (why.empty()) {   // a buffer the caller reads after the run may not be interior
       for (size_t si = 0; si < pl.steps.size() && why.empty(); ++si) for (int b : opts.keep) if (pl.steps[si].interior.count(b)) { why = "buffer " + std::to_string(b) + " is read after the run and interior to step " + std::to_string(si); break; }
+      intended = !why.empty();
     }
-    if (!why.empty()) { ++R.unchanged_runs; R.report.push_back("component " + std::to_string(ci) + " (" + std::to_string(comp.size()) + " tasks): unchanged: " + why); continue; }
+    if (!why.empty()) {
+      ++R.unchanged_runs; R.report.push_back("component " + std::to_string(ci) + " (" + std::to_string(comp.size()) + " tasks): unchanged: " + why);
+      if (near && !intended) R.warnings.push_back("component " + std::to_string(ci) + " is an MLP training run the fused step was written for, but stays unfused (" + why + "): it runs per op, correct and slower");
+      continue;
+    }
     ++R.fused_runs; plans.push_back(std::move(pl)); plan_comp.push_back((int)ci);
   }
   if (plans.empty()) { R.tasks = tasks; R.succ = succ; R.args = args; return R; }

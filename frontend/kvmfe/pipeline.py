@@ -68,7 +68,8 @@ def compile_training(model, tc: TrainConfig | None = None, tiling: Tiling | None
     if getattr(model.cfg, 'precision', 'f32') == 'bf16s':
         from . import storage
         ops, _ = storage.apply(ops)
-    tiling = tiling or Tiling.preset('a100')
+    tiling = (tiling or Tiling.preset('a100')).for_model(n)
+    log.info('AdamW chunks of up to %d elements', tiling.opt_elems)
     local = frozenset()
     if tiling.tf32_preround:
         from . import tf32

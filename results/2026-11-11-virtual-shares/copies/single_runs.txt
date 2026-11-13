@@ -1,0 +1,4 @@
+# Single runs: the virtual-shares binary (new, f590861a) against the gang stack (old, 052204df), --static --dump-buffers on one bundle each; every buffer line compared, the timing line (OK: N/N tasks, X ms) aside.
+ho576: 808 buffer lines; new md5 48d18fb4104e98d558e67aa39caca3ee; old md5 48d18fb4104e98d558e67aa39caca3ee; identical; timing new: OK: 5501/5501 tasks, 2.415 ms; old: OK: 5501/5501 tasks, 2.371 ms
+ho128: 6214 buffer lines; new md5 50dd9630cd7b94f247a6ec96023562a2; old md5 50dd9630cd7b94f247a6ec96023562a2; identical; timing new: OK: 22001/22001 tasks, 19.870 ms; old: OK: 22001/22001 tasks, 19.462 ms
+mlp256: 1564 buffer lines; new md5 07ad61aa4cac4a869cc9c6a91f0dcf01; old md5 07ad61aa4cac4a869cc9c6a91f0dcf01; identical; timing new: OK: 5501/5501 tasks, 5.949 ms; old: OK: 5501/5501 tasks, 5.996 ms

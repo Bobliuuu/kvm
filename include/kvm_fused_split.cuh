@@ -50,16 +50,18 @@ constexpr int NPH = 9;   // the phases `ph(i)` marks, once a step in this order 
 // 0 load, 1 forward (GEMMs, GELU, all-gathers), 2 logits partial, 3 barrier: logits, 4 logits summed + cross-entropy, 5 backward (GEMMs, reduce-scatters),
 // 6 barrier: partials, 7 owners: parameters, 8 owners: embedding + the last barrier
 
-// One step of member `member` (= q * S + s) of a split run: `ids` and `tgt` are the step's T tokens and targets, `abort` the run's error word
+// One step of member `member` (= q * S + s) of a split run of SV virtual shares (the descriptor's Sv; its physical S is any count up to SV, kvm_fused_split.h):
+// `ids` and `tgt` are the step's T tokens and targets, `abort` the run's error word
 // (kvm_gang::cross: a failure elsewhere ends the step at its next crossing instead of hanging it; nullptr in a bed), `loss_out` the step's loss (member 0 writes loss_out[0] = sum / T and loss_out[1] = 1 / T, as softmax_ce_reduce does). The members
 // cross 2 x L + 1 barriers; the last one is the step's end, so every update is visible to every member when any of them returns.
-template <int S, int Q, class PH>
+template <int SV, int Q, class PH>
 __device__ __forceinline__ void split_run(int member, const int32_t* ids, const int32_t* tgt, float* loss_out, float* sm, const int* abort, PH ph) {
   kvm_fmlp::cp_commit_wait();
   __syncthreads();
   const KvmSplitDesc& d = *reinterpret_cast<const KvmSplitDesc*>(sm);
-  const int q = member / S, s = member % S, tid = threadIdx.x, warp = tid >> 5, lane = tid & 31, members = Q * S;
-  const int h0 = d.share0[s], w = d.share0[s + 1] - h0, E = d.E, V = d.V, VP = d.VP, HP = d.HP, HR = d.HR, H = d.H, T = d.T, L = d.L;
+  const int S = d.S, q = member / S, s = member % S, tid = threadIdx.x, warp = tid >> 5, lane = tid & 31, members = Q * S;
+  const int t0 = d.vs0[s], t1 = d.vs0[s + 1];   // this member's virtual shares
+  const int h0 = d.share0[t0], w = d.share0[t1] - h0, E = d.E, V = d.V, VP = d.VP, HP = d.HP, HR = d.HR, H = d.H, T = d.T, L = d.L;
   float* Whs = sm + d.Whs; float* bs = sm + d.bs; float* X0 = sm + d.X0; float* Hin = sm + d.Hin;
   float* ZG = sm + d.ZG; float* Hs = sm + d.Hs; float* Lg = sm + d.Lg; float* dZ = sm + d.dZ; float* gtok = sm + d.gtok; float* rl = sm + d.rl;
   int* sid = reinterpret_cast<int*>(sm + d.ints);   // [T]: the step's token ids
@@ -109,18 +111,21 @@ __device__ __forceinline__ void split_run(int member, const int32_t* ids, const 
     }
   }
   ph(1);
-  kvm_fmlp::gemm_r<false, false>(Hs, HP, Whs, VP, d.P + (size_t)member * R * VP, VP, R, VP, HP);   // this share's part of the logits (zero past V)
+  for (int t = t0; t < t1; ++t) {   // each virtual share's part of the logits (zero past V), its own columns its whole K
+    const int c = d.share0[t] - h0;
+    kvm_fmlp::gemm_r<false, false>(Hs + c, HP, Whs + c * VP, VP, d.P + (size_t)(q * SV + t) * R * VP, VP, R, VP, d.share0[t + 1] - d.share0[t]);
+  }
   ph(2);
   if (!kvm_gang::cross(ctl, member, members, at, abort)) return;
   ph(3);
-  // ---- the slice's S partials summed in share order, four logits a thread at a time; then the cross-entropy
+  // ---- the slice's SV partials summed in virtual-share order, four logits a thread at a time; then the cross-entropy
   kvm_fmlp::for_cells(R, VP / 4, [&](int r, int v4) {
-    float4 x[S];
+    float4 x[SV];
 #pragma unroll
-    for (int t = 0; t < S; ++t) x[t] = ld_cg4(d.P + ((size_t)(q * S + t) * R + r) * VP + 4 * v4);
+    for (int t = 0; t < SV; ++t) x[t] = ld_cg4(d.P + ((size_t)(q * SV + t) * R + r) * VP + 4 * v4);
     float4 a = x[0];
 #pragma unroll
-    for (int t = 1; t < S; ++t) { a.x += x[t].x; a.y += x[t].y; a.z += x[t].z; a.w += x[t].w; }
+    for (int t = 1; t < SV; ++t) { a.x += x[t].x; a.y += x[t].y; a.z += x[t].z; a.w += x[t].w; }
     *reinterpret_cast<float4*>(Lg + r * VP + 4 * v4) = a;
   });
   __syncthreads();
@@ -158,7 +163,10 @@ __device__ __forceinline__ void split_run(int member, const int32_t* ids, const 
     for (int c = tid; c < HP; c += NT) { float a = 0.f; for (int r = 0; r < R; ++r) a += dZ[r * HP + c]; d.db[l][(size_t)member * HP + c] = a; }
     if (l == 0) {
       kvm_fmlp::gemm_m<true, false>(X0, E, dZ, HP, d.dW[0] + (size_t)member * E * HP, HP, E, HP, R);          // dW_0,s = X0^T dZ
-      kvm_fmlp::gemm_r<false, true>(dZ, HP, Ws, HP, d.dX0 + (size_t)member * R * E, E, R, E, HP);             // dX0 part = dZ W_0,s^T
+      for (int t = t0; t < t1; ++t) {                                                                           // dX0 part of each virtual share = dZ_t W_0,t^T
+        const int c = d.share0[t] - h0;
+        kvm_fmlp::gemm_r<false, true>(dZ + c, HP, Ws + c, HP, d.dX0 + (size_t)(q * SV + t) * R * E, E, R, E, d.share0[t + 1] - d.share0[t]);
+      }
       __syncthreads();
     } else {
       const float* xin = d.XH[l - 1] + (size_t)q * R * HR;   // the layer's input, the slice's whole H_(l-1), read back from L2
@@ -166,18 +174,20 @@ __device__ __forceinline__ void split_run(int member, const int32_t* ids, const 
       __syncthreads();
       for (int m0 = 0; m0 < HR; m0 += 128)                                                                    // dW_l,s = H_(l-1)^T dZ
         kvm_fmlp::gemm_m<true, false>(Hin + m0, HR, dZ, HP, d.dW[l] + ((size_t)member * HR + m0) * HP, HP, min(128, HR - m0), HP, R);
-      float* xd = d.XD[l & 1] + (size_t)member * R * HR;   // alternating with the layer: a slot is rewritten only after the next barrier (kvm_fused_split.h)
-      for (int n0 = 0; n0 < HR; n0 += 128)                                                                    // the full-width partial dZ W_l,s^T
-        kvm_fmlp::gemm_r<false, true>(dZ, HP, Ws + n0 * HP, HP, xd + n0, HR, R, min(128, HR - n0), HP);
+      for (int t = t0; t < t1; ++t) {   // each virtual share's full-width partial dZ_t W_l,t^T, its own columns its whole K
+        const int c = d.share0[t] - h0, wt = d.share0[t + 1] - d.share0[t];
+        float* xd = d.XD[l & 1] + (size_t)(q * SV + t) * R * HR;   // alternating with the layer: a slot is rewritten only after the next barrier (kvm_fused_split.h)
+        for (int n0 = 0; n0 < HR; n0 += 128) kvm_fmlp::gemm_r<false, true>(dZ + c, HP, Ws + n0 * HP + c, HP, xd + n0, HR, R, min(128, HR - n0), wt);
+      }
       if (!kvm_gang::cross(ctl, member, members, at, abort)) return;
-      kvm_fmlp::for_cells(R, HP / 4, [&](int r, int c4) {   // the reduce-scatter: this share's columns of the slice's S partials, in share order
-        float4 x[S];
+      kvm_fmlp::for_cells(R, HP / 4, [&](int r, int c4) {   // the reduce-scatter: this member's columns of the slice's SV partials, in virtual-share order
+        float4 x[SV];
 #pragma unroll
-        for (int t = 0; t < S; ++t) x[t] = ld_cg4(d.XD[l & 1] + ((size_t)(q * S + t) * R + r) * HR + h0 + 4 * c4);
+        for (int t = 0; t < SV; ++t) x[t] = ld_cg4(d.XD[l & 1] + ((size_t)(q * SV + t) * R + r) * HR + h0 + 4 * c4);
         float4 a = x[0];
 #pragma unroll
-        for (int t = 1; t < S; ++t) { a.x += x[t].x; a.y += x[t].y; a.z += x[t].z; a.w += x[t].w; }
-        const int c = 4 * c4;   // columns past w belong to the next share: zero here
+        for (int t = 1; t < SV; ++t) { a.x += x[t].x; a.y += x[t].y; a.z += x[t].z; a.w += x[t].w; }
+        const int c = 4 * c4;   // columns past w belong to the next member: zero here
         a.x = c < w ? a.x : 0.f; a.y = c + 1 < w ? a.y : 0.f; a.z = c + 2 < w ? a.z : 0.f; a.w = c + 3 < w ? a.w : 0.f;
         *reinterpret_cast<float4*>(dZ + r * HP + c) = a;
       });
@@ -233,14 +243,14 @@ __device__ __forceinline__ void split_run(int member, const int32_t* ids, const 
       __syncthreads();
     }
     const int nm = wcnt[8];
-    for (int i = tid; i < nm * E; i += NT) {   // each matched token's gradient: its slice's S parts in share order
+    for (int i = tid; i < nm * E; i += NT) {   // each matched token's gradient: its slice's SV parts in virtual-share order
       const int j = i / E, e = i % E, k = mlist[j], sq = k / R, r = k % R;
-      float x[S];
+      float x[SV];
 #pragma unroll
-      for (int t = 0; t < S; ++t) x[t] = __ldcg(d.dX0 + ((size_t)(sq * S + t) * R + r) * E + e);   // other members' partials: L2, never a stale L1 line
+      for (int t = 0; t < SV; ++t) x[t] = __ldcg(d.dX0 + ((size_t)(sq * SV + t) * R + r) * E + e);   // other members' partials: L2, never a stale L1 line
       float a = x[0];
 #pragma unroll
-      for (int t = 1; t < S; ++t) a += x[t];
+      for (int t = 1; t < SV; ++t) a += x[t];
       gtok[j * E + e] = a;
     }
     __syncthreads();

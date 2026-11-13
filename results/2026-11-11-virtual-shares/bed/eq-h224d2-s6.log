@@ -1,0 +1,24 @@
+NVIDIA A100-SXM4-80GB, 108 SMs, 163 KB shared memory a block (opt-in); model E 48 V 100 H 224 depth 2, T 96 (6 slices of 16), S 6 shares carrying 18 virtual (width <= 40, padded 48): 36 blocks, 109.8 KB a block, 5 barriers a step
+check step 0: loss 4.606277, fp64 4.606279
+check step 1: loss 4.606105, fp64 4.606103
+check step 2: loss 4.604469, fp64 4.604469
+check after 3 steps: loss max rel 4.64e-07; update rel L2 (worst layer) W 5.63e-04, b 4.89e-04; Wh 4.00e-04, emb 1.50e-03 (TF32 operands: a few 1e-3 expected)
+check ok
+dumped 88582 floats to /root/reads/vs1/run-20261111T124620Z/h224d2-s6.bin
+warm: 1 launches, 0 ms
+timed: 2 steps: 66.11 us a step in the kernel (block 0's %globaltimer over its counted loop), 74.72 us by events (launch and host delays included)
+block 0 by phase (cycles a step; 2 of the step's 5 barriers sit inside the forward and backward phases):
+  load (weights, embedding rows)            11482  (15.4%)
+  forward (GEMMs, GELU, all-gathers)        14224  (19.1%)
+  logits partial GEMM (to L2)                2199  ( 2.9%)
+  barrier: logits                            2422  ( 3.2%)
+  logits summed, cross-entropy               7906  (10.6%)
+  backward (GEMMs, reduce-scatters)         23184  (31.1%)
+  barrier: partials                          2359  ( 3.2%)
+  owners: parameters                         3569  ( 4.8%)
+  owners: embedding + last barrier           7263  ( 9.7%)
+  total                                     74608 cycles
+block 0's phases: from the last warp's end of the previous phase to the last warp's end of this one (per-warp stamps)
+blocks ran on 36 distinct SMs of 36 blocks (one block a SM)
+effective SM clock 1129 MHz (block 0's cycles over its kernel time), rated 1410 MHz: below the rated clock (a power, thermal or application-clock limit)
+rc 0

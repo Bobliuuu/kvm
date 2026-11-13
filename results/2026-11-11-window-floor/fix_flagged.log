@@ -1,0 +1,12 @@
+[kvm_exec][I] h640-d4-r16/bundle (16 runs of h640-d4): 307200 tasks, 4132064 edges, 3261600 arg words
+[kvm_exec][I] 5616 noops dissolved: 301584 tasks, 13200000 edges
+[kvm_exec][I] tape in dependency order
+[kvm_exec][I] successor ring raised from 2097152 to 33554432 words: the floor of a 33554432-word admission ring
+[kvm_exec][I] device NVIDIA A100-SXM4-80GB, 108 SMs, 1 resident blocks/SM with 147456 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] ready queue: one FIFO ring, ticket waits; slots recycled; version waits none; task trace off
+[kvm_exec][I] clock warm-up: 260 launches, 500 ms requested
+[kvm_exec][I] kernel launched: grid 108 x 256 threads, live_cap 524288, slots 524288, succ ring 33554432 words, ring 33554432 words, aging 0 us, sched off
+[kvm_exec][I] stream: host prep (validate, order check, 2 windows, cross-window needs) 99.1 ms
+[kvm_exec][D] stream: 301584 tasks in 2 windows
+[kvm_exec][I] kernel done: 301584/301584 tasks in 350.808 ms, 2 records, 0 ring wraps, 0 backpressure waits
+OK: 301584/301584 tasks, 350.808 ms

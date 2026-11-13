@@ -1,0 +1,29 @@
+# main's own fusion-pass test (tests/static/test_fuse_pass.cpp at 4bbdaab, g++ -O2, CPU) on the gate bundles run_mlp.py ran above: gate/ is the 3-step run alone, gate_rep/ its 4 replicated copies
+h72-d2/gate/bundle: 144 tasks, 73 buffers -> fused runs 1, unchanged runs 0, replaced tasks 137, new tasks 73
+  [1 runs] fused: 3 steps, T=96 V=100 widths 48x72x72, 6 slices of 16 rows, 16 reduction owners
+  W=1: planned 73 tasks, predicted makespan 1482.1 us (work 1482.1 us), 0 cross-worker waits
+  W=4: planned 73 tasks, predicted makespan 475.6 us (work 1482.1 us), 396 cross-worker waits
+  W=8: planned 73 tasks, predicted makespan 247.6 us (work 1482.1 us), 464 cross-worker waits
+  W=107: planned 73 tasks, predicted makespan 217.6 us (work 1482.1 us), 499 cross-worker waits
+OK
+h72-d2/gate_rep: 576 tasks, 292 buffers -> fused runs 4, unchanged runs 0, replaced tasks 548, new tasks 292
+  [4 runs] fused: 3 steps, T=96 V=100 widths 48x72x72, 6 slices of 16 rows, 16 reduction owners
+  W=1: planned 292 tasks, predicted makespan 5928.4 us (work 5928.4 us), 0 cross-worker waits
+  W=4: planned 292 tasks, predicted makespan 1483.6 us (work 5928.4 us), 1584 cross-worker waits
+  W=8: planned 292 tasks, predicted makespan 747.1 us (work 5928.4 us), 1856 cross-worker waits
+  W=107: planned 292 tasks, predicted makespan 217.6 us (work 5928.4 us), 1996 cross-worker waits
+OK
+h48-d2/gate/bundle: 102 tasks, 73 buffers -> fused runs 1, unchanged runs 0, replaced tasks 95, new tasks 73
+  [1 runs] fused: 3 steps, T=96 V=100 widths 48x48x48, 6 slices of 16 rows, 16 reduction owners
+  W=1: planned 73 tasks, predicted makespan 1482.1 us (work 1482.1 us), 0 cross-worker waits
+  W=4: planned 73 tasks, predicted makespan 475.6 us (work 1482.1 us), 396 cross-worker waits
+  W=8: planned 73 tasks, predicted makespan 247.6 us (work 1482.1 us), 464 cross-worker waits
+  W=107: planned 73 tasks, predicted makespan 217.6 us (work 1482.1 us), 499 cross-worker waits
+OK
+h48-d2/gate_rep: 408 tasks, 292 buffers -> fused runs 4, unchanged runs 0, replaced tasks 380, new tasks 292
+  [4 runs] fused: 3 steps, T=96 V=100 widths 48x48x48, 6 slices of 16 rows, 16 reduction owners
+  W=1: planned 292 tasks, predicted makespan 5928.4 us (work 5928.4 us), 0 cross-worker waits
+  W=4: planned 292 tasks, predicted makespan 1483.6 us (work 5928.4 us), 1584 cross-worker waits
+  W=8: planned 292 tasks, predicted makespan 747.1 us (work 5928.4 us), 1856 cross-worker waits
+  W=107: planned 292 tasks, predicted makespan 217.6 us (work 5928.4 us), 1996 cross-worker waits
+OK

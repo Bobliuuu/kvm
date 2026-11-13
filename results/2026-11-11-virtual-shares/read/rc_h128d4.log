@@ -1,0 +1,50 @@
+2026-11-11 13:30:54,316 INFO kvm.compiler: compiled 404 tasks (0 gates), 2958 edges, 128 buffers, 1 variables in 0.01s (parse 0.01s, graph+versions 0.00s, pack 0.00s)
+2026-11-11 13:30:54,318 INFO kvm.compiler: wrote bundle to /tmp/kvm-static-check.h8CGlY/gpt/bundle
+MLP bundle: hidden 128, depth 4, 3 steps
+2026-11-11 13:30:54,524 INFO kvm.compiler: compiled 234 tasks (0 gates), 1049 edges, 107 buffers, 1 variables in 0.01s (parse 0.01s, graph+versions 0.00s, pack 0.00s)
+2026-11-11 13:30:54,527 INFO kvm.compiler: wrote bundle to /tmp/kvm-static-check.h8CGlY/mlp/bundle
+2026-11-11 13:30:54,790 INFO kvm.vm: admitted batch 0: 234 tasks
+2026-11-11 13:31:28,117 INFO kvm.compiler: wrote golden.json
+bundle /tmp/kvm-static-check.h8CGlY/gpt/bundle: 404 tasks, 2958 edges (successors + versions), 128 buffers
+W=  1: used   1 workers, records    404 (wait-only 0), cross edges     0 of  2958 (0%), publishing tasks 0, plan makespan 1980.8 us, replay 1980.8 us, work 1980.8 us
+W=  2: used   2 workers, records    404 (wait-only 0), cross edges  1369 of  2958 (46%), publishing tasks 126, plan makespan 1068.7 us, replay 1155.2 us, work 1980.8 us
+W=  4: used   4 workers, records    404 (wait-only 0), cross edges  2105 of  2958 (71%), publishing tasks 249, plan makespan 692.7 us, replay 741.7 us, work 1980.8 us
+W=  8: used   8 workers, records    404 (wait-only 0), cross edges  2286 of  2958 (77%), publishing tasks 302, plan makespan 556.8 us, replay 589.8 us, work 1980.8 us
+W= 16: used  16 workers, records    404 (wait-only 0), cross edges  2357 of  2958 (80%), publishing tasks 353, plan makespan 530.8 us, replay 548.8 us, work 1980.8 us
+W= 32: used  24 workers, records    412 (wait-only 8), cross edges  2371 of  2958 (80%), publishing tasks 373, plan makespan 525.8 us, replay 548.3 us, work 1980.8 us
+W= 64: used  24 workers, records    412 (wait-only 8), cross edges  2371 of  2958 (80%), publishing tasks 373, plan makespan 525.8 us, replay 548.3 us, work 1980.8 us
+W=107: used  24 workers, records    412 (wait-only 8), cross edges  2371 of  2958 (80%), publishing tasks 373, plan makespan 525.8 us, replay 548.3 us, work 1980.8 us
+PASS
+bundle /tmp/kvm-static-check.h8CGlY/mlp/bundle: 234 tasks, 1049 edges (successors + versions), 107 buffers
+W=  1: used   1 workers, records    234 (wait-only 0), cross edges     0 of  1049 (0%), publishing tasks 0, plan makespan 1140.6 us, replay 1140.6 us, work 1140.6 us
+W=  2: used   2 workers, records    234 (wait-only 0), cross edges   522 of  1049 (50%), publishing tasks 113, plan makespan 593.3 us, replay 680.3 us, work 1140.6 us
+W=  4: used   4 workers, records    234 (wait-only 0), cross edges   737 of  1049 (70%), publishing tasks 154, plan makespan 357.8 us, replay 405.3 us, work 1140.6 us
+W=  8: used   8 workers, records    234 (wait-only 0), cross edges   827 of  1049 (79%), publishing tasks 189, plan makespan 271.4 us, replay 286.4 us, work 1140.6 us
+W= 16: used  13 workers, records    234 (wait-only 0), cross edges   830 of  1049 (79%), publishing tasks 210, plan makespan 267.9 us, replay 279.9 us, work 1140.6 us
+W= 32: used  13 workers, records    234 (wait-only 0), cross edges   830 of  1049 (79%), publishing tasks 210, plan makespan 267.9 us, replay 279.9 us, work 1140.6 us
+W= 64: used  13 workers, records    234 (wait-only 0), cross edges   830 of  1049 (79%), publishing tasks 210, plan makespan 267.9 us, replay 279.9 us, work 1140.6 us
+W=107: used  13 workers, records    234 (wait-only 0), cross edges   830 of  1049 (79%), publishing tasks 210, plan makespan 267.9 us, replay 279.9 us, work 1140.6 us
+PASS
+ok: gpt W=48 static schedule (--no-fuse) bitwise equal to dynamic (128 buffers)
+ok: gpt W=107 static schedule (--no-fuse) bitwise equal to dynamic (128 buffers)
+ok: gpt W=108 static schedule (--no-fuse) bitwise equal to dynamic (128 buffers)
+ok: mlp W=48 static schedule (--no-fuse) bitwise equal to dynamic (107 buffers)
+ok: mlp W=107 static schedule (--no-fuse) bitwise equal to dynamic (107 buffers)
+ok: mlp W=108 static schedule (--no-fuse) bitwise equal to dynamic (107 buffers)
+ok: gpt W=48: the pass does not fire and the run stays bitwise equal to dynamic
+ok: mlp W=48: 1 run(s) fused
+ok: mlp W=48 fused run repeats bitwise
+ok: mlp W=48 fused run within 1e-3 of the CPU golden (worst 0.000353)
+ok: gpt W=107: the pass does not fire and the run stays bitwise equal to dynamic
+ok: mlp W=107: 1 run(s) fused
+ok: mlp W=107 fused run repeats bitwise
+ok: mlp W=107 fused run within 1e-3 of the CPU golden (worst 0.000349)
+ok: gpt W=108: the pass does not fire and the run stays bitwise equal to dynamic
+ok: mlp W=108: 1 run(s) fused
+ok: mlp W=108 fused run repeats bitwise
+ok: mlp W=108 fused run within 1e-3 of the CPU golden (worst 0.000349)
+fused_vs_fp64: 3 steps; eager vs float64 3.39e-05, so the executor may sit at 1.68e-04; loss vs eager <= 0.003, weights vs eager <= 0.001 relative L2
+ok: /tmp/kvm-static-check.h8CGlY/mlp.fu48.out: vs float64 2.85e-05 (bound 1.68e-04); loss vs eager 3.02e-05; weights vs eager 3.45e-04 relative L2
+ok: /tmp/kvm-static-check.h8CGlY/mlp.fu107.out: vs float64 3.23e-05 (bound 1.68e-04); loss vs eager 3.02e-05; weights vs eager 3.42e-04 relative L2
+ok: /tmp/kvm-static-check.h8CGlY/mlp.fu108.out: vs float64 3.23e-05 (bound 1.68e-04); loss vs eager 3.02e-05; weights vs eager 3.42e-04 relative L2
+PASS: static schedule bitwise equal to the dynamic path; fused MLP step within its gates

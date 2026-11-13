@@ -1,0 +1,43 @@
+# step 2 alone, from the workload VM's own weights and moments after step 1 (fgpt_bed.py --resync 1), judged element by element against the VM's step 2, precise (3xTF32), on an RTX 5070: the trajectories cannot part before the step judged
+w_d128_precise, step 2 from the VM's step-1 state, G 32: rc=0
+  VM reference: cached vm-c54527615033fd22-k1.json
+  VM reference: cached vm-c54527615033fd22-k2.json
+  resync: the bed starts from the VM's weights and moments after 1 step(s), at step counter +1
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 1 steps, attention in 4 query block(s) a unit, rows in chunks of 64 of 128, shared memory 89696 B a member, scratch 2
+    fgpt_bed: run 4.750 ms with its launch; in the kernel 826.6 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 1 -> 2
+  G 32: losses: 5.250423 (VM 5.250423): worst of 1 0.00e+00 relative, 1/count off by 0.0e+00: ok
+  G 32: gradients (last step): worst 5.02e-06 of its tensor's scale (w.gpt.h3.attn.k.b): ok
+  G 32: first moments (last step): worst 2.59e-06 of its tensor's scale (w.gpt.h1.attn.k.w): ok
+  G 32: second moments (last step): worst 5.36e-06 of its tensor's scale (w.gpt.h1.attn.k.w): ok
+  G 32: weights (reported): largest difference 0.09 x lr (w.gpt.wte)
+w_small_p, step 2 from the VM's step-1 state, G 16,32: rc=0
+  VM reference: cached vm-cdd0fb5d5704c230-k1.json
+  VM reference: cached vm-cdd0fb5d5704c230-k2.json
+  resync: the bed starts from the VM's weights and moments after 1 step(s), at step counter +1
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 16, 1 steps, attention in 2 query block(s) a unit, rows in chunks of 128 of 128, shared memory 84448 B a member, scratch 
+    fgpt_bed: run 4.843 ms with its launch; in the kernel 322.7 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 16 of 16 members finished, step counter 1 -> 2
+  G 16: losses: 4.396643 (VM 4.396643): worst of 1 0.00e+00 relative, 1/count off by 0.0e+00: ok
+  G 16: gradients (last step): worst 2.09e-06 of its tensor's scale (w.gpt.h1.attn.k.w): ok
+  G 16: first moments (last step): worst 1.67e-06 of its tensor's scale (w.gpt.h1.attn.q.b): ok
+  G 16: second moments (last step): worst 2.51e-06 of its tensor's scale (w.gpt.h1.attn.q.b): ok
+  G 16: weights (reported): largest difference 0.00 x lr (w.gpt.h0.mlp.fc1.w)
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 1 steps, attention in 4 query block(s) a unit, rows in chunks of 128 of 128, shared memory 74208 B a member, scratch 
+    fgpt_bed: run 4.410 ms with its launch; in the kernel 284.4 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 1 -> 2
+  G 32: losses: 4.396643 (VM 4.396643): worst of 1 1.08e-07 relative, 1/count off by 0.0e+00: ok
+  G 32: gradients (last step): worst 2.02e-06 of its tensor's scale (w.gpt.h0.mlp.fc1.w): ok
+  G 32: first moments (last step): worst 1.67e-06 of its tensor's scale (w.gpt.h1.attn.q.b): ok
+  G 32: second moments (last step): worst 2.41e-06 of its tensor's scale (w.gpt.h1.attn.q.b): ok
+  G 32: weights (reported): largest difference 0.00 x lr (w.gpt.h0.mlp.fc1.w)
+  decomposition G 32 against G 16: losses 1.08e-07, gradients 6.32e-07 of scale: ok
+w_b4_precise, step 2 from the VM's step-1 state, G 32: rc=0
+  VM reference: cached vm-6f282415f06f5b7f-k1.json
+  VM reference: cached vm-6f282415f06f5b7f-k2.json
+  resync: the bed starts from the VM's weights and moments after 1 step(s), at step counter +1
+    fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 1 steps, attention in 2 query block(s) a unit, rows in chunks of 128 of 256, shared memory 75744 B a member, scratch 
+    fgpt_bed: run 4.691 ms with its launch; in the kernel 366.7 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 1 -> 2
+  G 32: losses: 4.359669 (VM 4.359669): worst of 1 1.09e-07 relative, 1/count off by 0.0e+00: ok
+  G 32: gradients (last step): worst 1.88e-06 of its tensor's scale (w.gpt.h0.attn.q.w): ok
+  G 32: first moments (last step): worst 1.09e-06 of its tensor's scale (w.gpt.h1.attn.k.w): ok
+  G 32: second moments (last step): worst 2.42e-06 of its tensor's scale (w.gpt.h0.attn.q.b): ok
+  G 32: weights (reported): largest difference 0.00 x lr (w.gpt.h1.attn.k.b)
+resync: 0 failure(s)

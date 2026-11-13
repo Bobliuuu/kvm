@@ -1,0 +1,18 @@
+# the bed with the run's long-lived state in shared memory (this branch), against the bed before the three sm_80 changes: every output by sha256 on five shapes, then the gang's abort beside a clean control of each shape (RTX 5070)
+== bitwise: the bed before the restack (A) against after (B), 50 steps
+tiny G 32: bitwise equal (1c8d107fbc3d05bd)
+tiny G 8: bitwise equal (89033a737ae8cd2f)
+small G 32: bitwise equal (a96d16df3646e95e)
+== the gang's abort: fault=M:F gives member M only F floats of shared memory (error 5, KVM_FGPT_E_SCRATCH); every other member must leave at its next crossing
+small G 32 fault 5:14800 (after ~10 crossings, at the MLP backward): rc=1, 0.90 s wall; error word 5, 0 of 32 members finished
+small G 32 fault 0:100 (before the first crossing): rc=1, 0.90 s wall; error word 5, 0 of 32 members finished
+small G 32 fault -1:0 (control, no fault): rc=0, 0.86 s wall; error word 0, 32 of 32 members finished
+tiny G 32 fault 31:4324 (mid-run, at the MLP backward): rc=1, 1.15 s wall; error word 5, 0 of 32 members finished
+tiny G 32 fault -1:0 (control, no fault): rc=0, 1.03 s wall; error word 0, 32 of 32 members finished
+final bed: 0 failure(s)
+tiny G 32: bitwise equal (1c8d107fbc3d05bd)
+tiny G 8: bitwise equal (89033a737ae8cd2f)
+small G 32: bitwise equal (a96d16df3646e95e)
+d128-phase G 32: bitwise equal (536b36906d5155bc)
+s1-b4-precise G 32: bitwise equal (d1063715bfa69701)
+bitwise: 0 failure(s)

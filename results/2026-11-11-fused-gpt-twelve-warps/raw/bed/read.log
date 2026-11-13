@@ -1,0 +1,49 @@
+CHECK NT384-tiny-p-k2-g16: ok; 1 ok, 0 FAIL
+[fgpt_bed 15:41:49Z]   fgpt_bed: run 0.388 ms with its launch; in the kernel 144.4 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 16 of 16 members finished, step counter 0 -> 2
+CHECK NT384-small-p-k2-g32: ok; 1 ok, 0 FAIL
+[fgpt_bed 15:41:51Z]   fgpt_bed: run 0.656 ms with its launch; in the kernel 294.7 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 2
+CHECK NT384-d128-p-k1-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:41:56Z]   fgpt_bed: run 0.971 ms with its launch; in the kernel 854.5 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 0 -> 1
+CHECK NT384-d128-p-resync-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:42:04Z]   fgpt_bed: run 0.977 ms with its launch; in the kernel 858.3 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 1 -> 2
+CHECK NT384-ho128-p-k1-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:42:10Z]   fgpt_bed: run 1.147 ms with its launch; in the kernel 1044.7 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 0 -> 1
+CHECK NT384-ho128-p-resync-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:42:18Z]   fgpt_bed: run 1.098 ms with its launch; in the kernel 1047.2 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 1 -> 2
+CHECK NT512-tiny-p-k2-g16: ok; 1 ok, 0 FAIL
+[fgpt_bed 15:42:20Z]   fgpt_bed: run 0.371 ms with its launch; in the kernel 149.1 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 16 of 16 members finished, step counter 0 -> 2
+CHECK NT512-small-p-k2-g32: ok; 1 ok, 0 FAIL
+[fgpt_bed 15:42:22Z]   fgpt_bed: run 0.714 ms with its launch; in the kernel 303.9 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 2
+CHECK NT512-d128-p-k1-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:42:28Z]   fgpt_bed: run 0.974 ms with its launch; in the kernel 847.6 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 0 -> 1
+CHECK NT512-d128-p-resync-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:42:36Z]   fgpt_bed: run 0.964 ms with its launch; in the kernel 846.5 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 1 -> 2
+CHECK NT512-ho128-p-k1-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:42:42Z]   fgpt_bed: run 1.109 ms with its launch; in the kernel 1030.6 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 0 -> 1
+CHECK NT512-ho128-p-resync-g64: ok; 4 ok, 0 FAIL
+[fgpt_bed 15:42:50Z]   fgpt_bed: run 1.089 ms with its launch; in the kernel 1024.0 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 1 -> 2
+AW_GPU_END
+HASHES w_d128_tf32_k30 g64: each arm's 5 rounds agree; across arms differ {'NT256': '011250ceba415cb2', 'NT384': 'd66d02f467540b8f', 'NT512': '9edbc474b2835d0c'}
+HASHES w_ho128_tf32_k30 g64: each arm's 5 rounds agree; across arms differ {'NT256': '7ae71500c2d0f515', 'NT384': '157cba564a58db8c', 'NT512': 'fc354006a6250750'}
+HASHES w_small g32: each arm's 5 rounds agree; across arms differ {'NT256': '2a79658034eac8d3', 'NT384': '43694d7abc476319', 'NT512': 'f35a41bc1a1f1c0e'}
+HASHES w_tiny g16: each arm's 5 rounds agree; across arms differ {'NT256': '7131904305770c47', 'NT384': '64254e6db1d5bfdc', 'NT512': 'c7acf5a27a84f2c9'}
+== w_tiny: NT256 rows in chunks of 32 of 32, shared memory 29872 B; NT384 rows in chunks of 32 of 32, shared memory 30416 B; NT512 rows in chunks of 32 of 32, shared memory 30960 B; 
+w_tiny       NT256->NT384, 5 rounds: best x1.019 (132.1 / 134.6 us), median x1.020 (132.3 / 135.0), paired x1.020; slow runs (> 1.10x the arm's fastest, in cycles) NT384 0 of 5, NT256 0 of 5; Fisher p 1.000 one-sided, 1.000 two-sided; cycles a step (k) fast NT384 186, NT256 190; slow NT384 
+             rounds where both arms ran fast: 5, paired x1.020 (range x1.017-1.023)
+w_tiny       NT256->NT512, 5 rounds: best x0.957 (140.6 / 134.6 us), median x0.959 (140.7 / 135.0), paired x0.959; slow runs (> 1.10x the arm's fastest, in cycles) NT512 0 of 5, NT256 0 of 5; Fisher p 1.000 one-sided, 1.000 two-sided; cycles a step (k) fast NT512 198, NT256 190; slow NT512 
+             rounds where both arms ran fast: 5, paired x0.959 (range x0.957-0.960)
+== w_small: NT256 rows in chunks of 128 of 128, shared memory 75184 B; NT384 rows in chunks of 128 of 128, shared memory 75728 B; NT512 rows in chunks of 128 of 128, shared memory 76272 B; 
+w_small      NT256->NT384, 5 rounds: best x1.048 (276.3 / 289.5 us), median x1.051 (276.3 / 290.5), paired x1.051; slow runs (> 1.10x the arm's fastest, in cycles) NT384 0 of 5, NT256 0 of 5; Fisher p 1.000 one-sided, 1.000 two-sided; cycles a step (k) fast NT384 389, NT256 408; slow NT384 
+             rounds where both arms ran fast: 5, paired x1.051 (range x1.048-1.052)
+w_small      NT256->NT512, 5 rounds: best x0.985 (293.9 / 289.5 us), median x0.988 (294.1 / 290.5), paired x0.987; slow runs (> 1.10x the arm's fastest, in cycles) NT512 0 of 5, NT256 0 of 5; Fisher p 1.000 one-sided, 1.000 two-sided; cycles a step (k) fast NT512 414, NT256 408; slow NT512 
+             rounds where both arms ran fast: 5, paired x0.987 (range x0.984-0.989)
+== w_d128_tf32_k30: NT256 rows in chunks of 128 of 128, shared memory 115120 B; NT384 rows in chunks of 128 of 128, shared memory 115664 B; NT512 rows in chunks of 128 of 128, shared memory 116208 B; 
+w_d128_tf32_k30 NT256->NT384, 5 rounds: best x1.080 (789.3 / 852.1 us), median x1.080 (789.4 / 852.3), paired x1.079; slow runs (> 1.10x the arm's fastest, in cycles) NT384 0 of 5, NT256 0 of 5; Fisher p 1.000 one-sided, 1.000 two-sided; cycles a step (k) fast NT384 1111, NT256 1199; slow NT384 
+             rounds where both arms ran fast: 5, paired x1.079 (range x1.079-1.080)
+w_d128_tf32_k30 NT256->NT512, 5 rounds: best x1.066 (799.0 / 852.1 us), median x1.065 (800.0 / 852.3), paired x1.065; slow runs (> 1.10x the arm's fastest, in cycles) NT512 0 of 5, NT256 0 of 5; Fisher p 1.000 one-sided, 1.000 two-sided; cycles a step (k) fast NT512 1123, NT256 1199; slow NT512 
+             rounds where both arms ran fast: 5, paired x1.065 (range x1.064-1.067)
+== w_ho128_tf32_k30: NT256 rows in chunks of 128 of 192, shared memory 119984 B; NT384 rows in chunks of 128 of 192, shared memory 120528 B; NT512 rows in chunks of 128 of 192, shared memory 121072 B; 
+w_ho128_tf32_k30 NT256->NT384, 5 rounds: best x1.104 (955.2 / 1055.0 us), median x1.105 (955.9 / 1055.8), paired x1.104; slow runs (> 1.10x the arm's fastest, in cycles) NT384 0 of 5, NT256 0 of 5; Fisher p 1.000 one-sided, 1.000 two-sided; cycles a step (k) fast NT384 1343, NT256 1484; slow NT384 
+             rounds where both arms ran fast: 5, paired x1.104 (range x1.103-1.105)
+w_ho128_tf32_k30 NT256->NT512, 5 rounds: best x1.094 (964.1 / 1055.0 us), median x1.094 (965.3 / 1055.8), paired x1.094; slow runs (> 1.10x the arm's fastest, in cycles) NT512 0 of 5, NT256 0 of 5; Fisher p 1.000 one-sided, 1.000 two-sided; cycles a step (k) fast NT512 1356, NT256 1484; slow NT512 
+             rounds where both arms ran fast: 5, paired x1.094 (range x1.093-1.094)

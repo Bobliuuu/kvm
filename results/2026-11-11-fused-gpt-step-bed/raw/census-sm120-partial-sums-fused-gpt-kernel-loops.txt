@@ -1,0 +1,33 @@
+_Z15kvm_fgpt_kernelPK11KvmFgptDescP11KvmCountersP10KvmHostErri: every block, 38744 instructions in 2644 blocks
+  72 MMA loops; by kind (HMMA a pass, LDGSTS a pass):
+    HMMA   6 LDGSTS   0:  14 loops; registers used in the loop median 54, passengers median 83 (range 59-93), LDL a pass median 0 (range 0-0)
+    HMMA   8 LDGSTS   0:  34 loops; registers used in the loop median 48, passengers median 79 (range 59-96), LDL a pass median 0 (range 0-0)
+    HMMA   8 LDGSTS   6:   1 loops; registers used in the loop median 68, passengers median 53 (range 53-53), LDL a pass median 0 (range 0-0)
+    HMMA   8 LDGSTS  14:   1 loops; registers used in the loop median 82, passengers median 47 (range 47-47), LDL a pass median 1 (range 1-1)
+    HMMA  16 LDGSTS   6:   2 loops; registers used in the loop median 78, passengers median 49 (range 49-49), LDL a pass median 0 (range 0-0)
+    HMMA  16 LDGSTS  10:   1 loops; registers used in the loop median 74, passengers median 53 (range 53-53), LDL a pass median 0 (range 0-0)
+    HMMA  20 LDGSTS   8:   1 loops; registers used in the loop median 84, passengers median 47 (range 47-47), LDL a pass median 0 (range 0-0)
+    HMMA  32 LDGSTS  10:   1 loops; registers used in the loop median 77, passengers median 51 (range 51-51), LDL a pass median 0 (range 0-0)
+    HMMA  44 LDGSTS  32:   1 loops; registers used in the loop median 98, passengers median 34 (range 34-34), LDL a pass median 1 (range 1-1)
+    HMMA  62 LDGSTS  18:   1 loops; registers used in the loop median 99, passengers median 45 (range 45-45), LDL a pass median 0 (range 0-0)
+    HMMA  78 LDGSTS  26:   2 loops; registers used in the loop median 143, passengers median 1 (range 1-1), LDL a pass median 0 (range 0-0)
+    HMMA 110 LDGSTS  34:   1 loops; registers used in the loop median 108, passengers median 36 (range 36-36), LDL a pass median 0 (range 0-0)
+    HMMA 110 LDGSTS  36:   2 loops; registers used in the loop median 143, passengers median 1 (range 1-1), LDL a pass median 0 (range 0-0)
+    HMMA 126 LDGSTS  42:   1 loops; registers used in the loop median 143, passengers median 1 (range 1-1), LDL a pass median 0 (range 0-0)
+    HMMA 134 LDGSTS  48:   2 loops; registers used in the loop median 143, passengers median 1 (range 1-1), LDL a pass median 0 (range 0-0)
+    HMMA 150 LDGSTS  58:   2 loops; registers used in the loop median 143, passengers median 1 (range 1-1), LDL a pass median 0 (range 0-0)
+    HMMA 164 LDGSTS  58:   2 loops; registers used in the loop median 143, passengers median 1 (range 1-1), LDL a pass median 0 (range 0-0)
+    HMMA 178 LDGSTS  80:   3 loops; registers used in the loop median 144, passengers median 0 (range 0-0), LDL a pass median 1 (range 1-1)
+  the loop with the most reloads, at 0x00e290 (HMMA 8, LDL 1): 47 passengers
+      R3   defined by MOV R3, 0x0                                                                                    ?
+      R5   defined by IADD.64 R4, R4, 0x20                                                                           ?
+      R6   defined by LDG.E R6, desc[UR6][R8.64+0x28]                                   &wr=0x2                      ?
+      R7   defined by MOV R7, R6                                                                                     ?
+      R8   defined by LDC.64 R8, c[0x0][0x380]                                          &wr=0x3                      ?
+      R9   defined by LDC.64 R8, c[0x0][0x380]                                          &wr=0x3                      ?
+      R10  defined by IMAD.WIDE.U32 R10, R16, 0x4, R10                                  &req={2}                     ?
+      R11  defined by IMAD.WIDE.U32 R10, R16, 0x4, R10                                  &req={2}                     ?
+      R12  defined by LOP3.LUT R12, R13, 0x7fffffff, RZ, 0xc0, !PT                                                   ?
+      R13  defined by IADD3 R13, PT, PT, R6, R6, RZ                                     &req={2}                     ?
+      R14  defined by F2F.F32.F64 R14, R14                                              &wr=0x1                      ?
+      R15  defined by @!P0 MOV R15, R10                                                                               

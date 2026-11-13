@@ -1,0 +1,22 @@
+=== 1. this branch's binary (key b6fc3aea), the bundle dynamic with the splice: unflagged, run_mlp.py's flags, the flags without the splice (14:24:58Z)
+fix_unflagged rc=0: noops dissolved: 301584 tasks, 13200000 edges;window sizing: 301584 tasks, 21286952 words as one record (live_cap 524288, ring 67108864 words, successor ring 16777216 words);successor ring raised from 16777216 to 67108864 words;OK: 301584/301584 tasks, 88.767 ms;
+fix_flagged rc=0: noops dissolved: 301584 tasks, 13200000 edges;successor ring raised from 2097152 to 33554432 words;OK: 301584/301584 tasks, 350.808 ms;
+fix_flagged_nosplice rc=0: successor ring raised from 2097152 to 33554432 words;OK: 307200/307200 tasks, 82.438 ms;
+=== 2. the dynamic path (control) against the static one (candidate), the splice on, this branch's binary (14:25:18Z)
+GATE ok: h640-d4-r16: 160 buffers with prefix 'w.', tasks 307200 -> 307200; bitwise equal; largest relative difference 0.00e+00
+rep 0 h640-d4-r16 control: 88.83 ms
+rep 0 h640-d4-r16 cand: 79.57 ms
+rep 1 h640-d4-r16 control: 88.72 ms
+rep 1 h640-d4-r16 cand: 79.48 ms
+rep 2 h640-d4-r16 control: 88.74 ms
+rep 2 h640-d4-r16 cand: 79.47 ms
+rep 3 h640-d4-r16 control: 88.57 ms
+rep 3 h640-d4-r16 cand: 79.43 ms
+rep 4 h640-d4-r16 control: 88.61 ms
+rep 4 h640-d4-r16 cand: 79.63 ms
+=== 3. tests/static/run_check.sh, this branch's binary and tree (14:26:40Z)
+PASS
+PASS
+PASS: static schedule bitwise equal to the dynamic path; fused MLP step within its gates
+run_check rc=0
+RING2_GPU_END bad=0 2026-11-11T14:27:20Z

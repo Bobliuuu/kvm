@@ -1,0 +1,9 @@
+[kvm_exec][I] device NVIDIA A100-SXM4-80GB, 108 SMs, 1 resident blocks/SM with 147456 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] /root/reads/cefix/bundles/main_h72d2/bundle: 144 tasks, 589 edges, 1515 arg words
+[kvm_exec][I] fuse: component 0: fused: 3 steps, T=96 V=100 widths 48x72x72, 6 slices of 16 rows, 16 reduction owners
+[kvm_exec][I] fuse: shared-memory budget 40416 floats (161664 bytes) a fused block
+[kvm_exec][I] fuse: 1 run(s) fused, 0 unchanged; 137 tasks replaced by 73
+[kvm_exec][I] static schedule: 73 tasks -> 85 records on 20/108 workers, 499 of 532 edges cross workers, 71 records publish; runs partitioned: no; plan 216.6 us, work 1476.1 us (compiled in 0.000 s)
+[kvm_exec][I] static kernel: 1 resident blocks/SM, 147456 bytes of dynamic shared memory, launching 108 workers
+[kvm_exec][I] static run done: 73 tasks in 0.153 ms on 108 workers
+rc 0

@@ -66,7 +66,13 @@ import check_demo
 g = check_demo.golden_observations(__import__('pathlib').Path("$RUN/demo"), r'$OBS', __import__('pathlib').Path("$RUN/golden.json"))
 print('golden admissions:', len(g))
 PY
-else GOLDEN_ARGS="--no-golden --model $MODEL $( [ "$PRECISE" = 1 ] && echo --precise )"; say "CPU golden skipped (pure-Python CPU VM cannot run this model): serving is checked against PyTorch"; fi
+else
+  # an assignment takes its command substitution's exit status, so `$( [ "$PRECISE" = 1 ] && echo --precise )` here ended the run under
+  # set -e whenever PRECISE was 0, as it is in the large preset: build the flags with an if instead
+  GOLDEN_ARGS="--no-golden --model $MODEL"
+  if [ "$PRECISE" = 1 ]; then GOLDEN_ARGS="$GOLDEN_ARGS --precise"; fi
+  say "CPU golden skipped (pure-Python CPU VM cannot run this model): serving is checked against PyTorch"
+fi
 
 say "GPU: one lock hold ($LOCK_WAIT s max wait)"
 cat > "$RUN/gpu.sh" <<GPU

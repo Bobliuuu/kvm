@@ -1,0 +1,13 @@
+GATE ok: main-mlp72-r1: 6 buffers with prefix 'w.', tasks 9600 -> 9600; bitwise equal
+rep 0 main-mlp72-r1 control: 6.45 ms
+rep 0 main-mlp72-r1 cand: 6.42 ms
+rep 1 main-mlp72-r1 control: 6.46 ms
+rep 1 main-mlp72-r1 cand: 6.45 ms
+rep 2 main-mlp72-r1 control: 6.45 ms
+rep 2 main-mlp72-r1 cand: 6.45 ms
+rep 3 main-mlp72-r1 control: 6.46 ms
+rep 3 main-mlp72-r1 cand: 6.46 ms
+rep 4 main-mlp72-r1 control: 6.45 ms
+rep 4 main-mlp72-r1 cand: 6.45 ms
+{"row": "main-mlp72-r1", "control": "/root/reads/m39/main/panel/h72/bundle", "cand": "/root/reads/m39/main/panel/h72/bundle", "tasks": {"control": 9600, "cand": 9600}, "ms": {"control": {"median": 6.452, "best": 6.447, "all": [6.45, 6.46, 6.45, 6.46, 6.45]}, "cand": {"median": 6.449, "best": 6.423, "all": [6.42, 6.45, 6.45, 6.46, 6.45]}}, "paired_ratio_median": 1.0009292240978782, "best_ratio": 1.0037365716954694}
+rc 0

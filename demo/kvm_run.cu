@@ -515,6 +515,23 @@ class Runner {
     auto pow2 = [](long long v, long long lo, long long hi) { long long p = lo; while (p < v && p < hi) p <<= 1; return p; };
     cfg.live_cap = o_.live_cap ? o_.live_cap : (int)pow2(maxw, 1 << 12, 1 << 16);
     cfg.ring_words = (int)std::min<long long>(pow2(2 * maxwords, 1 << 16, 1 << 22), 1 << 22);
+    // As kvm_exec's CLI sizes its bundle: grow the capacities so each workload goes in as one record, not cut into windows that each drain (its
+    // argument words bounded by KVM_ARG_STRIDE a task, since its bundle is read only at admission). The ready rings grow with live_cap times the
+    // scheduler's classes (this runner never runs FIFO-only), so live_cap x classes stays within 2^20: at most the 4 GiB of rings the CLI's
+    // largest one-class record takes. A workload above that streams in windows, as before. A --live-cap or --max-tasks keeps the user's sizing.
+    if (!o_.live_cap && !o_.max_tasks) {
+      const long long classes = o_.sched != "off" ? std::max<long long>(1, (long long)m_.classes.size()) : 1;
+      long long max_live = 1 << 20;
+      while (max_live * classes > (1 << 20)) max_live >>= 1;
+      for (auto& w : m_.workloads) {
+        if (cfg.size_for_one_record(w.tasks, w.edges, w.tasks * KVM_ARG_STRIDE, max_live))
+          KLOG(2, "window sizing for workload %s: %lld tasks, %lld edges as one record (live_cap %d, ring %d words, successor ring %u words)", w.name.c_str(),
+               w.tasks, w.edges, cfg.live_cap, cfg.ring_words, cfg.succ_cap);
+        else if (w.tasks > cfg.live_cap)
+          KLOG(1, "workload %s: %lld tasks stream in windows of live_cap %d (one record would need more than %lld live slots for %lld classes)", w.name.c_str(),
+               w.tasks, cfg.live_cap, max_live, classes);
+      }
+    }
     cfg.max_tasks = o_.max_tasks ? o_.max_tasks : (int)std::max<long long>(pow2(total + cfg.live_cap, 1 << 15, 1 << 21), 2 * cfg.live_cap);
     cfg.stack_bytes = stack_bytes();
     cfg.blocks = o_.blocks;

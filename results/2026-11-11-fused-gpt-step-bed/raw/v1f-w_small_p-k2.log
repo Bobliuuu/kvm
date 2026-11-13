@@ -1,0 +1,22 @@
+[fgpt_bed 00:32:31Z] VM reference: cached vm-cdd0fb5d5704c230-k2.json
+[fgpt_bed 00:32:32Z] model: L 2, d 64, heads 4 x 16, MLP 256, V 128, 2 x 64 rows; 2 steps; work <work>/fgpt-bed-w_small_p-k2
+[fgpt_bed 00:32:32Z] G 16: <work>/bin/fgpt_bed_sm120 <work>/fgpt-bed-w_small_p-k2 16
+[fgpt_bed 00:32:33Z]   fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 16, 2 steps, shared memory 96224 B a member, scratch 1.86 MB, 1 member(s) an SM at most
+[fgpt_bed 00:32:33Z]   fgpt_bed: warmed the GPU for 506 ms
+[fgpt_bed 00:32:33Z]   fgpt_bed: run 4.282 ms with its launch; in the kernel 297.9 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 16 of 16 members finished, step counter 0 -> 2
+[fgpt_bed 00:32:33Z] G 16: losses: 4.878237, 4.396643 (VM 4.878237, 4.396643): worst 1.08e-07 relative, 1/count off by 0.0e+00: ok
+[fgpt_bed 00:32:33Z] G 16: gradients (last step): worst 5.52e-05 of its tensor's scale (w.gpt.h0.mlp.fc1.b): ok
+[fgpt_bed 00:32:33Z] G 16: first moments (last step): worst 7.32e-05 of its tensor's scale (w.gpt.h0.mlp.fc1.b): ok
+[fgpt_bed 00:32:33Z] G 16: second moments (last step): worst 2.17e-05 of its tensor's scale (w.gpt.h1.n1.g): ok
+[fgpt_bed 00:32:33Z] G 16: weights (reported): largest difference 0.00 x lr (w.gpt.head.w)
+[fgpt_bed 00:32:33Z] G 32: <work>/bin/fgpt_bed_sm120 <work>/fgpt-bed-w_small_p-k2 32
+[fgpt_bed 00:32:34Z]   fgpt_bed: NVIDIA GeForce RTX 5070 Laptop GPU (sm_120, 36 SMs), G 32, 2 steps, shared memory 96224 B a member, scratch 2.45 MB, 1 member(s) an SM at most
+[fgpt_bed 00:32:34Z]   fgpt_bed: warmed the GPU for 504 ms
+[fgpt_bed 00:32:34Z]   fgpt_bed: run 4.602 ms with its launch; in the kernel 300.6 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 32 of 32 members finished, step counter 0 -> 2
+[fgpt_bed 00:32:34Z] G 32: losses: 4.878237, 4.396643 (VM 4.878237, 4.396643): worst 1.08e-07 relative, 1/count off by 0.0e+00: ok
+[fgpt_bed 00:32:34Z] G 32: gradients (last step): worst 6.07e-05 of its tensor's scale (w.gpt.h0.mlp.fc1.b): ok
+[fgpt_bed 00:32:34Z] G 32: first moments (last step): worst 8.04e-05 of its tensor's scale (w.gpt.h0.mlp.fc1.b): ok
+[fgpt_bed 00:32:34Z] G 32: second moments (last step): worst 1.60e-05 of its tensor's scale (w.gpt.h0.mlp.fc1.b): ok
+[fgpt_bed 00:32:34Z] G 32: weights (reported): largest difference 0.00 x lr (w.gpt.head.w)
+[fgpt_bed 00:32:34Z] decomposition G 32 against G 16: losses 0.00e+00, gradients 1.74e-05 of scale: ok
+[fgpt_bed 00:32:34Z] OK

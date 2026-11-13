@@ -1,0 +1,20 @@
+tiny [] best 16.601 ms
+tiny [--comm-us 0.5] best 16.21 ms
+tiny [--comm-us 1] best 16.201 ms
+tiny [--comm-us 2.5] best 16.162 ms
+tiny [--comm-us 4] best 16.674 ms
+tiny [--workers 12] best 16.34 ms
+tiny [--workers 16] best 15.919 ms
+tiny [--workers 32] best 16.017 ms
+tiny [--workers 48] best 16.428 ms
+tiny [--workers 107] best 15.455 ms
+small [] best 28.446 ms
+small [--comm-us 0.5] best 28.524 ms
+small [--comm-us 1] best 28.455 ms
+small [--comm-us 2.5] best 28.424 ms
+small [--comm-us 4] best 31.18 ms
+small [--workers 12] best 40.099 ms
+small [--workers 16] best 37.785 ms
+small [--workers 32] best 31.236 ms
+small [--workers 48] best 30.085 ms
+small [--workers 107] best 28.724 ms

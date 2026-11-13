@@ -52,13 +52,17 @@ constexpr int kRowMax = KVM_FGPT1_ROW_MAX;
 using Layout = KvmFgpt1Layout;   // kvm_fgpt1.h: the layout, host and device
 // The form's GEMMs: whole tiles always (kvm_fgpt1_check_layout requires them), so their epilogues take no bounds branches (two
 // epilogue edits of a few instructions an element moved 1.2 us each, the cost of elements a lane runs one at a time between branches).
-template <bool TA, bool TB, class Epi>
-__device__ __forceinline__ GemmJob<TA, TB, Epi, true> fjob(const float* A, int lda, const float* B, int ldb, int M, int N, int K, bool prec, Epi epi) {
+// RND (kvm_fused_gpt.cuh's mma_frag): bit 1 when A's values were stored rounded to TF32 by their producer, bit 2 for B's. The GEMM-only
+// operands are (each written rounded in a 1xTF32 run, exact in a 3xTF32 one): LN1's, LN2's and the final LN's outputs in NH (and their
+// recomputations in the backward), GELU's output U, and the head's dL. Each is read by GEMMs alone, so the rounding moves from every use
+// to its one store and every product keeps its bits.
+template <bool TA, bool TB, int RND = 0, class Epi>
+__device__ __forceinline__ GemmJob<TA, TB, Epi, true, RND> fjob(const float* A, int lda, const float* B, int ldb, int M, int N, int K, bool prec, Epi epi) {
   return {A, lda, B, ldb, M, N, K, prec, epi};
 }
-template <bool TA, bool TB, class Epi>
+template <bool TA, bool TB, int RND = 0, class Epi>
 __device__ __forceinline__ void fgemm(const float* A, int lda, const float* B, int ldb, int M, int N, int K, bool prec, Epi epi) {
-  gemm<TA, TB, NT, true>(A, lda, B, ldb, M, N, K, prec, epi);
+  gemm<TA, TB, NT, true, RND>(A, lda, B, ldb, M, N, K, prec, epi);
 }
 // This instance's layout: its own mask's logits pitch.
 KVM_FGPT_HD inline Layout kvm_fgpt1_layout(int N, int T, int d, int H, int F, int V, int L) {
@@ -77,7 +81,8 @@ __device__ __forceinline__ void warp_max2(float& a, float& b) {
 // and output so the output is a padded GEMM operand. A warp runs two of its rows at once (row r and r + NW, each its own chain, the same
 // expressions and shuffle trees), so their latencies overlap. Ends with __syncthreads.
 template <int BT = NT>
-__device__ void ln_fwd_p(const float* x, int ldx, const float* g, const float* be, float* y, int ldy, float* mean, float* rstd, int N, int d, float eps) {
+__device__ void ln_fwd_p(const float* x, int ldx, const float* g, const float* be, float* y, int ldy, float* mean, float* rstd, int N, int d, float eps,
+                         bool rnd = false) {   // rnd: the outputs rounded to TF32 (a 1xTF32 run's GEMM-only operand, fjob's RND)
   constexpr int NWB = BT / 32;
   const int w = threadIdx.x >> 5, lane = threadIdx.x & 31;
   for (int r = w; r < N; r += 2 * NWB) {
@@ -94,8 +99,9 @@ __device__ void ln_fwd_p(const float* x, int ldx, const float* g, const float* b
     warp_sum2(qa, qb);
     const float rsa = 1.f / sqrtf(qa / (float)d + eps), rsb = 1.f / sqrtf(qb / (float)d + eps);
     for (int c = lane; c < d; c += 32) {
-      y[(size_t)r * ldy + c] = (xa[c] - mua) * rsa * g[c] + be[c];
-      if (two) y[(size_t)r2 * ldy + c] = (xb[c] - mub) * rsb * g[c] + be[c];
+      const float va = (xa[c] - mua) * rsa * g[c] + be[c];
+      y[(size_t)r * ldy + c] = rnd ? tf32f(va) : va;
+      if (two) { const float vb = (xb[c] - mub) * rsb * g[c] + be[c]; y[(size_t)r2 * ldy + c] = rnd ? tf32f(vb) : vb; }
     }
     if (lane == 0) { mean[r] = mua; rstd[r] = rsa; if (two) { mean[r2] = mub; rstd[r2] = rsb; } }
   }
@@ -283,7 +289,8 @@ __device__ __forceinline__ void ce_rows_fast(const float* logits, int ldV, int N
 // expressions, element for element, and stores them there, each lane its own groups. xv4 must capture by value. d a multiple of 4, at
 // most 128 (the caller checks). Whole warps enter the loop. Ends with __syncthreads.
 template <class XV4>
-__device__ void ln_rows_fast(XV4 xv4, const float* g, const float* be, float* y, int ldy, float* mean, float* rstd, int N, int d, float eps) {
+__device__ void ln_rows_fast(XV4 xv4, const float* g, const float* be, float* y, int ldy, float* mean, float* rstd, int N, int d, float eps,
+                             bool rnd = false) {   // rnd: the outputs rounded to TF32 (a 1xTF32 run's GEMM-only operand, fjob's RND)
   constexpr int LPR = 8, G4 = KVM_FGPT1_MAXD / 32;   // 16-byte groups a lane, LPR x 4 x G4 = KVM_FGPT1_MAXD columns at most
   const float inv_d = 1.f / (float)d;
   const int U = (LPR * N + 31) & ~31;
@@ -313,8 +320,9 @@ __device__ void ln_rows_fast(XV4 xv4, const float* g, const float* be, float* y,
         const int c = 4 * (j + LPR * k);
         if (c < d) {
           const float4 gg = *reinterpret_cast<const float4*>(g + c), bb = *reinterpret_cast<const float4*>(be + c);
-          *reinterpret_cast<float4*>(y + (size_t)r * ldy + c) =
-              make_float4((x[k].x - mu) * rs * gg.x + bb.x, (x[k].y - mu) * rs * gg.y + bb.y, (x[k].z - mu) * rs * gg.z + bb.z, (x[k].w - mu) * rs * gg.w + bb.w);
+          float4 o = make_float4((x[k].x - mu) * rs * gg.x + bb.x, (x[k].y - mu) * rs * gg.y + bb.y, (x[k].z - mu) * rs * gg.z + bb.z, (x[k].w - mu) * rs * gg.w + bb.w);
+          if (rnd) o = make_float4(tf32f(o.x), tf32f(o.y), tf32f(o.z), tf32f(o.w));
+          *reinterpret_cast<float4*>(y + (size_t)r * ldy + c) = o;
         }
       }
       if (j == 0) { mean[r] = mu; rstd[r] = rs; }
@@ -449,16 +457,16 @@ __device__ float forward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
         a.x += mv.x; a.y += mv.y; a.z += mv.z; a.w += mv.w;
         *xr = a;
         return a;
-      }, P(lay(l, KVM_FGPT_R_N1G)), P(lay(l, KVM_FGPT_R_N1B)), h1, y.ldd, sm + y.st1[l], sm + y.st1[l] + N, N, D, d.ln_eps);
+      }, P(lay(l, KVM_FGPT_R_N1G)), P(lay(l, KVM_FGPT_R_N1B)), h1, y.ldd, sm + y.st1[l], sm + y.st1[l] + N, N, D, d.ln_eps, !prec);
     } else {
-      ln_fwd_p(x, D, P(lay(l, KVM_FGPT_R_N1G)), P(lay(l, KVM_FGPT_R_N1B)), h1, y.ldd, sm + y.st1[l], sm + y.st1[l] + N, N, D, d.ln_eps);
+      ln_fwd_p(x, D, P(lay(l, KVM_FGPT_R_N1G)), P(lay(l, KVM_FGPT_R_N1B)), h1, y.ldd, sm + y.st1[l], sm + y.st1[l] + N, N, D, d.ln_eps, !prec);
     }
     ph(MK_LN1);
     // q | k | v of every row and head: one GEMM over the layer's [d x 3d] weights, the bias in the epilogue (run: a + bias[n], per head)
     {
       const float* const bq = sm + y.bqkv + (size_t)l * 3 * D;
       const int ldq = y.ldq;   // epilogues capture plain locals by value: a reference capture puts the local on the stack (L2 here)
-      fgemm<false, false>(h1, y.ldd, sm + y.wqkv + (size_t)l * y.wqkv_stride, kvm_fgpt_ldmn(3 * D), N, 3 * D, D, prec,
+      fgemm<false, false, 1>(h1, y.ldd, sm + y.wqkv + (size_t)l * y.wqkv_stride, kvm_fgpt_ldmn(3 * D), N, 3 * D, D, prec,
                          [=](int m, int n, float a) { qkv[m * ldq + n] = a + bq[n]; });
     }
     ph(MK_UF_QKV);
@@ -526,7 +534,7 @@ __device__ float forward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
         a.x += xv.x; a.y += xv.y; a.z += xv.z; a.w += xv.w;
         *reinterpret_cast<float4*>(xm + e) = a;
         return a;
-      }, P(lay(l, KVM_FGPT_R_N2G)), P(lay(l, KVM_FGPT_R_N2B)), sm + y.nh, y.ldd, sm + y.st2[l], sm + y.st2[l] + N, N, D, d.ln_eps);
+      }, P(lay(l, KVM_FGPT_R_N2G)), P(lay(l, KVM_FGPT_R_N2B)), sm + y.nh, y.ldd, sm + y.st2[l], sm + y.st2[l] + N, N, D, d.ln_eps, !prec);
     } else {
       {
         const float* const bo = P(lay(l, KVM_FGPT_R_BO));
@@ -541,7 +549,7 @@ __device__ float forward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
         }
       }
       __syncthreads();
-      ln_fwd_p(sm + y.xm[l], D, P(lay(l, KVM_FGPT_R_N2G)), P(lay(l, KVM_FGPT_R_N2B)), sm + y.nh, y.ldd, sm + y.st2[l], sm + y.st2[l] + N, N, D, d.ln_eps);
+      ln_fwd_p(sm + y.xm[l], D, P(lay(l, KVM_FGPT_R_N2G)), P(lay(l, KVM_FGPT_R_N2B)), sm + y.nh, y.ldd, sm + y.st2[l], sm + y.st2[l] + N, N, D, d.ln_eps, !prec);
     }
     ph(MK_LN2);
     // fc1 + b1, GELU; fc2 over all F (run at G 1: one owner of every column), then the bias and the residual (rs_sum of one partial)
@@ -550,19 +558,22 @@ __device__ float forward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
       const float* const b1 = P(lay(l, KVM_FGPT_R_B1));
       const int ldF = y.ldF;
       const bool kept = kC3 && l == L - 1;   // C3: the last layer's U stays in A for its backward, which needs only gelu'(z): pre keeps that
-      fgemm<false, false>(sm + y.nh, y.ldd, P(lay(l, KVM_FGPT_R_W1)), y.pld[lay(l, KVM_FGPT_R_W1)], N, F, D, prec, [=](int m, int n, float a) {
+      const bool rnd = !prec;   // U is fc2's and dW2's operand alone: stored rounded in a 1xTF32 run
+      fgemm<false, false, 1>(sm + y.nh, y.ldd, P(lay(l, KVM_FGPT_R_W1)), y.pld[lay(l, KVM_FGPT_R_W1)], N, F, D, prec, [=](int m, int n, float a) {
         const float z = a + b1[n];
+        float g;
         if (kept) {
           const float t = gelu_tanh(z);
           pre[(size_t)m * ldF + n] = gelu_grad_of(z, t);
-          if constexpr ((kFast & 8) != 0) u[m * ldF + n] = gelu_fast(z); else u[m * ldF + n] = gelu_of(z, t);
+          if constexpr ((kFast & 8) != 0) g = gelu_fast(z); else g = gelu_of(z, t);
         } else {
           pre[(size_t)m * ldF + n] = z;
-          if constexpr ((kFast & 8) != 0) u[m * ldF + n] = gelu_fast(z); else u[m * ldF + n] = gelu(z);
+          if constexpr ((kFast & 8) != 0) g = gelu_fast(z); else g = gelu(z);
         }
+        u[m * ldF + n] = rnd ? tf32f(g) : g;
       });
       float* const pt = sm + y.part;
-      fgemm<false, false>(u, y.ldF, P(lay(l, KVM_FGPT_R_W2)), y.pld[lay(l, KVM_FGPT_R_W2)], N, D, F, prec, [=](int m, int n, float a) { pt[(size_t)m * D + n] = a; });
+      fgemm<false, false, 1>(u, y.ldF, P(lay(l, KVM_FGPT_R_W2)), y.pld[lay(l, KVM_FGPT_R_W2)], N, D, F, prec, [=](int m, int n, float a) { pt[(size_t)m * D + n] = a; });
     }
     ph(MK_MLP);
     if constexpr ((kFast & 4) == 0) {   // FAST & 4: the next norm's pass sums it
@@ -594,14 +605,14 @@ __device__ float forward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
       a.x += mv.x; a.y += mv.y; a.z += mv.z; a.w += mv.w;
       *reinterpret_cast<float4*>(xn + r * D + c) = a;
       return a;
-    }, P(nfg), P(nfb), sm + y.nh, y.ldd, sm + y.stf, sm + y.stf + N, N, D, d.ln_eps);
+    }, P(nfg), P(nfb), sm + y.nh, y.ldd, sm + y.stf, sm + y.stf + N, N, D, d.ln_eps, !prec);
   } else {
-    ln_fwd_p(sm + y.x[L], D, P(nfg), P(nfb), sm + y.nh, y.ldd, sm + y.stf, sm + y.stf + N, N, D, d.ln_eps);
+    ln_fwd_p(sm + y.x[L], D, P(nfg), P(nfb), sm + y.nh, y.ldd, sm + y.stf, sm + y.stf + N, N, D, d.ln_eps, !prec);
   }
   ph(MK_LNF);
   float* const logits = sm + y.part;                                                  // the logits in region PART (fc2's partial is summed)
   const int ldV = y.ldV;
-  fgemm<false, false>(sm + y.nh, y.ldd, sm + y.head, y.pld[head], N, V, D, prec, [=](int m, int n, float a) { logits[(size_t)m * ldV + n] = a; });
+  fgemm<false, false, 1>(sm + y.nh, y.ldd, sm + y.head, y.pld[head], N, V, D, prec, [=](int m, int n, float a) { logits[(size_t)m * ldV + n] = a; });
   float* const lse = sm + y.lse; float* const tl = sm + y.tl;
   if constexpr ((kFast & 2) != 0) ce_rows_fast(logits, ldV, N, V, tgt, lse, tl);
   else ce_rows(logits, N, V, tgt, lse, tl);
@@ -752,7 +763,7 @@ template <class PH>
 __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int step, float inv_n, PH& ph) {
   const int tid = threadIdx.x;
   const int N = d.N, T = d.T, B = d.B, D = d.d, H = d.H, hd = d.hd, F = d.F, V = d.V, L = d.L;
-  const bool prec = (d.mm_numerics & 16) != 0;
+  const bool prec = (d.mm_numerics & 16) != 0, rnd = !prec;   // rnd: the GEMM-only operands are stored rounded (fjob's RND)
   const int* const tgt = reinterpret_cast<const int*>(sm + y.tgt) + (step & 1) * N;
   const int* const ids = reinterpret_cast<const int*>(sm + y.ids) + (step & 1) * N;
   const float* const rtab = sm + y.rtab;
@@ -770,12 +781,13 @@ __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
     const float* const lse = sm + y.lse;
     grid_loop(N16, ldl, [=](int r, int c) {
       const int tg = r < N ? tgt[r] : -1;
-      DL[r * ldl + c] = tg == -1 || c >= V ? 0.f : (__expf(DL[r * ldl + c] - lse[r]) - (c == tg ? 1.f : 0.f)) * inv_n;
+      const float g = tg == -1 || c >= V ? 0.f : (__expf(DL[r * ldl + c] - lse[r]) - (c == tg ? 1.f : 0.f)) * inv_n;
+      DL[r * ldl + c] = rnd ? tf32f(g) : g;
     });
     __syncthreads();
     float* const gh = G(hs); const float* const W = sm + y.head; const int ldw = y.pld[hs];
-    gemm_par(fjob<true, false>(nh, ldd, DL, ldl, D, V, N, prec, [=](int m, int n, float a) { gh[(size_t)m * V + n] = a; }),
-             fjob<false, true>(DL, ldl, W, ldw, N, D, V, prec, [=](int m, int n, float a) { dy[(size_t)m * D + n] = a; }));
+    gemm_par(fjob<true, false, 3>(nh, ldd, DL, ldl, D, V, N, prec, [=](int m, int n, float a) { gh[(size_t)m * V + n] = a; }),
+             fjob<false, true, 1>(DL, ldl, W, ldw, N, D, V, prec, [=](int m, int n, float a) { dy[(size_t)m * D + n] = a; }));
     (void)hs;
   }
   ph(MK_HEADB);
@@ -792,13 +804,15 @@ __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
     if (l != L - 1) {   // the last layer's U is still in A from the forward (fc2's operand); an earlier layer's is recomputed
       grid_loop(N16, ldF, [=](int r, int c) {
         const float z = pre[r * ldF + c];
-        if constexpr ((kFast & 8) != 0) U[r * ldF + c] = r < N && c < F ? gelu_fast(z) : 0.f; else U[r * ldF + c] = r < N && c < F ? gelu(z) : 0.f;
+        float g;
+        if constexpr ((kFast & 8) != 0) g = r < N && c < F ? gelu_fast(z) : 0.f; else g = r < N && c < F ? gelu(z) : 0.f;
+        U[r * ldF + c] = rnd ? tf32f(g) : g;
       });
       __syncthreads();
     }
     {
       float* const gw2 = G(lay(l, KVM_FGPT_R_W2)); const float* const W2 = P(lay(l, KVM_FGPT_R_W2)); const int ldw2 = y.pld[lay(l, KVM_FGPT_R_W2)];
-      gemm_par(fjob<true, false>(U, ldF, gx, D, F, D, N, prec, [=](int m, int n, float a) { gw2[(size_t)m * D + n] = a; }),
+      gemm_par(fjob<true, false, 1>(U, ldF, gx, D, F, D, N, prec, [=](int m, int n, float a) { gw2[(size_t)m * D + n] = a; }),
                fjob<false, true>(gx, D, W2, ldw2, N, F, D, prec, [=](int m, int n, float a) {
                  const float q = pre[m * ldF + n];   // the last layer's pre holds gelu'(z) from the forward, an earlier layer's z
                  pre[m * ldF + n] = a * (l == L - 1 ? q : gelu_grad(q));
@@ -810,11 +824,11 @@ __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
     {
       const float* const xm = sm + y.xm[l]; const float* const st = sm + y.st2[l];
       const float* const g2 = P(lay(l, KVM_FGPT_R_N2G)); const float* const b2n = P(lay(l, KVM_FGPT_R_N2B));
-      grid_loop(N, D, [=](int r, int c) { nh[r * ldd + c] = (xm[r * D + c] - st[r]) * st[N + r] * g2[c] + b2n[c]; });
+      grid_loop(N, D, [=](int r, int c) { const float v = (xm[r * D + c] - st[r]) * st[N + r] * g2[c] + b2n[c]; nh[r * ldd + c] = rnd ? tf32f(v) : v; });
       __syncthreads();
       ph(MK_MLPB);   // db1, LN2's output again
       float* const gw1 = G(lay(l, KVM_FGPT_R_W1)); const float* const W1 = P(lay(l, KVM_FGPT_R_W1)); const int ldw1 = y.pld[lay(l, KVM_FGPT_R_W1)];
-      gemm_par(fjob<true, false>(nh, ldd, pre, ldF, D, F, N, prec, [=](int m, int n, float a) { gw1[(size_t)m * F + n] = a; }),
+      gemm_par(fjob<true, false, 1>(nh, ldd, pre, ldF, D, F, N, prec, [=](int m, int n, float a) { gw1[(size_t)m * F + n] = a; }),
                fjob<false, true>(pre, ldF, W1, ldw1, N, D, F, prec, [=](int m, int n, float a) { dy[(size_t)m * D + n] = a; }));
       ph(MK_X_DH2);   // dW1 | dh2
       // LN2's backward, added to gx (the gradient at xm)
@@ -887,7 +901,7 @@ __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
         }
         const float* const x = sm + y.x[l]; const float* const st = sm + y.st1[l];   // LN1's output again into NH, in the same pass
         const float* const g1 = P(lay(l, KVM_FGPT_R_N1G)); const float* const b1n = P(lay(l, KVM_FGPT_R_N1B));
-        grid_loop(N, D, [=](int r, int c) { nh[r * ldd + c] = (x[r * D + c] - st[r]) * st[N + r] * g1[c] + b1n[c]; });
+        grid_loop(N, D, [=](int r, int c) { const float v = (x[r * D + c] - st[r]) * st[N + r] * g1[c] + b1n[c]; nh[r * ldd + c] = rnd ? tf32f(v) : v; });
         __syncthreads();
         h1_ready = true;
       }
@@ -929,12 +943,12 @@ __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
       const float* const x = sm + y.x[l]; const float* const st = sm + y.st1[l];
       const float* const g1 = P(lay(l, KVM_FGPT_R_N1G)); const float* const b1n = P(lay(l, KVM_FGPT_R_N1B));
       if (!h1_ready) {
-        grid_loop(N, D, [=](int r, int c) { nh[r * ldd + c] = (x[r * D + c] - st[r]) * st[N + r] * g1[c] + b1n[c]; });
+        grid_loop(N, D, [=](int r, int c) { const float v = (x[r * D + c] - st[r]) * st[N + r] * g1[c] + b1n[c]; nh[r * ldd + c] = rnd ? tf32f(v) : v; });
         __syncthreads();
       }
       float* const gq = G(lay(l, KVM_FGPT_R_WQ)); float* const gk = G(lay(l, KVM_FGPT_R_WK)); float* const gv = G(lay(l, KVM_FGPT_R_WV));
       const float* const Wqkv = sm + y.wqkv + (size_t)l * y.wqkv_stride; const int ldw = kvm_fgpt_ldmn(3 * D);
-      gemm_par(fjob<true, false>(nh, ldd, dqkv, ldq, D, 3 * D, N, prec, [=](int m, int n, float a) {
+      gemm_par(fjob<true, false, 1>(nh, ldd, dqkv, ldq, D, 3 * D, N, prec, [=](int m, int n, float a) {
                  const int part = (n >= D) + (n >= 2 * D);   // q, k or v, by compares: no run-time modulo an element
                  float* const o = part == 0 ? gq : part == 1 ? gk : gv;
                  o[(size_t)m * D + (n - part * D)] = a;

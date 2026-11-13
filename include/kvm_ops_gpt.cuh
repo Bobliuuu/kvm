@@ -52,10 +52,23 @@ static_assert(KVM_GPT_THREADS / 32 * 16 == KVM_GPT_ATTN_ROWS, "attention: one m1
 #ifndef KVM_GPT_TILE64_NST
 #define KVM_GPT_TILE64_NST 3    // pipeline stages of the 64x64 tile (a 4th stage measured no gain at the panel's shapes)
 #endif
-// TileStream (per-thread copy pointers precomputed once) against per-chunk address arithmetic: it starts a tile sooner (first-stage wait, a short K's cost) and streams slower per K slab (the long K's cost).
-// Measured, 64x64 tile: chain 9.6 against 13.6 us at K=72, 13.7 against 14.5 at K=96, 61 against 51 at K=768, 370 against 249 at K=4096; so K <= KMAX streams.
+// TileStream (per-thread copy pointers precomputed once) against per-chunk address arithmetic. In a tile of its own (A100, one block
+// per SM, Nov 10) the stream is the faster loader at every K: 1,146-1,159 against 1,545-1,578 cycles a BK-32 slab of the 64x64 tile,
+// NN, NT and TN at K 192-4096 (-25 to -27%). Inside the whole-program executor it measured slower at long K (Nov 9: 61 against 51 us at
+// K=768, 370 against 249 at K=4096 on a per-task chain), where that build's K-loop reloaded 20-26 spilled values a slab: the stream's
+// per-thread pointers are live across the loop. Every K streams now; -DKVM_GPT_TILE64_STREAM_KMAX=127 restores the short-K-only rule.
 #ifndef KVM_GPT_TILE64_STREAM_KMAX
-#define KVM_GPT_TILE64_STREAM_KMAX 127
+#define KVM_GPT_TILE64_STREAM_KMAX 0x40000000
+#endif
+#ifndef KVM_GPT_TILE64_RND_LOAD
+#define KVM_GPT_TILE64_RND_LOAD 1   // 1: the rounded 64x64 tile (1xTF32) whose operands both stream reads each slab from L2 into registers one
+                                    // slab ahead, rounds it there and stores it rounded into two shared stages. 0: it rounds each landed slab
+                                    // in a pass over shared memory, which reads and rewrites the slab's 16 KiB; the tile is bound by shared
+                                    // traffic, so no overlap hides that pass. The MMAs read the same values either way, so results are bitwise
+                                    // the same. One slab, not two: in the executor's kernels, whose register budgets are tight, ptxas spilled
+                                    // one of two in-flight slabs to local memory as it landed (half the loads), which made each pass wait on
+                                    // L2; one slab in flight lands every load in registers. A100, one tile: 898 / 969 / 887 cycles a BK-32 slab
+                                    // (NN/NT/TN) against 1,153 / 1,147 / 1,159 streaming with the pass.
 #endif
 #ifndef KVM_GPT_BIG_PIPE2
 #define KVM_GPT_BIG_PIPE2 1   // 1: the truncated big tile's k-step pipeline (see mm_tile_big)
@@ -474,6 +487,11 @@ KVM_GPT_DEVI void cp_async16(float* dst, const float* src, int src_bytes = 16) {
 }
 KVM_GPT_DEVI void cp_commit() { asm volatile("cp.async.commit_group;\n" ::); }
 template <int N> KVM_GPT_DEVI void cp_wait() { asm volatile("cp.async.wait_group %0;\n" ::"n"(N)); }
+KVM_GPT_DEVI uint4 ld_cg16(const float* src) {   // 16 B from L2, not L1, as cp.async.cg reads: L1 is not coherent across the persistent kernel's SMs
+    uint4 v;
+    asm volatile("ld.global.cg.v4.u32 {%0, %1, %2, %3}, [%4];\n" : "=r"(v.x), "=r"(v.y), "=r"(v.z), "=r"(v.w) : "l"(src));
+    return v;
+}
 // fp32 -> tf32 with round-to-nearest (ties away) in two integer ops (the same value as cvt.rna.tf32.f32, which runs at 1/4 of the
 // integer rate and made the tensor-core loops conversion bound). A carry out of the mantissa bumps the exponent, as it should.
 KVM_GPT_DEVI unsigned f2tf32(float x) {
@@ -598,6 +616,24 @@ struct TileStream {
             uint4 v = *d;
             v.x = tf32_rnd(v.x); v.y = tf32_rnd(v.y); v.z = tf32_rnd(v.z); v.w = tf32_rnd(v.w);
             *d = v;
+        }
+    }
+    // Round-on-load (KVM_GPT_TILE64_RND_LOAD): load() reads the next stage's chunks of this thread into registers, the chunks issue() would
+    // zero-fill as zero; store_rounded() writes them rounded where issue() would have copied them, as cvt() would have left them.
+    KVM_GPT_DEVI void load(uint4 (&r)[NC], int kv) {
+#pragma unroll
+        for (int s = 0; s < NC; s++) {
+            const int by = kv >= BKV ? bytes[s] : (KC ? c40 + 4 <= kv : row0 + s * RSTEP < kv) ? bytes[s] : 0;
+            r[s] = by ? ld_cg16(p + s * rstride) : make_uint4(0u, 0u, 0u, 0u);
+        }
+        p += adv;
+    }
+    KVM_GPT_DEVI void store_rounded(float* dst, const uint4 (&r)[NC]) const {
+#pragma unroll
+        for (int s = 0; s < NC; s++) {
+            uint4 v = r[s];
+            v.x = tf32_rnd(v.x); v.y = tf32_rnd(v.y); v.z = tf32_rnd(v.z); v.w = tf32_rnd(v.w);
+            *reinterpret_cast<uint4*>(dst + s0 + s * RSTEP * COLS) = v;
         }
     }
 };
@@ -808,55 +844,71 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
             if (TB) tile_bf<true, 64, 32>(Bs, Bh, ldb, n0, kk, N, K); else tile_bf<false, 32, 64>(Bs, Bh, ldb, kk, n0, K, N); }
         else if (TB) tile_async<true, 64, 32>(Bs, B, ldb, n0, kk, N, K, vb); else tile_async<false, 32, 64>(Bs, B, ldb, kk, n0, K, N, vb);
     };
-#pragma unroll
-    for (int p = 0; p < NST - 1; p++) { if (p < nk) issue(p); cp_commit(); }   // always commit, empty groups included, so wait_group counts stay uniform
-    for (int it = 0; it < nk; it++) {
-        cp_wait<NST - 2>();
-        if constexpr (!PREC && !BF && !RZ && KVM_GPT_SMEM_CVT) {   // round the operands once per CTA, in shared memory (see tile_cvt)
-            float* Aw = sm + (it % NST) * STAGE; float* Bw = Aw + TILE;
-            if (fa) sa.cvt(Aw); else if (TA) tile_cvt<false, 32, 64>(Aw); else tile_cvt<true, 64, 32>(Aw);
-            if (fb) sb.cvt(Bw); else if (TB) tile_cvt<true, 64, 32>(Bw); else tile_cvt<false, 32, 64>(Bw);
+    constexpr bool RL = !PREC && !BF && !RZ && KVM_GPT_SMEM_CVT && KVM_GPT_TILE64_RND_LOAD;
+    if (RL && fa && fb) {   // round-on-load (KVM_GPT_TILE64_RND_LOAD): slab it is stored rounded into stage it & 1 from the registers it
+                            // was loaded into, slab it + 1 is loaded into the same registers, and the slab's barrier publishes it. Stage
+                            // it & 1 last held slab it - 2, which every warp finished before slab it - 1's barrier.
+        uint4 qa[SA::NC], qb[SB::NC];
+        sa.load(qa, min(BK, K)); sb.load(qb, min(BK, K));
+        for (int it = 0; it < nk; it++) {
+            float* As = sm + (it & 1) * STAGE; float* Bs = As + TILE;
+            sa.store_rounded(As, qa); sb.store_rounded(Bs, qb);
+            if (it + 1 < nk) { const int kv = min(BK, K - (it + 1) * BK); sa.load(qa, kv); sb.load(qb, kv); }
+            __syncthreads();
+            if (it == 0) KVM_GPT_PROBE(1);
+            tile_slab<TA, TB, PREC, RZ, 32, TM, TN, 2, 4, 2>(As, Bs, acc, wmi * 32, wni * 32, kh * 16);
         }
-        __syncthreads();   // tile `it` landed everywhere; everyone finished the slab that used the stage refilled next
-        if (it == 0) KVM_GPT_PROBE(1);
-        if (it + NST - 1 < nk) issue(it + NST - 1);
-        cp_commit();
-        const float* As = sm + (it % NST) * STAGE; const float* Bs = As + TILE;
-        if constexpr (BF) {
-            const int kk = kh * 16;
-            unsigned af_[2][4], bf_[4][2];
+    } else {
 #pragma unroll
-            for (int i = 0; i < 2; i++) {
-                const int mb = wmi * 32 + i * 16;
-                if (!TA) {   // A [m][k]: (row, k..k+1) is an adjacent float2
+        for (int p = 0; p < NST - 1; p++) { if (p < nk) issue(p); cp_commit(); }   // always commit, empty groups included, so wait_group counts stay uniform
+        for (int it = 0; it < nk; it++) {
+            cp_wait<NST - 2>();
+            if constexpr (!PREC && !BF && !RZ && KVM_GPT_SMEM_CVT) {   // round the operands once per CTA, in shared memory (see tile_cvt)
+                float* Aw = sm + (it % NST) * STAGE; float* Bw = Aw + TILE;
+                if (fa) sa.cvt(Aw); else if (TA) tile_cvt<false, 32, 64>(Aw); else tile_cvt<true, 64, 32>(Aw);
+                if (fb) sb.cvt(Bw); else if (TB) tile_cvt<true, 64, 32>(Bw); else tile_cvt<false, 32, 64>(Bw);
+            }
+            __syncthreads();   // tile `it` landed everywhere; everyone finished the slab that used the stage refilled next
+            if (it == 0) KVM_GPT_PROBE(1);
+            if (it + NST - 1 < nk) issue(it + NST - 1);
+            cp_commit();
+            const float* As = sm + (it % NST) * STAGE; const float* Bs = As + TILE;
+            if constexpr (BF) {
+                const int kk = kh * 16;
+                unsigned af_[2][4], bf_[4][2];
 #pragma unroll
-                    for (int q = 0; q < 4; q++) {
-                        const float2 v = *reinterpret_cast<const float2*>(As + sw_kc<32>(mb + g + 8 * (q & 1), kk + 2 * t + 8 * (q >> 1)));
-                        af_[i][q] = pack_bf16(v.x, v.y);
-                    }
-                } else {
+                for (int i = 0; i < 2; i++) {
+                    const int mb = wmi * 32 + i * 16;
+                    if (!TA) {   // A [m][k]: (row, k..k+1) is an adjacent float2
 #pragma unroll
-                    for (int q = 0; q < 4; q++) {
-                        const int kr = kk + 2 * t + 8 * (q >> 1), mc = mb + g + 8 * (q & 1);
-                        af_[i][q] = pack_bf16(As[sw_mc<64>(kr, mc)], As[sw_mc<64>(kr + 1, mc)]);
+                        for (int q = 0; q < 4; q++) {
+                            const float2 v = *reinterpret_cast<const float2*>(As + sw_kc<32>(mb + g + 8 * (q & 1), kk + 2 * t + 8 * (q >> 1)));
+                            af_[i][q] = pack_bf16(v.x, v.y);
+                        }
+                    } else {
+#pragma unroll
+                        for (int q = 0; q < 4; q++) {
+                            const int kr = kk + 2 * t + 8 * (q >> 1), mc = mb + g + 8 * (q & 1);
+                            af_[i][q] = pack_bf16(As[sw_mc<64>(kr, mc)], As[sw_mc<64>(kr + 1, mc)]);
+                        }
                     }
                 }
-            }
 #pragma unroll
-            for (int j = 0; j < 4; j++) {
-                const int nc = wni * 32 + j * 8 + g;
+                for (int j = 0; j < 4; j++) {
+                    const int nc = wni * 32 + j * 8 + g;
 #pragma unroll
-                for (int q = 0; q < 2; q++) {
-                    const int kr = kk + 2 * t + 8 * q;
-                    if (TB) { const float2 v = *reinterpret_cast<const float2*>(Bs + sw_kc<32>(nc, kr)); bf_[j][q] = pack_bf16(v.x, v.y); }
-                    else bf_[j][q] = pack_bf16(Bs[sw_mc<64>(kr, nc)], Bs[sw_mc<64>(kr + 1, nc)]);
+                    for (int q = 0; q < 2; q++) {
+                        const int kr = kk + 2 * t + 8 * q;
+                        if (TB) { const float2 v = *reinterpret_cast<const float2*>(Bs + sw_kc<32>(nc, kr)); bf_[j][q] = pack_bf16(v.x, v.y); }
+                        else bf_[j][q] = pack_bf16(Bs[sw_mc<64>(kr, nc)], Bs[sw_mc<64>(kr + 1, nc)]);
+                    }
                 }
-            }
 #pragma unroll
-            for (int i = 0; i < 2; i++)
+                for (int i = 0; i < 2; i++)
 #pragma unroll
-                for (int j = 0; j < 4; j++) mma_bf16(acc[i][j], af_[i], bf_[j][0], bf_[j][1]);
-        } else tile_slab<TA, TB, PREC, RZ, 32, TM, TN, 2, 4, 2>(As, Bs, acc, wmi * 32, wni * 32, kh * 16);
+                    for (int j = 0; j < 4; j++) mma_bf16(acc[i][j], af_[i], bf_[j][0], bf_[j][1]);
+            } else tile_slab<TA, TB, PREC, RZ, 32, TM, TN, 2, 4, 2>(As, Bs, acc, wmi * 32, wni * 32, kh * 16);
+        }
     }
     KVM_GPT_PROBE(2);
     cp_wait<0>();

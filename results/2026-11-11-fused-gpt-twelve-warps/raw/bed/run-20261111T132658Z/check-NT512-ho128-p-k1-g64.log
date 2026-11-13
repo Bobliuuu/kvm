@@ -1,0 +1,12 @@
+[fgpt_bed 15:42:36Z] VM reference: cached vm-da403acfbd0c239a-k1.json
+[fgpt_bed 15:42:41Z] model: L 4, d 128, heads 4 x 32, MLP 512, V 256, 2 x 96 rows; 1 steps; work /root/work/fgs384/run-20261111T132658Z/work/NT512-ho128-p-k1-g64
+[fgpt_bed 15:42:41Z] G 64: /root/work/fgs384/run-20261111T132658Z/bed-NT512 /root/work/fgs384/run-20261111T132658Z/work/NT512-ho128-p-k1-g64 64
+[fgpt_bed 15:42:42Z]   fgpt_bed: NVIDIA A100-SXM4-80GB (sm_80, 108 SMs), G 64, 1 steps, attention in 6 query block(s) a unit, rows in chunks of 128 of 192, shared memory 121072 B a member, scratch 33.29 MB, 1 member(s) an SM at most
+[fgpt_bed 15:42:42Z]   fgpt_bed: warmed the GPU for 504 ms
+[fgpt_bed 15:42:42Z]   fgpt_bed: run 1.109 ms with its launch; in the kernel 1030.6 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 64 of 64 members finished, step counter 0 -> 1
+[fgpt_bed 15:42:43Z] G 64: losses: 5.552340 (VM 5.552340): worst of 1 0.00e+00 relative, 1/count off by 0.0e+00: ok
+[fgpt_bed 15:42:43Z] G 64: gradients (last step): worst 4.79e-06 of its tensor's scale (w.gpt.h0.attn.q.b): ok
+[fgpt_bed 15:42:43Z] G 64: first moments (last step): worst 4.17e-06 of its tensor's scale (w.gpt.h0.attn.q.b): ok
+[fgpt_bed 15:42:43Z] G 64: second moments (last step): worst 8.31e-06 of its tensor's scale (w.gpt.h0.attn.q.b): ok
+[fgpt_bed 15:42:43Z] G 64: weights (reported): largest difference 0.09 x lr (w.gpt.h1.mlp.fc2.w)
+[fgpt_bed 15:42:43Z] OK

@@ -1,0 +1,13 @@
+GATE ok: gpt-tiny: 50 buffers with prefix 'loss.', tasks 6749 -> 6749; equal within 0.002; largest relative difference 2.99e-05
+{"row": "gpt-tiny", "control": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_tiny/bundle", "cand": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_tiny/bundle", "tasks": {"control": 6749, "cand": 6749}, "ms": {"control": {"median": 6.628, "best": 6.62, "all": [6.62, 6.628, 6.625, 6.631, 6.642, 6.625, 6.627, 6.633, 6.631]}, "cand": {"median": 6.488, "best": 6.484, "all": [6.498, 6.49, 6.484, 6.488, 6.488, 6.488, 6.488, 6.493, 6.496]}}, "paired_ratio_median": 1.0214241676942046, "best_ratio": 1.0209747069710056, "gate_max_rel": 2.990325493178628e-05, "gate_tol": 0.002}
+ROW gpt-tiny rc 0
+GATE ok: gpt-small: 50 buffers with prefix 'loss.', tasks 28858 -> 28858; equal within 0.002; largest relative difference 4.76e-05
+{"row": "gpt-small", "control": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_small/bundle", "cand": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_small/bundle", "tasks": {"control": 28858, "cand": 28858}, "ms": {"control": {"median": 14.323, "best": 14.315, "all": [14.331, 14.315, 14.399, 14.322, 14.334, 14.32, 14.327, 14.322, 14.323]}, "cand": {"median": 13.812, "best": 13.799, "all": [13.813, 13.816, 13.812, 13.84, 13.809, 13.807, 13.799, 13.802, 13.816]}}, "paired_ratio_median": 1.0375009049446173, "best_ratio": 1.0373940140589897, "gate_max_rel": 4.763953343630825e-05, "gate_tol": 0.002}
+ROW gpt-small rc 0
+GATE ok: ho-gpt-d128: 30 buffers with prefix 'loss.', tasks 40023 -> 40023; equal within 0.01; largest relative difference 9.44e-04
+{"row": "ho-gpt-d128", "control": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_ho128/bundle", "cand": "/root/work/gangcnt/fgs/run-20261111T142648Z/w_ho128/bundle", "tasks": {"control": 40023, "cand": 40023}, "ms": {"control": {"median": 31.446, "best": 31.431, "all": [31.442, 31.445, 31.471, 31.482, 31.442, 31.451, 31.446, 31.465, 31.431]}, "cand": {"median": 28.915, "best": 28.884, "all": [28.884, 28.899, 28.895, 28.921, 28.915, 28.952, 28.908, 28.921, 28.955]}}, "paired_ratio_median": 1.0879637633553474, "best_ratio": 1.0881803074366432, "gate_max_rel": 0.0009440794021496263, "gate_tol": 0.01}
+ROW ho-gpt-d128 rc 0
+RUN_GPT w_tiny rc 0: eager: built in 1 s, loss 4.14604 -> 1.24531 GATE: executor vs eager loss max rel 1.05e-04; modes vs eager {'eager': '0.0e+00'} 
+RUN_GPT w_small rc 0: eager: built in 1 s, loss 4.87822 -> 0.09573 GATE: executor vs eager loss max rel 6.41e-04; modes vs eager {'eager': '0.0e+00'} 
+RUN_GPT w_ho128 rc 0: eager: built in 1 s, loss 5.55234 -> 1.20774 GATE: executor vs eager loss max rel 7.13e-03; modes vs eager {'eager': '0.0e+00'} 
+W12X_END

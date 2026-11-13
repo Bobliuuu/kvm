@@ -137,7 +137,8 @@ __host__ __device__ constexpr int kvm_gpt_bigtile_smem(int bm, int bn) {   // 12
     return staged > stages ? staged : stages;
 }
 __host__ __device__ constexpr int kvm_gpt_attn_smem(int hd) { return 3 * 2 * 32 * (hd + 4) * 4; }   // 3 stages of two 32 x (hd+4) tiles
-__host__ __device__ constexpr int kvm_gpt_attn_dkv_smem(int hd) { return kvm_gpt_attn_smem(hd) + kvm_gpt_dkv_park_bytes(hd); }   // attn_bwd_dkv: its stages and, up to hd 64, its K park
+__host__ __device__ constexpr int kvm_gpt_dkv_lsed_bytes() { return 3 * 2 * 32 * 4; }   // attn_bwd_dkv: each stage's 32 lse and 32 delta
+__host__ __device__ constexpr int kvm_gpt_attn_dkv_smem(int hd) { return kvm_gpt_attn_smem(hd) + kvm_gpt_dkv_park_bytes(hd) + kvm_gpt_dkv_lsed_bytes(); }   // attn_bwd_dkv: its stages, up to hd 64 its K park, and its lse and delta
 // matmul_tile by its flags (a[11]): 64 (256x128) without 16 (3xTF32) or 128 (bf16 operands) is one 256x128 tile; 32, or 64 with either,
 // a 128x128 tile (two passes for 64); everything else the 64x64 tile.
 __host__ __device__ constexpr int kvm_gpt_matmul_tile_smem(int fl) {
@@ -492,6 +493,9 @@ struct TileReg {
 KVM_GPT_DEVI unsigned smem_u32(const void* p) { return (unsigned)__cvta_generic_to_shared(p); }
 KVM_GPT_DEVI void cp_async16(float* dst, const float* src, int src_bytes = 16) {   // src_bytes < 16 zero-fills the rest (0 reads nothing)
     asm volatile("cp.async.cg.shared.global [%0], [%1], 16, %2;\n" ::"r"(smem_u32(dst)), "l"(src), "r"(src_bytes));
+}
+KVM_GPT_DEVI void cp_async4(float* dst, const float* src, int src_bytes = 4) {   // one float; src_bytes 0 writes a zero and reads nothing
+    asm volatile("cp.async.ca.shared.global [%0], [%1], 4, %2;\n" ::"r"(smem_u32(dst)), "l"(src), "r"(src_bytes));
 }
 KVM_GPT_DEVI void cp_commit() { asm volatile("cp.async.commit_group;\n" ::); }
 template <int N> KVM_GPT_DEVI void cp_wait() { asm volatile("cp.async.wait_group %0;\n" ::"n"(N)); }
@@ -2681,12 +2685,20 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3;
     const int Tn = A.T, G = A.H / A.Hkv, kvh = A.h, k0 = A.i0, wkey = k0 + warp * 16, keyA = wkey + g, keyB = keyA + 8;
     const int nq = (Tn - k0 + 31) / 32, nit = G * nq;
+    // Each stage's 32 lse and 32 delta of its tile's queries, beside its Q and dO tiles and in their cp.async group, after the K park. A
+    // tile once read them from global memory right before using them, so every tile paid their latency (9% of dkv under phase clocks).
+    float* const lsed = QO + M::NST * M::STAGE + kvm_gpt_dkv_park_bytes(HD) / 4;
     auto issue = [&](int it) {
         if (it < nit) {
             const int h = kvh * G + it / nq, q0 = k0 + (it % nq) * 32;
             float* st = QO + (it % M::NST) * M::STAGE;
             tile32_async<HD>(st, eoff(A.q, (size_t)A.b * Tn * A.ldq + h * HD, A.sd & KVM_ATT_Q), A.ldq, q0, Tn, A.sd & KVM_ATT_Q);
             tile32_async<HD>(st + M::TILE, eoff(A.dout, (size_t)A.b * Tn * A.ldo + h * HD, A.sd & KVM_ATT_DO), A.ldo, q0, Tn, A.sd & KVM_ATT_DO);
+            if (threadIdx.x < 64) {   // a float a thread: lse for threads 0-31, delta for 32-63; zero past T
+                const int q = q0 + (threadIdx.x & 31);
+                const float* src = (threadIdx.x < 32 ? A.lse : A.delta) + ((size_t)A.b * A.H + h) * Tn + (q < Tn ? q : 0);
+                cp_async4(lsed + (it % M::NST) * 64 + threadIdx.x, src, q < Tn ? 4 : 0);
+            }
         }
         cp_commit();
     };
@@ -2700,7 +2712,7 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
     float ak[KPARK ? 1 : NT][4], av[NT][4];
     if constexpr (KPARK) {
         static_assert((KVM_GPT_THREADS / 32) * NT * 32 * 16 == kvm_gpt_dkv_park_bytes(HD), "kvm_gpt_dkv_park_bytes is the park's size");
-        static_assert(M::SMEM + kvm_gpt_dkv_park_bytes(HD) == kvm_gpt_attn_dkv_smem(HD), "the launch is sized by kvm_gpt_attn_dkv_smem");
+        static_assert(M::SMEM + kvm_gpt_dkv_park_bytes(HD) + kvm_gpt_dkv_lsed_bytes() == kvm_gpt_attn_dkv_smem(HD), "the launch is sized by kvm_gpt_attn_dkv_smem");
         float kr[NT][4];
         load_a_raw<HD>(kr, eoff(A.k, (size_t)A.b * Tn * A.ldk + kvh * HD, A.sd & KVM_ATT_K), A.ldk, keyA, Tn, t, A.sd & KVM_ATT_K);
 #if KVM_GPT_ATTN_BF2
@@ -2740,15 +2752,15 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
         const int h = kvh * G + it / nq, q0 = k0 + (it % nq) * 32;
         if (q0 + 31 < wkey || wkey >= Tn) continue;   // every query of this tile precedes every key of this warp (warp-uniform)
         const float* Qs = QO + (it % M::NST) * M::STAGE; const float* Os = Qs + M::TILE;
-        const size_t hrow = ((size_t)A.b * A.H + h) * Tn;
+        const float* const ls = lsed + (it % M::NST) * 64;   // this tile's lse (natural log) and delta, staged with its Q and dO
         float lq[4][2], dl_[4][2];   // lse (log2 units) and delta of the thread's accumulator columns: query q0 + kt*8 + 2t + {0,1}
 #pragma unroll
         for (int kt = 0; kt < 4; kt++)
 #pragma unroll
             for (int j = 0; j < 2; j++) {
                 const int q = q0 + kt * 8 + 2 * t + j;
-                lq[kt][j] = q < Tn ? A.lse[hrow + q] * KVM_GPT_L2E : 0.f;
-                dl_[kt][j] = q < Tn ? A.delta[hrow + q] : 0.f;
+                lq[kt][j] = q < Tn ? ls[kt * 8 + 2 * t + j] * KVM_GPT_L2E : 0.f;
+                dl_[kt][j] = q < Tn ? ls[32 + kt * 8 + 2 * t + j] : 0.f;
             }
         float s[4][4], dp[4][4];
 #pragma unroll

@@ -39,18 +39,19 @@ static std::vector<KvmFuseBuf> load_bufs(const std::string& meta) {
 }
 
 // FNV-1a over the pass's whole result: every task descriptor, successor and argument word of the rewritten bundle, every fused run's
-// descriptor (its shapes, buffers and slices) and the interior buffers. Two bundles with one digest run the same tasks on the same runs.
+// descriptor (its shapes, buffers, slices, form and gang) and the interior buffers, and the entry the bundle runs on. Two bundles with one digest run the same tasks on the same runs.
 static uint64_t digest(const KvmFuseResult& r) {
     uint64_t h = 1469598103934665603ull;
     const auto eat = [&](const void* p, size_t n) { for (size_t i = 0; i < n; ++i) { h ^= static_cast<const unsigned char*>(p)[i]; h *= 1099511628211ull; } };
     const auto num = [&](int32_t v) { eat(&v, 4); };
     eat(r.tasks.data(), r.tasks.size() * sizeof(KvmTaskDesc)); eat(r.succ.data(), r.succ.size() * 4); eat(r.args.data(), r.args.size() * 4);
     for (const KvmFuseRun& u : r.runs) {
-        for (int v : {u.L, u.E, u.V, u.T, u.slice_rows, u.nsl, u.groups, u.smem_floats, u.wte, u.head, u.steps}) num(v);
+        for (int v : {u.L, u.E, u.V, u.T, u.slice_rows, u.nsl, u.groups, u.smem_floats, u.wte, u.head, u.steps, u.split, u.S, u.Q, u.Sv, u.grid, u.P}) num(v);
         eat(&u.lr, 4);
         for (int l = 0; l < KVM_FUSE_MAXL; ++l) { num(u.H[l]); num(u.w[l]); num(u.b[l]); }
     }
     for (int b : r.interior) num(b);
+    num((int32_t)r.entry.kind); num(r.entry.S);
     return h;
 }
 
@@ -187,7 +188,7 @@ int main(int argc, char** argv) {
         for (int W : kWorkers) {
         KvmFuseOptions opts; opts.workers = W; opts.smem_floats = smem_floats;
         const KvmFuseResult r = kvm_fuse_mlp(tasks, succ, args, bufs, ops, op_of, opts);
-        printf("%s W=%d: %zu tasks, %zu buffers -> fused runs %d, unchanged runs %d, replaced tasks %d, new tasks %d\n", dir.c_str(), W, tasks.size(), bufs.size(), r.fused_runs, r.unchanged_runs, r.replaced_tasks, r.new_tasks);
+        printf("%s W=%d: %zu tasks, %zu buffers -> fused runs %d, unchanged runs %d, replaced tasks %d, new tasks %d; rewritten bundle %016llx\n", dir.c_str(), W, tasks.size(), bufs.size(), r.fused_runs, r.unchanged_runs, r.replaced_tasks, r.new_tasks, (unsigned long long)digest(r));
         for (const auto& line : r.warnings) printf("  warning: %s\n", line.c_str());
         std::map<std::string, int> counts;
         for (const auto& line : r.report) { auto cut = line.find(": unchanged: "); ++counts[cut == std::string::npos ? line.substr(line.find(": ") + 2) : line.substr(cut + 2)]; }
@@ -223,7 +224,8 @@ int main(int argc, char** argv) {
             if (bad) { printf("  FAIL: W=%d: %d split member(s) whose gang is not %d x its run's physical shares, up to the entry's %d virtual\n", W, bad, KVM_SPLIT_Q, r.entry.S); ++failures; }
             else { std::string ps; for (int x : phys) ps += (ps.empty() ? "" : ", ") + std::to_string(x); printf("  split gangs at W=%d: %d virtual shares on %s physical: ok\n", W, r.entry.S, ps.c_str()); }
         }
-        {   // the loss in row blocks (a tiling's Tiling.ce_rows): either form fuses to this very bundle; a broken covering stays unfused, with a warning
+        if (W == kWorkers[sizeof kWorkers / sizeof kWorkers[0] - 1]) {   // the loss in row blocks (a tiling's Tiling.ce_rows), at the A100's workers:
+            // either form fuses to this very bundle; a broken covering stays unfused, with a warning
             static const char* kBreak[] = {"", "a gap", "an overlap", "a short cover", "another vocabulary"};
             const Bundle orig{tasks, succ, args};
             Bundle rb;

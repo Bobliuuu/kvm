@@ -469,35 +469,40 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
   std::vector<int> plan_comp;   // the component each plan came from (for the report)
   const kvm_fuse::Parser parser(tasks, args, bufs, ops);
   const auto comps = kvm_fuse_components(tasks, succ);
-  // Why the template cannot take a step of this model, from its shapes alone (empty: it can). A refusal for this reason is by design.
-  const auto uncovered = [&](const Step& s) -> std::string {
+  // Why the one-block form cannot take a step of this model, from its shapes alone (empty: it can).
+  const auto one_why = [&](const Step& s) -> std::string {
     for (int l = 0; l < s.L; ++l) if (s.H[l] % 8 || s.H[l] > 128) return "layer width not a multiple of 8 up to 128";
     if (s.E % 8 || s.E == 0) return "embedding width not a multiple of 8";
     if (s.V % 4 || s.V == 0 || s.V > 128) return "vocabulary not a multiple of 4 up to 128";
     bool any = false;
-    for (int r : kvm_fuse_slice_choices) any |= s.T % r == 0 && r <= s.T && s.T / r <= KVM_FMLP_MAX_SLICES && kvm_fuse_layout_floats(s.L, s.E, s.V, s.H, s.T, r) <= opts.smem_floats;
+    for (int r : kvm_fuse_slice_choices) any |= s.T % r == 0 && r <= s.T && s.T / r <= KVM_FMLP_MAX_SLICES && s.T / KVM_FMLP_GRANULE <= KVM_FMLP_MAX_SLICES && kvm_fuse_layout_floats(s.L, s.E, s.V, s.H, s.T, r) <= opts.smem_floats;
     if (!any) return "no slice size fits (" + std::to_string(kvm_fuse_layout_floats(s.L, s.E, s.V, s.H, s.T, kvm_fuse_slice_choices[0])) + " floats of shared memory at the smallest slice, at most " + std::to_string(KVM_FMLP_MAX_SLICES) + " slices, limit " + std::to_string(opts.smem_floats) + ")";
     return "";
+  };
+  // Does some fused form (one-block, split or grid) take a step of this model? A refusal of a model none covers is by design.
+  const auto covered = [&](const Step& s) {
+    std::string w;
+    return one_why(s).empty() || !kvm_fuse_split_fits(s.L, s.E, s.V, s.H, s.T, ops, opts, w).empty() || kvm_fuse_grid_fits(s.L, s.E, s.V, s.H, s.T, ops, opts, w) > 0;
   };
   for (size_t ci = 0; ci < comps.size(); ++ci) {
     const std::vector<int>& comp = comps[ci];
     Plan pl; std::string why;
     size_t pos = 0;
     // A refusal of a run the fused step was written for (a step matched the template's model, the embedding, the GELU layers and the head,
-    // in shapes the template covers) is a silent fall to the per-op path and goes to KvmFuseResult::warnings. A shape the template leaves
-    // out, or a buffer the caller keeps, is a refusal by design, whichever check meets it first.
+    // in shapes some fused form covers) is a silent fall to the per-op path and goes to KvmFuseResult::warnings. A shape no form covers,
+    // or a buffer the caller keeps, is a refusal by design, whichever check meets it first.
     bool near = false, intended = false;
     while (pos < comp.size()) {
       Step st;
       if (!parser.parse(comp, pos, st, why)) {
         const Step* m = st.model ? &st : pl.steps.empty() ? nullptr : &pl.steps[0];   // a step whose model matched, if any
-        near = m && uncovered(*m).empty();
+        near = m && covered(*m);
         why = "step " + std::to_string(pl.steps.size()) + ": " + why; break;
       }
       pl.steps.push_back(std::move(st));
     }
     if (why.empty() && pl.steps.empty()) why = "no training step found";
-    if (why.empty()) near = uncovered(pl.steps[0]).empty();   // every step matched: a near miss only in shapes the template covers
+    if (why.empty()) near = covered(pl.steps[0]);   // every step matched: a near miss only in shapes some fused form covers
     // Every step's closing barrier but the last is replaced too: the fused tasks' own edges order the steps, and a join in the middle would sit on the critical path. The last one stays: it publishes the run's final version.
     if (why.empty()) for (size_t si = 0; si + 1 < pl.steps.size(); ++si) if (pl.steps[si].barrier_end >= 0) { pl.steps[si].replaced.push_back(pl.steps[si].barrier_end); pl.steps[si].barrier_end = -1; }
     if (why.empty()) {
@@ -513,15 +518,7 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
     }
     if (why.empty()) {   // the shapes the template covers (a refusal here is by design)
       const Step& s = pl.steps[0];
-      std::string one;   // why the one-block form cannot take the run (empty: it can)
-      for (int l = 0; l < s.L; ++l) if (s.H[l] % 8 || s.H[l] > 128) { one = "layer width not a multiple of 8 up to 128"; break; }
-      if (one.empty() && (s.E % 8 || s.E == 0)) one = "embedding width not a multiple of 8";
-      if (one.empty() && (s.V % 4 || s.V == 0 || s.V > 128)) one = "vocabulary not a multiple of 4 up to 128";
-      if (one.empty()) {
-        bool any = false;
-        for (int r : kvm_fuse_slice_choices) any |= s.T % r == 0 && r <= s.T && s.T / r <= KVM_FMLP_MAX_SLICES && s.T / KVM_FMLP_GRANULE <= KVM_FMLP_MAX_SLICES && kvm_fuse_layout_floats(s.L, s.E, s.V, s.H, s.T, r) <= opts.smem_floats;
-        if (!any) one = "no slice size fits (" + std::to_string(kvm_fuse_layout_floats(s.L, s.E, s.V, s.H, s.T, kvm_fuse_slice_choices[0])) + " floats of shared memory at the smallest slice, at most " + std::to_string(KVM_FMLP_MAX_SLICES) + " slices, limit " + std::to_string(opts.smem_floats) + ")";
-      }
+      const std::string one = one_why(s);   // why the one-block form cannot take the run (empty: it can)
       const auto take = [&]() { pl.run.L = s.L; pl.run.E = s.E; pl.run.V = s.V; pl.run.T = s.T; pl.run.lr = s.lr; pl.run.H = s.H; pl.run.w = s.w; pl.run.b = s.b; pl.run.wte = s.wte; pl.run.head = s.head; pl.run.steps = (int)pl.steps.size(); pl.run.smem_floats = opts.smem_floats; };
       if (one.empty()) take();
       else {
@@ -535,6 +532,7 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
           else { why = one + "; split form: " + sw + "; grid form: " + gw; intended = true; }   // no form takes the shape: a refusal by design
         }
       }
+      if (!why.empty()) intended = true;   // no form covers the shape: a refusal by design
     }
     if (why.empty()) {   // a buffer the caller reads after the run may not be interior
       for (size_t si = 0; si < pl.steps.size() && why.empty(); ++si) for (int b : opts.keep) if (pl.steps[si].interior.count(b)) { why = "buffer " + std::to_string(b) + " is read after the run and interior to step " + std::to_string(si); break; }

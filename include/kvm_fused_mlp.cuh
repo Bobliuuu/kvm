@@ -33,9 +33,10 @@ __device__ __forceinline__ unsigned tf32_in(float x) { return tf32_round(__float
 // M, N multiples of 16 (N at most 128), K a multiple of 8. Warp w owns column block w (16 columns) and every row block of it (at most MAXI row blocks): no division, and pairs are loop indices, so the accumulators
 // stay in registers (an array indexed at run time would live in memory). K-contiguous operands (A as [m][k], B as [n][k]) are read with ldmatrix (their pitch must be a multiple of 4), the others with 32-bit loads.
 // NRB > 0 fixes the number of row blocks at compile time (M = 16 NRB, MAXI = NRB): the k-loop then has no per-block predicate and branch (measured: at one row block those cost a
-// third of a k-step); NRB = 0 takes M at run time, up to MAXI blocks.
-template <bool TA, bool TB, int MAXI, bool ALIAS = false, int NRB = 0>
-__device__ __forceinline__ void gemm(const float* A, int lda, const float* B, int ldb, float* C, int ldc, int M, int N, int K) {
+// third of a k-step); NRB = 0 takes M at run time, up to MAXI blocks. SGD = true makes the epilogue C -= lr * (A B): a weight block updated in place by
+// its own gradient (the grid step's members), with no gradient array.
+template <bool TA, bool TB, int MAXI, bool ALIAS = false, int NRB = 0, bool SGD = false>
+__device__ __forceinline__ void gemm(const float* A, int lda, const float* B, int ldb, float* C, int ldc, int M, int N, int K, float lr = 0.f) {
   static_assert(NRB == 0 || NRB == MAXI, "a fixed row-block count is the array bound");
   const int nrb = NRB ? NRB : (M + 15) >> 4, ncb = (N + 15) >> 4, cb = threadIdx.x >> 5, lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3, la = lane & 7, b3 = (lane >> 3) & 1, b4 = lane >> 4;
   if (cb >= ncb) { if constexpr (ALIAS) __syncthreads(); return; }   // this warp has no column block (it still takes part in the barrier below)
@@ -77,8 +78,15 @@ __device__ __forceinline__ void gemm(const float* A, int lda, const float* B, in
     float* c0 = cout0[i], *c1 = cout1[i];
 #pragma unroll
     for (int j = 0; j < 2; ++j) {   // a lane's two adjacent columns as one 8-byte store (every ldc is even and every C 8-byte aligned): half the store instructions, and global partials fill whole sectors
-      *reinterpret_cast<float2*>(c0 + j * 8) = make_float2(acc[i][j][0], acc[i][j][1]);
-      *reinterpret_cast<float2*>(c1 + j * 8) = make_float2(acc[i][j][2], acc[i][j][3]);
+      if constexpr (SGD) {
+        float2* p0 = reinterpret_cast<float2*>(c0 + j * 8); float2* p1 = reinterpret_cast<float2*>(c1 + j * 8);
+        float2 u = *p0, v = *p1;
+        u.x -= lr * acc[i][j][0]; u.y -= lr * acc[i][j][1]; v.x -= lr * acc[i][j][2]; v.y -= lr * acc[i][j][3];
+        *p0 = u; *p1 = v;
+      } else {
+        *reinterpret_cast<float2*>(c0 + j * 8) = make_float2(acc[i][j][0], acc[i][j][1]);
+        *reinterpret_cast<float2*>(c1 + j * 8) = make_float2(acc[i][j][2], acc[i][j][3]);
+      }
     }
   }
 }
@@ -92,17 +100,17 @@ __device__ __forceinline__ void gemm_r(const float* A, int lda, const float* B, 
 }
 
 // A GEMM whose M is a layer's width (the weight gradients, A^T dZ: one row block per 16 of the K side): the same compile-time row-block count, one instantiation per count up to 8.
-template <bool TA, bool TB>
-__device__ __forceinline__ void gemm_m(const float* A, int lda, const float* B, int ldb, float* C, int ldc, int M, int N, int K) {
+template <bool TA, bool TB, bool SGD = false>
+__device__ __forceinline__ void gemm_m(const float* A, int lda, const float* B, int ldb, float* C, int ldc, int M, int N, int K, float lr = 0.f) {
   switch ((M + 15) >> 4) {
-    case 1: gemm<TA, TB, 1, false, 1>(A, lda, B, ldb, C, ldc, M, N, K); break;
-    case 2: gemm<TA, TB, 2, false, 2>(A, lda, B, ldb, C, ldc, M, N, K); break;
-    case 3: gemm<TA, TB, 3, false, 3>(A, lda, B, ldb, C, ldc, M, N, K); break;
-    case 4: gemm<TA, TB, 4, false, 4>(A, lda, B, ldb, C, ldc, M, N, K); break;
-    case 5: gemm<TA, TB, 5, false, 5>(A, lda, B, ldb, C, ldc, M, N, K); break;
-    case 6: gemm<TA, TB, 6, false, 6>(A, lda, B, ldb, C, ldc, M, N, K); break;
-    case 7: gemm<TA, TB, 7, false, 7>(A, lda, B, ldb, C, ldc, M, N, K); break;
-    default: gemm<TA, TB, 8, false, 8>(A, lda, B, ldb, C, ldc, M, N, K); break;   // M <= 128: the pass's widths are at most 128
+    case 1: gemm<TA, TB, 1, false, 1, SGD>(A, lda, B, ldb, C, ldc, M, N, K, lr); break;
+    case 2: gemm<TA, TB, 2, false, 2, SGD>(A, lda, B, ldb, C, ldc, M, N, K, lr); break;
+    case 3: gemm<TA, TB, 3, false, 3, SGD>(A, lda, B, ldb, C, ldc, M, N, K, lr); break;
+    case 4: gemm<TA, TB, 4, false, 4, SGD>(A, lda, B, ldb, C, ldc, M, N, K, lr); break;
+    case 5: gemm<TA, TB, 5, false, 5, SGD>(A, lda, B, ldb, C, ldc, M, N, K, lr); break;
+    case 6: gemm<TA, TB, 6, false, 6, SGD>(A, lda, B, ldb, C, ldc, M, N, K, lr); break;
+    case 7: gemm<TA, TB, 7, false, 7, SGD>(A, lda, B, ldb, C, ldc, M, N, K, lr); break;
+    default: gemm<TA, TB, 8, false, 8, SGD>(A, lda, B, ldb, C, ldc, M, N, K, lr); break;   // M <= 128: the pass's widths are at most 128
   }
 }
 

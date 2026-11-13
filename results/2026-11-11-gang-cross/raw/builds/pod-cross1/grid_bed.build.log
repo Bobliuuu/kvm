@@ -1,0 +1,6 @@
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z11grid_kernelPK11KvmGridDescPKiS3_Pfi6Timing' for 'sm_80'
+ptxas info    : Function properties for _Z11grid_kernelPK11KvmGridDescPKiS3_Pfi6Timing
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 226 registers, used 1 barriers, 128 bytes smem, 416 bytes cmem[0], 168 bytes cmem[2]
+ptxas info    : Compile time = 2591.320 ms

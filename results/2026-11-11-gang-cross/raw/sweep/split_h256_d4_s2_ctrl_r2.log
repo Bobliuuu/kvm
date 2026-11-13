@@ -1,0 +1,2 @@
+NVIDIA A100-SXM4-80GB, 108 SMs, 163 KB shared memory a block (opt-in); model E 48 V 100 H 256 depth 4, T 96 (6 slices of 16), S 2 shares (width <= 128, padded 128): 12 blocks, 541.4 KB a block, 9 barriers a step
+does not fit: 554352 dynamic + 256 static > 166912 bytes a block; raise --shares

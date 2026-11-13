@@ -1,0 +1,60 @@
+# Both paths on one binary (main's kernels), 24 bundles, 5 paired rounds; the ratio is dynamic time over static time (above 1, static is faster).
+# The binary's own mean estimate per bundle; 'rule' is where 6.0 sends it, 'faster' the measured faster path. The threshold pricing follows.
+bundle                       est us     rule   faster dyn/static           range    dyn ms static ms  spread d/s  gate
+d192-h3-l1-t32-b1-v64          4.54   static   static     1.1161  1.1157-1.1194      21.06     18.84  0.33/0.16   ok 20 w. bitwise
+d512-h8-l4-t32-b1-v128         4.82   static   static     1.0831  1.0805-1.0835     102.95     95.07  0.26/0.06   ok 68 w. bitwise
+h640-d4-r16-generic            4.92   static   static     1.1193  1.1130-1.1283      88.94     79.47  1.34/0.15   ok 160 w. bitwise
+d256-h4-l2-t32-b2-v128         5.17   static   static     1.0848  1.0832-1.0859      49.91     46.04  0.34/0.17   ok 36 w. bitwise
+d384-h6-l1-t64-b1-v64          5.25   static   static     1.0801  1.0762-1.0821      37.64     34.84  0.37/0.17   ok 20 w. bitwise
+d192-h3-l4-t128-b2-v512        5.50   static   static     1.1153  1.1142-1.1168      83.11     74.52  0.18/0.08   ok 68 w. bitwise
+d192-h3-l2-t64-b4-v256         5.61   static   static     1.1032  1.1023-1.1077      46.07     41.76  0.35/0.14   ok 36 w. bitwise
+d256-h4-l1-t128-b4-v512        5.89   static   static     1.0772  1.0734-1.0791      55.68     51.66  0.70/0.17   ok 20 w. bitwise
+d256-h4-l3-t96-b4-v256         5.89   static   static     1.0850  1.0845-1.0867      81.62     75.23  0.21/0.11   ok 52 w. bitwise
+d512-h8-l1-t64-b2-v256         5.93   static   static     1.0565  1.0553-1.0573      54.41     51.51  0.15/0.16   ok 20 w. bitwise
+d384-h6-l3-t96-b4-v256         6.09  dynamic   static     1.0576  1.0564-1.0589     108.84    102.92  0.16/0.09   ok 52 w. bitwise  <- misrouted
+d384-h6-l4-t128-b4-v512        6.27  dynamic   static     1.0622  1.0617-1.0636     151.03    142.11  0.21/0.09   ok 68 w. bitwise  <- misrouted
+d512-h8-l2-t128-b4-v512        6.67  dynamic   static     1.0153  1.0137-1.0173     121.18    119.36  0.35/0.06   ok 36 w. bitwise  <- misrouted
+d640-h10-l2-t128-b4-v512       7.04  dynamic  dynamic     0.9248  0.9223-0.9288      44.53     48.14  0.72/0.04   ok 36 w. bitwise
+d512-h8-l2-t128-b8-v512        7.40  dynamic  dynamic     0.8190  0.8157-0.8215      48.36     59.04  0.60/0.15   ok 36 w. bitwise
+d768-h12-l4-t128-b4-v512       7.45  dynamic  dynamic     0.9356  0.9304-0.9412      85.58     91.52  1.20/0.11   ok 68 w. bitwise
+d1024-h16-l2-t128-b4-v512      7.93  dynamic  dynamic     0.6153  0.6137-0.6189      64.29    104.52  0.92/0.13   ok 36 w. bitwise
+d640-h10-l2-t256-b4-v512       8.02  dynamic  dynamic     0.7972  0.7943-0.7978      60.82     76.28  0.55/0.16   ok 36 w. bitwise
+d768-h12-l2-t256-b4-v512       8.47  dynamic  dynamic     0.6746  0.6703-0.6769      72.98    108.25  1.05/0.16   ok 36 w. bitwise
+d1024-h16-l2-t256-b4-v512      8.75  dynamic  dynamic     0.7336  0.7329-0.7365     105.74    144.12  0.53/0.10   ok 36 w. bitwise
+d1024-h16-l2-t256-b8-v512      9.85  dynamic  dynamic     0.7305  0.7302-0.7343     167.91    229.79  0.58/0.13   ok 36 w. bitwise
+d768-h12-l2-t512-b8-v512       9.94  dynamic  dynamic     0.7346  0.7332-0.7358     214.25    291.67  0.36/0.07   ok 36 w. bitwise
+d1536-h24-l2-t256-b4-v512     10.02  dynamic  dynamic     0.7733  0.7718-0.7758     189.98    245.63  0.54/0.11   ok 36 w. bitwise
+gpt-162m                      10.67  dynamic  dynamic     0.6646  0.6618-0.6656     348.03    523.77  0.49/0.11   ok 196 w. bitwise
+
+24 rows, 5 paired rounds each; weights bitwise between the paths on 24 of 24; largest arm spread 1.34%
+misrouted by the 6.0 us rule: 3 (d384-h6-l3-t96-b4-v256 at 6.09 us, static x1.058, d384-h6-l4-t128-b4-v512 at 6.27 us, static x1.062, d512-h8-l2-t128-b4-v512 at 6.67 us, static x1.015)
+static fastest up to 6.67 us; dynamic fastest from 7.04 us; the crossover lies between them
+
+threshold pricing over 24 bundles (a bundle at or under the threshold runs static):
+ threshold misrouted  lost, relative   lost ms
+     4.530        13         105.74%     69.11
+     4.680        12          93.95%     66.89
+     4.870        11          85.67%     59.01
+     5.045        10          73.75%     49.54
+     5.210         9          65.34%     45.67
+     5.375         8          57.31%     42.87
+     5.555         7          45.78%     34.28
+     5.750         6          35.46%     29.97
+     5.910         4          19.18%     19.56
+     6.010         3          13.55%     16.66
+     6.180         2           7.80%     10.74
+     6.470         1           1.52%      1.82
+     6.855         0           0.00%      0.00
+     7.220         1           8.11%      3.61
+     7.425         2          30.19%     14.29
+     7.690         3          37.13%     20.23
+     7.975         4          99.71%     60.46
+     8.245         5         125.13%     75.92
+     8.610         6         173.46%    111.19
+     9.300         7         209.75%    149.57
+     9.895         8         246.61%    211.45
+     9.980         9         282.74%    288.87
+    10.345        10         312.03%    344.52
+    10.680        11         362.53%    520.26
+least relative loss (0.00% summed): thresholds 6.855
+least absolute loss (0.00 ms summed): thresholds 6.855

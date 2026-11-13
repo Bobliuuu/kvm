@@ -1,0 +1,37 @@
+  162m_1 run1 115.048
+  162m_vocab256 run1 110.372
+  162m_vocab256ce_rows32 run1 108.748
+  162m_vocab128ce_rows16 run1 108.788
+  162m_1 run2 115.740
+  162m_vocab256 run2 109.942
+  162m_vocab256ce_rows32 run2 108.718
+  162m_vocab128ce_rows16 run2 108.536
+  162m_1 run3 116.143
+  162m_vocab256 run3 110.451
+  162m_vocab256ce_rows32 run3 108.730
+  162m_vocab128ce_rows16 run3 107.188
+  162m_1 run4 115.414
+  162m_vocab256 run4 109.609
+  162m_vocab256ce_rows32 run4 107.886
+  162m_vocab128ce_rows16 run4 107.524
+  162m_1 run5 115.163
+  162m_vocab256 run5 110.218
+  162m_vocab256ce_rows32 run5 109.127
+  162m_vocab128ce_rows16 run5 108.040
+BEST 162m_1 115.048 ms
+BEST 162m_vocab256 109.609 ms
+BEST 162m_vocab256ce_rows32 107.886 ms
+BEST 162m_vocab128ce_rows16 107.188 ms
+OK: 53327/53327 tasks, 114.940 ms
+OK: 53595/53595 tasks, 108.664 ms
+OK: 53919/53919 tasks, 108.417 ms
+162m_vocab256ce_rows32 buffer 3 bitwise equal to base
+162m_vocab256ce_rows32 buffer 6 bitwise equal to base
+162m_vocab256ce_rows32 buffer 198 bitwise equal to base
+162m_vocab256ce_rows32 buffer 199 bitwise equal to base
+162m_vocab256ce_rows32 buffer 202 bitwise equal to base
+162m_vocab128ce_rows16 buffer 3 bitwise equal to base
+162m_vocab128ce_rows16 buffer 6 bitwise equal to base
+162m_vocab128ce_rows16 buffer 198 bitwise equal to base
+162m_vocab128ce_rows16 buffer 199 bitwise equal to base
+162m_vocab128ce_rows16 buffer 202 bitwise equal to base

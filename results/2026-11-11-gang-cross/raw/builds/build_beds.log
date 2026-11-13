@@ -1,0 +1,9 @@
+trees: cand include d1288f2432006878abc4d078c2718c24db7f7409 bench 1cf8651372f4f20bf83ed7bdf1c2b8e446fbc357; ctrl include 7194ae1e01cf53c9da9d1d4f897d0195084b2eb9 bench 28ab03ed81721170a89ef678ece59e76e40bf54e
+trees match bba414c and 7fd7d4a
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+pod-next/grid_bed:       1 Used 228 registers; spills 0 bytes spill stores 
+pod-next/split_bed:       6 Used 252 registers;      5 Used 254 registers; spills 0 bytes spill stores 
+pod-ctrl/grid_bed:       1 Used 223 registers; spills 0 bytes spill stores 
+pod-ctrl/split_bed:       2 Used 227 registers;      3 Used 228 registers;      2 Used 229 registers;      2 Used 230 registers;      1 Used 231 registers;      1 Used 234 registers; spills 0 bytes spill stores 
+BUILD_BEDS_END rc=0

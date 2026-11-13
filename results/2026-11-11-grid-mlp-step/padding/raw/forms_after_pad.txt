@@ -1,0 +1,81 @@
+form at 108 workers (B one-block, S<n> split at n shares, G grid, . unfused):
+  width  d1   d2   d3   d4
+     48 B    B    B    B   
+     56 B    B    B    B   
+     64 B    B    B    B   
+     80 B    B    B    S18 
+     88 B    B    S18  S18 
+     96 B    B    S18  S18 
+    104 B    B    S18  S18 
+    112 B    S18  S18  S18 
+    120 B    S18  S18  S18 
+    128 B    S18  S18  S18 
+    136 S18  S18  S18  S18 
+    144 S18  S18  S18  S18 
+    152 S18  S18  S18  S18 
+    160 S18  S18  S18  S18 
+    168 S18  S18  S18  S18 
+    176 S18  S18  S18  S18 
+    184 S18  S18  S18  S18 
+    192 S18  S18  S18  S18 
+    200 S18  S18  S18  S18 
+    208 S18  S18  S18  S18 
+    216 S18  S18  S18  S18 
+    224 S18  S18  S18  S18 
+    232 S18  S18  S18  S18 
+    240 S18  S18  S18  S18 
+    248 S18  S18  S18  S18 
+    264 S18  S18  S18  S18 
+    272 S18  S18  S18  S18 
+    280 S18  S18  S18  S18 
+    288 S18  S18  S18  S18 
+    296 S18  S18  S18  G   
+    304 S18  S18  S18  G   
+    312 S18  S18  S18  G   
+    320 S18  S18  S18  G   
+    328 S18  S18  S18  G   
+    336 S18  S18  S18  G   
+    344 S18  S18  G    G   
+    352 S18  S18  G    G   
+    360 S18  S18  G    G   
+    368 S18  S18  G    G   
+    376 S18  S18  G    G   
+    384 S18  S18  G    G   
+    392 S18  S18  G    G   
+    400 S18  S18  G    G   
+    408 S18  S18  G    G   
+    416 S18  S18  G    G   
+    424 S18  S18  G    G   
+    432 S18  S18  G    G   
+    440 S18  S18  G    G   
+    448 S18  S18  G    G   
+    456 S18  S18  G    G   
+    464 S18  S18  G    G   
+    472 S18  S18  G    G   
+    480 S18  S18  G    G   
+    488 S18  S18  G    G   
+    496 S18  S18  G    G   
+    504 S18  S18  G    G   
+    512 S18  S18  G    G   
+    520 S18  S18  G    G   
+    528 S18  S18  G    G   
+    536 S18  S18  G    G   
+    544 S18  S18  G    G   
+    552 S18  S18  G    G   
+    560 S18  S18  G    G   
+    568 S18  S18  G    G   
+    576 S18  S18  G    G   
+    584 S18  G    G    G   
+    592 S18  G    G    G   
+    600 S18  G    G    G   
+    608 S18  G    G    G   
+    616 S18  G    G    G   
+    624 S18  G    G    G   
+    632 S18  G    G    G   
+    640 S18  G    G    G   
+cells: 292; one-block 24, split 178, grid 90, unfused 0 (0%)
+  depth 1: B 10, S 63, G 0, . 0 of 73
+  depth 2: B 7, S 58, G 8, . 0 of 73
+  depth 3: B 4, S 31, G 38, . 0 of 73
+  depth 4: B 3, S 26, G 44, . 0 of 73
+why the unfused cells stay so (the split and grid forms' reasons; counts):

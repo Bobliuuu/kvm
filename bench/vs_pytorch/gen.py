@@ -51,6 +51,7 @@ def main():
     ap.add_argument('--steps', type=int, default=20)
     ap.add_argument('--mode', choices=['tf32', 'precise'], default='tf32')
     ap.add_argument('--tiling', default='a100')
+    ap.add_argument('--tiling-set', default='', help='comma-separated Tiling field overrides, e.g. vocab=256,ce_rows=32')
     ap.add_argument('--fuse', action='store_true')
     ap.add_argument('--precision', default=None, help='f32 | bf16 | bf16s (model config override)')
     ap.add_argument('--reuse', default='step', help="buffer reuse: 'step' (default), 'shape' or 'none' (every tensor keeps its own buffer: needed to read gradients back)")
@@ -64,7 +65,7 @@ def main():
     if a.precision:
         from dataclasses import replace
         cfg = replace(cfg, precision=a.precision)
-    c = compile_training(cfg, TrainConfig(steps=a.steps), Tiling.preset(a.tiling), reuse=a.reuse, fuse=a.fuse)
+    c = compile_training(cfg, TrainConfig(steps=a.steps), Tiling.preset(a.tiling, **{k: int(v) for k, v in (kv.split('=') for kv in a.tiling_set.split(',') if kv)}), reuse=a.reuse, fuse=a.fuse)
     if a.mode == 'precise':
         for g in c.spec['graphs']:
             for t in g['tasks']:

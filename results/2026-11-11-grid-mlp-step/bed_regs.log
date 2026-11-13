@@ -1,0 +1,7 @@
+tree: 2722a41, working changes in include and bench: 0
+nvcc: Build cuda_12.8.r12.8/compiler.35583870_0
+command: nvcc -O3 -arch=sm_80 -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -Iinclude -Xptxas -v bench/fused_mlp/grid_bed.cu -o /tmp/grid_bed.sm80
+  ptxas info    : Compiling entry function '_Z11grid_kernelPK11KvmGridDescPKiS3_Pfi6Timing' for 'sm_80'
+      0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+  ptxas info    : Used 223 registers, used 1 barriers, 128 bytes smem, 416 bytes cmem[0], 168 bytes cmem[2]
+grid bed build rc=0 in 6 s; sha256 628c30acc9b30d10

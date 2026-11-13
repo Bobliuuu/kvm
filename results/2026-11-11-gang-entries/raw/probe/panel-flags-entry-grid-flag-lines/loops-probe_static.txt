@@ -1,0 +1,35 @@
+_Z12probe_staticPK4PRecPKiPiP8ProbeCntPx: every block, 26256 instructions in 1097 blocks
+  83 MMA loops; by kind (HMMA a pass, LDGSTS a pass):
+    HMMA   2 LDGSTS   0:   3 loops; registers used in the loop median 22, passengers median 85 (range 60-110), LDL a pass median 0 (range 0-0)
+    HMMA   4 LDGSTS   0:   2 loops; registers used in the loop median 37, passengers median 71 (range 47-71), LDL a pass median 0 (range 0-0)
+    HMMA   6 LDGSTS   0:   2 loops; registers used in the loop median 50, passengers median 59 (range 39-59), LDL a pass median 0 (range 0-0)
+    HMMA   8 LDGSTS   0:   9 loops; registers used in the loop median 57, passengers median 70 (range 15-99), LDL a pass median 0 (range 0-0)
+    HMMA  10 LDGSTS   0:   5 loops; registers used in the loop median 73, passengers median 48 (range 15-85), LDL a pass median 0 (range 0-0)
+    HMMA  12 LDGSTS   0:  10 loops; registers used in the loop median 73, passengers median 55 (range 0-92), LDL a pass median 0 (range 0-0)
+    HMMA  14 LDGSTS   0:   5 loops; registers used in the loop median 89, passengers median 46 (range 0-85), LDL a pass median 0 (range 0-0)
+    HMMA  16 LDGSTS   0:  11 loops; registers used in the loop median 90, passengers median 46 (range 0-85), LDL a pass median 0 (range 0-0)
+    HMMA  20 LDGSTS   0:   2 loops; registers used in the loop median 71, passengers median 51 (range 29-51), LDL a pass median 0 (range 0-0)
+    HMMA  24 LDGSTS   0:   8 loops; registers used in the loop median 79, passengers median 48 (range 0-86), LDL a pass median 0 (range 0-0)
+    HMMA  28 LDGSTS   0:   2 loops; registers used in the loop median 89, passengers median 50 (range 29-50), LDL a pass median 0 (range 0-0)
+    HMMA  32 LDGSTS   0:   1 loops; registers used in the loop median 49, passengers median 92 (range 92-92), LDL a pass median 0 (range 0-0)
+    HMMA  36 LDGSTS   0:   1 loops; registers used in the loop median 179, passengers median 0 (range 0-0), LDL a pass median 0 (range 0-0)
+    HMMA  48 LDGSTS   0:   1 loops; registers used in the loop median 84, passengers median 0 (range 0-0), LDL a pass median 0 (range 0-0)
+    HMMA 180 LDGSTS   0:   1 loops; registers used in the loop median 183, passengers median 9 (range 9-9), LDL a pass median 0 (range 0-0)
+    HMMA 352 LDGSTS   5:   2 loops; registers used in the loop median 129, passengers median 43 (range 43-43), LDL a pass median 0 (range 0-0)
+    HMMA 532 LDGSTS   5:   4 loops; registers used in the loop median 196, passengers median 0 (range 0-0), LDL a pass median 0 (range 0-0)
+    HMMA 884 LDGSTS   5:   8 loops; registers used in the loop median 196, passengers median 0 (range 0-0), LDL a pass median 0 (range 0-0)
+    HMMA 920 LDGSTS   5:   4 loops; registers used in the loop median 196, passengers median 32 (range 32-32), LDL a pass median 0 (range 0-0)
+    HMMA 956 LDGSTS   5:   2 loops; registers used in the loop median 228, passengers median 0 (range 0-0), LDL a pass median 0 (range 0-0)
+  the loop with the most reloads, at 0x00bd80 (HMMA 2, LDL 0): 110 passengers
+      R0   defined by LD.E.STRONG.SYS R0, [R8.64]
+      R2   defined by IADD3 R2, R8, UR16, RZ
+      R3   defined by IADD3 R3, R2, UR16, RZ
+      R16  (not defined before the loop in this function)
+      R17  (not defined before the loop in this function)
+      R18  (not defined before the loop in this function)
+      R19  (not defined before the loop in this function)
+      R20  (not defined before the loop in this function)
+      R21  (not defined before the loop in this function)
+      R22  (not defined before the loop in this function)
+      R23  (not defined before the loop in this function)
+      R24  (not defined before the loop in this function)

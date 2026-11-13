@@ -1,0 +1,6 @@
+precise: 1058 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 20 loss buffers
+  worst: v.llama.h0.moe.e2.down.w 7.72e-05, act981 6.25e-05, act648 5.54e-05, act675 5.41e-05
+  ok   every per-step loss rel err <= 1e-05: worst 9.79e-08
+  ok   all buffers rel L2 <= 0.001: worst v.llama.h0.moe.e2.down.w 7.72e-05
+  ok   no NaN/Inf in any GPU buffer: []
+PASS

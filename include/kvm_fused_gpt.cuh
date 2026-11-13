@@ -151,7 +151,9 @@ __device__ __forceinline__ void mma_frag(float (&c)[4], const unsigned (&a)[4], 
     mma_tf32(c, a2, tf32_rna(__uint_as_float(b[0])), tf32_rna(__uint_as_float(b[1])));
   }
 }
-template <bool TA, bool TB, class Epi>
+// Full: the caller guarantees whole tiles (M a multiple of 16, N of 8), so a lane's elements reach `epi` with no bounds branch between them
+// and the compiler can interleave their epilogues (the one-block form, whose run check requires whole tiles; the gang's calls leave it off).
+template <bool TA, bool TB, bool Full = false, class Epi>
 __device__ __forceinline__ void gemm_on(const float* A, int lda, const float* B, int ldb, int M, int N, int K, bool prec, const Epi& epi, int lw, int nw) {
   const int lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3;
   const int tn = (N + 7) >> 3, tiles = ((M + 15) >> 4) * tn, ks = (K + 7) >> 3;
@@ -181,22 +183,30 @@ __device__ __forceinline__ void gemm_on(const float* A, int lda, const float* B,
       pa0 += sa; pb0 += sb;
     }
     const int ma = m0 + g, mb = ma + 8, cc = n0 + 2 * t;
-    if (ma < M && cc < N) epi(ma, cc, c0[0]);
-    if (ma < M && cc + 1 < N) epi(ma, cc + 1, c0[1]);
-    if (mb < M && cc < N) epi(mb, cc, c0[2]);
-    if (mb < M && cc + 1 < N) epi(mb, cc + 1, c0[3]);
-    if (two) {
-      const int na = m1 + g, nb = na + 8, cd = n1 + 2 * t;
-      if (na < M && cd < N) epi(na, cd, c1[0]);
-      if (na < M && cd + 1 < N) epi(na, cd + 1, c1[1]);
-      if (nb < M && cd < N) epi(nb, cd, c1[2]);
-      if (nb < M && cd + 1 < N) epi(nb, cd + 1, c1[3]);
+    if constexpr (Full) {
+      epi(ma, cc, c0[0]); epi(ma, cc + 1, c0[1]); epi(mb, cc, c0[2]); epi(mb, cc + 1, c0[3]);
+      if (two) {
+        const int na = m1 + g, nb = na + 8, cd = n1 + 2 * t;
+        epi(na, cd, c1[0]); epi(na, cd + 1, c1[1]); epi(nb, cd, c1[2]); epi(nb, cd + 1, c1[3]);
+      }
+    } else {
+      if (ma < M && cc < N) epi(ma, cc, c0[0]);
+      if (ma < M && cc + 1 < N) epi(ma, cc + 1, c0[1]);
+      if (mb < M && cc < N) epi(mb, cc, c0[2]);
+      if (mb < M && cc + 1 < N) epi(mb, cc + 1, c0[3]);
+      if (two) {
+        const int na = m1 + g, nb = na + 8, cd = n1 + 2 * t;
+        if (na < M && cd < N) epi(na, cd, c1[0]);
+        if (na < M && cd + 1 < N) epi(na, cd + 1, c1[1]);
+        if (nb < M && cd < N) epi(nb, cd, c1[2]);
+        if (nb < M && cd + 1 < N) epi(nb, cd + 1, c1[3]);
+      }
     }
   }
 }
-template <bool TA, bool TB, int BT = NT, class Epi>
+template <bool TA, bool TB, int BT = NT, bool Full = false, class Epi>
 __device__ void gemm(const float* A, int lda, const float* B, int ldb, int M, int N, int K, bool prec, Epi epi) {
-  gemm_on<TA, TB>(A, lda, B, ldb, M, N, K, prec, epi, threadIdx.x >> 5, BT / 32);
+  gemm_on<TA, TB, Full>(A, lda, B, ldb, M, N, K, prec, epi, threadIdx.x >> 5, BT / 32);
   __syncthreads();
 }
 
@@ -205,16 +215,16 @@ __device__ void gemm(const float* A, int lda, const float* B, int ldb, int M, in
 #define KVM_FGPT_PAIR 1
 #endif
 // One GEMM for gemm_par: its operands and epilogue, held until its warps run it.
-template <bool TA, bool TB, class Epi>
+template <bool TA, bool TB, class Epi, bool Full = false>
 struct GemmJob {
   const float* A; int lda; const float* B; int ldb; int M, N, K; bool prec; Epi epi;
   __device__ int tiles() const { return ((M + 15) >> 4) * ((N + 7) >> 3); }
   __device__ int work() const { return tiles() * ((K + 7) >> 3); }   // tiles x k steps: a warp's share of the job's chain
-  __device__ void on(int lw, int nw) const { gemm_on<TA, TB>(A, lda, B, ldb, M, N, K, prec, epi, lw, nw); }
-  __device__ void alone() const { gemm<TA, TB>(A, lda, B, ldb, M, N, K, prec, epi); }
+  __device__ void on(int lw, int nw) const { gemm_on<TA, TB, Full>(A, lda, B, ldb, M, N, K, prec, epi, lw, nw); }
+  __device__ void alone() const { gemm<TA, TB, NT, Full>(A, lda, B, ldb, M, N, K, prec, epi); }
 };
-template <bool TA, bool TB, class Epi>
-__device__ __forceinline__ GemmJob<TA, TB, Epi> job(const float* A, int lda, const float* B, int ldb, int M, int N, int K, bool prec, Epi epi) {
+template <bool TA, bool TB, bool Full = false, class Epi>
+__device__ __forceinline__ GemmJob<TA, TB, Epi, Full> job(const float* A, int lda, const float* B, int ldb, int M, int N, int K, bool prec, Epi epi) {
   return {A, lda, B, ldb, M, N, K, prec, epi};
 }
 // The jobs at once, each on warps of its own, sized in proportion to its work (tiles x k steps), at least one each; one job takes them all.

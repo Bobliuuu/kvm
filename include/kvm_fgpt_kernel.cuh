@@ -20,3 +20,22 @@ __global__ void __launch_bounds__(KVM_FGPT_NT, 1) kvm_fgpt_kernel(const KvmFgptD
   kvm_fgpt::run<Counted, Z>(*desc, member, reinterpret_cast<float*>(kvm_gpt_smem), (int)(dyn / sizeof(float)), &cnt->err_code,
                 [=](int code) { kvm_fail(cnt, herr, KVM_ERR_BOUNDS, slot0 + member, code, member); });
 }
+
+// The one-block form (kvm_fgpt1.cuh): a run whose whole state fits one block's shared memory (gpt-tiny's) runs its every step in one block,
+// parameters resident and activations on chip, phases separated by __syncthreads alone: no gang, no crossing. The GPT pass picks it where
+// kvm_fgpt1_check passes (kvm_fuse_gpt.h); the executor launches it as the run's one member. Built with C3 (the backward and AdamW) at
+// KVM_FGPT1_EXEC_FAST's relaxed numerics, each judged against a float64 reference. A kernel of its own, like the gang's, so neither moves the
+// other's register allocation. desc == nullptr is the warm-up launch.
+#include "kvm_fgpt1.h"
+#define KVM_FGPT1_C3 1
+#define KVM_FGPT1_FAST KVM_FGPT1_EXEC_FAST
+#include "kvm_fgpt1.cuh"
+
+__global__ void __launch_bounds__(KVM_FGPT_NT, 1) kvm_fgpt1_kernel(const KvmFgptDesc* desc, KvmCounters* cnt, KvmHostErr* herr, int slot0) {
+  if (!desc) return;
+  unsigned dyn;
+  asm("mov.u32 %0, %%dynamic_smem_size;" : "=r"(dyn));
+  auto ph = [](int) {};
+  kvm_fgpt1::run1(*desc, reinterpret_cast<float*>(kvm_gpt_smem), (long long)(dyn / sizeof(float)),
+                  [=](int code) { kvm_fail(cnt, herr, KVM_ERR_BOUNDS, slot0, code, 0); }, ph);
+}

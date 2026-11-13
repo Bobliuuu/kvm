@@ -167,6 +167,15 @@ struct NoPhases { __device__ __forceinline__ void operator()(int) const {} };
 constexpr int NPH = 9;   // the phases `ph(i)` marks, once a step in this order (every thread calls it)
 // 0 load, 1 forward (GEMMs, GELU, all-gathers), 2 logits partial, 3 barrier: logits, 4 logits summed + cross-entropy, 5 backward (GEMMs, reduce-scatters),
 // 6 barrier: partials, 7 owners: parameters, 8 owners: embedding + the last barrier
+// Sub-phases, for beds: the forward and the backward cut per layer at points every thread passes, as indices past NPH (the executor's NoPhases
+// ignores every call, so its code is unchanged). In execution order: phase 0, then each forward layer l's sub_f(l, 0..3), phase 1, 2, 3, 4, then
+// sub_head(), each backward layer's sub_b(p, 0..6) with p = 0 the top layer, phase 5, 6, 7, 8. A sub-phase a layer does not run is never stamped.
+constexpr int NSUB_F = 4;   // forward layer l: 0 GEMM (the tile waits with it), 1 GELU, 2 all-gather out + barrier, 3 the slice's H read back
+constexpr int NSUB_B = 7;   // backward layer: 0 gelu', 1 db partial, 2 the layer's input read back, 3 dW partial, 4 dX partials (tiles + writes), 5 barrier, 6 reduce-scatter
+constexpr int NPH_SUB = KVM_SPLIT_MAXL * NSUB_F + 1 + KVM_SPLIT_MAXL * NSUB_B;
+__host__ __device__ constexpr int sub_f(int l, int k) { return NPH + l * NSUB_F + k; }
+__host__ __device__ constexpr int sub_head() { return NPH + KVM_SPLIT_MAXL * NSUB_F; }
+__host__ __device__ constexpr int sub_b(int p, int k) { return sub_head() + 1 + p * NSUB_B + k; }
 
 // One step of member `member` (= q * S + s) of a split run of SV virtual shares (the descriptor's Sv; its physical S is any count up to SV, kvm_fused_split.h),
 // its weights resident for the step or, with STREAM, streamed through the layout's staging tiles (the same bits; kvm_fused_split.h):
@@ -223,15 +232,19 @@ __device__ __forceinline__ void split_run(int member, const int32_t* ids, const 
     if constexpr (STREAM) gemm_fwd_streamed(A, lda, st, d.w[l] + h0, H, K, w, ZGl, HP, HP);   // Z = A W_l,s, W_l,s by tiles
     else kvm_fmlp::gemm_r<false, false>(A, lda, sm + d.Ws[l], HP, ZGl, HP, R, HP, K);   // Z = A W_l,s
     __syncthreads();
+    ph(sub_f(l, 0));
     kvm_fmlp::for_cells(R, HP, [&](int r, int c) { const int i = r * HP + c; float f, g; kvm_fmlp::gelu_fg(ZGl[i] + bs[l * HP + c], f, g); Hs[i] = c < w ? f : 0.f; ZGl[i] = c < w ? g : 0.f; });
     __syncthreads();
+    ph(sub_f(l, 1));
     if (l + 1 < L) {   // the all-gather: this member's columns of H to L2, then the slice's whole H back as the next layer's input
       if constexpr (STREAM) st.prefetch(d.w[l + 1] + h0, H, H, H, w);   // the next layer's first tiles load across the barrier
       float* xh = d.XH[l] + (size_t)q * R * HR;
       kvm_fmlp::for_cells(R, w >> 2, [&](int r, int c4) { *reinterpret_cast<float4*>(xh + (size_t)r * HR + h0 + 4 * c4) = *reinterpret_cast<const float4*>(Hs + r * HP + 4 * c4); });
       if (!kvm_gang::cross(ctl, member, members, at, abort)) return;
+      ph(sub_f(l, 2));
       if (KVM_SPLIT_XREAD_ASYNC) { copy_rows(Hin, HR, xh, HR, R, HR); kvm_fmlp::cp_commit_wait(); } else load_rows(Hin, HR, xh, HR, R, HR);   // pad columns past H stay zero in L2
       __syncthreads();
+      ph(sub_f(l, 3));
       A = Hin; lda = HR; K = H;
     }
   }
@@ -280,34 +293,44 @@ __device__ __forceinline__ void split_run(int member, const int32_t* ids, const 
   kvm_fmlp::gemm_r<false, true>(Lg, VP, Whs, VP, dZ, HP, R, HP, VP);                                 // dH_s = dlogits Wh_s^T
   kvm_fmlp::gemm_m<true, false>(Hs, HP, Lg, VP, d.dWh + (size_t)member * HP * VP, VP, HP, VP, R);    // dWh_s = H_s^T dlogits
   __syncthreads();
+  ph(sub_head());
   for (int l = L - 1; l >= 0; --l) {
+    const int p = L - 1 - l;   // the sub-phases' layer position (0: the top layer, the first the backward runs)
     const float* ZGl = ZG + l * R * HP;
     float* Ws = sm + d.Ws[l];
     if constexpr (STREAM) st.prefetch(d.w[l] + h0, H, l ? HR : E, l ? H : E, w);   // W_l,s's rows by tiles (zero rows past H)
     for (int i = tid; i < R * HP; i += NT) dZ[i] *= ZGl[i];                                         // dZ = dH_s gelu'(Z) (zero past w)
     __syncthreads();
+    ph(sub_b(p, 0));
     for (int c = tid; c < HP; c += NT) { float a = 0.f; for (int r = 0; r < R; ++r) a += dZ[r * HP + c]; d.db[l][(size_t)member * HP + c] = a; }
+    ph(sub_b(p, 1));
     if (l == 0) {
       kvm_fmlp::gemm_m<true, false>(X0, E, dZ, HP, d.dW[0] + (size_t)member * E * HP, HP, E, HP, R);          // dW_0,s = X0^T dZ
+      ph(sub_b(p, 3));
       if constexpr (STREAM) gemm_dx_streamed(dZ, HP, d, t0, t1, h0, st, d.w[0] + h0, H, E, E, w, [&](int t) { return d.dX0 + (size_t)(q * SV + t) * R * E; }, E);
       else for (int t = t0; t < t1; ++t) {                                                                      // dX0 part of each virtual share = dZ_t W_0,t^T
         const int c = d.share0[t] - h0;
         kvm_fmlp::gemm_r<false, true>(dZ + c, HP, Ws + c, HP, d.dX0 + (size_t)(q * SV + t) * R * E, E, R, E, d.share0[t + 1] - d.share0[t]);
       }
       __syncthreads();
+      ph(sub_b(p, 4));
     } else {
       const float* xin = d.XH[l - 1] + (size_t)q * R * HR;   // the layer's input, the slice's whole H_(l-1), read back from L2
       if (KVM_SPLIT_XREAD_ASYNC) { copy_rows(Hin, HR, xin, HR, R, HR); kvm_fmlp::cp_commit_wait(); } else load_rows(Hin, HR, xin, HR, R, HR);
       __syncthreads();
+      ph(sub_b(p, 2));
       for (int m0 = 0; m0 < HR; m0 += 128)                                                                    // dW_l,s = H_(l-1)^T dZ
         kvm_fmlp::gemm_m<true, false>(Hin + m0, HR, dZ, HP, d.dW[l] + ((size_t)member * HR + m0) * HP, HP, min(128, HR - m0), HP, R);
+      ph(sub_b(p, 3));
       if constexpr (STREAM) gemm_dx_streamed(dZ, HP, d, t0, t1, h0, st, d.w[l] + h0, H, HR, H, w, [&](int t) { return d.XD[l & 1] + (size_t)(q * SV + t) * R * HR; }, HR);
       else for (int t = t0; t < t1; ++t) {   // each virtual share's full-width partial dZ_t W_l,t^T, its own columns its whole K
         const int c = d.share0[t] - h0, wt = d.share0[t + 1] - d.share0[t];
         float* xd = d.XD[l & 1] + (size_t)(q * SV + t) * R * HR;   // alternating with the layer: a slot is rewritten only after the next barrier (kvm_fused_split.h)
         for (int n0 = 0; n0 < HR; n0 += 128) kvm_fmlp::gemm_r<false, true>(dZ + c, HP, Ws + n0 * HP + c, HP, xd + n0, HR, R, min(128, HR - n0), wt);
       }
+      ph(sub_b(p, 4));
       if (!kvm_gang::cross(ctl, member, members, at, abort)) return;
+      ph(sub_b(p, 5));
       kvm_fmlp::for_cells(R, HP / 4, [&](int r, int c4) {   // the reduce-scatter: this member's columns of the slice's SV partials, in virtual-share order
         float4 x[SV];
 #pragma unroll
@@ -320,6 +343,7 @@ __device__ __forceinline__ void split_run(int member, const int32_t* ids, const 
         *reinterpret_cast<float4*>(dZ + r * HP + c) = a;
       });
       __syncthreads();
+      ph(sub_b(p, 6));
     }
   }
   ph(5);

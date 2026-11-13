@@ -120,6 +120,9 @@ __host__ __device__ constexpr int kvm_gpt_smem_bytes(int max_hd) {
 #define KVM_GPT_MAX_HD 64   // largest attention head size the launch must support (16/32/64 -> 56 KiB, 128 -> 104 KiB)
 #endif
 #define KVM_GPT_SMEM_BYTES kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)
+// attn_bwd_dkv's K park (attn_dkv_t, up to hd 64): each warp's K fragments, hd/8 k-steps x 32 lanes x 16 B, after the stage ring.
+// A launch sized per task must give attn_bwd_dkv its stage ring plus this.
+__host__ __device__ constexpr int kvm_gpt_dkv_park_bytes(int hd) { return hd <= 64 ? (KVM_GPT_THREADS / 32) * (hd / 8) * 32 * 16 : 0; }
 
 // ---- One task's dynamic shared memory: what the launch is sized from (KvmExec::size_launch) and what the ops' guards check ----------
 // KVM_GPT_SMEM_BYTES is the most any task of this build can need. A launch that asks for it leaves the A100 28 KB of L1 at 147,456 B
@@ -134,6 +137,7 @@ __host__ __device__ constexpr int kvm_gpt_bigtile_smem(int bm, int bn) {   // 12
     return staged > stages ? staged : stages;
 }
 __host__ __device__ constexpr int kvm_gpt_attn_smem(int hd) { return 3 * 2 * 32 * (hd + 4) * 4; }   // 3 stages of two 32 x (hd+4) tiles
+__host__ __device__ constexpr int kvm_gpt_attn_dkv_smem(int hd) { return kvm_gpt_attn_smem(hd) + kvm_gpt_dkv_park_bytes(hd); }   // attn_bwd_dkv: its stages and, up to hd 64, its K park
 // matmul_tile by its flags (a[11]): 64 (256x128) without 16 (3xTF32) or 128 (bf16 operands) is one 256x128 tile; 32, or 64 with either,
 // a 128x128 tile (two passes for 64); everything else the 64x64 tile.
 __host__ __device__ constexpr int kvm_gpt_matmul_tile_smem(int fl) {
@@ -163,7 +167,8 @@ __host__ __device__ constexpr bool kvm_gpt_has_op(int op) {
 __host__ __device__ constexpr int kvm_gpt_task_smem(int op, const int32_t* a) {
     return op == KVM_GPT_OPID_matmul_tile ? kvm_gpt_matmul_tile_smem(a[KVM_GPT_ARG_TILE_FLAGS])
          : op == KVM_GPT_OPID_attn_fwd ? kvm_gpt_attn_smem(a[KVM_GPT_ARG_ATTN_FWD_HD])
-         : op == KVM_GPT_OPID_attn_bwd_dq || op == KVM_GPT_OPID_attn_bwd_dkv ? kvm_gpt_attn_smem(a[KVM_GPT_ARG_ATTN_BWD_HD])
+         : op == KVM_GPT_OPID_attn_bwd_dq ? kvm_gpt_attn_smem(a[KVM_GPT_ARG_ATTN_BWD_HD])
+         : op == KVM_GPT_OPID_attn_bwd_dkv ? kvm_gpt_attn_dkv_smem(a[KVM_GPT_ARG_ATTN_BWD_HD])
          : kvm_gpt_has_op(op) ? KVM_GPT_SMEM_SMALL : -1;
 }
 
@@ -2464,8 +2469,23 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
         cp_commit();
     };
     issue(0); issue(1);
-    float ak[NT][4], av[NT][4];
-    load_a_raw<HD>(ak, eoff(A.k, (size_t)A.b * Tn * A.ldk + kvh * HD, A.sd & KVM_ATT_K), A.ldk, keyA, Tn, t, A.sd & KVM_ATT_K);
+    // Up to hd 64 the warp's K fragments wait in shared memory after the stage ring, one float4 a lane a k-step, read back each tile: the
+    // loop keeps 32 fewer registers live (at hd 64 it reloaded 59 spilled values a pass with them in registers, 2 without). The slots are
+    // warp-private, written and read by the same lane, and the MMAs read the same values. hd 128 keeps them in registers: its park would
+    // not fit the launch.
+    constexpr bool KPARK = kvm_gpt_dkv_park_bytes(HD) > 0;
+    float4* kpark = reinterpret_cast<float4*>(QO + M::NST * M::STAGE) + warp * (NT * 32);
+    float ak[KPARK ? 1 : NT][4], av[NT][4];
+    if constexpr (KPARK) {
+        static_assert((KVM_GPT_THREADS / 32) * NT * 32 * 16 == kvm_gpt_dkv_park_bytes(HD), "kvm_gpt_dkv_park_bytes is the park's size");
+        static_assert(M::SMEM + kvm_gpt_dkv_park_bytes(HD) == kvm_gpt_attn_dkv_smem(HD), "the launch is sized by kvm_gpt_attn_dkv_smem");
+        float kr[NT][4];
+        load_a_raw<HD>(kr, eoff(A.k, (size_t)A.b * Tn * A.ldk + kvh * HD, A.sd & KVM_ATT_K), A.ldk, keyA, Tn, t, A.sd & KVM_ATT_K);
+#pragma unroll
+        for (int ks = 0; ks < NT; ks++) kpark[ks * 32 + lane] = make_float4(kr[ks][0], kr[ks][1], kr[ks][2], kr[ks][3]);
+    } else {
+        load_a_raw<HD>(ak, eoff(A.k, (size_t)A.b * Tn * A.ldk + kvh * HD, A.sd & KVM_ATT_K), A.ldk, keyA, Tn, t, A.sd & KVM_ATT_K);
+    }
     load_a_raw<HD>(av, eoff(A.v, (size_t)A.b * Tn * A.ldv + kvh * HD, A.sd & KVM_ATT_V), A.ldv, keyA, Tn, t, A.sd & KVM_ATT_V);
     float dk[NT][4], dv[NT][4];
 #pragma unroll
@@ -2498,7 +2518,8 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
 #pragma unroll
         for (int ks = 0; ks < NT; ks++) {
             unsigned ah[4], al[4], bh[4][2], bl[4][2];
-            split4(ak[ks], ah, al);
+            if constexpr (KPARK) { const float4 kq = kpark[ks * 32 + lane]; const float kf[4] = {kq.x, kq.y, kq.z, kq.w}; split4(kf, ah, al); }
+            else split4(ak[ks], ah, al);
             frag_nt<LD, 4>(bh, bl, Qs, 0, ks, g, t);
             mma3n<4>(s, 0, ah, al, bh, bl);
             split4(av[ks], ah, al);
@@ -2716,7 +2737,7 @@ KVM_GPT_DEVI void attn_bwd_dkv(const KvmCtx& ctx, const int32_t* a) {
     A.Hkv = kb->cols / hd;
     k.need(A.Hkv > 0 && kb->cols % hd == 0, KVM_GPT_E_SHAPE);
     if (k.bad || !attn_geom(k, A.b, A.h, A.i0, A.T, A.H, A.Hkv, hd, true)) return;
-    k.need(dyn_smem_bytes() >= (unsigned)kvm_gpt_attn_smem(hd), KVM_GPT_E_SMEM);   // a launch sized below this head size's stages
+    k.need(dyn_smem_bytes() >= (unsigned)kvm_gpt_attn_dkv_smem(hd), KVM_GPT_E_SMEM);   // a launch sized below this head size's stages and K park
     if (k.bad) return;
     long R = (long)(A.b + 1) * A.T, nl = R * A.H;
     A.q = attn_mat(k, A, a[0], R, (long)A.H * hd, &A.ldq, KVM_ATT_Q); A.k = attn_mat(k, A, a[1], R, (long)A.Hkv * hd, &A.ldk, KVM_ATT_K);

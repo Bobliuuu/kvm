@@ -1,0 +1,10 @@
+== 1. bitwise, 20 steps (06:25:21Z)
+w_small_wl-g32: lever2=equal tail=equal shift=equal (      4 rc 0 )
+w_d128_tf32_k30-g32: lever2=equal tail=equal shift=equal (      4 rc 0 )
+w_tiny_wl-g16: lever2=equal tail=equal shift=equal (      4 rc 0 )
+== 2. timing, 5 rounds (06:25:44Z)
+w_small_wl-g32:  base 276.3 us (5 rounds)  lever2 281.8 us (base/lever2 x0.9801, x0.9794-x0.9808)  tail 283.2 us (base/tail x0.9753, x0.9746-x0.9760)  shift 276.1 us (base/shift x1.0007, x1.0000-x1.0014)
+w_d128_tf32_k30-g32:  base 838.3 us (5 rounds)  lever2 850.1 us (base/lever2 x0.9861, x0.9858-x0.9872)  tail 853.5 us (base/tail x0.9822, x0.9816-x0.9828)  shift 835.0 us (base/shift x1.0038, x1.0034-x1.0050)
+w_tiny_wl-g16:  base 133.5 us (5 rounds)  lever2 127.7 us (base/lever2 x1.0462, x1.0430-x1.0541)  tail 127.2 us (base/tail x1.0496, x1.0389-x1.0582)  shift 134.2 us (base/shift x0.9955, x0.9838-x1.0022)
+=== verdict: bitwise on every shape (06:29:32Z)
+IDLE_END

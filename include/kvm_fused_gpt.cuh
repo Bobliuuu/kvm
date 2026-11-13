@@ -469,14 +469,15 @@ __device__ __forceinline__ void repl_elem(const Plan& p, long long q, int& slot,
 enum KvmFgptMark : int {
   MK_INPUT, MK_LN1, MK_X_H, MK_UF_STAGE, MK_UF_QKV, MK_UF_ROPE, MK_X_KV, MK_UF_SCORES, MK_UF_SOFTMAX, MK_UF_PV, MK_UF_PROJ, MK_ATTN, MK_X_PROJ, MK_LN2,
   MK_X_H2, MK_MLP, MK_X_FC2, MK_RES, MK_LNF, MK_X_HF, MK_LOGITS, MK_X_CE, MK_CE, MK_HEADB, MK_X_DHF, MK_LNFB, MK_X_GFC2, MK_MLPB, MK_X_DH2,
-  MK_LN2B, MK_X_GPROJ, MK_UB_STAGE, MK_UB_DO, MK_UB_STAGE2, MK_UB_P, MK_UB_DV_DS, MK_UB_DQ_DK, MK_UB_DB, MK_X_DKV, MK_UB_DW, MK_UB_DH, MK_ATTNB, MK_X_DH,
+  MK_LN2B, MK_X_GPROJ, MK_UB_STAGE, MK_UB_DO, MK_UB_STAGE2, MK_UB_P, MK_UB_DV_DS, MK_UB_DQ_DK, MK_UB_DB, MK_UB_ZBWA, MK_X_DKV, MK_UB_DW, MK_UB_DH, MK_UB_ZBWB, MK_ATTNB, MK_X_DH,
   MK_LN1B, MK_X_GEMB, MK_EMBB, MK_SUMS, MK_SQUARES, MK_X_NORM, MK_ADAMW, MK_X_END, MK_COUNT
 };
 struct NoPhases { __device__ __forceinline__ void operator()(int) const {} };
 
 // ---- the gang's barrier -------------------------------------------------------------------------------------------------------------------
 // The gang's crossing on its control words (d.ctl), in the form its size takes (kvm_gang::counted_form): the flag lines up to
-// KVM_GANG_LINES_MAX members, the counted barrier past them. The program is instantiated per form (run<Counted>, the launch picking by G),
+// KVM_GANG_LINES_MAX members, the counted barrier past them. The program is instantiated per form (run<Counted, Z>, the launch picking by G;
+// Z likewise carries ZBW's code only for the runs it engages),
 // so each crossing site carries one form's code: through kvm_gang::cross, both forms inline at every site behind a run-time branch added
 // 1,020 instructions to this program and cost 16- and 32-member gangs 0.6-0.9% on the A100. A run starts from the words as the last run left
 // them, so they need no reset between runs.
@@ -486,6 +487,8 @@ static_assert(KVM_GANG_LINES_MAX <= 32 * (KVM_FGPT_NT / 32), "the flag lines pol
 struct Ctx {
   Plan p;
   int QB, TQ, W, TQ16, hgsz, RC, RC16, base, ldq, ldd, ldh, np;
+  int zbw, o0, o1, zg, zdb;                  // ZBW (the MLP backward): engaged; a doer's owners [o0, o1); owners a pass; gx's or h2's columns a block
+  int zbwa;                                  // ZBW for the attention (KVM_FGPT_ZBW_ATTN): engaged; member W + w is item w's doer
   int nblk, nb, na, nq, n_own;                // the member's owned elements: its blocks, then its attention and replicated slices
   bool prec, ok;
   float inv_n;
@@ -521,7 +524,7 @@ static_assert(KVM_FGPT_LAYOUT_FLOATS % 4 == 0, "the constants after the layout a
 // error word, which the gang barrier only reads. A member that finds a fault reports it once, from thread 0, through `fail(code)` (a
 // KvmFgptError), and returns; the caller's report must set the error word (the executor's kvm_fail does), so every other member leaves at its
 // next crossing. Returns false when the run failed. Every thread of the block calls it.
-template <bool Counted, class FAIL, class PH>
+template <bool Counted, bool Z, class FAIL, class PH>   // Z: the instance that carries ZBW's code (kvm_fgpt_zbw_of picks it per run)
 __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floats, const int* abort, FAIL fail, PH& ph) {
   const int tid = threadIdx.x;
   // the scratch layout and the run's constants, one copy a block at the head of shared memory, written once by thread 0
@@ -572,6 +575,14 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
     c.ostride = kvm_fgpt_own_stride(B, T, D, H, F, V, L, G);
     c.olist = reinterpret_cast<uint32_t*>(d.xch + s.olist) + (size_t)b * c.ostride;
     c.osrc = reinterpret_cast<uint32_t*>(d.xch + s.osrc) + (size_t)b * c.ostride;
+    // ZBW (the MLP backward, kvm_fgpt_zbw_plan): a member without an attention item (b >= W) is a doer of a contiguous run of the nf owners
+    c.zbw = false; c.zbwa = false; c.zg = c.zdb = c.o0 = c.o1 = 0;
+    if constexpr (Z) {   // the plan the host picked this instance by (kvm_fgpt_zbw_of), from the same shape and shared memory
+      const KvmFgptZbwRun z = kvm_fgpt_zbw_of(N, T, D, H, F, G, c.QB, d.rows, smem_floats);
+      c.zbw = z.mlp.zg > 0; c.zg = z.mlp.zg; c.zdb = z.mlp.zdb;
+      if (c.zbw && b >= c.W) { c.o0 = (int)((long long)(b - c.W) * pl.nf / z.mlp.doers); c.o1 = (int)((long long)(b - c.W + 1) * pl.nf / z.mlp.doers); }
+      c.zbwa = z.attn;
+    }
   }
   __syncthreads();
   // Every constant below is a reference into that copy, so a phase reads what it uses there: a value read through shared memory is not held
@@ -946,11 +957,119 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
            X + s.lnp + ((size_t)(2 * L) * G + b) * 2 * D + D, p.r0, p.r1, D);
     colsum_rows(gx, p.r0, p.r1, D, X + s.rpart + ((size_t)(2 * (L - 1) + 1) * G + b) * D);   // b2 of the last layer: the gradient at x[L]
     ph(MK_LNFB);
+    // ZBW, a doer's pass over its owners' fc1 columns [o0 fp, o1 fp) of layer l, in the attention backward's waits: pass 0 dW2 and db1
+    // (before the dK dV exchange), pass 1 dW1 (before reduce-scatter dh). Its inputs are what the owners would have used: gelu(pre), fc2's
+    // output gradient (gxk, kept before ln_bwd rewrote gx), h2 and the owners' dU (du). Every element sums as the owner's would: the same
+    // row chunks in order, and a GEMM tile's sum runs a k step at a time whatever the tile's place, so wider passes and gx's or h2's
+    // columns in blocks change no bit; db1 sums each owner's columns alone (colsum_smem's order depends on the width).
+    auto zbw_pass = [&](int l, int pass) -> bool {
+      const int fp = p.fp, Fm = p.F, ca0 = min(Fm, c.o0 * fp), cb0 = min(Fm, c.o1 * fp), wmax = c.zg * fp, db = c.zdb;
+      phase();
+      float* const XS = ar.take((long long)RC16 * (kvm_fgpt_ldk(db) > kvm_fgpt_ldmn(db) ? kvm_fgpt_ldk(db) : kvm_fgpt_ldmn(db)));
+      float* const PRE = ar.take((long long)RC16 * kvm_fgpt_ldk(wmax));
+      float* const Ut = ar.take((long long)RC16 * kvm_fgpt_ldmn(wmax));
+      float* const DUs = ar.take((long long)RC16 * kvm_fgpt_ldk(wmax));
+      if (!check()) return false;
+      float* const gw2 = Gr(lay(l, KVM_FGPT_R_W2)); float* const gw1 = Gr(lay(l, KVM_FGPT_R_W1)); float* const gb1 = Gr(lay(l, KVM_FGPT_R_B1));
+      const float* const rows = pass == 0 ? X + s.gxk : X + s.h2[l];
+      for (int c0 = 0; c0 < N; c0 += RC) {
+        KVM_FGPT_PHASE_CONSTS;
+        const int rc = N - c0 < RC ? N - c0 : RC, rc16 = kvm_fgpt_r16(rc);
+        const bool add = c0 > 0;
+        for (int ca = ca0; ca < cb0; ca += wmax) {
+          const int cb = min(cb0, ca + wmax), wb = cb - ca, ldw = kvm_fgpt_ldk(wb), ldwm = kvm_fgpt_ldmn(wb);
+          if (pass == 0) {
+            const Copy cs[2] = {{PRE, X + s.pre[l] + (size_t)c0 * F + ca, ldw, (size_t)F, rc, wb, rc16, kvm_fgpt_r8(wb)},
+                                {DUs, X + s.du + (size_t)c0 * F + ca, ldw, (size_t)F, rc, wb, rc16, kvm_fgpt_r8(wb)}};
+            stage_all(cs);
+            grid_loop(rc16, kvm_fgpt_r8(wb), [&](int r, int cc) { Ut[r * ldwm + cc] = r < rc && cc < wb ? gelu(PRE[r * ldw + cc]) : 0.f; });
+            __syncthreads();
+            for (int f0 = ca; f0 < cb; f0 += fp)                                       // db1, an owner at a time
+              colsum_smem(DUs + (f0 - ca), ldw, rc, min(F, f0 + fp) - f0, gb1 + f0, scr, add);
+          } else {
+            stage(DUs, ldw, X + s.du + (size_t)c0 * F + ca, (size_t)F, rc, wb, rc16, kvm_fgpt_r8(wb));
+          }
+          for (int n0 = 0; n0 < D; n0 += db) {                                         // gx's (dW2) or h2's (dW1) columns, a block at a time
+            const int dn = min(D, n0 + db) - n0;
+            if (pass == 0) {
+              stage(XS, kvm_fgpt_ldk(dn), rows + (size_t)c0 * D + n0, (size_t)D, rc, dn, rc16, kvm_fgpt_r8(dn));
+              gemm<true, false>(Ut, ldwm, XS, kvm_fgpt_ldk(dn), wb, dn, rc, prec, [&](int m, int n, float a) {
+                float* const o = gw2 + (size_t)(ca + m) * D + n0 + n; *o = add ? ld(o) + a : a; });
+            } else {
+              stage(XS, kvm_fgpt_ldmn(dn), rows + (size_t)c0 * D + n0, (size_t)D, rc, dn, rc16, dn);
+              gemm<true, false>(XS, kvm_fgpt_ldmn(dn), DUs, ldw, dn, wb, rc, prec, [&](int m, int n, float a) {
+                float* const o = gw1 + (size_t)(n0 + m) * F + ca + n; *o = add ? ld(o) + a : a; });
+            }
+          }
+        }
+      }
+      return true;
+    };
+    // ZBW for the attention: item w's weight gradients that wait on nothing it computes later, run by its doer (member W + w) as the item
+    // would have: pass 0, before the dK dV exchange, dWo from o's and gx's rows; pass 1, after it, dWq from h's rows and the dq the item
+    // stored (after RoPE's backward), and dbq. The same copies, strides and GEMMs as the item's, into the item's own head-gradient slot,
+    // so every element sums in the same order.
+    auto zbwa_pass = [&](int l, int w, int pass) -> bool {
+      KVM_FGPT_PHASE_CONSTS;
+      const int u = w / QB, qb = w % QB, sq = u / H, hh = u % H, c0 = hh * hd, r0 = sq * T + qb * TQ;
+      float* const hg = X + s.hgp + ((size_t)l * W + w) * hgsz;
+      phase();
+      if (pass == 0) {
+        float* const O = ar.take((long long)TQ16 * ldh);
+        float* const GS = ar.take((long long)TQ16 * ldd);
+        if (!check()) return false;
+        const Copy cs[2] = {{GS, gx + (size_t)r0 * D, ldd, (size_t)D, TQ, D, TQ16, kvm_fgpt_r8(D)},
+                            {O, X + s.o[l] + (size_t)r0 * D + c0, ldh, (size_t)D, TQ, hd, TQ16, kvm_fgpt_r8(hd)}};
+        stage_all(cs);
+        gemm<true, false>(O, ldh, GS, ldd, hd, D, TQ, prec, [&](int m, int n, float a) { hg[3 * D * hd + 3 * hd + m * D + n] = a; });   // dWo rows
+      } else {
+        float* const DQ = ar.take((long long)TQ16 * ldh);
+        float* const HQ = ar.take((long long)TQ16 * kvm_fgpt_ldmn(D));
+        if (!check()) return false;
+        const Copy cs[2] = {{DQ, X + s.dqk + (size_t)r0 * D + c0, ldh, (size_t)D, TQ, hd, TQ16, kvm_fgpt_r8(hd)},
+                            {HQ, X + s.h[l] + (size_t)r0 * D, kvm_fgpt_ldmn(D), (size_t)D, TQ, D, TQ16, D}};
+        stage_all(cs);
+        colsum_smem(DQ, ldh, TQ, hd, hg + 3 * D * hd, scr);                                                                         // dbq
+        gemm<true, false>(HQ, kvm_fgpt_ldmn(D), DQ, ldh, D, hd, TQ, prec, [&](int m, int n, float a) { hg[m * hd + n] = a; });          // dWq
+      }
+      return true;
+    };
     for (int l = L - 1; l >= 0; --l) {
       float* const x = X + s.x[l]; float* const h = X + s.h[l]; float* const xm = X + s.xm[l]; float* const h2 = X + s.h2[l];
       if (!cross()) return false;                                                     // all-gather gx (fc2's output gradient)
       ph(MK_X_GFC2);
-      if (p.f1 > p.f0) {                                                              // fc1 owners: fc2's rows and fc1's columns of their units
+      if (Z && p.f1 > p.f0 && c.zbw) {
+        // ZBW (Zero Bubble's B/W split, inside the gang): the members without an attention item run the weight gradients (dW2, db1, dW1)
+        // in the attention backward's waits (zbw_pass), so an owner runs only the input gradients the next crossing needs: dU, kept in du
+        // for its doer, and fc2's dX partial. W2's rows, then W1's columns, in one buffer as below.
+        const int f0 = p.f0, w = p.f1 - p.f0, ldu = kvm_fgpt_ldk(w);
+        phase();
+        float* const PRE = ar.take((long long)RC16 * ldu);
+        float* const DU = ar.take((long long)RC16 * ldu);
+        float* const XS = ar.take((long long)RC16 * ldd);                              // gx
+        float* const WS = ar.take((long long)kvm_fgpt_r8(w) * ldd > (long long)kvm_fgpt_r8(D) * ldu ? (long long)kvm_fgpt_r8(w) * ldd
+                                                                                                     : (long long)kvm_fgpt_r8(D) * ldu);
+        if (!check()) return false;
+        float* const du = X + s.du;
+        for (int c0 = 0; c0 < N; c0 += RC) {
+          KVM_FGPT_PHASE_CONSTS;
+          const int rc = N - c0 < RC ? N - c0 : RC, rc16 = kvm_fgpt_r16(rc);
+          {
+            const Copy cs[3] = {{PRE, X + s.pre[l] + (size_t)c0 * F + f0, ldu, (size_t)F, rc, w, rc16, kvm_fgpt_r8(w)},
+                                {XS, gx + (size_t)c0 * D, ldd, (size_t)D, rc, D, rc16, kvm_fgpt_r8(D)},
+                                {WS, P(lay(l, KVM_FGPT_R_W2)) + (size_t)f0 * D, ldd, (size_t)D, w, D, kvm_fgpt_r8(w), kvm_fgpt_r8(D)}};
+            zero(DU, ldu, rc16, kvm_fgpt_r8(w));
+            stage_all(cs);
+          }
+          gemm<false, true>(XS, ldd, WS, ldd, rc, w, D, prec, [&](int m, int n, float a) {
+            const float v = a * gelu_grad(PRE[m * ldu + n]);
+            DU[m * ldu + n] = v;
+            du[(size_t)(c0 + m) * F + f0 + n] = v;
+          });
+          stage(WS, ldu, P(lay(l, KVM_FGPT_R_W1)) + f0, (size_t)F, D, w, kvm_fgpt_r8(D), kvm_fgpt_r8(w));
+          gemm<false, true>(DU, ldu, WS, ldu, rc, D, w, prec, [&](int m, int n, float a) { part[(size_t)(c0 + m) * D + n] = a; });
+        }
+      } else if (p.f1 > p.f0) {                                                       // fc1 owners: fc2's rows and fc1's columns of their units
         const int f0 = p.f0, w = p.f1 - p.f0, ldu = kvm_fgpt_ldk(w), ldum = kvm_fgpt_ldmn(w);
         phase();
         float* const PRE = ar.take((long long)RC16 * ldu);
@@ -992,6 +1111,11 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
       if (!cross()) return false;                                                     // reduce-scatter dh2
       ph(MK_X_DH2);
       rs_sum(X + s.part, false, p.nf, T, 1, Nd, nullptr, nullptr, dy, p.r0, p.r1, D);
+      if (Z && c.zbw) {   // ZBW: fc2's output gradient, kept for the doers before ln_bwd turns this member's rows of gx into the gradient at xm
+        float* const gxk = X + s.gxk;
+        for (size_t i = (size_t)p.r0 * D + tid; i < (size_t)p.r1 * D; i += NT) gxk[i] = gx[i];
+        __syncthreads();
+      }
       ln_bwd(xm, dy, P(lay(l, KVM_FGPT_R_N2G)), X + s.m2[l], X + s.r2[l], gx, true, X + s.lnp + ((size_t)(2 * l + 1) * G + b) * 2 * D,
              X + s.lnp + ((size_t)(2 * l + 1) * G + b) * 2 * D + D, p.r0, p.r1, D);
       colsum_rows(gx, p.r0, p.r1, D, X + s.rpart + ((size_t)(2 * l) * G + b) * D);  // bo: the gradient at xm
@@ -1039,7 +1163,8 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
           stage_all(cs);
         }
         ph(MK_UB_STAGE);
-        gemm<true, false>(O, ldh, GS, ldd, hd, D, TQ, prec, [&](int m, int n, float a) { hg[3 * D * hd + 3 * hd + m * D + n] = a; });   // dWo rows
+        if (!Z || !c.zbwa)                                                             // dWo rows (with ZBW for the attention, the item's doer's)
+          gemm<true, false>(O, ldh, GS, ldd, hd, D, TQ, prec, [&](int m, int n, float a) { hg[3 * D * hd + 3 * hd + m * D + n] = a; });
         gemm<false, true>(GS, ldd, WO, ldd, TQ, hd, D, prec, [&](int m, int n, float a) { DO[m * ldh + n] = a; });                       // do
         for (int i = tid; i < TQ; i += NT) { float a = 0.f; for (int c = 0; c < hd; ++c) a += O[i * ldh + c] * DO[i * ldh + c]; delta[i] = a; }
         __syncthreads();
@@ -1058,7 +1183,12 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
         }
         ph(MK_UB_DQ_DK);
         rope(DQ, ldh, TQ, q0, T, hd, rtab, -1.f);
-        colsum_smem(DQ, ldh, TQ, hd, hg + 3 * D * hd, scr);                                                                         // dbq
+        if (!Z || !c.zbwa) colsum_smem(DQ, ldh, TQ, hd, hg + 3 * D * hd, scr);                                                            // dbq
+        else {   // ZBW for the attention: dq (after RoPE's backward) for the item's doer, which runs dWq and dbq after the dK dV exchange
+          float* const dqk = X + s.dqk;
+          for (int e = tid; e < TQ * hd; e += NT) { const int i = e / hd, cc = e % hd; dqk[(size_t)(r0 + i) * D + c0 + cc] = DQ[i * ldh + cc]; }
+          __syncthreads();
+        }
         ph(MK_UB_DB);
         {   // h's rows and Wq's columns: below DQ where they fit (every buffer before DQ is dead now), else where gx's rows and Wo's rows were
           const long long need = kvm_fgpt_r4((long long)TQ16 * kvm_fgpt_ldmn(D)) + kvm_fgpt_r4((long long)kvm_fgpt_r8(D) * ldh);
@@ -1068,15 +1198,22 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
         float* const HQ = ar.take((long long)TQ16 * kvm_fgpt_ldmn(D));
         float* const WQ = ar.take((long long)kvm_fgpt_r8(D) * ldh);
         if (!check()) return false;
-        {
+        if (!Z || !c.zbwa) {
           const Copy cs[2] = {{HQ, h + (size_t)r0 * D, kvm_fgpt_ldmn(D), (size_t)D, TQ, D, TQ16, D},
                               {WQ, P(lay(l, KVM_FGPT_R_WQ)) + c0, ldh, (size_t)D, D, hd, kvm_fgpt_r8(D), kvm_fgpt_r8(hd)}};
           stage_all(cs);
+          gemm<true, false>(HQ, kvm_fgpt_ldmn(D), DQ, ldh, D, hd, TQ, prec, [&](int m, int n, float a) { hg[m * hd + n] = a; });        // dWq
+        } else {   // h's rows are dWq's alone, which the item's doer runs
+          stage(WQ, ldh, P(lay(l, KVM_FGPT_R_WQ)) + c0, (size_t)D, D, hd, kvm_fgpt_r8(D), kvm_fgpt_r8(hd));
         }
-        gemm<true, false>(HQ, kvm_fgpt_ldmn(D), DQ, ldh, D, hd, TQ, prec, [&](int m, int n, float a) { hg[m * hd + n] = a; });          // dWq
         float* const pu = X + s.part + (size_t)w * TQ * D;
         gemm<false, true>(DQ, ldh, WQ, ldh, TQ, D, hd, prec, [&](int m, int n, float a) { pu[(size_t)m * D + n] = a; });                // q's dh rows
         ph(MK_UB_STAGE2);
+      }
+      if constexpr (Z) {
+        if (c.zbw && c.o1 > c.o0 && !zbw_pass(l, 0)) return false;                     // a doer: dW2 and db1 of its owners
+        if (c.zbwa && b >= W && b < 2 * W && !zbwa_pass(l, b - W, 0)) return false;   // item b - W's doer: its dWo
+        ph(MK_UB_ZBWA);
       }
       if (QB > 1) { if (!cross()) return false; }                                       // the dK and dV partials (one block a unit: its own)
       else __syncthreads();
@@ -1111,6 +1248,11 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
         float* const pu = X + s.part + (size_t)w * TQ * D;
         gemm<false, true>(DKV, ldv, WKV, ldv, TQ, D, 2 * hd, prec, [&](int m, int n, float a) { const size_t i = (size_t)m * D + n; pu[i] = ld(pu + i) + a; });   // k's and v's dh rows
         ph(MK_UB_DH);
+      }
+      if constexpr (Z) {
+        if (c.zbw && c.o1 > c.o0 && !zbw_pass(l, 1)) return false;                     // a doer: dW1 of its owners
+        if (c.zbwa && b >= W && b < 2 * W && !zbwa_pass(l, b - W, 1)) return false;   // item b - W's doer: its dWq and dbq
+        ph(MK_UB_ZBWB);
       }
       ph(MK_ATTNB);
       if (!cross()) return false;                                                     // reduce-scatter dh
@@ -1320,10 +1462,10 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
   return true;
 }
 
-template <bool Counted, class FAIL>
+template <bool Counted, bool Z, class FAIL>
 __device__ __forceinline__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floats, const int* abort, FAIL fail) {
   NoPhases ph;
-  return run<Counted>(d, member, smem, smem_floats, abort, fail, ph);
+  return run<Counted, Z>(d, member, smem, smem_floats, abort, fail, ph);
 }
 
 }  // namespace kvm_fgpt

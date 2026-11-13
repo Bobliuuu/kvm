@@ -26,13 +26,13 @@ static const char* const kMarks[kvm_fgpt::MK_COUNT] = {
     "final LN", "  wait: all-gather hf", "logits + CE stats", "  wait: CE exchange", "lse, loss", "head backward", "  wait: reduce-scatter dhf",
     "dhf sum + LNf backward", "  wait: all-gather gx (fc2)", "MLP backward", "  wait: reduce-scatter dh2", "dh2 sum + LN2 backward",
     "  wait: all-gather gx (proj)", "  item: stage gx, Wo, o, q, k, v", "  item: dWo, do, delta", "  item: q side: dWq, q's dh rows",
-    "  item: P", "  item: dV, dS", "  item: dQ, dK, partials kept", "  item: RoPE back, dbq", "  wait: dK dV partials",
-    "  item: key side: sums, RoPE, dbk dbv", "  item: dWk dWv, k v dh rows", "attention backward, rest", "  wait: reduce-scatter dh",
+    "  item: P", "  item: dV, dS", "  item: dQ, dK, partials kept", "  item: RoPE back, dbq", "  doer: dW2, db1 (MLP); dWo (attention)", "  wait: dK dV partials",
+    "  item: key side: sums, RoPE, dbk dbv", "  item: dWk dWv, k v dh rows", "  doer: dW1 (MLP); dWq, dbq (attention)", "attention backward, rest", "  wait: reduce-scatter dh",
     "dh sum + LN1 backward", "  wait: all-gather gx (emb)", "embedding gradient", "attention + replicated sums, squares", "norm partial",
     "  wait: norm", "AdamW", "  wait: step end"};
 
 // `acc` (plain run): member 0's in-kernel nanoseconds, start to end, so the run's time excludes the launch.
-template <bool CLOCK, bool COUNTED>   // COUNTED: the gang's crossing form (kvm_gang::counted_form(G), picked at launch)
+template <bool CLOCK, bool COUNTED, bool Z>   // COUNTED: the gang's crossing form (kvm_gang::counted_form(G)); Z: ZBW's instance (kvm_fgpt_zbw_of); both picked at launch
 __global__ void __launch_bounds__(KVM_FGPT_NT, 1) fgpt_kernel(const KvmFgptDesc* d, int smem_floats, int* err, int* ok, unsigned long long* acc,
                                                               int fault_member, int fault_floats) {
   extern __shared__ float sm[];
@@ -44,11 +44,11 @@ __global__ void __launch_bounds__(KVM_FGPT_NT, 1) fgpt_kernel(const KvmFgptDesc*
     __shared__ unsigned long long sacc[kvm_fgpt::MK_COUNT];
     PhaseClock<kvm_fgpt::MK_COUNT> ph{acc, sacc, 0, 0, 0};
     ph.start();
-    r = kvm_fgpt::run<COUNTED>(*d, blockIdx.x, sm, sf, err, fail, ph);
+    r = kvm_fgpt::run<COUNTED, Z>(*d, blockIdx.x, sm, sf, err, fail, ph);
     ph.stop(d->G);
   } else {
     const unsigned long long t0 = gtimer();
-    r = kvm_fgpt::run<COUNTED>(*d, blockIdx.x, sm, sf, err, fail);
+    r = kvm_fgpt::run<COUNTED, Z>(*d, blockIdx.x, sm, sf, err, fail);
     if (threadIdx.x == 0 && blockIdx.x == 0 && acc) acc[0] = gtimer() - t0;
   }
   if (threadIdx.x == 0) ok[blockIdx.x] = r ? 1 : 0;
@@ -89,15 +89,21 @@ int main(int argc, char** argv) {
   // ---- the member's shared memory: the program's bound for the shape and the row chunk (the device checks every phase against it), within
   // this GPU's opt-in shared memory a block less the kernel's static share
   const bool counted = kvm_gang::counted_form(G);   // the gang's crossing form, an instance each
-  void* kern = clocked ? (counted ? (void*)fgpt_kernel<true, true> : (void*)fgpt_kernel<true, false>)
-                       : (counted ? (void*)fgpt_kernel<false, true> : (void*)fgpt_kernel<false, false>);
+  // the instance by crossing form and ZBW (picked below, once the shared memory is known); the budget is the smaller of the two ZBW forms'
+  const auto pick = [clocked, counted](bool z) -> void* {
+    if (clocked) return counted ? (z ? (void*)fgpt_kernel<true, true, true> : (void*)fgpt_kernel<true, true, false>)
+                                : (z ? (void*)fgpt_kernel<true, false, true> : (void*)fgpt_kernel<true, false, false>);
+    return counted ? (z ? (void*)fgpt_kernel<false, true, true> : (void*)fgpt_kernel<false, true, false>)
+                   : (z ? (void*)fgpt_kernel<false, false, true> : (void*)fgpt_kernel<false, false, false>);
+  };
+  void* kern = pick(false);
   long long budget = 0;
   {
     int dev0 = 0, optin = 0;
     CK(cudaGetDevice(&dev0));
     CK(cudaDeviceGetAttribute(&optin, cudaDevAttrMaxSharedMemoryPerBlockOptin, dev0));
-    cudaFuncAttributes fa; CK(cudaFuncGetAttributes(&fa, kern));
-    budget = ((long long)optin - (long long)fa.sharedSizeBytes) / 4;
+    cudaFuncAttributes fa, fz; CK(cudaFuncGetAttributes(&fa, pick(false))); CK(cudaFuncGetAttributes(&fz, pick(true)));
+    budget = ((long long)optin - (long long)(fa.sharedSizeBytes > fz.sharedSizeBytes ? fa.sharedSizeBytes : fz.sharedSizeBytes)) / 4;
   }
   h.rows = rows_arg > 0 ? rows_arg : kvm_fgpt_rows_for(h.N, h.T, h.d, h.H, h.F, h.V, G, h.qb, budget);
   if (h.rows <= 0) { fprintf(stderr, "fgpt_bed: no row chunk (N, 128 or 64) fits a member of a gang of %d in this GPU's %lld floats a block: a larger gang may\n", G, budget); return 3; }
@@ -109,6 +115,8 @@ int main(int argc, char** argv) {
     fprintf(stderr, "fgpt_bed: a member of a gang of %d needs %lld floats of shared memory at %d-row chunks, above this GPU's %lld a block\n", G, smem_floats, h.rows, budget);
     return 3;
   }
+  const KvmFgptZbwRun zplan = kvm_fgpt_zbw_of(h.N, h.T, h.d, h.H, h.F, G, h.qb, h.rows, smem_floats);   // as the executor picks it
+  kern = pick(zplan.any());
   KvmFgptDesc* dd;
   CK(cudaMalloc(&dd, sizeof(KvmFgptDesc)));
   CK(cudaMemcpy(dd, &h, sizeof(KvmFgptDesc), cudaMemcpyHostToDevice));
@@ -123,6 +131,16 @@ int main(int argc, char** argv) {
   printf("fgpt_bed: %s (sm_%d%d, %d SMs), G %d, %d steps, attention in %d query block(s) a unit, rows in chunks of %d of %d, shared memory %zu B a "
          "member, scratch %.2f MB, %d member(s) an SM at most\n", prop.name, prop.major, prop.minor, sms, G, h.steps, h.qb, h.rows, h.N, smem, sc.total * 4.0 / 1e6, per_sm);
   if ((long long)per_sm * sms < G) die("the gang does not fit the GPU at once");
+  {   // ZBW (kvm_fused_gpt.cuh): the plan the run takes (kvm_fgpt_zbw_of), and so the instance it runs on
+    const int fp = (h.F + G - 1) / G, nf = (h.F + fp - 1) / fp, W = (h.N / h.T) * h.H * h.qb;
+    const KvmFgptZbw& z = zplan.mlp;
+    printf("fgpt_bed: ZBW's instance: %s\n", zplan.any() ? "yes (its code, for the run it engages)" : "no (the step without ZBW's code)");
+    if (z.zg) printf("fgpt_bed: ZBW: %d doers (members without an attention item) for %d owners, %d owner(s) a pass, %d of %d columns a block\n",
+                     z.doers, nf, z.zg, z.zdb, h.d);
+    else printf("fgpt_bed: ZBW: off (%d attention items for %d members, %d owners)\n", W, G, nf);
+    if (zplan.attn) printf("fgpt_bed: ZBW for the attention: members %d-%d run the %d items' dWo, dWq and dbq\n", W, 2 * W - 1, W);
+    else printf("fgpt_bed: ZBW for the attention: off\n");
+  }
   unsigned long long* dacc = nullptr;
   const size_t acc_words = clocked ? (size_t)G * (kvm_fgpt::MK_COUNT + 2) : 1;
   CK(cudaMalloc(&dacc, acc_words * 8)); CK(cudaMemset(dacc, 0, acc_words * 8));

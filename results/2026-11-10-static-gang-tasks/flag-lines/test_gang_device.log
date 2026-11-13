@@ -1,0 +1,18 @@
+NVIDIA GeForce RTX 5070 Laptop GPU: 36 co-resident blocks of 256 threads
+counter barrier, side by side: 36 blocks in 7 gang(s) (sizes 1 2 3 5 8 13 4), 2 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 3 member(s) gave up at a crossing (the widest gang has 3 others; members of other gangs may give up too once the word is set)
+counter barrier, one gang: 36 blocks in 1 gang(s) (sizes 36), 2 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 35 member(s) gave up at a crossing (the widest gang has 35 others; members of other gangs may give up too once the word is set)
+flag-line barrier, side by side: 36 blocks in 7 gang(s) (sizes 1 2 3 5 8 13 4), 32 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 3 member(s) gave up at a crossing (the widest gang has 3 others; members of other gangs may give up too once the word is set)
+flag-line barrier, one gang: 36 blocks in 1 gang(s) (sizes 36), 64 words a gang, 2000 rounds of two crossings
+  launch 0: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 4000 crossings leaves them
+  launch 1: 0 wrong values read, 0 gang(s) whose words are not as a clean run of 8000 crossings leaves them
+  abort launch: ended (no hang); 35 member(s) gave up at a crossing (the widest gang has 35 others; members of other gangs may give up too once the word is set)
+PASS: in both forms every member read every slot of its round, every gang's control words are as a clean run leaves them, and an aborted gang ends

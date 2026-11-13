@@ -1,0 +1,4 @@
+tree a662140857a1d543040c3ff620e0df41d05f3d4a matches the laptop's
+grid_bed:       1 Used 226 registers; spills 0 bytes spill stores 
+split_bed:       1 Used 227 registers;      1 Used 228 registers;      1 Used 234 registers;      4 Used 252 registers;      4 Used 254 registers; spills 0 bytes spill stores 
+BUILD_CROSS_END rc=0

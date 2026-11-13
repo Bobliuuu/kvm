@@ -1,0 +1,21 @@
+NVIDIA GeForce RTX 5070 Laptop GPU, 36 SMs, 99 KB shared memory a block (opt-in); model E 48 V 100 H 256 depth 4, T 32 (2 slices of 16), S 16 shares (width <= 16, padded 16): 32 blocks, 91.1 KB a block, 9 barriers a step
+check step 0: loss 4.604646, fp64 4.604647
+check step 1: loss 4.606507, fp64 4.606508
+check step 2: loss 4.605884, fp64 4.605885
+check after 3 steps: loss max rel 2.47e-07; update rel L2 (worst layer) W 1.95e-03, b 6.89e-04; Wh 3.05e-04, emb 6.39e-03 (TF32 operands: a few 1e-3 expected)
+check ok
+timed: 20 steps: 44.34 us a step in the kernel (block 0's %globaltimer over its counted loop), 49.01 us by events (launch and host delays included)
+block 0 by phase (cycles a step; 6 of the step's 9 barriers sit inside the forward and backward phases):
+  load (weights, embedding rows)            14923  (12.3%)
+  forward (GEMMs, GELU, all-gathers)        32016  (26.4%)
+  logits partial GEMM (to L2)                1124  ( 0.9%)
+  barrier: logits                            3007  ( 2.5%)
+  logits summed, cross-entropy               9860  ( 8.1%)
+  backward (GEMMs, reduce-scatters)         40729  (33.6%)
+  barrier: partials                          2563  ( 2.1%)
+  owners: parameters                        11397  ( 9.4%)
+  owners: embedding + last barrier           5661  ( 4.7%)
+  total                                    121281 cycles
+block 0's phases: from the last warp's end of the previous phase to the last warp's end of this one (per-warp stamps)
+blocks ran on 32 distinct SMs of 32 blocks (one block a SM)
+effective SM clock 2735 MHz (block 0's cycles over its kernel time), rated 1425 MHz: the GPU boosted above its rated clock

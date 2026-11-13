@@ -1,0 +1,37 @@
+[
+ {
+  "row": "mlp256-r1",
+  "control": "/root/reads/panel-count1/h256/bundle",
+  "cand": "/root/reads/panel-count1/h256/bundle",
+  "tasks": {
+   "control": 8394,
+   "cand": 8394
+  },
+  "ms": {
+   "control": {
+    "median": 12.442,
+    "best": 12.433,
+    "all": [
+     12.59,
+     12.43,
+     12.45,
+     12.44,
+     12.44
+    ]
+   },
+   "cand": {
+    "median": 4.83,
+    "best": 4.821,
+    "all": [
+     4.82,
+     4.84,
+     4.82,
+     4.84,
+     4.83
+    ]
+   }
+  },
+  "paired_ratio_median": 2.575983436853002,
+  "best_ratio": 2.578925534121552
+ }
+]

@@ -1,6 +1,15 @@
-// Fused MLP steps (bundle pass: kvm_fuse.h; device code: kvm_fused_mlp.cuh). The static-schedule path runs them directly (kvm_static.cuh); the generic dispatch fails them, so a bundle that
-// reached the dynamic path with one is an error, not silence.
+// Fused training steps (bundle pass: kvm_fuse.h; device code: kvm_fused_mlp.cuh, kvm_fused_split.cuh). The static-schedule path runs them directly (kvm_static.cuh); the generic dispatch fails
+// them, so a bundle that reached the dynamic path with one is an error, not silence.
+// Ids: 124 and 125 predate the range below and are never renumbered (bundles carry them). New fused-step ops take ids 176..199, a range of their own between the packs'
+// (core 0-31, GPT 32-63, comm 64-95, extra 96-127, game 128+, device control 160..175, tests 200+, user packs 300+; the scheduler keeps estimates below 256): fmlp_split 192,
+// fgpt_step 193, fmlp_grid 194.
 //   fmlp_slice: forward and backward of one row slice of one step; the partial gradients go to the run's scratch (descriptor `desc`).
 //   fmlp_sgd: one owner's share of the reduction and update; owner 0 also writes the step's loss.
+//   fmlp_split: one member of a split step (a gang op: its `members` tasks run at once on distinct workers, kvm_static_plan); member q * S + s trains slice q's rows on share s's
+//     hidden units, and member 0 writes the step's loss (descriptor `desc` in the run's split table, kvm_fused_split.h).
 X(fmlp_slice,          124, "desc:i32,sc:i32,ids:buf,tgt:buf")
 X(fmlp_sgd,            125, "desc:i32,owner:i32,loss:buf")
+X(fmlp_split,          192, "desc:i32,gang:i32,member:i32,members:i32,ids:buf,tgt:buf,loss:buf")
+//   fmlp_grid: one member of a grid step (a gang op, like fmlp_split): member m holds block (a, b) of every layer's K x N grid over one copy of the model,
+//     and member 0 writes the step's loss (descriptor `desc` in the run's grid table, kvm_fused_grid.h).
+X(fmlp_grid,           194, "desc:i32,gang:i32,member:i32,members:i32,ids:buf,tgt:buf,loss:buf")

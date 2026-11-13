@@ -1,0 +1,4 @@
+valid bundles: 550 plans checked (distinct workers, deadlock-free replay of the emitted records, every edge honoured)
+width-1 gangs plan exactly as ordinary tasks (W = 1, 4, 108)
+malformed gangs: 6 refusal cases checked
+all gang checks passed

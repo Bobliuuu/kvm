@@ -365,7 +365,6 @@ static void attn_case(AttnCfg c) {
     Rng r(61 + c.hd + c.T + 7919 * c.seed);
     int B = c.B, T = c.T, H = c.H, Hkv = c.Hkv, hd = c.hd, R = B * T;
     double scale = 1.0 / sqrt((double)hd);
-    int smem = kvm_gpt_smem_bytes(hd);
     char nm[96]; snprintf(nm, sizeof nm, "attn B=%d T=%d H=%d Hkv=%d hd=%d", B, T, H, Hkv, hd);
     if (hd > KVM_GPT_MAX_HD) { skip(nm, "head size above this build's KVM_GPT_MAX_HD (not compiled)"); return; }
     Dev dv;
@@ -378,14 +377,14 @@ static void attn_case(AttnCfg c) {
     Batch b;
     for (int bb = 0; bb < B; bb++) for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += KVM_GPT_ATTN_ROWS)
         b.add(OP_attn_fwd, A().b(q).b(k).b(v).b(o).b(lse).i(bb).i(h).i(q0).i(T).i(H).i(Hkv).i(hd).f((float)scale));
-    int e = run(dv, b, smem);
+    int e = run(dv, b);
     D ro, rl, rdq, rdk, rdv;
     D Dq = dbl(hq), Dk = dbl(hk), Dv = dbl(hv), Ddo = dbl(hdo);
     attn_d(B, T, H, Hkv, hd, scale, Dq, Dk, Dv, ro, rl, &Ddo, &rdq, &rdk, &rdv);
     check(std::string(nm) + " fwd o", dv.down(o), ro, 2e-5);
     check(std::string(nm) + " fwd lse", dv.down(lse), rl, 2e-5);
     Batch b2; for (int r0 = 0; r0 < R; r0 += 40) b2.add(OP_attn_bwd_delta, A().b(o).b(dO).b(delta).i(r0).i(std::min(R, r0 + 40)).i(T).i(H).i(hd));
-    e |= run(dv, b2, smem);
+    e |= run(dv, b2);
     Batch b3;
     for (int bb = 0; bb < B; bb++) {
         for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += KVM_GPT_ATTN_ROWS)
@@ -393,7 +392,7 @@ static void attn_case(AttnCfg c) {
         for (int h = 0; h < Hkv; h++) for (int k0 = 0; k0 < T; k0 += KVM_GPT_ATTN_ROWS)
             b3.add(OP_attn_bwd_dkv, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dk).b(dvv).i(bb).i(h).i(k0).i(T).i(H).i(hd).f((float)scale));
     }
-    e |= run(dv, b3, smem);
+    e |= run(dv, b3);
     if (T == 1) {
         // T=1: p = 1 and o = v, so dS = p (dP - delta) = dO.V - dO.O is exactly 0 and dq, dk are rounding noise only. A fixed bound (the old
         // 3e-5, then 1e-4) is relative to nothing: it fails when the kernel's rounding or the data scale moves. Derive it per element instead.
@@ -429,7 +428,7 @@ static void attn_case(AttnCfg c) {
         check(std::string(nm) + " bwd dk", dv.down(dk), rdk, 3e-5);
     }
     check(std::string(nm) + " bwd dv", dv.down(dvv), rdv, 3e-5);
-    auto g1 = dv.down(dk); run(dv, b3, smem);
+    auto g1 = dv.down(dk); run(dv, b3);
     check_true(std::string(nm) + " bwd bitwise deterministic", g1 == dv.down(dk));
     check_true(std::string(nm) + " err==0", e == 0);
 }

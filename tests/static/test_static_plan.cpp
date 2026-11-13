@@ -12,38 +12,22 @@
 #include <sstream>
 #include <vector>
 #include "kvm_static.h"
+#include "registry.h"
 
 static std::string slurp(const std::string& p) { std::ifstream f(p, std::ios::binary); if (!f) { fprintf(stderr, "cannot read %s\n", p.c_str()); exit(2); } std::stringstream s; s << f.rdbuf(); return s.str(); }
 template <class T> static std::vector<T> load(const std::string& p) { std::string r = slurp(p); assert(r.size() % sizeof(T) == 0); std::vector<T> v(r.size() / sizeof(T)); memcpy(v.data(), r.data(), r.size()); return v; }
 static long jint(const std::string& j, const char* key) { std::smatch m; if (std::regex_search(j, m, std::regex(std::string("\"") + key + "\"\\s*:\\s*(-?\\d+)"))) return atol(m[1].str().c_str()); fprintf(stderr, "missing %s\n", key); exit(2); }
 
-// The registry from the .def files (X(name, id, "sig") lines).
-static std::map<int, KvmSOpInfo> g_ops; static std::map<int, std::string> g_names;
-static void load_defs(const std::string& inc) {
-    for (const char* f : {"kvm_ops.def", "kvm_ops_gpt.def", "kvm_ops_extra.def", "kvm_ops_comm.def", "kvm_ops_game.def"}) {
-        std::ifstream in(inc + "/" + f); std::string line;
-        std::regex re("^\\s*X\\(\\s*(\\w+)\\s*,\\s*(\\d+)\\s*,\\s*\"([^\"]*)\"");
-        while (std::getline(in, line)) {
-            std::smatch m; if (!std::regex_search(line, m, re)) continue;
-            int id = std::stoi(m[2].str()); std::string sig = m[3].str(); KvmSOpInfo o; o.arity = 0; o.types = 0;
-            std::stringstream ss(sig); std::string tok; int i = 0;
-            while (std::getline(ss, tok, ',')) { auto c = tok.find(':'); std::string ty = tok.substr(c + 1); int t = ty == "buf" ? 0 : ty == "i32" ? 1 : ty == "f32" ? 2 : ty == "buf?" ? 3 : -1; assert(t >= 0); o.types |= (uint64_t)t << (3 * i++); o.arity++; }
-            g_ops[id] = o; g_names[id] = m[1].str();
-        }
-    }
-}
-
 int main(int argc, char** argv) {
-    if (argc < 2) { fprintf(stderr, "usage: %s BUNDLE_DIR [workers,...] (run from the repo root)\n", argv[0]); return 2; }
+    if (argc < 2) { fprintf(stderr, "usage: %s BUNDLE_DIR [workers,...]\n", argv[0]); return 2; }
     const std::string dir = argv[1];
     std::vector<int> wlist = {1, 2, 4, 8, 16, 32, 64, 107};
     if (argc > 2) { wlist.clear(); std::stringstream s(argv[2]); std::string t; while (std::getline(s, t, ',')) wlist.push_back(std::stoi(t)); }
-    load_defs("include");
     std::string meta = slurp(dir + "/metadata.json");
     const int nt = jint(meta, "task_count");
     auto tasks = load<KvmTaskDesc>(dir + "/tasks.bin"); auto succ = load<int32_t>(dir + "/successors.bin"); auto args = load<int32_t>(dir + "/args.bin");
     assert((int)tasks.size() == nt);
-    KvmSOpLookup op_of = [](int id) { auto it = g_ops.find(id); return it == g_ops.end() ? KvmSOpInfo{} : it->second; };
+    const KvmSOpLookup op_of = kvm_test_registry::registry().lookup();
     KvmSCostFn cost = [](int op, const int32_t*) { return op == 0 ? 0.1 : 5.0; };   // flat model for the structural checks
     int nbufs = 0; for (auto& t : tasks) { KvmSOpInfo o = op_of(t.op_id); for (int j = 0; j < t.args_words; ++j) { int ty = (o.types >> (3 * j)) & 7; if ((ty == 0 || ty == 3) && args[t.args_off + j] >= nbufs) nbufs = args[t.args_off + j] + 1; } }
     std::vector<KvmBuf> bufs(nbufs); for (int i = 0; i < nbufs; ++i) { bufs[i].p = (void*)(uintptr_t)(0x1000 + 64 * i); bufs[i].rows = bufs[i].cols = bufs[i].ld = 1; bufs[i].dtype = 0; }

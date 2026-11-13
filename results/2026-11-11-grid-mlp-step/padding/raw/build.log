@@ -1,0 +1,3 @@
+build: tree db29818 + working changes 5, 2026-11-11T03:27:31Z
+ptx rc=0 in 112 s, warnings 4
+beds: sm_120 Used 255 registers, sm_80 Used 228 registers; sm_80 spill lines 0

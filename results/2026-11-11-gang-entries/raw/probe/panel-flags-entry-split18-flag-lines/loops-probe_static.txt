@@ -1,0 +1,23 @@
+_Z12probe_staticPK4PRecPKiPiP8ProbeCntPx: every block, 11360 instructions in 583 blocks
+  21 MMA loops; by kind (HMMA a pass, LDGSTS a pass):
+    HMMA   2 LDGSTS   0:   2 loops; registers used in the loop median 29, passengers median 88 (range 85-88), LDL a pass median 0 (range 0-0)
+    HMMA   8 LDGSTS   0:   5 loops; registers used in the loop median 38, passengers median 88 (range 62-114), LDL a pass median 0 (range 0-0)
+    HMMA  14 LDGSTS   0:   2 loops; registers used in the loop median 103, passengers median 99 (range 0-99), LDL a pass median 0 (range 0-0)
+    HMMA 144 LDGSTS   0:   1 loops; registers used in the loop median 109, passengers median 0 (range 0-0), LDL a pass median 0 (range 0-0)
+    HMMA 158 LDGSTS   0:   2 loops; registers used in the loop median 174, passengers median 43 (range 43-43), LDL a pass median 3 (range 3-3)
+    HMMA 316 LDGSTS   0:   1 loops; registers used in the loop median 204, passengers median 0 (range 0-0), LDL a pass median 0 (range 0-0)
+    HMMA 470 LDGSTS   0:   6 loops; registers used in the loop median 224, passengers median 0 (range 0-0), LDL a pass median 3 (range 3-3)
+    HMMA 480 LDGSTS   0:   2 loops; registers used in the loop median 224, passengers median 0 (range 0-0), LDL a pass median 3 (range 3-3)
+  the loop with the most reloads, at 0x01ee60 (HMMA 158, LDL 3): 43 passengers
+      R56  defined by LDG.E.128.STRONG.GPU R56, [R56.64]
+      R57  defined by LDG.E.128.STRONG.GPU R56, [R56.64]
+      R58  defined by LDG.E.128.STRONG.GPU R56, [R56.64]
+      R59  defined by LDG.E.128.STRONG.GPU R56, [R56.64]
+      R60  defined by LDG.E.128.STRONG.GPU R60, [R60.64]
+      R61  defined by LDG.E.128.STRONG.GPU R60, [R60.64]
+      R62  defined by LDG.E.128.STRONG.GPU R60, [R60.64]
+      R63  defined by LDG.E.128.STRONG.GPU R60, [R60.64]
+      R64  defined by LDG.E.128.STRONG.GPU R64, [R64.64]
+      R65  defined by LDG.E.128.STRONG.GPU R64, [R64.64]
+      R66  defined by LDG.E.128.STRONG.GPU R64, [R64.64]
+      R67  defined by LDG.E.128.STRONG.GPU R64, [R64.64]

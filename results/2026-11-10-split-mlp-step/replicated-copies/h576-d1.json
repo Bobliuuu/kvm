@@ -1,0 +1,61 @@
+{
+ "env": {
+  "torch": "2.15.0+cu132",
+  "cuda": "13.2",
+  "gpu": "NVIDIA A100-SXM4-80GB",
+  "sms": 108
+ },
+ "gate": {
+  "fp64_loss_max_rel": {
+   "executor": 0.00014172994401834721,
+   "eager": 0.00012229626719949632
+  },
+  "exec_vs_eager_loss_max_rel": 0.0001260112255170765,
+  "exec_vs_eager_weight_rel_l2": {
+   "w.mlp.wte": 9.846382910990694e-06,
+   "w.mlp.fc0.w": 1.509637996864744e-06,
+   "w.mlp.fc0.b": 2.0285655022047863e-05,
+   "w.mlp.head.w": 1.5297774312695783e-06
+  },
+  "loss_first_last": [
+   4.513139724731445,
+   0.21626396477222443
+  ],
+  "exec_vs_eager_weight_rel_l2_max": 2.0285655022047863e-05
+ },
+ "args": {
+  "work": "/root/reads/gangfix/form1-20261111T115958Z/h576-d1",
+  "exe": "/root/builds/052204dffcda37f8bbd99109/kvm_exec",
+  "hidden": 576,
+  "depth": 1,
+  "steps": 50,
+  "runs": "1",
+  "reps": 1,
+  "tiling": "a100",
+  "no_golden": true,
+  "skip": "seq_graph,multi_graph,batched,batched_compile,eager,compile,compile_graph",
+  "out": "/root/reads/gangfix/form1-20261111T115958Z/h576-d1.json"
+ },
+ "rows": [
+  {
+   "hidden": 576,
+   "depth": 1,
+   "steps": 50,
+   "runs": 1,
+   "tasks_per_step_per_run": 89,
+   "reps": 1,
+   "loss_max_rel_vs_eager": {},
+   "setup_s": 0.8,
+   "us_per_step": {
+    "executor": {
+     "best": 46.6,
+     "median": 46.6,
+     "worst": 46.6,
+     "all": [
+      46.6
+     ]
+    }
+   }
+  }
+ ]
+}

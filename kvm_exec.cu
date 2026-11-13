@@ -976,17 +976,18 @@ class KvmExec {
       for (int l = 0; l < r.L; ++l) d.H[l] = r.H[l];
       st.smem_bytes = std::max(st.smem_bytes, kvm_fmlp_layout(d, r.smem_floats) * (int)sizeof(float));
       d.we = param(r.wte); d.wh = param(r.head);
-      d.ge = scratch((size_t)r.nsl * r.V * r.E);
-      d.loss_part = scratch(r.nsl);
+      const int ngr = r.T / KVM_FMLP_GRANULE;   // the step's gradient granules: one partial each (kvm_fused_mlp.h)
+      d.ge = scratch((size_t)ngr * r.V * r.E);
+      d.loss_part = scratch(ngr);
       for (int l = 0; l < r.L; ++l) {
         const int K = l ? r.H[l - 1] : r.E;
         d.w[l] = param(r.w[l]); d.b[l] = param(r.b[l]);
         d.gwld[l] = kvm_fmlp_pad16(r.H[l]);
-        d.gw[l] = scratch((size_t)r.nsl * kvm_fmlp_pad16(K) * d.gwld[l]);
-        d.gb[l] = scratch((size_t)r.nsl * r.H[l]);
+        d.gw[l] = scratch((size_t)ngr * kvm_fmlp_pad16(K) * d.gwld[l]);
+        d.gb[l] = scratch((size_t)ngr * r.H[l]);
       }
       d.ghld = kvm_fmlp_pad16(r.V);
-      d.gh = scratch((size_t)r.nsl * kvm_fmlp_pad16(r.H[r.L - 1]) * d.ghld);
+      d.gh = scratch((size_t)ngr * kvm_fmlp_pad16(r.H[r.L - 1]) * d.ghld);
     }
     CK(cudaMalloc(&st.desc, descs.size() * sizeof(KvmFusedDesc)));
     CK(cudaMemcpy(st.desc, descs.data(), descs.size() * sizeof(KvmFusedDesc), cudaMemcpyHostToDevice));

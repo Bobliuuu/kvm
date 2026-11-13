@@ -1,0 +1,2 @@
+32 copies of h48-d2: 32 differ from the single run; copy 0 differs in 8 of 73 buffers, first ['w.mlp.wte', 'w.mlp.fc0.w', 'w.mlp.fc0.b', 'w.mlp.fc1.w']
+rc 1

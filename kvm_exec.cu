@@ -48,8 +48,22 @@ static const char* kvm_dist_err(int c, bool text) {  // KVM_DIST_HOOK: codes 64.
   }
   return nullptr;
 }
+// The GPT pack's device errors (kvm_ops_gpt.cuh's one list), or nullptr when the code is not one of them.
+static const char* kvm_gpt_err(int c, bool text) {
+#ifdef KVM_GPT_ERR_BASE
+  switch (c) {
+#define KVM_GPT_ERR_CASE(n, off, str) case KVM_GPT_ERR_BASE + off: return text ? str : #n;
+    KVM_GPT_ERRORS(KVM_GPT_ERR_CASE)
+#undef KVM_GPT_ERR_CASE
+  }
+#else
+  (void)c; (void)text;
+#endif
+  return nullptr;
+}
 static const char* kvm_err_name(int c) {
   if (const char* d = kvm_dist_err(c, false)) return d;
+  if (const char* g = kvm_gpt_err(c, false)) return g;
   static const char* nm[] = {
 #define E(n, s) #n,
       KVM_ERRORS(E)
@@ -59,6 +73,7 @@ static const char* kvm_err_name(int c) {
 }
 static const char* kvm_err_text(int c) {
   if (const char* d = kvm_dist_err(c, true)) return d;
+  if (const char* g = kvm_gpt_err(c, true)) return g;
   static const char* tx[] = {
 #define E(n, s) s,
       KVM_ERRORS(E)
@@ -99,9 +114,10 @@ static double kvm_static_cost(int op, const int32_t* a) {
 }
 
 // A bundle whose ops the cost model all prices and whose mean estimated task cost (kvm_static_cost) is at most this runs on the static path by default; above it, on the dynamic path (main()). The crossover measured on
-// frontend GPTs outside the panel (Nov 10, A100, fusion off, static against dynamic on one binary): mean 4.7-5.6 us static x1.26-1.28, 5.7 us even, 6.6-8.3 us static x0.62-0.71.
+// frontend GPTs outside the panel (Nov 11, A100-SXM4-80GB, 24 single bundles with means from 4.54 to 10.67 us, both paths on one binary, weights bitwise between them):
+// static faster up to 6.67 us (x1.015-1.119), dynamic faster from 7.04 us (x1.08-1.63). 6.85 is the middle of that gap, where no bundle read takes its slower path.
 #ifndef KVM_STATIC_MAX_MEAN_US
-#define KVM_STATIC_MAX_MEAN_US 6.0
+#define KVM_STATIC_MAX_MEAN_US 6.85
 #endif
 
 // ---------------- bundles ----------------
@@ -355,6 +371,24 @@ struct KvmConfig {
   int aging_us = 0;             // 0: strict priority; else one priority level per aging_us of waiting
   // A bundle of `tasks` tasks and `words` record words (KvmBundle::words()) goes in as one record: else it is cut into windows that drain.
   bool fits_one_record(long long tasks, long long words) const { return tasks <= live_cap && tasks <= max_tasks && words <= ring_words / 2; }
+  // Record words of a bundle with `tasks` tasks, `edges` edges and `args` argument words, as KvmBundle::words() counts them once it is read.
+  static long long record_words(long long tasks, long long edges, long long args) { return (KVM_REC_HDR + tasks * KVM_TASK_WORDS + edges + args + 7) & ~7ll; }
+  // Grow the capacities so such a bundle goes in as one record when it would otherwise be cut: a cut bundle runs window by window, each drained
+  // before the next (a 9,800-task bundle of 4 replicated runs ran its runs one after another in 10 windows, x4 slower). Above `max_live` tasks
+  // (a power of two, at most 2^20) or 2^26 words the capacities stay and the bundle streams. The ready rings cost 4 KiB of device memory per
+  // live_cap slot per scheduler class (KVM_NBUCKETS rings of 4 x live_cap 32-byte cells; a FIFO run needs one), so a caller with several classes
+  // passes a smaller max_live. Returns whether anything grew. kvm_exec's CLI and demo/kvm_run size their runs with it.
+  bool size_for_one_record(long long tasks, long long edges, long long args, long long max_live = 1 << 20) {
+    const long long words = record_words(tasks, edges, args);
+    if (tasks < 1 || edges < 0 || args < 0 || tasks > std::min<long long>(max_live, 1 << 20) || words >= (1ll << 26)) return false;
+    if (fits_one_record(tasks, words) && edges + 2 <= (long long)succ_cap) return false;
+    auto p2 = [](long long v) { long long r = 2; while (r < v) r <<= 1; return r; };
+    live_cap = (int)std::max<long long>(live_cap, p2(tasks));
+    max_tasks = std::max(max_tasks, live_cap);
+    ring_words = (int)std::max<long long>(ring_words, p2(2 * words + 128));
+    succ_cap = std::max<unsigned>(succ_cap, (unsigned)p2(edges + 2));
+    return true;
+  }
 #ifdef KVM_PROF_GAP
   int noop_ops = 0;             // profiling only: run the graph with every op body skipped (--noop-ops)
 #endif
@@ -410,6 +444,47 @@ __global__ void kvm_clock_warm_kernel(float* sink) {
   if (threadIdx.x == 0) atomicAdd(sink, x);         // (keeps the loop's result live)
 }
 
+#ifdef KVM_GPT_SMEM_BYTES
+// The position of argument `arg` in a registry signature ("name:type,..."), at compile time; -1 when absent. Arguments are read by name
+// here because the registry is the ABI the frontend writes them by.
+constexpr int kvm_sig_index(const char* sig, const char* arg) {
+  for (int idx = 0; *sig; ++idx) {
+    const char* q = arg; const char* p = sig;
+    while (*q && *p == *q) { ++p; ++q; }
+    if (!*q && *p == ':') return idx;
+    while (*sig && *sig != ',') ++sig;
+    if (*sig == ',') ++sig;
+  }
+  return -1;
+}
+constexpr const char* kvm_op_sig(int id) {
+  switch (id) {
+#define X(n, i, sig) case i: return sig;
+#include "kvm_ops_list.inc"
+#undef X
+  }
+  return "";
+}
+constexpr int KVM_ARG_TILE_FLAGS = kvm_sig_index(kvm_op_sig(KVM_OP_matmul_tile), "flags"), KVM_ARG_ATTN_FWD_HD = kvm_sig_index(kvm_op_sig(KVM_OP_attn_fwd), "hd"),
+              KVM_ARG_ATTN_DQ_HD = kvm_sig_index(kvm_op_sig(KVM_OP_attn_bwd_dq), "hd"), KVM_ARG_ATTN_DKV_HD = kvm_sig_index(kvm_op_sig(KVM_OP_attn_bwd_dkv), "hd");
+static_assert(KVM_ARG_TILE_FLAGS == KVM_GPT_ARG_TILE_FLAGS && KVM_ARG_ATTN_FWD_HD == KVM_GPT_ARG_ATTN_FWD_HD && KVM_ARG_ATTN_DQ_HD == KVM_GPT_ARG_ATTN_BWD_HD &&
+              KVM_ARG_ATTN_DKV_HD == KVM_GPT_ARG_ATTN_BWD_HD, "kvm_gpt_task_smem reads the arguments it sizes by where the registry puts them");
+// The dynamic shared memory one task needs. A GPT-pack op's is kvm_gpt_task_smem's, the function the op tests launch with too; the core pack
+// takes the small ops' size; an op of any other pack (extra, comm, game, fused steps, test packs) gets the build's maximum, so a bundle
+// holding one keeps that launch.
+static size_t kvm_task_smem(const KvmTaskDesc& d, const int32_t* args) {
+  const int gpt = kvm_gpt_task_smem(d.op_id, args + d.args_off);
+  if (gpt >= 0) return (size_t)gpt;
+  switch (d.op_id) {
+#define X(n, i, sig) case i:
+#include "kvm_ops.def"
+#undef X
+      return KVM_GPT_SMEM_SMALL;
+    default: return KVM_DYN_SMEM_BYTES;
+  }
+}
+#endif
+
 class KvmExec {
  public:
   explicit KvmExec(KvmConfig c) : cfg_(c) {
@@ -424,7 +499,7 @@ class KvmExec {
     if (cfg_.stack_bytes) CK(cudaDeviceSetLimit(cudaLimitStackSize, cfg_.stack_bytes));
     dyn_smem_ = KVM_DYN_SMEM_BYTES;
 #ifdef KVM_TMA_MAXB   // GPT op pack built: arm the sm_90a TMA + wgmma tiles (no-op elsewhere; KVM_NO_HOPPER=1 disables)
-    if (kvm_hopper_host_init()) { dyn_smem_ = kvm_hopper_dyn_smem(dyn_smem_); KLOG(2, "hopper: TMA + wgmma tiles armed, dynamic smem %zu B", dyn_smem_); }
+    if (kvm_hopper_host_init()) { hopper_ = true; dyn_smem_ = kvm_hopper_dyn_smem(dyn_smem_); KLOG(2, "hopper: TMA + wgmma tiles armed, dynamic smem %zu B", dyn_smem_); }
 #endif
     if (dyn_smem_ > 0) CK(cudaFuncSetAttribute(kvm_exec_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)dyn_smem_));
     int occ = 0; CK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&occ, kvm_exec_kernel, KVM_THREADS, dyn_smem_));
@@ -548,6 +623,25 @@ class KvmExec {
   // device, so when several executors share one GPU (tests, small clusters) all of them must prepare() before the first
   // start(): a start() that allocates while a peer's persistent kernel waits for this very executor deadlocks until the peer's
   // timeout. A lone executor never needs to call it.
+  // Launch with the dynamic shared memory the run's tasks need, not the build's maximum (KVM_DYN_SMEM_BYTES): the SM's 192 KB serve shared
+  // memory first, so a 147,456 B launch leaves the A100 28 KB of L1 for every op's cached loads and spill reloads (measured on an A100: the same tree's
+  // gpt-tiny ran x1.12 faster at 90 KB). Call once every task of the run is known and before any launch (the CLI's bundles); a run that may
+  // be handed any op later keeps the maximum. The grid stays the one the constructor sized at the maximum (one block an SM either way).
+  void size_launch(const std::vector<KvmBundle>& bundles) {
+    if (started_) throw std::logic_error("size_launch after start");
+#ifdef KVM_GPT_SMEM_BYTES
+    if (hopper_) { KLOG(2, "launch: %zu B of dynamic shared memory, kept for the Hopper tiles", dyn_smem_); return; }
+    size_t need = KVM_GPT_SMEM_SMALL; int by = -1; long tasks = 0;
+    for (const KvmBundle& b : bundles)
+      for (const KvmTaskDesc& d : b.tasks) { const size_t n = kvm_task_smem(d, b.args.data()); ++tasks; if (n > need) { need = n; by = d.op_id; } }
+    need = std::min(need, dyn_smem_);
+    const KvmOpInfo* op = by >= 0 ? kvm_op(by) : nullptr;
+    KLOG(2, "launch: %zu B of dynamic shared memory, sized to the largest of %ld tasks (%s), against the build's %zu B", need, tasks, op ? op->name : "small ops only", dyn_smem_);
+    if (need != dyn_smem_) { dyn_smem_ = need; CK(cudaFuncSetAttribute(kvm_exec_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)dyn_smem_)); }
+#else
+    (void)bundles;
+#endif
+  }
   void prepare() {
     if (prepared_) return;
     prepared_ = true;
@@ -979,7 +1073,7 @@ class KvmExec {
       KLOG(2, "fuse phases: %.0f cycles per slice in total, over %lld slices", (double)total / nslice, nslice);
     }
     if (res_.ok()) KLOG(2, "static run done: %d tasks in %.3f ms on %d workers", plan.nt, res_.kernel_ms, sc.workers);
-    else KLOG(0, "DEVICE ERROR %s (%s): task %d, a=%d, b=%d", kvm_err_name(res_.err_code), kvm_err_text(res_.err_code), res_.err_slot, res_.err_a, res_.err_b);
+    else KLOG(0, "DEVICE ERROR %s (%s, code %d): task %d, a=%d, b=%d", kvm_err_name(res_.err_code), kvm_err_text(res_.err_code), res_.err_code, res_.err_slot, res_.err_a, res_.err_b);
     return res_;
   }
 
@@ -1016,7 +1110,7 @@ class KvmExec {
     }
     finished_ = true;
     if (res_.ok()) KLOG(2, "kernel done: %d/%d tasks in %.3f ms, %d records, %d ring wraps, %d backpressure waits", res_.done, res_.admitted, res_.kernel_ms, stats_.bundles, stats_.pads, stats_.backpressure_waits);
-    else KLOG(0, "DEVICE ERROR %s (%s): slot %d, a=%d, b=%d; done %d/%d", kvm_err_name(res_.err_code), kvm_err_text(res_.err_code), res_.err_slot, res_.err_a, res_.err_b, res_.done, res_.admitted);
+    else KLOG(0, "DEVICE ERROR %s (%s, code %d): slot %d, a=%d, b=%d; done %d/%d", kvm_err_name(res_.err_code), kvm_err_text(res_.err_code), res_.err_code, res_.err_slot, res_.err_a, res_.err_b, res_.done, res_.admitted);
     return res_;
   }
 
@@ -1144,7 +1238,7 @@ class KvmExec {
   unsigned long long *doorbell_ = nullptr, *ring_head_ = nullptr; unsigned* closed_ = nullptr; KvmHostErr* herr_ = nullptr;
   unsigned long long wpos_ = 0;
   cudaStream_t stream_{}; cudaEvent_t e0_{}, e1_{};
-  int sms_ = 0, grid_ = 0, nc_ = 1; size_t dyn_smem_ = 0;
+  int sms_ = 0, grid_ = 0, nc_ = 1; size_t dyn_smem_ = 0; bool hopper_ = false;
   KvmSchedParams* hp_ = nullptr; KvmSchedTele* ht_ = nullptr;
   std::string name_, last_error_;
   std::mutex mu_;
@@ -1449,6 +1543,7 @@ static void usage() {
     "  --golden [--golden-tol R]  compare with <bundle_dir>/golden.json (single bundle): final buffers, versions, observed versions\n"
     "  --trace-csv FILE   per-task timeline  --dump-buffers   print buffers   --quiet   errors only   --check-ops   print registry\n"
     "  --warm-ms N   keep the GPU busy N ms right before the timed launch (the SM clock runs low under sparse work; short timed runs inherit it)\n"
+    "  --full-smem   launch with the build's maximum dynamic shared memory instead of the bundles' largest task's (less L1 for every op)\n"
     "  --no-dissolve      keep the noops that only order tasks (default: spliced out of a plain single-bundle run on the dynamic path)\n"
     "  --no-tape-sort     admit the tape as the bundle wrote it (default on the dynamic path: dependency order, which starts every replicated run at once)\n"
     "  --dump-bin DIR i,j,..  write the listed buffers (by metadata index, widened to little-endian f32 / raw i32) to DIR/<index>.bin after the run\n"
@@ -1461,7 +1556,7 @@ int main(int argc, char** argv) {
   std::string dump_dir; std::vector<int> dump_idx;
   bool sized = false;   // the caller gave a sizing flag: keep its live_cap/ring/slots
   bool no_fifo = false;  // --no-fifo: keep the 32-bucket ready rings even for a bundle set that qualifies for the FIFO ring
-  bool opt_static = false, opt_dynamic = false, static_spin = false, static_partition = true, opt_fuse = true, fuse_phases = false; int static_workers = 0; double static_comm = 1.5;
+  bool opt_static = false, opt_dynamic = false, static_spin = false, static_partition = true, opt_fuse = true, fuse_phases = false, full_smem = false; int static_workers = 0; double static_comm = 1.5;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto val = [&](long long lo = 0, long long hi = 1ll << 30) -> long long {   // strict integer in [lo, hi]
@@ -1475,6 +1570,7 @@ int main(int argc, char** argv) {
     else if (a == "--ring-words") { cfg.ring_words = (int)val(64, 1 << 28); sized = true; }
     else if (a == "--task-limit-s") cfg.task_limit_us = (unsigned long long)val(0, 86400) * 1000000ull;
     else if (a == "--warm-ms") cfg.warm_ms = (int)val(0, 60000);
+    else if (a == "--full-smem") full_smem = true;
     else if (a == "--aging-us") cfg.aging_us = (int)val(0, 1000000000);
     else if (a == "--no-cont") cfg.cont = 0;
 #ifdef KVM_PROF_GAP
@@ -1516,14 +1612,9 @@ int main(int argc, char** argv) {
     if (!sized && dirs.size() == 1) {
       Json m = JsonParser(read_file(dirs[0] + "/metadata.json")).parse();
       const long long nt = (long long)m.num("task_count", -1), ne = (long long)m.num("edge_count", -1), nw = (long long)m.num("args_words", -1);
-      const long long words = (KVM_REC_HDR + nt * KVM_TASK_WORDS + ne + nw + 7) & ~7ll;   // KvmBundle::words() of the bundle once read
-      auto p2 = [](long long v) { long long r = 2; while (r < v) r <<= 1; return r; };
-      if (ne >= 0 && nw >= 0 && (!cfg.fits_one_record(nt, words) || ne + 2 > (long long)cfg.succ_cap) && nt <= (1 << 20) && words < (1ll << 26)) {
-        cfg.live_cap = (int)std::max<long long>(cfg.live_cap, p2(nt)); cfg.max_tasks = std::max(cfg.max_tasks, cfg.live_cap);
-        cfg.ring_words = (int)std::max<long long>(cfg.ring_words, p2(2 * words + 128));
-        cfg.succ_cap = std::max<unsigned>(cfg.succ_cap, (unsigned)p2(ne + 2));
-        KLOG(2, "window sizing: %lld tasks, %lld words as one record (live_cap %d, ring %d words, successor ring %u words)", nt, words, cfg.live_cap, cfg.ring_words, cfg.succ_cap);
-      }
+      if (cfg.size_for_one_record(nt, ne, nw))
+        KLOG(2, "window sizing: %lld tasks, %lld words as one record (live_cap %d, ring %d words, successor ring %u words)", nt, KvmConfig::record_words(nt, ne, nw),
+             cfg.live_cap, cfg.ring_words, cfg.succ_cap);
     }
     KvmExec ex(cfg);
     std::vector<KvmBundle> bundles;
@@ -1619,10 +1710,11 @@ int main(int argc, char** argv) {
       } else {
         const double mean = static_mean_us(bundles[0]);
         opt_static = mean <= KVM_STATIC_MAX_MEAN_US;
-        KLOG(2, "path: %s (mean estimated task %.2f us %s %.1f)", opt_static ? "static" : "dynamic", mean, opt_static ? "<=" : ">", (double)KVM_STATIC_MAX_MEAN_US);
+        KLOG(2, "path: %s (mean estimated task %.2f us %s %.2f)", opt_static ? "static" : "dynamic", mean, opt_static ? "<=" : ">", (double)KVM_STATIC_MAX_MEAN_US);
       }
     }
     if (opt_static && !static_feasible(bundles[0])) throw std::runtime_error("--static: a task waits for a version no task of this bundle publishes");
+    if (!full_smem) ex.size_launch(bundles);   // every task of the run is known here, before any launch
     const KvmResult* resp = nullptr;
     KvmFuseResult fused;            // outside the branch: the golden check below skips what the fused runs no longer write
     if (opt_static) {

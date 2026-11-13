@@ -15,7 +15,7 @@ from .ir import Builder, FrontendError, LogicalOp, Tensor
 from .opset import ATTN_BLOCK, ATTN_Q, F_ACC, F_BIG, F_DGELU, F_EXACT, F_GELU, F_HUGE, F_PRECISE, F_TA, F_TB, F_TRUNC, MM_TILE, MMA_TILE, mm_dims, op as device_op
 
 
-_A100 = dict(rows=128, ew_rows=128, cols=256, col_sub=64, vocab=2048, opt_elems=16384, opt_elems_max=262144, opt_tasks=432, norm_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, row_tasks=16)   # a100_pre and a100_trunc are this tiling plus one change each, so neither can drift from it
+_A100 = dict(rows=128, ew_rows=128, cols=256, col_sub=64, vocab=128, ce_rows=16, opt_elems=16384, opt_elems_max=262144, opt_tasks=432, norm_elems=262144, join_min=8, mm_tile=256, ew_elems=16384, mm_huge_min_tiles=32, mm_huge_min_k=256, row_tasks=16)   # a100_pre and a100_trunc are this tiling plus one change each, so neither can drift from it
 
 @dataclass(frozen=True)
 class Tiling:
@@ -28,6 +28,7 @@ class Tiling:
     opt_elems_max: int = 0   # with opt_tasks, the largest AdamW chunk (0: opt_elems)
     opt_tasks: int = 0       # 0: AdamW takes opt_elems chunks; else for_model sizes the chunk so a step's AdamW makes about this many tasks
     norm_elems: int = 0      # 0: the gradient clip's partial sums take opt_elems chunks; else chunks of this size. The clip's norm is a sum stored per chunk in fp32, so its chunking is numerics, not speed (_norm_chunks)
+    ce_rows: int = 1 << 30   # row block of the cross-entropy tasks (at most `rows`): the loss ops stream a whole vocabulary row each, so they want more, smaller tasks than the other row-wise ops
     mm_tile: int = 64        # GEMM output tile: 64 (64x64), 128 (128x128, flag 32) or 256 (256x128, flag 64); see mm_choice for fallbacks
     mm_min_tiles: int = 8    # a GEMM that would give fewer tiles than this at mm_tile steps down to a smaller tile (parallelism over hop cost)
     mm_huge_min_tiles: int = 1    # the 256x128 tile needs at least this many tiles (a narrow GEMM wants more SMs busy on smaller tiles; the a100 preset asks 32)
@@ -447,7 +448,7 @@ def _(op, tc):
 @lowers('ce_loss')
 def _(op, tc):
     lg, tgt, loss, rl, lse = op.ins['logits'], op.ins['tgt'], op.outs['loss'], op.outs['rowloss'], op.outs['lse']
-    for r0, r1 in blocks(lg.rows, tc.rows):
+    for r0, r1 in blocks(lg.rows, min(tc.ce_rows, tc.rows)):
         yield _task('softmax_ce_fwd', [_rows(lg, r0, r1), _rows(tgt, r0, r1)], [_rows(rl, r0, r1), _rows(lse, r0, r1)],
                     logits=lg, tgt=tgt, rowloss=rl, lse=lse, r0=r0, r1=r1, V=lg.cols, ignore=-1)
     yield _task('softmax_ce_reduce', [_full(rl), _full(tgt)], [_full(loss)], rowloss=rl, tgt=tgt, loss=loss, N=lg.rows, ignore=-1)
@@ -456,7 +457,7 @@ def _(op, tc):
 @lowers('ce_bwd')
 def _(op, tc):
     lg, tgt, lse, loss, out = op.ins['logits'], op.ins['tgt'], op.ins['lse'], op.ins['loss'], op.outs['out']
-    for r0, r1 in blocks(lg.rows, tc.rows):
+    for r0, r1 in blocks(lg.rows, min(tc.ce_rows, tc.rows)):
         yield _task('softmax_ce_bwd', [_rows(lg, r0, r1), _rows(tgt, r0, r1), _rows(lse, r0, r1), _full(loss)], [_rows(out, r0, r1)],
                     logits=lg, tgt=tgt, lse=lse, loss=loss, dlogits=out, r0=r0, r1=r1, V=lg.cols, ignore=-1, scale=op.attrs['grad_scale'])
 
@@ -465,7 +466,7 @@ def _(op, tc):
 def _(op, tc):
     # fuse.py's ce_loss + ce_bwd: forward and backward of each row block in one task; the reduce stays a separate task, off the path (the backward's 1/count is N here, nothing is ignored)
     lg, tgt, loss, rl, lse, out = op.ins['logits'], op.ins['tgt'], op.outs['loss'], op.outs['rowloss'], op.outs['lse'], op.outs['out']
-    for r0, r1 in blocks(lg.rows, tc.rows):
+    for r0, r1 in blocks(lg.rows, min(tc.ce_rows, tc.rows)):
         yield _task('softmax_ce_fused', [_rows(lg, r0, r1), _rows(tgt, r0, r1)], [_rows(rl, r0, r1), _rows(lse, r0, r1), _rows(out, r0, r1)],
                     logits=lg, tgt=tgt, rowloss=rl, lse=lse, dlogits=out, r0=r0, r1=r1, V=lg.cols, ignore=-1, N=lg.rows, scale=op.attrs['grad_scale'])
     yield _task('softmax_ce_reduce', [_full(rl), _full(tgt)], [_full(loss)], rowloss=rl, tgt=tgt, loss=loss, N=lg.rows, ignore=-1)
@@ -496,7 +497,7 @@ def _(op, tc):
 @lowers('argmax')
 def _(op, tc):
     lg, out = op.ins['logits'], op.outs['out']
-    for r0, r1 in blocks(lg.rows, tc.rows):
+    for r0, r1 in blocks(lg.rows, min(tc.ce_rows, tc.rows)):
         yield _task('argmax', [_rows(lg, r0, r1)], [_rows(out, r0, r1)], logits=lg, out=out, r0=r0, r1=r1, V=lg.cols)
 
 

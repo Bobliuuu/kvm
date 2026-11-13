@@ -1,0 +1,13 @@
+tf32: 383 f32 buffers (9 signal-free skipped: ['act114', 'act176', 'act238', 'act300', 'act52', 'm.vit.h0.attn.k.b']; 1 structurally-zero-gradient parameters judged in absolute terms), 5 loss buffers
+  ok   losses rel L2 <= 0.002: worst 1.99e-05
+  ok   60 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act55 9.39e-04
+  info: post-optimizer weights/moments differ by up to 6.58e-03 (m.vit.h0.n1.b) after the run
+  ok   vit.h0.attn.k.b weight (structurally zero gradient) within the optimizer envelope: |w_gpu - w_golden| max 3.227e-05, |w_gpu| max 3.171e-05, envelope T = 5 steps * 3.0e-03 = 1.500e-02
+  ok   vit.h0.attn.k.b moments at the noise level of the live gradients: |m_gpu| max 8.939e-12 (golden 2.758e-12) vs 3.105e-04, sqrt|v_gpu| max 1.671e-11 (golden 3.862e-12) vs 9.907e-04
+  ok   act114 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 2.910e-11 (golden 1.091e-11) vs 5.428e-03
+  ok   act176 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 7.276e-11 (golden 5.912e-12) vs 5.428e-03
+  ok   act238 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 3.638e-11 (golden 1.364e-11) vs 5.428e-03
+  ok   act300 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 7.276e-11 (golden 1.452e-11) vs 5.428e-03
+  ok   act52 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 2.251e-11 (golden 6.196e-12) vs 5.428e-03
+  ok   no NaN/Inf in any GPU buffer: []
+PASS

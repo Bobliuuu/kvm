@@ -1,0 +1,16 @@
+cfg[]
+OK: 58634/58634 tasks, 268.383 ms
+OK: 58634/58634 tasks, 268.343 ms
+OK: 58634/58634 tasks, 269.311 ms
+cfg[--live-cap 65536 --max-tasks 65536 --ring-words 8388608]
+OK: 58634/58634 tasks, 297.737 ms
+OK: 58634/58634 tasks, 292.469 ms
+OK: 58634/58634 tasks, 296.284 ms
+cfg[--live-cap 32768 --max-tasks 65536]
+OK: 58634/58634 tasks, 272.746 ms
+OK: 58634/58634 tasks, 267.430 ms
+OK: 58634/58634 tasks, 268.600 ms
+cfg[--blocks 54]
+OK: 58634/58634 tasks, 314.977 ms
+OK: 58634/58634 tasks, 315.511 ms
+OK: 58634/58634 tasks, 315.364 ms

@@ -4,9 +4,13 @@ from __future__ import annotations
 import heapq
 from collections import Counter
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from .emit import Lowered
+from .ir import FrontendError
 from .opset import op as device_op
+
+if TYPE_CHECKING:          # emit imports this module (step_ranks), so Lowered is named here for annotations only
+    from .emit import Lowered
 
 
 @dataclass(frozen=True)
@@ -26,6 +30,24 @@ class CostModel:
             return self.hop_us
         fl, by = t.flops_bytes()
         return max(fl / self.sm_flops, by / self.sm_bw) * 1e6 + self.hop_us
+
+
+def step_ranks(low: Lowered, model: CostModel = CostModel()) -> list[float]:
+    """Each task's longest remaining path inside its own step, in the model's microseconds: its cost plus the largest rank among its
+    successors of the same graph and step (HEFT's upward rank, Topcuoglu, Hariri and Wu 2002, cut at the step's end). Cut there, a
+    run's steps rank alike however many there are; ranked to the run's end, each step of a 50-step run would hold one or two levels of
+    the executor's 32. lower_program lists every task after its predecessors; one that does not is refused."""
+    preds, rank = low.preds, [model.task_us(t) for t in low.tasks]
+    key = [(t.op.graph, t.op.step) for t in low.tasks]
+    longest = [0.0] * len(rank)            # the largest rank among each task's same-step successors seen so far
+    for i in range(len(rank) - 1, -1, -1):
+        rank[i] += longest[i]
+        for j in preds[i]:
+            if j >= i:
+                raise FrontendError(f'task {low.tasks[i].name}: predecessor {low.tasks[j].name} is not listed before it')
+            if key[j] == key[i] and rank[i] > longest[j]:
+                longest[j] = rank[i]
+    return rank
 
 
 def analyze(low: Lowered, model: CostModel = CostModel(), workers: int = 108) -> dict:

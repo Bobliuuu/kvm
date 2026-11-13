@@ -7,7 +7,6 @@ The operator schema comes from include/kvm_ops*.def and the descriptor layout fr
 """
 import argparse
 import gc
-import os
 import json
 import logging
 import math
@@ -636,32 +635,6 @@ def compile_spec(spec, base_versions=None, allow_nonfinite=False, data_dir=None,
             gc.enable()
 
 
-# Measured mean task times (us) of the 162M GPT step on an A100; unknown ops get the default.
-_OP_US = {'matmul_mma_bf16': 130, 'matmul_tile': 160, 'attn_bwd_dkv': 205, 'attn_bwd_dq': 130, 'attn_fwd': 90, 'round_bf16': 110, 'adamw': 600,
-          'colsum': 950, 'rope_bwd': 350, 'rope_fwd': 330, 'gelu_bwd': 575, 'norm_bwd_params': 2500, 'layernorm_bwd_dx': 235}
-
-
-def _critical_priorities(tasks, graph):
-    """KVM_CRIT_PRIO=1: priority = quantised longest remaining path (task cost + max successor rank), 0..30, so the ready queue (strict
-    priority across its 32 buckets, FIFO within one) runs the critical chain first and the tail is not starved. A declared priority
-    is kept when it is higher. Returns None when disabled."""
-    if os.environ.get('KVM_CRIT_PRIO', '') in ('', '0') or graph.pos is None:
-        return None
-    n, off, succ = graph.n, graph.off, graph.succ
-    order = sorted(range(n), key=lambda i: -graph.pos[i])
-    bl = [0.0] * n
-    for i in order:
-        c = _OP_US.get(tasks[i].op.name, 100)
-        m = 0.0
-        for k in range(off[i], off[i + 1]):
-            if bl[succ[k]] > m:
-                m = bl[succ[k]]
-        bl[i] = c + m
-    top = max(bl) or 1.0
-    q = int(os.environ['KVM_CRIT_PRIO']) if os.environ['KVM_CRIT_PRIO'].isdigit() and int(os.environ['KVM_CRIT_PRIO']) > 1 else 30
-    return [max(tasks[i].priority, min(30, int(q * bl[i] / top))) for i in range(n)]
-
-
 def _compile_spec(spec, base_versions, allow_nonfinite, data_dir, ops) -> Compiled:
     t0 = time.perf_counter()
     _keys(spec, 'workload', {'variables', 'buffers', 'graphs'}, {'graphs'})
@@ -678,7 +651,6 @@ def _compile_spec(spec, base_versions, allow_nonfinite, data_dir, ops) -> Compil
     _check_versions(graph, decls, final, variables, publishers, by_version)
     t2 = time.perf_counter()
 
-    prio = _critical_priorities(tasks, graph)
     var_id = {n: v.id for n, v in variables.items()}
     desc, flat_args, nargs = [], array('i'), 0
     pack, fields = task_abi.layout.pack, task_abi.fields
@@ -687,7 +659,7 @@ def _compile_spec(spec, base_versions, allow_nonfinite, data_dir, ops) -> Compil
         wv, wn = (var_id[t.wait[0]], t.wait[1]) if t.wait else (no_var, 0)
         pv, pn = (var_id[t.pub[0]], t.pub[1]) if t.pub else (no_var, 0)
         values = dict(op_id=t.op.id, succ_off=graph.off[i], succ_cnt=graph.off[i + 1] - graph.off[i], indegree=graph.indegree[i],
-                      priority=prio[i] if prio else t.priority, deadline_us=t.deadline_us, args_off=nargs, args_words=len(t.words),
+                      priority=t.priority, deadline_us=t.deadline_us, args_off=nargs, args_words=len(t.words),
                       wait_var=wv, wait_ver=wn, pub_var=pv, pub_ver=pn, workload_id=t.workload_id)
         desc.append(pack(*[values.get(f, 0) for f in fields]))
         flat_args.extend(t.words)

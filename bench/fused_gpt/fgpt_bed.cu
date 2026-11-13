@@ -166,7 +166,7 @@ int main(int argc, char** argv) {
   h.ids_len = (long long)need("ids_len"); h.tgt_len = (long long)need("tgt_len");
   const int step0 = (int)need("step0");
   const int np = kvm_fgpt_nparams(h.L);
-  if (G < 1 || G > h.N) die("G must be in [1, N]");
+  if (G < 1 || G > h.N || G > KVM_FGPT_MAX_GANG) die("G must be in [1, min(N, KVM_FGPT_MAX_GANG)]");   // the device code sizes its gang reads by the cap
   if (h.L < 1 || h.L > KVM_FGPT_MAXL || (int)slots.size() != np) die("the meta's layers and slots disagree");
   // ---- the parameters, their moments, gradients; the streams; the scratch; the gang's control words
   size_t total = 0;

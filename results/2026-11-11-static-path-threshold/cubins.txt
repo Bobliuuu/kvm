@@ -1,0 +1,5 @@
+# cuobjdump -xelf all, each key's two sm_80 cubins against main's ee481fa1 (laptop, 2026-11-11T14:01:38Z)
+f82f1923 cubin 1: 7af8da5a6108 against main's 7af8da5a6108: byte-identical, 872 bytes
+f82f1923 cubin 2: 3286fc7d57e5 against main's 3286fc7d57e5: byte-identical, 11728032 bytes
+b6fc3aea cubin 1: 7af8da5a6108 against main's 7af8da5a6108: byte-identical, 872 bytes
+b6fc3aea cubin 2: 3286fc7d57e5 against main's 3286fc7d57e5: byte-identical, 11728032 bytes

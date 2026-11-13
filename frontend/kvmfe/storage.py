@@ -29,6 +29,15 @@ _NATIVE_IN = {'linear': ('x', 'w', 'res'), 'mm': ('a', 'b', 'into')}
 _WEIGHT_IN = {'linear': ('w',), 'mm': ('a', 'b')}
 _MMA_OPERANDS = {'linear': ('x', 'w'), 'mm': ('a', 'b')}   # operands that must both be bf16 storage for matmul_mma_bf16 (lower._mm_dev)
 _OPERAND_IN = {'linear': ('x',), 'mm': ('a', 'b')}        # operands that get an explicit bf16 copy when they are fp32 activations
+# A causal attention backward whose q, k and v are bf16 storage reads its output gradient as bf16 too: the bf16 tensor-core attention
+# (include/kvm_attn_bf16.cuh, ab_ok) takes a task only when q, k, v and dO are all bf16 storage, and autocast's backward hands SDPA a bf16 dO.
+_ATTN_GRAD_IN = ('do',)
+
+
+def _bf16_attention_bwd(op, cast_out):
+    """q, k and v each bf16 storage already, or the output of one of the model's bf16 casts (bf16 from apply() step 1 on)."""
+    return (op.kind == 'attention_bwd' and op.attrs.get('causal')
+            and all(n in op.ins and (op.ins[n].dtype == 'bf16' or op.ins[n].uid in cast_out) for n in ('q', 'k', 'v')))
 
 # Storage-aware (non-matmul) ops: logical op kind -> (in slots, out slots) that may hold bf16 storage. These mirror the device ops' ld_s/st_s
 # arguments (include/kvm_ops_gpt.cuh) and runtime/ref_extra._BF16_STORAGE; every other slot of these ops is fp32 (statistics, parameters).
@@ -90,9 +99,10 @@ def _narrow_operands(ops, stats):
     cast_out = {op.outs['out'].uid for op in ops if op.kind == 'cast' and op.attrs.get('dtype') == 'bf16'}
     out = []
     for op in ops:
-        if _capable(op):
+        names = _OPERAND_IN[op.kind] if _capable(op) else _ATTN_GRAD_IN if _bf16_attention_bwd(op, cast_out) else ()
+        if names:
             ins = dict(op.ins)
-            for n in _OPERAND_IN[op.kind]:
+            for n in names:
                 t = ins.get(n)
                 if t is None or t.dtype != 'f32' or t.kind == 'param' or t.uid in cast_out:
                     continue
@@ -135,12 +145,14 @@ def apply(ops: list[LogicalOp], weights: bool = True) -> tuple[list[LogicalOp], 
         x, out = op.ins['x'], op.outs['out']
         out.dtype = 'bf16'
         p = prod.get(x.uid, [])
-        slot = _out_slot(ops[p[0]], x) if len(p) == 1 and p[0] not in out_of else None
+        slot = _out_slot(ops[p[0]], x) if len(p) == 1 else None
+        if slot is not None and slot in out_of.get(p[0], {}):   # one fold per output slot (a second cast of the same value narrows);
+            slot = None                                          # a producer with several outputs folds each one's cast (attention_bwd: dq, dk, dv)
         others = [(j, n) for j, n in readers_of.get(x.uid, []) if j != i]
         aware = all(j > p[0] and ops[j].kind != 'cast' and n in (_native(ops[j]) or ((), ()))[0]
                     and not any(t is x for t in ops[j].outs.values()) for j, n in others) if slot is not None else False
         if slot is not None and aware and x.dtype == 'f32' and p[0] < i:
-            out_of[p[0]] = (slot, out)
+            out_of.setdefault(p[0], {})[slot] = out
             drop.add(i)
             for j, n in others:
                 redirect.setdefault(j, {})[n] = out
@@ -243,8 +255,7 @@ def _fold(ops, drop, out_of, redirect=None):
             continue
         ins, outs = op.ins, op.outs
         if i in out_of:
-            slot, tensor = out_of[i]
-            outs = {**outs, slot: tensor}
+            outs = {**outs, **out_of[i]}
         if redirect and i in redirect:
             ins = {**ins, **redirect[i]}
         if ins is not op.ins or outs is not op.outs:

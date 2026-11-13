@@ -265,12 +265,13 @@ static int n_bitdiff(const std::vector<float>& a, const std::vector<float>& b) {
 }
 static std::vector<float> rne(std::vector<float> v) { for (auto& x : v) x = bf16_ref(x); return v; }
 struct AttnRun { std::vector<float> o, lse, delta, dq, dk, dv; int err; };
+static bool g_aligned = false;   // attn_run: q/k/v leading dimensions that are multiples of 8 (the bf16 tensor-core attention's precondition), else padded by 4/4/8
 static AttnRun attn_run(int B, int T, int H, int Hkv, int hd, unsigned in, unsigned out, const std::vector<float>& hq, const std::vector<float>& hk,
                         const std::vector<float>& hv, const std::vector<float>& hdo, const std::vector<float>* o_in) {
     // o_in: run the backward on these o values (the forward's own output otherwise), so variants with different o storage share delta's inputs
     const int R = B * T; const float scale = 1.f / sqrtf((float)hd);
     Dev dv;
-    int q = mk(dv, in & 1, R, H * hd, H * hd + 4), k = mk(dv, in & 2, R, Hkv * hd, Hkv * hd + 4), v = mk(dv, in & 4, R, Hkv * hd, Hkv * hd + 8);
+    int q = mk(dv, in & 1, R, H * hd, H * hd + (g_aligned ? 8 : 4)), k = mk(dv, in & 2, R, Hkv * hd, Hkv * hd + (g_aligned ? 0 : 4)), v = mk(dv, in & 4, R, Hkv * hd, Hkv * hd + 8);
     int dO = mk(dv, in & 8, R, H * hd), o = mk(dv, out & 1, R, H * hd), lse = dv.addf(1, B * H * T), delta = dv.addf(1, B * H * T);
     int dq = mk(dv, out & 2, R, H * hd, H * hd + 12), dk = mk(dv, out & 4, R, Hkv * hd, Hkv * hd + 16), dvv = mk(dv, out & 8, R, Hkv * hd);
     put(dv, q, in & 1, hq); put(dv, k, in & 2, hk); put(dv, v, in & 4, hv); put(dv, dO, in & 8, hdo);
@@ -335,9 +336,37 @@ static void t_attn() {
     }
 }
 
+// The bf16 tensor-core attention (head size 64, q/k/v/dO bf16, 16-byte aligned, ld % 8 == 0): not bitwise equal to the fp32 path (P and dS are rounded
+// to bf16 before the tensor cores), so each result is held to the float64 reference with a bf16-sized tolerance, lse to the fp32 path's own.
+static void t_attn_tc() {
+    struct Cfg { int B, T, H, Hkv, hd; };
+    const std::vector<Cfg> cfgs = getenv("TEST_BF16_SMALL") ? std::vector<Cfg>{{1, 70, 2, 1, 64}} : std::vector<Cfg>{{2, 150, 4, 2, 64}, {1, 257, 2, 2, 64}, {1, 1, 1, 1, 64}, {1, 128, 3, 1, 64}};
+    const std::vector<std::pair<unsigned, unsigned>> masks = {{15, 0}, {15, 15}, {15, 1}, {7, 10}};   // {7, *}: fp32 dO, which takes the 3xTF32 path
+    g_aligned = true;
+    Rng r(77);
+    for (const Cfg& c : cfgs) {
+        const int R = c.B * c.T;
+        auto hq = rbf(rnd(r, R * c.H * c.hd, 1.5)), hk = rbf(rnd(r, R * c.Hkv * c.hd)), hv = rbf(rnd(r, R * c.Hkv * c.hd)), hdo = rbf(rnd(r, R * c.H * c.hd));
+        char nm[96]; snprintf(nm, sizeof nm, "attn tc B=%d T=%d H=%d Hkv=%d hd=%d", c.B, c.T, c.H, c.Hkv, c.hd);
+        D ro, rl, rdq, rdk, rdv, Dd = dbl(hdo);
+        attn_d(c.B, c.T, c.H, c.Hkv, c.hd, 1.0 / sqrt((double)c.hd), dbl(hq), dbl(hk), dbl(hv), ro, rl, &Dd, &rdq, &rdk, &rdv);
+        for (auto [in, out] : masks) {
+            char tg[64]; snprintf(tg, sizeof tg, " [in %x out %x]", in, out);
+            const AttnRun f = attn_run(c.B, c.T, c.H, c.Hkv, c.hd, in, out, hq, hk, hv, hdo, nullptr);
+            check_true(std::string(nm) + tg + " err==0", f.err == 0);
+            check(std::string(nm) + tg + " o vs f64", f.o, ro, 1.2e-2);
+            check(std::string(nm) + tg + " lse vs f64", f.lse, rl, 1e-5);
+            check(std::string(nm) + tg + " dq vs f64", f.dq, rdq, 1e-2);
+            check(std::string(nm) + tg + " dk vs f64", f.dk, rdk, 1e-2);
+            check(std::string(nm) + tg + " dv vs f64", f.dv, rdv, 1e-2);
+        }
+    }
+    g_aligned = false;
+}
+
 int main() {
     cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0));
     printf("device: %s, %d SMs, cc %d.%d, mma smem %d B\n", pr.name, pr.multiProcessorCount, pr.major, pr.minor, KVM_MMA_SMEM);
-    t_mma(); t_ops(); t_attn();
+    t_mma(); t_ops(); t_attn(); t_attn_tc();
     return summary();
 }

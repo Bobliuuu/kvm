@@ -143,6 +143,8 @@ class CausalSelfAttention(Module):
     def __call__(self, b, h, w, res):
         c = self.cfg
         q, k, v = self.qkv(b, h, w, c.seq)
+        if c.lp:   # bf16 modes: q and k are stored rounded after RoPE, as autocast hands SDPA bf16 q, k and v, so attention reads bf16 operands
+            q, k = b.cast(q), b.cast(k)
         return self.proj(b, b.attention(q, k, v, c.heads, c.seq), w, res=res, bf16=c.lp)
 
 

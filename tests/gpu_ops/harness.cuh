@@ -18,7 +18,7 @@
 
 // The dynamic shared memory a test kernel may launch with: what the executor would ask for (at least 112 KiB), capped at what this device
 // can opt into (99 KiB on sm_86/sm_89/sm_120, 163 KiB on an A100). A launch above the cap then fails at that launch, by name, instead of the
-// whole program failing at the attribute call. A small-memory device runs a reduced-tile build (-DKVM_GPT_BIG_BK=16 -DKVM_GPT_MAX_HD=64: 96 KiB);
+// whole program failing at the attribute call. A small-memory device runs a reduced-tile build (-DKVM_GPT_BIG_NST=3 -DKVM_GPT_MMA_SMEM=90112 -DKVM_GPT_MAX_HD=64: 88 KiB);
 // its cases above KVM_GPT_MAX_HD (hd=128 attention, whose variant that build does not compile) are skipped and counted, not run.
 static int kvm_test_smem_cap() {
     int dev = 0, optin = 0;
@@ -117,8 +117,20 @@ struct Batch {   // independent tasks, one block each
 };
 #ifndef KVM_HARNESS_NO_FULL
 static int g_smem_attr = 0;
-// Runs the batch (one block of 256 threads per task) and returns the device error word (0 = ok).
-static int run(Dev& d, const Batch& b, int smem = kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)) {   // what the executor would launch with
+// The launch the executor gives a bundle of these tasks (KvmExec::size_launch): the largest of their kvm_gpt_task_smem, at least the small
+// ops' size; an op outside the GPT pack keeps the build's maximum. So every test runs its op at the executor's launch, and a footprint its
+// formula does not count writes past the launch, which compute-sanitizer reports.
+static int launch_smem(const Batch& b) {
+    int need = KVM_GPT_SMEM_SMALL;
+    for (size_t i = 0; i < b.op.size(); i++) {
+        const int n = kvm_gpt_task_smem(b.op[i], b.w.data() + b.off[i]);
+        need = std::max(need, n < 0 ? (int)kvm_gpt_smem_bytes(KVM_GPT_MAX_HD) : n);
+    }
+    return need;
+}
+// Runs the batch (one block of 256 threads per task) and returns the device error word (0 = ok). smem < 0: the executor's launch for it.
+static int run(Dev& d, const Batch& b, int smem = -1) {
+    if (smem < 0) smem = launch_smem(b);
     if (!g_smem_attr) { CK(cudaFuncSetAttribute(k_run, cudaFuncAttributeMaxDynamicSharedMemorySize, kvm_test_smem_cap())); kvm_hopper_host_init(); g_smem_attr = 1; }
     d.sync_table();
     int32_t* w; int *op, *off;
@@ -132,7 +144,7 @@ static int run(Dev& d, const Batch& b, int smem = kvm_gpt_smem_bytes(KVM_GPT_MAX
     cudaFree(w); cudaFree(op); cudaFree(off);
     return d.geterr();
 }
-static int run1(Dev& d, int id, const A& a, int smem = kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)) { Batch b; b.add(id, a); return run(d, b, smem); }
+static int run1(Dev& d, int id, const A& a, int smem = -1) { Batch b; b.add(id, a); return run(d, b, smem); }
 #endif  // KVM_HARNESS_NO_FULL
 
 // ---- accounting / comparison ------------------------------------------------------------------------------------------

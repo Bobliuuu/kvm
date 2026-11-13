@@ -1,3 +1,4 @@
+#undef NDEBUG   // the asserts are the test: a -DNDEBUG build must not compile them out
 #include <vector>
 #include <stdexcept>
 #include <cassert>

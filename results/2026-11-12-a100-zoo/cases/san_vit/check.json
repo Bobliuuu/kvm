@@ -1,0 +1,51 @@
+{
+ "mode": "precise",
+ "buffers": 197,
+ "failures": [],
+ "loss_err": {
+  "loss.0": 3.1149379874063396e-10,
+  "loss.1": 2.0139040494286063e-09
+ },
+ "loss_gpu": {
+  "loss.0": 1.38163662,
+  "loss.1": 1.41603792
+ },
+ "loss_golden": {
+  "loss.0": 1.381636619567871,
+  "loss.1": 1.416037917137146
+ },
+ "null_buffers": [
+  "act114",
+  "act52",
+  "m.vit.h0.attn.k.b",
+  "v.vit.h0.attn.k.b",
+  "version_token",
+  "w.vit.h0.attn.k.b"
+ ],
+ "invariant_params": [
+  "vit.h0.attn.k.b"
+ ],
+ "worst": [
+  [
+   "act70",
+   1.1729325179847712e-05
+  ],
+  [
+   "v.vit.h0.attn.q.w",
+   2.0078713581793473e-06
+  ],
+  [
+   "v.vit.h0.attn.k.w",
+   1.8966602053015994e-06
+  ],
+  [
+   "act108",
+   1.4151216404658738e-06
+  ],
+  [
+   "v.vit.h0.attn.o.w",
+   1.3790260743643573e-06
+  ]
+ ],
+ "max_rel_l2": 1.1729325179847712e-05
+}

@@ -529,7 +529,7 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
           std::string gw;
           const int P = kvm_fuse_grid_fits(s.L, s.E, s.V, s.H, s.T, ops, opts, gw);
           if (P) { take(); pl.run.grid = 1; pl.run.P = P; pl.split_why = one + "; split form: " + sw; }
-          else why = one + "; split form: " + sw + "; grid form: " + gw;
+          else { why = one + "; split form: " + sw + "; grid form: " + gw; intended = true; }   // no form takes the shape: a refusal by design
         }
       }
       if (!why.empty()) intended = true;   // no form covers the shape: a refusal by design

@@ -20,7 +20,7 @@
 #define KVM_FGPT_PER_LAYER 16                 // parameters a layer: n1 (g, b), q, k, v, proj (w, b each), n2 (g, b), fc1, fc2 (w, b each)
 #define KVM_FGPT_MAXP (4 + KVM_FGPT_PER_LAYER * KVM_FGPT_MAXL)   // + wte, nf (g, b), head
 #define KVM_FGPT_SMEM_FLOATS 38400            // the pass's default budget of shared memory a member, in floats (the executor passes the device's)
-#define KVM_FGPT_MAX_GANG 32                  // the widest gang the policy picks (kvm_fgpt_fit)
+#define KVM_FGPT_MAX_GANG 64                  // the widest gang the policy picks (kvm_fgpt_fit); an A100's 108 SMs seat 64 members
 
 // Parameter slots, in one fixed order: 0 wte; 1 + 16 l + r for layer l's role r (KVM_FGPT_R_*); then nf's g and b; then the head.
 enum KvmFgptRole {
@@ -81,12 +81,15 @@ struct alignas(16) KvmFgptDesc {
 KVM_FGPT_HD inline int kvm_fgpt_unit_grads(int d, int hd) { return 4 * d * hd + 3 * hd; }   // dWq, dWk, dWv [d][hd]; dbq, dbk, dbv [hd]; dWo [hd][d]
 // Attention's work items: each (sequence, head) unit cut into QB query blocks of T / QB rows, so that up to G members share it. Blocks cost
 // two more gang barriers a layer (q, k, v gathered; dK and dV partials summed); on the flag-line barrier they pay wherever a block is whole
-// mma row tiles. The default is the largest power of two with B H QB <= G and T a multiple of 16 QB. On an RTX 5070, gpt-tiny (T = 32) ran
-// x1.06 faster with 2 blocks than with 1 (and 10% slower under the counter barrier, whose crossings cost 1.7x as much).
+// mma row tiles. The default is the largest QB with B H QB <= G and T a multiple of 16 QB, any count, not only a power of two: T = 96
+// takes 3 blocks of 32 rows where powers of two stopped at 2 of 48. On an RTX 5070, gpt-tiny (T = 32) ran x1.06 faster with 2 blocks
+// than with 1 (and 10% slower under the counter barrier, whose crossings cost 1.7x as much); on an A100 the hold-out's d128 draw (T 96,
+// B 2, H 4) ran x1.07 faster with 3 than with 2, in 140,208 B of shared memory a member instead of 164,400.
 KVM_FGPT_HD inline int kvm_fgpt_qblocks(int B, int H, int T, int G) {
-  int q = 1;
-  while ((long long)B * H * q * 2 <= G && T % (16 * q * 2) == 0) q *= 2;
-  return q;
+  int best = 1;
+  for (int q = 2; (long long)B * H * q <= G && 16 * q <= T; ++q)
+    if (T % (16 * q) == 0) best = q;
+  return best;
 }
 // A bound on one member's owned parameter elements: its blocks (fc1's columns, b1 and fc2's rows a layer; wte's rows; the head's
 // columns), its attention slice and its replicated slice.
@@ -136,7 +139,7 @@ KVM_FGPT_HD inline int kvm_fgpt_ldmn(int cols) { return ((cols + 15) & ~15) + 8;
 KVM_FGPT_HD inline int kvm_fgpt_r16(int n) { return (n + 15) & ~15; }
 KVM_FGPT_HD inline int kvm_fgpt_r8(int n) { return (n + 7) & ~7; }
 KVM_FGPT_HD inline long long kvm_fgpt_r4(long long n) { return (n + 3) & ~3LL; }
-#define KVM_FGPT_NT 256                       // threads of a member's block
+#define KVM_FGPT_NT 384                       // threads of a member's block: 12 warps, three to each SM sub-partition, which hide the step's latency-bound tile loops better than two
 #define KVM_FGPT_MAXBLK 16                    // a member's block rectangles: fc1's columns, b1, fc2's rows a layer, wte's rows, the head's columns
 // The scratch layout in floats, rounded to 16 bytes: one copy a block heads its shared memory, so a thread never holds the offsets itself.
 // Read with a runtime layer index, a thread's own copy would live in local memory, 592 bytes a thread (on an A100, beside this kernel's
@@ -194,19 +197,31 @@ KVM_FGPT_HD inline int kvm_fgpt_rows_for(int N, int T, int d, int H, int F, int 
     if ((i == 0 || cand[i] < N) && kvm_fgpt_smem_floats(N, T, d, H, F, V, G, QB, cand[i]) <= smem_floats) return cand[i];
   return 0;
 }
-// A shape's fit: the largest power of two G up to min(KVM_FGPT_MAX_GANG, max_g, N) whose members fit `smem_floats` (the fast form's phases,
-// kvm_fgpt_smem_floats) with the default query blocks and the largest row chunk that fits; G 0 when none does (the run is not fused). On an
-// RTX 5070, gpt-small ran faster at 32 members than at 16, and gpt-tiny was flat from 8 to 32 (20 steps each, bench/fused_gpt/fgpt_bed.cu).
+// A shape's fit: the gang width G (a power of two up to min(KVM_FGPT_MAX_GANG, max_g, N)) whose members fit `smem_floats` (the fast form's
+// phases, kvm_fgpt_smem_floats) with the default query blocks and the largest row chunk that fits; G 0 when none does (the run is not
+// fused). The preferred width gives each member two rows at least (G <= N / 2) and one 8-wide MMA tile of the MLP's hidden units (G <= F / 8):
+// below either, a member's GEMM tiles run part empty while each barrier and reduce-scatter pays for every member. On an A100 bed (20 steps,
+// 5 paired rounds): gpt-tiny (N 32, F 128) 199.0k cycles a step at G 16 against 201.9k at 32; gpt-small (N 128, F 256) 314.7 us at 32
+// against 357.3 at 64; a d128 (N 128, F 512) 963.9 us at 64 against 1,037.1 at 32, and the hold-out's d128 (N 192) 1,201.9 against 1,328.9.
+// Where the preferred width does not fit, a wider one may (its weight slices are smaller), then a narrower one.
 struct KvmFgptFit { int G = 0, qb = 1, rows = 0; };
+KVM_FGPT_HD inline bool kvm_fgpt_fit_at(int G, int N, int T, int d, int H, int F, int V, int smem_floats, KvmFgptFit& f) {
+  const int qb = kvm_fgpt_qblocks(N / T, H, T, G), rows = kvm_fgpt_rows_for(N, T, d, H, F, V, G, qb, smem_floats);
+  if (rows <= 0) return false;
+  f.G = G; f.qb = qb; f.rows = rows;
+  return true;
+}
 KVM_FGPT_HD inline KvmFgptFit kvm_fgpt_fit(int N, int T, int d, int H, int F, int V, int smem_floats, int max_g) {
   KvmFgptFit f;
   if (T <= 0 || N % T) return f;
-  int G = 1;
-  while (G * 2 <= KVM_FGPT_MAX_GANG && G * 2 <= max_g && G * 2 <= N) G *= 2;
-  for (; G >= 1; G /= 2) {
-    const int qb = kvm_fgpt_qblocks(N / T, H, T, G), rows = kvm_fgpt_rows_for(N, T, d, H, F, V, G, qb, smem_floats);
-    if (rows > 0) { f.G = G; f.qb = qb; f.rows = rows; return f; }
-  }
+  int gmax = 1;
+  while (gmax * 2 <= KVM_FGPT_MAX_GANG && gmax * 2 <= max_g && gmax * 2 <= N) gmax *= 2;
+  int g0 = gmax;
+  while (g0 > 1 && (g0 * 2 > N || g0 * 8 > F)) g0 /= 2;                             // two rows and one 8-wide tile of hidden units a member
+  for (int G = g0; G <= gmax; G *= 2)
+    if (kvm_fgpt_fit_at(G, N, T, d, H, F, V, smem_floats, f)) return f;
+  for (int G = g0 / 2; G >= 1; G /= 2)
+    if (kvm_fgpt_fit_at(G, N, T, d, H, F, V, smem_floats, f)) return f;
   return f;
 }
 // Why the device program cannot run a matched shape, or "" when it can (the conditions kvm_fused_gpt.cuh's run checks; its layer count is a

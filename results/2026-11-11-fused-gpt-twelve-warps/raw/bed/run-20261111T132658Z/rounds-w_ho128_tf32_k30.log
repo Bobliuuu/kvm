@@ -1,0 +1,15 @@
+w_ho128_tf32_k30 round 1 NT256 1055.8 us a step in all; the SMs ran at 1407 MHz
+w_ho128_tf32_k30 round 1 NT384 955.7 us a step in all; the SMs ran at 1406 MHz
+w_ho128_tf32_k30 round 1 NT512 965.3 us a step in all; the SMs ran at 1406 MHz
+w_ho128_tf32_k30 round 2 NT384 956.8 us a step in all; the SMs ran at 1406 MHz
+w_ho128_tf32_k30 round 2 NT512 965.3 us a step in all; the SMs ran at 1406 MHz
+w_ho128_tf32_k30 round 2 NT256 1055.8 us a step in all; the SMs ran at 1407 MHz
+w_ho128_tf32_k30 round 3 NT512 964.8 us a step in all; the SMs ran at 1406 MHz
+w_ho128_tf32_k30 round 3 NT256 1055.8 us a step in all; the SMs ran at 1407 MHz
+w_ho128_tf32_k30 round 3 NT384 955.9 us a step in all; the SMs ran at 1406 MHz
+w_ho128_tf32_k30 round 4 NT256 1055.4 us a step in all; the SMs ran at 1407 MHz
+w_ho128_tf32_k30 round 4 NT384 956.3 us a step in all; the SMs ran at 1406 MHz
+w_ho128_tf32_k30 round 4 NT512 965.5 us a step in all; the SMs ran at 1406 MHz
+w_ho128_tf32_k30 round 5 NT384 955.2 us a step in all; the SMs ran at 1406 MHz
+w_ho128_tf32_k30 round 5 NT512 964.1 us a step in all; the SMs ran at 1406 MHz
+w_ho128_tf32_k30 round 5 NT256 1055.0 us a step in all; the SMs ran at 1407 MHz

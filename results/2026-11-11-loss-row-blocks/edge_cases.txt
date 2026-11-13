@@ -1,0 +1,213 @@
+# Edge cases of this branch's pass (CPU, g++ -O1 with AddressSanitizer and UBSan), 188 cases made by mutating the gen_mlp and panel bundles
+# above: coverings that must fuse to the one-task loss's digest, coverings that must refuse, reads at the edge of a task's words and of the
+# argument array, and the warning rules. Run at 1a942da. 188 pass; AddressSanitizer and UBSan report nothing.
+#  - A task whose word count is not its op's arity (B8, C6-C13: short or long) must leave the bundle as it came: no run fused, no warning,
+#    and a line naming the task. The executor's validation then refuses the bundle, fused or not.
+#  - A kept interior buffer silences only the refusal the keep check itself makes (D4). A covering the parse refuses first still warns (D5).
+
+reference main_h72d2/bundle: fused 1, digest f78062de68ead70f, 3 steps
+reference main_h48d2/bundle: fused 1, digest d4ec8817b17e59ef, 3 steps
+reference main_h72d2_s50/bundle: fused 1, digest be8827dda7db3249, 50 steps
+reference panel_h72/bundle: fused 1, digest 94b104f200487404, 200 steps
+
+== A. coverings that fuse (T = 96)
+PASS A0 identity: one fused task [0,T)                          144 tasks -> fused 1, warnings 0, digest same
+PASS A0 identity: one fwd, reduce, one bwd                      147 tasks -> fused 1, warnings 0, digest same
+PASS A1 fused, uniform 16 rows [0,16)[16,32)[32,48)[48,64)[64,80)[80,96) 159 tasks -> fused 1, warnings 0, digest same
+PASS A1 per-op, uniform 16 rows                                 177 tasks -> fused 1, warnings 0, digest same
+PASS A1 fused, uniform 20 rows [0,20)[20,40)[40,60)[60,80)[80,96) 156 tasks -> fused 1, warnings 0, digest same
+PASS A1 per-op, uniform 20 rows                                 171 tasks -> fused 1, warnings 0, digest same
+PASS A1 fused, uniform 7 rows [0,7)[7,14)[14,21)[21,28)[28,35)[35,42)[42,49)[49,56)[56,63)[63,70)... 183 tasks -> fused 1, warnings 0, digest same
+PASS A1 per-op, uniform 7 rows                                  225 tasks -> fused 1, warnings 0, digest same
+PASS A1 fused, uniform 1 rows [0,1)[1,2)[2,3)[3,4)[4,5)[5,6)[6,7)[7,8)[8,9)[9,10)[10,11)[11,12)[1... 429 tasks -> fused 1, warnings 0, digest same
+PASS A1 per-op, uniform 1 rows                                  717 tasks -> fused 1, warnings 0, digest same
+PASS A1 fused, uniform 95 rows [0,95)[95,96)                    147 tasks -> fused 1, warnings 0, digest same
+PASS A1 per-op, uniform 95 rows                                 153 tasks -> fused 1, warnings 0, digest same
+PASS A1 fused, uniform 64 rows [0,64)[64,96)                    147 tasks -> fused 1, warnings 0, digest same
+PASS A1 per-op, uniform 64 rows                                 153 tasks -> fused 1, warnings 0, digest same
+PASS A1 fused, uniform 97 rows [0,96)                           144 tasks -> fused 1, warnings 0, digest same
+PASS A1 per-op, uniform 97 rows                                 147 tasks -> fused 1, warnings 0, digest same
+PASS A1 fused, uniform 1000 rows [0,96)                         144 tasks -> fused 1, warnings 0, digest same
+PASS A1 per-op, uniform 1000 rows                               147 tasks -> fused 1, warnings 0, digest same
+PASS A2 fused, sizes 1,2,7,40,45,1                              159 tasks -> fused 1, warnings 0, digest same
+PASS A2 per-op, sizes 1,2,7,40,45,1                             177 tasks -> fused 1, warnings 0, digest same
+PASS A2 h48: fused 20-row blocks                                114 tasks -> fused 1, warnings 0, digest same
+PASS A3 per-op: fwd 16-row, bwd [0,50)[50,96)                   165 tasks -> fused 1, warnings 0, digest same
+PASS A3 per-op: fwd one task, bwd 1-row blocks                  432 tasks -> fused 1, warnings 0, digest same
+PASS A3 per-op: fwd 1-row blocks, bwd one task                  432 tasks -> fused 1, warnings 0, digest same
+PASS A3 per-op: fwd sizes 1,2,7,40,45,1, bwd 20-row             174 tasks -> fused 1, warnings 0, digest same
+PASS A4 50 steps, each blocked differently (50 distinct), forms mixed 4326 tasks -> fused 1, warnings 0, digest same
+PASS A4 200 steps, each blocked differently (200 distinct), forms mixed 16969 tasks -> fused 1, warnings 0, digest same
+
+== B. coverings that refuse, with one warning each (h72d2, covered)
+PASS B1 fused: blocks 0 and 1 swapped                           fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B1 fused: all blocks reversed                              fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B2 fused: block 1 duplicated in place                      fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B2 fused: last block duplicated after the cover            fused 0, warnings 1 (want 1): step 0: expected the reduce after the fused softmax CE
+PASS B2 fused: block 0 repeated after the cover                 fused 0, warnings 1 (want 1): step 0: expected the reduce after the fused softmax CE
+PASS B3 fused: last block ends at T+1                           fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B3 fused: one block [0,T+1)                                fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B3 fused: one block [0,T-1)                                fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B4 fused: empty block [16,16) inside                       fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B4 fused: empty block [0,0) first                          fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B4 fused: empty block [T,T) after the cover                fused 0, warnings 1 (want 1): step 0: expected the reduce after the fused softmax CE
+PASS B4 fused: first block starts at -1                         fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B4 fused: overlap [0,50)[40,96)                            fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B5 fused: block 1's logits differs                         fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B5 fused: block 0's logits differs                         fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B5 fused: block 1's tgt differs                            fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B5 fused: block 0's tgt differs                            fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B5 fused: block 1's rowloss differs                        fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B5 fused: block 0's rowloss differs                        fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B5 fused: block 1's lse differs                            fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B5 fused: block 0's lse differs                            fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B5 fused: block 1's dlogits differs                        fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B5 fused: block 0's dlogits differs                        fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B5 fused: block 1's V differs                              fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B5 fused: block 0's V differs                              fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B5 fused: block 1's ignore differs                         fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B5 fused: block 0's ignore differs                         fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B5 fused: block 1's N differs                              fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B5 fused: block 0's N differs                              fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B5 fused: block 1's scale differs                          fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B5 fused: block 0's scale differs                          fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B6 fused: every block's logits wrong                       fused 0, warnings 1 (want 1): step 0: fused softmax CE shape
+PASS B6 fused: every block's tgt wrong                          fused 0, warnings 1 (want 1): step 0: fused softmax CE shape
+PASS B6 fused: every block's rowloss wrong                      fused 0, warnings 1 (want 1): step 0: fused softmax CE shape
+PASS B6 fused: every block's V wrong                            fused 0, warnings 1 (want 1): step 0: fused softmax CE shape
+PASS B6 fused: every block's ignore wrong                       fused 0, warnings 1 (want 1): step 0: fused softmax CE shape
+PASS B6 fused: every block's N wrong                            fused 0, warnings 1 (want 1): step 0: fused softmax CE shape
+PASS B6 fused: every block's scale wrong                        fused 0, warnings 1 (want 1): step 0: fused softmax CE shape
+PASS B7 fused: reduce missing                                   fused 0, warnings 1 (want 1): step 0: expected the reduce after the fused softmax CE
+PASS B7 fused: reduce between blocks 2 and 3                    fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B7 fused: reduce before the blocks                         fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B7 fused: reduce twice                                     fused 0, warnings 1 (want 1): step 0: expected a GEMM
+PASS B8 fused: block 3 has 10 argument words (arity 11)         fused 0, warnings 0, bundle unchanged: task 18 (op 127) has 10 argument words at 211, its op takes 11: the pass leaves the bundle alone
+PASS B8 fused: block 3 has 12 argument words (arity 11)         fused 0, warnings 0, bundle unchanged: task 18 (op 127) has 12 argument words at 211, its op takes 11: the pass leaves the bundle alone
+PASS B8 fused: block 2 is a softmax_ce_fwd                      fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B6 fused: every block's dlogits wrong                      fused 0, warnings 1 (want 1): step 0: head weight gradient GEMM
+PASS B8 fused: every block has 12 argument words (arity 11)     fused 0, warnings 0, bundle unchanged: task 15 (op 127) has 12 argument words at 178, its op takes 11: the pass leaves the bundle alone
+PASS B8 per-op: every bwd block has 11 argument words (arity 10) fused 0, warnings 0, bundle unchanged: task 22 (op 53) has 11 argument words at 231, its op takes 10: the pass leaves the bundle alone
+
+== B (per-op form)
+PASS B9 per-op: fwd blocks 0 and 1 swapped                      fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B9 per-op: bwd blocks 2 and 3 swapped                      fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B9 per-op: fwd block 0 duplicated                          fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B9 per-op: last bwd block duplicated after the cover       fused 0, warnings 1 (want 1): step 0: expected a GEMM
+PASS B9 per-op: last fwd block ends at T+1                      fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B9 per-op: last bwd block ends at T+1                      fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B9 per-op: empty fwd block                                 fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B9 per-op: empty bwd block                                 fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B9 per-op: bwd short cover                                 fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B9 per-op: bwd gap                                         fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B9 per-op: bwd covers [0,T) twice                          fused 0, warnings 1 (want 1): step 0: expected a GEMM
+PASS B10 per-op: fwd block 1's logits differs                   fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B10 per-op: fwd block 1's tgt differs                      fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B10 per-op: fwd block 1's rowloss differs                  fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B10 per-op: fwd block 1's lse differs                      fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B10 per-op: fwd block 1's V differs                        fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B10 per-op: fwd block 1's ignore differs                   fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B10 per-op: bwd block 1's logits differs                   fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B10 per-op: bwd block 1's tgt differs                      fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B10 per-op: bwd block 1's lse differs                      fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B10 per-op: bwd block 1's loss differs                     fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B10 per-op: bwd block 1's dlogits differs                  fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B10 per-op: bwd block 1's V differs                        fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B10 per-op: bwd block 1's ignore differs                   fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B10 per-op: bwd block 1's scale differs                    fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B10 per-op: every bwd block's logits wrong                 fused 0, warnings 1 (want 1): step 0: softmax CE bwd shape
+PASS B10 per-op: every bwd block's tgt wrong                    fused 0, warnings 1 (want 1): step 0: softmax CE bwd shape
+PASS B10 per-op: every bwd block's lse wrong                    fused 0, warnings 1 (want 1): step 0: softmax CE bwd shape
+PASS B10 per-op: every bwd block's loss wrong                   fused 0, warnings 1 (want 1): step 0: softmax CE bwd shape
+PASS B10 per-op: every bwd block's dlogits wrong                fused 0, warnings 1 (want 1): step 0: head weight gradient GEMM
+PASS B10 per-op: every bwd block's V wrong                      fused 0, warnings 1 (want 1): step 0: softmax CE bwd shape
+PASS B10 per-op: every bwd block's ignore wrong                 fused 0, warnings 1 (want 1): step 0: softmax CE bwd shape
+PASS B10 per-op: every bwd block's scale wrong                  fused 0, warnings 1 (want 1): step 0: softmax CE bwd shape
+PASS B11 per-op: reduce missing                                 fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B11 per-op: bwd blocks missing                             fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B11 per-op: reduce between fwd blocks                      fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B11 per-op: reduce between bwd blocks                      fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B11 per-op: bwd before the reduce                          fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS B11 per-op: a fused block among the bwd blocks             fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+
+== B (multi-step: one step broken, h72d2_s50)
+PASS B12 s50: only step 0 has a gap                             fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B12 s50: only step 1 has a gap                             fused 0, warnings 1 (want 1): step 1: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B12 s50: only step 25 has a gap                            fused 0, warnings 1 (want 1): step 25: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B12 s50: only step 49 has a gap                            fused 0, warnings 1 (want 1): step 49: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS B12 s50: only step 49's per-op bwd ends at T+1             fused 0, warnings 1 (want 1): step 49: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+
+== C. bounds (watch stderr for sanitizer reports after each [case] line)
+PASS C1 fused blocks end the bundle (no reduce)                 fused 0, warnings 1 (want 1): step 0: expected the reduce after the fused softmax CE
+PASS C2 fused blocks end the bundle short of T                  fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS C3 per-op fwd blocks end the bundle                        fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS C4 per-op fwd + reduce end the bundle (cr+1 == size)       fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS C5 per-op bundle ends inside the bwd blocks                fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS C5b one-task fused + reduce end the bundle                 fused 0, warnings 1 (want 1): step 0: expected a GEMM
+PASS C6 fused block 0 has 10 words, laid last                   fused 0, warnings 0, bundle unchanged: task 15 (op 127) has 10 argument words at 1559, its op takes 11: the pass leaves the bundle alone
+PASS C7 fused block 1 has 4 words, laid last                    fused 0, warnings 0, bundle unchanged: task 16 (op 127) has 4 argument words at 1559, its op takes 11: the pass leaves the bundle alone
+PASS C7b one fused task with 6 words (rows word 6 missing), last fused 0, warnings 0, bundle unchanged: task 15 (op 127) has 6 argument words at 1504, its op takes 11: the pass leaves the bundle alone
+PASS C8 bwd block 0 has 9 words, laid last                      fused 0, warnings 0, bundle unchanged: task 22 (op 53) has 9 argument words at 1602, its op takes 10: the pass leaves the bundle alone
+PASS C9 fwd block 0 has 5 words (r1 word missing), last         fused 0, warnings 0, bundle unchanged: task 15 (op 51) has 5 argument words at 1604, its op takes 8: the pass leaves the bundle alone
+PASS C10 fused form: reduce has 2 words, laid last              fused 0, warnings 0, bundle unchanged: task 21 (op 52) has 2 argument words at 1565, its op takes 5: the pass leaves the bundle alone
+PASS C11 per-op form: reduce has 4 words, laid last             fused 0, warnings 0, bundle unchanged: task 21 (op 52) has 4 argument words at 1607, its op takes 5: the pass leaves the bundle alone
+PASS C12 one-task fused loss: reduce has 2 words, laid last     fused 0, warnings 0, bundle unchanged: task 16 (op 52) has 2 argument words at 1510, its op takes 5: the pass leaves the bundle alone
+PASS C13 one-task per-op loss: reduce has 4 words, laid last    fused 0, warnings 0, bundle unchanged: task 16 (op 52) has 4 argument words at 1517, its op takes 5: the pass leaves the bundle alone
+
+== D. warning classification
+PASS D1 covered h72d2, fused-form gap: warns                    fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS D1 covered h72d2, per-op bwd gap: warns                    fused 0, warnings 1 (want 1): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS D1 covered h48d2, fused-form gap: warns                    fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS D2 uncovered, as built: hidden 100 (not a multiple of 8)   fused 0, warnings 0 (want 0): layer width not a multiple of 8 up to 128
+PASS D3 uncovered, fused-form gap: hidden 100 (not a multiple of 8) fused 0, warnings 0 (want 0): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS D3 uncovered, per-op bwd gap: hidden 100 (not a multiple of 8) fused 0, warnings 0 (want 0): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS D2 uncovered, as built: hidden 68 (not a multiple of 8)    fused 0, warnings 0 (want 0): layer width not a multiple of 8 up to 128
+PASS D3 uncovered, fused-form gap: hidden 68 (not a multiple of 8) fused 0, warnings 0 (want 0): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS D3 uncovered, per-op bwd gap: hidden 68 (not a multiple of 8) fused 0, warnings 0 (want 0): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS D2 uncovered, as built: hidden 200 (over 128)              fused 0, warnings 0 (want 0): step 0: SGD does not cover its whole parameter
+PASS D3 uncovered, fused-form gap: hidden 200 (over 128)        fused 0, warnings 0 (want 0): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS D3 uncovered, per-op bwd gap: hidden 200 (over 128)        fused 0, warnings 0 (want 0): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS D2 uncovered, as built: hidden 224                         fused 0, warnings 0 (want 0): step 0: SGD does not cover its whole parameter
+PASS D3 uncovered, fused-form gap: hidden 224                   fused 0, warnings 0 (want 0): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS D3 uncovered, per-op bwd gap: hidden 224                   fused 0, warnings 0 (want 0): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS D2 uncovered, as built: hidden 256, depth 4                fused 0, warnings 0 (want 0): step 0: SGD does not cover its whole parameter
+PASS D3 uncovered, fused-form gap: hidden 256, depth 4          fused 0, warnings 0 (want 0): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS D3 uncovered, per-op bwd gap: hidden 256, depth 4          fused 0, warnings 0 (want 0): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS D2 uncovered, as built: hidden 576                         fused 0, warnings 0 (want 0): step 0: colsum of layer 0
+PASS D3 uncovered, fused-form gap: hidden 576                   fused 0, warnings 0 (want 0): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS D3 uncovered, per-op bwd gap: hidden 576                   fused 0, warnings 0 (want 0): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS D2 uncovered, as built: hidden 1024 (parse stops in the forward) fused 0, warnings 0 (want 0): step 0: a GEMM's tile set does not cover its grid
+PASS D3 uncovered, fused-form gap: hidden 1024 (parse stops in the forward) fused 0, warnings 0 (want 0): step 0: a GEMM's tile set does not cover its grid
+PASS D3 uncovered, per-op bwd gap: hidden 1024 (parse stops in the forward) fused 0, warnings 0 (want 0): step 0: a GEMM's tile set does not cover its grid
+PASS D2 uncovered, as built: vocabulary 200 (over 128)          fused 0, warnings 0 (want 0): step 0: SGD does not cover its whole parameter
+PASS D3 uncovered, fused-form gap: vocabulary 200 (over 128)    fused 0, warnings 0 (want 0): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS D3 uncovered, per-op bwd gap: vocabulary 200 (over 128)    fused 0, warnings 0 (want 0): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS D2 uncovered, as built: vocabulary 132                     fused 0, warnings 0 (want 0): step 0: SGD does not cover its whole parameter
+PASS D3 uncovered, fused-form gap: vocabulary 132               fused 0, warnings 0 (want 0): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS D3 uncovered, per-op bwd gap: vocabulary 132               fused 0, warnings 0 (want 0): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS D2 uncovered, as built: vocabulary 98 (not a multiple of 4) fused 0, warnings 0 (want 0): vocabulary not a multiple of 4 up to 128
+PASS D3 uncovered, fused-form gap: vocabulary 98 (not a multiple of 4) fused 0, warnings 0 (want 0): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS D3 uncovered, per-op bwd gap: vocabulary 98 (not a multiple of 4) fused 0, warnings 0 (want 0): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS D2 uncovered, as built: hidden 128 depth 4 (no slice fits) fused 0, warnings 0 (want 0): no slice size fits (87056 floats of shared memory at the smallest slice, at most 8 slices, limit 38400)
+PASS D3 uncovered, fused-form gap: hidden 128 depth 4 (no slice fits) fused 0, warnings 0 (want 0): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS D3 uncovered, per-op bwd gap: hidden 128 depth 4 (no slice fits) fused 0, warnings 0 (want 0): step 0: expected softmax CE after the head (fwd row blocks, the reduce, bwd row blocks)
+PASS D4 keep logits (interior), loss as built: no warning       fused 0, warnings 0 (want 0): buffer 20 is read after the run and interior to step 0
+PASS D5 keep logits (interior) + a fused-form gap: the gap warns fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS D4 keep rowloss (interior), loss as built: no warning      fused 0, warnings 0 (want 0): buffer 21 is read after the run and interior to step 0
+PASS D5 keep rowloss (interior) + a fused-form gap: the gap warns fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS D4 keep lse (interior), loss as built: no warning          fused 0, warnings 0 (want 0): buffer 22 is read after the run and interior to step 0
+PASS D5 keep lse (interior) + a fused-form gap: the gap warns   fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS D4 keep dlogits (interior), loss as built: no warning      fused 0, warnings 0 (want 0): buffer 23 is read after the run and interior to step 0
+PASS D5 keep dlogits (interior) + a fused-form gap: the gap warns fused 0, warnings 1 (want 1): step 0: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS D5 s50: keep logits + a gap in step 1 only: the gap warns  fused 0, warnings 1 (want 1): step 1: the fused softmax CE's row blocks do not cover the step's rows once, in order, with one set of arguments
+PASS D6 keep the loss (not interior): still fuses               fused 1
+PASS D7 uncovered hidden 100, step 1 at another lr: no warning  fused 0, warnings 0 (want 0): steps do not share one model
+PASS D8 uncovered hidden 100, another run reads the logits: no warning fused 0, warnings 0 (want 0): step 0: interior buffer 20 is used outside the step
+PASS D7 uncovered vocabulary 98, step 1 at another lr: no warning fused 0, warnings 0 (want 0): steps do not share one model
+PASS D8 uncovered vocabulary 98, another run reads the logits: no warning fused 0, warnings 0 (want 0): step 0: interior buffer 20 is used outside the step
+PASS D7 uncovered no slice fits, step 1 at another lr: no warning fused 0, warnings 0 (want 0): steps do not share one model
+PASS D8 uncovered no slice fits, another run reads the logits: no warning fused 0, warnings 0 (want 0): step 0: interior buffer 28 is used outside the step
+PASS D9 covered h72d2, step 1 at another lr: warns              fused 0, warnings 1 (want 1): steps do not share one model
+PASS D9 covered h72d2, another run reads the logits: warns      fused 0, warnings 1 (want 1): step 0: interior buffer 20 is used outside the step
+
+188 passed, 0 failed

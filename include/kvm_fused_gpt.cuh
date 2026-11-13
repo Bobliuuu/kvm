@@ -30,6 +30,9 @@ namespace kvm_fgpt {
 
 constexpr int NT = KVM_FGPT_NT;
 constexpr int NW = NT / 32;
+// The helpers that loop over a block's threads or warps (gemm, grid_loop and the staging and zero built on it, the row phases,
+// rope_table, rope, block_sum) take its thread count as BT, by default NT: a program whose member block runs another count
+// (kvm_f2d.cuh's 256) calls them with its own.
 
 // A load another member may have written, from L2 (a strong load: L1 never serves it stale). A volatile access rather than __ldcg, whose
 // `asm volatile` the compiler must treat as a write to any memory: after each one it read every value it keeps in shared memory again.
@@ -147,7 +150,7 @@ __device__ __forceinline__ void mma_frag(float (&c)[4], const unsigned (&a)[4], 
     mma_tf32(c, a2, tf32_rna(__uint_as_float(b[0])), tf32_rna(__uint_as_float(b[1])));
   }
 }
-template <bool TA, bool TB, class Epi>
+template <bool TA, bool TB, int BT = NT, class Epi>
 __device__ void gemm(const float* A, int lda, const float* B, int ldb, int M, int N, int K, bool prec, Epi epi) {
   const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3;
   const int tn = (N + 7) >> 3, tiles = ((M + 15) >> 4) * tn, ks = (K + 7) >> 3;
@@ -156,8 +159,8 @@ __device__ void gemm(const float* A, int lda, const float* B, int ldb, int M, in
   const int ar = (lane & 7) + ((lane >> 3) & 1) * 8, ak = (lane >> 4) * 4, br = lane & 7, bk = ((lane >> 3) & 1) * 4;
   auto base_a = [&](int m0) { return A + (TA ? t * lda + m0 + g : (m0 + ar) * lda + ak); };
   auto base_b = [&](int n0) { return B + (TB ? (n0 + br) * ldb + bk : t * ldb + n0 + g); };
-  for (int tile = warp; tile < tiles; tile += 2 * NW) {
-    const int t1 = tile + NW;
+  for (int tile = warp; tile < tiles; tile += 2 * (BT / 32)) {
+    const int t1 = tile + (BT / 32);
     const bool two = t1 < tiles;
     const int m0 = (tile / tn) << 4, n0 = (tile % tn) << 3, m1 = two ? (t1 / tn) << 4 : m0, n1 = two ? (t1 % tn) << 3 : n0;
     const float* pa0 = base_a(m0); const float* pb0 = base_b(n0);
@@ -192,13 +195,13 @@ __device__ void gemm(const float* A, int lda, const float* B, int ldb, int M, in
   __syncthreads();
 }
 
-// f(r, c) over a rows x units grid, unit x = r * units + c taken by thread x % NT in turn (x = threadIdx.x, + NT, ...), the order a flat
+// f(r, c) over a rows x units grid, unit x = r * units + c taken by thread x % BT in turn (x = threadIdx.x, + BT, ...), the order a flat
 // loop takes them, with (r, c) stepped instead of divided out: integer division by a runtime value is a ~20-instruction sequence, and these
 // loops ran one a unit (one division a call instead).
-template <class F>
+template <int BT = NT, class F>
 __device__ __forceinline__ void grid_loop(int rows, int units, F&& f) {
   if (rows <= 0 || units <= 0) return;
-  const int dr = NT / units, dc = NT % units;
+  const int dr = BT / units, dc = BT % units;
   for (int r = threadIdx.x / units, c = threadIdx.x % units; r < rows;) {
     f(r, c);
     r += dr; c += dc;
@@ -224,19 +227,19 @@ __device__ __forceinline__ void cp4(float* dst, const float* src, bool in) {
 // Every copy of a phase in one pass, so its operands cost one round trip: each thread issues an asynchronous copy for each of its units of
 // every copy (16 bytes where the copy allows it, 4 otherwise; zeros over the padding), holding no registers for them, then one wait and one
 // __syncthreads. The copies are unrolled at compile time, so the list stays in registers.
-template <int NC>
+template <int BT = NT, int NC>
 __device__ void stage_all(const Copy (&cs)[NC]) {
 #pragma unroll
   for (int i = 0; i < NC; ++i) {
     const Copy& q = cs[i];
     if (q.vec())
-      grid_loop(q.prows, q.pcols >> 2, [&](int r, int c4) {
+      grid_loop<BT>(q.prows, q.pcols >> 2, [&](int r, int c4) {
         const int c = c4 << 2;
         const bool in = r < q.rows && c < q.cols;
         cp16(q.dst + r * q.dld + c, in ? q.src + (size_t)r * q.sld + c : q.src, in);
       });
     else
-      grid_loop(q.prows, q.pcols, [&](int r, int c) {
+      grid_loop<BT>(q.prows, q.pcols, [&](int r, int c) {
         const bool in = r < q.rows && c < q.cols;
         cp4(q.dst + r * q.dld + c, in ? q.src + (size_t)r * q.sld + c : q.src, in);
       });
@@ -245,16 +248,18 @@ __device__ void stage_all(const Copy (&cs)[NC]) {
   __syncthreads();
 }
 // One copy alone (the same pass).
+template <int BT = NT>
 __device__ __forceinline__ void stage(float* dst, int dld, const float* src, size_t sld, int rows, int cols, int prows, int pcols) {
   const Copy cs[1] = {{dst, src, dld, sld, rows, cols, prows, pcols}};
-  stage_all(cs);
+  stage_all<BT>(cs);
 }
 // Zeros a rows x cols block of shared memory (row stride ld): a GEMM's operand that an epilogue fills only in part. No sync.
+template <int BT = NT>
 __device__ __forceinline__ void zero(float* p, int ld, int rows, int cols) {
   if (((cols | ld) & 3) == 0 && (reinterpret_cast<size_t>(p) & 15) == 0)   // 16 bytes a store where every row allows it
-    grid_loop(rows, cols >> 2, [&](int r, int c4) { *reinterpret_cast<float4*>(p + r * ld + (c4 << 2)) = make_float4(0.f, 0.f, 0.f, 0.f); });
+    grid_loop<BT>(rows, cols >> 2, [&](int r, int c4) { *reinterpret_cast<float4*>(p + r * ld + (c4 << 2)) = make_float4(0.f, 0.f, 0.f, 0.f); });
   else
-    grid_loop(rows, cols, [&](int r, int c) { p[r * ld + c] = 0.f; });
+    grid_loop<BT>(rows, cols, [&](int r, int c) { p[r * ld + c] = 0.f; });
 }
 
 // Column sums of an R x C block of shared memory (row stride ld) into out[c] (global). With C < NT, NT / C threads share a column, each
@@ -281,9 +286,10 @@ __device__ void colsum_smem(const float* X, int ld, int R, int C, float* out, fl
 
 // ---- row phases (own rows, global memory) ---------------------------------------------------------------------------------------------
 // LayerNorm of rows [r0, r1) over d columns: y = (x - mean) rstd g + b, the statistics saved for the backward. One warp a row.
+template <int BT = NT>
 __device__ void ln_fwd(const float* x, const float* g, const float* be, float* y, float* mean, float* rstd, int r0, int r1, int d, float eps) {
   const int w = threadIdx.x >> 5, lane = threadIdx.x & 31;
-  for (int r = r0 + w; r < r1; r += NW) {
+  for (int r = r0 + w; r < r1; r += (BT / 32)) {
     const float* xr = x + (size_t)r * d;
     float s = 0.f;
     for (int c = lane; c < d; c += 32) s += ld(xr + c);
@@ -300,10 +306,11 @@ __device__ void ln_fwd(const float* x, const float* g, const float* be, float* y
 // LayerNorm backward of rows [r0, r1): dx = rstd (dy g - mean(dy g) - xh mean(dy g xh)) with xh = (x - mean) rstd, added to gx (the
 // residual-stream gradient) when acc, stored otherwise; and this member's own-row partials of dgamma (dy xh, rows in order) into pg and of
 // dbeta (dy) into pb. Ends with __syncthreads.
+template <int BT = NT>
 __device__ void ln_bwd(const float* x, const float* dy, const float* g, const float* mean, const float* rstd, float* gx, bool acc,
                        float* pg, float* pb, int r0, int r1, int d) {
   const int w = threadIdx.x >> 5, lane = threadIdx.x & 31;
-  for (int r = r0 + w; r < r1; r += NW) {
+  for (int r = r0 + w; r < r1; r += (BT / 32)) {
     const size_t o = (size_t)r * d;
     const float mu = ld(mean + r), rs = ld(rstd + r);
     float s1 = 0.f, s2 = 0.f;
@@ -314,7 +321,7 @@ __device__ void ln_bwd(const float* x, const float* dy, const float* g, const fl
       gx[o + c] = acc ? ld(gx + o + c) + v : v;
     }
   }
-  for (int c = threadIdx.x; c < d; c += NT) {
+  for (int c = threadIdx.x; c < d; c += BT) {
     float sg = 0.f, sb = 0.f;
     for (int r = r0; r < r1; ++r) { const float dv = ld(dy + (size_t)r * d + c); sg += dv * (ld(x + (size_t)r * d + c) - ld(mean + r)) * ld(rstd + r); sb += dv; }
     pg[c] = sg; pb[c] = sb;
@@ -352,9 +359,10 @@ __device__ void colsum_rows(const float* x, int r0, int r1, int d, float* out) {
 
 // RoPE's angles, once a run: cos and sin of position r times theta^(-2 i / hd), for r < T and i < hd / 2, into tab (cos) and tab + T hd / 2
 // (sin), the expressions the bundle's rope ops evaluate. Ends with __syncthreads.
+template <int BT = NT>
 __device__ void rope_table(float* tab, int T, int hd, float theta) {
   const int half = hd / 2;
-  for (int e = threadIdx.x; e < T * half; e += NT) {
+  for (int e = threadIdx.x; e < T * half; e += BT) {
     const int r = e / half, i = e % half;
     float sn, cs;
     sincosf((float)r * powf(theta, -(float)(2 * i) / (float)hd), &sn, &cs);
@@ -365,9 +373,10 @@ __device__ void rope_table(float* tab, int T, int hd, float theta) {
 }
 // RoPE of R rows x hd columns in shared memory (row stride ld; row r at position pos0 + r of a sequence of T), pairs i and i + hd / 2, in
 // place; sign -1 rotates back. Ends with __syncthreads.
+template <int BT = NT>
 __device__ void rope(float* X, int ld_, int R, int pos0, int T, int hd, const float* tab, float sign) {
   const int half = hd / 2;
-  for (int e = threadIdx.x; e < R * half; e += NT) {
+  for (int e = threadIdx.x; e < R * half; e += BT) {
     const int r = e / half, i = e % half, at = (pos0 + r) * half + i;
     const float cs = tab[at], sn = sign * tab[T * half + at];
     float* p = X + r * ld_ + i;
@@ -379,14 +388,14 @@ __device__ void rope(float* X, int ld_, int R, int pos0, int T, int hd, const fl
 }
 
 // A block's deterministic sum of one value a thread (warp butterflies, then the warps in order); every thread gets the result. `red` holds
-// NW values of the type.
-template <class Tv>
+// BT / 32 values of the type.
+template <class Tv, int BT = NT>
 __device__ Tv block_sum(Tv v, Tv* red) {
   for (int o = 16; o; o >>= 1) v += __shfl_xor_sync(0xffffffffu, v, o);
   if ((threadIdx.x & 31) == 0) red[threadIdx.x >> 5] = v;
   __syncthreads();
   Tv t = 0;
-  for (int i = 0; i < NW; ++i) t += red[i];
+  for (int i = 0; i < (BT / 32); ++i) t += red[i];
   __syncthreads();
   return t;
 }

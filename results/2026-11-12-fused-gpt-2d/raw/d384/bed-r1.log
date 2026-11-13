@@ -1,0 +1,6 @@
+[fgpt_bed 05:41:47Z] model: L 3, d 384, heads 6 x 64, MLP 1536, V 256, 4 x 96 rows; 20 steps; work /root/work/lfl/run-20261112T053729Z/bed-work
+[fgpt_bed 05:41:48Z] G 96: /root/work/lfl/f2d_bed /root/work/lfl/run-20261112T053729Z/bed-work 96
+[fgpt_bed 05:41:59Z]   f2d_bed: NVIDIA A100-SXM4-40GB (sm_80, 108 SMs): L 3, d 384, H 6 x 64, F 1536, V 256, 4 x 96 rows, 20 step(s) from 0; gang 96 (counted); attention 6 x 12, MLP 6 x 16, KC 32, 3 query block(s) a unit, 16 vocabulary shards of 16; shared 148.8 KB a member, F's buffers 223.2 MB; 1xTF32 build
+[fgpt_bed 05:41:59Z]   f2d_bed: warmed the GPU for 508 ms
+[fgpt_bed 05:41:59Z]   f2d_bed: run 57.446 ms with its launch; in the kernel 2866.5 us a step (member 0's globaltimer; a hint, not a chip's verdict); error word 0, 96 of 96 members finished, step counter 0 -> 20
+[fgpt_bed 05:41:59Z] OK

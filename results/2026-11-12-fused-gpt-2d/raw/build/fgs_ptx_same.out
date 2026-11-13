@@ -1,0 +1,4 @@
+base: rc 0 3542976 bytes
+patched: rc 0 3542976 bytes
+PTX identical (sm_80): the fused step's code is unchanged
+FGS_PTX_END

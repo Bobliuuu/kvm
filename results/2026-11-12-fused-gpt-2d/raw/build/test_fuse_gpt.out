@@ -1,0 +1,372 @@
+bundles/w_d384_tf32/bundle: 5832 tasks, 310 buffers -> matched runs 1, unchanged runs 0
+  component 0: GPT run of 3 steps, 5832 tasks: L 3, d 384, heads 6 x 64, MLP 1536, vocabulary 256, 4 sequences of 96 (N 384), 52 parameters, 1995 tasks a step, GEMM numerics 0
+  coverage: all 5832 tasks of the run, each in exactly one step (18 of them data windows)
+  streams: tokens from buffer stream_ids (stride 384, offset 0), targets from stream_tgt (stride 384, offset 0); 3 loss buffers, one a step
+  shape: L 3, d 384, heads 6 x 64, MLP 1536, V 256, B 4 x T 96; LayerNorm eps 1e-05, RoPE theta 10000, attention scale 0.125
+  AdamW lr 0.003, betas 0.9 0.95, eps 1e-08; clip 1; 52 updates:
+    w.gpt.wte                grad act144 m m.gpt.wte                v v.gpt.wte                wd 0
+    w.gpt.h0.n1.g            grad act142 m m.gpt.h0.n1.g            v v.gpt.h0.n1.g            wd 0
+    w.gpt.h0.n1.b            grad act143 m m.gpt.h0.n1.b            v v.gpt.h0.n1.b            wd 0
+    w.gpt.h0.attn.q.w        grad act141 m m.gpt.h0.attn.q.w        v v.gpt.h0.attn.q.w        wd 0.01
+    w.gpt.h0.attn.q.b        grad act140 m m.gpt.h0.attn.q.b        v v.gpt.h0.attn.q.b        wd 0
+    w.gpt.h0.attn.k.w        grad act138 m m.gpt.h0.attn.k.w        v v.gpt.h0.attn.k.w        wd 0.01
+    w.gpt.h0.attn.k.b        grad act137 m m.gpt.h0.attn.k.b        v v.gpt.h0.attn.k.b        wd 0
+    w.gpt.h0.attn.v.w        grad act134 m m.gpt.h0.attn.v.w        v v.gpt.h0.attn.v.w        wd 0.01
+    w.gpt.h0.attn.v.b        grad act133 m m.gpt.h0.attn.v.b        v v.gpt.h0.attn.v.b        wd 0
+    w.gpt.h0.attn.proj.w     grad act127 m m.gpt.h0.attn.proj.w     v v.gpt.h0.attn.proj.w     wd 0.01
+    w.gpt.h0.attn.proj.b     grad act126 m m.gpt.h0.attn.proj.b     v v.gpt.h0.attn.proj.b     wd 0
+    w.gpt.h0.n2.g            grad act124 m m.gpt.h0.n2.g            v v.gpt.h0.n2.g            wd 0
+    w.gpt.h0.n2.b            grad act125 m m.gpt.h0.n2.b            v v.gpt.h0.n2.b            wd 0
+    w.gpt.h0.mlp.fc1.w       grad act122 m m.gpt.h0.mlp.fc1.w       v v.gpt.h0.mlp.fc1.w       wd 0.01
+    w.gpt.h0.mlp.fc1.b       grad act121 m m.gpt.h0.mlp.fc1.b       v v.gpt.h0.mlp.fc1.b       wd 0
+    w.gpt.h0.mlp.fc2.w       grad act119 m m.gpt.h0.mlp.fc2.w       v v.gpt.h0.mlp.fc2.w       wd 0.01
+    w.gpt.h0.mlp.fc2.b       grad act118 m m.gpt.h0.mlp.fc2.b       v v.gpt.h0.mlp.fc2.b       wd 0
+    w.gpt.h1.n1.g            grad act116 m m.gpt.h1.n1.g            v v.gpt.h1.n1.g            wd 0
+    w.gpt.h1.n1.b            grad act117 m m.gpt.h1.n1.b            v v.gpt.h1.n1.b            wd 0
+    w.gpt.h1.attn.q.w        grad act115 m m.gpt.h1.attn.q.w        v v.gpt.h1.attn.q.w        wd 0.01
+    w.gpt.h1.attn.q.b        grad act114 m m.gpt.h1.attn.q.b        v v.gpt.h1.attn.q.b        wd 0
+    w.gpt.h1.attn.k.w        grad act112 m m.gpt.h1.attn.k.w        v v.gpt.h1.attn.k.w        wd 0.01
+    w.gpt.h1.attn.k.b        grad act111 m m.gpt.h1.attn.k.b        v v.gpt.h1.attn.k.b        wd 0
+    w.gpt.h1.attn.v.w        grad act108 m m.gpt.h1.attn.v.w        v v.gpt.h1.attn.v.w        wd 0.01
+    w.gpt.h1.attn.v.b        grad act107 m m.gpt.h1.attn.v.b        v v.gpt.h1.attn.v.b        wd 0
+    w.gpt.h1.attn.proj.w     grad act101 m m.gpt.h1.attn.proj.w     v v.gpt.h1.attn.proj.w     wd 0.01
+    w.gpt.h1.attn.proj.b     grad act100 m m.gpt.h1.attn.proj.b     v v.gpt.h1.attn.proj.b     wd 0
+    w.gpt.h1.n2.g            grad act98  m m.gpt.h1.n2.g            v v.gpt.h1.n2.g            wd 0
+    w.gpt.h1.n2.b            grad act99  m m.gpt.h1.n2.b            v v.gpt.h1.n2.b            wd 0
+    w.gpt.h1.mlp.fc1.w       grad act96  m m.gpt.h1.mlp.fc1.w       v v.gpt.h1.mlp.fc1.w       wd 0.01
+    w.gpt.h1.mlp.fc1.b       grad act95  m m.gpt.h1.mlp.fc1.b       v v.gpt.h1.mlp.fc1.b       wd 0
+    w.gpt.h1.mlp.fc2.w       grad act93  m m.gpt.h1.mlp.fc2.w       v v.gpt.h1.mlp.fc2.w       wd 0.01
+    w.gpt.h1.mlp.fc2.b       grad act92  m m.gpt.h1.mlp.fc2.b       v v.gpt.h1.mlp.fc2.b       wd 0
+    w.gpt.h2.n1.g            grad act90  m m.gpt.h2.n1.g            v v.gpt.h2.n1.g            wd 0
+    w.gpt.h2.n1.b            grad act91  m m.gpt.h2.n1.b            v v.gpt.h2.n1.b            wd 0
+    w.gpt.h2.attn.q.w        grad act89  m m.gpt.h2.attn.q.w        v v.gpt.h2.attn.q.w        wd 0.01
+    w.gpt.h2.attn.q.b        grad act88  m m.gpt.h2.attn.q.b        v v.gpt.h2.attn.q.b        wd 0
+    w.gpt.h2.attn.k.w        grad act86  m m.gpt.h2.attn.k.w        v v.gpt.h2.attn.k.w        wd 0.01
+    w.gpt.h2.attn.k.b        grad act85  m m.gpt.h2.attn.k.b        v v.gpt.h2.attn.k.b        wd 0
+    w.gpt.h2.attn.v.w        grad act82  m m.gpt.h2.attn.v.w        v v.gpt.h2.attn.v.w        wd 0.01
+    w.gpt.h2.attn.v.b        grad act81  m m.gpt.h2.attn.v.b        v v.gpt.h2.attn.v.b        wd 0
+    w.gpt.h2.attn.proj.w     grad act75  m m.gpt.h2.attn.proj.w     v v.gpt.h2.attn.proj.w     wd 0.01
+    w.gpt.h2.attn.proj.b     grad act74  m m.gpt.h2.attn.proj.b     v v.gpt.h2.attn.proj.b     wd 0
+    w.gpt.h2.n2.g            grad act72  m m.gpt.h2.n2.g            v v.gpt.h2.n2.g            wd 0
+    w.gpt.h2.n2.b            grad act73  m m.gpt.h2.n2.b            v v.gpt.h2.n2.b            wd 0
+    w.gpt.h2.mlp.fc1.w       grad act70  m m.gpt.h2.mlp.fc1.w       v v.gpt.h2.mlp.fc1.w       wd 0.01
+    w.gpt.h2.mlp.fc1.b       grad act69  m m.gpt.h2.mlp.fc1.b       v v.gpt.h2.mlp.fc1.b       wd 0
+    w.gpt.h2.mlp.fc2.w       grad act67  m m.gpt.h2.mlp.fc2.w       v v.gpt.h2.mlp.fc2.w       wd 0.01
+    w.gpt.h2.mlp.fc2.b       grad act66  m m.gpt.h2.mlp.fc2.b       v v.gpt.h2.mlp.fc2.b       wd 0
+    w.gpt.nf.g               grad act64  m m.gpt.nf.g               v v.gpt.nf.g               wd 0
+    w.gpt.nf.b               grad act65  m m.gpt.nf.b               v v.gpt.nf.b               wd 0
+    w.gpt.head.w             grad act61  m m.gpt.head.w             v v.gpt.head.w             wd 0.01
+  rewrite: 1 fused, 0 unchanged, 5832 tasks replaced by 96 members
+    component 0: GPT run of 3 steps, 5832 tasks: L 3, d 384, heads 6 x 64, MLP 1536, vocabulary 256, 4 sequences of 96 (N 384), 52 parameters, 1995 tasks a step, GEMM numerics 0, fused as a gang of 96 in F's 2-D form (attention 6 x 12, MLP 6 x 16, 3 query block(s) a unit, 38080 floats of shared memory a member)
+  final versions kept: 1 variable(s), e.g. variable 0 at 6
+  launch layout: 0 kept task(s), then 96 member(s) in run and member order: yes; the bundle is its gangs alone (the fused GPT path)
+  rewrite refusals: budget of 1000 floats refused; a dumped activation refused
+  mutation an AdamW update reads another parameter's gradient                     refused, with its reason
+  mutation a RoPE row block is missing (its rows go to a neighbour's range)       refused, with its reason
+  mutation the q projection applies GELU                                          refused, with its reason
+  mutation proj adds no residual                                                  refused, with its reason
+  mutation attention reads k for v                                                refused, with its reason
+  mutation the grad-norm finish reads one partial too few                         refused, with its reason
+  mutation a LayerNorm backward overwrites the residual-stream gradient (acc 0)   refused, with its reason
+bundles/w_d384_precise/bundle: 5832 tasks, 310 buffers -> matched runs 1, unchanged runs 0
+  component 0: GPT run of 3 steps, 5832 tasks: L 3, d 384, heads 6 x 64, MLP 1536, vocabulary 256, 4 sequences of 96 (N 384), 52 parameters, 1995 tasks a step, GEMM numerics 16
+  coverage: all 5832 tasks of the run, each in exactly one step (18 of them data windows)
+  streams: tokens from buffer stream_ids (stride 384, offset 0), targets from stream_tgt (stride 384, offset 0); 3 loss buffers, one a step
+  shape: L 3, d 384, heads 6 x 64, MLP 1536, V 256, B 4 x T 96; LayerNorm eps 1e-05, RoPE theta 10000, attention scale 0.125
+  AdamW lr 0.003, betas 0.9 0.95, eps 1e-08; clip 1; 52 updates:
+    w.gpt.wte                grad act144 m m.gpt.wte                v v.gpt.wte                wd 0
+    w.gpt.h0.n1.g            grad act142 m m.gpt.h0.n1.g            v v.gpt.h0.n1.g            wd 0
+    w.gpt.h0.n1.b            grad act143 m m.gpt.h0.n1.b            v v.gpt.h0.n1.b            wd 0
+    w.gpt.h0.attn.q.w        grad act141 m m.gpt.h0.attn.q.w        v v.gpt.h0.attn.q.w        wd 0.01
+    w.gpt.h0.attn.q.b        grad act140 m m.gpt.h0.attn.q.b        v v.gpt.h0.attn.q.b        wd 0
+    w.gpt.h0.attn.k.w        grad act138 m m.gpt.h0.attn.k.w        v v.gpt.h0.attn.k.w        wd 0.01
+    w.gpt.h0.attn.k.b        grad act137 m m.gpt.h0.attn.k.b        v v.gpt.h0.attn.k.b        wd 0
+    w.gpt.h0.attn.v.w        grad act134 m m.gpt.h0.attn.v.w        v v.gpt.h0.attn.v.w        wd 0.01
+    w.gpt.h0.attn.v.b        grad act133 m m.gpt.h0.attn.v.b        v v.gpt.h0.attn.v.b        wd 0
+    w.gpt.h0.attn.proj.w     grad act127 m m.gpt.h0.attn.proj.w     v v.gpt.h0.attn.proj.w     wd 0.01
+    w.gpt.h0.attn.proj.b     grad act126 m m.gpt.h0.attn.proj.b     v v.gpt.h0.attn.proj.b     wd 0
+    w.gpt.h0.n2.g            grad act124 m m.gpt.h0.n2.g            v v.gpt.h0.n2.g            wd 0
+    w.gpt.h0.n2.b            grad act125 m m.gpt.h0.n2.b            v v.gpt.h0.n2.b            wd 0
+    w.gpt.h0.mlp.fc1.w       grad act122 m m.gpt.h0.mlp.fc1.w       v v.gpt.h0.mlp.fc1.w       wd 0.01
+    w.gpt.h0.mlp.fc1.b       grad act121 m m.gpt.h0.mlp.fc1.b       v v.gpt.h0.mlp.fc1.b       wd 0
+    w.gpt.h0.mlp.fc2.w       grad act119 m m.gpt.h0.mlp.fc2.w       v v.gpt.h0.mlp.fc2.w       wd 0.01
+    w.gpt.h0.mlp.fc2.b       grad act118 m m.gpt.h0.mlp.fc2.b       v v.gpt.h0.mlp.fc2.b       wd 0
+    w.gpt.h1.n1.g            grad act116 m m.gpt.h1.n1.g            v v.gpt.h1.n1.g            wd 0
+    w.gpt.h1.n1.b            grad act117 m m.gpt.h1.n1.b            v v.gpt.h1.n1.b            wd 0
+    w.gpt.h1.attn.q.w        grad act115 m m.gpt.h1.attn.q.w        v v.gpt.h1.attn.q.w        wd 0.01
+    w.gpt.h1.attn.q.b        grad act114 m m.gpt.h1.attn.q.b        v v.gpt.h1.attn.q.b        wd 0
+    w.gpt.h1.attn.k.w        grad act112 m m.gpt.h1.attn.k.w        v v.gpt.h1.attn.k.w        wd 0.01
+    w.gpt.h1.attn.k.b        grad act111 m m.gpt.h1.attn.k.b        v v.gpt.h1.attn.k.b        wd 0
+    w.gpt.h1.attn.v.w        grad act108 m m.gpt.h1.attn.v.w        v v.gpt.h1.attn.v.w        wd 0.01
+    w.gpt.h1.attn.v.b        grad act107 m m.gpt.h1.attn.v.b        v v.gpt.h1.attn.v.b        wd 0
+    w.gpt.h1.attn.proj.w     grad act101 m m.gpt.h1.attn.proj.w     v v.gpt.h1.attn.proj.w     wd 0.01
+    w.gpt.h1.attn.proj.b     grad act100 m m.gpt.h1.attn.proj.b     v v.gpt.h1.attn.proj.b     wd 0
+    w.gpt.h1.n2.g            grad act98  m m.gpt.h1.n2.g            v v.gpt.h1.n2.g            wd 0
+    w.gpt.h1.n2.b            grad act99  m m.gpt.h1.n2.b            v v.gpt.h1.n2.b            wd 0
+    w.gpt.h1.mlp.fc1.w       grad act96  m m.gpt.h1.mlp.fc1.w       v v.gpt.h1.mlp.fc1.w       wd 0.01
+    w.gpt.h1.mlp.fc1.b       grad act95  m m.gpt.h1.mlp.fc1.b       v v.gpt.h1.mlp.fc1.b       wd 0
+    w.gpt.h1.mlp.fc2.w       grad act93  m m.gpt.h1.mlp.fc2.w       v v.gpt.h1.mlp.fc2.w       wd 0.01
+    w.gpt.h1.mlp.fc2.b       grad act92  m m.gpt.h1.mlp.fc2.b       v v.gpt.h1.mlp.fc2.b       wd 0
+    w.gpt.h2.n1.g            grad act90  m m.gpt.h2.n1.g            v v.gpt.h2.n1.g            wd 0
+    w.gpt.h2.n1.b            grad act91  m m.gpt.h2.n1.b            v v.gpt.h2.n1.b            wd 0
+    w.gpt.h2.attn.q.w        grad act89  m m.gpt.h2.attn.q.w        v v.gpt.h2.attn.q.w        wd 0.01
+    w.gpt.h2.attn.q.b        grad act88  m m.gpt.h2.attn.q.b        v v.gpt.h2.attn.q.b        wd 0
+    w.gpt.h2.attn.k.w        grad act86  m m.gpt.h2.attn.k.w        v v.gpt.h2.attn.k.w        wd 0.01
+    w.gpt.h2.attn.k.b        grad act85  m m.gpt.h2.attn.k.b        v v.gpt.h2.attn.k.b        wd 0
+    w.gpt.h2.attn.v.w        grad act82  m m.gpt.h2.attn.v.w        v v.gpt.h2.attn.v.w        wd 0.01
+    w.gpt.h2.attn.v.b        grad act81  m m.gpt.h2.attn.v.b        v v.gpt.h2.attn.v.b        wd 0
+    w.gpt.h2.attn.proj.w     grad act75  m m.gpt.h2.attn.proj.w     v v.gpt.h2.attn.proj.w     wd 0.01
+    w.gpt.h2.attn.proj.b     grad act74  m m.gpt.h2.attn.proj.b     v v.gpt.h2.attn.proj.b     wd 0
+    w.gpt.h2.n2.g            grad act72  m m.gpt.h2.n2.g            v v.gpt.h2.n2.g            wd 0
+    w.gpt.h2.n2.b            grad act73  m m.gpt.h2.n2.b            v v.gpt.h2.n2.b            wd 0
+    w.gpt.h2.mlp.fc1.w       grad act70  m m.gpt.h2.mlp.fc1.w       v v.gpt.h2.mlp.fc1.w       wd 0.01
+    w.gpt.h2.mlp.fc1.b       grad act69  m m.gpt.h2.mlp.fc1.b       v v.gpt.h2.mlp.fc1.b       wd 0
+    w.gpt.h2.mlp.fc2.w       grad act67  m m.gpt.h2.mlp.fc2.w       v v.gpt.h2.mlp.fc2.w       wd 0.01
+    w.gpt.h2.mlp.fc2.b       grad act66  m m.gpt.h2.mlp.fc2.b       v v.gpt.h2.mlp.fc2.b       wd 0
+    w.gpt.nf.g               grad act64  m m.gpt.nf.g               v v.gpt.nf.g               wd 0
+    w.gpt.nf.b               grad act65  m m.gpt.nf.b               v v.gpt.nf.b               wd 0
+    w.gpt.head.w             grad act61  m m.gpt.head.w             v v.gpt.head.w             wd 0.01
+  rewrite: 0 fused, 1 unchanged, 0 tasks replaced by 0 members
+    component 0: unchanged: a GPT run, but does not fit a gang: no gang of at most 108 members fits its phases in 38400 floats of shared memory a member, nor F's 2-D form (GEMM numerics F's executor build does not reproduce (it runs 1xTF32 bundles, mm_numerics 0))
+  final versions kept: 1 variable(s), e.g. variable 0 at 6
+  launch layout: 5832 kept task(s), then 0 member(s) in run and member order: yes
+  mutation an AdamW update reads another parameter's gradient                     refused, with its reason
+  mutation a RoPE row block is missing (its rows go to a neighbour's range)       refused, with its reason
+  mutation the q projection applies GELU                                          refused, with its reason
+  mutation proj adds no residual                                                  refused, with its reason
+  mutation attention reads k for v                                                refused, with its reason
+  mutation the grad-norm finish reads one partial too few                         refused, with its reason
+  mutation a LayerNorm backward overwrites the residual-stream gradient (acc 0)   refused, with its reason
+bundles/w_d192_tf32/bundle: 2632 tasks, 219 buffers -> matched runs 1, unchanged runs 0
+  component 0: GPT run of 3 steps, 2632 tasks: L 2, d 192, heads 3 x 64, MLP 768, vocabulary 256, 4 sequences of 32 (N 128), 36 parameters, 893 tasks a step, GEMM numerics 0
+  coverage: all 2632 tasks of the run, each in exactly one step (6 of them data windows)
+  streams: tokens from buffer stream_ids (stride 128, offset 0), targets from stream_tgt (stride 128, offset 0); 3 loss buffers, one a step
+  shape: L 2, d 192, heads 3 x 64, MLP 768, V 256, B 4 x T 32; LayerNorm eps 1e-05, RoPE theta 10000, attention scale 0.125
+  AdamW lr 0.003, betas 0.9 0.95, eps 1e-08; clip 1; 36 updates:
+    w.gpt.wte                grad act101 m m.gpt.wte                v v.gpt.wte                wd 0
+    w.gpt.h0.n1.g            grad act99  m m.gpt.h0.n1.g            v v.gpt.h0.n1.g            wd 0
+    w.gpt.h0.n1.b            grad act100 m m.gpt.h0.n1.b            v v.gpt.h0.n1.b            wd 0
+    w.gpt.h0.attn.q.w        grad act98  m m.gpt.h0.attn.q.w        v v.gpt.h0.attn.q.w        wd 0.01
+    w.gpt.h0.attn.q.b        grad act97  m m.gpt.h0.attn.q.b        v v.gpt.h0.attn.q.b        wd 0
+    w.gpt.h0.attn.k.w        grad act95  m m.gpt.h0.attn.k.w        v v.gpt.h0.attn.k.w        wd 0.01
+    w.gpt.h0.attn.k.b        grad act94  m m.gpt.h0.attn.k.b        v v.gpt.h0.attn.k.b        wd 0
+    w.gpt.h0.attn.v.w        grad act91  m m.gpt.h0.attn.v.w        v v.gpt.h0.attn.v.w        wd 0.01
+    w.gpt.h0.attn.v.b        grad act90  m m.gpt.h0.attn.v.b        v v.gpt.h0.attn.v.b        wd 0
+    w.gpt.h0.attn.proj.w     grad act84  m m.gpt.h0.attn.proj.w     v v.gpt.h0.attn.proj.w     wd 0.01
+    w.gpt.h0.attn.proj.b     grad act83  m m.gpt.h0.attn.proj.b     v v.gpt.h0.attn.proj.b     wd 0
+    w.gpt.h0.n2.g            grad act81  m m.gpt.h0.n2.g            v v.gpt.h0.n2.g            wd 0
+    w.gpt.h0.n2.b            grad act82  m m.gpt.h0.n2.b            v v.gpt.h0.n2.b            wd 0
+    w.gpt.h0.mlp.fc1.w       grad act79  m m.gpt.h0.mlp.fc1.w       v v.gpt.h0.mlp.fc1.w       wd 0.01
+    w.gpt.h0.mlp.fc1.b       grad act78  m m.gpt.h0.mlp.fc1.b       v v.gpt.h0.mlp.fc1.b       wd 0
+    w.gpt.h0.mlp.fc2.w       grad act76  m m.gpt.h0.mlp.fc2.w       v v.gpt.h0.mlp.fc2.w       wd 0.01
+    w.gpt.h0.mlp.fc2.b       grad act75  m m.gpt.h0.mlp.fc2.b       v v.gpt.h0.mlp.fc2.b       wd 0
+    w.gpt.h1.n1.g            grad act73  m m.gpt.h1.n1.g            v v.gpt.h1.n1.g            wd 0
+    w.gpt.h1.n1.b            grad act74  m m.gpt.h1.n1.b            v v.gpt.h1.n1.b            wd 0
+    w.gpt.h1.attn.q.w        grad act72  m m.gpt.h1.attn.q.w        v v.gpt.h1.attn.q.w        wd 0.01
+    w.gpt.h1.attn.q.b        grad act71  m m.gpt.h1.attn.q.b        v v.gpt.h1.attn.q.b        wd 0
+    w.gpt.h1.attn.k.w        grad act69  m m.gpt.h1.attn.k.w        v v.gpt.h1.attn.k.w        wd 0.01
+    w.gpt.h1.attn.k.b        grad act68  m m.gpt.h1.attn.k.b        v v.gpt.h1.attn.k.b        wd 0
+    w.gpt.h1.attn.v.w        grad act65  m m.gpt.h1.attn.v.w        v v.gpt.h1.attn.v.w        wd 0.01
+    w.gpt.h1.attn.v.b        grad act64  m m.gpt.h1.attn.v.b        v v.gpt.h1.attn.v.b        wd 0
+    w.gpt.h1.attn.proj.w     grad act58  m m.gpt.h1.attn.proj.w     v v.gpt.h1.attn.proj.w     wd 0.01
+    w.gpt.h1.attn.proj.b     grad act57  m m.gpt.h1.attn.proj.b     v v.gpt.h1.attn.proj.b     wd 0
+    w.gpt.h1.n2.g            grad act55  m m.gpt.h1.n2.g            v v.gpt.h1.n2.g            wd 0
+    w.gpt.h1.n2.b            grad act56  m m.gpt.h1.n2.b            v v.gpt.h1.n2.b            wd 0
+    w.gpt.h1.mlp.fc1.w       grad act53  m m.gpt.h1.mlp.fc1.w       v v.gpt.h1.mlp.fc1.w       wd 0.01
+    w.gpt.h1.mlp.fc1.b       grad act52  m m.gpt.h1.mlp.fc1.b       v v.gpt.h1.mlp.fc1.b       wd 0
+    w.gpt.h1.mlp.fc2.w       grad act50  m m.gpt.h1.mlp.fc2.w       v v.gpt.h1.mlp.fc2.w       wd 0.01
+    w.gpt.h1.mlp.fc2.b       grad act49  m m.gpt.h1.mlp.fc2.b       v v.gpt.h1.mlp.fc2.b       wd 0
+    w.gpt.nf.g               grad act47  m m.gpt.nf.g               v v.gpt.nf.g               wd 0
+    w.gpt.nf.b               grad act48  m m.gpt.nf.b               v v.gpt.nf.b               wd 0
+    w.gpt.head.w             grad act44  m m.gpt.head.w             v v.gpt.head.w             wd 0.01
+  rewrite: 1 fused, 0 unchanged, 2632 tasks replaced by 32 members
+    component 0: GPT run of 3 steps, 2632 tasks: L 2, d 192, heads 3 x 64, MLP 768, vocabulary 256, 4 sequences of 32 (N 128), 36 parameters, 893 tasks a step, GEMM numerics 0, fused as a gang of 32 in F's 2-D form (attention 4 x 6, MLP 2 x 16, 2 query block(s) a unit, 26112 floats of shared memory a member)
+  final versions kept: 1 variable(s), e.g. variable 0 at 6
+  launch layout: 0 kept task(s), then 32 member(s) in run and member order: yes; the bundle is its gangs alone (the fused GPT path)
+  rewrite refusals: budget of 1000 floats refused; a dumped activation refused
+  mutation an AdamW update reads another parameter's gradient                     refused, with its reason
+  mutation a RoPE row block is missing (its rows go to a neighbour's range)       refused, with its reason
+  mutation the q projection applies GELU                                          refused, with its reason
+  mutation proj adds no residual                                                  refused, with its reason
+  mutation attention reads k for v                                                refused, with its reason
+  mutation the grad-norm finish reads one partial too few                         refused, with its reason
+  mutation a LayerNorm backward overwrites the residual-stream gradient (acc 0)   refused, with its reason
+bundles/w_d128_tf32/bundle: 4256 tasks, 401 buffers -> matched runs 1, unchanged runs 0
+  component 0: GPT run of 3 steps, 4256 tasks: L 4, d 128, heads 4 x 32, MLP 512, vocabulary 256, 2 sequences of 64 (N 128), 68 parameters, 1429 tasks a step, GEMM numerics 0
+  coverage: all 4256 tasks of the run, each in exactly one step (6 of them data windows)
+  streams: tokens from buffer stream_ids (stride 128, offset 0), targets from stream_tgt (stride 128, offset 0); 3 loss buffers, one a step
+  shape: L 4, d 128, heads 4 x 32, MLP 512, V 256, B 2 x T 64; LayerNorm eps 1e-05, RoPE theta 10000, attention scale 0.176777
+  AdamW lr 0.003, betas 0.9 0.95, eps 1e-08; clip 1; 68 updates:
+    w.gpt.wte                grad act187 m m.gpt.wte                v v.gpt.wte                wd 0
+    w.gpt.h0.n1.g            grad act185 m m.gpt.h0.n1.g            v v.gpt.h0.n1.g            wd 0
+    w.gpt.h0.n1.b            grad act186 m m.gpt.h0.n1.b            v v.gpt.h0.n1.b            wd 0
+    w.gpt.h0.attn.q.w        grad act184 m m.gpt.h0.attn.q.w        v v.gpt.h0.attn.q.w        wd 0.01
+    w.gpt.h0.attn.q.b        grad act183 m m.gpt.h0.attn.q.b        v v.gpt.h0.attn.q.b        wd 0
+    w.gpt.h0.attn.k.w        grad act181 m m.gpt.h0.attn.k.w        v v.gpt.h0.attn.k.w        wd 0.01
+    w.gpt.h0.attn.k.b        grad act180 m m.gpt.h0.attn.k.b        v v.gpt.h0.attn.k.b        wd 0
+    w.gpt.h0.attn.v.w        grad act177 m m.gpt.h0.attn.v.w        v v.gpt.h0.attn.v.w        wd 0.01
+    w.gpt.h0.attn.v.b        grad act176 m m.gpt.h0.attn.v.b        v v.gpt.h0.attn.v.b        wd 0
+    w.gpt.h0.attn.proj.w     grad act170 m m.gpt.h0.attn.proj.w     v v.gpt.h0.attn.proj.w     wd 0.01
+    w.gpt.h0.attn.proj.b     grad act169 m m.gpt.h0.attn.proj.b     v v.gpt.h0.attn.proj.b     wd 0
+    w.gpt.h0.n2.g            grad act167 m m.gpt.h0.n2.g            v v.gpt.h0.n2.g            wd 0
+    w.gpt.h0.n2.b            grad act168 m m.gpt.h0.n2.b            v v.gpt.h0.n2.b            wd 0
+    w.gpt.h0.mlp.fc1.w       grad act165 m m.gpt.h0.mlp.fc1.w       v v.gpt.h0.mlp.fc1.w       wd 0.01
+    w.gpt.h0.mlp.fc1.b       grad act164 m m.gpt.h0.mlp.fc1.b       v v.gpt.h0.mlp.fc1.b       wd 0
+    w.gpt.h0.mlp.fc2.w       grad act162 m m.gpt.h0.mlp.fc2.w       v v.gpt.h0.mlp.fc2.w       wd 0.01
+    w.gpt.h0.mlp.fc2.b       grad act161 m m.gpt.h0.mlp.fc2.b       v v.gpt.h0.mlp.fc2.b       wd 0
+    w.gpt.h1.n1.g            grad act159 m m.gpt.h1.n1.g            v v.gpt.h1.n1.g            wd 0
+    w.gpt.h1.n1.b            grad act160 m m.gpt.h1.n1.b            v v.gpt.h1.n1.b            wd 0
+    w.gpt.h1.attn.q.w        grad act158 m m.gpt.h1.attn.q.w        v v.gpt.h1.attn.q.w        wd 0.01
+    w.gpt.h1.attn.q.b        grad act157 m m.gpt.h1.attn.q.b        v v.gpt.h1.attn.q.b        wd 0
+    w.gpt.h1.attn.k.w        grad act155 m m.gpt.h1.attn.k.w        v v.gpt.h1.attn.k.w        wd 0.01
+    w.gpt.h1.attn.k.b        grad act154 m m.gpt.h1.attn.k.b        v v.gpt.h1.attn.k.b        wd 0
+    w.gpt.h1.attn.v.w        grad act151 m m.gpt.h1.attn.v.w        v v.gpt.h1.attn.v.w        wd 0.01
+    w.gpt.h1.attn.v.b        grad act150 m m.gpt.h1.attn.v.b        v v.gpt.h1.attn.v.b        wd 0
+    w.gpt.h1.attn.proj.w     grad act144 m m.gpt.h1.attn.proj.w     v v.gpt.h1.attn.proj.w     wd 0.01
+    w.gpt.h1.attn.proj.b     grad act143 m m.gpt.h1.attn.proj.b     v v.gpt.h1.attn.proj.b     wd 0
+    w.gpt.h1.n2.g            grad act141 m m.gpt.h1.n2.g            v v.gpt.h1.n2.g            wd 0
+    w.gpt.h1.n2.b            grad act142 m m.gpt.h1.n2.b            v v.gpt.h1.n2.b            wd 0
+    w.gpt.h1.mlp.fc1.w       grad act139 m m.gpt.h1.mlp.fc1.w       v v.gpt.h1.mlp.fc1.w       wd 0.01
+    w.gpt.h1.mlp.fc1.b       grad act138 m m.gpt.h1.mlp.fc1.b       v v.gpt.h1.mlp.fc1.b       wd 0
+    w.gpt.h1.mlp.fc2.w       grad act136 m m.gpt.h1.mlp.fc2.w       v v.gpt.h1.mlp.fc2.w       wd 0.01
+    w.gpt.h1.mlp.fc2.b       grad act135 m m.gpt.h1.mlp.fc2.b       v v.gpt.h1.mlp.fc2.b       wd 0
+    w.gpt.h2.n1.g            grad act133 m m.gpt.h2.n1.g            v v.gpt.h2.n1.g            wd 0
+    w.gpt.h2.n1.b            grad act134 m m.gpt.h2.n1.b            v v.gpt.h2.n1.b            wd 0
+    w.gpt.h2.attn.q.w        grad act132 m m.gpt.h2.attn.q.w        v v.gpt.h2.attn.q.w        wd 0.01
+    w.gpt.h2.attn.q.b        grad act131 m m.gpt.h2.attn.q.b        v v.gpt.h2.attn.q.b        wd 0
+    w.gpt.h2.attn.k.w        grad act129 m m.gpt.h2.attn.k.w        v v.gpt.h2.attn.k.w        wd 0.01
+    w.gpt.h2.attn.k.b        grad act128 m m.gpt.h2.attn.k.b        v v.gpt.h2.attn.k.b        wd 0
+    w.gpt.h2.attn.v.w        grad act125 m m.gpt.h2.attn.v.w        v v.gpt.h2.attn.v.w        wd 0.01
+    w.gpt.h2.attn.v.b        grad act124 m m.gpt.h2.attn.v.b        v v.gpt.h2.attn.v.b        wd 0
+    w.gpt.h2.attn.proj.w     grad act118 m m.gpt.h2.attn.proj.w     v v.gpt.h2.attn.proj.w     wd 0.01
+    w.gpt.h2.attn.proj.b     grad act117 m m.gpt.h2.attn.proj.b     v v.gpt.h2.attn.proj.b     wd 0
+    w.gpt.h2.n2.g            grad act115 m m.gpt.h2.n2.g            v v.gpt.h2.n2.g            wd 0
+    w.gpt.h2.n2.b            grad act116 m m.gpt.h2.n2.b            v v.gpt.h2.n2.b            wd 0
+    w.gpt.h2.mlp.fc1.w       grad act113 m m.gpt.h2.mlp.fc1.w       v v.gpt.h2.mlp.fc1.w       wd 0.01
+    w.gpt.h2.mlp.fc1.b       grad act112 m m.gpt.h2.mlp.fc1.b       v v.gpt.h2.mlp.fc1.b       wd 0
+    w.gpt.h2.mlp.fc2.w       grad act110 m m.gpt.h2.mlp.fc2.w       v v.gpt.h2.mlp.fc2.w       wd 0.01
+    w.gpt.h2.mlp.fc2.b       grad act109 m m.gpt.h2.mlp.fc2.b       v v.gpt.h2.mlp.fc2.b       wd 0
+    w.gpt.h3.n1.g            grad act107 m m.gpt.h3.n1.g            v v.gpt.h3.n1.g            wd 0
+    w.gpt.h3.n1.b            grad act108 m m.gpt.h3.n1.b            v v.gpt.h3.n1.b            wd 0
+    w.gpt.h3.attn.q.w        grad act106 m m.gpt.h3.attn.q.w        v v.gpt.h3.attn.q.w        wd 0.01
+    w.gpt.h3.attn.q.b        grad act105 m m.gpt.h3.attn.q.b        v v.gpt.h3.attn.q.b        wd 0
+    w.gpt.h3.attn.k.w        grad act103 m m.gpt.h3.attn.k.w        v v.gpt.h3.attn.k.w        wd 0.01
+    w.gpt.h3.attn.k.b        grad act102 m m.gpt.h3.attn.k.b        v v.gpt.h3.attn.k.b        wd 0
+    w.gpt.h3.attn.v.w        grad act99  m m.gpt.h3.attn.v.w        v v.gpt.h3.attn.v.w        wd 0.01
+    w.gpt.h3.attn.v.b        grad act98  m m.gpt.h3.attn.v.b        v v.gpt.h3.attn.v.b        wd 0
+    w.gpt.h3.attn.proj.w     grad act92  m m.gpt.h3.attn.proj.w     v v.gpt.h3.attn.proj.w     wd 0.01
+    w.gpt.h3.attn.proj.b     grad act91  m m.gpt.h3.attn.proj.b     v v.gpt.h3.attn.proj.b     wd 0
+    w.gpt.h3.n2.g            grad act89  m m.gpt.h3.n2.g            v v.gpt.h3.n2.g            wd 0
+    w.gpt.h3.n2.b            grad act90  m m.gpt.h3.n2.b            v v.gpt.h3.n2.b            wd 0
+    w.gpt.h3.mlp.fc1.w       grad act87  m m.gpt.h3.mlp.fc1.w       v v.gpt.h3.mlp.fc1.w       wd 0.01
+    w.gpt.h3.mlp.fc1.b       grad act86  m m.gpt.h3.mlp.fc1.b       v v.gpt.h3.mlp.fc1.b       wd 0
+    w.gpt.h3.mlp.fc2.w       grad act84  m m.gpt.h3.mlp.fc2.w       v v.gpt.h3.mlp.fc2.w       wd 0.01
+    w.gpt.h3.mlp.fc2.b       grad act83  m m.gpt.h3.mlp.fc2.b       v v.gpt.h3.mlp.fc2.b       wd 0
+    w.gpt.nf.g               grad act81  m m.gpt.nf.g               v v.gpt.nf.g               wd 0
+    w.gpt.nf.b               grad act82  m m.gpt.nf.b               v v.gpt.nf.b               wd 0
+    w.gpt.head.w             grad act78  m m.gpt.head.w             v v.gpt.head.w             wd 0.01
+  rewrite: 1 fused, 0 unchanged, 4256 tasks replaced by 64 members
+    component 0: GPT run of 3 steps, 4256 tasks: L 4, d 128, heads 4 x 32, MLP 512, vocabulary 256, 2 sequences of 64 (N 128), 68 parameters, 1429 tasks a step, GEMM numerics 0, fused as a gang of 64
+  final versions kept: 1 variable(s), e.g. variable 0 at 6
+  launch layout: 0 kept task(s), then 64 member(s) in run and member order: yes; the bundle is its gangs alone (the fused GPT path)
+  rewrite refusals: budget of 1000 floats refused; a dumped activation refused
+  mutation an AdamW update reads another parameter's gradient                     refused, with its reason
+  mutation a RoPE row block is missing (its rows go to a neighbour's range)       refused, with its reason
+  mutation the q projection applies GELU                                          refused, with its reason
+  mutation proj adds no residual                                                  refused, with its reason
+  mutation attention reads k for v                                                refused, with its reason
+  mutation the grad-norm finish reads one partial too few                         refused, with its reason
+  mutation a LayerNorm backward overwrites the residual-stream gradient (acc 0)   refused, with its reason
+bundles/w_tiny/bundle: 6749 tasks, 175 buffers -> matched runs 1, unchanged runs 0
+  component 0: GPT run of 50 steps, 6749 tasks: L 1, d 32, heads 2 x 16, MLP 128, vocabulary 64, 1 sequences of 32 (N 32), 20 parameters, 133 tasks a step, GEMM numerics 0
+  coverage: all 6749 tasks of the run, each in exactly one step (100 of them data windows)
+  streams: tokens from buffer stream_ids (stride 32, offset 0), targets from stream_tgt (stride 32, offset 0); 50 loss buffers, one a step
+  shape: L 1, d 32, heads 2 x 16, MLP 128, V 64, B 1 x T 32; LayerNorm eps 1e-05, RoPE theta 10000, attention scale 0.25
+  AdamW lr 0.003, betas 0.9 0.95, eps 1e-08; clip 1; 20 updates:
+    w.gpt.wte                grad act58  m m.gpt.wte                v v.gpt.wte                wd 0
+    w.gpt.h0.n1.g            grad act56  m m.gpt.h0.n1.g            v v.gpt.h0.n1.g            wd 0
+    w.gpt.h0.n1.b            grad act57  m m.gpt.h0.n1.b            v v.gpt.h0.n1.b            wd 0
+    w.gpt.h0.attn.q.w        grad act55  m m.gpt.h0.attn.q.w        v v.gpt.h0.attn.q.w        wd 0.01
+    w.gpt.h0.attn.q.b        grad act54  m m.gpt.h0.attn.q.b        v v.gpt.h0.attn.q.b        wd 0
+    w.gpt.h0.attn.k.w        grad act52  m m.gpt.h0.attn.k.w        v v.gpt.h0.attn.k.w        wd 0.01
+    w.gpt.h0.attn.k.b        grad act51  m m.gpt.h0.attn.k.b        v v.gpt.h0.attn.k.b        wd 0
+    w.gpt.h0.attn.v.w        grad act48  m m.gpt.h0.attn.v.w        v v.gpt.h0.attn.v.w        wd 0.01
+    w.gpt.h0.attn.v.b        grad act47  m m.gpt.h0.attn.v.b        v v.gpt.h0.attn.v.b        wd 0
+    w.gpt.h0.attn.proj.w     grad act41  m m.gpt.h0.attn.proj.w     v v.gpt.h0.attn.proj.w     wd 0.01
+    w.gpt.h0.attn.proj.b     grad act40  m m.gpt.h0.attn.proj.b     v v.gpt.h0.attn.proj.b     wd 0
+    w.gpt.h0.n2.g            grad act38  m m.gpt.h0.n2.g            v v.gpt.h0.n2.g            wd 0
+    w.gpt.h0.n2.b            grad act39  m m.gpt.h0.n2.b            v v.gpt.h0.n2.b            wd 0
+    w.gpt.h0.mlp.fc1.w       grad act36  m m.gpt.h0.mlp.fc1.w       v v.gpt.h0.mlp.fc1.w       wd 0.01
+    w.gpt.h0.mlp.fc1.b       grad act35  m m.gpt.h0.mlp.fc1.b       v v.gpt.h0.mlp.fc1.b       wd 0
+    w.gpt.h0.mlp.fc2.w       grad act33  m m.gpt.h0.mlp.fc2.w       v v.gpt.h0.mlp.fc2.w       wd 0.01
+    w.gpt.h0.mlp.fc2.b       grad act32  m m.gpt.h0.mlp.fc2.b       v v.gpt.h0.mlp.fc2.b       wd 0
+    w.gpt.nf.g               grad act30  m m.gpt.nf.g               v v.gpt.nf.g               wd 0
+    w.gpt.nf.b               grad act31  m m.gpt.nf.b               v v.gpt.nf.b               wd 0
+    w.gpt.head.w             grad act27  m m.gpt.head.w             v v.gpt.head.w             wd 0.01
+  rewrite: 1 fused, 0 unchanged, 6749 tasks replaced by 16 members
+    component 0: GPT run of 50 steps, 6749 tasks: L 1, d 32, heads 2 x 16, MLP 128, vocabulary 64, 1 sequences of 32 (N 32), 20 parameters, 133 tasks a step, GEMM numerics 0, fused as a gang of 16
+  final versions kept: 1 variable(s), e.g. variable 0 at 100
+  launch layout: 0 kept task(s), then 16 member(s) in run and member order: yes; the bundle is its gangs alone (the fused GPT path)
+  rewrite refusals: budget of 1000 floats refused; a dumped activation refused
+  mutation an AdamW update reads another parameter's gradient                     refused, with its reason
+  mutation a RoPE row block is missing (its rows go to a neighbour's range)       refused, with its reason
+  mutation the q projection applies GELU                                          refused, with its reason
+  mutation proj adds no residual                                                  refused, with its reason
+  mutation attention reads k for v                                                refused, with its reason
+  mutation the grad-norm finish reads one partial too few                         refused, with its reason
+  mutation a LayerNorm backward overwrites the residual-stream gradient (acc 0)   refused, with its reason
+bundles/w_small/bundle: 28858 tasks, 266 buffers -> matched runs 1, unchanged runs 0
+  component 0: GPT run of 50 steps, 28858 tasks: L 2, d 64, heads 4 x 16, MLP 256, vocabulary 128, 2 sequences of 64 (N 128), 36 parameters, 584 tasks a step, GEMM numerics 0
+  coverage: all 28858 tasks of the run, each in exactly one step (100 of them data windows)
+  streams: tokens from buffer stream_ids (stride 128, offset 0), targets from stream_tgt (stride 128, offset 0); 50 loss buffers, one a step
+  shape: L 2, d 64, heads 4 x 16, MLP 256, V 128, B 2 x T 64; LayerNorm eps 1e-05, RoPE theta 10000, attention scale 0.25
+  AdamW lr 0.003, betas 0.9 0.95, eps 1e-08; clip 1; 36 updates:
+    w.gpt.wte                grad act101 m m.gpt.wte                v v.gpt.wte                wd 0
+    w.gpt.h0.n1.g            grad act99  m m.gpt.h0.n1.g            v v.gpt.h0.n1.g            wd 0
+    w.gpt.h0.n1.b            grad act100 m m.gpt.h0.n1.b            v v.gpt.h0.n1.b            wd 0
+    w.gpt.h0.attn.q.w        grad act98  m m.gpt.h0.attn.q.w        v v.gpt.h0.attn.q.w        wd 0.01
+    w.gpt.h0.attn.q.b        grad act97  m m.gpt.h0.attn.q.b        v v.gpt.h0.attn.q.b        wd 0
+    w.gpt.h0.attn.k.w        grad act95  m m.gpt.h0.attn.k.w        v v.gpt.h0.attn.k.w        wd 0.01
+    w.gpt.h0.attn.k.b        grad act94  m m.gpt.h0.attn.k.b        v v.gpt.h0.attn.k.b        wd 0
+    w.gpt.h0.attn.v.w        grad act91  m m.gpt.h0.attn.v.w        v v.gpt.h0.attn.v.w        wd 0.01
+    w.gpt.h0.attn.v.b        grad act90  m m.gpt.h0.attn.v.b        v v.gpt.h0.attn.v.b        wd 0
+    w.gpt.h0.attn.proj.w     grad act84  m m.gpt.h0.attn.proj.w     v v.gpt.h0.attn.proj.w     wd 0.01
+    w.gpt.h0.attn.proj.b     grad act83  m m.gpt.h0.attn.proj.b     v v.gpt.h0.attn.proj.b     wd 0
+    w.gpt.h0.n2.g            grad act81  m m.gpt.h0.n2.g            v v.gpt.h0.n2.g            wd 0
+    w.gpt.h0.n2.b            grad act82  m m.gpt.h0.n2.b            v v.gpt.h0.n2.b            wd 0
+    w.gpt.h0.mlp.fc1.w       grad act79  m m.gpt.h0.mlp.fc1.w       v v.gpt.h0.mlp.fc1.w       wd 0.01
+    w.gpt.h0.mlp.fc1.b       grad act78  m m.gpt.h0.mlp.fc1.b       v v.gpt.h0.mlp.fc1.b       wd 0
+    w.gpt.h0.mlp.fc2.w       grad act76  m m.gpt.h0.mlp.fc2.w       v v.gpt.h0.mlp.fc2.w       wd 0.01
+    w.gpt.h0.mlp.fc2.b       grad act75  m m.gpt.h0.mlp.fc2.b       v v.gpt.h0.mlp.fc2.b       wd 0
+    w.gpt.h1.n1.g            grad act73  m m.gpt.h1.n1.g            v v.gpt.h1.n1.g            wd 0
+    w.gpt.h1.n1.b            grad act74  m m.gpt.h1.n1.b            v v.gpt.h1.n1.b            wd 0
+    w.gpt.h1.attn.q.w        grad act72  m m.gpt.h1.attn.q.w        v v.gpt.h1.attn.q.w        wd 0.01
+    w.gpt.h1.attn.q.b        grad act71  m m.gpt.h1.attn.q.b        v v.gpt.h1.attn.q.b        wd 0
+    w.gpt.h1.attn.k.w        grad act69  m m.gpt.h1.attn.k.w        v v.gpt.h1.attn.k.w        wd 0.01
+    w.gpt.h1.attn.k.b        grad act68  m m.gpt.h1.attn.k.b        v v.gpt.h1.attn.k.b        wd 0
+    w.gpt.h1.attn.v.w        grad act65  m m.gpt.h1.attn.v.w        v v.gpt.h1.attn.v.w        wd 0.01
+    w.gpt.h1.attn.v.b        grad act64  m m.gpt.h1.attn.v.b        v v.gpt.h1.attn.v.b        wd 0
+    w.gpt.h1.attn.proj.w     grad act58  m m.gpt.h1.attn.proj.w     v v.gpt.h1.attn.proj.w     wd 0.01
+    w.gpt.h1.attn.proj.b     grad act57  m m.gpt.h1.attn.proj.b     v v.gpt.h1.attn.proj.b     wd 0
+    w.gpt.h1.n2.g            grad act55  m m.gpt.h1.n2.g            v v.gpt.h1.n2.g            wd 0
+    w.gpt.h1.n2.b            grad act56  m m.gpt.h1.n2.b            v v.gpt.h1.n2.b            wd 0
+    w.gpt.h1.mlp.fc1.w       grad act53  m m.gpt.h1.mlp.fc1.w       v v.gpt.h1.mlp.fc1.w       wd 0.01
+    w.gpt.h1.mlp.fc1.b       grad act52  m m.gpt.h1.mlp.fc1.b       v v.gpt.h1.mlp.fc1.b       wd 0
+    w.gpt.h1.mlp.fc2.w       grad act50  m m.gpt.h1.mlp.fc2.w       v v.gpt.h1.mlp.fc2.w       wd 0.01
+    w.gpt.h1.mlp.fc2.b       grad act49  m m.gpt.h1.mlp.fc2.b       v v.gpt.h1.mlp.fc2.b       wd 0
+    w.gpt.nf.g               grad act47  m m.gpt.nf.g               v v.gpt.nf.g               wd 0
+    w.gpt.nf.b               grad act48  m m.gpt.nf.b               v v.gpt.nf.b               wd 0
+    w.gpt.head.w             grad act44  m m.gpt.head.w             v v.gpt.head.w             wd 0.01
+  rewrite: 1 fused, 0 unchanged, 28858 tasks replaced by 32 members
+    component 0: GPT run of 50 steps, 28858 tasks: L 2, d 64, heads 4 x 16, MLP 256, vocabulary 128, 2 sequences of 64 (N 128), 36 parameters, 584 tasks a step, GEMM numerics 0, fused as a gang of 32
+  final versions kept: 1 variable(s), e.g. variable 0 at 100
+  launch layout: 0 kept task(s), then 32 member(s) in run and member order: yes; the bundle is its gangs alone (the fused GPT path)
+  rewrite refusals: budget of 1000 floats refused; a dumped activation refused
+  mutation an AdamW update reads another parameter's gradient                     refused, with its reason
+  mutation a RoPE row block is missing (its rows go to a neighbour's range)       refused, with its reason
+  mutation the q projection applies GELU                                          refused, with its reason
+  mutation proj adds no residual                                                  refused, with its reason
+  mutation attention reads k for v                                                refused, with its reason
+  mutation the grad-norm finish reads one partial too few                         refused, with its reason
+  mutation a LayerNorm backward overwrites the residual-stream gradient (acc 0)   refused, with its reason
+OK

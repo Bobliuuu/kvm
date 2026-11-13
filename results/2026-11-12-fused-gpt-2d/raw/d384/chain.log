@@ -1,0 +1,18 @@
+env {'torch': '2.15.0+cu132', 'cuda': '13.2', 'gpu': 'NVIDIA A100-SXM4-40GB', 'sms': 108}
+eager: built in 4 s, loss 5.60011 -> 3.51708
+graph: built in 2 s, loss 5.60011 -> 3.51708
+/root/py/lib/python3.12/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+compile_mat: built in 9 s, loss 5.60012 -> 3.25188
+compile_graph: built in 1 s, loss 5.60012 -> 3.25842
+graph_whole: built in 1 s, loss 5.60011 -> 3.51708
+compile_graph_whole: built in 1 s, loss 5.60012 -> 3.24878
+GATE: executor vs eager loss max rel 8.51e-02; modes vs eager {'eager': '0.0e+00', 'graph': '0.0e+00', 'compile_mat': '7.5e-02', 'compile_graph': '7.4e-02', 'graph_whole': '0.0e+00', 'compile_graph_whole': '7.6e-02'}
+us/step best (median, worst) over 7 interleaved reps; ratio = mode / executor
+  eager             12261.5 (13664.0, 74828.4)     3.34x
+  graph              1831.3 (1834.4, 2398.1)     0.50x
+  compile_mat        4796.6 (7726.4, 43667.2)     1.31x
+  compile_graph      1322.6 (1325.2, 1654.3)     0.36x
+  graph_whole        1836.9 (1840.3, 2294.9)     0.50x
+  compile_graph_whole     1334.0 (1335.6, 1345.8)     0.36x
+  executor           3672.8 (3676.1, 3681.4)     1.00x

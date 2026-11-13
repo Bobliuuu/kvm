@@ -1,0 +1,8 @@
+[kvm_exec][I] device NVIDIA A100-SXM4-80GB, 108 SMs, 1 resident blocks/SM with 147456 B dynamic smem -> grid 108 (1 admitter + 107 workers)
+[kvm_exec][I] /root/reads/goldens/h256d4/bundle: 498 tasks, 2915 edges, 5583 arg words
+[kvm_exec][I] fuse: component 0: fused, split form (layer width not a multiple of 8 up to 128): 3 steps, T=96 V=100 widths 48x256x256x256x256, gangs of 6 slices x 8 shares = 48 members, 39900 floats a member
+[kvm_exec][I] fuse: shared-memory budget 40416 floats (161664 bytes) a fused block
+[kvm_exec][I] fuse: 1 run(s) fused, 0 unchanged; 491 tasks replaced by 151; static kernel entry: split, 8 shares
+[kvm_exec][I] static schedule: 151 tasks -> 151 records on 48/48 workers, 282 of 385 edges cross workers, 6 records publish; runs partitioned: no; plan 130.6 us, work 5772.1 us (compiled in 0.000 s)
+[kvm_exec][I] static kernel: entry split, 8 shares, 1 resident blocks/SM, 159600 bytes of dynamic shared memory, launching 48 workers
+[kvm_exec][I] static run done: 151 tasks in 0.375 ms on 48 workers

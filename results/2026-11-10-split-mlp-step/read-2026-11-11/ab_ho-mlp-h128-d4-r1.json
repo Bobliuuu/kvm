@@ -1,0 +1,37 @@
+[
+ {
+  "row": "ho-mlp-h128-d4-r1",
+  "control": "/root/reads/gangfix/bundles-ddf9d6b225d9c667/ho128/bundle",
+  "cand": "/root/reads/gangfix/bundles-ddf9d6b225d9c667/ho128/bundle",
+  "tasks": {
+   "control": 15600,
+   "cand": 15600
+  },
+  "ms": {
+   "control": {
+    "median": 40.893,
+    "best": 40.816,
+    "all": [
+     40.89,
+     40.92,
+     40.82,
+     40.83,
+     40.94
+    ]
+   },
+   "cand": {
+    "median": 15.481,
+    "best": 15.475,
+    "all": [
+     15.47,
+     15.49,
+     15.48,
+     15.59,
+     15.48
+    ]
+   }
+  },
+  "paired_ratio_median": 2.641215954563057,
+  "best_ratio": 2.6375444264943457
+ }
+]

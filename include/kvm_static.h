@@ -51,7 +51,21 @@ struct alignas(16) KvmSRec {
 static_assert(sizeof(KvmSRec) == KVM_S_REC_BYTES, "KvmSRec layout");
 
 // What the scheduler needs to know about an operator: its registry view (arity, 3 bits per argument type) and a cost estimate.
-struct KvmSOpInfo { int arity = -1; uint64_t types = 0; };   // arity < 0: unknown op
+// A gang op also names three i32 arguments, `gang`, `member` and `members` (their positions here, -1 for other ops): see kvm_static_plan.
+struct KvmSOpInfo { int arity = -1; uint64_t types = 0; int gang_arg = -1, member_arg = -1, members_arg = -1; };   // arity < 0: unknown op
+// Fills a gang op's argument positions from its registry signature ("name:type,..."): an op is a gang op when it names all three.
+inline void kvm_static_gang_args(const char* sig, KvmSOpInfo& o) {
+    o.gang_arg = o.member_arg = o.members_arg = -1;
+    int i = 0;
+    for (const char* p = sig; p && *p; ++i) {
+        const char* c = p; while (*c && *c != ':') ++c;
+        const std::string name(p, c);
+        if (name == "gang") o.gang_arg = i; else if (name == "member") o.member_arg = i; else if (name == "members") o.members_arg = i;
+        while (*c && *c != ',') ++c;
+        p = *c ? c + 1 : c;
+    }
+    if (o.gang_arg < 0 || o.member_arg < 0 || o.members_arg < 0) o.gang_arg = o.member_arg = o.members_arg = -1;
+}
 using KvmSOpLookup = std::function<KvmSOpInfo(int op_id)>;
 using KvmSCostFn = std::function<double(int op_id, const int32_t* args)>;   // microseconds (only relative weights matter)
 
@@ -70,6 +84,8 @@ struct KvmSPlan {
     std::vector<int> worker_of, order_of;                // per task: worker, position among that worker's tasks
     std::vector<std::vector<KvmSWait>> waits;            // per task: (worker, need in *task count*): the record indices are assigned at emission
     std::vector<char> publishes;                         // per task: some record of another worker waits for it
+    std::vector<int> gang_of;                            // per task: its gang's id, -1 for a task of no gang
+    int gangs = 0;
     // statistics
     int cross_edges = 0, edges = 0, publishing = 0;
     double makespan_us = 0;                              // predicted by the list scheduler
@@ -118,53 +134,108 @@ inline std::vector<std::vector<int>> build_dag(const std::vector<KvmTaskDesc>& t
 
 }  // namespace kvm_static
 
-// List scheduling (HEFT): tasks in decreasing upward rank (longest remaining path, cross-worker edges costed); each goes to the worker
-// where it finishes first; a predecessor on the same worker costs no communication. Worker programs are appended in rank order, so a
-// worker's order is consistent with the DAG (a later record never has to precede an earlier one) and no cycle of waits can arise.
+// List scheduling (HEFT) over units: a unit is a task, or a gang's members together. Units go in decreasing upward rank (longest remaining
+// path, cross-worker edges costed); each goes to the worker where it finishes first, and a predecessor on the same worker costs no
+// communication. Worker programs are appended in rank order, so a worker's order is consistent with the DAG (a later record never has
+// to precede an earlier one) and no cycle of waits can arise.
+//
+// A gang is the tasks of one gang op that share a `gang` argument: `members` tasks, member 0 .. members - 1, that run at once on distinct
+// workers and meet at barriers inside the op (a fused step spread over several blocks). The DAG is contracted to units first, and a gang
+// whose members depend on one another, directly or through other tasks, is refused (its barrier would wait for itself).
+//  * Placement: a gang takes the `members` workers that free up first. Each member goes to the worker of the chosen set where its
+//    predecessors' data arrives first. All members start when the last of them can, and finish together.
+//  * Why this cannot deadlock: the members are appended at one point of the global order, so every record before that point, on any
+//    worker, waits only for records before it, and every member reaches the op's barrier.
+//  * A bundle with gang ops needs this path: the dynamic executor cannot promise that a gang's members run at once.
 inline KvmSPlan kvm_static_plan(const std::vector<KvmTaskDesc>& tasks, const std::vector<int32_t>& succ, const std::vector<int32_t>& args,
                                 const KvmSConfig& cfg, const KvmSOpLookup& op_of, const KvmSCostFn& cost_of) {
     const int nt = (int)tasks.size();
     if (nt < 1 || cfg.workers < 1) throw std::invalid_argument("empty bundle or no workers");
     std::vector<std::vector<int>> out = kvm_static::build_dag(tasks, succ);
-    std::vector<int> indeg(nt, 0);
-    for (int i = 0; i < nt; ++i) for (int j : out[i]) ++indeg[j];
-    std::vector<int> topo; topo.reserve(nt);
-    { std::vector<int> st; for (int i = 0; i < nt; ++i) if (!indeg[i]) st.push_back(i);
-      std::vector<int> deg = indeg;
-      while (!st.empty()) { int u = st.back(); st.pop_back(); topo.push_back(u); for (int v : out[u]) if (--deg[v] == 0) st.push_back(v); } }
-    if ((int)topo.size() != nt) throw std::invalid_argument("dependency cycle");
     std::vector<double> cost(nt);
+    std::vector<int> gang_of(nt, -1);
+    std::map<int, std::vector<int>> gang_tasks;   // gang id -> its tasks by member index
     for (int i = 0; i < nt; ++i) {
         const KvmSOpInfo info = op_of(tasks[i].op_id);
         if (info.arity < 0 || tasks[i].args_words != info.arity) throw std::invalid_argument("task " + std::to_string(i) + ": unknown op or wrong arity");
         cost[i] = std::max(cfg.min_cost_us, cost_of(tasks[i].op_id, args.data() + tasks[i].args_off));
+        if (info.gang_arg < 0) continue;
+        const int32_t* a = args.data() + tasks[i].args_off;
+        const int g = a[info.gang_arg], m = a[info.member_arg], n = a[info.members_arg];
+        if (g < 0 || n < 1 || m < 0 || m >= n) throw std::invalid_argument("task " + std::to_string(i) + ": gang " + std::to_string(g) + " member " + std::to_string(m) + " of " + std::to_string(n));
+        if (n > cfg.workers) throw std::invalid_argument("gang " + std::to_string(g) + " needs " + std::to_string(n) + " workers at once; the plan has " + std::to_string(cfg.workers));
+        auto& v = gang_tasks[g];
+        if (v.empty()) v.assign(n, -1);
+        if ((int)v.size() != n) throw std::invalid_argument("gang " + std::to_string(g) + ": its members disagree on how many they are");
+        if (v[m] >= 0) throw std::invalid_argument("gang " + std::to_string(g) + ": two tasks are member " + std::to_string(m));
+        if (tasks[v[0] >= 0 ? v[0] : i].op_id != tasks[i].op_id) throw std::invalid_argument("gang " + std::to_string(g) + ": members of different ops");
+        v[m] = i; gang_of[i] = g;
     }
-    std::vector<double> rank(nt, 0.0);
-    for (int k = nt - 1; k >= 0; --k) {   // reverse topological order
+    // units: a gang's members share one (its representative is member 0's task); every other task is its own
+    std::vector<int> unit_of(nt), rep_of;   // task -> unit; unit -> representative task
+    std::vector<std::vector<int>> members_of;   // unit -> its tasks (member order for a gang)
+    {
+        std::map<int, int> unit_of_gang;
+        for (int i = 0; i < nt; ++i) {
+            if (gang_of[i] >= 0) {
+                auto it = unit_of_gang.find(gang_of[i]);
+                if (it != unit_of_gang.end()) { unit_of[i] = it->second; continue; }
+                const auto& v = gang_tasks[gang_of[i]];
+                for (int m = 0; m < (int)v.size(); ++m) if (v[m] < 0) throw std::invalid_argument("gang " + std::to_string(gang_of[i]) + ": member " + std::to_string(m) + " is missing");
+                unit_of_gang[gang_of[i]] = (int)members_of.size();
+                unit_of[i] = (int)members_of.size(); members_of.push_back(v); rep_of.push_back(v[0]);
+            } else {
+                unit_of[i] = (int)members_of.size(); members_of.push_back({i}); rep_of.push_back(i);
+            }
+        }
+    }
+    const int nu = (int)members_of.size();
+    std::vector<std::vector<int>> uout(nu);
+    for (int i = 0; i < nt; ++i)
+        for (int j : out[i]) {
+            if (unit_of[i] == unit_of[j]) throw std::invalid_argument("gang " + std::to_string(gang_of[i]) + ": member task " + std::to_string(j) + " depends on member task " + std::to_string(i));
+            uout[unit_of[i]].push_back(unit_of[j]);
+        }
+    for (auto& e : uout) { std::sort(e.begin(), e.end()); e.erase(std::unique(e.begin(), e.end()), e.end()); }
+    std::vector<int> indeg(nu, 0);
+    for (int u = 0; u < nu; ++u) for (int v : uout[u]) ++indeg[v];
+    std::vector<int> topo; topo.reserve(nu);
+    { std::vector<int> st; for (int u = 0; u < nu; ++u) if (!indeg[u]) st.push_back(u);
+      std::vector<int> deg = indeg;
+      while (!st.empty()) { int u = st.back(); st.pop_back(); topo.push_back(u); for (int v : uout[u]) if (--deg[v] == 0) st.push_back(v); } }
+    if ((int)topo.size() != nu) throw std::invalid_argument(gang_tasks.empty() ? "dependency cycle" : "dependency cycle (a gang's members may reach one another through other tasks)");
+    std::vector<double> ucost(nu, 0.0);
+    for (int u = 0; u < nu; ++u) for (int t : members_of[u]) ucost[u] = std::max(ucost[u], cost[t]);   // members meet at barriers: they finish together
+    std::vector<double> rank(nu, 0.0);
+    for (int k = nu - 1; k >= 0; --k) {   // reverse topological order
         const int u = topo[k];
         double m = 0;
-        for (int v : out[u]) m = std::max(m, cfg.comm_us + rank[v]);
-        rank[u] = cost[u] + m;
+        for (int v : uout[u]) m = std::max(m, cfg.comm_us + rank[v]);
+        rank[u] = ucost[u] + m;
     }
-    std::vector<int> order(nt);
-    for (int i = 0; i < nt; ++i) order[i] = i;
-    // ties broken by task id: reproducible schedules (and ids follow the bundle's program order)
-    std::sort(order.begin(), order.end(), [&](int a, int b) { return rank[a] != rank[b] ? rank[a] > rank[b] : a < b; });
+    std::vector<int> order(nu);
+    for (int u = 0; u < nu; ++u) order[u] = u;
+    // ties broken by representative task id: reproducible schedules (and ids follow the bundle's program order)
+    std::sort(order.begin(), order.end(), [&](int a, int b) { return rank[a] != rank[b] ? rank[a] > rank[b] : rep_of[a] < rep_of[b]; });
 
-    // Independent runs of a replicated bundle (connected components of the DAG): each gets its own workers, in proportion to its work, so no run's chain queues behind
-    // another run's tasks on a shared worker (R=32 on the panel). A single component uses every worker, exactly as before.
+    // Independent runs of a replicated bundle (connected components of the DAG, a gang counting as one node): each gets its own workers, in
+    // proportion to its work, so no run's chain queues behind another run's tasks on a shared worker (R=32 on the panel). A single component
+    // uses every worker, exactly as before.
     std::vector<std::vector<int>> group_workers;   // per component: the workers it may use
-    std::vector<int> comp_of(nt, -1);
+    std::vector<int> comp_of(nu, -1);
     bool partitioned = false;
     {
-        std::vector<int> uf(nt); for (int i = 0; i < nt; ++i) uf[i] = i;
+        std::vector<int> uf(nu); for (int u = 0; u < nu; ++u) uf[u] = u;
         std::function<int(int)> find = [&](int x) { while (uf[x] != x) { uf[x] = uf[uf[x]]; x = uf[x]; } return x; };
-        for (int i = 0; i < nt; ++i) for (int j : out[i]) uf[find(i)] = find(j);
+        for (int u = 0; u < nu; ++u) for (int v : uout[u]) uf[find(u)] = find(v);
         std::map<int, int> ids; std::vector<double> work;
-        for (int i = 0; i < nt; ++i) { auto it = ids.emplace(find(i), (int)work.size()); if (it.second) work.push_back(0.0); comp_of[i] = it.first->second; work[comp_of[i]] += cost[i]; }
+        for (int u = 0; u < nu; ++u) {
+            auto it = ids.emplace(find(u), (int)work.size()); if (it.second) work.push_back(0.0);
+            comp_of[u] = it.first->second; work[comp_of[u]] += ucost[u] * members_of[u].size();
+        }
         const int nc = (int)work.size();
         group_workers.assign(nc, {});
-        if (nc == 1 || !cfg.partition) { group_workers.assign(nc, {}); for (int c = 0; c < nc; ++c) for (int w = 0; w < cfg.workers; ++w) group_workers[c].push_back(w); }
+        if (nc == 1 || !cfg.partition) { for (int c = 0; c < nc; ++c) for (int w = 0; w < cfg.workers; ++w) group_workers[c].push_back(w); }
         else {
             // largest-remainder share of the workers per component (every component gets at least one; beyond W components, workers are shared)
             double tot = 0; for (double x : work) tot += x;
@@ -175,10 +246,12 @@ inline KvmSPlan kvm_static_plan(const std::vector<KvmTaskDesc>& tasks, const std
             for (size_t k = 0; given < cfg.workers; ++k, ++given) share[rem[k % rem.size()].second]++;
             // A run given fewer workers than it can keep busy queues behind its own tasks, so the partition holds only where each run has at least twice its average parallelism
             // (work / longest path; measured: 8 runs with 13 workers each gained 10%, 32 runs with 3 each lost 7% to one shared pool).
+            // It also holds only where each run's widest gang fits in its share.
             std::vector<double> span(nc, 0.0);
-            for (int i = 0; i < nt; ++i) span[comp_of[i]] = std::max(span[comp_of[i]], rank[i]);
+            std::vector<int> widest(nc, 1);
+            for (int u = 0; u < nu; ++u) { span[comp_of[u]] = std::max(span[comp_of[u]], rank[u]); widest[comp_of[u]] = std::max(widest[comp_of[u]], (int)members_of[u].size()); }
             partitioned = true;
-            for (int c = 0; c < nc; ++c) if (share[c] < 2.0 * work[c] / span[c]) partitioned = false;
+            for (int c = 0; c < nc; ++c) if (share[c] < 2.0 * work[c] / span[c] || share[c] < widest[c]) partitioned = false;
             if (partitioned) { int w = 0; for (int c = 0; c < nc; ++c) for (int k = 0; k < share[c]; ++k) group_workers[c].push_back(w++ % cfg.workers); }
             else for (int c = 0; c < nc; ++c) for (int w = 0; w < cfg.workers; ++w) group_workers[c].push_back(w);
         }
@@ -189,34 +262,61 @@ inline KvmSPlan kvm_static_plan(const std::vector<KvmTaskDesc>& tasks, const std
     p.prog.assign(cfg.workers, {});
     p.worker_of.assign(nt, -1); p.order_of.assign(nt, -1);
     p.waits.assign(nt, {}); p.publishes.assign(nt, 0);
+    p.gang_of = gang_of; p.gangs = (int)gang_tasks.size();
     std::vector<std::vector<int>> in(nt);
     for (int i = 0; i < nt; ++i) for (int j : out[i]) in[j].push_back(i);
     std::vector<double> avail(cfg.workers, 0.0), finish(nt, 0.0), local(cfg.workers, 0.0);
     std::vector<int> touched;
-    for (int t : order) {
-        // arrival of every predecessor's data if t ran on some other worker than that predecessor's: best and second best, per distinct source worker
-        double first = 0, second = 0; int first_w = -1;
-        touched.clear();
-        for (int q : in[t]) {
-            const double arrive = finish[q] + cfg.comm_us;
-            const int w = p.worker_of[q];
-            if (w == first_w) first = std::max(first, arrive);
-            else if (arrive > first) { second = std::max(second, first); first = arrive; first_w = w; }
-            else second = std::max(second, arrive);
-            if (local[w] == 0.0) touched.push_back(w);
-            local[w] = std::max(local[w], finish[q]);
+    auto place = [&](int t, int w, double end) {
+        finish[t] = end; avail[w] = end;
+        p.worker_of[t] = w; p.order_of[t] = (int)p.prog[w].size();
+        p.prog[w].push_back(t);
+        p.makespan_us = std::max(p.makespan_us, end);
+    };
+    for (int u : order) {
+        const std::vector<int>& mem = members_of[u];
+        if (mem.size() == 1) {
+            const int t = mem[0];
+            // arrival of every predecessor's data if t ran on some other worker than that predecessor's: best and second best, per distinct source worker
+            double first = 0, second = 0; int first_w = -1;
+            touched.clear();
+            for (int q : in[t]) {
+                const double arrive = finish[q] + cfg.comm_us;
+                const int w = p.worker_of[q];
+                if (w == first_w) first = std::max(first, arrive);
+                else if (arrive > first) { second = std::max(second, first); first = arrive; first_w = w; }
+                else second = std::max(second, arrive);
+                if (local[w] == 0.0) touched.push_back(w);
+                local[w] = std::max(local[w], finish[q]);
+            }
+            double best = 0; int bw = -1;
+            for (int w : group_workers[comp_of[u]]) {
+                const double ready = std::max({avail[w], local[w], (w == first_w ? second : first)});
+                const double end = ready + ucost[u];
+                if (bw < 0 || end < best) { best = end; bw = w; }
+            }
+            for (int w : touched) local[w] = 0.0;
+            place(t, bw, best);
+            continue;
         }
-        double best = 0; int bw = -1;
-        for (int w : group_workers[comp_of[t]]) {
-            const double ready = std::max({avail[w], local[w], (w == first_w ? second : first)});
-            const double end = ready + cost[t];
-            if (bw < 0 || end < best) { best = end; bw = w; }
+        // a gang: the workers that free up first; then each member, in member order, where its data arrives first
+        std::vector<int> cand = group_workers[comp_of[u]];
+        std::sort(cand.begin(), cand.end(), [&](int a, int b) { return avail[a] != avail[b] ? avail[a] < avail[b] : a < b; });
+        cand.resize(mem.size());
+        auto arrival = [&](int t, int w) { double r = 0; for (int q : in[t]) r = std::max(r, finish[q] + (p.worker_of[q] == w ? 0.0 : cfg.comm_us)); return r; };
+        std::vector<char> taken(cand.size(), 0);
+        std::vector<int> at(mem.size(), -1);
+        double start = 0;
+        for (size_t m = 0; m < mem.size(); ++m) {
+            int bk = -1; double br = 0;
+            for (size_t k = 0; k < cand.size(); ++k) {
+                if (taken[k]) continue;
+                const double r = std::max(avail[cand[k]], arrival(mem[m], cand[k]));
+                if (bk < 0 || r < br) { bk = (int)k; br = r; }
+            }
+            taken[bk] = 1; at[m] = cand[bk]; start = std::max(start, br);
         }
-        for (int w : touched) local[w] = 0.0;
-        finish[t] = best; avail[bw] = best;
-        p.worker_of[t] = bw; p.order_of[t] = (int)p.prog[bw].size();
-        p.prog[bw].push_back(t);
-        p.makespan_us = std::max(p.makespan_us, best);
+        for (size_t m = 0; m < mem.size(); ++m) place(mem[m], at[m], start + ucost[u]);
     }
     for (int i = 0; i < nt; ++i) p.total_work_us += cost[i];
     // Reduced cross-worker waits: one per (task, source worker), on the last predecessor in that worker's order; the need is in task counts here and

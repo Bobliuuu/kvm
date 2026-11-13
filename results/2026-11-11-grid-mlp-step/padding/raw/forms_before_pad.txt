@@ -1,0 +1,85 @@
+form at 108 workers (B one-block, S<n> split at n shares, G grid, . unfused):
+  width  d1   d2   d3   d4
+     48 B    B    B    B   
+     56 B    B    B    B   
+     64 B    B    B    B   
+     80 B    B    B    S18 
+     88 B    B    S18  S18 
+     96 B    B    S18  S18 
+    104 B    B    S18  S18 
+    112 B    S18  S18  S18 
+    120 B    S18  S18  S18 
+    128 B    S18  S18  S18 
+    136 S18  S18  S18  S18 
+    144 S18  S18  S18  S18 
+    152 S18  S18  S18  S18 
+    160 S18  S18  S18  S18 
+    168 S18  S18  S18  S18 
+    176 S18  S18  S18  S18 
+    184 S18  S18  S18  S18 
+    192 S18  S18  S18  S18 
+    200 S18  S18  S18  S18 
+    208 S18  S18  S18  S18 
+    216 S18  S18  S18  S18 
+    224 S18  S18  S18  S18 
+    232 S18  S18  S18  S18 
+    240 S18  S18  S18  S18 
+    248 S18  S18  S18  S18 
+    264 S18  S18  S18  S18 
+    272 S18  S18  S18  S18 
+    280 S18  S18  S18  S18 
+    288 S18  S18  S18  S18 
+    296 S18  S18  S18  .   
+    304 S18  S18  S18  G   
+    312 S18  S18  S18  .   
+    320 S18  S18  S18  G   
+    328 S18  S18  S18  .   
+    336 S18  S18  S18  G   
+    344 S18  S18  .    .   
+    352 S18  S18  G    G   
+    360 S18  S18  .    .   
+    368 S18  S18  G    G   
+    376 S18  S18  .    .   
+    384 S18  S18  G    G   
+    392 S18  S18  .    .   
+    400 S18  S18  G    G   
+    408 S18  S18  .    .   
+    416 S18  S18  G    G   
+    424 S18  S18  .    .   
+    432 S18  S18  G    G   
+    440 S18  S18  .    .   
+    448 S18  S18  G    G   
+    456 S18  S18  .    .   
+    464 S18  S18  G    G   
+    472 S18  S18  .    .   
+    480 S18  S18  G    G   
+    488 S18  S18  .    .   
+    496 S18  S18  G    G   
+    504 S18  S18  .    .   
+    512 S18  S18  G    G   
+    520 S18  S18  .    .   
+    528 S18  S18  G    G   
+    536 S18  S18  .    .   
+    544 S18  S18  G    G   
+    552 S18  S18  .    .   
+    560 S18  S18  G    G   
+    568 S18  S18  .    .   
+    576 S18  S18  G    G   
+    584 S18  .    .    .   
+    592 S18  G    G    G   
+    600 S18  .    .    .   
+    608 S18  G    G    G   
+    616 S18  .    .    .   
+    624 S18  G    G    G   
+    632 S18  .    .    .   
+    640 S18  G    G    G   
+cells: 292; one-block 24, split 178, grid 45, unfused 45 (15%)
+  depth 1: B 10, S 63, G 0, . 0 of 73
+  depth 2: B 7, S 58, G 4, . 4 of 73
+  depth 3: B 4, S 31, G 19, . 19 of 73
+  depth 4: B 3, S 26, G 22, . 22 of 73
+why the unfused cells stay so (the split and grid forms' reasons; counts):
+   28  split form: no share count fits (at best N floats a member, at 16 shares, limit 38400, gangs of at most 108 workers) | grid form: the shape is outside the op's bounds (H and E multiples of 16, V of 4 up to 128, 96 rows a step)
+    8  split form: no share count fits (at best N floats a member, at 18 shares, limit 38400, gangs of at most 108 workers) | grid form: the shape is outside the op's bounds (H and E multiples of 16, V of 4 up to 128, 96 rows a step)
+    7  split form: no share count fits (at best N floats a member, at 12 shares, limit 38400, gangs of at most 108 workers) | grid form: the shape is outside the op's bounds (H and E multiples of 16, V of 4 up to 128, 96 rows a step)
+    2  split form: no share count fits (at best N floats a member, at 10 shares, limit 38400, gangs of at most 108 workers) | grid form: the shape is outside the op's bounds (H and E multiples of 16, V of 4 up to 128, 96 rows a step)

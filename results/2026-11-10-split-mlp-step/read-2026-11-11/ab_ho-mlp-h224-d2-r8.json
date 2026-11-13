@@ -1,0 +1,37 @@
+[
+ {
+  "row": "ho-mlp-h224-d2-r8",
+  "control": "/root/reads/gangfix/bundles-ddf9d6b225d9c667/ho224_r8",
+  "cand": "/root/reads/gangfix/bundles-ddf9d6b225d9c667/ho224_r8",
+  "tasks": {
+   "control": 35184,
+   "cand": 35184
+  },
+  "ms": {
+   "control": {
+    "median": 8.284,
+    "best": 8.276,
+    "all": [
+     8.29,
+     8.28,
+     8.29,
+     8.28,
+     8.28
+    ]
+   },
+   "cand": {
+    "median": 21.164,
+    "best": 21.134,
+    "all": [
+     21.16,
+     21.15,
+     21.16,
+     21.13,
+     21.17
+    ]
+   }
+  },
+  "paired_ratio_median": 0.39159647960632155,
+  "best_ratio": 0.39159647960632155
+ }
+]

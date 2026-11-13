@@ -1,0 +1,27 @@
+NVIDIA A100-SXM4-40GB, 108 SMs, 163 KB shared memory a block (opt-in); model E 48 V 100 H 576 depth 1, T 96 (6 slices of 16), S 12 shares (width <= 48, padded 48): 72 blocks, 68.1 KB a block
+check step 0: loss 4.605971, fp64 4.605968
+check step 1: loss 4.611869, fp64 4.611870
+check step 2: loss 4.605380, fp64 4.605381
+check after 3 steps: loss max rel 5.52e-07; update rel L2 W0 4.37e-04, b0 2.72e-04, Wh 4.16e-04, emb 5.92e-04 (TF32 operands: a few 1e-3 expected)
+check ok
+timed: 200 steps: 34.18 us a step in the kernel (block 0's %globaltimer over its counted loop), 34.26 us by events (launch and host delays included)
+block 0 by phase (cycles a step):
+  load (weights, embedding rows)         6814  (18.3%)
+  forward GEMM (Z = X0 W0_s)              951  ( 2.6%)
+  GELU and gelu'                         1409  ( 3.8%)
+  logits partial GEMM (to L2)            1502  ( 4.0%)
+  barrier 1                              1711  ( 4.6%)
+  logits: S partials summed              2770  ( 7.4%)
+  cross-entropy                          6434  (17.3%)
+  dH GEMM and dZ                         2159  ( 5.8%)
+  dWh_s GEMM (to L2)                     1388  ( 3.7%)
+  dW0_s GEMM (to L2)                      963  ( 2.6%)
+  dX0 GEMM (to L2)                       1275  ( 3.4%)
+  db0 column sums (to L2)                 563  ( 1.5%)
+  barrier 2                              1799  ( 4.8%)
+  owners: parameters                     2279  ( 6.1%)
+  owners: embedding rows + barrier 3     5255  (14.1%)
+  total                                 37274 cycles
+block 0's phases: from the last warp's end of the previous phase to the last warp's end of this one (per-warp stamps)
+blocks ran on 72 distinct SMs of 72 blocks (one block a SM)
+effective SM clock 1090 MHz (block 0's cycles over its kernel time), rated 1410 MHz: below the rated clock (a power, thermal or application-clock limit)

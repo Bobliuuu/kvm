@@ -1,0 +1,34 @@
+tree: 2722a41 (code identical to the branch head), worktree clean: yes
+nvcc: Build cuda_12.8.r12.8/compiler.35583870_0
+command: nvcc -std=c++17 -O3 -DKVM_LEAN -Iinclude -gencode arch=compute_80,code=compute_80 -c kvm_exec.cu -o /tmp/kvm_exec.ptxonly.o
+  include/kvm_ops_gpt.cuh(836): warning #177-D: variable "TILE" was declared but never referenced
+        constexpr int BK = 32, NST = 3, BM = 64 * WM, BN = WTN * WN, NJ = WTN / 8, ATILE = BM * BK, TILE = ATILE, STAGE = (BM + BN) * BK;
+                                                                                                    ^
+  
+  Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+  
+  include/kvm_ops_gpt.cuh(573): warning #20058-D: the #pragma unroll must precede a loop
+    #pragma unroll
+            ^
+            detected during instantiation of "void kvmgpt::mm_tile_big<TA,TB,PREC,WM,WN,WTN,BF,RZ>(const float *, int, const float *, int, float *, int, const float *, const float *, int, float *, int, int, int, int, int, int, float, int, __nv_bool) [with TA=false, TB=false, PREC=false, WM=2, WN=4, WTN=32, BF=false, RZ=true]" at line 1080
+  
+  include/kvm_ops_gpt.cuh(591): warning #20058-D: the #pragma unroll must precede a loop
+    #pragma unroll
+            ^
+            detected during instantiation of "void kvmgpt::mm_tile_big<TA,TB,PREC,WM,WN,WTN,BF,RZ>(const float *, int, const float *, int, float *, int, const float *, const float *, int, float *, int, int, int, int, int, int, float, int, __nv_bool) [with TA=false, TB=false, PREC=false, WM=2, WN=4, WTN=32, BF=false, RZ=true]" at line 1080
+  
+  include/kvm_ops_gpt.cuh(629): warning #20058-D: the #pragma unroll must precede a loop
+    #pragma unroll
+            ^
+            detected during instantiation of "void kvmgpt::mm_tile_big<TA,TB,PREC,WM,WN,WTN,BF,RZ>(const float *, int, const float *, int, float *, int, const float *, const float *, int, float *, int, int, int, int, int, int, float, int, __nv_bool) [with TA=false, TB=false, PREC=true, WM=2, WN=4, WTN=32, BF=false, RZ=false]" at line 1080
+  
+  include/kvm_ops_gpt.cuh(647): warning #20058-D: the #pragma unroll must precede a loop
+    #pragma unroll
+            ^
+            detected during instantiation of "void kvmgpt::mm_tile_big<TA,TB,PREC,WM,WN,WTN,BF,RZ>(const float *, int, const float *, int, float *, int, const float *, const float *, int, float *, int, int, int, int, int, int, float, int, __nv_bool) [with TA=false, TB=false, PREC=true, WM=2, WN=4, WTN=32, BF=false, RZ=false]" at line 1080
+  
+  kvm_exec.cu(402): warning #177-D: function "kvm_seeded_reference" was declared but never referenced
+    static void kvm_seeded_reference(float* out, size_t n, unsigned long long seed, int draws, float bias, float coef) {
+                ^
+  
+ptx-check rc=0 in 98 s (code=compute_80 only: PTX, ptxas not run)

@@ -1,0 +1,3 @@
+  kvm_s_fmlp_grid               68 MMA loops; LDL a pass median 0, max 35; loops of <= 64 HMMA a pass: max 35
+  kvm_s_fmlp_slice              43 MMA loops; LDL a pass median 0, max 43; loops of <= 64 HMMA a pass: max 0
+  kvm_s_fmlp_split             165 MMA loops; LDL a pass median 4, max 2287; loops of <= 64 HMMA a pass: max 33

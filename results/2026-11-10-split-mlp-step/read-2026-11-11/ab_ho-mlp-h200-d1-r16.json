@@ -1,0 +1,37 @@
+[
+ {
+  "row": "ho-mlp-h200-d1-r16",
+  "control": "/root/reads/gangfix/bundles-ddf9d6b225d9c667/ho200_r16",
+  "cand": "/root/reads/gangfix/bundles-ddf9d6b225d9c667/ho200_r16",
+  "tasks": {
+   "control": 38400,
+   "cand": 38400
+  },
+  "ms": {
+   "control": {
+    "median": 7.569,
+    "best": 7.56,
+    "all": [
+     7.58,
+     7.58,
+     7.57,
+     7.57,
+     7.56
+    ]
+   },
+   "cand": {
+    "median": 26.539,
+    "best": 26.534,
+    "all": [
+     26.54,
+     26.58,
+     26.53,
+     26.56,
+     26.54
+    ]
+   }
+  },
+  "paired_ratio_median": 0.2850692354003612,
+  "best_ratio": 0.28491746438531695
+ }
+]

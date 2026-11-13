@@ -1,0 +1,4 @@
+name, driver_version, clocks.max.sm [MHz], power.limit [W]
+NVIDIA A100-SXM4-40GB, 580.105.08, 1410 MHz, 400.00 W
+clocks.current.sm [MHz], clocks_event_reasons.active, power.draw [W]
+1410 MHz, 0x0000000000000000, 77.59 W

@@ -1,0 +1,23 @@
+fused_mlp_bed: tokens=96 V=100 E=48 hidden=72,72 slices=6 (R=16), steps=200; shared memory 108 KB, 1 resident block(s)/SM
+warm-up (rep 0): 6.034 ms
+rep 1: 6.007 ms = 30.03 us/step
+rep 2: 6.008 ms = 30.04 us/step
+rep 3: 6.010 ms = 30.05 us/step
+best: 30.03 us/step
+phase breakdown (slice 0, cycles per step, 200 steps x4 runs):
+  load weights+ids                       3272  (7.9%)
+  embedding gather                        840  (2.0%)
+  forward GEMMs (+gelu)                  5928  (14.2%)
+  head GEMM                              1099  (2.6%)
+  softmax CE                             2941  (7.1%)
+  head backward GEMMs                    3305  (7.9%)
+  dZ gelu' (+sync)                       1673  (4.0%)
+  bias colsum                            1062  (2.6%)
+  gelu_f again (l>0)                      170  (0.4%)
+  weight gradient GEMM (A^T dZ)          2707  (6.5%)
+  activation gradient GEMM (dZ W^T)      1675  (4.0%)
+  publish partials (atomics, fence)      4010  (9.6%)
+  wait partials (hop)                    1147  (2.8%)
+  reduce + SGD + fence                  10595  (25.5%)
+  wait updates (hop 2)                   1193  (2.9%)
+  total 41617 cycles per step

@@ -2278,7 +2278,7 @@ KVM_GPT_DEVI void split_bf2(float x0, float x1, unsigned& hi, unsigned& lo) {   
 KVM_GPT_DEVI void a_bf2(const float (&a)[4], const float (&b)[4], unsigned (&h)[4], unsigned (&l)[4]) {
     split_bf2(a[0], a[2], h[0], l[0]); split_bf2(a[1], a[3], h[1], l[1]); split_bf2(b[0], b[2], h[2], l[2]); split_bf2(b[1], b[3], h[3], l[3]);
 }
-// A staged tile in bf2 words (tile32_bf2): each fp32 rewritten in place as bf16(x) in the low half and bf16(x - bf16(x)) in the high half,
+// A staged tile in bf2 words (stage_bf2): each fp32 rewritten in place as bf16(x) in the low half and bf16(x - bf16(x)) in the high half,
 // split_bf2's own values, by the thread whose copy wrote it, after its cp.async lands and before the barrier that publishes the tile. Once
 // a CTA instead of once per warp per use (eight warps read every K and V fragment): the fragment loaders below only pair two words' halves.
 KVM_GPT_DEVI void bf2_words(float x0, float x1, unsigned& w0, unsigned& w1) {
@@ -2287,14 +2287,28 @@ KVM_GPT_DEVI void bf2_words(float x0, float x1, unsigned& w0, unsigned& w1) {
     w0 = __byte_perm(hi, lo, 0x5410); w1 = __byte_perm(hi, lo, 0x7632);   // [l0 | h0], [l1 | h1]
 }
 template <int HD>
-KVM_GPT_DEVI void tile32_bf2(float* dst) {   // the chunks tile32_async gave this thread (the same q mapping), as bf2 words
-    constexpr int CPR = HD / 4;
-    for (int q = threadIdx.x; q < 32 * CPR; q += KVM_GPT_THREADS) {
-        uint4* p = reinterpret_cast<uint4*>(dst + (q / CPR) * (HD + 4) + (q % CPR) * 4);
-        const float4 v = *reinterpret_cast<const float4*>(p);
-        uint4 w;
-        bf2_words(v.x, v.y, w.x, w.y); bf2_words(v.z, v.w, w.z, w.w);
-        *p = w;
+KVM_GPT_DEVI void stage_bf2(float* st) {   // a stage's two 32 x HD tiles (st and st + its tile), this thread's chunks (tile32_async's), as bf2 words
+    constexpr int CPR = HD / 4, NCH = 32 * CPR, NQ = (NCH + KVM_GPT_THREADS - 1) / KVM_GPT_THREADS, TILE = 32 * (HD + 4);
+    float4 v[2][NQ];
+#pragma unroll
+    for (int j = 0; j < NQ; j++) {   // every load first, so their shared-memory latencies overlap
+        const int q = threadIdx.x + j * KVM_GPT_THREADS;
+        if (NCH % KVM_GPT_THREADS != 0 && q >= NCH) break;
+        const int o = (q / CPR) * (HD + 4) + (q % CPR) * 4;
+        v[0][j] = *reinterpret_cast<const float4*>(st + o);
+        v[1][j] = *reinterpret_cast<const float4*>(st + TILE + o);
+    }
+#pragma unroll
+    for (int j = 0; j < NQ; j++) {
+        const int q = threadIdx.x + j * KVM_GPT_THREADS;
+        if (NCH % KVM_GPT_THREADS != 0 && q >= NCH) break;
+        const int o = (q / CPR) * (HD + 4) + (q % CPR) * 4;
+#pragma unroll
+        for (int t2 = 0; t2 < 2; t2++) {
+            uint4 w;
+            bf2_words(v[t2][j].x, v[t2][j].y, w.x, w.y); bf2_words(v[t2][j].z, v[t2][j].w, w.z, w.w);
+            *reinterpret_cast<uint4*>(st + t2 * TILE + o) = w;
+        }
     }
 }
 // The hi and lo bf16x2 of two bf2 words, a (low half of the pair) and b: split_bf2's pair, by byte permutes.
@@ -2386,25 +2400,43 @@ KVM_GPT_DEVI void load_a_raw(float (&a)[HD / 8][4], const float* base, int ld, i
     }
 }
 // cp.async copy of a 32 x HD tile (rows row0.. of a row-major matrix, leading dimension ldg) to shared rows of stride HD+4;
-// rows >= rmax are zero-filled. The padding makes every mma fragment load bank-conflict free.
+// rows >= rmax are zero-filled. The padding makes every mma fragment load bank-conflict free. A thread copies the chunks
+// q = threadIdx.x + j * KVM_GPT_THREADS of 4 floats (row q / CPR, column 4 (q % CPR)). Their count is a constant, so the copy unrolls with
+// no trip test, and their offsets are 32-bit and the same every tile, so the tile loops that call this compute them once; a full tile
+// takes no row test. Under phase clocks on an A100 the loop form's per-chunk 64-bit address math and branches were 16-18% of every
+// attention kernel, run by every warp right after the same barrier.
 template <int HD>
 KVM_GPT_DEVI void tile32_async(float* dst, const float* src, int ldg, int row0, int rmax, bool bf = false) {
-    constexpr int CPR = HD / 4;
+    constexpr int CPR = HD / 4, NCH = 32 * CPR, NQ = (NCH + KVM_GPT_THREADS - 1) / KVM_GPT_THREADS;
     if (bf) {   // raw bf16 source: 8-byte loads widened (exactly) into the same fp32 tile; plain stores, visible after the consumer's __syncthreads
-        for (int q = threadIdx.x; q < 32 * CPR; q += KVM_GPT_THREADS) {
-            int r = q / CPR, c = (q % CPR) * 4, gr = row0 + r;
+        const uint16_t* bs = reinterpret_cast<const uint16_t*>(src);
+#pragma unroll
+        for (int j = 0; j < NQ; j++) {
+            const int q = threadIdx.x + j * KVM_GPT_THREADS;
+            if (NCH % KVM_GPT_THREADS != 0 && q >= NCH) break;
+            const int r = q / CPR, c = (q % CPR) * 4, gr = row0 + r;
             float4 v = make_float4(0.f, 0.f, 0.f, 0.f);
             if (gr < rmax) {
-                const uint2 u = *reinterpret_cast<const uint2*>(reinterpret_cast<const uint16_t*>(src) + (size_t)gr * ldg + c);
+                const uint2 u = *reinterpret_cast<const uint2*>(bs + (size_t)gr * ldg + c);
                 v = make_float4(bf_lo(u.x), bf_hi(u.x), bf_lo(u.y), bf_hi(u.y));
             }
             *reinterpret_cast<float4*>(dst + r * (HD + 4) + c) = v;
         }
         return;
     }
-    for (int q = threadIdx.x; q < 32 * CPR; q += KVM_GPT_THREADS) {
-        int r = q / CPR, c = (q % CPR) * 4, gr = row0 + r;
-        cp_async16(dst + r * (HD + 4) + c, gr < rmax ? src + (size_t)gr * ldg + c : src, gr < rmax ? 16 : 0);
+    const float* base = src + (size_t)row0 * ldg;
+    const bool full = row0 + 32 <= rmax;
+#pragma unroll
+    for (int j = 0; j < NQ; j++) {
+        const int q = threadIdx.x + j * KVM_GPT_THREADS;
+        if (NCH % KVM_GPT_THREADS != 0 && q >= NCH) break;
+        const int r = q / CPR, c = (q % CPR) * 4;
+        float* d = dst + r * (HD + 4) + c;
+        if (full) cp_async16(d, base + r * ldg + c);
+        else {
+            const bool in = row0 + r < rmax;
+            cp_async16(d, in ? base + r * ldg + c : src, in ? 16 : 0);
+        }
     }
 }
 // p = exp(scale*s - lse) (c2 = scale*log2(e), lse2 = lse*log2(e)) where the mask holds, else 0.
@@ -2448,7 +2480,7 @@ KVM_GPT_DEVI void attn_fwd_t(const AttnArgs& A) {
     for (int it = 0; it < nk; it++) {
         cp_wait<1>();
 #if KVM_GPT_ATTN_BF2
-        { float* st = KV + (it % M::NST) * M::STAGE; tile32_bf2<HD>(st); tile32_bf2<HD>(st + M::TILE); }   // this thread's chunks of tile `it`
+        stage_bf2<HD>(KV + (it % M::NST) * M::STAGE);   // this thread's chunks of tile `it`
 #endif
         __syncthreads();   // tile `it` landed; every warp finished tile it-1, so the stage the next issue fills is free
         issue(it + 2);
@@ -2573,7 +2605,7 @@ KVM_GPT_DEVI void attn_dq_t(const AttnArgs& A) {
     for (int it = 0; it < nk; it++) {
         cp_wait<1>();
 #if KVM_GPT_ATTN_BF2
-        { float* st = KV + (it % M::NST) * M::STAGE; tile32_bf2<HD>(st); tile32_bf2<HD>(st + M::TILE); }   // this thread's chunks of tile `it`
+        stage_bf2<HD>(KV + (it % M::NST) * M::STAGE);   // this thread's chunks of tile `it`
 #endif
         __syncthreads();
         issue(it + 2);
@@ -2701,7 +2733,7 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
     for (int it = 0; it < nit; it++) {
         cp_wait<1>();
 #if KVM_GPT_ATTN_BF2
-        { float* st = QO + (it % M::NST) * M::STAGE; tile32_bf2<HD>(st); tile32_bf2<HD>(st + M::TILE); }   // this thread's chunks of tile `it`
+        stage_bf2<HD>(QO + (it % M::NST) * M::STAGE);   // this thread's chunks of tile `it`
 #endif
         __syncthreads();
         issue(it + 2);

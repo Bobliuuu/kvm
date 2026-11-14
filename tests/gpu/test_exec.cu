@@ -171,7 +171,7 @@ static void err_case(const char* name, int want, KvmConfig cfg, const std::funct
 static bool suite_errors() {
   auto one = [](const char* op, std::vector<KvmArg> a, KvmTaskOpts o = {}) { KvmBundleBuilder bb; bb.add(op, a, o); return bb.build(); };
   KvmConfig c = small_cfg(3);
-  err_case("bad op id", KVM_ERR_BAD_OP, c, [&](KvmExec&) { KvmBundle b = one("noop", {}); b.tasks[0].op_id = 126; return b; });
+  err_case("bad op id", KVM_ERR_BAD_OP, c, [&](KvmExec&) { KvmBundle b = one("noop", {}); b.tasks[0].op_id = 250; return b; });   // an id no pack registers (126 is round_tf32)
   err_case("bad arity", KVM_ERR_BAD_ARITY, c, [&](KvmExec&) { KvmBundle b = one("noop", {}); b.tasks[0].args_words = 2; b.args = {0, 0}; return b; });
   err_case("bad buffer index", KVM_ERR_BAD_BUF_INDEX, c, [&](KvmExec&) { return one("fill", {Bf(7), F(1), I(4)}); });
   err_case("n beyond buffer", KVM_ERR_BOUNDS, c, [&](KvmExec&) { return one("fill", {Bf(1), F(1), I(9)}); });
@@ -182,7 +182,8 @@ static bool suite_errors() {
   err_case("bad successor", KVM_ERR_BAD_TASK, c, [&](KvmExec&) { KvmBundle b = one("noop", {}); b.tasks[0].succ_cnt = 1; b.succ = {5}; return b; });
   { KvmConfig s = c; s.max_tasks = 8; err_case("slot pool exhausted", KVM_ERR_SLOTS, s, [&](KvmExec&) { KvmBundleBuilder bb; for (int i = 0; i < 9; ++i) bb.add("noop", {}); return bb.build(); }); }
   { KvmConfig s = c; s.live_cap = 8; err_case("batch > live_cap", KVM_ERR_BATCH_TOO_LARGE, s, [&](KvmExec&) { KvmBundleBuilder bb; for (int i = 0; i < 9; ++i) bb.add("noop", {}); return bb.build(); }); }
-  { KvmConfig s = c; s.succ_cap = 2; err_case("successor ring too small", KVM_ERR_POOL, s, [&](KvmExec&) { KvmBundleBuilder bb; int a = bb.add("noop", {}), b = bb.add("noop", {}), d = bb.add("noop", {}), e = bb.add("noop", {}); bb.edge(a, b); bb.edge(b, d); bb.edge(d, e); return bb.build(); }); }
+  { KvmConfig s = c; s.succ_cap = 2;   // KvmExec raises succ_cap to the admission ring (kvm_succ_ring_words), so a record can never outgrow it: no POOL from this config
+    err_case("successor ring below the admission ring is raised to it", KVM_ERR_OK, s, [&](KvmExec&) { KvmBundleBuilder bb; int a = bb.add("noop", {}), b = bb.add("noop", {}), d = bb.add("noop", {}), e = bb.add("noop", {}); bb.edge(a, b); bb.edge(b, d); bb.edge(d, e); return bb.build(); }); }
   { KvmConfig s = c; s.timeout_us = 300000; err_case("unsatisfied wait -> timeout", KVM_ERR_TIMEOUT, s, [&](KvmExec&) { return one("noop", {}, [] { KvmTaskOpts o; o.wait_var = 2; o.wait_ver = 1; return o; }()); }); }
   // host-side validation rejects what the device would (and the executor stays usable)
   { KvmExec ex(c); float* a = ex.arena(8); ex.add_view(a, 1, 8); ex.start();

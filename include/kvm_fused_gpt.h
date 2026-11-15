@@ -250,13 +250,16 @@ KVM_FGPT_HD inline KvmFgptZbwRun kvm_fgpt_zbw_of(int N, int T, int d, int H, int
   z.attn = KVM_FGPT_ZBW_ATTN && QB > 1 && W > 0 && 2 * W <= G;
   return z;
 }
-// A shape's fit: the gang width G (a power of two up to min(KVM_FGPT_MAX_GANG, max_g, N)) whose members fit `smem_floats` (the fast form's
-// phases, kvm_fgpt_smem_floats) with the default query blocks and the largest row chunk that fits; G 0 when none does (the run is not
-// fused). The preferred width gives each member two rows at least (G <= N / 2) and one 8-wide MMA tile of the MLP's hidden units (G <= F / 8):
-// below either, a member's GEMM tiles run part empty while each barrier and reduce-scatter pays for every member. On an A100 bed (20 steps,
-// 5 paired rounds): gpt-tiny (N 32, F 128) 199.0k cycles a step at G 16 against 201.9k at 32; gpt-small (N 128, F 256) 314.7 us at 32
-// against 357.3 at 64; a d128 (N 128, F 512) 963.9 us at 64 against 1,037.1 at 32, and the hold-out's d128 (N 192) 1,201.9 against 1,328.9.
-// Where the preferred width does not fit, a wider one may (its weight slices are smaller), then a narrower one.
+// A shape's fit: the gang width G whose members fit `smem_floats` (the fast form's phases, kvm_fgpt_smem_floats) with the default query
+// blocks and the largest row chunk that fits; G 0 when none does (the run is not fused). The preferred width gives each member two rows at
+// least (G <= N / 2) and one 8-wide MMA tile of the MLP's hidden units (G <= F / 8): below either, a member's GEMM tiles run part empty while
+// each barrier and reduce-scatter pays for every member. On an A100 bed (20 steps, 5 paired rounds): gpt-tiny (N 32, F 128) 199.0k cycles a
+// step at G 16 against 201.9k at 32; gpt-small (N 128, F 256) 314.7 us at 32 against 357.3 at 64; a d128 (N 128, F 512) 963.9 us at 64
+// against 1,037.1 at 32, and the hold-out's d128 (N 192) 1,201.9 against 1,328.9. So G = F / 8 comes first, at any width up to
+// KVM_FGPT_MAX_GANG: where F / 8 is no power of two, the powers below it leave a member's second tile part empty. An A100 bed
+// (2 rounds): d96 (F 384) at G 48 against the power of two the search took, x1.306 at N 128 (G 32), x1.165 at N 384 (G 32) and x1.084
+// at N 512 (G 64); d48 (F 192) at N 384 x1.163 at G 24 against G 16. Then the powers of two up to min(KVM_FGPT_MAX_GANG, max_g, N): where
+// the preferred width does not fit, a wider one may (its weight slices are smaller), then a narrower one.
 struct KvmFgptFit { int G = 0, qb = 1, rows = 0; };
 KVM_FGPT_HD inline bool kvm_fgpt_fit_at(int G, int N, int T, int d, int H, int F, int V, int smem_floats, KvmFgptFit& f) {
   const int qb = kvm_fgpt_qblocks(N / T, H, T, G), rows = kvm_fgpt_rows_for(N, T, d, H, F, V, G, qb, smem_floats);
@@ -267,6 +270,8 @@ KVM_FGPT_HD inline bool kvm_fgpt_fit_at(int G, int N, int T, int d, int H, int F
 KVM_FGPT_HD inline KvmFgptFit kvm_fgpt_fit(int N, int T, int d, int H, int F, int V, int smem_floats, int max_g) {
   KvmFgptFit f;
   if (T <= 0 || N % T) return f;
+  const int gw = F / 8;                                                              // one whole 8-wide tile of hidden units a member
+  if (F % 8 == 0 && gw >= 1 && gw <= KVM_FGPT_MAX_GANG && gw <= max_g && 2 * gw <= N && kvm_fgpt_fit_at(gw, N, T, d, H, F, V, smem_floats, f)) return f;
   int gmax = 1;
   while (gmax * 2 <= KVM_FGPT_MAX_GANG && gmax * 2 <= max_g && gmax * 2 <= N) gmax *= 2;
   int g0 = gmax;

@@ -242,11 +242,27 @@ struct KvmFgptZbwRun {
   bool attn = false;
   KVM_FGPT_HD bool any() const { return mlp.zg > 0 || attn; }
 };
+// Whether ZBW's doers fit the waits they fill. A doer's weight gradients (dW1 and dW2 of `most` owners' fp hidden units over the N rows,
+// 2 most fp d N multiply-adds) are set against one attention item's backward, which the members with an item run meanwhile (its TQ query
+// rows against the T keys in 5 products of width hd, and its projections' 7 of width d: TQ hd (5 T + 7 d)); and a doer whose owners take
+// more than one pass (zg < most) stages every row chunk once a pass, which the count leaves out. On an A100 bed (fifteen
+// hold-out-shaped GPTs at the executor's G, ZBW on against off), ZBW won only in one pass at ratios of 0.42 to 1.41 (its step
+// x1.029-1.057); it lost in two or more passes at 1.41 to 2.77 (x0.81-0.93) and in one at 1.76 to 2.23 (x0.93-1.00). Every output is the
+// same bits either way (a doer sums each owner's gradient in the owner's order), so the rule decides only the step's time.
+KVM_FGPT_HD inline bool kvm_fgpt_zbw_fits(int N, int T, int d, int hd, int QB, int fp, int most) {
+  const long long TQ = QB > 0 ? T / QB : T;
+  const long long doer = 2LL * most * fp * d * N, item = TQ * hd * (5LL * T + 7LL * d);
+  return 10 * doer <= 16 * item;
+}
 KVM_FGPT_HD inline KvmFgptZbwRun kvm_fgpt_zbw_of(int N, int T, int d, int H, int F, int G, int QB, int rows, long long smem_floats) {
   KvmFgptZbwRun z;
   const int B = T > 0 ? N / T : 0, W = B * H * QB, fp = G > 0 ? (F + G - 1) / G : 0, nf = fp > 0 ? (F + fp - 1) / fp : 0;
   const int RC = rows < N ? rows : N, hd = H > 0 ? d / H : 0;
   z.mlp = kvm_fgpt_zbw_plan(G, W, nf, fp, d, kvm_fgpt_r16(RC), smem_floats - kvm_fgpt_smem_head(N, T, hd));
+  if (z.mlp.zg > 0) {
+    const int most = (nf + z.mlp.doers - 1) / z.mlp.doers;
+    if (z.mlp.zg < most || !kvm_fgpt_zbw_fits(N, T, d, hd, QB, fp, most)) z.mlp = KvmFgptZbw{};
+  }
   z.attn = KVM_FGPT_ZBW_ATTN && QB > 1 && W > 0 && 2 * W <= G;
   return z;
 }

@@ -1856,10 +1856,13 @@ static void usage() {
     "  --trace-csv FILE   per-task timeline  --dump-buffers   print buffers   --quiet   errors only   --check-ops   print registry\n"
     "  --warm-ms N   keep the GPU busy N ms right before the timed launch (the SM clock runs low under sparse work; short timed runs inherit it)\n"
     "  --full-smem   launch with the build's maximum dynamic shared memory instead of the bundles' largest task's (less L1 for every op)\n"
+    "  --batch-min-runs N (the fewest grid runs of one shape that run as one batched gang a step; default 8)\n"
+    "  --no-batch (no batched form: grid runs take the virtual form, else their own gangs a wave each)\n"
+    "  --virtual-over-batch N (the most grid runs of one gang the virtual form takes ahead of the batched form; default 16; 0: the batched form first)\n"
     "  --no-dissolve      keep the noops that only order tasks (default: spliced out of a plain single-bundle run on the dynamic path)\n"
     "  --no-tape-sort     admit the tape as the bundle wrote it (default on the dynamic path: dependency order, which starts every replicated run at once)\n"
     "  --dump-bin DIR i,j,..  write the listed buffers (by metadata index, widened to little-endian f32 / raw i32) to DIR/<index>.bin after the run\n"
-    "  --static           (default for one bundle) run the bundle as per-worker programs compiled at load: no ready queue, no admission  --workers N  --comm-us X (scheduler's cross-worker cost)  --no-partition (independent runs share all workers)  --no-fuse (no fused training steps; by default every run whose steps match is fused, --dump-buffers included: MLP steps on the static path, GPT runs on the fused GPT kernel)  --no-fuse-gpt (the GPT runs only)  --batch-min-runs N (the fewest grid runs of one shape that run as one batched gang a step; default 8)  --no-batch (no batched form: grid runs take the virtual form, else their own gangs a wave each)  --virtual-over-batch N (the most grid runs of one gang the virtual form takes ahead of the batched form; default 16; 0: the batched form first)\n"
+    "  --static           (default for one bundle) run the bundle as per-worker programs compiled at load: no ready queue, no admission  --workers N  --comm-us X (scheduler's cross-worker cost)  --no-partition (independent runs share all workers)  --no-fuse (no fused training steps; by default every run whose steps match is fused, --dump-buffers included: MLP steps on the static path, GPT runs on the fused GPT kernel)  --no-fuse-gpt (the GPT runs only)\n"
     "  --dynamic          use the admission ring and ready queue even for one bundle\n");
 }
 

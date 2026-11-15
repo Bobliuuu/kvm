@@ -981,6 +981,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
       phase();
       float* const HF = ar.take((long long)RC16 * ldd);
       float* const WH = ar.take((long long)kvm_fgpt_r8(D) * ldw);
+      float* const LS = ar.take((long long)RC16 * w);                                // the chunk's logits, for its rows' statistics
       if (!check()) return false;
       for (int c0 = 0; c0 < N; c0 += RC) {                                            // the head's columns stage with the first chunk and stay
         KVM_FGPT_PHASE_CONSTS;
@@ -993,18 +994,25 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
           const Copy cs[1] = {rows};
           stage_all(cs);
         }
-        gemm<false, false>(HF, ldd, WH, ldw, rc, w, D, prec, [&](int m, int n, float a) { logits[(size_t)(c0 + m) * V + v0 + n] = a; });
-      }
-      for (int r = tid; r < N; r += NT) {
-        const float* const lr = logits + (size_t)r * V;
-        float mx = -INFINITY;
-        for (int c = v0; c < p.v1; ++c) mx = fmaxf(mx, ld(lr + c));
-        float se = 0.f;
-        for (int c = v0; c < p.v1; ++c) se += expf(ld(lr + c) - mx);
-        X[s.ce + ((size_t)b * N + r) * 2] = mx;
-        X[s.ce + ((size_t)b * N + r) * 2 + 1] = se;
-        const int tg = tgt[r];
-        if (tg >= v0 && tg < p.v1) X[s.tl + r] = ld(lr + tg);
+        gemm<false, false>(HF, ldd, WH, ldw, rc, w, D, prec, [&](int m, int n, float a) {
+          logits[(size_t)(c0 + m) * V + v0 + n] = a;
+          LS[m * w + n] = a;
+        });
+        // The chunk's rows' statistics over this member's columns, from the copy in shared memory (gemm's closing sync: it is complete),
+        // the columns in order as before, where each row's two passes read the logits back from L2 one dependent load at a time.
+        for (int i = tid; i < rc; i += NT) {
+          const int r = c0 + i;
+          const float* const lr = LS + (size_t)i * w;
+          float mx = -INFINITY;
+          for (int c = 0; c < w; ++c) mx = fmaxf(mx, lr[c]);
+          float se = 0.f;
+          for (int c = 0; c < w; ++c) se += expf(lr[c] - mx);
+          X[s.ce + ((size_t)b * N + r) * 2] = mx;
+          X[s.ce + ((size_t)b * N + r) * 2 + 1] = se;
+          const int tg = tgt[r];
+          if (tg >= v0 && tg < p.v1) X[s.tl + r] = lr[tg - v0];
+        }
+        __syncthreads();                                                              // LS is the next chunk's
       }
     }
     ph(MK_LOGITS);

@@ -221,8 +221,8 @@ KVM_FGPT_HD inline long long kvm_fgpt_smem_floats(int N, int T, int d, int H, in
                           r4((long long)kvm_fgpt_r8(wf) * ldm) + r4(wf);
   const long long mlp_b = 2 * r4((long long)N16 * kvm_fgpt_ldk(wf)) + r4((long long)N16 * kvm_fgpt_ldmn(wf)) + r4((long long)N16 * mx(ldd, ldm)) +
                           mx(r4((long long)kvm_fgpt_r8(wf) * ldd), r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldk(wf)));
-  // the head: hf and its columns (logits); dlogits, hf, its columns again (backward)
-  const long long logit = r4((long long)N16 * ldd) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldmn(wv));
+  // the head: hf, its columns and the chunk's logits (forward); dlogits, hf, its columns again (backward)
+  const long long logit = r4((long long)N16 * ldd) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldmn(wv)) + r4((long long)N16 * wv);   // + the chunk's logits
   const long long headb = r4((long long)N16 * kvm_fgpt_ldk(wv)) + r4((long long)N16 * ldm) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldk(wv));
   // the embedding's gradient: gx, a row chunk of it (unpadded)
   const long long emb = r4((long long)(R < N ? R : N) * d);

@@ -290,7 +290,11 @@ KVM_FGPT_HD inline bool kvm_fgpt_fit_at(int G, int N, int T, int d, int H, int F
 KVM_FGPT_HD inline KvmFgptFit kvm_fgpt_fit(int N, int T, int d, int H, int F, int V, int smem_floats, int max_g) {
   KvmFgptFit f;
   if (T <= 0 || N % T) return f;
-  const int gw = F / 8;                                                              // one whole 8-wide tile of hidden units a member
+  // at N >= 192, half a tile a member where that width still seats (G-SWEEP2: d48 at G 48 = F / 4 against its F / 8 of 24, x1.065 at N 256,
+  // x1.118 at N 192, x1.121 at N 384, x1.146 at two layers; d96's and d128's F / 4 lie past KVM_FGPT_MAX_GANG, where G-SWEEP3 found 96
+  // members no faster); then one whole 8-wide tile of hidden units a member
+  const int gq = F / 4, gw = F / 8;
+  if (N >= 192 && F % 4 == 0 && gq <= KVM_FGPT_MAX_GANG && gq <= max_g && 2 * gq <= N && kvm_fgpt_fit_at(gq, N, T, d, H, F, V, smem_floats, f)) return f;
   if (F % 8 == 0 && gw >= 1 && gw <= KVM_FGPT_MAX_GANG && gw <= max_g && 2 * gw <= N && kvm_fgpt_fit_at(gw, N, T, d, H, F, V, smem_floats, f)) return f;
   int gmax = 1;
   while (gmax * 2 <= KVM_FGPT_MAX_GANG && gmax * 2 <= max_g && gmax * 2 <= N) gmax *= 2;

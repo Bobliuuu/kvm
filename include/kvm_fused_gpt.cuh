@@ -79,6 +79,47 @@ __device__ __forceinline__ float warp_sum_l2(int n, const Addr& addr) {
   return a;
 }
 __device__ __forceinline__ float warp_sum(float v) { for (int o = 16; o; o >>= 1) v += __shfl_xor_sync(0xffffffffu, v, o); return v; }
+
+// The embedding's gradient on vocabulary rows [v0, v1) of `out` (rows of D floats): each element is the sum of its token's rows of gx in
+// row order from zero, the order a scan of all N rows adds them, but only those rows are read. The rows go in batches whose sums fit
+// `buf` (`room` floats of the block's shared memory, at least kvm_fgpt_emb_list_floats<NT>() + D). For each chunk of NT token rows the block lists
+// the rows whose token falls in the batch, ascending (a ballot a warp, the warps in order), and each thread adds the listed rows into its
+// own columns of the batch's sums in list order. A column of every vocabulary row stays with one thread, so each sum keeps the scan's
+// adds. gx is read from L2 (another member wrote it); `ids` holds the step's N tokens, each in [0, V). Every thread of the block calls it.
+template <int NT>
+__device__ void emb_grad_rows(const int* ids, int N, int D, const float* gx, float* out, int v0, int v1, float* buf, long long room) {
+  constexpr int NW = NT / 32;
+  const int tid = threadIdx.x, lane = tid & 31, warp = tid >> 5;
+  int* const rows = reinterpret_cast<int*>(buf);
+  int* const vrow = rows + NT;
+  int* const wcnt = vrow + NT;
+  float* const acc = buf + kvm_fgpt_emb_list_floats<NT>();
+  const int nb = (int)((room - kvm_fgpt_emb_list_floats<NT>()) / D);
+  for (int vb = v0; vb < v1; vb += nb) {
+    const int ve = min(v1, vb + nb);
+    for (int e = tid; e < (ve - vb) * D; e += NT) acc[e] = 0.f;
+    for (int c0 = 0; c0 < N; c0 += NT) {
+      const int r = c0 + tid, id = r < N ? ids[r] : -1;
+      const bool hit = id >= vb && id < ve;
+      const unsigned m = __ballot_sync(0xffffffffu, hit);
+      if (lane == 0) wcnt[warp] = __popc(m);
+      __syncthreads();                                                   // the counts; also acc's zeros before any add
+      int at = 0, n = 0;
+      for (int w = 0; w < NW; ++w) { at += w < warp ? wcnt[w] : 0; n += wcnt[w]; }
+      if (hit) { const int q = at + __popc(m & ((1u << lane) - 1u)); rows[q] = r; vrow[q] = id - vb; }
+      __syncthreads();                                                   // the list, before any thread reads it
+      for (int q = 0; q < n; ++q) {
+        float* const a = acc + (size_t)vrow[q] * D;
+        const float* const x = gx + (size_t)rows[q] * D;
+        for (int c = tid; c < D; c += NT) a[c] += ld(x + c);
+      }
+      __syncthreads();                                                   // every add, before the next chunk's counts and list
+    }
+    for (int e = tid; e < (ve - vb) * D; e += NT) out[(size_t)vb * D + e] = acc[e];
+    __syncthreads();                                                     // the stores read acc before the next batch zeros it
+  }
+}
+
 __device__ __forceinline__ float warp_max(float v) { for (int o = 16; o; o >>= 1) v = fmaxf(v, __shfl_xor_sync(0xffffffffu, v, o)); return v; }
 
 // The bundle's GELU (tanh form) and its derivative, as runtime/ref_gpt.py writes them.
@@ -1348,29 +1389,14 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
     }
     if (!cross()) return false;                                                       // all-gather gx (the embedding's output gradient)
     ph(MK_X_GEMB);
-    // ---- the embedding's gradient: each owned vocabulary row sums the gradients of its tokens' rows, in row order, from gx staged a row
-    // chunk at a time; a later chunk resumes each running sum from the one the earlier left, so the order (and every bit) is the whole N's
+    // ---- the embedding's gradient: each owned vocabulary row sums the gradients of its tokens' rows, in row order (emb_grad_rows: only
+    // those rows are read, where each element used to scan all N); its square is counted with the blocks' below
     {
-      const int v0 = p.v0, w = p.v1 - p.v0;
+      const long long room = (long long)RC * D;                                          // the phase's term in kvm_fgpt_smem_floats
       phase();
-      float* const GXS = ar.take((long long)RC * D);
+      float* const buf = ar.take(room);
       if (!check()) return false;
-      float* const ge = ptab[3 * KVM_FGPT_MAXP + 0];
-      if (w > 0)
-        for (int c0 = 0; c0 < N; c0 += RC) {
-          KVM_FGPT_PHASE_CONSTS;
-          const int rc = N - c0 < RC ? N - c0 : RC;
-          const Copy cs[1] = {{GXS, gx + (size_t)c0 * D, D, (size_t)D, rc, D, rc, D}};
-          stage_all(cs);
-          for (int e = tid; e < w * D; e += NT) {
-            const int row = v0 + e / D, c = e % D;
-            float* const o = ge + (size_t)row * D + c;                                 // its square is counted with the blocks' below
-            float a = c0 == 0 ? 0.f : ld(o);
-            for (int r = 0; r < rc; ++r) if (ids[c0 + r] == row) a += GXS[r * D + c];
-            *o = a;
-          }
-          __syncthreads();
-        }
+      if (p.v1 > p.v0) emb_grad_rows<NT>(ids, N, D, gx, ptab[3 * KVM_FGPT_MAXP + 0], p.v0, p.v1, buf, room);
       __syncthreads();
     }
     ph(MK_EMBB);

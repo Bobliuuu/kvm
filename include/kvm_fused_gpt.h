@@ -142,6 +142,10 @@ KVM_FGPT_HD inline int kvm_fgpt_ldmn(int cols) { return ((cols + 15) & ~15) + 8;
 KVM_FGPT_HD inline int kvm_fgpt_r16(int n) { return (n + 15) & ~15; }
 KVM_FGPT_HD inline int kvm_fgpt_r8(int n) { return (n + 7) & ~7; }
 KVM_FGPT_HD inline long long kvm_fgpt_r4(long long n) { return (n + 3) & ~3LL; }
+// The words the embedding gradient's row lists take from a block of NT threads' shared memory before its sums (kvm_fused_gpt.cuh's
+// emb_grad_rows): a chunk's listed token rows and their vocabulary rows (NT ints each) and each warp's count, rounded to a 16-byte line.
+template <int NT>
+KVM_FGPT_HD constexpr int kvm_fgpt_emb_list_floats() { return (2 * NT + NT / 32 + 3) / 4 * 4; }
 // ZBW (kvm_fused_gpt.cuh, the MLP backward): a member without an attention item runs the MLP's weight gradients of up to
 // KVM_FGPT_ZBW_OWNERS owners' fc1 columns in the attention backward's waits (0 turns it off). Four: on an RTX 5070 one pass over four
 // owners' columns cost 2.13x one owner's weight gradients (d 128, w 8 a member), which the hold-out's d128 at G 64 (16 such members for

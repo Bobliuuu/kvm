@@ -103,7 +103,7 @@ KVM_FGPT_HD inline long long kvm_fgpt_own_stride(int B, int T, int d, int H, int
 struct KvmFgptScratch {
   long long x[KVM_FGPT_MAXL + 1], h[KVM_FGPT_MAXL], m1[KVM_FGPT_MAXL], r1[KVM_FGPT_MAXL], q[KVM_FGPT_MAXL], k[KVM_FGPT_MAXL], v[KVM_FGPT_MAXL],
       o[KVM_FGPT_MAXL], lse[KVM_FGPT_MAXL], xm[KVM_FGPT_MAXL], h2[KVM_FGPT_MAXL], m2[KVM_FGPT_MAXL], r2[KVM_FGPT_MAXL], pre[KVM_FGPT_MAXL];
-  long long hf, mf, rf, logits, ce, tl, gx, gxk, du, dqk, part, lnp, rpart, hgp, dkv, olist, osrc, gn, dy, total;
+  long long hf, mf, rf, logits, ce, tl, lsec, gx, gxk, du, dqk, part, lnp, rpart, hgp, dkv, olist, osrc, gn, dy, total;
 };
 // The layout written into `s` in place (the program's thread 0 builds the block's shared copy this way, with no local copy to spill); every
 // offset is a long long, so the zeroing loop clears the arrays past L as KvmFgptScratch{} would.
@@ -119,7 +119,7 @@ KVM_FGPT_HD inline void kvm_fgpt_scratch_into(KvmFgptScratch& s, int N, int T, i
     s.lse[l] = take((long long)N * H); s.xm[l] = take(Nd); s.h2[l] = take(Nd); s.m2[l] = take(N); s.r2[l] = take(N); s.pre[l] = take(NF);
   }
   s.hf = take(Nd); s.mf = take(N); s.rf = take(N); s.logits = take((long long)N * V);
-  s.ce = take((long long)G * N * 2); s.tl = take(N); s.gx = take(Nd);
+  s.ce = take((long long)G * N * 2); s.tl = take(N); s.lsec = take(N); s.gx = take(Nd);   // lsec: each row's log-sum-exp, by its owner
   s.gxk = take(Nd); s.du = take(NF);   // ZBW's (kvm_fused_gpt.cuh, the MLP backward): fc2's output gradient kept, and the owners' dU
   s.dqk = take(Nd);                    // ZBW's for the attention: the items' dq after RoPE's backward, for their doers
   s.part = take((long long)(G > H ? G : H) * Nd);

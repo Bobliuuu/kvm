@@ -581,7 +581,7 @@ __device__ __forceinline__ void repl_elem(const Plan& p, long long q, int& slot,
 // once a layer for the per-layer ones. The production path passes NoPhases, which compiles to nothing.
 enum KvmFgptMark : int {
   MK_INPUT, MK_LN1, MK_X_H, MK_UF_STAGE, MK_UF_QKV, MK_UF_ROPE, MK_X_KV, MK_UF_SCORES, MK_UF_SOFTMAX, MK_UF_PV, MK_UF_PROJ, MK_ATTN, MK_X_PROJ, MK_LN2,
-  MK_X_H2, MK_MLP, MK_X_FC2, MK_RES, MK_LNF, MK_X_HF, MK_LOGITS, MK_X_CE, MK_CE, MK_HEADB, MK_X_DHF, MK_LNFB, MK_X_GFC2, MK_MLPB, MK_X_DH2,
+  MK_X_H2, MK_MLP, MK_X_FC2, MK_RES, MK_LNF, MK_X_HF, MK_LOGITS, MK_X_CE, MK_CE, MK_X_LSE, MK_HEADB, MK_X_DHF, MK_LNFB, MK_X_GFC2, MK_MLPB, MK_X_DH2,
   MK_LN2B, MK_X_GPROJ, MK_UB_STAGE, MK_UB_DO, MK_UB_STAGE2, MK_UB_P, MK_UB_DV_DS, MK_UB_DQ_DK, MK_UB_DB, MK_UB_ZBWA, MK_X_DKV, MK_UB_DW, MK_UB_DH, MK_UB_ZBWB, MK_ATTNB, MK_X_DH,
   MK_LN1B, MK_X_GEMB, MK_EMBB, MK_SUMS, MK_SQUARES, MK_X_NORM, MK_ADAMW, MK_X_END, MK_COUNT
 };
@@ -1010,13 +1010,29 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
     ph(MK_LOGITS);
     if (!cross()) return false;                                                       // the cross-entropy's row statistics
     ph(MK_X_CE);
-    for (int r = tid; r < N; r += NT) {
-      float M = -INFINITY;
-      for (int j = 0; j < p.nv; ++j) M = fmaxf(M, ld(X + s.ce + ((size_t)j * N + r) * 2));
-      float S = 0.f;
-      for (int j = 0; j < p.nv; ++j) S += ld(X + s.ce + ((size_t)j * N + r) * 2 + 1) * expf(ld(X + s.ce + ((size_t)j * N + r) * 2) - M);
-      lse_ce[r] = M + logf(S);
+    // Each member's own rows [r0, r1): their log-sum-exp over the nv shards, a warp a row (lane l reads shards l, l + 32, ...), to the
+    // scratch, then an all-gather gives every member every row's. M is the shards' max (exact in any order); S adds the terms
+    // se_j exp(mx_j - M) in shard order from zero through shuffles, so each row's value is the one every member computed alone before, bit
+    // for bit: a load round trip a 32 shards where one thread walked 3 nv dependent loads, on N / G rows a member where each took all N.
+    {
+      const int ln = tid & 31;
+      for (int r = p.r0 + (tid >> 5); r < p.r1; r += NW) {                           // the warp's rows: every lane of a warp takes the same
+        const float* const st = X + s.ce + (size_t)r * 2;
+        float M = -INFINITY;
+        for (int j0 = 0; j0 < p.nv; j0 += 32) M = fmaxf(M, warp_max(j0 + ln < p.nv ? ld(st + (size_t)(j0 + ln) * N * 2) : -INFINITY));
+        float S = 0.f;
+        for (int j0 = 0; j0 < p.nv; j0 += 32) {
+          const int j = j0 + ln, n = p.nv - j0 < 32 ? p.nv - j0 : 32;
+          const float t = j < p.nv ? ld(st + (size_t)j * N * 2 + 1) * expf(ld(st + (size_t)j * N * 2) - M) : 0.f;
+          for (int l = 0; l < n; ++l) S += __shfl_sync(0xffffffffu, t, l);
+        }
+        if (ln == 0) X[s.lsec + r] = M + logf(S);
+      }
     }
+    ph(MK_CE);
+    if (!cross()) return false;                                                       // all-gather the rows' log-sum-exp
+    ph(MK_X_LSE);
+    for (int r = tid; r < N; r += NT) lse_ce[r] = ld(X + s.lsec + r);
     __syncthreads();
     if (b == 0) {   // the loss, as softmax_ce_reduce writes it: the mean over targeted rows (summed in float64), then 1 / their count
       double sum = 0.0, cnt = 0.0;

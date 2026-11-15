@@ -23,7 +23,7 @@ static const char* const kMarks[kvm_fgpt::MK_COUNT] = {
     "input + embedding", "LN1", "  wait: all-gather h", "  item: stage h rows, W", "  item: q k v GEMM", "  item: RoPE + keep q k v",
     "  wait: all-gather q k v", "  item: stage + scores", "  item: softmax", "  item: P V", "  item: proj partial", "attention, rest",
     "  wait: reduce-scatter proj", "proj sum + LN2", "  wait: all-gather h2", "fc1 + GELU + fc2", "  wait: reduce-scatter fc2", "fc2 sum",
-    "final LN", "  wait: all-gather hf", "logits + CE stats", "  wait: CE exchange", "lse, loss", "head backward", "  wait: reduce-scatter dhf",
+    "final LN", "  wait: all-gather hf", "logits + CE stats", "  wait: CE exchange", "lse, loss", "  wait: all-gather lse", "head backward", "  wait: reduce-scatter dhf",
     "dhf sum + LNf backward", "  wait: all-gather gx (fc2)", "MLP backward", "  wait: reduce-scatter dh2", "dh2 sum + LN2 backward",
     "  wait: all-gather gx (proj)", "  item: stage gx, Wo, o, q, k, v", "  item: dWo, do, delta", "  item: q side: dWq, q's dh rows",
     "  item: P", "  item: dV, dS", "  item: dQ, dK, partials kept", "  item: RoPE back, dbq", "  doer: dW2, db1 (MLP); dWo (attention)", "  wait: dK dV partials",

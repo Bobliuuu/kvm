@@ -16,7 +16,7 @@ nv() {  # name, nvcc args...: run in the background; build number i first waits 
   "$NVCC" "$@" & PIDS+=($!); NAMES+=("$name"); RC+=(-)
 }
 mut() {  # name, header file, sed-expression: a header copy with exactly one step removed
-  local d="$OUT/hdr_$1"; rm -rf "$d"; mkdir -p "$d"; cp "$ROOT"/include/* "$d/"
+  local d="$OUT/hdr_$1"; rm -rf "$d"; mkdir -p "$d"; cp -r "$ROOT"/include/* "$d/"
   sed -E "$3" "$ROOT/include/$2" > "$d/$2"
   if cmp -s "$d/$2" "$ROOT/include/$2"; then echo "mutant $1: sed matched nothing" >&2; exit 1; fi
   nv "$1" $B -DLIT_MUTANT="\"$1\"" -I"$d" "$HERE/litmus.cu" -o "$OUT/litmus_$1"

@@ -21,6 +21,7 @@
 #define KVM_FGPT_MAXP (4 + KVM_FGPT_PER_LAYER * KVM_FGPT_MAXL)   // + wte, nf (g, b), head
 #define KVM_FGPT_SMEM_FLOATS 38400            // the pass's default budget of shared memory a member, in floats (the executor passes the device's)
 #define KVM_FGPT_MAX_GANG 64                  // the widest gang the policy picks (kvm_fgpt_fit); an A100's 108 SMs seat 64 members
+#define KVM_FGPT_QUARTER_MAX 48               // the widest gang of half a hidden tile a member the policy prefers (kvm_fgpt_fit)
 
 // Parameter slots, in one fixed order: 0 wte; 1 + 16 l + r for layer l's role r (KVM_FGPT_R_*); then nf's g and b; then the head.
 enum KvmFgptRole {
@@ -290,11 +291,13 @@ KVM_FGPT_HD inline bool kvm_fgpt_fit_at(int G, int N, int T, int d, int H, int F
 KVM_FGPT_HD inline KvmFgptFit kvm_fgpt_fit(int N, int T, int d, int H, int F, int V, int smem_floats, int max_g) {
   KvmFgptFit f;
   if (T <= 0 || N % T) return f;
-  // at N >= 192, half a tile a member where that width still seats (G-SWEEP2: d48 at G 48 = F / 4 against its F / 8 of 24, x1.065 at N 256,
-  // x1.118 at N 192, x1.121 at N 384, x1.146 at two layers; d96's and d128's F / 4 lie past KVM_FGPT_MAX_GANG, where G-SWEEP3 found 96
-  // members no faster); then one whole 8-wide tile of hidden units a member
+  // half a tile a member (G = F / 4) wherever that width is at most KVM_FGPT_QUARTER_MAX and still seats two rows a member. On an A100 bed
+  // (20 steps, 2 rounds a point) d48 (F 192) at G 48 against its F / 8 of 24 gains at every N that seats it: x1.115 and x1.121 at N 96,
+  // x1.053 and x1.057 at N 128, x1.065 to x1.146 at N 192 to 384. gpt-small (F 256) at G 64 against 32
+  // reads level (x0.996), so 64 members is past the gain and the panel's rows keep their width and their bits; d96's and d128's
+  // F / 4 lie past KVM_FGPT_MAX_GANG, where the same bed found 96 members no faster. Then one whole 8-wide tile of hidden units a member.
   const int gq = F / 4, gw = F / 8;
-  if (N >= 192 && F % 4 == 0 && gq <= KVM_FGPT_MAX_GANG && gq <= max_g && 2 * gq <= N && kvm_fgpt_fit_at(gq, N, T, d, H, F, V, smem_floats, f)) return f;
+  if (F % 4 == 0 && gq >= 1 && gq <= KVM_FGPT_QUARTER_MAX && gq <= max_g && 2 * gq <= N && kvm_fgpt_fit_at(gq, N, T, d, H, F, V, smem_floats, f)) return f;
   if (F % 8 == 0 && gw >= 1 && gw <= KVM_FGPT_MAX_GANG && gw <= max_g && 2 * gw <= N && kvm_fgpt_fit_at(gw, N, T, d, H, F, V, smem_floats, f)) return f;
   int gmax = 1;
   while (gmax * 2 <= KVM_FGPT_MAX_GANG && gmax * 2 <= max_g && gmax * 2 <= N) gmax *= 2;

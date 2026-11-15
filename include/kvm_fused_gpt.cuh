@@ -745,6 +745,18 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
     if constexpr (Counted) return kvm_gang::barrier_counted(d.ctl, G, target, abort);
     else return kvm_gang::barrier_lines(d.ctl, member, G, epoch, abort);
   };
+  // A crossing in two halves (arrive-early): a member arrives once it has written what the crossing hands the others, runs work of its own
+  // in the barrier's latency, then waits. The work between may read nothing another member writes before the gang's next crossing, and its
+  // stores reach the others through this member's next arrival (kvm_gang::arrive_lines). The backward's reduce-scatters and the dK dV
+  // exchange take it: their weight gradients (dW1 and db1, the head's dW, dWk dWv and dbk dbv, the query side) wait for no other member.
+  auto arrive = [&]() {
+    if constexpr (Counted) kvm_gang::arrive_counted(d.ctl, G, target);
+    else kvm_gang::arrive_lines(d.ctl, member, epoch);
+  };
+  auto wait = [&]() {
+    if constexpr (Counted) return kvm_gang::wait_counted(d.ctl, target, abort);
+    else return kvm_gang::wait_lines(d.ctl, G, epoch, abort);
+  };
   // row strides: q | k | v, a d-wide block, the T x T scores and a head-wide block (the last two are read transposed: whole 16-row tiles)
   const int& ldd = c.ldd;
   rope_table(rtab, T, hd, d.theta);
@@ -1068,7 +1080,10 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
       }
     }
     ph(MK_CE);
-    // ---- backward: the head
+    // ---- backward: the head. Each chunk writes its dhf partial first; the last one's partial out, the member arrives at the reduce-scatter,
+    // and the shard's dW (hf's rows staged again: the partial took their buffer, and no member writes hf before the next crossing) runs in
+    // the barrier's latency.
+    bool arrived_dhf = false;
     if (p.v1 > p.v0) {
       const int v0 = p.v0, w = p.v1 - p.v0, ldl = kvm_fgpt_ldk(w);
       phase();
@@ -1087,21 +1102,18 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
           const int i = e / w, r = c0 + i, c = e % w, tg = tgt[r];
           DL[i * ldl + c] = tg == -1 ? 0.f : (expf(ld(logits + (size_t)r * V + v0 + c) - lse_ce[r]) - (v0 + c == tg ? 1.f : 0.f)) * inv_n;
         }
-        const Copy rows = {HF, hf + (size_t)c0 * D, kvm_fgpt_ldmn(D), (size_t)D, rc, D, rc16, D};
-        if (c0 == 0) {
-          const Copy cs[2] = {rows, {WT, P(head) + v0, ldl, (size_t)V, D, w, kvm_fgpt_r8(D), kvm_fgpt_r8(w)}};
-          stage_all(cs);
-        } else {
-          const Copy cs[1] = {rows};
-          stage_all(cs);
-        }
-        gemm<true, false>(HF, kvm_fgpt_ldmn(D), DL, ldl, D, w, rc, prec, [&](int m, int n, float a) { float* const o = gh + (size_t)m * V + v0 + n; *o = add ? ld(o) + a : a; });
-        gemm<false, true>(DL, ldl, WT, ldl, rc, D, w, prec, [&](int m, int n, float a) { HF[m * kvm_fgpt_ldmn(D) + n] = a; });   // HF: read by dW, dead
+        if (c0 == 0) stage(WT, ldl, P(head) + v0, (size_t)V, D, w, kvm_fgpt_r8(D), kvm_fgpt_r8(w));   // the shard's columns, kept for every chunk
+        else __syncthreads();                                                          // DL
+        gemm<false, true>(DL, ldl, WT, ldl, rc, D, w, prec, [&](int m, int n, float a) { HF[m * kvm_fgpt_ldmn(D) + n] = a; });   // dhf's partial
         rows_out(HF, kvm_fgpt_ldmn(D), part + (size_t)c0 * D, rc, D);
+        if (c0 + RC >= N) { arrive(); arrived_dhf = true; }
+        stage(HF, kvm_fgpt_ldmn(D), hf + (size_t)c0 * D, (size_t)D, rc, D, rc16, D);  // hf's rows
+        gemm<true, false>(HF, kvm_fgpt_ldmn(D), DL, ldl, D, w, rc, prec, [&](int m, int n, float a) { float* const o = gh + (size_t)m * V + v0 + n; *o = add ? ld(o) + a : a; });
       }
     }
     ph(MK_HEADB);
-    if (!cross()) return false;                                                       // reduce-scatter dhf
+    if (!arrived_dhf) arrive();
+    if (!wait()) return false;                                                        // reduce-scatter dhf
     ph(MK_X_DHF);
     rs_sum(X + s.part, false, p.nv, T, 1, Nd, nullptr, nullptr, dy, p.r0, p.r1, D);
     ln_bwd(X + s.x[L], dy, P(nfg), X + s.mf, X + s.rf, gx, false, X + s.lnp + ((size_t)(2 * L) * G + b) * 2 * D,
@@ -1189,6 +1201,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
       float* const x = X + s.x[l]; float* const h = X + s.h[l]; float* const xm = X + s.xm[l]; float* const h2 = X + s.h2[l];
       if (!cross()) return false;                                                     // all-gather gx (fc2's output gradient)
       ph(MK_X_GFC2);
+      bool arrived_dh2 = false;                                                       // the owners' last partial out (the plain form below)
       if (Z && p.f1 > p.f0 && c.zbw) {
         // ZBW (Zero Bubble's B/W split, inside the gang): the members without an attention item run the weight gradients (dW2, db1, dW1)
         // in the attention backward's waits (zbw_pass), so an owner runs only the input gradients the next crossing needs: dU, kept in du
@@ -1249,7 +1262,6 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
           __syncthreads();
           gemm<true, false>(Ut, ldum, XS, ldd, w, D, rc, prec, [&](int m, int n, float a) { float* const o = gw2 + (size_t)(f0 + m) * D + n; *o = add ? ld(o) + a : a; });
           gemm<false, true>(XS, ldd, WS, ldd, rc, w, D, prec, [&](int m, int n, float a) { DU[m * ldu + n] = a * gelu_grad(PRE[m * ldu + n]); });
-          colsum_smem(DU, ldu, rc, w, gb1 + f0, scr, add);
           {
             const Copy cs[2] = {{XS, h2 + (size_t)c0 * D, kvm_fgpt_ldmn(D), (size_t)D, rc, D, rc16, D},
                                 {WS, P(lay(l, KVM_FGPT_R_W1)) + f0, ldu, (size_t)F, D, w, kvm_fgpt_r8(D), kvm_fgpt_r8(w)}};
@@ -1258,10 +1270,13 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
           gemm<true, false>(XS, kvm_fgpt_ldmn(D), DU, ldu, D, w, rc, prec, [&](int m, int n, float a) { float* const o = gw1 + (size_t)m * F + f0 + n; *o = add ? ld(o) + a : a; });
           gemm<false, true>(DU, ldu, WS, ldu, rc, D, w, prec, [&](int m, int n, float a) { XS[m * kvm_fgpt_ldmn(D) + n] = a; });   // XS: h2's rows, read by dW1, dead
           rows_out(XS, kvm_fgpt_ldmn(D), part + (size_t)c0 * D, rc, D);
+          if (c0 + RC >= N) { arrive(); arrived_dh2 = true; }                         // the last partial out: db1 waits for no one
+          colsum_smem(DU, ldu, rc, w, gb1 + f0, scr, add);                            // db1
         }
       }
       ph(MK_MLPB);
-      if (!cross()) return false;                                                     // reduce-scatter dh2
+      if (!arrived_dh2) arrive();
+      if (!wait()) return false;                                                      // reduce-scatter dh2
       ph(MK_X_DH2);
       rs_sum(X + s.part, false, p.nf, T, 1, Nd, nullptr, nullptr, dy, p.r0, p.r1, D);
       if (Z && c.zbw) {   // ZBW: fc2's output gradient, kept for the doers before ln_bwd turns this member's rows of gx into the gradient at xm
@@ -1352,6 +1367,9 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
           for (int e = tid; e < TQ * hd; e += NT) { const int i = e / hd, cc = e % hd; dqk[(size_t)(r0 + i) * D + c0 + cc] = DQ[i * ldh + cc]; }
           __syncthreads();
         }
+        // The last item's dK and dV partials and its dq for a doer are out: it arrives at the exchange, and its query side (dWq and q's dh
+        // rows, which only the reduce-scatter after it reads) runs in the barrier's latency.
+        if (QB > 1 && w + G >= W) arrive();
         ph(MK_UB_DB);
         {   // h's rows and Wq's columns: below DQ where they fit (every buffer before DQ is dead now), else where gx's rows and Wo's rows were
           const long long need = kvm_fgpt_r4((long long)TQ16 * kvm_fgpt_ldmn(D)) + kvm_fgpt_r4((long long)kvm_fgpt_r8(D) * ldh);
@@ -1374,12 +1392,13 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
         }
         ph(MK_UB_STAGE2);
       }
+      if (QB > 1 && b >= W) arrive();                                                   // a member without an item hands over nothing: its doer passes run in the latency
       if constexpr (Z) {
         if (c.zbw && c.o1 > c.o0 && !zbw_pass(l, 0)) return false;                     // a doer: dW2 and db1 of its owners
         if (c.zbwa && b >= W && b < 2 * W && !zbwa_pass(l, b - W, 0)) return false;   // item b - W's doer: its dWo
         ph(MK_UB_ZBWA);
       }
-      if (QB > 1) { if (!cross()) return false; }                                       // the dK and dV partials (one block a unit: its own)
+      if (QB > 1) { if (!wait()) return false; }                                        // the dK and dV partials (one block a unit: its own)
       else __syncthreads();
       ph(MK_X_DKV);
       for (int w = b; w < W; w += G) {                                                // each item as a key block
@@ -1406,20 +1425,22 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
         }
         __syncthreads();
         rope(DKV, ldv, TQ, k0, T, hd, rtab, -1.f);                                     // dK back through RoPE
-        colsum_smem(DKV, ldv, TQ, 2 * hd, hg + 3 * D * hd + hd, scr);                  // dbk, dbv
         ph(MK_UB_DW);
         float* const pu = X + s.part + (size_t)w * TQ * D;
-        gemm_par(job<true, false>(HK, kvm_fgpt_ldmn(D), DKV, ldv, D, 2 * hd, TQ, prec, [&](int m, int n, float a) { hg[(1 + n / hd) * D * hd + m * hd + n % hd] = a; }),   // dWk, dWv
-                 job<false, true>(DKV, ldv, WKV, ldv, TQ, D, 2 * hd, prec, [&](int m, int n, float a) { const size_t i = (size_t)m * D + n; pu[i] = ld(pu + i) + a; }));   // k's and v's dh rows
+        gemm_par(job<false, true>(DKV, ldv, WKV, ldv, TQ, D, 2 * hd, prec, [&](int m, int n, float a) { const size_t i = (size_t)m * D + n; pu[i] = ld(pu + i) + a; }));   // k's and v's dh rows
+        if (w + G >= W) arrive();                                                      // the last item's dh rows out: its dbk, dbv, dWk and dWv run in the latency
+        colsum_smem(DKV, ldv, TQ, 2 * hd, hg + 3 * D * hd + hd, scr);                  // dbk, dbv
+        gemm_par(job<true, false>(HK, kvm_fgpt_ldmn(D), DKV, ldv, D, 2 * hd, TQ, prec, [&](int m, int n, float a) { hg[(1 + n / hd) * D * hd + m * hd + n % hd] = a; }));   // dWk, dWv
         ph(MK_UB_DH);
       }
+      if (b >= W) arrive();                                                             // a member without an item: its doer passes run in the latency
       if constexpr (Z) {
         if (c.zbw && c.o1 > c.o0 && !zbw_pass(l, 1)) return false;                     // a doer: dW1 of its owners
         if (c.zbwa && b >= W && b < 2 * W && !zbwa_pass(l, b - W, 1)) return false;   // item b - W's doer: its dWq and dbq
         ph(MK_UB_ZBWB);
       }
       ph(MK_ATTNB);
-      if (!cross()) return false;                                                     // reduce-scatter dh
+      if (!wait()) return false;                                                        // reduce-scatter dh
       ph(MK_X_DH);
       rs_sum(X + s.part, true, H, T, QB, Nd, nullptr, nullptr, dy, p.r0, p.r1, D);
       ln_bwd(x, dy, P(lay(l, KVM_FGPT_R_N1G)), X + s.m1[l], X + s.r1[l], gx, true, X + s.lnp + ((size_t)(2 * l) * G + b) * 2 * D,

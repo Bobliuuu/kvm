@@ -360,6 +360,18 @@ __device__ void stage_all(const Copy (&cs)[NC]) {
   asm volatile("cp.async.commit_group;\ncp.async.wait_group 0;\n" ::: "memory");
   __syncthreads();
 }
+// A row chunk's N x d partial from shared memory to global in whole 16-byte words: rows [0, rc) of src (row stride lds, a
+// multiple of 4) to dst (row stride d), after the GEMM that wrote src has synced. That GEMM's epilogue would store each float alone, eight
+// rows apart and half a sector each (about 3,000 partial sector writes a 128-row chunk at d 96); here every sector leaves whole. Ends with
+// __syncthreads: src is a staging buffer the next chunk refills.
+__device__ void rows_out(const float* src, int lds, float* dst, int rc, int d) {
+  const int q = d >> 2;
+  for (int e = threadIdx.x; e < rc * q; e += NT) {
+    const int r = e / q, c = (e - r * q) << 2;
+    *reinterpret_cast<float4*>(dst + (size_t)r * d + c) = *reinterpret_cast<const float4*>(src + (size_t)r * lds + c);
+  }
+  __syncthreads();
+}
 // One copy alone (the same pass).
 template <int BT = NT>
 __device__ __forceinline__ void stage(float* dst, int dld, const float* src, size_t sld, int rows, int cols, int prows, int pcols) {
@@ -960,7 +972,8 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
             pre[(size_t)(c0 + m) * F + f0 + n] = z;
             Us[m * ldu + n] = gelu(z);
           });
-          gemm<false, false>(Us, ldu, W2, kvm_fgpt_ldmn(D), rc, D, w, prec, [&](int m, int n, float a) { part[(size_t)(c0 + m) * D + n] = a; });
+          gemm<false, false>(Us, ldu, W2, kvm_fgpt_ldmn(D), rc, D, w, prec, [&](int m, int n, float a) { H2[m * ldd + n] = a; });   // H2: read by fc1, dead
+          rows_out(H2, ldd, part + (size_t)c0 * D, rc, D);
         }
       }
       ph(MK_MLP);
@@ -1083,7 +1096,8 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
           stage_all(cs);
         }
         gemm<true, false>(HF, kvm_fgpt_ldmn(D), DL, ldl, D, w, rc, prec, [&](int m, int n, float a) { float* const o = gh + (size_t)m * V + v0 + n; *o = add ? ld(o) + a : a; });
-        gemm<false, true>(DL, ldl, WT, ldl, rc, D, w, prec, [&](int m, int n, float a) { part[(size_t)(c0 + m) * D + n] = a; });
+        gemm<false, true>(DL, ldl, WT, ldl, rc, D, w, prec, [&](int m, int n, float a) { HF[m * kvm_fgpt_ldmn(D) + n] = a; });   // HF: read by dW, dead
+        rows_out(HF, kvm_fgpt_ldmn(D), part + (size_t)c0 * D, rc, D);
       }
     }
     ph(MK_HEADB);
@@ -1204,7 +1218,8 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
             du[(size_t)(c0 + m) * F + f0 + n] = v;
           });
           stage(WS, ldu, P(lay(l, KVM_FGPT_R_W1)) + f0, (size_t)F, D, w, kvm_fgpt_r8(D), kvm_fgpt_r8(w));
-          gemm<false, true>(DU, ldu, WS, ldu, rc, D, w, prec, [&](int m, int n, float a) { part[(size_t)(c0 + m) * D + n] = a; });
+          gemm<false, true>(DU, ldu, WS, ldu, rc, D, w, prec, [&](int m, int n, float a) { XS[m * ldd + n] = a; });   // XS: gx's rows, read by dU, dead
+          rows_out(XS, ldd, part + (size_t)c0 * D, rc, D);
         }
       } else if (p.f1 > p.f0) {                                                       // fc1 owners: fc2's rows and fc1's columns of their units
         const int f0 = p.f0, w = p.f1 - p.f0, ldu = kvm_fgpt_ldk(w), ldum = kvm_fgpt_ldmn(w);
@@ -1241,7 +1256,8 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
             stage_all(cs);
           }
           gemm<true, false>(XS, kvm_fgpt_ldmn(D), DU, ldu, D, w, rc, prec, [&](int m, int n, float a) { float* const o = gw1 + (size_t)m * F + f0 + n; *o = add ? ld(o) + a : a; });
-          gemm<false, true>(DU, ldu, WS, ldu, rc, D, w, prec, [&](int m, int n, float a) { part[(size_t)(c0 + m) * D + n] = a; });
+          gemm<false, true>(DU, ldu, WS, ldu, rc, D, w, prec, [&](int m, int n, float a) { XS[m * kvm_fgpt_ldmn(D) + n] = a; });   // XS: h2's rows, read by dW1, dead
+          rows_out(XS, kvm_fgpt_ldmn(D), part + (size_t)c0 * D, rc, D);
         }
       }
       ph(MK_MLPB);

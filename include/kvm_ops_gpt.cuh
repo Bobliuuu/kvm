@@ -379,9 +379,10 @@ KVM_GPT_DEVI void embedding_fwd(const KvmCtx& ctx, const int32_t* a) {
     }
 }
 
-// Warp w owns keys v0+w, v0+w+8, ...; scans the id array 32 at a time (ballot gives matches in ascending row order), so each
-// table row is summed over rows in ascending order by one warp: deterministic. Positional tables (ids absent) enumerate
-// r = key + i*mod directly. Cost O(N*keys/32) for token tables; give each task a modest key range.
+// Warp w owns keys v0+w, v0+w+8, ...; each table row is summed over its rows in ascending order by one warp: deterministic. A token
+// stream finds a key's rows in a list of the task's matching rows, compacted once a task in ascending order (O(N) a task), or, when the list
+// does not fit, by scanning the id array 32 at a time (ballot gives matches in ascending row order; O(N*keys/32)). Both add the same rows in
+// the same order. Positional tables (ids absent) enumerate r = key + i*mod directly.
 KVM_GPT_DEVI void embedding_bwd(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
     int N = a[3], mod = a[4], v0 = a[5], v1 = a[6], d = a[7], acc = a[8], lddo, lddt;
@@ -416,6 +417,50 @@ KVM_GPT_DEVI void embedding_bwd(const KvmCtx& ctx, const int32_t* a) {
             for (int i = 0; i < 4; i++) if (i < nc && lane + i * 32 < d) row[lane + i * 32] = rw[i];
         }
         return;
+    }
+    if (ids && dyn_smem_bytes() >= (unsigned)KVM_GPT_SMEM_SMALL) {   // a wider token stream: the task's matching rows are compacted once, then each key walks only that list
+        // The scan below reads all N ids once per key: in gpt-162m's step (N 4,096, 128 keys a task) embedding_bwd took 1.34 ms a worker a
+        // step at about 1.2 GB/s a block (Nov 15). This reads them once a task. The list holds the rows whose id falls in [v0, v1) in ascending
+        // order, so each key adds the same rows in the same order as the scan, and its row is the same bits. A list longer than the small
+        // ops' shared memory, or a launch without it, keeps the scan.
+        constexpr int NW = KVM_GPT_THREADS / 32, CAP = (KVM_GPT_SMEM_SMALL - 2 * NW * 4) / 4;
+        int* list = reinterpret_cast<int*>(kvm_gpt_smem);   // [CAP] rows, then two rounds' per-warp counts
+        int* wcnt = list + CAP;                              // [2][NW]: a round writes one half while the other's readers finish
+        int total = 0;                                       // every thread keeps the running count itself
+        for (int base = 0, p = 0; base < N; base += KVM_GPT_THREADS, p ^= 1) {
+            const int r = base + (int)threadIdx.x;
+            const int id = r < N ? ids[r] : -1;
+            const bool hit = id >= v0 && id < v1;
+            const unsigned m = __ballot_sync(0xffffffffu, hit);
+            if (lane == 0) wcnt[p * NW + w] = __popc(m);
+            __syncthreads();
+            int before = total, round = 0;
+#pragma unroll
+            for (int i = 0; i < NW; i++) { const int ci = wcnt[p * NW + i]; before += i < w ? ci : 0; round += ci; }
+            const int pos = before + __popc(m & ((1u << lane) - 1u));
+            if (hit && pos < CAP) list[pos] = r;
+            total += round;
+        }
+        __syncthreads();   // the last round's rows are in the list
+        if (total <= CAP) {
+            for (int key = v0 + w; key < v1; key += NW) {
+                float* row = dt + (size_t)key * lddt;
+                if (!acc) for (int c = lane; c < d; c += 32) row[c] = 0.f;
+                __syncwarp();
+                for (int i = 0; i < total; i += 32) {
+                    const int rj = i + lane < total ? list[i + lane] : -1;
+                    unsigned m = __ballot_sync(0xffffffffu, rj >= 0 && ids[rj] == key);
+                    while (m) {
+                        const int q = __ffs(m) - 1; m &= m - 1;
+                        const float* src = dout + (size_t)__shfl_sync(0xffffffffu, rj, q) * lddo;
+                        for (int c = lane; c < d; c += 32) row[c] += src[c];
+                        __syncwarp();
+                    }
+                }
+            }
+            __syncthreads();   // the list's shared memory is free for the next task
+            return;
+        }
     }
     for (int key = v0 + w; key < v1; key += KVM_GPT_THREADS / 32) {
         float* row = dt + (size_t)key * lddt;
@@ -1760,17 +1805,33 @@ KVM_GPT_DEVI void norm_bwd_dx(const KvmCtx& ctx, const int32_t* a, int mi, int r
             }
             return;
         }
+        // A row a warp: every load of the row is issued first, in one straight-line block of selects as norm_fwd's, so a row pays one
+        // memory round trip. Issued inside each chunk's if-block with its math, and the accumulate's old dx only after both row sums, the
+        // loads went out a chunk at a time: 13.8 us a row a warp in gpt-162m's step against the forward's 4.2 (Nov 15). gamma is the same
+        // for every row, so it is read once a task. The math is unchanged, in the same order.
+        const float4 z4 = make_float4(0.f, 0.f, 0.f, 0.f);
+        float4 gv[KVM_GPT_NORM_NV];
+#pragma unroll
+        for (int j = 0; j < KVM_GPT_NORM_NV; j++) { const int c = lc + 32 * j; gv[j] = c < d4 ? reinterpret_cast<const float4*>(g)[c] : z4; }
         for (int rb = r0 + (threadIdx.x >> 5) * rpw; rb < r1; rb += KVM_GPT_THREADS / 32 * rpw) {
             const int r = rb + grp;
             const bool ok = r < r1;
-            const size_t xo = (size_t)r * ldx, yo = (size_t)r * ldy;
+            const size_t xo = (size_t)r * ldx, yo = (size_t)r * ldy, oo = (size_t)r * ldd;
             float mu = (RMS || !ok) ? 0.f : mean[r], rs = ok ? rstd[r] : 0.f, s1 = 0.f, s2 = 0.f;
-            float4 xh[KVM_GPT_NORM_NV], gc[KVM_GPT_NORM_NV];   // normalized input and dy*gamma, kept for the second pass
+            float4 xh[KVM_GPT_NORM_NV], gc[KVM_GPT_NORM_NV], od[KVM_GPT_NORM_NV];   // x then its normalized form, dy then dy*gamma, the old dx
+#pragma unroll
+            for (int j = 0; j < KVM_GPT_NORM_NV; j++) {
+                const int c = lc + 32 * j;
+                const bool in = ok && c < d4;
+                xh[j] = in ? ld4(xs, xo + 4 * c, xb) : z4;
+                gc[j] = in ? ld4(ys, yo + 4 * c, yb) : z4;
+                od[j] = (in && acc) ? ld4(ds, oo + 4 * c, db) : z4;
+            }
 #pragma unroll
             for (int j = 0; j < KVM_GPT_NORM_NV; j++) {
                 int c = lc + 32 * j;
                 if (ok && c < d4) {
-                    float4 xx = ld4(xs, xo + 4 * c, xb), dd = ld4(ys, yo + 4 * c, yb), gg = reinterpret_cast<const float4*>(g)[c];
+                    const float4 xx = xh[j], dd = gc[j], gg = gv[j];
                     gc[j] = make_float4(dd.x * gg.x, dd.y * gg.y, dd.z * gg.z, dd.w * gg.w);
                     xh[j] = make_float4((xx.x - mu) * rs, (xx.y - mu) * rs, (xx.z - mu) * rs, (xx.w - mu) * rs);
                     s1 += (gc[j].x + gc[j].y) + (gc[j].z + gc[j].w);
@@ -1779,7 +1840,6 @@ KVM_GPT_DEVI void norm_bwd_dx(const KvmCtx& ctx, const int32_t* a, int mi, int r
             }
             s1 = RMS ? 0.f : gsum(s1, d4, rpw) / d;
             s2 = gsum(s2, d4, rpw) / d;
-            const size_t oo = (size_t)r * ldd;
 #pragma unroll
             for (int j = 0; j < KVM_GPT_NORM_NV; j++) {
                 int c = lc + 32 * j;
@@ -1787,7 +1847,7 @@ KVM_GPT_DEVI void norm_bwd_dx(const KvmCtx& ctx, const int32_t* a, int mi, int r
                     float4 v;
                     v.x = rs * (gc[j].x - s1 - xh[j].x * s2); v.y = rs * (gc[j].y - s1 - xh[j].y * s2);
                     v.z = rs * (gc[j].z - s1 - xh[j].z * s2); v.w = rs * (gc[j].w - s1 - xh[j].w * s2);
-                    if (acc) { float4 old = ld4(ds, oo + 4 * c, db); v.x += old.x; v.y += old.y; v.z += old.z; v.w += old.w; }
+                    if (acc) { v.x += od[j].x; v.y += od[j].y; v.z += od[j].z; v.w += od[j].w; }
                     st4(ds, oo + 4 * c, v, db);
                 }
             }

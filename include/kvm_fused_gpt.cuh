@@ -684,7 +684,7 @@ static_assert(KVM_FGPT_LAYOUT_FLOATS % 4 == 0, "the constants after the layout a
       B = c.p.B, b = c.p.b, QB = c.QB, TQ = c.TQ, W = c.W, TQ16 = c.TQ16, hgsz = c.hgsz, RC = c.RC, RC16 = c.RC16, ldq = c.ldq,         \
       ldd = c.ldd, ldh = c.ldh;                                                                                                       \
   [[maybe_unused]] const size_t Nd = c.Nd;                                                                                           \
-  [[maybe_unused]] const bool prec = c.prec;                                                                                         \
+  [[maybe_unused]] constexpr bool prec = false;   /* the linear layers' GEMMs run 1xTF32 (kvm_fuse_gpt.h gives the gang no 3xTF32 run) */  \
   [[maybe_unused]] const Plan p = c.p;                                                                                               \
   [[maybe_unused]] float* const X = c.X;                                                                                             \
   [[maybe_unused]] float* const part = c.part;                                                                                       \
@@ -720,7 +720,7 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
     c.prec = (d.mm_numerics & 16) != 0;                                                  // matmul_tile's 3xTF32 flag
     c.ok = hd <= 128 && hd % 8 == 0 && D == H * hd && L >= 1 && L <= KVM_FGPT_MAXL && T > 0 && N % T == 0 && B == N / T &&
            (d.mm_numerics & ~16) == 0 && D % 4 == 0 && d.qb >= 1 && T % d.qb == 0 && (d.qb == 1 || (T / d.qb) % 16 == 0) &&
-           d.rows >= 1 && d.rows <= N && (d.rows == N || d.rows % 16 == 0);
+           d.rows >= 1 && d.rows <= N && (d.rows == N || d.rows % 16 == 0) && !c.prec;   // a 3xTF32 run is not the gang's
     if (c.ok) kvm_fgpt_scratch_into(s, N, T, D, H, F, V, L, G, d.qb);                     // only a shape it holds: L indexes its arrays
     else s.total = 0;
     // the fixed head of shared memory (kvm_fgpt_smem_head), then one phase's buffers at a time from `base`

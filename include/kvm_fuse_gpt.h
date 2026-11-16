@@ -784,7 +784,11 @@ inline KvmFuseGptPlan kvm_fuse_gpt(const std::vector<KvmTaskDesc>& tasks, const 
   for (const KvmFuseGptRun& r : scan.runs) {
     const KvmGptStep& s = r.shape;
     std::string why;
-    const KvmFgptFit fit = fgpt_step_op < 0 ? KvmFgptFit{} : kvm_fgpt_fit(s.N, s.T, s.d, s.H, s.F, s.V, opt.smem_floats, opt.workers);
+    // The gang runs its linear layers 1xTF32 only: their k loops then carry one numerics' k step, which read x1.039 on gpt-small's A100
+    // bed, where a second copy of the step for 3xTF32 doubled the executor's code and moved the generic kernels' inlining (gpt-162m
+    // x0.740). A 3xTF32 run takes another form (the one-block form, the 2-D form) or the generic path.
+    const bool gang_numerics = (s.mm_numerics & 16) == 0;
+    const KvmFgptFit fit = fgpt_step_op < 0 || !gang_numerics ? KvmFgptFit{} : kvm_fgpt_fit(s.N, s.T, s.d, s.H, s.F, s.V, opt.smem_floats, opt.workers);
     const std::string unrun = kvm_fgpt_unrunnable(s.d, s.H, s.L, s.mm_numerics);
     // where no gang of the fused step's form fits, F's 2-D form may: each half's own layout keeps a member's tiles small
     kvm_f2d::Fit f2d;
@@ -795,6 +799,8 @@ inline KvmFuseGptPlan kvm_fuse_gpt(const std::vector<KvmTaskDesc>& tasks, const 
     if (fgpt_step_op < 0) why = "the registry has no fgpt_step op";
     else if (!unrun.empty()) why = "the fused step cannot run it: " + unrun;
     else if (s.L > KVM_FGPT_MAXL) why = "does not fit a gang: " + std::to_string(s.L) + " layers, more than the " + std::to_string(KVM_FGPT_MAXL) + " the fused step's scratch holds";
+    else if (!G && !gang_numerics) why = std::string("a 3xTF32 run, which the fused step's gang does not take (it runs 1xTF32), and F's 2-D form does not fit it (") +
+                                          (f2d_why ? f2d_why : "not tried") + ")";
     else if (!G) why = "does not fit a gang: no gang of at most " + std::to_string(opt.workers) + " members fits its phases in " + std::to_string(opt.smem_floats) +
                        " floats of shared memory a member, nor F's 2-D form (" + (f2d_why ? f2d_why : "not tried") + ")";
     if (why.empty()) {   // the gang writes the parameters, moments, gradients, step counter and losses; activations and the windows' copies go stale

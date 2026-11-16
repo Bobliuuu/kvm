@@ -456,9 +456,26 @@ KVM_OP(spin) {
 // Adding an operator = one X line in kvm_ops.def + one KVM_OP(name) above; a missing KVM_OP is a compile error here.
 // Not inlined: with every op body inlined into the worker loop, the loop's own state (the run's flags and pointers, the task it owes, its ticket) was spilled to the stack
 // around every op and reloaded one dependent load at a time on every hop. As its own function the dispatch gets the op bodies' register allocation and the loop keeps its own.
+// -DKVM_OPS_ONLY='"noop,matmul_tile_bf16,..."' builds only the listed op bodies into the dispatch (the others fail with KVM_ERR_BAD_OP, and the
+// CLI refuses a bundle that uses one): every op body is inlined into this one function, so a full build hands ptxas the whole registry at once
+// (Nov 15: sm_90 ptxas ran past 20 minutes at 56 GB). Unset, every op is built.
+__host__ __device__ constexpr bool kvm_op_built(const char* n) {
+#ifdef KVM_OPS_ONLY
+  for (const char* l = KVM_OPS_ONLY; *l;) {
+    const char* p = n; const char* q = l;
+    while (*p && *q && *q != ',' && *p == *q) { ++p; ++q; }
+    if (!*p && (!*q || *q == ',')) return true;
+    while (*l && *l != ',') ++l;
+    if (*l == ',') ++l;
+  }
+  return false;
+#else
+  (void)n; return true;
+#endif
+}
 __device__ __noinline__ void kvm_dispatch(int op, const KvmCtx c, const int32_t* a) {
   switch (op) {
-#define X(n, id, sig) case id: op_##n(c, a); break;
+#define X(n, id, sig) case id: if constexpr (kvm_op_built(#n)) op_##n(c, a); else c.fail(KVM_ERR_BAD_OP, op); break;
 #include "kvm_ops_list.inc"
 #undef X
     default: c.fail(KVM_ERR_BAD_OP, op);

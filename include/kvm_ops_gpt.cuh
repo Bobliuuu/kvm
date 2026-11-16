@@ -1908,7 +1908,9 @@ KVM_GPT_DEVI void norm_bwd_params(const KvmCtx& ctx, const int32_t* a) {
     float* dg = k.fvec(a[4], d);
     float* db = k.fvec(a[5], d, true);
     if (k.bad || c0 == c1) return;
-    const int w4 = vec4_ok(x, ldx, xb) && vec4_ok(dy, ldy, yb) ? col_reduce4_width(c0, c1) : 0;
+    // The wide form at 256 columns only: on threads 0-63 (64 columns) two streams and the norm's arithmetic run on two warps, which read
+    // x0.74 of col_reduce's task in the executor (A100, Nov 16), while at 256 columns, every thread, they read x2.07 alone.
+    const int w4 = vec4_ok(x, ldx, xb) && vec4_ok(dy, ldy, yb) && col_reduce4_width(c0, c1) == 256 ? 256 : 0;
     if (w4) {   // the same terms, four columns a load: each element's expression is the scalar one's below
         auto fn4 = [&](int r, int c, float4& v1, float4& v2) {
             const float4 g = ld4(dy, (size_t)r * ldy + c, yb), xv = ld4(x, (size_t)r * ldx + c, xb);
@@ -1916,8 +1918,7 @@ KVM_GPT_DEVI void norm_bwd_params(const KvmCtx& ctx, const int32_t* a) {
             v1 = make_float4(g.x * ((xv.x - m) * rs), g.y * ((xv.y - m) * rs), g.z * ((xv.z - m) * rs), g.w * ((xv.w - m) * rs));
             v2 = g;
         };
-        if (w4 == 256) col_reduce4<256, 4, true>(R, c0, c1, dg, db, acc, fn4);
-        else col_reduce4<64, 8, true>(R, c0, c1, dg, db, acc, fn4);
+        col_reduce4<256, 4, true>(R, c0, c1, dg, db, acc, fn4);
         return;
     }
     col_reduce(R, c0, c1, dg, db, acc, [&](int r, int c, float& v1, float& v2) {

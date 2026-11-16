@@ -147,7 +147,7 @@ OP_WRITES = {
     'reduce2': ('out',), 'reduce_put_signal': ('dst', 'flag'), 'residual_add': ('out',), 'rmsnorm_bwd_dx': ('dx',),
     'rmsnorm_fwd': ('out', 'rstd'), 'rope_bwd': ('out',), 'rope_fwd': ('out',), 'round_bf16': ('out',), 'round_tf32': ('out',), 'row_dot': ('out',),
     'scale_flat': ('out', 'x'), 'scatter_add_rows': ('dst',), 'select_window': ('dst',), 'send_proxy': ('q',), 'send_proxy_i32': ('q',), 'sgd_range': ('w',), 'signal': ('flag',),
-    'silu_mul_bwd': ('dgate', 'dup'), 'silu_mul_fwd': ('out',), 'softmax_ce_bwd': ('dlogits',), 'softmax_ce_fused': ('dlogits', 'lse', 'rowloss'), 'softmax_ce_fwd': ('lse', 'rowloss'),
+    'silu_mul_bwd': ('dgate', 'dup'), 'silu_mul_fwd': ('out',), 'gemv_bf16': ('out',), 'attn_decode_part': ('part', 'kc', 'vc'), 'attn_decode_merge': ('o',), 'softmax_ce_bwd': ('dlogits',), 'softmax_ce_fused': ('dlogits', 'lse', 'rowloss'), 'softmax_ce_fwd': ('lse', 'rowloss'),
     'softmax_ce_reduce': ('loss',), 'softmax_rows_bwd': ('dx',), 'softmax_rows_fwd': ('out',), 'unpack_bf16': ('dst',),
 }
 ELEMENTWISE = {'copy': ('n', ['src'], ['dst'], True), 'add': ('n', ['a', 'b'], ['out'], True),

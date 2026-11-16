@@ -389,6 +389,115 @@ def _mm_silu_mul_bwd(b, a):
             du[m * du.cols + n] = f32(dh * _silu(gate.at(m, n)))
 
 
+def _gemv_ext(a):
+    _need(0 <= a['n0'] < a['n1'] and a['K'] > 0 and a['K'] % 8 == 0 and a['pro'] in (0, 1, 2), 'gemv_bf16: bad range, K or pro')
+    K, n1 = a['K'], a['n1']
+    return {'x': K, 'x2': K, 'gamma': K, 'w': (n1, K), 'out': (1, n1), 'res': (1, n1)}
+
+
+def _gemv_bf16(b, a):
+    """kvm_ops_extra.def gemv_bf16: v = bf16(prologue(x)), out[0,n] = f32(sum_k v[k] w[n,k] (+ res[0,n]))."""
+    x, K, pro = b['x'], a['K'], a['pro']
+    xs = [x[i] for i in range(K)]
+    if pro == 1:
+        g = b['gamma']
+        rs = f32(1.0 / math.sqrt(sum(v * v for v in xs) / K + a['eps']))
+        v = [bf16_round(f32(xs[i] * rs * g[i])) for i in range(K)]
+    elif pro == 2:
+        u = b['x2']
+        v = [bf16_round(f32(_silu(xs[i]) * u[i])) for i in range(K)]
+    else:
+        v = [bf16_round(xv) for xv in xs]
+    w, out, res = b['w'], b['out'], b.get('res')
+    for n in range(a['n0'], a['n1']):
+        y = sum(v[k] * w.at(n, k) for k in range(K))
+        y = f32(y + (res[n] if res is not None else 0.0))
+        out[n] = bf16_round(y) if out.dtype == 'bf16' else y   # bf16 storage: one rounding of the fp32 result
+
+
+ATTN_EMPTY_M = -3.4028234663852886e38   # m of an empty split (kvm_ops_extra.cuh KVM_ATTN_EMPTY_M, the most negative float32)
+
+
+def _attn_part_ext(a):
+    _need(a['b'] >= 0 and a['Hkv'] > 0 and a['H'] % a['Hkv'] == 0 and 0 <= a['kvh'] < a['Hkv'] and 0 <= a['s'] < a['S'] and a['Tmax'] > 0,
+          'attn_decode_part: bad b/kvh/s/S/H/Hkv/Tmax')
+    _need(0 < a['hd'] <= 128 and a['hd'] % 8 == 0 and a['H'] // a['Hkv'] <= 8, 'attn_decode_part: hd must be a multiple of 8 up to 128, H/Hkv <= 8')
+    _need(a['flags'] in (0, 1, 3), 'attn_decode_part: flags must be 0, 1 or 3')
+    n, hd = a['b'] + 1, a['hd']
+    e = {'q': (n, a['H'] * hd), 'kc': (n * a['Hkv'] * a['Tmax'], hd), 'vc': (n * a['Hkv'] * a['Tmax'], hd), 'lens': n,
+         'part': (n * a['S'] * a['H'], hd + 2)}
+    if a['flags'] & 1:
+        e.update({'knew': (n, a['Hkv'] * hd), 'vnew': (n, a['Hkv'] * hd)})
+    return e
+
+
+def _rope_pair(x1, x2, p0, i, hd, theta):
+    """rope_fwd's rotation of the pair (i, i + hd/2) at position p0 (ref_gpt._rope with r = 0, T = 1)."""
+    ang = f32(f32(p0) * f32(math.pow(theta, -f32(2 * i) / hd)))
+    s, c = f32(math.sin(ang)), f32(math.cos(ang))
+    return f32(x1 * c - x2 * s), f32(x1 * s + x2 * c)
+
+
+def _attn_part(b, a):
+    q, kc, vc, lens, part = b['q'], b['kc'], b['vc'], b['lens'], b['part']
+    bb, kvh, s, S, H, Hkv, hd, Tmax, fl = a['b'], a['kvh'], a['s'], a['S'], a['H'], a['Hkv'], a['hd'], a['Tmax'], a['flags']
+    n = lens[bb] + 1
+    if lens[bb] < 0 or n > Tmax:
+        raise ValueError(f'attn_decode_part: sequence {bb} length {lens[bb]} exceeds Tmax {Tmax}')
+    chunk = -(-n // S)
+    j0, j1 = s * chunk, min(n, s * chunk + chunk)
+    G, base, half, p0 = H // Hkv, (bb * Hkv + kvh) * Tmax, hd // 2, lens[bb]
+    rnd = lambda t, v: bf16_round(v) if t.dtype == 'bf16' else v
+    if fl & 1 and j0 <= n - 1 < j1:   # this split appends the new key: kv head kvh of knew rotated, vnew's row (kv_append)
+        kn, vn = b['knew'], b['vnew']
+        row = (base + n - 1) * kc.cols
+        for i in range(half):
+            y1, y2 = _rope_pair(kn.at(bb, kvh * hd + i), kn.at(bb, kvh * hd + i + half), p0, i, hd, a['theta'])
+            kc[row + i], kc[row + i + half] = rnd(kc, y1), rnd(kc, y2)
+        for c in range(hd):
+            vc[row + c] = rnd(vc, vn.at(bb, kvh * hd + c))
+    for g in range(G):
+        h = kvh * G + g
+        qv = [q.at(bb, h * hd + c) for c in range(hd)]
+        if fl & 1:
+            for i in range(half):
+                qv[i], qv[i + half] = _rope_pair(qv[i], qv[i + half], p0, i, hd, a['theta'])
+                if fl & 2:
+                    qv[i], qv[i + half] = bf16_round(qv[i]), bf16_round(qv[i + half])
+        row = ((bb * S + s) * H + h) * part.cols
+        sc = [sum(qv[c] * kc.at(base + j, c) for c in range(hd)) * a['scale'] for j in range(j0, j1)]
+        if not sc:
+            for c in range(hd):
+                part[row + c] = 0.0
+            part[row + hd], part[row + hd + 1] = ATTN_EMPTY_M, 0.0
+            continue
+        m = max(sc)
+        p = [math.exp(x - m) for x in sc]
+        for c in range(hd):
+            part[row + c] = f32(sum(p[i] * vc.at(base + j0 + i, c) for i in range(len(p))))
+        part[row + hd], part[row + hd + 1] = f32(m), f32(sum(p))
+
+
+def _attn_merge_ext(a):
+    _need(a['b'] >= 0 and 0 <= a['h0'] < a['h1'] <= a['H'] and a['S'] > 0 and a['hd'] > 0, 'attn_decode_merge: bad b/h0/h1/S/H/hd')
+    n, hd = a['b'] + 1, a['hd']
+    return {'part': (n * a['S'] * a['H'], hd + 2), 'o': (n, a['H'] * hd)}
+
+
+def _attn_merge(b, a):
+    part, o = b['part'], b['o']
+    bb, S, H, hd = a['b'], a['S'], a['H'], a['hd']
+    for h in range(a['h0'], a['h1']):
+        rows = [((bb * S + s) * H + h) * part.cols for s in range(S)]
+        live = [r for r in rows if part[r + hd + 1] > 0.0]
+        M = max(part[r + hd] for r in live)
+        e = [math.exp(part[r + hd] - M) for r in live]
+        L = sum(ei * part[r + hd + 1] for ei, r in zip(e, live))
+        for c in range(hd):
+            y = f32(sum(ei * part[r + c] for ei, r in zip(e, live)) / L)
+            o[bb * o.cols + h * hd + c] = bf16_round(y) if o.dtype == 'bf16' else y
+
+
 def _mm_ext(extra):
     def ext(a):
         M, N, K, fl = a['M'], a['N'], a['K'], a['flags']
@@ -446,6 +555,9 @@ EXTRA_OPS = {
     'add_rowtile': _R(_add_rowtile, lambda a: (_rng(a['r0'], a['r1']), _need(a['T'] > 0 and a['d'] > 0, 'add_rowtile: bad T/d'),
                                                {'x': (a['r1'], a['d']), 'pos': (a['T'], a['d']), 'out': (a['r1'], a['d'])})[2]),
     'matmul_tile_silu_mul': _R(_mm_silu_mul, _mm_ext(('out', 'gate', 'up'))),
+    'gemv_bf16': _R(_gemv_bf16, _gemv_ext, anydt=('x', 'x2', 'w', 'out', 'res')),
+    'attn_decode_part': _R(_attn_part, _attn_part_ext, ints=('lens',), anydt=('q', 'kc', 'vc', 'knew', 'vnew')),
+    'attn_decode_merge': _R(_attn_merge, _attn_merge_ext, anydt=('o',)),
     'matmul_tile_silu_mul_bwd': _R(_mm_silu_mul_bwd, _mm_ext(('gate', 'up', 'dgate', 'dup'))),
 }
 
@@ -473,6 +585,12 @@ _BF16_STORAGE = {   # op: (buffers that may be bf16 storage, of which written)
     'attn_bwd_dq': (('q', 'k', 'v', 'do', 'dq'), ('dq',)),
     'attn_bwd_dkv': (('q', 'k', 'v', 'do', 'dk', 'dv'), ('dk', 'dv')),
     'softmax_ce_fused': (('logits', 'dlogits'), ('dlogits',)),
+    # serving: a decode step's KV append and attention read bf16 k/v (and a bf16 cache) without widening copies
+    'kv_append': (('knew', 'vnew', 'kc', 'vc'), ('kc', 'vc')),
+    'attn_decode': (('q', 'kc', 'vc', 'o'), ('o',)),
+}
+_BF16_STORAGE_EXTRA = {   # extra-pack ops with the same contract
+    'silu_mul_fwd': (('gate', 'up', 'out'), ('out',)),
 }
 
 
@@ -488,4 +606,7 @@ def _bf16_storage(base, written):
 
 for _name, (_any, _written) in _BF16_STORAGE.items():
     _base = GPT_OPS[_name]
+    EXTRA_OPS[_name] = RefOp(_bf16_storage(_base, _written), _base.extents, _base.mins, _base.ints, _base.anydt | frozenset(_any), _base.opaque)
+for _name, (_any, _written) in _BF16_STORAGE_EXTRA.items():
+    _base = EXTRA_OPS[_name]
     EXTRA_OPS[_name] = RefOp(_bf16_storage(_base, _written), _base.extents, _base.mins, _base.ints, _base.anydt | frozenset(_any), _base.opaque)

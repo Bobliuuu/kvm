@@ -325,22 +325,28 @@ __device__ __forceinline__ int div_small(int x, int d, float inv) {
   q += (r >= d) - (r < 0);
   return q;
 }
-// f(r, c) over a rows x units grid, unit x = r * units + c taken by thread x % NT in turn (x = threadIdx.x, + NT, ...), the order a flat
+// f(r, c) over a rows x units grid, unit x = r * units + c taken by thread x % BT in turn (x = threadIdx.x, + BT, ...), the order a flat
 // loop takes them, with (r, c) stepped instead of divided out, and the call's two divisions through div_small: every staging pass, zero()
-// and row loop runs this, so its two divisions by a run-time value run on every thread at every call site. Both stay in div_small's range:
-// NT by the assert below, the thread index by CUDA's limit of 1024 threads a block.
-template <int BT = NT, class F>
-__device__ __forceinline__ void grid_loop(int rows, int units, F&& f) {
-  static_assert(BT > 0 && BT <= 1024, "grid_loop's BT is a block's thread count (CUDA allows at most 1024), which keeps both divisions in div_small's range");
+// and row loop runs this, and those two divisions by a run-time value on every thread cost the A100's fused step 2.5-3.5% on every shape.
+// Both stay in div_small's range: BT by the assert below, the thread index by CUDA's limit of 1024 threads a block.
+// grid_loop over thread t of bt threads (t < bt <= 1024, the caller's to keep): a staging pass runs one body for a warp's lanes (bt 32) and
+// for the whole block (bt its thread count), so each copy's loop is compiled once.
+template <class F>
+__device__ __forceinline__ void grid_loop_at(int t, int bt, int rows, int units, F&& f) {
   if (rows <= 0 || units <= 0) return;
   const float inv = __fdividef(1.f, (float)units);
-  const int dr = div_small(BT, units, inv), dc = BT - dr * units;
-  int r = div_small(static_cast<int>(threadIdx.x), units, inv), c = threadIdx.x - r * units;
+  const int dr = div_small(bt, units, inv), dc = bt - dr * units;
+  int r = div_small(t, units, inv), c = t - r * units;
   while (r < rows) {
     f(r, c);
     r += dr; c += dc;
     if (c >= units) { c -= units; ++r; }
   }
+}
+template <int BT = NT, class F>
+__device__ __forceinline__ void grid_loop(int rows, int units, F&& f) {
+  static_assert(BT > 0 && BT <= 1024, "grid_loop's BT is a block's thread count (CUDA allows at most 1024), which keeps both divisions in div_small's range");
+  grid_loop_at(static_cast<int>(threadIdx.x), BT, rows, units, f);
 }
 // One staging copy: rows x cols floats of global memory (row stride sld) into shared memory (row stride dld), and zeros over the rest of
 // [0, prows) x [0, pcols).
@@ -358,25 +364,46 @@ __device__ __forceinline__ void cp16(float* dst, const float* src, bool in) {
 __device__ __forceinline__ void cp4(float* dst, const float* src, bool in) {
   asm volatile("cp.async.ca.shared.global [%0], [%1], 4, %2;\n" ::"r"((unsigned)__cvta_generic_to_shared(dst)), "l"(src), "r"(in ? 4 : 0) : "memory");
 }
+// Zeros over a rows x cols block of shared memory (row stride ld) as a staging entry: every unit is padding (rows and cols 0), so each is an
+// asynchronous copy of no bytes that fills zeros, landed by the pass's one wait. `any` is a global address the copies name and never read.
+__device__ __forceinline__ Copy zeros(float* p, int ld, int rows, int cols, const float* any) { return Copy{p, any, ld, 0, 0, 0, rows, cols}; }
 // Every copy of a phase in one pass, so its operands cost one round trip: each thread issues an asynchronous copy for each of its units of
 // every copy (16 bytes where the copy allows it, 4 otherwise; zeros over the padding), holding no registers for them, then one wait and one
 // __syncthreads. The copies are unrolled at compile time, so the list stays in registers.
+// A copy of at most KVM_FGPT_WARP_COPY units a lane goes to one warp (the k-th such copy of the pass to warp NW - 1 - k mod NW), where every
+// warp ran every copy's setup (its address and alignment checks, grid_loop's divisions) for a unit or none: an item phase's seven to twelve
+// small copies cost each of the 12 warps all their setups, issued block-wide as straight-line code (about 6 cycles an instruction, ICACHE).
+// Larger copies stay over the whole block. 0 turns the dealing off. Which lane copies which unit changes nothing the copy writes.
+#ifndef KVM_FGPT_WARP_COPY
+#define KVM_FGPT_WARP_COPY 8
+#endif
+template <class QC>
+__device__ __forceinline__ void issue_copy(const QC& q, bool v, int t, int bt) {   // copy q's units over thread t of bt
+  if (v)
+    grid_loop_at(t, bt, q.prows, q.pcols >> 2, [&](int r, int c4) {
+      const int c = c4 << 2;
+      const bool in = r < q.rows && c < q.cols;
+      cp16(q.dst + r * q.dld + c, in ? q.src + (size_t)r * q.sld + c : q.src, in);
+    });
+  else
+    grid_loop_at(t, bt, q.prows, q.pcols, [&](int r, int c) {
+      const bool in = r < q.rows && c < q.cols;
+      cp4(q.dst + r * q.dld + c, in ? q.src + (size_t)r * q.sld + c : q.src, in);
+    });
+}
 template <int BT = NT, int NC>
 __device__ void stage_all(const Copy (&cs)[NC]) {
+  constexpr int NWB = BT / 32;
+  const int warp = static_cast<int>(threadIdx.x) >> 5;
+  [[maybe_unused]] int dealt = 0;
 #pragma unroll
   for (int i = 0; i < NC; ++i) {
     const Copy& q = cs[i];
-    if (q.vec())
-      grid_loop<BT>(q.prows, q.pcols >> 2, [&](int r, int c4) {
-        const int c = c4 << 2;
-        const bool in = r < q.rows && c < q.cols;
-        cp16(q.dst + r * q.dld + c, in ? q.src + (size_t)r * q.sld + c : q.src, in);
-      });
-    else
-      grid_loop<BT>(q.prows, q.pcols, [&](int r, int c) {
-        const bool in = r < q.rows && c < q.cols;
-        cp4(q.dst + r * q.dld + c, in ? q.src + (size_t)r * q.sld + c : q.src, in);
-      });
+    const bool v = q.vec();
+    const bool small = KVM_FGPT_WARP_COPY > 0 && NC > 1 && (v ? q.prows * (q.pcols >> 2) : q.prows * q.pcols) <= 32 * KVM_FGPT_WARP_COPY;
+    const bool mine = !small || warp == NWB - 1 - dealt % NWB;
+    dealt += small;
+    if (mine) issue_copy(q, v, small ? static_cast<int>(threadIdx.x) & 31 : static_cast<int>(threadIdx.x), small ? 32 : BT);
   }
   asm volatile("cp.async.commit_group;\ncp.async.wait_group 0;\n" ::: "memory");
   __syncthreads();
@@ -890,14 +917,14 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
         if (!check()) return false;
         {
           const int ldw = kvm_fgpt_ldmn(3 * hd);
-          const Copy cs[7] = {{HS, h + (size_t)r0 * D, ldd, (size_t)D, TQ, D, TQ16, kvm_fgpt_r8(D)},
+          const Copy cs[8] = {{HS, h + (size_t)r0 * D, ldd, (size_t)D, TQ, D, TQ16, kvm_fgpt_r8(D)},
                               {WC, P(lay(l, KVM_FGPT_R_WQ)) + c0, ldw, (size_t)D, D, hd, kvm_fgpt_r8(D), hd},
                               {WC + hd, P(lay(l, KVM_FGPT_R_WK)) + c0, ldw, (size_t)D, D, hd, kvm_fgpt_r8(D), hd},
                               {WC + 2 * hd, P(lay(l, KVM_FGPT_R_WV)) + c0, ldw, (size_t)D, D, hd, kvm_fgpt_r8(D), hd},
                               {bias, P(lay(l, KVM_FGPT_R_BQ)) + c0, 0, 0, 1, hd, 1, hd},
                               {bias + hd, P(lay(l, KVM_FGPT_R_BK)) + c0, 0, 0, 1, hd, 1, hd},
-                              {bias + 2 * hd, P(lay(l, KVM_FGPT_R_BV)) + c0, 0, 0, 1, hd, 1, hd}};
-          zero(QKV, ldq, TQ16, kvm_fgpt_r8(3 * hd));
+                              {bias + 2 * hd, P(lay(l, KVM_FGPT_R_BV)) + c0, 0, 0, 1, hd, 1, hd},
+                              zeros(QKV, ldq, TQ16, kvm_fgpt_r8(3 * hd), X)};
           stage_all(cs);
         }
         ph(MK_UF_STAGE);
@@ -931,12 +958,11 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
         float* const WR = ar.take((long long)kvm_fgpt_r8(hd) * kvm_fgpt_ldmn(D));
         if (!check()) return false;
         {
-          const Copy cs[4] = {{Q, X + s.q[l] + (size_t)r0 * D + c0, ldh, (size_t)D, TQ, hd, TQ16, kvm_fgpt_r8(hd)},
+          const Copy cs[6] = {{Q, X + s.q[l] + (size_t)r0 * D + c0, ldh, (size_t)D, TQ, hd, TQ16, kvm_fgpt_r8(hd)},
                               {K, X + s.k[l] + (size_t)sq * T * D + c0, ldh, (size_t)D, KE, hd, KE16, kvm_fgpt_r8(hd)},
                               {Vv, X + s.v[l] + (size_t)sq * T * D + c0, ldh, (size_t)D, KE, hd, KE16, kvm_fgpt_r8(hd)},
-                              {WR, P(lay(l, KVM_FGPT_R_WO)) + (size_t)c0 * D, kvm_fgpt_ldmn(D), (size_t)D, hd, D, kvm_fgpt_r8(hd), D}};
-          zero(S, ldS, TQ16, KE16);
-          zero(O, ldh, TQ16, kvm_fgpt_r8(hd));
+                              {WR, P(lay(l, KVM_FGPT_R_WO)) + (size_t)c0 * D, kvm_fgpt_ldmn(D), (size_t)D, hd, D, kvm_fgpt_r8(hd), D},
+                              zeros(S, ldS, TQ16, KE16, X), zeros(O, ldh, TQ16, kvm_fgpt_r8(hd), X)};
           stage_all(cs);
         }
         // the queries' (positions q0 + m) scores over the prefix's keys, 3xTF32 as the attention ops, causal; then each row's softmax
@@ -1338,18 +1364,15 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
         float* const WO = ar.take((long long)kvm_fgpt_r8(hd) * ldd);
         if (!check()) return false;
         {
-          const Copy cs[7] = {{GS, gx + (size_t)r0 * D, ldd, (size_t)D, TQ, D, TQ16, kvm_fgpt_r8(D)},
-                              {WO, P(lay(l, KVM_FGPT_R_WO)) + (size_t)c0 * D, ldd, (size_t)D, hd, D, kvm_fgpt_r8(hd), kvm_fgpt_r8(D)},
-                              {O, X + s.o[l] + (size_t)r0 * D + c0, ldh, (size_t)D, TQ, hd, TQ16, kvm_fgpt_r8(hd)},
-                              {Q, X + s.q[l] + (size_t)r0 * D + c0, ldh, (size_t)D, TQ, hd, TQ16, kvm_fgpt_r8(hd)},
-                              {K, X + s.k[l] + (size_t)sq * T * D + c0, ldh, (size_t)D, KE, hd, KE16, kvm_fgpt_r8(hd)},
-                              {Vv, X + s.v[l] + (size_t)sq * T * D + c0, ldh, (size_t)D, KE, hd, KE16, kvm_fgpt_r8(hd)},
-                              {lse, X + s.lse[l] + (size_t)(sq * H + hh) * T + q0, 0, 0, 1, TQ, 1, TQ}};
-          zero(DO, ldh, TQ16, kvm_fgpt_r8(hd));
-          zero(S, ldS, TQ16, KE16);
-          zero(DQ, ldh, TQ16, kvm_fgpt_r8(hd));
-          zero(DK, ldh, KE16, kvm_fgpt_r8(hd));
-          zero(DV, ldh, KE16, kvm_fgpt_r8(hd));
+          const Copy cs[12] = {{GS, gx + (size_t)r0 * D, ldd, (size_t)D, TQ, D, TQ16, kvm_fgpt_r8(D)},
+                               {WO, P(lay(l, KVM_FGPT_R_WO)) + (size_t)c0 * D, ldd, (size_t)D, hd, D, kvm_fgpt_r8(hd), kvm_fgpt_r8(D)},
+                               {O, X + s.o[l] + (size_t)r0 * D + c0, ldh, (size_t)D, TQ, hd, TQ16, kvm_fgpt_r8(hd)},
+                               {Q, X + s.q[l] + (size_t)r0 * D + c0, ldh, (size_t)D, TQ, hd, TQ16, kvm_fgpt_r8(hd)},
+                               {K, X + s.k[l] + (size_t)sq * T * D + c0, ldh, (size_t)D, KE, hd, KE16, kvm_fgpt_r8(hd)},
+                               {Vv, X + s.v[l] + (size_t)sq * T * D + c0, ldh, (size_t)D, KE, hd, KE16, kvm_fgpt_r8(hd)},
+                               {lse, X + s.lse[l] + (size_t)(sq * H + hh) * T + q0, 0, 0, 1, TQ, 1, TQ},
+                               zeros(DO, ldh, TQ16, kvm_fgpt_r8(hd), X), zeros(S, ldS, TQ16, KE16, X), zeros(DQ, ldh, TQ16, kvm_fgpt_r8(hd), X),
+                               zeros(DK, ldh, KE16, kvm_fgpt_r8(hd), X), zeros(DV, ldh, KE16, kvm_fgpt_r8(hd), X)};
           stage_all(cs);
         }
         ph(MK_UB_STAGE);
@@ -1433,10 +1456,10 @@ __device__ bool run(const KvmFgptDesc& d, int member, float* smem, int smem_floa
         float* const WKV = ar.take((long long)kvm_fgpt_r8(D) * ldv);
         if (!check()) return false;
         {
-          const Copy cs[3] = {{HK, h + (size_t)r0 * D, kvm_fgpt_ldmn(D), (size_t)D, TQ, D, TQ16, D},
+          const Copy cs[4] = {{HK, h + (size_t)r0 * D, kvm_fgpt_ldmn(D), (size_t)D, TQ, D, TQ16, D},
                               {WKV, P(lay(l, KVM_FGPT_R_WK)) + c0, ldv, (size_t)D, D, hd, kvm_fgpt_r8(D), hd},
-                              {WKV + hd, P(lay(l, KVM_FGPT_R_WV)) + c0, ldv, (size_t)D, D, hd, kvm_fgpt_r8(D), hd}};
-          zero(DKV, ldv, TQ16, kvm_fgpt_r8(2 * hd));
+                              {WKV + hd, P(lay(l, KVM_FGPT_R_WV)) + c0, ldv, (size_t)D, D, hd, kvm_fgpt_r8(D), hd},
+                              zeros(DKV, ldv, TQ16, kvm_fgpt_r8(2 * hd), X)};
           stage_all(cs);
         }
         for (int e = tid; e < TQ * 2 * hd; e += NT) {                                  // the keys' dK and dV: the query blocks at and after this one, in order

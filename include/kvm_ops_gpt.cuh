@@ -1831,6 +1831,69 @@ KVM_GPT_DEVI void col_reduce(int R, int c0, int c1, float* out1, float* out2, bo
     }
 }
 
+// col_reduce's sums, bit for bit, read four columns a load: 16-byte loads a lane (8-byte for bf16 storage). Every column's sum is the one
+// col_reduce gives a range of more than 32 columns (NC 64, RG 4): row group g sums rows g, g+4, ... in order, and the four partials are
+// added in group order. Here a thread holds those chains for four consecutive columns of one group, so a block issues a quarter of the
+// load instructions for the same bytes. Why: on an A100 (Nov 16, gpt-162m TF32), col_reduce's 4-byte loads held a 64-column colsum task
+// to 4.4 GB/s an SM however many colsums ran beside it (0 to 200), and 16 rows of them in flight read no faster, while the executor's
+// 16-byte streams (ew_run) read 10.6-12.2 GB/s an SM in the same kernel. W columns a pass: 256 with every thread, or 64 with threads 0-63;
+// U rows a thread in flight before their adds. `fn4(r, c, v1, v2)` gives the terms of columns c..c+3 of row r, each as col_reduce's `fn`
+// would (v2 only when TWO). The caller takes it only for a range whose width is a multiple of W, with c0 a multiple of 4 and every
+// operand vec4_ok; any other range keeps col_reduce.
+template <int W, int U, bool TWO, class Fn4>
+KVM_GPT_DEVI void col_reduce4(int R, int c0, int c1, float* out1, float* out2, bool acc, Fn4 fn4) {
+    constexpr int RG = 4, TPG = W / 4;   // col_reduce's row groups at NC 64; threads a group, one quad of columns each
+    static_assert(W == 64 || W == 256, "a pass is 64 columns (threads 0-63) or 256 (every thread)");
+    static_assert((TWO ? 2 : 1) * RG * W * 4 <= KVM_GPT_SMEM_SMALL, "col_reduce4's partials must fit the small ops' launch");
+    float* part = reinterpret_cast<float*>(kvm_gpt_smem);   // [TWO ? 2 : 1][RG][W]
+    const int q = threadIdx.x % TPG, rg = threadIdx.x / TPG;
+    for (int cb = c0; cb < c1; cb += W) {
+        if (rg < RG) {
+            const int c = cb + 4 * q;
+            float a1[4] = {0.f, 0.f, 0.f, 0.f}, a2[4] = {0.f, 0.f, 0.f, 0.f};
+            int r = rg;
+            for (; r + RG * (U - 1) < R; r += RG * U) {
+                float4 v1[U], v2[U];
+#pragma unroll
+                for (int u = 0; u < U; u++) fn4(r + RG * u, c, v1[u], v2[u]);
+#pragma unroll
+                for (int u = 0; u < U; u++) {
+                    a1[0] += v1[u].x; a1[1] += v1[u].y; a1[2] += v1[u].z; a1[3] += v1[u].w;
+                    if constexpr (TWO) { a2[0] += v2[u].x; a2[1] += v2[u].y; a2[2] += v2[u].z; a2[3] += v2[u].w; }
+                }
+            }
+            for (; r < R; r += RG) {
+                float4 v1, v2;
+                fn4(r, c, v1, v2);
+                a1[0] += v1.x; a1[1] += v1.y; a1[2] += v1.z; a1[3] += v1.w;
+                if constexpr (TWO) { a2[0] += v2.x; a2[1] += v2.y; a2[2] += v2.z; a2[3] += v2.w; }
+            }
+#pragma unroll
+            for (int j = 0; j < 4; j++) {
+                part[rg * W + 4 * q + j] = a1[j];
+                if constexpr (TWO) part[(RG + rg) * W + 4 * q + j] = a2[j];
+            }
+        }
+        __syncthreads();
+        for (int cl = threadIdx.x; cl < W; cl += KVM_GPT_THREADS) {   // col_reduce's combine: the four partials in group order
+            float t1 = 0.f, t2 = 0.f;
+            for (int g = 0; g < RG; g++) {
+                t1 += part[g * W + cl];
+                if constexpr (TWO) t2 += part[(RG + g) * W + cl];
+            }
+            const int cc = cb + cl;
+            out1[cc] = acc ? out1[cc] + t1 : t1;
+            if (TWO && out2) out2[cc] = acc ? out2[cc] + t2 : t2;
+        }
+        __syncthreads();
+    }
+}
+// Which pass col_reduce4 takes for the range [c0, c1): 256 or 64 columns, or 0 for col_reduce (a width neither divides, or c0 off a quad).
+KVM_GPT_DEVI int col_reduce4_width(int c0, int c1) {
+    const int n = c1 - c0;
+    return (n <= 0 || (c0 & 3)) ? 0 : n % 256 == 0 ? 256 : n % 64 == 0 ? 64 : 0;
+}
+
 // dgamma[c] = sum_r dy*xhat, dbeta[c] = sum_r dy (fixed summation order, see col_reduce)
 KVM_GPT_DEVI void norm_bwd_params(const KvmCtx& ctx, const int32_t* a) {
     Chk k(ctx);
@@ -1845,6 +1908,18 @@ KVM_GPT_DEVI void norm_bwd_params(const KvmCtx& ctx, const int32_t* a) {
     float* dg = k.fvec(a[4], d);
     float* db = k.fvec(a[5], d, true);
     if (k.bad || c0 == c1) return;
+    const int w4 = vec4_ok(x, ldx, xb) && vec4_ok(dy, ldy, yb) ? col_reduce4_width(c0, c1) : 0;
+    if (w4) {   // the same terms, four columns a load: each element's expression is the scalar one's below
+        auto fn4 = [&](int r, int c, float4& v1, float4& v2) {
+            const float4 g = ld4(dy, (size_t)r * ldy + c, yb), xv = ld4(x, (size_t)r * ldx + c, xb);
+            const float m = mean ? mean[r] : 0.f, rs = rstd[r];
+            v1 = make_float4(g.x * ((xv.x - m) * rs), g.y * ((xv.y - m) * rs), g.z * ((xv.z - m) * rs), g.w * ((xv.w - m) * rs));
+            v2 = g;
+        };
+        if (w4 == 256) col_reduce4<256, 4, true>(R, c0, c1, dg, db, acc, fn4);
+        else col_reduce4<64, 8, true>(R, c0, c1, dg, db, acc, fn4);
+        return;
+    }
     col_reduce(R, c0, c1, dg, db, acc, [&](int r, int c, float& v1, float& v2) {
         float g = ld_s(dy, (size_t)r * ldy + c, yb);
         v1 = g * ((ld_s(x, (size_t)r * ldx + c, xb) - (mean ? mean[r] : 0.f)) * rstd[r]);
@@ -1861,6 +1936,13 @@ KVM_GPT_DEVI void colsum(const KvmCtx& ctx, const int32_t* a) {
     const void* x = k.mat_s(a[0], R, c1, &ld, &xb);
     float* o = k.fvec(a[1], c1);
     if (k.bad || c0 == c1) return;
+    const int w4 = vec4_ok(x, ld, xb) ? col_reduce4_width(c0, c1) : 0;
+    if (w4) {   // the same terms, four columns a load
+        auto fn4 = [&](int r, int c, float4& v1, float4&) { v1 = ld4(x, (size_t)r * ld + c, xb); };
+        if (w4 == 256) col_reduce4<256, 8, false>(R, c0, c1, o, nullptr, acc, fn4);
+        else col_reduce4<64, 16, false>(R, c0, c1, o, nullptr, acc, fn4);
+        return;
+    }
     col_reduce(R, c0, c1, o, nullptr, acc, [&](int r, int c, float& v1, float& v2) { v1 = ld_s(x, (size_t)r * ld + c, xb); v2 = 0.f; });
 }
 

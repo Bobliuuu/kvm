@@ -878,11 +878,11 @@ class KvmExec {
   // Runs the fusion pass over a closed bundle: what it fuses, and why it left each other run alone, goes to the log. The caller swaps the rewritten bundle in when something fused.
   // The shared memory a fused block may use on this device: the static kernel's opt-in maximum less its own static shared memory, in floats (16-float multiples).
   int fused_smem_floats() const { return smem_floats_of(reinterpret_cast<const void*>(kvm_static_kernel)); }
-  int fgpt_smem_floats() const {   // every instance's (both crossing forms, with ZBW's code and without): the smallest budget, so any run fits its own
+  static int fgpt_smem_floats() {   // every instance's (both crossing forms, with ZBW's code and without): the smallest budget, so any run fits its own
     return std::min(std::min(smem_floats_of(reinterpret_cast<const void*>(kvm_fgpt_kernel<false, false>)), smem_floats_of(reinterpret_cast<const void*>(kvm_fgpt_kernel<true, false>))),
                     std::min(smem_floats_of(reinterpret_cast<const void*>(kvm_fgpt_kernel<false, true>)), smem_floats_of(reinterpret_cast<const void*>(kvm_fgpt_kernel<true, true>))));
   }
-  int f2d_smem_floats() const {    // F's kernel's, the same way (its own static shared memory)
+  static int f2d_smem_floats() {    // F's kernel's, the same way (its own static shared memory)
     return std::min(smem_floats_of(reinterpret_cast<const void*>(kvm_f2d_kernel<false>)), smem_floats_of(reinterpret_cast<const void*>(kvm_f2d_kernel<true>)));
   }
   // A kernel's dynamic shared memory a block, in floats (a multiple of 16): the device's opt-in limit less the kernel's static share.
@@ -915,6 +915,12 @@ class KvmExec {
   // The fused GPT step's pass (kvm_fuse_gpt.h): each GPT training run whose gang fits the fused kernel's shared memory on this device and
   // `workers` resident blocks becomes one fgpt_step gang (run_fgpt runs a bundle that is such gangs alone).
   KvmFuseGptPlan fuse_gpt(const KvmBundle& b, int workers, const std::vector<int>& keep, bool log = true) const {
+    std::vector<KvmFuseBuf> infos(bufs_.size());
+    for (size_t i = 0; i < bufs_.size(); ++i) infos[i] = KvmFuseBuf{bufs_[i].rows, bufs_[i].cols, bufs_[i].ld, bufs_[i].dtype};
+    return plan_fuse_gpt(b, infos, workers, keep, log);
+  }
+  // The same pass before an executor exists (main's path choice runs it as a dry run): it reads only the bundle, its buffers' shapes and the device.
+  static KvmFuseGptPlan plan_fuse_gpt(const KvmBundle& b, const std::vector<KvmFuseBuf>& infos, int workers, const std::vector<int>& keep, bool log = true) {
     KvmFuseGptOps ops;
     const auto id = [](const char* n) { return kvm_op_by_name(n); };
     ops.select_window = id("select_window"); ops.embedding_fwd = id("embedding_fwd"); ops.layernorm_fwd = id("layernorm_fwd"); ops.matmul_tile = id("matmul_tile");
@@ -922,8 +928,6 @@ class KvmExec {
     ops.layernorm_bwd_dx = id("layernorm_bwd_dx"); ops.norm_bwd_params = id("norm_bwd_params"); ops.colsum = id("colsum"); ops.attn_bwd_delta = id("attn_bwd_delta");
     ops.attn_bwd_dq = id("attn_bwd_dq"); ops.attn_bwd_dkv = id("attn_bwd_dkv"); ops.rope_bwd = id("rope_bwd"); ops.embedding_bwd = id("embedding_bwd");
     ops.gradnorm_partial = id("gradnorm_partial"); ops.gradnorm_finish = id("gradnorm_finish"); ops.counter_inc = id("counter_inc"); ops.adamw = id("adamw"); ops.noop = id("noop");
-    std::vector<KvmFuseBuf> infos(bufs_.size());
-    for (size_t i = 0; i < bufs_.size(); ++i) infos[i] = KvmFuseBuf{bufs_[i].rows, bufs_[i].cols, bufs_[i].ld, bufs_[i].dtype};
     KvmFuseGptOptions opts; opts.workers = workers; opts.keep = keep; opts.smem_floats = fgpt_smem_floats(); opts.f2d_smem_floats = f2d_smem_floats();
     KvmFuseGptPlan r = kvm_fuse_gpt(b.tasks, b.succ, b.args, infos, ops, id("fgpt_step"), opts);
     if (log) {
@@ -1350,6 +1354,7 @@ class KvmExec {
   }
   int buffer_dtype(int idx) const { return bufs_.at(idx).dtype; }
   int sms() const { return sms_; }
+  static int device_sms() { int dev, n = 0; CK(cudaGetDevice(&dev)); CK(cudaDeviceGetAttribute(&n, cudaDevAttrMultiProcessorCount, dev)); return n; }
   const std::string& device_name() const { return name_; }
 
  private:
@@ -1833,6 +1838,7 @@ int main(int argc, char** argv) {
     std::vector<std::pair<int, int>> shapes;
     struct BufSpec { int rows, cols, dtype; KvmInit init; };
     std::vector<BufSpec> buf_specs;   // added once the executor exists: its pools are sized from the bundles as they will be admitted (below)
+    const auto spec_infos = [&]() { std::vector<KvmFuseBuf> v; for (const BufSpec& bs : buf_specs) v.push_back(KvmFuseBuf{bs.rows, bs.cols, bs.cols, bs.dtype}); return v; };
     std::vector<std::string> buf_names, var_names; std::map<int, std::string> var_by_id;
     std::map<int, int> version_base;   // per variable: its base version (metadata), the static path's feasibility check
     Json meta0;
@@ -1860,6 +1866,10 @@ int main(int argc, char** argv) {
       }
       if (auto* vs = m.get("variables")) for (auto& jv : vs->a) { int id = (int)jv.num("id", -1), base = (int)jv.num("base_version", 0); version_base[id] = base; }
       KLOG(2, "%s: %d tasks, %d edges, %d arg words", dir.c_str(), nt, ne, nw);
+      for (const auto& t : b.tasks) {   // a -DKVM_OPS_ONLY build holds only its listed ops: refuse the bundle here, not with a device error mid-run
+        const KvmOpInfo* o = kvm_op(t.op_id);
+        if (o && !kvm_op_built(o->name)) throw std::runtime_error(dir + ": op " + o->name + " is not in this build's KVM_OPS_ONLY list");
+      }
       bundles.push_back(std::move(b));
     }
     // The static schedule is the default for one closed bundle (a compiled DAG, no streaming, no scheduling classes): the ring path remains for several bundles, the per-class scheduler, or an explicit --dynamic.
@@ -1916,11 +1926,12 @@ int main(int argc, char** argv) {
     // The fused GPT path (KvmExec::run_fgpt): a bundle whose every task belongs to a GPT training run that fuses into one gang (kvm_fuse_gpt.h).
     // A gang's members must be resident at once, one block an SM at the shared memory they take: at most the SM count, or --workers.
     bool opt_fgpt = false;
-    const int fgpt_workers = static_workers ? std::min(static_workers, ex.sms()) : ex.sms();
+    const int dev_sms = KvmExec::device_sms();   // the executor is built below, once the path and the window sizing are known
+    const int fgpt_workers = static_workers ? std::min(static_workers, dev_sms) : dev_sms;
     const auto fgpt_whole = [](const KvmFuseGptPlan& g) { return g.fused_runs > 0 && g.unchanged_runs == 0; };
     if (!opt_dynamic && !opt_static && bundles.size() == 1 && !cfg.sched.on && static_feasible(bundles[0])) {
       const std::string unpriced = unpriced_ops(bundles[0]);
-      const KvmFuseGptPlan gpt_dry = opt_fuse && opt_fuse_gpt ? ex.fuse_gpt(bundles[0], fgpt_workers, dump_idx, false) : KvmFuseGptPlan{};   // a dry run of the pass the branch applies
+      const KvmFuseGptPlan gpt_dry = opt_fuse && opt_fuse_gpt ? KvmExec::plan_fuse_gpt(bundles[0], spec_infos(), fgpt_workers, dump_idx, false) : KvmFuseGptPlan{};   // a dry run of the pass the branch applies
       if (gpt_dry.fused_runs > 0 && !fgpt_whole(gpt_dry))
         KLOG(1, "fuse gpt: %d GPT run(s) would fuse, but %d other component(s) do not; the fused GPT kernel runs a bundle of gangs alone, so this bundle runs unfused", gpt_dry.fused_runs, gpt_dry.unchanged_runs);
       if (gang_task(bundles[0]) >= 0) {

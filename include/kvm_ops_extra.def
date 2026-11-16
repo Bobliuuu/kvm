@@ -1,4 +1,4 @@
-// Extra generic operator pack (ids 96..127, append-only): activations, SwiGLU, row softmax, gather / scatter-add, MoE routing,
+// Extra generic operator pack (ids 96..127, append-only, full; later ops take the first free id above the game pack, 134+): activations, SwiGLU, row softmax, gather / scatter-add, MoE routing,
 // bidirectional attention, bf16 matmul, LR schedule, and matmul epilogue wrappers. Same X(name, id, "arg:type,...") format as
 // kvm_ops.def; type in {buf, buf?, i32, f32}. Device code: include/kvm_ops_extra.cuh (entry points kvmextra::<name>, X-macro
 // wrappers as in kvm_ops_gpt.cuh). CPU references: runtime/ref_extra.py (float32, compiler golden) and
@@ -75,6 +75,23 @@ X(matmul_tile_bf16,    114, "a:buf,b:buf,out:buf,bias:buf?,res:buf?,pre:buf?,m0:
 // path, anything else is executed by matmul_tile_bf16 over the eight 64 x 64 sub-tiles. out, res and pre may each be f32 or bf16 storage; bias
 // is f32. Accumulation is fp32 in increasing k order (one accumulator per element), one RNE rounding per stored bf16 value.
 X(matmul_mma_bf16,     122, "a:buf,b:buf,out:buf,bias:buf?,res:buf?,pre:buf?,m0:i32,n0:i32,M:i32,N:i32,K:i32,flags:i32,alpha:f32")
+
+// ---- decode GEMV (one row) ----------------------------------------------------------------------------------------------------
+// out[0,n] (=) sum_k v[k] * w[n,k] (+ res[0,n]) for n in [n0,n1); w bf16 storage [>=n1, K] (a transposed serving copy: row n of w is
+// output n's K weights, contiguous; ld a multiple of 8, 16-byte aligned), K a multiple of 8. v[k] = bf16 rounding of the prologue
+// of x[0,k]: pro 0 x; pro 1 x * rstd * gamma[k] with rstd = 1/sqrt(sum_k x^2 / K + eps) (rmsnorm_fwd's row); pro 2 silu(x) * x2[0,k].
+// x, x2, out and res are each f32 or bf16 storage (one row; out rounded once when bf16); gamma is f32. Sums in fp32, fixed order.
+X(gemv_bf16,           134, "x:buf,x2:buf?,gamma:buf?,w:buf,out:buf,res:buf?,n0:i32,n1:i32,K:i32,pro:i32,eps:f32")
+// Decode attention split over the context (flash decoding), one task per (kv head, split) for its whole GQA group (k, v read once):
+// attn_decode_part writes head h's partial of keys [s*c, min(n, (s+1)*c)), c = ceil(n/S), n = lens[b]+1, to part row (b*S+s)*H+h:
+// cols [0,hd) acc = sum_j p_j v_j, col hd m = max_j score_j, col hd+1 l = sum_j p_j, p_j = exp(score_j - m), score = scale * q.k;
+// an empty split writes acc 0, m -FLT_MAX, l 0. q, kc, vc fp32 or bf16 storage; part fp32 [(b+1)*S*H, hd+2]; hd <= 128, hd % 8 == 0,
+// H/Hkv <= 8. flags 1: q and knew [b+1, Hkv*hd] are pre-RoPE; the task applies rope_fwd's rotation at position lens[b] to q (flags 2: and
+// rounds it to bf16), and the split holding key n-1 first writes knew's rotated kv head kvh and vnew's row into kc / vc at row lens[b]
+// (kv_append; rounded to the cache dtype). Without flag 1 knew / vnew are absent (-1). attn_decode_merge: o[b, h*hd+c] = sum_s e_s acc_s[c] / sum_s e_s l_s, e_s = exp(m_s - max m) over splits with l_s > 0,
+// for heads [h0,h1); o fp32 or bf16 storage (one rounding). Together they equal attn_decode.
+X(attn_decode_part,    135, "q:buf,kc:buf,vc:buf,lens:buf,part:buf,knew:buf?,vnew:buf?,b:i32,kvh:i32,s:i32,S:i32,H:i32,Hkv:i32,hd:i32,Tmax:i32,scale:f32,theta:f32,flags:i32")
+X(attn_decode_merge,   136, "part:buf,o:buf,b:i32,h0:i32,h1:i32,S:i32,H:i32,hd:i32")
 
 // ---- optimizer schedule -----------------------------------------------------------------------------------------------------
 // adamw (kvm_ops_gpt.def) with the learning rate read from a scalar f32 buffer lr[0] instead of an argument.

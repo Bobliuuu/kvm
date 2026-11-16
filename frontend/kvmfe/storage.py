@@ -60,6 +60,10 @@ NATIVE = {
     'attention': (('q', 'k', 'v'), ('out',)),
     'attention_bwd': (('q', 'k', 'v', 'o', 'do'), ('dq', 'dk', 'dv')),
     'ce_fused': (('logits',), ('out',)),
+    # serving (decode): SwiGLU, the KV append and decode attention read bf16 GEMV outputs, and read / write a bf16 KV cache, with no widening copies
+    'silu_mul': (('gate', 'up'), ('out',)),
+    'kv_append': (('knew', 'vnew', 'kc', 'vc'), ('kc', 'vc')),
+    'attn_decode': (('q', 'kc', 'vc'), ('out',)),
 }
 
 

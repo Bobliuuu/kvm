@@ -772,6 +772,83 @@ def _round_bf16(b, a):
     b['out'].a[a['e0']:a['e1']] = [bf16_round(x) for x in b['x'].a[a['e0']:a['e1']]]   # also the narrow / widen of bf16 storage
 
 
+@impl('gemv_bf16', lambda a: 2.0 * (a['n1'] - a['n0']) * a['K'])
+def _gemv_bf16(b, a):
+    """One-row GEMV over a bf16 [N, K] weight with its prologue (kvm_ops_extra.def): v = bf16(prologue(x)), out[0,n] = v . w[n,:] (+ res)."""
+    K, pro = a['K'], a['pro']
+    xs = b['x'].a[:K]
+    if pro == 1:
+        g = b['gamma'].a
+        rs = 1.0 / math.sqrt(sum(v * v for v in xs) / K + a['eps'])
+        v = [bf16_round(xs[i] * rs * g[i]) for i in range(K)]
+    elif pro == 2:
+        u = b['x2'].a
+        v = [bf16_round(_silu(xs[i]) * u[i]) for i in range(K)]
+    else:
+        v = [bf16_round(x) for x in xs]
+    w, res = b['w'], b.get('res')
+    ys = [sum(v[k] * w.a[n * w.cols + k] for k in range(K)) + (res.a[n] if res is not None else 0.0) for n in range(a['n0'], a['n1'])]
+    b['out'].put(0, a['n0'], ys)
+
+
+ATTN_EMPTY_M = -3.4028234663852886e38   # m of an empty split (kvm_ops_extra.cuh KVM_ATTN_EMPTY_M)
+
+
+@impl('attn_decode_part', lambda a: 4.0 * a['Tmax'] * a['hd'] * (a['H'] // a['Hkv']) / a['S'])
+def _attn_decode_part(b, a):
+    q, kc, vc, lens, part = b['q'], b['kc'], b['vc'], b['lens'], b['part']
+    bb, kvh, s, S, H, Hkv, hd, Tmax, fl = a['b'], a['kvh'], a['s'], a['S'], a['H'], a['Hkv'], a['hd'], a['Tmax'], a['flags']
+    n = int(lens.a[bb]) + 1
+    if n < 1 or n > Tmax:
+        raise FrontendError(f'attn_decode_part: sequence {bb} length {n - 1} exceeds Tmax {Tmax}')
+    chunk = -(-n // S)
+    j0, j1 = s * chunk, min(n, s * chunk + chunk)
+    G, base, half, p0 = H // Hkv, (bb * Hkv + kvh) * Tmax, hd // 2, n - 1
+
+    def rot(x1, x2, i):
+        ang = p0 * a['theta'] ** (-2.0 * i / hd)
+        return x1 * math.cos(ang) - x2 * math.sin(ang), x1 * math.sin(ang) + x2 * math.cos(ang)
+
+    if fl & 1 and j0 <= n - 1 < j1:   # the split holding the new key appends it (rotated k, v) to the cache
+        kn, vn = b['knew'], b['vnew']
+        ko = bb * kn.cols + kvh * hd
+        kr = [0.0] * hd
+        for i in range(half):
+            kr[i], kr[i + half] = rot(kn.a[ko + i], kn.a[ko + i + half], i)
+        kc.put(base + n - 1, 0, kr)
+        vc.put(base + n - 1, 0, vn.a[bb * vn.cols + kvh * hd: bb * vn.cols + (kvh + 1) * hd])
+    for g in range(G):
+        h = kvh * G + g
+        r = (bb * S + s) * H + h
+        qv = list(q.a[bb * q.cols + h * hd: bb * q.cols + (h + 1) * hd])
+        if fl & 1:
+            for i in range(half):
+                qv[i], qv[i + half] = rot(qv[i], qv[i + half], i)
+            if fl & 2:
+                qv = [bf16_round(x) for x in qv]
+        sc = [sum(qv[c] * kc.a[(base + j) * kc.cols + c] for c in range(hd)) * a['scale'] for j in range(j0, j1)]
+        if not sc:
+            part.put(r, 0, [0.0] * hd + [ATTN_EMPTY_M, 0.0])
+            continue
+        m = max(sc)
+        p = [math.exp(x - m) for x in sc]
+        acc = [sum(p[i] * vc.a[(base + j0 + i) * vc.cols + c] for i in range(len(p))) for c in range(hd)]
+        part.put(r, 0, acc + [m, sum(p)])
+
+
+@impl('attn_decode_merge', lambda a: 4.0 * a['S'] * (a['h1'] - a['h0']) * a['hd'])
+def _attn_decode_merge(b, a):
+    part, o = b['part'], b['o']
+    bb, S, H, hd = a['b'], a['S'], a['H'], a['hd']
+    for h in range(a['h0'], a['h1']):
+        rows = [(bb * S + s) * H + h for s in range(S)]
+        live = [part.row(r) for r in rows if part.row(r)[hd + 1] > 0.0]
+        M = max(x[hd] for x in live)
+        e = [math.exp(x[hd] - M) for x in live]
+        L = sum(ei * x[hd + 1] for ei, x in zip(e, live))
+        o.put(bb, h * hd, [sum(ei * x[c] for ei, x in zip(e, live)) / L for c in range(hd)])
+
+
 @impl('matmul_tile_bf16', _mm_flops)
 def _matmul_tile_bf16(b, a):
     rb = dict(b)

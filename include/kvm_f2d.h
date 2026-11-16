@@ -175,7 +175,9 @@ inline const char* mlp_tiling(int N, int d, int F, int gt, int gc, int kc, MTili
   m.R = N / gt; m.Fs = F / gc;
   const int R = m.R, Fs = m.Fs;
   if (R < gc) return "the MLP layout needs at least a row a member in each group";
-  if (d % TMS || R > 96 || R % 8) return "the MLP's streamed-rows GEMMs need d % TMS == 0 and R <= 96, a multiple of 8";
+  // R a multiple of 16, as the attention half's: fc2 and dX run sgemm_rs over the group's R rows, which writes whole 16-row blocks, so a
+  // group of 8 mod 16 rows wrote 8 rows past its partial into the next member's and the step trained on corrupted sums
+  if (d % TMS || R > 96 || R % 16) return "the MLP's GEMMs need d % TMS == 0 and R <= 96, a multiple of 16 (fc2's and dX's sgemm_rs write whole 16-row blocks)";
   if (d % TN || Fs > 96 || Fs % 8) return "the MLP's resident GEMMs need d % TN == 0 and F / Gc <= 96, a multiple of 8";
   if (kc != 32 && kc != 48) return "the chunk KC is 32 or 48";
   const int tm = kvm_fgpt_r16(R) / 16, wpb = tm ? FNW / tm : 0;          // R / 16 row blocks, wpb warps each

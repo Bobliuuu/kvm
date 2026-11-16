@@ -15,7 +15,7 @@
 // Every element of every parameter has exactly one owner, which computes (or sums) its gradient, counts it in the grad norm and applies AdamW.
 // Exchanges: an all-gather is own rows written, then a barrier. A reduce-scatter is one partial a contributing member (or unit) written, a
 // barrier, then each member sums its own rows of the partials in a fixed order. A step crosses 8 L + 6 barriers; the last one ends the step,
-// so the next step's reads see every update. A value another member wrote is read through L2 (ld.global.cg), never a possibly stale L1 line.
+// so the next step's reads see every update. A value another member wrote is read after the crossing that released it (ld and ld4, below).
 //
 // Compute: each phase stages its operands in shared memory and runs its products on the tensor cores (mma.sync m16n8k8 TF32, warps over
 // 16 x 8 output tiles, so a narrow shard still spreads over all eight warps), in the bundle's numerics: matmul_tile's 1xTF32 for the linear
@@ -34,15 +34,36 @@ constexpr int NW = NT / 32;
 // rope_table, rope, block_sum) take its thread count as BT, by default NT: a program whose member block runs another count
 // (kvm_f2d.cuh's 256) calls them with its own.
 
-// A load another member may have written, from L2 (a strong load: L1 never serves it stale). A volatile access rather than __ldcg, whose
-// `asm volatile` the compiler must treat as a write to any memory: after each one it read every value it keeps in shared memory again.
-__device__ __forceinline__ float ld(const float* p) { return *reinterpret_cast<const volatile float*>(p); }
-// ld's four-wide form: the four floats at p (16-byte aligned) in one request, from L2 as ld's. It is an `asm volatile`, so after each one
-// the compiler reads shared memory again: a loop around it takes the constants it uses as values first (KVM_FGPT_PHASE_CONSTS).
+// A load of a value another member may have written. Every such read follows the crossing that released it, whose poller acquires at GPU
+// scope (kvm_gang.cuh: LDG.E.STRONG.GPU, then CCTL.IVALL, which invalidates the SM's L1) before the block's __syncthreads, so a weak load
+// there reads the released value: the order cooperative groups' grid.sync gives its blocks' plain loads. KVM_FGPT_LDW 1 (the default) loads
+// weak (LDG.E, through the L1: the split form's beds read 16 KB that way 1.4x faster than by the strong L2-only load, and its
+// step gained x1.01-1.07, both on an A100); 0 keeps the strong volatile load (LD.E.STRONG.SYS). Either reads the same value,
+// so the bits are the same. A weak load is a plain one: the compiler may schedule and merge it within a phase, never across a __syncthreads
+// or a crossing's acquire (a compiler barrier both), and it is no read-only load (no __restrict__ reaches these pointers).
+#ifndef KVM_FGPT_LDW
+#define KVM_FGPT_LDW 1
+#endif
+__device__ __forceinline__ float ld(const float* p) {
+#if KVM_FGPT_LDW
+  __builtin_assume(__isGlobal(p));   // a global load (LDG), where a pointer read from shared memory would compile to a generic one
+  return *p;
+#else
+  return *reinterpret_cast<const volatile float*>(p);   // a volatile access rather than __ldcg, whose `asm volatile` the compiler must treat as
+                                                       // a write to any memory: after each one it read every value it keeps in shared memory again
+#endif
+}
+// ld's four-wide form: the four floats at p (16-byte aligned) in one request, as ld reads them. The strong form is an `asm volatile`, so after
+// each one the compiler reads shared memory again: a loop around it takes the constants it uses as values first (KVM_FGPT_PHASE_CONSTS).
 __device__ __forceinline__ float4 ld4(const float* p) {
+#if KVM_FGPT_LDW
+  __builtin_assume(__isGlobal(p));
+  return *reinterpret_cast<const float4*>(p);
+#else
   float4 r;
   asm volatile("ld.volatile.global.v4.f32 {%0,%1,%2,%3}, [%4];" : "=f"(r.x), "=f"(r.y), "=f"(r.z), "=f"(r.w) : "l"(__cvta_generic_to_global(p)));
   return r;
+#endif
 }
 // a + p(0) + p(1) + ... + p(n-1), the terms read from L2 and added in that order (the rolled loop's float result, bit for bit), with up to
 // MAXN loads in flight before the first add: a sum waits for about one round trip to L2 per MAXN terms, where a rolled loop of dependent

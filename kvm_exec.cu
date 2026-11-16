@@ -528,7 +528,7 @@ class KvmExec {
     CK(cudaMemset(S_.indeg, 0, T * 4));   // the admitter ADDS a task's indegree to what its predecessors already subtracted (kvm_admit_record), so a free slot's count is 0
     CK(cudaMalloc(&S_.trace, T * sizeof(KvmTrace)));
     CK(cudaMalloc(&S_.args, T * KVM_ARG_STRIDE * 4)); CK(cudaMalloc(&S_.adm_slots, (size_t)cfg_.live_cap * 4)); CK(cudaMalloc(&S_.stage, (size_t)cfg_.ring_words * 4));
-    CK(cudaMalloc(&S_.succ, (size_t)cfg_.succ_cap * 4));
+    CK(cudaMalloc(&S_.succ, (size_t)cfg_.succ_cap * 4)); succ_ring_ = S_.succ;
     CK(cudaMalloc(&S_.version, cfg_.num_vars * 4)); CK(cudaMalloc(&S_.park_head, cfg_.num_vars * 4));
     // S_.cells is allocated in prepare(), once the run's facts are known (a FIFO run needs one ring, not one per priority bucket per class: 1/32 of the memory, 4 GB on the largest record)
     CK(cudaMalloc(&S_.fcells, T * sizeof(KvmCell)));
@@ -561,7 +561,7 @@ class KvmExec {
 #endif
     set_fifo(cfg_.fifo_only);
     S_.no_recycle = cfg_.no_recycle; S_.no_waits = cfg_.no_waits; S_.trace_on = cfg_.trace_on;
-    S_.prestaged = 0; S_.warm_only = 0;
+    S_.prestaged = 0; S_.succ_alias = 0; S_.warm_only = 0;
     S_.timeout_ns = cfg_.timeout_us * 1000ull; S_.task_limit_ns = cfg_.task_limit_us * 1000ull;
     S_.rcap = 4 * cfg_.live_cap;
     CK(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
@@ -571,7 +571,7 @@ class KvmExec {
     if (started_ && !finished_) { try { close(); finish(); } catch (...) {} }
     for (size_t i = 0; i < bufs_.size(); ++i) if (!std::count(views_.begin(), views_.end(), i)) cudaFree(bufs_[i].p);
     for (float* p : arenas_) cudaFree(p);
-    for (void* p : {(void*)S_.tasks, (void*)S_.indeg, (void*)S_.state, (void*)S_.park_next, (void*)S_.trace, (void*)S_.succ, (void*)S_.args, (void*)S_.adm_slots, (void*)S_.stage,
+    for (void* p : {(void*)S_.tasks, (void*)S_.indeg, (void*)S_.state, (void*)S_.park_next, (void*)S_.trace, (void*)succ_ring_, (void*)S_.args, (void*)S_.adm_slots, (void*)S_.stage,
                     (void*)S_.version, (void*)S_.park_head, (void*)S_.cells, (void*)S_.fcells, (void*)S_.qctl, (void*)S_.wins, (void*)S_.cnt, (void*)S_.bufs, (void*)S_.sp.dev, (void*)S_.sp.info, (void*)S_.sp.pv, (void*)S_.sp.pubcls}) cudaFree(p);
     cudaFreeHost(ctl_); cudaFreeHost(ring_); cudaFreeHost((void*)win_done_);
     cudaStreamDestroy(stream_); cudaEventDestroy(e0_); cudaEventDestroy(e1_);
@@ -691,6 +691,19 @@ class KvmExec {
     if (started_ || !prestart_) throw std::logic_error("prestage after prestart(), before start()");
     if (wpos_) CK(cudaMemcpy(S_.stage, ring_, wpos_ * 4, cudaMemcpyHostToDevice));
     S_.prestaged = wpos_ != 0;
+    // The record is the ring's only one (offset 0, no pad), nothing is recycled and no scheduler classes it, so the admitter's successor copy is an identity
+    // (slot = record index, ring offset 0): the workers read the successor words where they already are. That copy ran on the admitter block alone, before the
+    // first task and inside the timed window (gpt-162m: 8.5M words, 5.06 ms of a 203 ms kernel on an A100). submit()'s validation is then the only range check
+    // on those words (the admitter's per-word check is skipped), so a record submitted with validate = false keeps the copy.
+    if (S_.prestaged && S_.no_recycle && !cfg_.sched.on && !unvalidated_ && ring_[0] == KVM_REC_MAGIC && ring_[6] == KVM_REC_BUNDLE &&
+        (unsigned long long)ring_[1] == wpos_ && ring_[3] >= 0) {
+      // the workers index the ring modulo succ_cap: below the record's edge count they would wrap into other words (the CLI raises succ_cap past edges + 2)
+      if ((unsigned)ring_[3] > S_.succ_cap) throw std::logic_error("successor ring (" + std::to_string(S_.succ_cap) + " words) below the record's " + std::to_string(ring_[3]) + " edges");
+      S_.succ = S_.stage + KVM_REC_HDR + (size_t)ring_[2] * KVM_TASK_WORDS;
+      S_.succ_alias = 1;
+      CK(cudaFree(succ_ring_)); succ_ring_ = nullptr;   // never written or read under the alias
+      KLOG(2, "successors read in place: %d words of the prestaged record, no copy; the %u-word successor ring freed", ring_[3], S_.succ_cap);
+    }
   }
   // --warm-ms: sustained GPU work between the setup and the timed launch. The SM clock runs at 1095 MHz under light or sparse work and at 1410 under sustained work (A100, Nov 9);
   // it reaches 1410 within about 0.3 s of sustained load and holds it about 1.7 s after. A process's setup (bundle load, allocations) can outlast that hold, so the warm-up runs here, after setup.
@@ -731,6 +744,7 @@ class KvmExec {
     if (!started_ && !prestart_) throw std::logic_error("submit before start()");
     if (closed_flag_) { KLOG(1, "submit after close()"); return KvmSubmit::CLOSED; }
     if (herr_->code) { last_error_ = std::string("device error ") + kvm_err_name(herr_->code); return KvmSubmit::DEVICE_ERROR; }   // the device is dead: accepted bundles would never run
+    if (!validate) unvalidated_ = true;   // prestage() reads successors in place only when the host checked every one
     std::string why = validate ? b.validate(nbufs(), cfg_.num_vars, cfg_.live_cap) : std::string();
     if (!why.empty()) { KLOG(0, "bundle rejected: %s", why.c_str()); last_error_ = why; return why.find("live_cap") != std::string::npos ? KvmSubmit::TOO_BIG : KvmSubmit::INVALID; }
     if (cfg_.fifo_only) for (const KvmTaskDesc& t : b.tasks) if (t.priority != 0 || t.deadline_us != -1) {   // the FIFO ring serves everything in release order: a priority or deadline it cannot honor is a caller error, not a silent reorder
@@ -1475,6 +1489,8 @@ class KvmExec {
   std::string name_, last_error_;
   std::mutex mu_;
   bool prestart_ = false;   // prestart(): the ring may be written before the kernel runs
+  bool unvalidated_ = false;   // a record was submitted without validation: prestage() keeps the successor copy
+  int* succ_ring_ = nullptr;   // the successor ring's allocation (S_.succ points into S_.stage when aliased)
   bool started_ = false, finished_ = false, closed_flag_ = false, prepared_ = false;
   KvmResult res_;
   KvmStats stats_;

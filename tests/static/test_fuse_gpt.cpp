@@ -173,6 +173,39 @@ int main(int argc, char** argv) {
             }
         }
 
+        // 3b. the one-block form (kvm_fgpt1.h) at an A100's one-block budget (41,524 floats): a run whose layout fits takes it (one member,
+        //     no 2-D fit, its report saying so), every other run keeps the gang it takes without it, and with the form off (the default
+        //     options above) no run takes it. Runs are matched by component, so a run only the one-block form could fuse is not misread.
+        {
+            const int fgpt = reg.require("fgpt_step");
+            const long long one_floats = 41524;
+            KvmFuseGptOptions base, one; one.fgpt1_smem_floats = (int)one_floats;
+            const KvmFuseGptPlan P0 = kvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, base);
+            const KvmFuseGptPlan P1 = kvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, one);
+            std::map<int, size_t> run_of0;
+            for (size_t i = 0; i < P0.runs.size(); ++i) run_of0[P0.runs[i].component] = i;
+            int bad1 = P0.one_block.size() != P0.runs.size() || P1.one_block.size() != P1.runs.size();
+            for (char b : P0.one_block) bad1 += b != 0;
+            int took = 0;
+            for (size_t i = 0; !bad1 && i < P1.runs.size(); ++i) {
+                const KvmGptStep& sh = P1.runs[i].shape;
+                const long long floats = kvm_fgpt1_layout(sh.N, sh.T, sh.d, sh.H, sh.F, sh.V, sh.L, KVM_FGPT1_EXEC_FAST).total;
+                const int code = kvm_fgpt1_check(sh.N, sh.T, sh.B, sh.d, sh.H, sh.F, sh.V, sh.L, sh.mm_numerics, KVM_FGPT1_EXEC_FAST, one_floats);
+                const std::string& line = P1.report[P1.runs[i].component];
+                const auto j = run_of0.find(P1.runs[i].component);
+                if (code == 0) {
+                    ++took;
+                    bad1 += !P1.one_block[i] || P1.gang[i] != 1 || P1.f2d[i].G != 0 || P1.rows[i] != sh.N || line.find("one-block form") == std::string::npos;
+                } else {
+                    bad1 += P1.one_block[i] != 0 || j == run_of0.end() || P1.gang[i] != P0.gang[j->second] || P1.rows[i] != P0.rows[j->second];
+                }
+                printf("  one-block form at %lld floats: component %d (N %d, d %d, L %d) %s: %lld floats; %s\n", one_floats, P1.runs[i].component, sh.N, sh.d, sh.L,
+                       code == 0 ? "takes it" : "keeps its gang", floats, kvm_fgpt1_why(code));
+            }
+            if (bad1) { printf("  FAIL: %d run(s) planned against the one-block form's check\n", bad1); ++failures; }
+            else printf("  one-block form: %d of %zu run(s) take it; off by default\n", took, P1.runs.size());
+        }
+
         // 4. mutations the template must refuse, each with the reason it should give
         struct Mutation { const char* what; const char* want; std::function<bool(Bundle&)> apply; };
         const std::vector<Mutation> muts = {

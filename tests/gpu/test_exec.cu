@@ -182,7 +182,23 @@ static bool suite_errors() {
   err_case("bad successor", KVM_ERR_BAD_TASK, c, [&](KvmExec&) { KvmBundle b = one("noop", {}); b.tasks[0].succ_cnt = 1; b.succ = {5}; return b; });
   { KvmConfig s = c; s.max_tasks = 8; err_case("slot pool exhausted", KVM_ERR_SLOTS, s, [&](KvmExec&) { KvmBundleBuilder bb; for (int i = 0; i < 9; ++i) bb.add("noop", {}); return bb.build(); }); }
   { KvmConfig s = c; s.live_cap = 8; err_case("batch > live_cap", KVM_ERR_BATCH_TOO_LARGE, s, [&](KvmExec&) { KvmBundleBuilder bb; for (int i = 0; i < 9; ++i) bb.add("noop", {}); return bb.build(); }); }
-  { KvmConfig s = c; s.succ_cap = 2; err_case("successor ring too small", KVM_ERR_POOL, s, [&](KvmExec&) { KvmBundleBuilder bb; int a = bb.add("noop", {}), b = bb.add("noop", {}), d = bb.add("noop", {}), e = bb.add("noop", {}); bb.edge(a, b); bb.edge(b, d); bb.edge(d, e); return bb.build(); }); }
+  // The successor ring is never below its floor, the admission ring (kvm_succ_ring_words): KvmExec raises a smaller one, so a record the
+  // admission ring can carry always fits it (Nov 11: a transform's added edges overran a ring sized from the bundle as written, and
+  // admission stopped with POOL). A ring set to 2 words therefore reads back at the floor, and the 3-edge chain that once met POOL runs.
+  { KvmConfig s = c; s.succ_cap = 2;
+    KvmExec ex(s);
+    const unsigned want = kvm_succ_ring_words(2, s.ring_words);
+    CHECK(ex.config().succ_cap == want, "successor ring set below its floor: %u words, want %u", ex.config().succ_cap, want);
+    float* a = ex.arena(64); ex.add_view(a, 1, 64);
+    ex.start();
+    KvmBundleBuilder bb; int t0 = bb.add("noop", {}), t1 = bb.add("noop", {}), t2 = bb.add("noop", {}), t3 = bb.add("noop", {});
+    bb.edge(t0, t1); bb.edge(t1, t2); bb.edge(t2, t3);
+    ex.submit(bb.build(), 5000, false);
+    ex.close();
+    const KvmResult& r = ex.finish();
+    CHECK(r.ok() && r.done == 4, "successor ring at its floor: %s, %d of 4 tasks done", kvm_err_name(r.err_code), r.done);
+    printf("  successor ring set to 2 words -> %u (its floor), the 3-edge chain -> %s\n", ex.config().succ_cap, kvm_err_name(r.err_code));
+  }
   { KvmConfig s = c; s.timeout_us = 300000; err_case("unsatisfied wait -> timeout", KVM_ERR_TIMEOUT, s, [&](KvmExec&) { return one("noop", {}, [] { KvmTaskOpts o; o.wait_var = 2; o.wait_ver = 1; return o; }()); }); }
   // host-side validation rejects what the device would (and the executor stays usable)
   { KvmExec ex(c); float* a = ex.arena(8); ex.add_view(a, 1, 8); ex.start();

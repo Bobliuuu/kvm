@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Corpus generator + fuzz driver for the kvm_exec CLI.
+"""Corpus generator + fuzz driver for the mvm_exec CLI.
 
 Goal: a corrupted bundle (tasks.bin / successors.bin / args.bin / metadata.json / golden.json) or a hostile CLI flag must be
 REJECTED CLEANLY: exit code 0 (accepted, ran) or 1 (rejected with a message) or 2 (usage), no signal, no hang, and the GPU must
 still run a known-good bundle afterwards. Anything else is a finding.
 
-    python3 tests/litmus/fuzz.py --exe ./kvm_exec --out fuzz_out [--seed 1] [--cases 400] [--timeout 40]
+    python3 tests/litmus/fuzz.py --exe ./mvm_exec --out fuzz_out [--seed 1] [--cases 400] [--timeout 40]
 
 Seeds come from runtime/compile_workload.py (examples + one generated workload with versions, matmul, spin).
 Classes: OK (exit 0), REJECT (exit 1, message), USAGE (2), SLOW_REJECT (device TIMEOUT: rejected, but only after the timeout),

@@ -6,46 +6,46 @@
 //   to the fp32 kernel on the same (widened) values, a bf16 output equal to RNE of the fp32 result; plus the float64 reference.
 // Build: nvcc -O2 -arch=sm_80 -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -I../../include -I. test_bf16.cu -o test_bf16
 #include <algorithm>
-#ifndef KVM_GPT_MAX_HD
-#define KVM_GPT_MAX_HD 64
+#ifndef MVM_GPT_MAX_HD
+#define MVM_GPT_MAX_HD 64
 #endif
-#define KVM_HARNESS_NO_FULL   // this test dispatches only the ops it exercises (the all-ops kernel of the harness costs minutes of compile time)
+#define MVM_HARNESS_NO_FULL   // this test dispatches only the ops it exercises (the all-ops kernel of the harness costs minutes of compile time)
 #include "harness.cuh"
 #include "refs.hpp"
-#include "kvm_ops_extra.cuh"
+#include "mvm_ops_extra.cuh"
 
 struct OpInfoX { const char* name; int id; const char* sig; };
 static const OpInfoX OPSX[] = {
 #define X(n, id, s) {#n, id, s},
-#include "kvm_ops_extra.def"
+#include "mvm_ops_extra.def"
 #undef X
 };
 enum {
 #define X(n, id, s) OPX_##n = id,
-#include "kvm_ops_extra.def"
+#include "mvm_ops_extra.def"
 #undef X
 };
-__global__ void __launch_bounds__(256, 1) k_runx(KvmCtx c, const int32_t* w, const int* op, const int* off) {
+__global__ void __launch_bounds__(256, 1) k_runx(MvmCtx c, const int32_t* w, const int* op, const int* off) {
     const int32_t* a = w + off[blockIdx.x];
     switch (op[blockIdx.x]) {
-        case OPX_matmul_mma_bf16: kvmextra::matmul_mma_bf16(c, a); break;
-        case OP_embedding_fwd: kvmgpt::embedding_fwd(c, a); break;
-        case OP_layernorm_fwd: kvmgpt::layernorm_fwd(c, a); break;
-        case OP_rmsnorm_fwd: kvmgpt::rmsnorm_fwd(c, a); break;
-        case OP_layernorm_bwd_dx: kvmgpt::layernorm_bwd_dx(c, a); break;
-        case OP_rmsnorm_bwd_dx: kvmgpt::rmsnorm_bwd_dx(c, a); break;
-        case OP_norm_bwd_params: kvmgpt::norm_bwd_params(c, a); break;
-        case OP_colsum: kvmgpt::colsum(c, a); break;
-        case OP_gelu_bwd: kvmgpt::gelu_bwd(c, a); break;
-        case OP_residual_add: kvmgpt::residual_add(c, a); break;
-        case OP_rope_fwd: kvmgpt::rope_fwd(c, a); break;
-        case OP_rope_bwd: kvmgpt::rope_bwd(c, a); break;
-        case OP_softmax_ce_fwd: kvmgpt::softmax_ce_fwd(c, a); break;
-        case OP_softmax_ce_bwd: kvmgpt::softmax_ce_bwd(c, a); break;
-        case OP_attn_fwd: kvmgpt::attn_fwd(c, a); break;
-        case OP_attn_bwd_delta: kvmgpt::attn_bwd_delta(c, a); break;
-        case OP_attn_bwd_dq: kvmgpt::attn_bwd_dq(c, a); break;
-        case OP_attn_bwd_dkv: kvmgpt::attn_bwd_dkv(c, a); break;
+        case OPX_matmul_mma_bf16: mvmextra::matmul_mma_bf16(c, a); break;
+        case OP_embedding_fwd: mvmgpt::embedding_fwd(c, a); break;
+        case OP_layernorm_fwd: mvmgpt::layernorm_fwd(c, a); break;
+        case OP_rmsnorm_fwd: mvmgpt::rmsnorm_fwd(c, a); break;
+        case OP_layernorm_bwd_dx: mvmgpt::layernorm_bwd_dx(c, a); break;
+        case OP_rmsnorm_bwd_dx: mvmgpt::rmsnorm_bwd_dx(c, a); break;
+        case OP_norm_bwd_params: mvmgpt::norm_bwd_params(c, a); break;
+        case OP_colsum: mvmgpt::colsum(c, a); break;
+        case OP_gelu_bwd: mvmgpt::gelu_bwd(c, a); break;
+        case OP_residual_add: mvmgpt::residual_add(c, a); break;
+        case OP_rope_fwd: mvmgpt::rope_fwd(c, a); break;
+        case OP_rope_bwd: mvmgpt::rope_bwd(c, a); break;
+        case OP_softmax_ce_fwd: mvmgpt::softmax_ce_fwd(c, a); break;
+        case OP_softmax_ce_bwd: mvmgpt::softmax_ce_bwd(c, a); break;
+        case OP_attn_fwd: mvmgpt::attn_fwd(c, a); break;
+        case OP_attn_bwd_delta: mvmgpt::attn_bwd_delta(c, a); break;
+        case OP_attn_bwd_dq: mvmgpt::attn_bwd_dq(c, a); break;
+        case OP_attn_bwd_dkv: mvmgpt::attn_bwd_dkv(c, a); break;
         default: atomicCAS(c.err, 0, 99);
     }
 }
@@ -55,16 +55,16 @@ struct BatchX {
 };
 static int g_attr = 0;
 static int runx(Dev& d, const BatchX& b) {
-    const int smem = std::max(kvm_gpt_smem_bytes(KVM_GPT_MAX_HD), KVM_MMA_SMEM);
-    if (!g_attr) { CK(cudaFuncSetAttribute(k_runx, cudaFuncAttributeMaxDynamicSharedMemorySize, kvm_test_smem_cap())); kvm_hopper_host_init(); g_attr = 1; }
+    const int smem = std::max(mvm_gpt_smem_bytes(MVM_GPT_MAX_HD), MVM_MMA_SMEM);
+    if (!g_attr) { CK(cudaFuncSetAttribute(k_runx, cudaFuncAttributeMaxDynamicSharedMemorySize, mvm_test_smem_cap())); mvm_hopper_host_init(); g_attr = 1; }
     d.sync_table();
     int32_t* w; int *op, *off;
     CK(cudaMalloc(&w, b.w.size() * 4 + 4)); CK(cudaMalloc(&op, b.op.size() * 4)); CK(cudaMalloc(&off, b.off.size() * 4));
     CK(cudaMemcpy(w, b.w.data(), b.w.size() * 4, cudaMemcpyHostToDevice));
     CK(cudaMemcpy(op, b.op.data(), b.op.size() * 4, cudaMemcpyHostToDevice));
     CK(cudaMemcpy(off, b.off.data(), b.off.size() * 4, cudaMemcpyHostToDevice));
-    KvmCtx c{d.tab_d, (int32_t)d.tab.size(), d.err};
-    k_runx<<<(unsigned)b.op.size(), KVM_GPT_THREADS, smem>>>(c, w, op, off);
+    MvmCtx c{d.tab_d, (int32_t)d.tab.size(), d.err};
+    k_runx<<<(unsigned)b.op.size(), MVM_GPT_THREADS, smem>>>(c, w, op, off);
     CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
     cudaFree(w); cudaFree(op); cudaFree(off);
     return d.geterr();
@@ -112,7 +112,7 @@ static void t_mma() {
             const float alpha = full ? 0.7f : 1.f;
             const int fl = ta | (tb << 1) | (full ? (4 | 8) : 0);
             BatchX b;
-            for (int m0 = 0; m0 < M; m0 += KVM_MMA_BM) for (int n0 = 0; n0 < N; n0 += KVM_MMA_BN)
+            for (int m0 = 0; m0 < M; m0 += MVM_MMA_BM) for (int n0 = 0; n0 < N; n0 += MVM_MMA_BN)
                 b.add(OPX_matmul_mma_bf16, A().b(ia).b(ib).b(io).b(full ? ibias : -1).b(full ? ires : -1).b(full ? ipre : -1).i(m0).i(n0).i(M).i(N).i(K).i(fl).f(alpha));
             const int e = runx(dv, b);
             D C = mm_d(rb(ha), rb(hb), M, N, K, ta, tb), ref(M * N), pre(M * N);
@@ -139,10 +139,10 @@ static void t_mma() {
     }
     {   // errors: flags beyond 15, m0 >= M, K beyond A, fp32 operands accepted (fallback), i32 operand rejected
         Dev dv; int ia = dv.addb(8, 8), ib = dv.addb(8, 8), io = dv.addb(8, 8), ii = dv.addi(64);
-        check_true("mma_bf16 flags 16 -> E_SHAPE", run1x(dv, OPX_matmul_mma_bf16, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(0).i(0).i(8).i(8).i(8).i(16).f(1.f)) == KVM_GPT_E_SHAPE);
-        check_true("mma_bf16 m0 >= M -> E_RANGE", run1x(dv, OPX_matmul_mma_bf16, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(8).i(0).i(8).i(8).i(8).i(0).f(1.f)) == KVM_GPT_E_RANGE);
-        check_true("mma_bf16 K beyond A -> E_RANGE", run1x(dv, OPX_matmul_mma_bf16, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(0).i(0).i(8).i(8).i(9).i(0).f(1.f)) == KVM_GPT_E_RANGE);
-        check_true("mma_bf16 i32 operand -> E_DTYPE", run1x(dv, OPX_matmul_mma_bf16, A().b(ii).b(ib).b(io).b(-1).b(-1).b(-1).i(0).i(0).i(8).i(8).i(8).i(0).f(1.f)) == KVM_GPT_E_DTYPE);
+        check_true("mma_bf16 flags 16 -> E_SHAPE", run1x(dv, OPX_matmul_mma_bf16, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(0).i(0).i(8).i(8).i(8).i(16).f(1.f)) == MVM_GPT_E_SHAPE);
+        check_true("mma_bf16 m0 >= M -> E_RANGE", run1x(dv, OPX_matmul_mma_bf16, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(8).i(0).i(8).i(8).i(8).i(0).f(1.f)) == MVM_GPT_E_RANGE);
+        check_true("mma_bf16 K beyond A -> E_RANGE", run1x(dv, OPX_matmul_mma_bf16, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(0).i(0).i(8).i(8).i(9).i(0).f(1.f)) == MVM_GPT_E_RANGE);
+        check_true("mma_bf16 i32 operand -> E_DTYPE", run1x(dv, OPX_matmul_mma_bf16, A().b(ii).b(ib).b(io).b(-1).b(-1).b(-1).i(0).i(0).i(8).i(8).i(8).i(0).f(1.f)) == MVM_GPT_E_DTYPE);
     }
 }
 
@@ -276,7 +276,7 @@ static AttnRun attn_run(int B, int T, int H, int Hkv, int hd, unsigned in, unsig
     int dq = mk(dv, out & 2, R, H * hd, H * hd + 12), dk = mk(dv, out & 4, R, Hkv * hd, Hkv * hd + 16), dvv = mk(dv, out & 8, R, Hkv * hd);
     put(dv, q, in & 1, hq); put(dv, k, in & 2, hk); put(dv, v, in & 4, hv); put(dv, dO, in & 8, hdo);
     BatchX b;
-    for (int bb = 0; bb < B; bb++) for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += KVM_GPT_ATTN_ROWS)
+    for (int bb = 0; bb < B; bb++) for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += MVM_GPT_ATTN_ROWS)
         b.add(OP_attn_fwd, A().b(q).b(k).b(v).b(o).b(lse).i(bb).i(h).i(q0).i(T).i(H).i(Hkv).i(hd).f(scale));
     AttnRun r{};
     r.err = runx(dv, b);
@@ -286,9 +286,9 @@ static AttnRun attn_run(int B, int T, int H, int Hkv, int hd, unsigned in, unsig
     r.err |= runx(dv, b2);
     BatchX b3;
     for (int bb = 0; bb < B; bb++) {
-        for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += KVM_GPT_ATTN_ROWS)
+        for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += MVM_GPT_ATTN_ROWS)
             b3.add(OP_attn_bwd_dq, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dq).i(bb).i(h).i(q0).i(T).i(H).i(Hkv).i(hd).f(scale));
-        for (int h = 0; h < Hkv; h++) for (int k0 = 0; k0 < T; k0 += KVM_GPT_ATTN_ROWS)
+        for (int h = 0; h < Hkv; h++) for (int k0 = 0; k0 < T; k0 += MVM_GPT_ATTN_ROWS)
             b3.add(OP_attn_bwd_dkv, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dk).b(dvv).i(bb).i(h).i(k0).i(T).i(H).i(hd).f(scale));
     }
     r.err |= runx(dv, b3);
@@ -332,7 +332,7 @@ static void t_attn() {
         Dev dv;
         int q = dv.addb(4, 34, 34), k = dv.addf(4, 32, 36), v = dv.addf(4, 32, 36), o = dv.addf(4, 32), lse = dv.addf(1, 4);
         int e = run1x(dv, OP_attn_fwd, A().b(q).b(k).b(v).b(o).b(lse).i(0).i(0).i(0).i(4).i(1).i(1).i(32).f(0.17f));
-        check_true("attn_fwd bf16 q with ld % 4 != 0 -> E_SHAPE", e == KVM_GPT_E_SHAPE);
+        check_true("attn_fwd bf16 q with ld % 4 != 0 -> E_SHAPE", e == MVM_GPT_E_SHAPE);
     }
 }
 
@@ -366,7 +366,7 @@ static void t_attn_tc() {
 
 int main() {
     cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0));
-    printf("device: %s, %d SMs, cc %d.%d, mma smem %d B\n", pr.name, pr.multiProcessorCount, pr.major, pr.minor, KVM_MMA_SMEM);
+    printf("device: %s, %d SMs, cc %d.%d, mma smem %d B\n", pr.name, pr.multiProcessorCount, pr.major, pr.minor, MVM_MMA_SMEM);
     t_mma(); t_ops(); t_attn(); t_attn_tc();
     return summary();
 }

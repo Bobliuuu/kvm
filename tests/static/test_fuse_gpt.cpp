@@ -1,8 +1,8 @@
-// CPU check of the GPT step matcher (include/kvm_fuse_gpt.h) on real bundles: prints the decision for every run, and on a matched run checks
+// CPU check of the GPT step matcher (include/mvm_fuse_gpt.h) on real bundles: prints the decision for every run, and on a matched run checks
 // that its steps account for every task of the run exactly once, prints the step's shape and its parameter updates by buffer name, then
 // breaks the bundle in ways the template must refuse (each mutation must leave the run unmatched, with its own reason).
 //   g++ -std=c++17 -O2 -Iinclude tests/static/test_fuse_gpt.cpp -o /tmp/test_fuse_gpt && /tmp/test_fuse_gpt BUNDLE_DIR...
-// The registry is compiled in from include/kvm_ops_list.inc (registry.h): a tree that lacks an op the matcher reads fails here.
+// The registry is compiled in from include/mvm_ops_list.inc (registry.h): a tree that lacks an op the matcher reads fails here.
 #include <algorithm>
 #include <cstdio>
 #include <functional>
@@ -11,14 +11,14 @@
 #include <string>
 #include <vector>
 #include "bundle_io.h"
-#include "kvm_fuse_gpt.h"
+#include "mvm_fuse_gpt.h"
 #include "registry.h"
 
 namespace {
 
-KvmFuseGptOps gpt_ops(const kvm_test_registry::Registry& reg) {
+MvmFuseGptOps gpt_ops(const mvm_test_registry::Registry& reg) {
     const auto id = [&](const char* n) { return reg.require(n); };
-    KvmFuseGptOps o;
+    MvmFuseGptOps o;
     o.select_window = id("select_window"); o.embedding_fwd = id("embedding_fwd"); o.layernorm_fwd = id("layernorm_fwd"); o.matmul_tile = id("matmul_tile");
     o.rope_fwd = id("rope_fwd"); o.attn_fwd = id("attn_fwd"); o.softmax_ce_fused = id("softmax_ce_fused"); o.softmax_ce_reduce = id("softmax_ce_reduce");
     o.layernorm_bwd_dx = id("layernorm_bwd_dx"); o.norm_bwd_params = id("norm_bwd_params"); o.colsum = id("colsum"); o.attn_bwd_delta = id("attn_bwd_delta");
@@ -27,7 +27,7 @@ KvmFuseGptOps gpt_ops(const kvm_test_registry::Registry& reg) {
     return o;
 }
 
-struct Bundle { std::vector<KvmTaskDesc> tasks; std::vector<int32_t> succ, args; bundle_io::Buffers bufs; std::vector<std::string> names; };
+struct Bundle { std::vector<MvmTaskDesc> tasks; std::vector<int32_t> succ, args; bundle_io::Buffers bufs; std::vector<std::string> names; };
 
 // The first task of an op in the bundle (to mutate), or -1.
 int first_of(const Bundle& b, int op) { for (size_t i = 0; i < b.tasks.size(); ++i) if (b.tasks[i].op_id == op) return (int)i; return -1; }
@@ -36,17 +36,17 @@ int first_of(const Bundle& b, int op) { for (size_t i = 0; i < b.tasks.size(); +
 
 int main(int argc, char** argv) {
     if (argc < 2) { fprintf(stderr, "usage: %s [--refuse] BUNDLE_DIR... (from the repo root; bundles after --refuse must match no GPT run)\n", argv[0]); return 2; }
-    const kvm_test_registry::Registry& reg = kvm_test_registry::registry();
-    const KvmFuseGptOps ops = gpt_ops(reg);
+    const mvm_test_registry::Registry& reg = mvm_test_registry::registry();
+    const MvmFuseGptOps ops = gpt_ops(reg);
     int failures = 0;
     bool refuse = false;
     for (int ai = 1; ai < argc; ++ai) {
         if (std::string(argv[ai]) == "--refuse") { refuse = true; continue; }
         const std::string dir = argv[ai];
         const std::string meta = bundle_io::slurp(dir + "/metadata.json");
-        Bundle B{bundle_io::load<KvmTaskDesc>(dir + "/tasks.bin"), bundle_io::load<int32_t>(dir + "/successors.bin"), bundle_io::load<int32_t>(dir + "/args.bin"),
+        Bundle B{bundle_io::load<MvmTaskDesc>(dir + "/tasks.bin"), bundle_io::load<int32_t>(dir + "/successors.bin"), bundle_io::load<int32_t>(dir + "/args.bin"),
                  bundle_io::load_buffers(meta), bundle_io::load_task_names(meta)};
-        const KvmFuseGptResult r = kvm_fuse_gpt_scan(B.tasks, B.succ, B.args, B.bufs.shape, ops);
+        const MvmFuseGptResult r = mvm_fuse_gpt_scan(B.tasks, B.succ, B.args, B.bufs.shape, ops);
         printf("%s: %zu tasks, %zu buffers -> matched runs %d, unchanged runs %d\n", dir.c_str(), B.tasks.size(), B.bufs.shape.size(), r.matched_runs, r.unchanged_runs);
         for (const auto& line : r.report) printf("  %s\n", line.c_str());
         if (refuse) {   // a bundle that is not a GPT training run: every run must stay as written
@@ -57,15 +57,15 @@ int main(int argc, char** argv) {
         if (!r.matched_runs) { printf("  FAIL: no GPT run matched\n"); ++failures; continue; }
 
         // 1. every task of a matched run is a data window, a replaced task of exactly one step, or a step's closing barrier
-        const auto comps = kvm_fuse_components(B.tasks, B.succ);
-        for (const KvmFuseGptRun& run : r.runs) {
+        const auto comps = mvm_fuse_components(B.tasks, B.succ);
+        for (const MvmFuseGptRun& run : r.runs) {
             const std::vector<int>& comp = comps[run.component];
             std::vector<int> seen(B.tasks.size(), 0);
             // re-parse step by step to collect every step's tasks (the run keeps step 0's description)
-            const kvm_fuse::GptParser parser(B.tasks, B.args, B.bufs.shape, ops);
+            const mvm_fuse::GptParser parser(B.tasks, B.args, B.bufs.shape, ops);
             size_t pos = 0; std::string why;
             for (int st = 0; st < run.steps; ++st) {
-                KvmGptStep s;
+                MvmGptStep s;
                 if (!parser.parse(comp, pos, s, why)) { printf("  FAIL: step %d no longer parses: %s\n", st, why.c_str()); ++failures; break; }
                 for (int t : s.replaced) ++seen[t];
                 if (s.barrier_end >= 0) ++seen[s.barrier_end];
@@ -83,10 +83,10 @@ int main(int argc, char** argv) {
                    run.shape.tgt_off, run.losses.size());
 
             // 2. the step's shape and its updates, by name (a reader checks them against the model)
-            const KvmGptStep& s = run.shape;
+            const MvmGptStep& s = run.shape;
             printf("  shape: L %d, d %d, heads %d x %d, MLP %d, V %d, B %d x T %d; LayerNorm eps %g, RoPE theta %g, attention scale %g\n", s.L, s.d, s.H, s.hd, s.F, s.V, s.B, s.T, s.ln_eps, s.theta, s.scale);
             printf("  AdamW lr %g, betas %g %g, eps %g; clip %g; %zu updates:\n", s.lr, s.beta1, s.beta2, s.adam_eps, s.max_norm, s.updates.size());
-            for (const KvmGptUpdate& u : s.updates)
+            for (const MvmGptUpdate& u : s.updates)
                 printf("    %-24s grad %-6s m %-24s v %-24s wd %g\n", B.bufs.name[u.p].c_str(), B.bufs.name[u.g].c_str(), B.bufs.name[u.m].c_str(), B.bufs.name[u.v].c_str(), u.wd);
         }
 
@@ -94,8 +94,8 @@ int main(int argc, char** argv) {
         //    reads each gang's members where the rewrite put them
         {
             const int fgpt = reg.require("fgpt_step");
-            KvmFuseGptOptions opt;
-            const KvmFuseGptPlan P = kvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, opt);
+            MvmFuseGptOptions opt;
+            const MvmFuseGptPlan P = mvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, opt);
             printf("  rewrite: %d fused, %d unchanged, %d tasks replaced by %d members\n", P.fused_runs, P.unchanged_runs, P.replaced_tasks, P.new_tasks);
             for (const auto& line : P.report) printf("    %s\n", line.c_str());
             // a matched run that is not fused must be refused for its fit alone (a run too large for a resident gang, like the 162M tape)
@@ -116,7 +116,7 @@ int main(int argc, char** argv) {
             std::map<int, std::vector<int>> members;   // gang -> members seen
             int bad_member = 0;
             for (size_t i = 0; i < P.tasks.size(); ++i) {
-                const KvmTaskDesc& d = P.tasks[i];
+                const MvmTaskDesc& d = P.tasks[i];
                 const int32_t* a = P.args.data() + d.args_off;
                 if (d.op_id == fgpt) {
                     if (d.args_words != 4 || a[0] != a[1] || a[0] < 0 || a[0] >= (int)P.runs.size() || a[3] != P.gang[a[0]] || a[2] < 0 || a[2] >= a[3] || d.succ_cnt || d.indegree) ++bad_member;
@@ -137,12 +137,12 @@ int main(int argc, char** argv) {
             // each run's form: the fused step's (a row chunk, no 2-D fit) or F's (its fit's gang is the run's, every half's layout within it)
             int bad_form = P.f2d.size() != P.runs.size() || P.rows.size() != P.runs.size();
             for (size_t ri = 0; !bad_form && ri < P.runs.size(); ++ri) {
-                const kvm_f2d::Fit& f = P.f2d[ri];
+                const mvm_f2d::Fit& f = P.f2d[ri];
                 if (f.G) bad_form += f.G != P.gang[ri] || P.rows[ri] != 0 || f.gta * f.gca > f.G || f.gtm * f.gcm > f.G || f.gca % 3 || f.smem_floats <= 0;
                 else bad_form += P.rows[ri] <= 0;
             }
             if (bad_form) { printf("  FAIL: %d run(s) with an inconsistent form\n", bad_form); ++failures; }
-            // the fused kernel's launch (KvmExec::run_fgpt) takes task kept + (the members of earlier runs) + m as member m of its run: the members
+            // the fused kernel's launch (MvmExec::run_fgpt) takes task kept + (the members of earlier runs) + m as member m of its run: the members
             // follow every kept task, in run and member order. A bundle whose runs all fuse is its gangs alone, which is the fused path's bundle.
             {
                 const int kept = (int)P.tasks.size() - P.new_tasks;
@@ -162,10 +162,10 @@ int main(int argc, char** argv) {
             }
             // refusals of the rewrite, on a run it fuses by default: a budget no gang fits, and a dumped activation the fused step would leave stale
             if (P.fused_runs) {
-                KvmFuseGptOptions tight; tight.smem_floats = 1000; tight.f2d_smem_floats = 1000;
-                const KvmFuseGptPlan T = kvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, tight);
-                KvmFuseGptOptions dump; if (!r.runs.empty()) dump.keep = {*r.runs[0].shape.interior.begin()};
-                const KvmFuseGptPlan D = kvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, dump);
+                MvmFuseGptOptions tight; tight.smem_floats = 1000; tight.f2d_smem_floats = 1000;
+                const MvmFuseGptPlan T = mvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, tight);
+                MvmFuseGptOptions dump; if (!r.runs.empty()) dump.keep = {*r.runs[0].shape.interior.begin()};
+                const MvmFuseGptPlan D = mvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, dump);
                 const bool tight_ok = !T.fused_runs && T.report[r.runs[0].component].find("does not fit a gang") != std::string::npos;
                 const bool dump_ok = !D.fused_runs && D.report[r.runs[0].component].find("stale") != std::string::npos;
                 printf("  rewrite refusals: budget of 1000 floats %s; a dumped activation %s\n", tight_ok ? "refused" : "NOT REFUSED", dump_ok ? "refused" : "NOT REFUSED");
@@ -173,24 +173,24 @@ int main(int argc, char** argv) {
             }
         }
 
-        // 3b. the one-block form (kvm_fgpt1.h) at an A100's one-block budget (41,524 floats): a run whose layout fits takes it (one member,
+        // 3b. the one-block form (mvm_fgpt1.h) at an A100's one-block budget (41,524 floats): a run whose layout fits takes it (one member,
         //     no 2-D fit, its report saying so), every other run keeps the gang it takes without it, and with the form off (the default
         //     options above) no run takes it. Runs are matched by component, so a run only the one-block form could fuse is not misread.
         {
             const int fgpt = reg.require("fgpt_step");
             const long long one_floats = 41524;
-            KvmFuseGptOptions base, one; one.fgpt1_smem_floats = (int)one_floats;
-            const KvmFuseGptPlan P0 = kvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, base);
-            const KvmFuseGptPlan P1 = kvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, one);
+            MvmFuseGptOptions base, one; one.fgpt1_smem_floats = (int)one_floats;
+            const MvmFuseGptPlan P0 = mvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, base);
+            const MvmFuseGptPlan P1 = mvm_fuse_gpt(B.tasks, B.succ, B.args, B.bufs.shape, ops, fgpt, one);
             std::map<int, size_t> run_of0;
             for (size_t i = 0; i < P0.runs.size(); ++i) run_of0[P0.runs[i].component] = i;
             int bad1 = P0.one_block.size() != P0.runs.size() || P1.one_block.size() != P1.runs.size();
             for (char b : P0.one_block) bad1 += b != 0;
             int took = 0;
             for (size_t i = 0; !bad1 && i < P1.runs.size(); ++i) {
-                const KvmGptStep& sh = P1.runs[i].shape;
-                const long long floats = kvm_fgpt1_layout(sh.N, sh.T, sh.d, sh.H, sh.F, sh.V, sh.L, KVM_FGPT1_EXEC_FAST).total;
-                const int code = kvm_fgpt1_check(sh.N, sh.T, sh.B, sh.d, sh.H, sh.F, sh.V, sh.L, sh.mm_numerics, KVM_FGPT1_EXEC_FAST, one_floats);
+                const MvmGptStep& sh = P1.runs[i].shape;
+                const long long floats = mvm_fgpt1_layout(sh.N, sh.T, sh.d, sh.H, sh.F, sh.V, sh.L, MVM_FGPT1_EXEC_FAST).total;
+                const int code = mvm_fgpt1_check(sh.N, sh.T, sh.B, sh.d, sh.H, sh.F, sh.V, sh.L, sh.mm_numerics, MVM_FGPT1_EXEC_FAST, one_floats);
                 const std::string& line = P1.report[P1.runs[i].component];
                 const auto j = run_of0.find(P1.runs[i].component);
                 if (code == 0) {
@@ -200,7 +200,7 @@ int main(int argc, char** argv) {
                     bad1 += P1.one_block[i] != 0 || j == run_of0.end() || P1.gang[i] != P0.gang[j->second] || P1.rows[i] != P0.rows[j->second];
                 }
                 printf("  one-block form at %lld floats: component %d (N %d, d %d, L %d) %s: %lld floats; %s\n", one_floats, P1.runs[i].component, sh.N, sh.d, sh.L,
-                       code == 0 ? "takes it" : "keeps its gang", floats, kvm_fgpt1_why(code));
+                       code == 0 ? "takes it" : "keeps its gang", floats, mvm_fgpt1_why(code));
             }
             if (bad1) { printf("  FAIL: %d run(s) planned against the one-block form's check\n", bad1); ++failures; }
             else printf("  one-block form: %d of %zu run(s) take it; off by default\n", took, P1.runs.size());
@@ -226,7 +226,7 @@ int main(int argc, char** argv) {
                 const int q = b.args[b.tasks[t].args_off];             // RoPE's input: the q projection's output
                 int changed = 0;                                       // every tile that writes it, wherever the frontend placed them
                 for (size_t i = 0; i < b.tasks.size(); ++i)
-                    if (b.tasks[i].op_id == ops.matmul_tile && b.args[b.tasks[i].args_off + 2] == q) { b.args[b.tasks[i].args_off + 11] |= kvm_fuse::G_GELU; ++changed; }
+                    if (b.tasks[i].op_id == ops.matmul_tile && b.args[b.tasks[i].args_off + 2] == q) { b.args[b.tasks[i].args_off + 11] |= mvm_fuse::G_GELU; ++changed; }
                 return changed > 0; }},
             {"proj adds no residual", "attention output projection does not chain", [&](Bundle& b) {
                 const int t = first_of(b, ops.attn_fwd); if (t < 0) return false;
@@ -250,7 +250,7 @@ int main(int argc, char** argv) {
         for (const Mutation& m : muts) {
             Bundle b = B;
             if (!m.apply(b)) { printf("  mutation skipped (nothing to mutate): %s\n", m.what); continue; }
-            const KvmFuseGptResult mr = kvm_fuse_gpt_scan(b.tasks, b.succ, b.args, b.bufs.shape, ops);
+            const MvmFuseGptResult mr = mvm_fuse_gpt_scan(b.tasks, b.succ, b.args, b.bufs.shape, ops);
             std::string reasons;
             for (const auto& line : mr.report) if (line.find(": unchanged") != std::string::npos) reasons += line + " | ";
             const bool refused = mr.matched_runs < r.matched_runs;

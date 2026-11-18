@@ -7,11 +7,11 @@ Real fp16 storage is not built.
 
 ## What changed
 
-* **Device** (`include/kvm_ops_gpt.cuh`): `attn_fwd`, `attn_bwd_delta`, `attn_bwd_dq`, `attn_bwd_dkv` accept raw bf16 q, k, v, dO (inputs) and o, dq, dk, dv
+* **Device** (`include/mvm_ops_gpt.cuh`): `attn_fwd`, `attn_bwd_delta`, `attn_bwd_dq`, `attn_bwd_dkv` accept raw bf16 q, k, v, dO (inputs) and o, dq, dk, dv
   (outputs), per operand (`AttnArgs::sd`). A bf16 operand is widened exactly into the same fp32 shared tiles (8-byte loads in place of `cp.async`) and register
   fragments, so the 3xTF32 arithmetic is unchanged. A bf16 output is rounded once (RNE) when stored. lse and delta stay fp32. Alignment: 8 bytes and ld % 4 == 0
   for bf16 views. The bidirectional `attn_full_*` ops stay fp32 only.
-* **Frontend** (`frontend/kvmfe/storage.py`):
+* **Frontend** (`frontend/mvmfe/storage.py`):
   - causal `attention` / `attention_bwd` are storage-aware;
   - the norm-backward accumulate slot (`into`, dx += ...) is storage-aware: the device op already did that read-modify-write in storage dtype;
   - a cast folds into its producer when the value's other readers are storage-aware: `attention_bwd` reads the bf16 saved `o`, and the bias `colsum` reads
@@ -43,7 +43,7 @@ What remains of the 1,422: weight shadows, 654 tasks and about 130M elements, re
 | bf16 model zoo (`examples/models/cases_bf16s.txt`, emulation and storage) | A100-SXM4-40GB | 8/8 PASS; sanitizers on san_bf16, san_bf16s clean | `exec_zoo.log`, `zoo/*.txt` |
 
 Build flags: `nvcc -O2 -arch=sm_80 -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -lineinfo` (test_bf16, test_extra), `-O2 -arch=sm_80 -std=c++17
--lineinfo` (test_ops), `tests/gpu/build.sh` (test_exec), `-O3 ... -diag-suppress 177 kvm_exec.cu` (zoo); CUDA 12.8.93, driver 610.57.04. Commands: the
+-lineinfo` (test_ops), `tests/gpu/build.sh` (test_exec), `-O3 ... -diag-suppress 177 mvm_exec.cu` (zoo); CUDA 12.8.93, driver 610.57.04. Commands: the
 `--cmd` scripts of `tests/modal/run_suite.py --suite custom` printed at the top of each log.
 
 `llama_bf16s` step-1 worst error is 4.81e-3 against the 6e-3 gate, the same as the earlier record (`2026-11-06-a100-correctness/bf16-modal`, also 4.81e-3).

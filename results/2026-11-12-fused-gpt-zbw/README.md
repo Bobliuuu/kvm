@@ -18,7 +18,7 @@ Arms in the bed logs:
 - **base:** the PR's base, #54 + #56;
 - **lever2:** ZBW's two commits, with its code in every run;
 - **zfix:** this branch, ZBW's code in its own instance;
-- **attnonly:** lever2 with the MLP's doers switched off (`KVM_FGPT_ZBW_OWNERS=0`);
+- **attnonly:** lever2 with the MLP's doers switched off (`MVM_FGPT_ZBW_OWNERS=0`);
 - **control2:** lever2 with the attention doer's dWo at the other TF32 precision;
 - **tail** and **shift:** the idle-code read's arms (below).
 
@@ -51,7 +51,7 @@ All 9 are bitwise, and the geometric mean is x1.0082.
 `raw/bed/`: `bench/fused_gpt/fgpt_bed.cu`, arms base, lever2 and zfix. The bed picks zfix's instance by the executor's rule, and its logs say
 which. It ran bitwise first (20 steps; every arm's five outputs hashed), then 5 rotating rounds of 20 steps on the phase clock.
 The bed is built with plain `nvcc -O3 -std=c++17 -arch=sm_80`, not with the executor's flags (`--fmad=false -Xcompiler -ffp-contract=off
--DKVM_LEAN`), so it runs other code generation of the same step: it shows the mechanism, and the panel's 9 rows above, on the executor's
+-DMVM_LEAN`), so it runs other code generation of the same step: it shows the mechanism, and the panel's 9 rows above, on the executor's
 own builds, carry the gain.
 Two builds also place their code differently in GPU memory, which alone has moved a panel row by up to 5.5% (same device code, another load order), so each row's gain here carries that uncertainty.
 

@@ -1,10 +1,10 @@
-2026-11-11 13:30:25,656 INFO kvm.compiler: compiled 404 tasks (0 gates), 2958 edges, 128 buffers, 1 variables in 0.01s (parse 0.01s, graph+versions 0.00s, pack 0.00s)
-2026-11-11 13:30:25,659 INFO kvm.compiler: wrote bundle to /tmp/kvm-static-check.xARN2a/gpt/bundle
+2026-11-11 13:30:25,656 INFO mvm.compiler: compiled 404 tasks (0 gates), 2958 edges, 128 buffers, 1 variables in 0.01s (parse 0.01s, graph+versions 0.00s, pack 0.00s)
+2026-11-11 13:30:25,659 INFO mvm.compiler: wrote bundle to /tmp/mvm-static-check.xARN2a/gpt/bundle
 MLP bundle: hidden 256, depth 4, 3 steps
-2026-11-11 13:30:25,885 INFO kvm.compiler: compiled 498 tasks (0 gates), 2915 edges, 107 buffers, 1 variables in 0.02s (parse 0.01s, graph+versions 0.00s, pack 0.00s)
-2026-11-11 13:30:25,889 INFO kvm.compiler: wrote bundle to /tmp/kvm-static-check.xARN2a/mlp/bundle
+2026-11-11 13:30:25,885 INFO mvm.compiler: compiled 498 tasks (0 gates), 2915 edges, 107 buffers, 1 variables in 0.02s (parse 0.01s, graph+versions 0.00s, pack 0.00s)
+2026-11-11 13:30:25,889 INFO mvm.compiler: wrote bundle to /tmp/mvm-static-check.xARN2a/mlp/bundle
 MLP golden: from /root/reads/goldens-count1/h256d4 (the bundle matches this tree's byte for byte)
-bundle /tmp/kvm-static-check.xARN2a/gpt/bundle: 404 tasks, 2958 edges (successors + versions), 128 buffers
+bundle /tmp/mvm-static-check.xARN2a/gpt/bundle: 404 tasks, 2958 edges (successors + versions), 128 buffers
 W=  1: used   1 workers, records    404 (wait-only 0), cross edges     0 of  2958 (0%), publishing tasks 0, plan makespan 1980.8 us, replay 1980.8 us, work 1980.8 us
 W=  2: used   2 workers, records    404 (wait-only 0), cross edges  1369 of  2958 (46%), publishing tasks 126, plan makespan 1068.7 us, replay 1155.2 us, work 1980.8 us
 W=  4: used   4 workers, records    404 (wait-only 0), cross edges  2105 of  2958 (71%), publishing tasks 249, plan makespan 692.7 us, replay 741.7 us, work 1980.8 us
@@ -14,7 +14,7 @@ W= 32: used  24 workers, records    412 (wait-only 8), cross edges  2371 of  295
 W= 64: used  24 workers, records    412 (wait-only 8), cross edges  2371 of  2958 (80%), publishing tasks 373, plan makespan 525.8 us, replay 548.3 us, work 1980.8 us
 W=107: used  24 workers, records    412 (wait-only 8), cross edges  2371 of  2958 (80%), publishing tasks 373, plan makespan 525.8 us, replay 548.3 us, work 1980.8 us
 PASS
-bundle /tmp/kvm-static-check.xARN2a/mlp/bundle: 498 tasks, 2915 edges (successors + versions), 107 buffers
+bundle /tmp/mvm-static-check.xARN2a/mlp/bundle: 498 tasks, 2915 edges (successors + versions), 107 buffers
 W=  1: used   1 workers, records    498 (wait-only 0), cross edges     0 of  2915 (0%), publishing tasks 0, plan makespan 2401.8 us, replay 2401.8 us, work 2401.8 us
 W=  2: used   2 workers, records    498 (wait-only 0), cross edges  1453 of  2915 (50%), publishing tasks 115, plan makespan 1223.9 us, replay 1313.9 us, work 2401.8 us
 W=  4: used   4 workers, records    498 (wait-only 0), cross edges  2155 of  2915 (74%), publishing tasks 259, plan makespan 644.1 us, replay 726.4 us, work 2401.8 us
@@ -37,7 +37,7 @@ ok: mlp W=108: 1 run(s) fused
 ok: mlp W=108 fused run repeats bitwise
 ok: mlp W=108 fused run within 1e-3 of the CPU golden (worst 0.000673)
 fused_vs_fp64: 3 steps; eager vs float64 5.48e-05, so the executor may sit at 2.10e-04; loss vs eager <= 0.003, weights vs eager <= 0.001 relative L2
-FAIL: /tmp/kvm-static-check.xARN2a/mlp.fu107.out: vs float64 5.12e-04 (bound 2.10e-04); loss vs eager 5.67e-04; weights vs eager 6.08e-04 relative L2
-ok: /tmp/kvm-static-check.xARN2a/mlp.fu108.out: vs float64 1.59e-04 (bound 2.10e-04); loss vs eager 1.76e-04; weights vs eager 5.84e-04 relative L2
+FAIL: /tmp/mvm-static-check.xARN2a/mlp.fu107.out: vs float64 5.12e-04 (bound 2.10e-04); loss vs eager 5.67e-04; weights vs eager 6.08e-04 relative L2
+ok: /tmp/mvm-static-check.xARN2a/mlp.fu108.out: vs float64 1.59e-04 (bound 2.10e-04); loss vs eager 1.76e-04; weights vs eager 5.84e-04 relative L2
 FAIL: fused runs against float64 and eager (above)
 FAIL: 1 checks failed

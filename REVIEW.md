@@ -1,6 +1,6 @@
-# REVIEW: adversarial review of the KVM persistent-kernel executor
+# REVIEW: adversarial review of the Magni VM persistent-kernel executor
 
-Reviewed `include/kvm_exec.cuh` + `kvm_exec.cu` at 083513e (this worktree's base: no slot recycling). Key results were
+Reviewed `include/mvm_exec.cuh` + `mvm_exec.cu` at 083513e (this worktree's base: no slot recycling). Key results were
 re-run against `feat/executor` @ 5b869aa (slot recycling, free ring, windows; section "Re-run on 5b869aa").
 Hardware: one A100-SXM4-40GB (108 SMs, sm_80), CUDA 12.x. Everything here is reproducible from `tests/litmus/` (see the end).
 Line numbers are for 083513e.
@@ -28,16 +28,16 @@ Line numbers are for 083513e.
 | C8 | Low | CONFIRMED | cu:99-106 | Unsatisfiable / cyclic version waits are not rejected by host validation, only by the (slow) device timeout |
 | S1 | Low | SUSPECTED | cu:176-177 | `8 * cfg_.max_tasks` int overflow (wraps at 2^29+1; OOM stops it first on 40 GB) |
 | S2 | Low-Med | SUSPECTED | cuh:671-680, cu:184-185 | Grid is sized for the whole GPU and block 0 is the admitter: no co-residency guarantee if another process holds SMs |
-| S3 | Low | SUSPECTED (5b869aa) | `kvm_admit_record` free-ring pop | `while (seq != fp+1) __nanosleep` has no error/timeout exit; hangs block 0 if a freeing worker bailed out |
+| S3 | Low | SUSPECTED (5b869aa) | `mvm_admit_record` free-ring pop | `while (seq != fp+1) __nanosleep` has no error/timeout exit; hangs block 0 if a freeing worker bailed out |
 | S4 | Info | SUSPECTED | cuh:384-389 | Release store of `cell->seq` is not empirically necessary on A100 (relaxed mutant never fails); correctness there rests on the PTX model alone |
 
 ## C1. `timeout` is a lifetime cap (High, CONFIRMED)
 
-`kvm_should_exit` (cuh:468), the admitter idle loop (cuh:630) and the backpressure loop (cuh:568) compare `kvm_now() - t0`,
+`mvm_should_exit` (cuh:468), the admitter idle loop (cuh:630) and the backpressure loop (cuh:568) compare `mvm_now() - t0`,
 where `t0` is the block's launch time. Header text says "deadlock or stalled admission".
 
 Scenario: a serving executor that idles 3.5 s between submits with `timeout_s=2`, or a steady 40-task stream that always
-makes progress, dies with `KVM_ERR_TIMEOUT`. Default 60 s means no persistent service can outlive one minute.
+makes progress, dies with `MVM_ERR_TIMEOUT`. Default 60 s means no persistent service can outlive one minute.
 
 Evidence (`e2e probe_timeout`, `probe_timeout_busy`):
 ```
@@ -46,19 +46,19 @@ probe_timeout_busy: a 100ms task every 100ms (always progressing), timeout_s=2: 
 ```
 Fix: time a stall, not the lifetime. Pending work and no counter movement for `timeout_ns`; idle never times out.
 ```diff
---- a/include/kvm_exec.cuh
-+++ b/include/kvm_exec.cuh
-+struct KvmWatch { unsigned long long since; int done, admitted; };
+--- a/include/mvm_exec.cuh
++++ b/include/mvm_exec.cuh
++struct MvmWatch { unsigned long long since; int done, admitted; };
 +// Stall = work is pending (admitted > done) and neither counter moved for timeout_ns. Idle waiting for the host is not a stall.
-+__device__ __forceinline__ bool kvm_stalled(const KvmDevState& S, KvmWatch& w) {
-+  const int d = ld_acq(&S.cnt->done), a = ld_acq(&S.cnt->admitted); const unsigned long long n = kvm_now();
++__device__ __forceinline__ bool mvm_stalled(const MvmDevState& S, MvmWatch& w) {
++  const int d = ld_acq(&S.cnt->done), a = ld_acq(&S.cnt->admitted); const unsigned long long n = mvm_now();
 +  if (d != w.done || a != w.admitted || a == d) { w.done = d; w.admitted = a; w.since = n; return false; }
 +  return n - w.since > S.timeout_ns;
 +}
-@@ kvm_should_exit(S, t0)   ->   kvm_should_exit(S, KvmWatch& w)
--  if (kvm_now() - t0 > S.timeout_ns) {
-+  if (kvm_stalled(S, w)) {
-@@ kvm_admitter / kvm_admit_record: same substitution at cuh:568 and cuh:630 (thread-0 local KvmWatch, initialised to {kvm_now(),0,0}).
+@@ mvm_should_exit(S, t0)   ->   mvm_should_exit(S, MvmWatch& w)
+-  if (mvm_now() - t0 > S.timeout_ns) {
++  if (mvm_stalled(S, w)) {
+@@ mvm_admitter / mvm_admit_record: same substitution at cuh:568 and cuh:630 (thread-0 local MvmWatch, initialised to {mvm_now(),0,0}).
 ```
 Caveat to document: `timeout` must then exceed the longest single task (see C5).
 
@@ -76,13 +76,13 @@ Also reproduced on 5b869aa (where it additionally pins the window's successor wo
 Valid per ABI ("bundles share state only through version variables"), so this is a liveness bug, not misuse.
 Minimal patch = fail fast and name the cause instead of a 60 s timeout; a real fix needs a separate parked budget.
 ```diff
-@@ struct KvmCounters   +  alignas(128) int parked;
-@@ kvm_release_task, before the push   +  atomicAdd(&S.cnt->parked, 1);
+@@ struct MvmCounters   +  alignas(128) int parked;
+@@ mvm_release_task, before the push   +  atomicAdd(&S.cnt->parked, 1);
 @@ every winning atom_cas(S.state + n, 1, 2) == 1   +  atomicAdd(&S.cnt->parked, -1);
-@@ kvm_admit_record backpressure loop (inside the while):
+@@ mvm_admit_record backpressure loop (inside the while):
 +        if (ld_acq(&c->admitted) - ld_acq(&c->done) == ld_acq(&c->parked)) {      // every live task is parked: only admission can unblock
-+          if (!stall_since) stall_since = kvm_now();
-+          else if (kvm_now() - stall_since > 1000000ull) { kvm_fail(S, KVM_ERR_PARK_STALL, -1, c->parked, nt); A.action = KVM_ADM_EXIT; break; }
++          if (!stall_since) stall_since = mvm_now();
++          else if (mvm_now() - stall_since > 1000000ull) { mvm_fail(S, MVM_ERR_PARK_STALL, -1, c->parked, nt); A.action = MVM_ADM_EXIT; break; }
 +        } else stall_since = 0;   // 1 ms grace for a waiter whose own recheck is still in flight
 ```
 Real fix (design): size the ready rings `live_cap + max_parked`, count parked tasks against `max_parked` instead of `live_cap`.
@@ -101,12 +101,12 @@ Evidence: `fuzz.py --targeted`: T01 `succ_off=INT_MAX,succ_cnt=1` SIGSEGV; T03 `
 On 5b869aa the successor ring is masked, so `succ_off/succ_cnt` overflow no longer faults but silently follows other windows' words
 (or loops 2^31 times: `succ_cnt=INT_MAX` hangs, 5 cases); `args_off` still faults (8 cases).
 ```diff
---- a/kvm_exec.cu
+--- a/mvm_exec.cu
 -      if (t.args_off < 0 || t.args_off + t.args_words > (int)args.size()) ...
 +      if (t.args_off < 0 || (long long)t.args_off + t.args_words > (long long)args.size()) ...
 -      if (t.succ_off < 0 || t.succ_cnt < 0 || t.succ_off + t.succ_cnt > (int)succ.size()) ...
 +      if (t.succ_off < 0 || t.succ_cnt < 0 || (long long)t.succ_off + t.succ_cnt > (long long)succ.size()) ...
---- a/include/kvm_exec.cuh
+--- a/include/mvm_exec.cuh
 -    else if (so < 0 || sc < 0 || so + sc > ne || ao < 0 || aw < 0 || ao + aw > na || ...
 +    else if (so < 0 || sc < 0 || (long long)so + sc > ne || ao < 0 || aw < 0 || (long long)ao + aw > na || ...
 ```
@@ -127,7 +127,7 @@ Nothing validates JSON shape before dereferencing. `fuzz.py` random: 8/150, 13/3
 
 All fail before any GPU work, so the GPU is untouched, but the contract says "reject cleanly".
 ```diff
---- a/kvm_exec.cu
+--- a/mvm_exec.cu
 @@ JsonParser
 +  int depth = 0;
    Json value() {
@@ -141,23 +141,23 @@ All fail before any GPU work, so the GPU is untouched, but the contract says "re
 @@ golden
 -      ... var_id[jv.get("name")->s] = ...
 +      ... if (const Json* nm = jv.get("name")) var_id[nm->s] = ...
--        const KvmTrace& t = r.trace[slot]; ++nreads;
+-        const MvmTrace& t = r.trace[slot]; ++nreads;
 +        if (slot < 0 || slot >= (int)r.trace.size() || !jr.get("name") || !pol) { KLOG(0, "golden: malformed read entry"); ++golden_bad; continue; }
-+        const KvmTrace& t = r.trace[slot]; ++nreads;
++        const MvmTrace& t = r.trace[slot]; ++nreads;
 ```
 
 ## C5. No per-task watchdog; `spin` unbounded (Med, CONFIRMED)
 
-The timeout is only evaluated while a block is idle (`kvm_should_exit`). A running task cannot be interrupted, and `spin`
+The timeout is only evaluated while a block is idle (`mvm_should_exit`). A running task cannot be interrupted, and `spin`
 (cuh:337) accepts any `int` microseconds (INT_MAX us = 35.8 min).
 
 Evidence: `e2e probe_spin`: one 9 s spin task, `timeout_s=2` -> `finish()` returns after 9.0 s. `fuzz.py` random seed 3:
 `args[16]=2000000000` flips a spin argument -> HANG (killed by the driver at 40 s; kernel would run 33 min). T13 (`--timeout-s 3`, 100 s spin) the same.
 The same holds for any op whose runtime scales with an unvalidated arg; ops that bound `n` by buffer size are fine.
 ```diff
- KVM_OP(spin) {
+ MVM_OP(spin) {
    int us = ARG_I32(0);
-+  if (us < 0 || us > 10000000) { c.fail(KVM_ERR_BOUNDS, us); return; }   // 10 s
++  if (us < 0 || us > 10000000) { c.fail(MVM_ERR_BOUNDS, us); return; }   // 10 s
 ```
 and document that `timeout` must exceed the longest task (the fix in C1 has the same limit).
 
@@ -168,7 +168,7 @@ and document that `timeout` must exceed the longest task (the fix in C1 has the 
 | Input | Effect (measured) |
 |-------|-------------------|
 | `--aging-us -5` (cu:213 `aging_ns = -5000`) | priorities INVERTED: run order of priorities 0..11 on one worker is `0 1 2 ... 11` (correct is `11 ... 0`) |
-| `--aging-us -2000000` | `done 0/13`, TIMEOUT after 3 s (scores < 0 mean "empty", `kvm_pop` never pops) |
+| `--aging-us -2000000` | `done 0/13`, TIMEOUT after 3 s (scores < 0 mean "empty", `mvm_pop` never pops) |
 | `--timeout-s 0` (T16) | TIMEOUT at 0.02 ms on an empty run |
 | `--timeout-s -1` (cu:467 wraps to ~2^64 us) | timeout disabled: unsatisfiable wait hangs until the driver kills it (T15) |
 | `--max-tasks 4294967297` | silently becomes 1 (by inspection of the `(int)` cast, not run) |
@@ -185,14 +185,14 @@ and document that `timeout` must exceed the longest task (the fix in C1 has the 
 +    else if (a == "--timeout-s") cfg.timeout_us = (unsigned long long)val(1, 86400) * 1000000ull;
    (and --blocks val(0,1<<20), --live-cap/--max-tasks/--ring-words val(1,1<<30))
 ```
-Also validate `aging_us >= 0` in the `KvmExec` constructor for API users.
+Also validate `aging_us >= 0` in the `MvmExec` constructor for API users.
 
 ## C7. `submit()` after device death (Low, CONFIRMED)
 
 The `herr_->code` check (cu:297) sits only on the ring-full path. After a device error with ring space free, `submit` returns OK.
 Evidence: `probe_timeout_busy` submitted 40/40 OK, 20 ran. Patch: check once at the top of `submit` after the `closed_flag_` test:
 ```diff
-+    if (herr_->code) { last_error_ = "device error"; return KvmSubmit::DEVICE_ERROR; }
++    if (herr_->code) { last_error_ = "device error"; return MvmSubmit::DEVICE_ERROR; }
 ```
 
 ## C8. Version-wait cycles are not rejected host-side (Low, CONFIRMED)
@@ -206,7 +206,7 @@ over the (edge + publish->wait) graph in `validate` makes this a clean, instant 
 
 * **S1** `8 * cfg_.max_tasks` (cu:176-177) overflows `int` for `max_tasks >= 2^28`; at 2^29+1 it wraps to 8 (pools of 8 words). Not reached: `cudaMalloc` OOMs first on 40 GB (T19 rejected cleanly).
 * **S2** `grid = SMs * occupancy` assumes the whole GPU. Blocks are not guaranteed co-resident with another kernel/process holding SMs; if block 0 (admitter) were scheduled late, workers spin until their timeout. Not reproduced (block 0 launched first every time, 540 blocks).
-* **S3** (5b869aa) the admitter's `while (ld_acq64(&cell->seq) != fp + 1) __nanosleep(32);` has no error/timeout exit. If a worker took a free-ring ticket and then failed in `kvm_free_slot` (QUEUE_OVERFLOW path returns without publishing), block 0 spins forever and the kernel never ends. Only reachable after another failure.
+* **S3** (5b869aa) the admitter's `while (ld_acq64(&cell->seq) != fp + 1) __nanosleep(32);` has no error/timeout exit. If a worker took a free-ring ticket and then failed in `mvm_free_slot` (QUEUE_OVERFLOW path returns without publishing), block 0 spins forever and the kernel never ends. Only reachable after another failure.
 * **S4** `qrelax` mutant (plain store instead of `st.release` for `cell->seq`) never failed in 1M pops: A100 does not expose the missing release, so that edge is untested empirically. The model requires it; keep it.
 * The host NT-store claim ("seq_cst fence also orders non-temporal stores") is correct on x86 (MFENCE orders WC/NT stores) but the 6.8 MB record test may not have crossed glibc's NT-copy threshold, so the NT path itself was not shown to run. Arm hosts untested.
 
@@ -217,11 +217,11 @@ over the (edge + publish->wait) graph in `validate` makes this a clean, instant 
 | 1 | Publisher: all threads store; `__syncthreads`; thread 0 `fence.sc.gpu`; release CAS. Other threads' stores precede the CAS | `bar.sync` orders all participating threads' earlier operations before later ones (CTA scope). Causality order is transitive, so W_t -> bar -> F_0 -> release CAS(gpu) chains W_t before the CAS. The release is cumulative over what thread 0 has observed. Standard idiom (cooperative-groups grid sync). Sound; the `fence.sc` here is redundant for visibility (needed only for Dekker) | MP litmus: 256-thread writer CTA, plain stores, publish; reader CTA primes L1 with old data, spins, reads. 864 CTAs. **Mutant** relaxed CAS and no fence | PROD: 0 stale in 3.0 M rounds (3.07 G words checked). Mutant: 244 stale rounds / 3.0 M (control detected). `nofence` build (all `__threadfence` removed, CAS still `acq_rel`): 0 / 0.4 M |
 | 2 | Reader: thread 0 `ld.acquire.gpu`, then `__syncthreads`, other threads read | acquire -> bar.sync -> other threads' loads is the mirror chain. Stale L1 lines are the hazard that makes the acquire necessary | **Mutant** reader polls with `ld.relaxed` | PROD 0 / 3.0 M; mutant 55,737 stale rounds, 42.5 M stale words (control detected: L1 staleness is real here) |
 | 3 | Publish-before-data | n/a (negative control) | thread 0 publishes before the other threads store | 2,906,465 / 3.0 M stale (the harness fails when it should) |
-| 4 | Dekker: waiter `push; fence.sc; load version`, publisher `store version; fence.sc; exchange` | `atom.acq_rel` RMWs on different addresses are NOT sequentially consistent in PTX; the two `fence.sc.gpu` totally order and forbid both-miss. Required by the model | SB shape with relaxed ops (no fence) vs fence vs RMW-only; then the REAL `kvm_release_task`/`kvm_publish` with random skew. Mutants: waiter never rechecks; publisher exchanges before storing; both fences removed | SB: relaxed/no-fence 19,222 both-miss / 6 M (harness sensitive); every fenced or RMW form 0 / 6 M. Real code: 0 lost, 0 double in 6 M (1 waiter) + 3 M (3 waiters, re-park path, 9 M waiters). Mutants caught: `norecheck` 23,020 lost / 0.5 M; `exchbefore` 11,800; **`nodekkerfence` and `nofence`: 0**, so on A100 the Dekker fences are not observably needed (acq_rel RMWs behave SC); SASS has `MEMBAR.SC.GPU`, so `__threadfence()` is the `fence.sc` the argument needs |
+| 4 | Dekker: waiter `push; fence.sc; load version`, publisher `store version; fence.sc; exchange` | `atom.acq_rel` RMWs on different addresses are NOT sequentially consistent in PTX; the two `fence.sc.gpu` totally order and forbid both-miss. Required by the model | SB shape with relaxed ops (no fence) vs fence vs RMW-only; then the REAL `mvm_release_task`/`mvm_publish` with random skew. Mutants: waiter never rechecks; publisher exchanges before storing; both fences removed | SB: relaxed/no-fence 19,222 both-miss / 6 M (harness sensitive); every fenced or RMW form 0 / 6 M. Real code: 0 lost, 0 double in 6 M (1 waiter) + 3 M (3 waiters, re-park path, 9 M waiters). Mutants caught: `norecheck` 23,020 lost / 0.5 M; `exchbefore` 11,800; **`nodekkerfence` and `nofence`: 0**, so on A100 the Dekker fences are not observably needed (acq_rel RMWs behave SC); SASS has `MEMBAR.SC.GPU`, so `__threadfence()` is the `fence.sc` the argument needs |
 | 5 | Indegree `acq_rel` RMW + last-decrementer enqueue; cell release/acquire | release sequence over RMWs; last decrementer acquires every predecessor's release | 12 random layered DAG configs (24-node bundles, concurrent producers, ring 576/1024 words, live_cap 32/64, aging on/off): exact integer dataflow per node | 172,800 tasks, 144,238 edges: 0 wrong values, 0 exec_count != 1, 0 edges with `start < pred.end` |
-| 6 | Ready queue: Vyukov cells, 64-bit tickets, recycle `seq = h + live_cap`; ABA after wrap | tickets never wrap (2^64); head CAS is monotonic | Real `kvm_enqueue`/`kvm_pop`, `cap` 2..1024 tokens recirculating (= the in-flight bound), 7 or 200 warps, random priorities, per-token plain counter + inQueue flag + drain | 2.0 M pops, up to 100,000 wraps per bucket: 0 double pops, 0 lost updates, 0 lost/dup tokens. **Mutant** plain-store head claim: fails in < 400 pops (control detected). Mutant relaxed `seq` store: NOT detected (S4) |
+| 6 | Ready queue: Vyukov cells, 64-bit tickets, recycle `seq = h + live_cap`; ABA after wrap | tickets never wrap (2^64); head CAS is monotonic | Real `mvm_enqueue`/`mvm_pop`, `cap` 2..1024 tokens recirculating (= the in-flight bound), 7 or 200 warps, random priorities, per-token plain counter + inQueue flag + drain | 2.0 M pops, up to 100,000 wraps per bucket: 0 double pops, 0 lost updates, 0 lost/dup tokens. **Mutant** plain-store head claim: fails in < 400 pops (control detected). Mutant relaxed `seq` store: NOT detected (S4) |
 | 7 | Host doorbell: record via memcpy (NT stores possible), `atomic_thread_fence(seq_cst)`, release store; device `ld.acquire.sys` then relaxed reads by all threads after `bar.sync` | x86 TSO + MFENCE orders NT stores; mapped memory is write-back (no WC flag); device acquire at `.sys` scope. `closed` read before `doorbell` so FINAL implies the doorbell is final | 50,000 bundles through rings of 64/72/96/256/4096 words (pad record on nearly every wrap), 3 producer threads; one 6.8 MB record; 200 `close()` vs 4-thread submit races | 0 wrong/missing; 283,993 accepted bundles all ran; no mismatch between `admitted` and accepted submits |
-| 8 | Version-ordered pipelines (the whole protocol, 2 vars/pipeline, readers admitted first so they park) | combination of 1-4 | 24 pipelines x 120 versions x 2048 floats, readers and writers ordered ONLY by versions, 9 runs | 0 reads != the exact version. **Negative control** (`-DKVM_BREAK_FENCE`): 1,184 stale reads |
+| 8 | Version-ordered pipelines (the whole protocol, 2 vars/pipeline, readers admitted first so they park) | combination of 1-4 | 24 pipelines x 120 versions x 2048 floats, readers and writers ordered ONLY by versions, 9 runs | 0 reads != the exact version. **Negative control** (`-DMVM_BREAK_FENCE`): 1,184 stale reads |
 
 ## What I could NOT break, and how hard
 
@@ -241,16 +241,16 @@ over the (edge + publish->wait) graph in `validate` makes this a clean, instant 
 
 Controls that the harness can fail (all detected): SB without fence (19,222), publish-before-stores (2.9 M), reader without acquire (55,737),
 relaxed CAS (244), waiter without recheck (23,020), publisher exchange-first (11,800), plain-store head claim (< 400 pops),
-`KVM_BREAK_FENCE` e2e (1,184).
+`MVM_BREAK_FENCE` e2e (1,184).
 
 ## Re-run on 5b869aa (slot recycling)
 
-* Litmus (park/publish/scan, MP, queue) against the new header: dekker 1.0 M + 0.5 M rounds, MP 0.5 M, queue 1.0 M pops: 0 violations; `KVM_BREAK_PARK_RECHECK` mutant: 12,834 lost wakeups / 0.3 M (detected).
-* E2E with a 128-slot pool (constant recycling), 115,200 DAG tasks, versions (34,560 tasks), ring (35,000 bundles), 6.8 MB record, 200 close races: all PASS; `KVM_BREAK_FENCE` control: 829 stale reads.
+* Litmus (park/publish/scan, MP, queue) against the new header: dekker 1.0 M + 0.5 M rounds, MP 0.5 M, queue 1.0 M pops: 0 violations; `MVM_BREAK_PARK_RECHECK` mutant: 12,834 lost wakeups / 0.3 M (detected).
+* E2E with a 128-slot pool (constant recycling), 115,200 DAG tasks, versions (34,560 tasks), ring (35,000 bundles), 6.8 MB record, 200 close races: all PASS; `MVM_BREAK_FENCE` control: 829 stale reads.
 * `fuzz.py --targeted` against the 5b869aa CLI: identical outcome to 083513e (same 11 findings: T01 T03 T04 SIGSEGV from C3, T06 T07 T09 T10 T11 T12 SIGSEGV from C4, T13 and T15 HANG from C5/C6). `devfuzz` 48 boundary + 200 random cases: `args_off` overflow faults (8 cases + the random one), `succ_cnt` overflow hangs (5 cases, killed at 30 s).
 * C1, C2, C5, C6 reproduce unchanged (`probe_timeout`, `probe_timeout_busy`, `probe_deadlock`, `probe_spin`, `probe_aging`).
 * C3 changes shape (see C3). New concern S3. One new design observation: a task parked on a version pins its window's successor words and, because regions are reclaimed in order, every later window's words: a deadlock class larger than C2 once `succ_cap` or `win_cap` is small.
-* The late `d->wait_ver` read after the push in `kvm_release_task` can observe a recycled slot (the task may already have run); the effect is only an extra or skipped `kvm_scan_parked`, and a skipped scan cannot lose a wakeup because the node was already detached. Benign.
+* The late `d->wait_ver` read after the push in `mvm_release_task` can observe a recycled slot (the task may already have run); the effect is only an extra or skipped `mvm_scan_parked`, and a skipped scan cannot lose a wakeup because the node was already detached. Benign.
 
 ## Not covered
 
@@ -260,12 +260,12 @@ PTX argument above. Litmus cannot prove absence of reorderings the A100 happens 
 ## Reproduce
 
 ```
-KVM_HOST=user@host tests/litmus/run_remote.sh build      # rsync + nvcc: litmus binaries + mutants, e2e, kvm_exec
-KVM_HOST=... tests/litmus/run_remote.sh litmus           # prod litmus (LK/LL/LQ env scale it)
-KVM_HOST=... tests/litmus/run_remote.sh mutants          # every mutant: each must report VIOLATIONS
-KVM_HOST=... tests/litmus/run_remote.sh e2e | probes | devfuzz | sanitize
-KVM_HOST=... FC=300 FS=2 tests/litmus/run_remote.sh fuzz        # random corpus; FZ=--targeted for the T01..T22 probes
-KVM_HOST=... tests/litmus/run_remote.sh buildnew         # same against a branch exported to ~/kvm-review-new
+MVM_HOST=user@host tests/litmus/run_remote.sh build      # rsync + nvcc: litmus binaries + mutants, e2e, mvm_exec
+MVM_HOST=... tests/litmus/run_remote.sh litmus           # prod litmus (LK/LL/LQ env scale it)
+MVM_HOST=... tests/litmus/run_remote.sh mutants          # every mutant: each must report VIOLATIONS
+MVM_HOST=... tests/litmus/run_remote.sh e2e | probes | devfuzz | sanitize
+MVM_HOST=... FC=300 FS=2 tests/litmus/run_remote.sh fuzz        # random corpus; FZ=--targeted for the T01..T22 probes
+MVM_HOST=... tests/litmus/run_remote.sh buildnew         # same against a branch exported to ~/mvm-review-new
 ```
 Files: `tests/litmus/litmus.cu` (real device functions, SB/Dekker/MP/queue + controls), `build.sh` (sed-built header mutants),
 `e2e.cu` (host-driven scenarios and probes), `fuzz.py` (corpus generator from `runtime/compile_workload.py` bundles + driver).

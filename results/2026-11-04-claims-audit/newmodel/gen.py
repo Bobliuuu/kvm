@@ -2,18 +2,18 @@
 """Audit: push models the repo never shipped through the frontend -> compiler -> bundle (+ CPU golden).
 
   python3 gen.py OUT_DIR CASE [--steps N]      CASE: xfmr_odd | mlp_ce | resmlp_rms | bad_head | bad_dims
-Uses only the public frontend API (Builder, Module, build_training, lower_program, to_workload); nothing in kvmfe is edited.
+Uses only the public frontend API (Builder, Module, build_training, lower_program, to_workload); nothing in mvmfe is edited.
 """
 import argparse, json, subprocess, sys
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / 'frontend'))
-from kvmfe.emit import GraphPolicy, lower_program, to_workload
-from kvmfe.lower import Tiling
-from kvmfe.nn import GPT, Linear, Module, Norm, ModelConfig
-from kvmfe.optim import OptimConfig
-from kvmfe.pipeline import compile_training
-from kvmfe.train import TrainConfig, build_training
+from mvmfe.emit import GraphPolicy, lower_program, to_workload
+from mvmfe.lower import Tiling
+from mvmfe.nn import GPT, Linear, Module, Norm, ModelConfig
+from mvmfe.optim import OptimConfig
+from mvmfe.pipeline import compile_training
+from mvmfe.train import TrainConfig, build_training
 
 
 class MLPNet(Module):

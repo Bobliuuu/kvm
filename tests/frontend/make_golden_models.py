@@ -4,10 +4,10 @@ import json
 from pathlib import Path
 
 import _path  # noqa: F401
-from kvmfe import models
-from kvmfe.lower import Tiling
-from kvmfe.pipeline import compile_training
-from kvmfe.train import TrainConfig
+from mvmfe import models
+from mvmfe.lower import Tiling
+from mvmfe.pipeline import compile_training
+from mvmfe.train import TrainConfig
 
 STEPS = 5
 

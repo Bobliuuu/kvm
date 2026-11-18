@@ -1,5 +1,5 @@
 GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
-BUILT WITH -DKVM_BREAK_FENCE (version published before the op's stores): version checks are EXPECTED to fail
+BUILT WITH -DMVM_BREAK_FENCE (version published before the op's stores): version checks are EXPECTED to fail
 == versions
   seed 1017 reader 4 (exact snap 3 need 3): ver0 3 ver1 3 first 0.625 last 0.625 golden 0.25
   seed 1017 reader 6 (exact snap 5 need 5): ver0 5 ver1 5 first -0.25 last -0.875 golden -0.875

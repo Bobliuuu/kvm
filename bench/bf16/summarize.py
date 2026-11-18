@@ -22,15 +22,15 @@ def load(p):
 def gemm_table(log):
     rows = []
     for line in Path(log).read_text().splitlines():
-        m = re.match(r'(\S+)\s+(mma|old64)\s+([NT])([NT])\s+(\d+)x\s*(\d+)x\s*(\d+) tile .*?kvm\s+([\d.]+) \[\s*([\d.]+)\.\.\s*([\d.]+)\] cuBLAS\s+([\d.]+) \[\s*([\d.]+)\.\.\s*([\d.]+)\] TFLOP/s ratio ([\d.]+) err ([\d.e+-]+) (\w+)', line)
+        m = re.match(r'(\S+)\s+(mma|old64)\s+([NT])([NT])\s+(\d+)x\s*(\d+)x\s*(\d+) tile .*?mvm\s+([\d.]+) \[\s*([\d.]+)\.\.\s*([\d.]+)\] cuBLAS\s+([\d.]+) \[\s*([\d.]+)\.\.\s*([\d.]+)\] TFLOP/s ratio ([\d.]+) err ([\d.e+-]+) (\w+)', line)
         if m:
             g = m.groups()
-            rows.append(dict(tag=g[0], kind=g[1], ta=g[2], tb=g[3], M=int(g[4]), N=int(g[5]), K=int(g[6]), kvm=float(g[7]), kvm_lo=float(g[8]), kvm_hi=float(g[9]),
+            rows.append(dict(tag=g[0], kind=g[1], ta=g[2], tb=g[3], M=int(g[4]), N=int(g[5]), K=int(g[6]), mvm=float(g[7]), mvm_lo=float(g[8]), mvm_hi=float(g[9]),
                              cub=float(g[10]), cub_lo=float(g[11]), cub_hi=float(g[12]), ratio=float(g[13]), err=g[14], ok=g[15]))
     out = ['| shape (M x N x K) | op | matmul_mma_bf16 TFLOP/s [min..max] | cuBLAS bf16 TFLOP/s [min..max] | ratio | max err / max abs |', '|---|---|---|---|---|---|']
     for r in rows:
         name = r['tag'] if r['tag'] != '4096^3' else '4096^3'
-        out.append(f"| {r['M']}x{r['N']}x{r['K']} ({name}) | {r['kind']} {r['ta']}{r['tb']} | {r['kvm']:.1f} [{r['kvm_lo']:.1f}..{r['kvm_hi']:.1f}] | "
+        out.append(f"| {r['M']}x{r['N']}x{r['K']} ({name}) | {r['kind']} {r['ta']}{r['tb']} | {r['mvm']:.1f} [{r['mvm_lo']:.1f}..{r['mvm_hi']:.1f}] | "
                    f"{r['cub']:.1f} [{r['cub_lo']:.1f}..{r['cub_hi']:.1f}] | {r['ratio']:.3f} | {r['err']} {r['ok']} |")
     return '\n'.join(out)
 

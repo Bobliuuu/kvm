@@ -12,8 +12,8 @@ import argparse
 import json
 import random
 
-FB_WORDS = 16256          # KVM_DOOM_FB_WORDS: 64000 palette indices + 256 palette words
-STATE_REC = 16            # KVM_DOOM_ST_REC
+FB_WORDS = 16256          # MVM_DOOM_FB_WORDS: 64000 palette indices + 256 palette words
+STATE_REC = 16            # MVM_DOOM_ST_REC
 SLICES = 4
 N = 256                   # matmul size
 

@@ -20,7 +20,7 @@ SPAN_US = 6000.0
 
 PAGE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>KVM demo: one persistent GPU kernel</title>
+<title>Magni VM demo: one persistent GPU kernel</title>
 <style>
 :root{--bg:#fff;--fg:#1b1f24;--mut:#59636e;--card:#f6f8fa;--bd:#d0d7de;--train:#0072B2;--serve:#E69F00;--game:#009E73;--idle:#e6e6e6;--bad:#b00020}
 @media (prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--mut:#9198a1;--card:#161b22;--bd:#30363d;--idle:#2a2f36;--bad:#ff7b8a}}
@@ -35,7 +35,7 @@ svg,img,video{max-width:100%;height:auto}.fig{background:#fff;border-radius:8px;
 button{padding:3px 12px;border:1px solid var(--bd);background:var(--card);color:var(--fg);border-radius:6px;cursor:pointer}
 </style></head><body><main>
 <h1>One persistent kernel, three workloads</h1>
-<p class="mut">KVM interprets a task DAG on every SM of an A100 (108 SMs). Below: GPT training, GPT serving on the weights training just published, and real Doom run
+<p class="mut">Magni VM interprets a task DAG on every SM of an A100 (108 SMs). Below: GPT training, GPT serving on the weights training just published, and real Doom run
 in one kernel launch. Every picture is drawn from the executor's own per-task timestamps (<code>%smid</code>, <code>%globaltimer</code>) or from the run's outputs.</p>
 <div class="card"><b>Read this first.</b> This is a correctness-and-coexistence demo on a tiny model, not a speed claim. The GPU is mostly idle here (a few busy SMs of 108).
 The VM loses to a whole-step CUDA graph on the same small models (3.9-5.4x slower), and its ops reach 0.26-0.39x of cuBLAS. __RUNLINE__</div>

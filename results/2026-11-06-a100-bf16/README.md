@@ -12,24 +12,24 @@ double the tensor peak (312 TFLOP/s) and it does **not** make the executor compe
 |---|---|
 | GPU | NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver 580.105.08, max SM clock 1410 MHz; shared box, GPU lock held for every timed run |
 | Toolchain | nvcc 12.8.93; PyTorch 2.7.0+cu128 (Triton 3.3.0) |
-| Executor build | `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 kvm_exec.cu` |
+| Executor build | `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 mvm_exec.cu` |
 | Test builds | `nvcc -O2 -arch=sm_80 -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -lineinfo -Iinclude -I. X.cu [-lcublas]` |
 | Code | branch `perf/bf16-a100`; device code at `8b07421`, scripts at `d6b916d` (`test_ops` was built one commit earlier, before the GEMM epilogue change: it does not exercise that op) |
 | Model | gpt_162m: 12 layers, d768, 12 heads, seq 1024, batch 4 (4096 tokens/step), vocab 50304, untied head, RoPE; AdamW lr 3e-3 (timing, 3-step losses) / 3e-4 + 2 warmup (demo), clip 1.0 |
-| Commands | `bash bench/bf16/run_box.sh perf\|profile\|correctness OUT DATA` on the box (one GPU-lock hold per mode, `KVM_EXEC=./kvm_exec_h`); `demo/run_demo.sh large --model <gpt_162m, bf16s>` |
+| Commands | `bash bench/bf16/run_box.sh perf\|profile\|correctness OUT DATA` on the box (one GPU-lock hold per mode, `MVM_EXEC=./mvm_exec_h`); `demo/run_demo.sh large --model <gpt_162m, bf16s>` |
 | Raw output | `perf/`, `profile/`, `correctness/`, `demo-large-bf16s/`, `bundle_bytes.json` in this directory |
 
 ## What was built
 
-* **`matmul_mma_bf16`** (`include/kvm_mma_bf16.cuh`, op id 122, own op id so it merges cleanly beside the TF32 tile work): 128 x 256 x 32 CTA tile, 8 warps of
+* **`matmul_mma_bf16`** (`include/mvm_mma_bf16.cuh`, op id 122, own op id so it merges cleanly beside the TF32 tile work): 128 x 256 x 32 CTA tile, 8 warps of
   64 x 64, bf16 shared tiles (no widening), `ldmatrix` (`.trans` for m-/n-contiguous operands: all four transpose combinations take one code path), 4-stage `cp.async`
   (96 KiB), fp32 accumulate in fixed order, one RNE rounding per stored value. Epilogue = `matmul_tile`'s (alpha, bias, saved pre-activation, GELU, residual, accumulate), out /
   res / pre each fp32 or bf16; a bf16 output is staged through shared memory and leaves as 16-byte stores. Anything unaligned or fp32-operand falls back to `matmul_tile_bf16`.
 * **Storage-aware ops** (norms fwd/bwd, rope, gelu_bwd, residual adds, embedding, colsum, cross entropy, `round_bf16`): read and write fp32 or bf16 storage, 4-wide
-  vector paths, scalar fallback. Everything else still sees fp32 scratch (`kvmfe/storage.py` widens/narrows). Weight gradients, AdamW moments and masters stay fp32.
+  vector paths, scalar fallback. Everything else still sees fp32 scratch (`mvmfe/storage.py` widens/narrows). Weight gradients, AdamW moments and masters stay fp32.
 * **Frontend** `precision='bf16s'` for GPT, Llama, MLP, ViT: explicit bf16 copies of fp32 operands, casts folded into producers, bf16 weight shadows refreshed each step, bf16 saved
   pre-activation, `matmul_mma_bf16` chosen when both operands are bf16 storage, n-outer tile order for wide GEMMs (4096 x 50304 x 768: 46 -> 80 TFLOP/s).
-* **ABI**: `KvmBuf.dtype` 2 / workload dtype `"bf16"` (merged from `feat/bf16-hopper`; bundles without bf16 are unchanged), `kvm_run` manifests accept it, `kvm_exec --dump-bin`.
+* **ABI**: `MvmBuf.dtype` 2 / workload dtype `"bf16"` (merged from `feat/bf16-hopper`; bundles without bf16 are unchanged), `mvm_run` manifests accept it, `mvm_exec --dump-bin`.
   CPU golden: `ref_extra._BF16_STORAGE` rounds every bf16 output; `anydt` tells the compiler which args may be bf16.
 
 ## 1. GEMM, `bench_mma_bf16` (kernel vs cuBLAS bf16 `GemmEx`, fp32 accumulate, same process; median of 7 [min..max]; each row also checks the result)
@@ -99,7 +99,7 @@ drives AdamW's sign-like update (`m.vit.h0.attn.k.b` differs by 1.8) and the wei
 exceeds the weight tolerance (1.7e-2 vs 1e-2) while its 10-step sibling passes (8.5e-3): real bf16 storage is further from the CPU golden than the emulation because stored
 values expose the 1-ulp flips that the emulation hides inside the matmul; I did not tighten or relax the tolerance.
 
-## 3. Step time, tasks, memory (gpt_162m, 1 step, `kvm_exec`, best of 5 [median / worst])
+## 3. Step time, tasks, memory (gpt_162m, 1 step, `mvm_exec`, best of 5 [median / worst])
 
 | implementation | ms / step | tasks | vs executor bf16s |
 |---|---|---|---|
@@ -134,13 +134,13 @@ moments and weight gradients are 2.6 GiB, attention q/k/v/o/lse stay fp32, and b
 One persistent launch: 6 training steps + 4 serving requests on versioned weights + real Doom (700 frames), one MANIFEST, 663,268 tasks, err_code 0.
 All checks PASS: 22,935 version-carrying tasks exact, 0 violations; training losses 10.979 -> 10.924 (no CPU golden at this size); Doom **700/700 frames raw-identical** to the CPU oracle;
 **cadence 170 frames/s against the 35 Hz needed, 0 of 698 tick gaps over 28.6 ms** (p50 5.8 ms, p99 10.3 ms). Training step (launch to done, steps 2-5, serve between): 708, 690, 690, 704 ms,
-mean **698 ms against 1.81 s** in `2026-11-06-demo-large` (f32 1xTF32, same A100 box, an earlier commit, steps 1-5): 2.6x. Needed `kvm_run` to accept dtype `bf16` in the manifest (done).
+mean **698 ms against 1.81 s** in `2026-11-06-demo-large` (f32 1xTF32, same A100 box, an earlier commit, steps 1-5): 2.6x. Needed `mvm_run` to accept dtype `bf16` in the manifest (done).
 
 ## What did not work / limits
 
 * The GEMM tile is at 0.47x of cuBLAS (section 1). The executor step stays 15.7x behind PyTorch's best bf16 mode; README goal 3 is not met at this size with bf16 either.
 * Memory is -21%, not -50%; attention is fp32-only (no bf16 attention path), weight gradients and optimizer state are fp32 by design.
-* Dynamic shared memory per block rose from 72 to 96 KiB (`KVM_GPT_MMA_SMEM`) so the 4-stage tile fits: two 72 KiB blocks per SM fit before, two 96 KiB blocks do not (the executor
+* Dynamic shared memory per block rose from 72 to 96 KiB (`MVM_GPT_MMA_SMEM`) so the 4-stage tile fits: two 72 KiB blocks per SM fit before, two 96 KiB blocks do not (the executor
   runs one block per SM at its register count, so the executor is unaffected; the op benchmarks' `BENCH_MINB=2` variant is).
 * Zoo: 3 of 8 compared cases fail the weights criterion (`vit_bf16` and `vit_bf16s`: bias artifact; `san_bf16s`: 1.7e-2), reported above, tolerances unchanged.
 * Not built: fp16, bf16 attention / SwiGLU / softmax / MoE ops, bf16 weight gradients, dynamic loss scaling, Hopper/Blackwell tiles (wgmma/TMA).

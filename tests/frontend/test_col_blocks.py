@@ -1,10 +1,10 @@
-"""col_blocks: a split column reduction keeps every column's summation order (col_reduce in kvm_ops_gpt.cuh sums a column in strips of
+"""col_blocks: a split column reduction keeps every column's summation order (col_reduce in mvm_ops_gpt.cuh sums a column in strips of
 NC columns, NC fixed by its task's width), and the default tiling's blocks are unchanged."""
 import unittest
 
 import _path  # noqa: F401
-from kvmfe.ir import FrontendError
-from kvmfe.lower import Tiling, blocks, col_blocks
+from mvmfe.ir import FrontendError
+from mvmfe.lower import Tiling, blocks, col_blocks
 
 
 def strip_width(width):

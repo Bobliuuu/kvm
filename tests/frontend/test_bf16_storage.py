@@ -6,12 +6,12 @@ import sys
 import unittest
 
 import _path  # noqa: F401
-from kvmfe import storage
-from kvmfe.emit import lower_program
-from kvmfe.lower import Tiling
-from kvmfe.nn import GPT, PRESETS
-from kvmfe.pipeline import compile_training
-from kvmfe.train import TrainConfig, build_training
+from mvmfe import storage
+from mvmfe.emit import lower_program
+from mvmfe.lower import Tiling
+from mvmfe.nn import GPT, PRESETS
+from mvmfe.pipeline import compile_training
+from mvmfe.train import TrainConfig, build_training
 
 sys.path.insert(0, str(_path.ROOT / 'runtime'))
 import compile_workload as cw  # noqa: E402
@@ -50,7 +50,7 @@ class Bf16Storage(unittest.TestCase):
                 self.assertNotEqual(b.get('dtype'), 'bf16', b['name'])
 
     def test_optimizer_chunks_align_to_the_mma_tile_and_f32_keeps_the_64_row_tile(self):
-        from kvmfe.opset import MMA_TILE
+        from mvmfe.opset import MMA_TILE
         def rows(prec):
             ops = build_training(GPT(dataclasses.replace(BASE, precision=prec)), TrainConfig(steps=1)).b.ops
             ops = storage.apply(ops)[0] if prec == 'bf16s' else ops
@@ -62,7 +62,7 @@ class Bf16Storage(unittest.TestCase):
         cw.compile_spec(self.sto.spec, data_dir=None)
 
     def test_order_independent(self):
-        from kvmfe.refvm import execute
+        from mvmfe.refvm import execute
         a = execute(self.sto.spec, order='random', seed=3)
         self.assertEqual(losses(self.sto, a, self.steps), losses(self.sto, self.mem, self.steps))
 
@@ -160,15 +160,15 @@ class Bf16StorageModelZoo(unittest.TestCase):
             self.assertAlmostEqual(a, f, delta=5e-2)
 
     def test_llama(self):
-        from kvmfe.models import LlamaConfig
+        from mvmfe.models import LlamaConfig
         self.run_family(lambda p: LlamaConfig(name='llama_t', precision=p))
 
     def test_mlp(self):
-        from kvmfe.models import MLPConfig
+        from mvmfe.models import MLPConfig
         self.run_family(lambda p: MLPConfig(name='mlp_t', precision=p))
 
     def test_vit(self):
-        from kvmfe.models import ViTConfig
+        from mvmfe.models import ViTConfig
         self.run_family(lambda p: ViTConfig(name='vit_t', precision=p))
 
 

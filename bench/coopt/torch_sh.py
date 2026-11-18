@@ -1,9 +1,9 @@
-"""PyTorch reference + baselines for the KVM successive-halving population sweep (coopt_sh.cu).
+"""PyTorch reference + baselines for the Magni VM successive-halving population sweep (coopt_sh.cu).
 
 Same model (2-layer ReLU MLP, MSE, SGD, R learning rates, same data and init, loaded from the files coopt_sh dumps),
 same selection rule (every E steps keep the better half by mean loss over the last NB steps; ties -> lower index).
   ref      : fp32 (TF32 off), eager, batched over runs. Correctness oracle.
-  B0       : TF32, whole run in ONE CUDA graph, full population, no halving (what KVM 'no halving' compares to).
+  B0       : TF32, whole run in ONE CUDA graph, full population, no halving (what Magni VM 'no halving' compares to).
   B1       : TF32, whole run in ONE CUDA graph, halving done in-graph by masking (lr=0 for retired runs; no compute saved).
   B2       : TF32, one pre-captured CUDA graph per rung with the surviving runs only (compute shrinks), selection by async eager torch ops, no host sync.
 Manual fwd/bwd with bmm (no autograd) so the graph holds the minimum kernels.
@@ -200,7 +200,7 @@ res = {"gpu": torch.cuda.get_device_name(), "torch": torch.__version__, "cfg": d
 Lr, ar, W1r, W2r = run_masked(False, True, False)
 Lf, _, _, _ = run_masked(False, False, False)
 surv_ref = set(int(i) for i in torch.nonzero(ar).flatten().tolist())
-surv_kvm = set(int(i) for i in np.nonzero(kalive)[0])
+surv_mvm = set(int(i) for i in np.nonzero(kalive)[0])
 # kill epoch per run from the ref: run alive iff survives all; reconstruct via rerun with record
 def kill_epochs():
     alive = torch.ones(R, dtype=torch.bool, device=dev); ep = [0] * R
@@ -211,7 +211,7 @@ def kill_epochs():
         alive = new
     return ep
 ep = kill_epochs()
-# compare loss curves while alive (ref vs kvm), KVM-reported loss is the loss of the step in progress
+# compare loss curves while alive (ref vs mvm), Magni VM-reported loss is the loss of the step in progress
 rel = 0.0; relk = 0.0
 for r in range(R):
     last = steps if ep[r] == 0 else ep[r] * E
@@ -223,23 +223,23 @@ for r in range(R):
     a = kloss_full[r]; b = Lf[:, r]
     ok = torch.isfinite(b)
     if ok.any(): relf = max(relf, float(((a[ok] - b[ok]).abs() / (b[ok].abs() + 1e-6)).max()))
-# weights of survivors: relative L2 diff kvm vs ref
+# weights of survivors: relative L2 diff mvm vs ref
 wd = 0.0
 for r in range(R):
     a = kw[r]; b = torch.cat([W1r[r].flatten(), W2r[r].flatten()])
     if torch.isfinite(b).all() and torch.isfinite(a).all():
         wd = max(wd, float((a - b).norm() / b.norm()))
 # loss at end of survivors
-res["correctness"] = dict(survivors_ref=sorted(surv_ref), survivors_kvm=sorted(surv_kvm), same_survivors=surv_ref == surv_kvm,
+res["correctness"] = dict(survivors_ref=sorted(surv_ref), survivors_mvm=sorted(surv_mvm), same_survivors=surv_ref == surv_mvm,
     max_rel_loss_err_sh_alive_steps=rel, max_rel_loss_err_full_population=relf, max_rel_weight_l2_survivors=wd, kill_epoch_ref=ep,
-    final_loss_ref={str(r): float(Lr[-1, r]) for r in sorted(surv_ref)}, final_loss_kvm={str(r): float(kloss[r, -1]) for r in sorted(surv_kvm)})
+    final_loss_ref={str(r): float(Lr[-1, r]) for r in sorted(surv_ref)}, final_loss_mvm={str(r): float(kloss[r, -1]) for r in sorted(surv_mvm)})
 nan_runs = [r for r in range(R) if not torch.isfinite(Lf[:, r]).all()]
 res["correctness"]["runs_diverged_in_full_pop_ref"] = nan_runs
 
 # --- baselines, TF32
-kill_kvm = [int(x) for x in np.fromfile(f"{d}/kill_sh.bin", dtype=np.int32)[:R]]
-res["correctness"]["kill_rung_kvm"] = kill_kvm
-res["correctness"]["same_kill_rungs"] = kill_kvm == ep
+kill_mvm = [int(x) for x in np.fromfile(f"{d}/kill_sh.bin", dtype=np.int32)[:R]]
+res["correctness"]["kill_rung_mvm"] = kill_mvm
+res["correctness"]["same_kill_rungs"] = kill_mvm == ep
 def baselines(tag):
     global USE_COMPILED
     USE_COMPILED = (tag == "compiled")
@@ -271,9 +271,9 @@ try:
     cC, b0C, b1C, b3C = baselines("compiled")
 except Exception as ex:
     res["compiled_error"] = repr(ex)[:300]; cC, b0C, b1C, b3C = cE, b0E, b1E, b3E
-res["kvm_ms"] = dict(full_population=meta["kvm_full_ms"], controlled=meta["kvm_sh_ms"])
-res["speedup"] = dict(kvm_ctrl_vs_best_torch_ctrl_eager=min(cE) / meta["kvm_sh_ms"], kvm_ctrl_vs_best_torch_ctrl_compiled=min(cC) / meta["kvm_sh_ms"],
-    kvm_ctrl_vs_best_torch_any=min(cE + cC) / meta["kvm_sh_ms"], kvm_full_vs_B0_eager=b0E / meta["kvm_full_ms"], kvm_full_vs_B0_compiled=b0C / meta["kvm_full_ms"])
+res["mvm_ms"] = dict(full_population=meta["mvm_full_ms"], controlled=meta["mvm_sh_ms"])
+res["speedup"] = dict(mvm_ctrl_vs_best_torch_ctrl_eager=min(cE) / meta["mvm_sh_ms"], mvm_ctrl_vs_best_torch_ctrl_compiled=min(cC) / meta["mvm_sh_ms"],
+    mvm_ctrl_vs_best_torch_any=min(cE + cC) / meta["mvm_sh_ms"], mvm_full_vs_B0_eager=b0E / meta["mvm_full_ms"], mvm_full_vs_B0_compiled=b0C / meta["mvm_full_ms"])
 res["torch_per_run_gpu_mem_note"] = "all torch variants use manual fwd/bwd with bmm, TF32, CUDA graphs"
 print(json.dumps(res, indent=1))
 json.dump(res, open(f"{d}/torch_result.json", "w"), indent=1)

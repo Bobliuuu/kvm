@@ -3,11 +3,11 @@ NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
 Build cuda_12.8.r12.8/compiler.35583870_0
 build 421d5ee: rc=0
 build WORKTREE: rc=0
-builds done in 304 s (flags -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 -DKVM_LEAN)
-$ cp /logs/ab1-port/bin/421d5ee/kvm_exec 421d5ee/kvm_exec; chmod +x 421d5ee/kvm_exec
-$ cp /logs/ab1-port/bin/WORKTREE/kvm_exec WORKTREE/kvm_exec; chmod +x WORKTREE/kvm_exec
-$ cp /logs/ab1-port/bin/WORKTREE/kvm_exec WORKTREE/kvm_exec; chmod +x WORKTREE/kvm_exec
-$ cp /logs/ab1-port/bin/WORKTREE/kvm_exec WORKTREE/kvm_exec; chmod +x WORKTREE/kvm_exec
+builds done in 304 s (flags -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 -DMVM_LEAN)
+$ cp /logs/ab1-port/bin/421d5ee/mvm_exec 421d5ee/mvm_exec; chmod +x 421d5ee/mvm_exec
+$ cp /logs/ab1-port/bin/WORKTREE/mvm_exec WORKTREE/mvm_exec; chmod +x WORKTREE/mvm_exec
+$ cp /logs/ab1-port/bin/WORKTREE/mvm_exec WORKTREE/mvm_exec; chmod +x WORKTREE/mvm_exec
+$ cp /logs/ab1-port/bin/WORKTREE/mvm_exec WORKTREE/mvm_exec; chmod +x WORKTREE/mvm_exec
 $ python3 -I 421d5ee/bench/vs_pytorch/gen.py w_tiny --model 'gpt_tiny' --steps 50 --mode tf32 --tiling a100 > /logs/ab1-port/gen_tiny.json 2>&1
 $ python3 -I 421d5ee/bench/vs_pytorch/gen.py w_small --model 'gpt_small' --steps 50 --mode tf32 --tiling a100 > /logs/ab1-port/gen_small.json 2>&1
 $ python3 -I 421d5ee/bench/vs_pytorch/torch_bench.py w_tiny --reps 5 --precision tf32 --modes graph,compile_graph --out /logs/ab1-port/r0_tiny_torch.json 2>&1 | grep -v Warning
@@ -172,28 +172,28 @@ AUTOTUNE mm(32x32, 32x32)
   mm 0.0092 ms 77.8% 
 SingleProcess AUTOTUNE benchmarking takes 0.1155 seconds and 0.0002 seconds precompiling for 7 choices
 compile_graph: best 204.5 us/step  median 204.6  worst 204.7  loss 4.1461 -> 1.2461  (setup 31s)
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny 421d5ee/kvm_exec --reps 5 --out /logs/ab1-port/r0_tiny_main.json
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny 421d5ee/mvm_exec --reps 5 --out /logs/ab1-port/r0_tiny_main.json
 rep 1/5: 42.2 ms (0.84 ms/step), wall 0.4 s
 rep 2/5: 42.0 ms (0.84 ms/step), wall 0.4 s
 rep 3/5: 42.3 ms (0.85 ms/step), wall 0.4 s
 rep 4/5: 42.2 ms (0.84 ms/step), wall 0.4 s
 rep 5/5: 42.5 ms (0.85 ms/step), wall 0.4 s
 executor: best 840 us/step  median 845  worst 851
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny WORKTREE/kvm_exec --reps 5 --out /logs/ab1-port/r0_tiny_port.json
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny WORKTREE/mvm_exec --reps 5 --out /logs/ab1-port/r0_tiny_port.json
 rep 1/5: 41.1 ms (0.82 ms/step), wall 0.5 s
 rep 2/5: 41.5 ms (0.83 ms/step), wall 0.4 s
 rep 3/5: 41.5 ms (0.83 ms/step), wall 0.4 s
 rep 4/5: 41.2 ms (0.82 ms/step), wall 0.4 s
 rep 5/5: 41.5 ms (0.83 ms/step), wall 0.4 s
 executor: best 822 us/step  median 830  worst 831
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny WORKTREE/kvm_exec --reps 5 --out /logs/ab1-port/r0_tiny_port_tk.json -- --claim ticket
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny WORKTREE/mvm_exec --reps 5 --out /logs/ab1-port/r0_tiny_port_tk.json -- --claim ticket
 rep 1/5: 41.3 ms (0.83 ms/step), wall 0.5 s
 rep 2/5: 41.5 ms (0.83 ms/step), wall 0.4 s
 rep 3/5: 41.7 ms (0.83 ms/step), wall 0.5 s
 rep 4/5: 41.4 ms (0.83 ms/step), wall 0.4 s
 rep 5/5: 41.4 ms (0.83 ms/step), wall 0.4 s
 executor: best 827 us/step  median 828  worst 834
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny WORKTREE/kvm_exec --reps 5 --out /logs/ab1-port/r0_tiny_port_nc.json -- --no-cont
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny WORKTREE/mvm_exec --reps 5 --out /logs/ab1-port/r0_tiny_port_nc.json -- --no-cont
 rep 1/5: 41.2 ms (0.82 ms/step), wall 0.4 s
 rep 2/5: 41.3 ms (0.83 ms/step), wall 0.4 s
 rep 3/5: 41.2 ms (0.82 ms/step), wall 0.4 s
@@ -418,28 +418,28 @@ AUTOTUNE addmm(128x64, 128x64, 64x64)
   triton_mm_441 0.0092 ms 77.8% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
 SingleProcess AUTOTUNE benchmarking takes 0.3385 seconds and 0.0002 seconds precompiling for 19 choices
 compile_graph: best 429.3 us/step  median 429.3  worst 429.4  loss 4.8782 -> 0.0960  (setup 51s)
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small 421d5ee/kvm_exec --reps 5 --out /logs/ab1-port/r0_small_main.json
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small 421d5ee/mvm_exec --reps 5 --out /logs/ab1-port/r0_small_main.json
 rep 1/5: 118.0 ms (2.36 ms/step), wall 0.5 s
 rep 2/5: 89.5 ms (1.79 ms/step), wall 0.4 s
 rep 3/5: 90.0 ms (1.80 ms/step), wall 0.5 s
 rep 4/5: 89.6 ms (1.79 ms/step), wall 0.5 s
 rep 5/5: 90.0 ms (1.80 ms/step), wall 0.4 s
 executor: best 1790 us/step  median 1799  worst 2361
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small WORKTREE/kvm_exec --reps 5 --out /logs/ab1-port/r0_small_port.json
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small WORKTREE/mvm_exec --reps 5 --out /logs/ab1-port/r0_small_port.json
 rep 1/5: 87.2 ms (1.74 ms/step), wall 0.4 s
 rep 2/5: 87.2 ms (1.74 ms/step), wall 0.4 s
 rep 3/5: 87.0 ms (1.74 ms/step), wall 0.5 s
 rep 4/5: 87.4 ms (1.75 ms/step), wall 0.4 s
 rep 5/5: 87.0 ms (1.74 ms/step), wall 0.5 s
 executor: best 1740 us/step  median 1744  worst 1748
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small WORKTREE/kvm_exec --reps 5 --out /logs/ab1-port/r0_small_port_tk.json -- --claim ticket
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small WORKTREE/mvm_exec --reps 5 --out /logs/ab1-port/r0_small_port_tk.json -- --claim ticket
 rep 1/5: 86.8 ms (1.74 ms/step), wall 0.4 s
 rep 2/5: 86.4 ms (1.73 ms/step), wall 0.5 s
 rep 3/5: 86.9 ms (1.74 ms/step), wall 0.5 s
 rep 4/5: 86.9 ms (1.74 ms/step), wall 0.4 s
 rep 5/5: 86.5 ms (1.73 ms/step), wall 0.5 s
 executor: best 1729 us/step  median 1735  worst 1739
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small WORKTREE/kvm_exec --reps 5 --out /logs/ab1-port/r0_small_port_nc.json -- --no-cont
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small WORKTREE/mvm_exec --reps 5 --out /logs/ab1-port/r0_small_port_nc.json -- --no-cont
 rep 1/5: 89.0 ms (1.78 ms/step), wall 0.5 s
 rep 2/5: 115.6 ms (2.31 ms/step), wall 0.5 s
 rep 3/5: 88.4 ms (1.77 ms/step), wall 0.4 s
@@ -449,28 +449,28 @@ executor: best 1768 us/step  median 1780  worst 2311
 $ python3 -I 421d5ee/bench/vs_pytorch/torch_bench.py w_tiny --reps 5 --precision tf32 --modes graph,compile_graph --out /logs/ab1-port/r1_tiny_torch.json 2>&1 | grep -v Warning
 graph: best 430.6 us/step  median 430.7  worst 431.5  loss 4.1460 -> 1.2453  (setup 1s)
 compile_graph: best 204.6 us/step  median 204.6  worst 204.6  loss 4.1461 -> 1.2461  (setup 3s)
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny WORKTREE/kvm_exec --reps 5 --out /logs/ab1-port/r1_tiny_port.json
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny WORKTREE/mvm_exec --reps 5 --out /logs/ab1-port/r1_tiny_port.json
 rep 1/5: 41.5 ms (0.83 ms/step), wall 0.4 s
 rep 2/5: 42.2 ms (0.84 ms/step), wall 0.4 s
 rep 3/5: 41.2 ms (0.82 ms/step), wall 0.4 s
 rep 4/5: 42.0 ms (0.84 ms/step), wall 0.4 s
 rep 5/5: 41.4 ms (0.83 ms/step), wall 0.4 s
 executor: best 824 us/step  median 831  worst 844
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny WORKTREE/kvm_exec --reps 5 --out /logs/ab1-port/r1_tiny_port_tk.json -- --claim ticket
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny WORKTREE/mvm_exec --reps 5 --out /logs/ab1-port/r1_tiny_port_tk.json -- --claim ticket
 rep 1/5: 41.1 ms (0.82 ms/step), wall 0.4 s
 rep 2/5: 41.0 ms (0.82 ms/step), wall 0.4 s
 rep 3/5: 40.9 ms (0.82 ms/step), wall 0.5 s
 rep 4/5: 41.0 ms (0.82 ms/step), wall 0.4 s
 rep 5/5: 41.4 ms (0.83 ms/step), wall 0.4 s
 executor: best 818 us/step  median 821  worst 829
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny WORKTREE/kvm_exec --reps 5 --out /logs/ab1-port/r1_tiny_port_nc.json -- --no-cont
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny WORKTREE/mvm_exec --reps 5 --out /logs/ab1-port/r1_tiny_port_nc.json -- --no-cont
 rep 1/5: 41.6 ms (0.83 ms/step), wall 0.4 s
 rep 2/5: 41.6 ms (0.83 ms/step), wall 0.4 s
 rep 3/5: 42.5 ms (0.85 ms/step), wall 0.4 s
 rep 4/5: 41.4 ms (0.83 ms/step), wall 0.4 s
 rep 5/5: 41.6 ms (0.83 ms/step), wall 0.4 s
 executor: best 829 us/step  median 833  worst 850
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny 421d5ee/kvm_exec --reps 5 --out /logs/ab1-port/r1_tiny_main.json
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny 421d5ee/mvm_exec --reps 5 --out /logs/ab1-port/r1_tiny_main.json
 rep 1/5: 42.2 ms (0.84 ms/step), wall 0.4 s
 rep 2/5: 42.1 ms (0.84 ms/step), wall 0.4 s
 rep 3/5: 42.5 ms (0.85 ms/step), wall 0.4 s
@@ -480,28 +480,28 @@ executor: best 836 us/step  median 845  worst 850
 $ python3 -I 421d5ee/bench/vs_pytorch/torch_bench.py w_small --reps 5 --precision tf32 --modes graph,compile_graph --out /logs/ab1-port/r1_small_torch.json 2>&1 | grep -v Warning
 graph: best 648.1 us/step  median 833.8  worst 833.9  loss 4.8782 -> 0.0957  (setup 1s)
 compile_graph: best 429.1 us/step  median 429.2  worst 429.4  loss 4.8782 -> 0.0960  (setup 3s)
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small WORKTREE/kvm_exec --reps 5 --out /logs/ab1-port/r1_small_port.json
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small WORKTREE/mvm_exec --reps 5 --out /logs/ab1-port/r1_small_port.json
 rep 1/5: 115.7 ms (2.31 ms/step), wall 0.5 s
 rep 2/5: 87.2 ms (1.74 ms/step), wall 0.5 s
 rep 3/5: 87.7 ms (1.75 ms/step), wall 0.5 s
 rep 4/5: 87.4 ms (1.75 ms/step), wall 0.4 s
 rep 5/5: 87.4 ms (1.75 ms/step), wall 0.4 s
 executor: best 1744 us/step  median 1749  worst 2315
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small WORKTREE/kvm_exec --reps 5 --out /logs/ab1-port/r1_small_port_tk.json -- --claim ticket
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small WORKTREE/mvm_exec --reps 5 --out /logs/ab1-port/r1_small_port_tk.json -- --claim ticket
 rep 1/5: 87.4 ms (1.75 ms/step), wall 0.5 s
 rep 2/5: 87.1 ms (1.74 ms/step), wall 0.4 s
 rep 3/5: 86.5 ms (1.73 ms/step), wall 0.4 s
 rep 4/5: 89.2 ms (1.78 ms/step), wall 0.5 s
 rep 5/5: 87.9 ms (1.76 ms/step), wall 0.5 s
 executor: best 1729 us/step  median 1747  worst 1784
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small WORKTREE/kvm_exec --reps 5 --out /logs/ab1-port/r1_small_port_nc.json -- --no-cont
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small WORKTREE/mvm_exec --reps 5 --out /logs/ab1-port/r1_small_port_nc.json -- --no-cont
 rep 1/5: 88.6 ms (1.77 ms/step), wall 0.5 s
 rep 2/5: 91.3 ms (1.83 ms/step), wall 0.5 s
 rep 3/5: 88.3 ms (1.77 ms/step), wall 0.5 s
 rep 4/5: 89.3 ms (1.79 ms/step), wall 0.5 s
 rep 5/5: 90.1 ms (1.80 ms/step), wall 0.5 s
 executor: best 1767 us/step  median 1785  worst 1826
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small 421d5ee/kvm_exec --reps 5 --out /logs/ab1-port/r1_small_main.json
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small 421d5ee/mvm_exec --reps 5 --out /logs/ab1-port/r1_small_main.json
 rep 1/5: 89.6 ms (1.79 ms/step), wall 0.5 s
 rep 2/5: 89.5 ms (1.79 ms/step), wall 0.5 s
 rep 3/5: 90.5 ms (1.81 ms/step), wall 0.5 s
@@ -511,28 +511,28 @@ executor: best 1780 us/step  median 1793  worst 1810
 $ python3 -I 421d5ee/bench/vs_pytorch/torch_bench.py w_tiny --reps 5 --precision tf32 --modes graph,compile_graph --out /logs/ab1-port/r2_tiny_torch.json 2>&1 | grep -v Warning
 graph: best 430.7 us/step  median 430.8  worst 430.9  loss 4.1460 -> 1.2453  (setup 1s)
 compile_graph: best 204.6 us/step  median 204.7  worst 204.7  loss 4.1461 -> 1.2461  (setup 3s)
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny WORKTREE/kvm_exec --reps 5 --out /logs/ab1-port/r2_tiny_port_tk.json -- --claim ticket
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny WORKTREE/mvm_exec --reps 5 --out /logs/ab1-port/r2_tiny_port_tk.json -- --claim ticket
 rep 1/5: 41.5 ms (0.83 ms/step), wall 0.4 s
 rep 2/5: 41.7 ms (0.83 ms/step), wall 0.4 s
 rep 3/5: 41.2 ms (0.82 ms/step), wall 0.4 s
 rep 4/5: 43.4 ms (0.87 ms/step), wall 0.4 s
 rep 5/5: 43.6 ms (0.87 ms/step), wall 0.4 s
 executor: best 824 us/step  median 833  worst 872
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny WORKTREE/kvm_exec --reps 5 --out /logs/ab1-port/r2_tiny_port_nc.json -- --no-cont
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny WORKTREE/mvm_exec --reps 5 --out /logs/ab1-port/r2_tiny_port_nc.json -- --no-cont
 rep 1/5: 41.7 ms (0.83 ms/step), wall 0.4 s
 rep 2/5: 41.6 ms (0.83 ms/step), wall 0.4 s
 rep 3/5: 41.4 ms (0.83 ms/step), wall 0.4 s
 rep 4/5: 41.6 ms (0.83 ms/step), wall 0.4 s
 rep 5/5: 42.4 ms (0.85 ms/step), wall 0.4 s
 executor: best 828 us/step  median 833  worst 849
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny 421d5ee/kvm_exec --reps 5 --out /logs/ab1-port/r2_tiny_main.json
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny 421d5ee/mvm_exec --reps 5 --out /logs/ab1-port/r2_tiny_main.json
 rep 1/5: 42.1 ms (0.84 ms/step), wall 0.4 s
 rep 2/5: 41.7 ms (0.83 ms/step), wall 0.4 s
 rep 3/5: 42.1 ms (0.84 ms/step), wall 0.4 s
 rep 4/5: 42.2 ms (0.84 ms/step), wall 0.4 s
 rep 5/5: 44.0 ms (0.88 ms/step), wall 0.4 s
 executor: best 834 us/step  median 843  worst 880
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny WORKTREE/kvm_exec --reps 5 --out /logs/ab1-port/r2_tiny_port.json
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_tiny WORKTREE/mvm_exec --reps 5 --out /logs/ab1-port/r2_tiny_port.json
 rep 1/5: 41.5 ms (0.83 ms/step), wall 0.4 s
 rep 2/5: 41.4 ms (0.83 ms/step), wall 0.4 s
 rep 3/5: 41.3 ms (0.83 ms/step), wall 0.5 s
@@ -542,35 +542,35 @@ executor: best 826 us/step  median 828  worst 836
 $ python3 -I 421d5ee/bench/vs_pytorch/torch_bench.py w_small --reps 5 --precision tf32 --modes graph,compile_graph --out /logs/ab1-port/r2_small_torch.json 2>&1 | grep -v Warning
 graph: best 647.9 us/step  median 833.7  worst 833.8  loss 4.8782 -> 0.0957  (setup 1s)
 compile_graph: best 411.8 us/step  median 429.0  worst 429.2  loss 4.8782 -> 0.0960  (setup 3s)
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small WORKTREE/kvm_exec --reps 5 --out /logs/ab1-port/r2_small_port_tk.json -- --claim ticket
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small WORKTREE/mvm_exec --reps 5 --out /logs/ab1-port/r2_small_port_tk.json -- --claim ticket
 rep 1/5: 103.7 ms (2.07 ms/step), wall 0.5 s
 rep 2/5: 86.9 ms (1.74 ms/step), wall 0.5 s
 rep 3/5: 87.1 ms (1.74 ms/step), wall 0.5 s
 rep 4/5: 87.1 ms (1.74 ms/step), wall 0.4 s
 rep 5/5: 89.7 ms (1.79 ms/step), wall 0.5 s
 executor: best 1738 us/step  median 1742  worst 2073
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small WORKTREE/kvm_exec --reps 5 --out /logs/ab1-port/r2_small_port_nc.json -- --no-cont
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small WORKTREE/mvm_exec --reps 5 --out /logs/ab1-port/r2_small_port_nc.json -- --no-cont
 rep 1/5: 117.9 ms (2.36 ms/step), wall 0.7 s
 rep 2/5: 89.6 ms (1.79 ms/step), wall 0.4 s
 rep 3/5: 88.6 ms (1.77 ms/step), wall 0.4 s
 rep 4/5: 88.3 ms (1.77 ms/step), wall 0.5 s
 rep 5/5: 88.7 ms (1.77 ms/step), wall 0.5 s
 executor: best 1766 us/step  median 1775  worst 2358
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small 421d5ee/kvm_exec --reps 5 --out /logs/ab1-port/r2_small_main.json
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small 421d5ee/mvm_exec --reps 5 --out /logs/ab1-port/r2_small_main.json
 rep 1/5: 92.3 ms (1.85 ms/step), wall 0.4 s
 rep 2/5: 89.7 ms (1.79 ms/step), wall 0.5 s
 rep 3/5: 90.3 ms (1.81 ms/step), wall 0.4 s
 rep 4/5: 89.7 ms (1.79 ms/step), wall 0.4 s
 rep 5/5: 93.3 ms (1.87 ms/step), wall 0.4 s
 executor: best 1795 us/step  median 1806  worst 1865
-$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small WORKTREE/kvm_exec --reps 5 --out /logs/ab1-port/r2_small_port.json
+$ python3 -I 421d5ee/bench/vs_pytorch/exec_bench.py w_small WORKTREE/mvm_exec --reps 5 --out /logs/ab1-port/r2_small_port.json
 rep 1/5: 87.7 ms (1.75 ms/step), wall 0.5 s
 rep 2/5: 89.2 ms (1.78 ms/step), wall 0.5 s
 rep 3/5: 87.4 ms (1.75 ms/step), wall 0.5 s
 rep 4/5: 87.9 ms (1.76 ms/step), wall 0.5 s
 rep 5/5: 88.5 ms (1.77 ms/step), wall 0.5 s
 executor: best 1749 us/step  median 1758  worst 1784
-$ for c in tiny small; do for v in WORKTREE 421d5ee; do ./$v/kvm_exec --quiet --trace-csv /tmp/t.csv w_$c/bundle | tail -1; python3 -I WORKTREE/bench/vs_pytorch/trace_summary.py /tmp/t.csv 50 | head -12 > /logs/ab1-port/trace_${c}_$v.txt; done; done
+$ for c in tiny small; do for v in WORKTREE 421d5ee; do ./$v/mvm_exec --quiet --trace-csv /tmp/t.csv w_$c/bundle | tail -1; python3 -I WORKTREE/bench/vs_pytorch/trace_summary.py /tmp/t.csv 50 | head -12 > /logs/ab1-port/trace_${c}_$v.txt; done; done
 OK: 5150/5150 tasks, 42.634 ms
 OK: 5150/5150 tasks, 42.049 ms
 OK: 13898/13898 tasks, 114.700 ms

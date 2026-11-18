@@ -3,7 +3,7 @@
 This replaces the rule of `results/2026-11-11-gang-cross/` (flag lines up to 64 members, the counter form past them). That README stays as
 dated history.
 
-`kvm_gang::cross` (include/kvm_gang.cuh) keeps the flag lines (`barrier_lines`) while a gang fits one line, `KVM_GANG_LINES_MAX` = 32
+`mvm_gang::cross` (include/mvm_gang.cuh) keeps the flag lines (`barrier_lines`) while a gang fits one line, `MVM_GANG_LINES_MAX` = 32
 members, and takes a counted barrier (`barrier_counted`) past it, in place of the counter form.
 
 - **The counted barrier** is one 64-bit count of arrivals a gang, zeroed once and never reset. A member adds itself with
@@ -11,7 +11,7 @@ members, and takes a counted barrier (`barrier_counted`) past it, in place of th
 - **No reset between steps or runs.** A member takes its first target from the count it reads before its first arrival, rounded down to a
   multiple of the gang's size. Late starters therefore agree with early ones.
 - **Who follows the rule:** the split and grid MLP steps cross through `cross`. The fused GPT step picks its form once, at its kernel's
-  entry, by the same rule (`kvm_gang::counted_form`), so each of its crossing sites carries one form.
+  entry, by the same rule (`mvm_gang::counted_form`), so each of its crossing sites carries one form.
 
 Both forms are exact barriers with the same ordering and abort contract. The choice changes cost only, never a result: every buffer below
 is bitwise across the arms.
@@ -100,7 +100,7 @@ flag line serves. Hence the bound at one line.
 
 ### The fused GPT step's bed, by bound
 
-`bench/fused_gpt/fgpt_bed.cu` on the A100, built from this branch three times: `KVM_GANG_LINES_MAX` 0 (the counted barrier at every size),
+`bench/fused_gpt/fgpt_bed.cu` on the A100, built from this branch three times: `MVM_GANG_LINES_MAX` 0 (the counted barrier at every size),
 32 (this branch) and 64 (the flag lines up to two lines, as the fused GPT step crossed before). All three builds cross through `cross`, so
 they differ in the form a gang takes, not in code. Each shape ran at its gang width, 20 steps with the phase clock, in 5 rounds with the
 arms' order rotating. Every run's outputs hash equal across the three builds, and the 0 and 64 builds pass the workload's float64 checks
@@ -161,9 +161,9 @@ run, every weight bitwise (`raw/entry/`). Their per-step state is bitwise equal 
 In the branch's first build the fused GPT step crossed through `cross`, which inlines both forms at each crossing site behind a run-time
 branch on the gang's size. Its 16- and 32-member gangs kept the flag lines, yet lost 0.6-0.9% with every round below 1: gpt-tiny x0.994
 and gpt-small x0.992, while the 64-member d128 draw gained x1.006 (9 rounds, `raw/gpt-executor/`). The cause was code, not the crossing's
-form. The SASS census of `kvm_fgpt_kernel` (`raw/census/`):
+form. The SASS census of `mvm_fgpt_kernel` (`raw/census/`):
 
-| the fused GPT program, `kvm_fgpt::run` | base | first build |
+| the fused GPT program, `mvm_fgpt::run` | base | first build |
 |---|---|---|
 | instructions | 40,499 | **41,519 (+1,020)** |
 | basic blocks (the whole kernel) | 2,985 | **3,154 (+169)** |
@@ -174,7 +174,7 @@ form. The SASS census of `kvm_fgpt_kernel` (`raw/census/`):
 Registers, spills and tensor-core work are unchanged. The bench above prices the branch at 8-29 ns a crossing.
 
 The head chooses the form once. The program and its kernel take it as a template parameter, and the launch picks the instance by the
-gang's size (`kvm_gang::counted_form`), so each crossing site carries one form. The flag-line instance is the base's kernel byte for byte:
+gang's size (`mvm_gang::counted_form`), so each crossing site carries one form. The flag-line instance is the base's kernel byte for byte:
 41,120 instructions with the same SASS (`raw/entry/sass-fgpt.txt`). The counted instance is 40,688 instructions. The 16- and 32-member
 rows read x1.000-1.001, and the 64-member draw x1.027 (above).
 

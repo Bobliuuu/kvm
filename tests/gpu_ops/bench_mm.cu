@@ -1,11 +1,11 @@
 // Matmul-only benchmark (fast to compile: only the GEMM tiles are instantiated): the op library's matmul_tile, the #16 tile set
-// (kvmgpt::j16::matmul_tile, kvm_ops_gpt.cuh) and cuBLAS in ONE process, on the same task words, plus a correctness check of each set
+// (mvmgpt::j16::matmul_tile, mvm_ops_gpt.cuh) and cuBLAS in ONE process, on the same task words, plus a correctness check of each set
 // against cuBLAS fp32 (full precision) per configuration.
 // The tile A/B: per configuration, every rep runs each arm once, back to back (ours, #16 at 144 KiB, #16 at 96 KiB, cuBLAS), so a clock
 // or power state of the round is shared by its arms; the "paired" ratio is the median over reps of the per-rep ratios.
 //   -DMM_MINB=n  __launch_bounds__(256, n) on the benchmark kernels.   BENCH_REPS=n reps (default 7).
-//   -DKVM_GPT_MMA_SMEM=147456 compiles the #16 set's 256 x 128 BK 32 x 3 tile, which it takes when the launch has 144 KiB; the set is also
-//   timed at the launch its main ships with, 96 KiB (BK 16 x 4). Our tiles always launch with kvm_gpt_smem_bytes(64) (144 KiB).
+//   -DMVM_GPT_MMA_SMEM=147456 compiles the #16 set's 256 x 128 BK 32 x 3 tile, which it takes when the launch has 144 KiB; the set is also
+//   timed at the launch its main ships with, 96 KiB (BK 16 x 4). Our tiles always launch with mvm_gpt_smem_bytes(64) (144 KiB).
 //   MM_SHAPES=panel,gpt162,square (default all three)   MM_TILES="12" tile kinds (0 = 64x64, 1 = 128x128, 2 = 256x128)   MM_TR="NT,TN"
 //   MM_RZ=1 adds the truncated-operand runs (flag 256, our set only)   MM_NOBF skips the bf16-operand runs (flag 128, our set only)
 //   MM_NOPREC skips the 3xTF32 runs   MM_DIRECT=1 also launches the #16 256 x 128 tile as its own kernel (same task words)
@@ -18,25 +18,25 @@
 #include <cstring>
 #include <vector>
 #include <cublas_v2.h>
-#include "kvm_ctx_shim.cuh"
-#include "kvm_ops_gpt.cuh"
+#include "mvm_ctx_shim.cuh"
+#include "mvm_ops_gpt.cuh"
 #ifndef MM_MINB
 #define MM_MINB 1
 #endif
 #define CK(x) do { cudaError_t e_ = (x); if (e_ != cudaSuccess) { printf("CUDA error %s at %s:%d\n", cudaGetErrorString(e_), __FILE__, __LINE__); exit(2); } } while (0)
 
-__global__ void __launch_bounds__(256, MM_MINB) k_mm(KvmCtx c, const int32_t* w, int words) {
-    kvmgpt::matmul_tile_ours<true>(c, w + (size_t)blockIdx.x * words);   // our set on every task, in the dynamic kernel's forms (matmul_tile routes some to #16's)
+__global__ void __launch_bounds__(256, MM_MINB) k_mm(MvmCtx c, const int32_t* w, int words) {
+    mvmgpt::matmul_tile_ours<true>(c, w + (size_t)blockIdx.x * words);   // our set on every task, in the dynamic kernel's forms (matmul_tile routes some to #16's)
 }
-__global__ void __launch_bounds__(256, MM_MINB) k_mm_j16(KvmCtx c, const int32_t* w, int words) {
+__global__ void __launch_bounds__(256, MM_MINB) k_mm_j16(MvmCtx c, const int32_t* w, int words) {
     const int32_t* const a = w + (size_t)blockIdx.x * words;
-    if (!kvmgpt::j16::matmul_tile(c, a)) kvmgpt::matmul_tile_ours(c, a);   // the tasks #16's set hands back run on ours, as before
+    if (!mvmgpt::j16::matmul_tile(c, a)) mvmgpt::matmul_tile_ours(c, a);   // the tasks #16's set hands back run on ours, as before
 }
 // MM_DIRECT=1: the #16 256 x 128 fast tile launched as its own kernel (same task words), to separate the tile from the op-kernel context
 template <bool TA, bool TB, int BK, int NST>
-__global__ void __launch_bounds__(256, 1) k_direct(KvmCtx c, const int32_t* w, int words, const float* A, int lda, const float* B, int ldb) {
+__global__ void __launch_bounds__(256, 1) k_direct(MvmCtx c, const int32_t* w, int words, const float* A, int lda, const float* B, int ldb) {
     const int32_t* a = w + (size_t)blockIdx.x * words;
-    kvmgpt::j16::mm_tf32_tile<TA, TB, false, 4, 2, 64, BK, NST>(A, lda, B, ldb, a[6], a[7], a[8], a[9], a[10], c, a);
+    mvmgpt::j16::mm_tf32_tile<TA, TB, false, 4, 2, 64, BK, NST>(A, lda, B, ldb, a[6], a[7], a[8], a[9], a[10], c, a);
 }
 static double med(std::vector<double> t) { std::sort(t.begin(), t.end()); return t[t.size() / 2]; }
 static int reps() { static const int r = getenv("BENCH_REPS") ? std::max(1, atoi(getenv("BENCH_REPS"))) : 7; return r; }
@@ -54,7 +54,7 @@ __global__ void fill(float* p, size_t n, unsigned seed) {
     }
 }
 static cublasHandle_t g_h;
-static const int SMEM_OURS = kvm_gpt_smem_bytes(64), SMEM_J16_DEEP = 3 * (256 + 128) * 32 * 4, SMEM_J16_SHIP = 96 * 1024;
+static const int SMEM_OURS = mvm_gpt_smem_bytes(64), SMEM_J16_DEEP = 3 * (256 + 128) * 32 * 4, SMEM_J16_SHIP = 96 * 1024;
 static int g_fails = 0;
 
 // big: 0 = 64x64 tile, 1 = 128x128 (flag 32), 2 = 256x128 (flag 64); prec: 3xTF32 (flag 16); bf: bf16 operands (flag 128); rz: flag 256
@@ -63,9 +63,9 @@ static void run(const char* set, int M, int N, int K, int ta, int tb, int prec, 
     if (getenv("MM_TR")) { const char tr[3] = {ta ? 'T' : 'N', tb ? 'T' : 'N', 0}; if (!strstr(getenv("MM_TR"), tr)) return; }
     float *A, *B, *C, *R; CK(cudaMalloc(&A, (size_t)M * K * 4)); CK(cudaMalloc(&B, (size_t)K * N * 4)); CK(cudaMalloc(&C, (size_t)M * N * 4 + 16)); CK(cudaMalloc(&R, (size_t)M * N * 4));
     fill<<<1024, 256>>>(A, (size_t)M * K, 1); fill<<<1024, 256>>>(B, (size_t)K * N, 2);
-    KvmBuf tab[3]{}; tab[0].p = A; tab[0].rows = ta ? K : M; tab[0].cols = ta ? M : K; tab[1].p = B; tab[1].rows = tb ? N : K; tab[1].cols = tb ? K : N; tab[2].p = C; tab[2].rows = M; tab[2].cols = N;
+    MvmBuf tab[3]{}; tab[0].p = A; tab[0].rows = ta ? K : M; tab[0].cols = ta ? M : K; tab[1].p = B; tab[1].rows = tb ? N : K; tab[1].cols = tb ? K : N; tab[2].p = C; tab[2].rows = M; tab[2].cols = N;
     for (auto& b : tab) b.ld = b.cols;
-    KvmBuf* tab_d; CK(cudaMalloc(&tab_d, sizeof tab)); CK(cudaMemcpy(tab_d, tab, sizeof tab, cudaMemcpyHostToDevice));
+    MvmBuf* tab_d; CK(cudaMalloc(&tab_d, sizeof tab)); CK(cudaMemcpy(tab_d, tab, sizeof tab, cudaMemcpyHostToDevice));
     int32_t* err; CK(cudaMalloc(&err, 4)); CK(cudaMemset(err, 0, 4));
     const int bm = big == 2 ? 256 : big == 1 ? 128 : 64, bn = big ? 128 : 64;
     const int fl = ta | (tb << 1) | (prec << 4) | (bf << 7) | (big == 1 ? 32 : big == 2 ? 64 : 0) | (rz ? 256 : 0);
@@ -73,10 +73,10 @@ static void run(const char* set, int M, int N, int K, int ta, int tb, int prec, 
     std::vector<int32_t> w; int nt = 0;
     for (int m0 = 0; m0 < M; m0 += bm) for (int n0 = 0; n0 < N; n0 += bn) { int32_t a[13] = {0, 1, 2, -1, -1, -1, m0, n0, M, N, K, fl, af}; w.insert(w.end(), a, a + 13); nt++; }
     int32_t* wd; CK(cudaMalloc(&wd, w.size() * 4)); CK(cudaMemcpy(wd, w.data(), w.size() * 4, cudaMemcpyHostToDevice));
-    KvmCtx c{tab_d, 3, err};
+    MvmCtx c{tab_d, 3, err};
     // the #16 set has a form only for plain 1xTF32 big tiles; elsewhere its dispatch hands the task to ours, so it is not timed apart
     const bool ab = big && !prec && !bf && !rz;
-#if KVM_GPT_MMA_SMEM >= 147456
+#if MVM_GPT_MMA_SMEM >= 147456
     const bool deep_built = true;
 #else
     const bool deep_built = false;
@@ -87,7 +87,7 @@ static void run(const char* set, int M, int N, int K, int ta, int tb, int prec, 
     auto j16_ship = [&] { k_mm_j16<<<nt, 256, SMEM_J16_SHIP>>>(c, wd, 13); };
     auto direct = [&] {
         auto launch = [&](auto kern) { kern<<<nt, 256, SMEM_J16_DEEP>>>(c, wd, 13, A, lda_, B, ldb_); };
-#if KVM_GPT_MMA_SMEM >= 147456
+#if MVM_GPT_MMA_SMEM >= 147456
         if (!ta && !tb) launch(k_direct<false, false, 32, 3>); else if (ta && !tb) launch(k_direct<true, false, 32, 3>);
         else if (!ta && tb) launch(k_direct<false, true, 32, 3>); else launch(k_direct<true, true, 32, 3>);
 #else
@@ -160,7 +160,7 @@ int main() {
     {   // every kernel may use the full dynamic shared memory; then ~1 s of cuBLAS TF32 so clocks and power settle before timing
         const int dsm = std::max(SMEM_OURS, SMEM_J16_DEEP);
         void* ks[] = {(void*)k_mm, (void*)k_mm_j16,
-#if KVM_GPT_MMA_SMEM >= 147456
+#if MVM_GPT_MMA_SMEM >= 147456
                       (void*)k_direct<false, false, 32, 3>, (void*)k_direct<true, false, 32, 3>, (void*)k_direct<false, true, 32, 3>, (void*)k_direct<true, true, 32, 3>,
 #else
                       (void*)k_direct<false, false, 16, 4>, (void*)k_direct<true, false, 16, 4>, (void*)k_direct<false, true, 16, 4>, (void*)k_direct<true, true, 16, 4>,
@@ -173,8 +173,8 @@ int main() {
         for (int i = 0; i < 1000; i++) cublasSgemm(g_h, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &one, x, n, y, n, &zero, z, n);
         CK(cudaDeviceSynchronize()); cudaFree(x); cudaFree(y); cudaFree(z);
     }
-    printf("tile A/B: ours = kvmgpt::matmul_tile_ours at %d B of shared memory; j16 = kvmgpt::j16::matmul_tile (#16) at %d B%s and %d B; %d paired reps\n",
-           SMEM_OURS, SMEM_J16_DEEP, KVM_GPT_MMA_SMEM >= 147456 ? "" : " (not built: -DKVM_GPT_MMA_SMEM=147456)", SMEM_J16_SHIP, reps());
+    printf("tile A/B: ours = mvmgpt::matmul_tile_ours at %d B of shared memory; j16 = mvmgpt::j16::matmul_tile (#16) at %d B%s and %d B; %d paired reps\n",
+           SMEM_OURS, SMEM_J16_DEEP, MVM_GPT_MMA_SMEM >= 147456 ? "" : " (not built: -DMVM_GPT_MMA_SMEM=147456)", SMEM_J16_SHIP, reps());
     const bool rz = getenv("MM_RZ") != nullptr;
     if (want("gpt162")) {   // the gpt_162m GEMMs (4096 tokens): forward NN, input-grad NT, weight-grad TN, at 128x128 and 256x128
         struct G { int M, N, K; } g[] = {{4096, 2304, 768}, {4096, 768, 768}, {4096, 3072, 768}, {4096, 768, 3072}, {4096, 50304, 768}};

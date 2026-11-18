@@ -1,10 +1,10 @@
 // Instantiate the one-step tape exactly as inst_at does on the device,
 // then lower full-barrier waits into CSR predecessors/successors.
 // Reject partial counter thresholds instead of silently changing semantics.
-struct KvmReadyGraph {
+struct MvmReadyGraph {
   std::vector<int> offsets, successors, indegree, initial;
 };
-static KvmReadyGraph kvm_compile_ready_graph(
+static MvmReadyGraph mvm_compile_ready_graph(
     const std::vector<Instr>& tape, int steps, int SC) {
   const int perStep = (int)tape.size();
   const int n = perStep * steps;
@@ -35,7 +35,7 @@ static KvmReadyGraph kvm_compile_ready_graph(
       // producer completion order. 0 is always ready.
       if (threshold < 0 || threshold > (int)p.size() ||
           (threshold != 0 && threshold != (int)p.size()))
-        throw std::runtime_error("KVM queue: unsupported partial/missing counter threshold");
+        throw std::runtime_error("Magni VM queue: unsupported partial/missing counter threshold");
       if (threshold) pred.insert(pred.end(), p.begin(), p.end());
     };
     append(in.w0c, in.w0v);
@@ -43,7 +43,7 @@ static KvmReadyGraph kvm_compile_ready_graph(
     std::sort(pred.begin(), pred.end());
     pred.erase(std::unique(pred.begin(), pred.end()), pred.end());
     for (int p : pred) {
-      if (p == id) throw std::runtime_error("KVM queue: self dependency");
+      if (p == id) throw std::runtime_error("Magni VM queue: self dependency");
       edges[p].push_back(id);
       ++indegree[id];
     }
@@ -58,8 +58,8 @@ static KvmReadyGraph kvm_compile_ready_graph(
     int id = work.back(); work.pop_back(); ++visited;
     for (int next : edges[id]) if (--left[next] == 0) work.push_back(next);
   }
-  if (visited != n) throw std::runtime_error("KVM queue: dependency cycle");
-  KvmReadyGraph graph;
+  if (visited != n) throw std::runtime_error("Magni VM queue: dependency cycle");
+  MvmReadyGraph graph;
   graph.indegree = std::move(indegree);
   graph.initial = initial;
   graph.offsets.reserve(n + 1);

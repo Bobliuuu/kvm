@@ -49,7 +49,7 @@
 
 #include "log.hpp"
 
-namespace kvmd {
+namespace mvmd {
 namespace shim {
 
 using SClock = std::chrono::steady_clock;
@@ -456,4 +456,4 @@ inline int ShimQP::post_recv(const RecvWr& wr) {
 inline void ShimQP::force_rnr(int n) { std::lock_guard<std::mutex> l(fab->mutex()); force_rnr_left = n; }
 
 }  // namespace shim
-}  // namespace kvmd
+}  // namespace mvmd

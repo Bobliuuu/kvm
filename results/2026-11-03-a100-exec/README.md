@@ -2,10 +2,10 @@
 
 - GPU: NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver 580.105.08 (CUDA 13.0), nvcc/runtime 12.8, SM clock max 1410 MHz.
 - Commit: d84d618 (branch feat/executor), clean tree.
-- Build: `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DKVM_EXEC_NO_MAIN tests/gpu/test_exec.cu`
+- Build: `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DMVM_EXEC_NO_MAIN tests/gpu/test_exec.cu`
   (`--fmad=false` makes the device arithmetic per-op IEEE so fp results are compared bitwise with the CPU reference; with FMA
-  the fp ops would need a tolerance, which is NOT what was run). Negative run adds `-DKVM_BREAK_FENCE`.
-- Commands: `KVM_HOST=... ./run_exec_tests.sh` / `--negative` / `--bench` / `--sanitize` (each under `flock ~/.gpu.lock`).
+  the fp ops would need a tolerance, which is NOT what was run). Negative run adds `-DMVM_BREAK_FENCE`.
+- Commands: `MVM_HOST=... ./run_exec_tests.sh` / `--negative` / `--bench` / `--sanitize` (each under `flock ~/.gpu.lock`).
 - Files: functional.txt, negative-break-fence.txt, bench.txt, sanitizer.txt (raw output of those runs).
 
 ## Results (all from the files here)
@@ -18,9 +18,9 @@
 | Priority / FIFO / aging | one worker, 340 queued tasks: 0 priority inversions, 0 FIFO violations. Chain of 400 priority-10 tasks vs one priority-0 task: without aging it ran last (400/400); with 2000 us/level aging it ran after 189, after waiting 20.1 ms |
 | Dynamic admission | 300 bundles through a 512-word ring: 218 wraps, 258 backpressure waits, bitwise correct; 4 host threads x 60 bundles concurrently; close() drains; oversized record -> TOO_BIG; stalled live window -> BACKPRESSURE_TIMEOUT then device TIMEOUT |
 | Versions | 180 runs (vector weights of 65,536 floats, and the predict->mse_grad->sgd graph), random submission times, random spin ops, 2/4/24 blocks: 3225 exact + 653 at_least readers, 0 violations |
-| The checker can fail | `-DKVM_BREAK_FENCE` (publish before the op's stores): 1555 reader violations detected, suite FAIL, `--expect-fail` returns 0. Hand-made bad observations: 7/7 classified, injected trace faults 2/2 flagged |
-| Sanitizers | compute-sanitizer memcheck, racecheck, synccheck on the `smoke` suite (DAG, versions, ring wrap, all op kinds, 2-4 blocks): 0 errors / 0 hazards. racecheck sees shared memory only; global-memory ordering rests on the PTX argument in `include/kvm_exec.cuh` |
-| Compiler bundle | `examples/live_training_inference.json` compiled by runtime/compile_workload.py runs on the A100 and `kvm_exec --golden` matches golden.json: 10/10 buffer values bitwise, versions, observed versions (not in these logs; run with `kvm_exec --golden <bundle>`) |
+| The checker can fail | `-DMVM_BREAK_FENCE` (publish before the op's stores): 1555 reader violations detected, suite FAIL, `--expect-fail` returns 0. Hand-made bad observations: 7/7 classified, injected trace faults 2/2 flagged |
+| Sanitizers | compute-sanitizer memcheck, racecheck, synccheck on the `smoke` suite (DAG, versions, ring wrap, all op kinds, 2-4 blocks): 0 errors / 0 hazards. racecheck sees shared memory only; global-memory ordering rests on the PTX argument in `include/mvm_exec.cuh` |
+| Compiler bundle | `examples/live_training_inference.json` compiled by runtime/compile_workload.py runs on the A100 and `mvm_exec --golden` matches golden.json: 10/10 buffer values bitwise, versions, observed versions (not in these logs; run with `mvm_exec --golden <bundle>`) |
 
 ## Dispatch cost (bench.txt; times from %globaltimer, resolution ~1 us)
 
@@ -36,7 +36,7 @@
 A dependent hop costs about 5.6 us (publish/decrement, enqueue, warp scan, head CAS, 4 barriers), the same order as the
 original VM's ~5 us hop in global memory; throughput saturates near 0.75M tasks/s (one admitter block releases roots; all workers
 contend on the same bucket heads). Idle polling by 540 blocks slows a chain down 2x: size the grid to the work (`--blocks`).
-Not compared against kvm.cu's Instr VM in the same process; no claim about it.
+Not compared against mvm.cu's Instr VM in the same process; no claim about it.
 
 ## Limits
 - Slot pool is bounded per launch (`max_tasks`, no recycling); admission ring and ready rings recycle.

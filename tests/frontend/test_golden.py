@@ -3,12 +3,12 @@ import unittest
 
 import _path  # noqa: F401
 import oracle_gpt as ref_gpt
-from kvmfe.lower import Tiling
-from kvmfe.nn import ModelConfig, PRESETS
-from kvmfe.optim import OptimConfig
-from kvmfe.pipeline import compile_training
-from kvmfe.refvm import execute
-from kvmfe.train import TrainConfig
+from mvmfe.lower import Tiling
+from mvmfe.nn import ModelConfig, PRESETS
+from mvmfe.optim import OptimConfig
+from mvmfe.pipeline import compile_training
+from mvmfe.refvm import execute
+from mvmfe.train import TrainConfig
 
 
 def run(cfg, steps, reuse='shape', gap=0, order='program', seed=0, tiling='cpu'):

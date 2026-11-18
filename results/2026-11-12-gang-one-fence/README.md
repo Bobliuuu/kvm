@@ -1,9 +1,9 @@
 # A gang crossing's arrival, released without the SC fence (A100)
 
-A gang crossing (`include/kvm_gang.cuh`) is message passing. Each member stores its results, then thread 0 announces its arrival. The waiters'
+A gang crossing (`include/mvm_gang.cuh`) is message passing. Each member stores its results, then thread 0 announces its arrival. The waiters'
 acquire loads see every arrival, and a `__syncthreads` then makes every member's stores visible to its block. The arrival used to be released by a
 `__threadfence()` and then the release operation: two fences in SASS, `MEMBAR.SC.GPU` and then `MEMBAR.ALL.GPU`. The release paired with the
-pollers' acquires carries the protocol, so this branch makes the release operation alone the default (`KVM_GANG_FENCE` 1). The other two forms
+pollers' acquires carries the protocol, so this branch makes the release operation alone the default (`MVM_GANG_FENCE` 1). The other two forms
 stay selectable for the bench and the device test: the old one (0), and CUTLASS's `GenericBarrier` form (2), which is `fence.acq_rel.gpu`
 followed by a relaxed operation.
 
@@ -12,8 +12,8 @@ Every figure here was re-derived from these raw files by the team's verifier (No
 lines lose an internal label (the candidate reads "this branch"). Everything else is as the runs wrote it.
 
 The crossing bench and the device test (`raw/crossing/`, `raw/device-test/`) ran from the source before its fixups were squashed (`353618a`,
-named in `raw/crossing/MANIFEST.txt`). They compile `kvm_gang.cuh` alone, which equals this branch's but for the default, and they set the
-fence form with `-DKVM_GANG_FENCE`. The beds (`raw/bed/`) ran from this branch's own tree, 12 warps a member as it ships.
+named in `raw/crossing/MANIFEST.txt`). They compile `mvm_gang.cuh` alone, which equals this branch's but for the default, and they set the
+fence form with `-DMVM_GANG_FENCE`. The beds (`raw/bed/`) ran from this branch's own tree, 12 warps a member as it ships.
 
 ## The panel's 9 rows against the base
 
@@ -56,7 +56,7 @@ the phase clock; form 1 is faster in every round:
 - the d128 hold-out draw at 64: 949.8 → 944.1 µs (x1.0063).
 
 These beds are built with plain `nvcc -O3 -std=c++17 -arch=sm_80`, not with the executor's flags (`--fmad=false -Xcompiler -ffp-contract=off
--DKVM_LEAN`), so they run other code generation of the same step: they show the mechanism, and the panel's 9 rows above, on the executor's
+-DMVM_LEAN`), so they run other code generation of the same step: they show the mechanism, and the panel's 9 rows above, on the executor's
 own builds, carry the gain.
 Two builds also place their code differently in GPU memory, which alone has moved a panel row by up to 5.5% (same device code, another load order), so each row's gain here carries that uncertainty.
 

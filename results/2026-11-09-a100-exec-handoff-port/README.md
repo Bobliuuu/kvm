@@ -10,7 +10,7 @@ the bf16s tape again at 127 ms (main rejects it, see "bf16 storage" below). It i
 |---|---|
 | Hardware | Modal `A100-40GB` request. ab0/ab1 ran on A100-SXM4-40GB; ab2 and ab3 were given an A100 80GB PCIe (same sm_80, 108 SMs). Every table compares variants **inside one container**; never compare numbers across tables. |
 | Code | branch `perf/exec-handoff-port`; variants are git refs staged by `bench/exec_vs_graph/stage_variants.py` |
-| Build | `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 kvm_exec.cu` (ab0/ab1 add `-DKVM_LEAN`: no comm/extra packs), built on a CPU container into the volume |
+| Build | `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 mvm_exec.cu` (ab0/ab1 add `-DMVM_LEAN`: no comm/extra packs), built on a CPU container into the volume |
 | Workloads | `bench/vs_pytorch/gen.py`, TF32, a100 tiling: `gpt_tiny` / `gpt_small` 50 steps; `gpt_162m` f32 and bf16s 1-step tapes (270,914 / 58,634 tasks) |
 | Method | `bench/exec_vs_graph/modal_ab.py`: per round torch (eager, whole-step graph, compile + graph) then every executor variant REPS launches in a rotated order; us per optimizer step, medians over all launches |
 | Raw | `raw/ab*/` (table.txt, summary.json, per-round JSON, ab.log, trace summaries) |
@@ -21,11 +21,11 @@ the bf16s tape again at 127 ms (main rejects it, see "bf16 storage" below). It i
 |---|---|---|
 | Ticket claim for scheduler-off pops (reserve on `avail`, fetch-add `head`, no CAS retries) | #6 / perf/admission-bottleneck | **default** (`--claim cas` restores the head CAS; the scheduler always uses the CAS: its accounting needs the scanned cell) |
 | Chunked release: edges + window accounting first, descriptors decoded 4 x blockDim at a time and released as written (indegree add-then-check) | perf/chunked-release 2656be5 | on #1's staged copy of the record |
-| One-record window sizing in the `kvm_exec` CLI | perf/admission-v2 72b2660 | default when no sizing flag is given |
+| One-record window sizing in the `mvm_exec` CLI | perf/admission-v2 72b2660 | default when no sizing flag is given |
 | Continuation / chaining: the highest-priority released successor runs next on the same CTA unless a queued task outranks it | #6 (continuation) + perf/chunked-release 566de39 (chain rule) | default; `--no-cont`, `--cont-strict`, `--cont-above` |
 | First successor id loaded before the op; argument words prefetched with the descriptor in the pop | #6 / new | default |
 | Host stream prep without per-edge set inserts / adjacency copies | #6 | default |
-| `KVM_LEAN` build flag; `KVM_CRIT_PRIO=1` critical-path priorities at bundle compile | #6; 566de39 | opt-in |
+| `MVM_LEAN` build flag; `MVM_CRIT_PRIO=1` critical-path priorities at bundle compile | #6; 566de39 | opt-in |
 | #6's admitter staging (per-chunk int4 staging) and completion-path rewrite | #6 / perf/completion-path | **not taken**: #1's bulk staged copy and its completion hand-off (post-task bookkeeping on thread 32 during the next pop) cover the same costs; ab0 shows #1 alone already at 845 vs #6's 826 us/step on tiny |
 
 ## Results
@@ -57,7 +57,7 @@ because it costs nothing and the gates pass with it.
 
 "rejected": `bad buffer shape or dtype` at bundle load (bf16 storage lost on main, fixed by #10 and on this branch since 93f727c).
 
-### ab0 / ab1 (A100-SXM4-40GB, `-DKVM_LEAN` builds)
+### ab0 / ab1 (A100-SXM4-40GB, `-DMVM_LEAN` builds)
 
 | us/step (median) | main | #6 tip 7801809 | #6 --no-cont | port bbc4502+ (CAS) | port --claim ticket | port --no-cont | torch graph | compile+graph |
 |---|---|---|---|---|---|---|---|---|
@@ -77,12 +77,12 @@ All on A100-SXM4-40GB (Modal), prebuilt binaries (`tests/gpu/build.sh`, CPU cont
 |---|---|---|
 | CPU suites `tests` / `tests/frontend` | PR head | 153 OK / 124 OK (15 skipped) |
 | `test_exec` (all suites) | 93f727c | **8609 checks, 1 failed**: `front` (below); every other suite passes |
-| `front` with its race removed, 20 runs (`-DKVM_LEAN` build) | ea48d76 | 20 of 20 PASS |
+| `front` with its race removed, 20 runs (`-DMVM_LEAN` build) | ea48d76 | 20 of 20 PASS |
 | `test_exec` (all suites) after merging main (#15, #16) | 27de80d | **8609 checks, 0 failed** (`raw/gate5`) |
 | compute-sanitizer memcheck / racecheck / synccheck on `smoke` | 93f727c | 0 errors / 0 hazards / 0 errors |
-| `-DKVM_BREAK_FENCE --expect-fail versions` | 93f727c | 118 violations detected (NEGATIVE TEST PASS) |
-| `-DKVM_BREAK_PARK_RECHECK --expect-fail litmus` | 93f727c | detected (NEGATIVE TEST PASS) |
-| litmus (`tests/litmus/run_litmus.sh`, incl. `queue(ticket)` and mutant `popticket`) | ea48d76 | **LITMUS PASS**: 16 properties / scenarios / probes, 8 mutants and controls detected, 0 failures; `queue(ticket)` 1.0M rounds 0 violations, mutant `popticket` 2385 violations (detected), `popplain` livelocks (counted as detected, as before). The new e2e controls `KVM_BREAK_CHUNK_RELEASE` (dag, bigrecord) and `KVM_BREAK_CONT` (versions) were **not detected**: the e2e scenarios never let a predecessor finish before its successor is decoded, nor continue into a version-waiting successor. They are reported, not counted |
+| `-DMVM_BREAK_FENCE --expect-fail versions` | 93f727c | 118 violations detected (NEGATIVE TEST PASS) |
+| `-DMVM_BREAK_PARK_RECHECK --expect-fail litmus` | 93f727c | detected (NEGATIVE TEST PASS) |
+| litmus (`tests/litmus/run_litmus.sh`, incl. `queue(ticket)` and mutant `popticket`) | ea48d76 | **LITMUS PASS**: 16 properties / scenarios / probes, 8 mutants and controls detected, 0 failures; `queue(ticket)` 1.0M rounds 0 violations, mutant `popticket` 2385 violations (detected), `popplain` livelocks (counted as detected, as before). The new e2e controls `MVM_BREAK_CHUNK_RELEASE` (dag, bigrecord) and `MVM_BREAK_CONT` (versions) were **not detected**: the e2e scenarios never let a predecessor finish before its successor is decoded, nor continue into a version-waiting successor. They are reported, not counted |
 
 `front` failure: the suite submitted the same 100 chains twice (classes 1 and 0) onto ONE counter per chain, with no edge between the two
 submissions, so the two copies of a chain race on `x = x + 1` once both are admitted; 1 of 100 counters came out wrong. The faster admission
@@ -91,10 +91,10 @@ makes the overlap likelier; it is a test race, not an executor bug. The test now
 
 ## bf16 storage regression on main (found here, fixed by #10)
 
-Merge #8 took #1's `kvm_exec.cu`, which predates real bf16 storage (d48f3e6): main allocated every buffer at 4 bytes, rejected dtype 2 and lost
-`--dump-bin`, so every bf16s bundle failed at load (`[kvm_exec][E] bad buffer shape or dtype`, ab2). The host code was restored verbatim from
+Merge #8 took #1's `mvm_exec.cu`, which predates real bf16 storage (d48f3e6): main allocated every buffer at 4 bytes, rejected dtype 2 and lost
+`--dump-bin`, so every bf16s bundle failed at load (`[mvm_exec][E] bad buffer shape or dtype`, ab2). The host code was restored verbatim from
 1c2111b in PR #10 (merged a99fdca) and on this branch.
-The #15 merge (7ce1932) then reverted #10's lines in `kvm_exec.cu` (its only change to that file), so main lost bf16s again; this branch keeps
+The #15 merge (7ce1932) then reverted #10's lines in `mvm_exec.cu` (its only change to that file), so main lost bf16s again; this branch keeps
 the restored file when it merges main (27de80d). The bf16s rows of ab3 ran on this branch's code (93f727c).
 
 ## Why a whole-step CUDA graph still wins at small sizes
@@ -110,7 +110,7 @@ frontend), not cheaper dispatch.
 
 - Small sizes: no win over a whole-step graph (above). The executor beats torch eager 4-8x there.
 - 162M: 3.6x (f32) / 2.8x (bf16s) slower than a whole-step torch graph; the remaining gap is tile speed (matmul about 0.5x cuBLAS, owned by the ops work) and idle workers, not measured further here.
-- `KVM_CRIT_PRIO` is ported but not measured on this branch.
+- `MVM_CRIT_PRIO` is ported but not measured on this branch.
 - The chunked-release and continuation negative controls are not caught by any existing scenario (litmus row above); a targeted e2e scenario for each is the follow-up.
-- Class-aware / sliced admission (perf/class-admission: latency ring + sliced bulk ingestion; perf/sched-tail: express records, strict class tier) is NOT ported: it targets tail latency of mixed classes with the scheduler on, not step time, and conflicts with #1's admitter and KvmFront. It is the next item for the admission-FIFO tail-latency limit.
+- Class-aware / sliced admission (perf/class-admission: latency ring + sliced bulk ingestion; perf/sched-tail: express records, strict class tier) is NOT ported: it targets tail latency of mixed classes with the scheduler on, not step time, and conflicts with #1's admitter and MvmFront. It is the next item for the admission-FIFO tail-latency limit.
 - Multi-GPU, the Doom/serve demo and the scheduler-on paths with the new admitter were not timed (the exec suite covers them functionally).

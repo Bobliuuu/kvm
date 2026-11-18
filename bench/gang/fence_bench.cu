@@ -1,11 +1,11 @@
-// The gang crossing's arrival fence, the three forms of include/kvm_gang.cuh's KVM_GANG_FENCE in one process: __threadfence() and then
+// The gang crossing's arrival fence, the three forms of include/mvm_gang.cuh's MVM_GANG_FENCE in one process: __threadfence() and then
 // the release (0, shipped), the release alone (1), and CUTLASS's fence.acq_rel with a relaxed arrival (2). Each form's barrier_counted and
 // barrier_lines are built in their own unit (fence_form.cu). Separate binaries run one after another read a laptop GPU's clock drift as
 // much as the fence (Nov 11: the same counter form read 1,119-1,399 ns a crossing across runs), so every repetition here launches all six
 // (form x barrier) back to back, in an order that rotates with the repetition, and each form is read paired by repetition against form 0
 // of the same barrier. The control words are zeroed at every gang size: their contract holds for one gang, and a larger gang's new members
 // would start from other epochs.
-//   for F in 0 1 2; do nvcc -O3 -std=c++17 -arch=sm_XX -Iinclude -DKVM_GANG_FENCE=$F -DFENCE_NS=f$F -c bench/gang/fence_form.cu -o fence_f$F.o; done
+//   for F in 0 1 2; do nvcc -O3 -std=c++17 -arch=sm_XX -Iinclude -DMVM_GANG_FENCE=$F -DFENCE_NS=f$F -c bench/gang/fence_form.cu -o fence_f$F.o; done
 //   nvcc -O3 -std=c++17 -arch=sm_XX -Iinclude bench/gang/fence_bench.cu fence_f0.o fence_f1.o fence_f2.o -o fence_bench && ./fence_bench [K=2000] [REPS=15] [CSV]
 // CSV, when given, gets every timed launch (G, repetition, its slot in the rotation, barrier, fence form, ns a crossing, errors), so the
 // pairing can be re-derived from the raw.
@@ -13,7 +13,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
-#include "kvm_gang.cuh"
+#include "mvm_gang.cuh"
 #define CK(x) do { cudaError_t e = (x); if (e != cudaSuccess) { fprintf(stderr, "%s:%d %s\n", __FILE__, __LINE__, cudaGetErrorString(e)); exit(1); } } while (0)
 
 #define FENCE_FORM_DECL(NS) namespace NS { int fence(); void launch(bool, unsigned*, int*, int, int, const int*, unsigned long long*, int*); }
@@ -35,11 +35,11 @@ int main(int argc, char** argv) {
   if (argc > 3 && !csv) { fprintf(stderr, "cannot write %s\n", argv[3]); return 2; }
   if (csv) fprintf(csv, "G,rep,slot,barrier,fence,ns_per_crossing,errors\n");
   if (f0::fence() != 0 || f1::fence() != 1 || f2::fence() != 2) {
-    fprintf(stderr, "fence_form units built with the wrong KVM_GANG_FENCE: f0 %d, f1 %d, f2 %d\n", f0::fence(), f1::fence(), f2::fence());
+    fprintf(stderr, "fence_form units built with the wrong MVM_GANG_FENCE: f0 %d, f1 %d, f2 %d\n", f0::fence(), f1::fence(), f2::fence());
     return 2;
   }
   cudaDeviceProp p; CK(cudaGetDeviceProperties(&p, 0));
-  const int sms = p.multiProcessorCount, words = kvm_gang::line_words(sms);
+  const int sms = p.multiProcessorCount, words = mvm_gang::line_words(sms);
   unsigned* ctl[kArms]; int *data, *errors, *abort_word; unsigned long long* ns;
   for (int a = 0; a < kArms; ++a) CK(cudaMalloc(&ctl[a], words * sizeof(unsigned)));
   CK(cudaMalloc(&data, sms * sizeof(int))); CK(cudaMalloc(&errors, sizeof(int))); CK(cudaMalloc(&ns, sizeof(unsigned long long)));

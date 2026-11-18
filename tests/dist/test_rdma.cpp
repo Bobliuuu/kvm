@@ -8,8 +8,8 @@
 #include "../../dist/proxy.hpp"
 #include "../../dist/transport_rdma.hpp"
 
-using namespace kvmd;
-using namespace kvmd::shim;
+using namespace mvmd;
+using namespace mvmd::shim;
 
 static std::atomic<int> g_fail{0};
 static std::atomic<int> g_checks{0};
@@ -544,7 +544,7 @@ static void suite_transport_failure() {
   {   // proxy end to end over RDMA: peer dies -> the device sink is told
     RdmaPair p(small_cfg());
     std::vector<float> mem(64, 0); std::vector<std::atomic<unsigned>> inbox(4); for (auto& x : inbox) x = 0;
-    std::vector<uint8_t> qmem(kvm_sq_bytes(8, 1024) + 64); unsigned long long tail = 0;
+    std::vector<uint8_t> qmem(mvm_sq_bytes(8, 1024) + 64); unsigned long long tail = 0;
     SendQ::init(qmem.data(), 8, 1024, 5ull * 1000000000ull, &tail);
     ReliableConfig c = fast_cfg(); c.max_retries = 3;
     Reliable ra(*p.t[0], c);
@@ -552,15 +552,15 @@ static void suite_transport_failure() {
     Proxy px(0, 2, SendQ(qmem.data()), ra, sink);
     px.start();
     p.t[1]->close();                                                   // rank 1 vanishes
-    KvmSqHdr* h = (KvmSqHdr*)qmem.data();
+    MvmSqHdr* h = (MvmSqHdr*)qmem.data();
     unsigned long long t = __atomic_fetch_add(h->tail_dev, 1, __ATOMIC_RELAXED);
-    uint8_t* slot = qmem.data() + sizeof(KvmSqHdr) + (t % h->slots) * kvm_sq_stride(h->slot_bytes);
-    float d8[8] = {1, 2, 3, 4, 5, 6, 7, 8}; memcpy(slot + KVM_SQ_SLOT_HDR, d8, 32);
-    KvmSqSlot* s = (KvmSqSlot*)slot; s->dst_rank = 1; s->dst_buf = 0; s->dst_off = 0; s->dst_ld = 8; s->rows = 1; s->cols = 8; s->var = 0; s->ver = 1; s->nbytes = 32;
+    uint8_t* slot = qmem.data() + sizeof(MvmSqHdr) + (t % h->slots) * mvm_sq_stride(h->slot_bytes);
+    float d8[8] = {1, 2, 3, 4, 5, 6, 7, 8}; memcpy(slot + MVM_SQ_SLOT_HDR, d8, 32);
+    MvmSqSlot* s = (MvmSqSlot*)slot; s->dst_rank = 1; s->dst_buf = 0; s->dst_off = 0; s->dst_ld = 8; s->rows = 1; s->cols = 8; s->var = 0; s->ver = 1; s->nbytes = 32;
     __atomic_store_n(&s->seq, t + 1, __ATOMIC_RELEASE);
     auto t0 = Clock::now();
     while (sink.fail_code == 0 && ms_since(t0) < 5000) std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    CHECK(sink.fail_code == KVM_ERR_DIST_PEER_DOWN && sink.fail_arg == 1, "device not told about the dead peer (code %d)", sink.fail_code.load());
+    CHECK(sink.fail_code == MVM_ERR_DIST_PEER_DOWN && sink.fail_arg == 1, "device not told about the dead peer (code %d)", sink.fail_code.load());
     px.kernel_done(); CHECK(px.wait_finished(5000), "proxy must finish with a dead peer"); px.stop();
   }
 }

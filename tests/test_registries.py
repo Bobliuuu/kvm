@@ -36,7 +36,7 @@ class RegistryTests(unittest.TestCase):
 
     def _dir(self, files):
         """A temporary include directory with `files`, and the executor's real registry list unless `files` brings its own."""
-        d = Path(tempfile.mkdtemp(prefix='kvm-reg-'))
+        d = Path(tempfile.mkdtemp(prefix='mvm-reg-'))
         self.addCleanup(shutil.rmtree, d)
         files = {abi.OPS_LIST: (abi.INCLUDE_DIR / abi.OPS_LIST).read_text(), **files}
         for name, text in files.items():
@@ -47,8 +47,8 @@ class RegistryTests(unittest.TestCase):
         listed = [line.split('"')[1] for line in (abi.INCLUDE_DIR / abi.OPS_LIST).read_text().splitlines()
                   if line.lstrip().startswith('#include "') and line.rstrip().endswith('.def"')]
         self.assertEqual(list(abi.registry_files()), listed)
-        self.assertEqual(listed[0], 'kvm_ops.def')
-        self.assertIn('kvm_ops_fmlp.def', listed)            # the fused MLP step's members, which a fixed list once left out
+        self.assertEqual(listed[0], 'mvm_ops.def')
+        self.assertIn('mvm_ops_fmlp.def', listed)            # the fused MLP step's members, which a fixed list once left out
 
     def test_every_registry_the_executor_includes_is_loaded(self):
         ops = abi.load_ops()
@@ -65,11 +65,11 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual((ops['fmlp_slice'].id, ops['fmlp_sgd'].id), (124, 125))
 
     def test_registry_list_required_and_well_formed(self):
-        core = (abi.INCLUDE_DIR / 'kvm_ops.def').read_text()
+        core = (abi.INCLUDE_DIR / 'mvm_ops.def').read_text()
         for inc, needle in [(None, 'registry list not found'), ('// nothing\n', 'includes no registry file'),
-                            ('#include "kvm_ops.def"\n#include "kvm_ops.def"\n', 'included twice')]:
+                            ('#include "mvm_ops.def"\n#include "mvm_ops.def"\n', 'included twice')]:
             with self.subTest(inc=inc):
-                d = self._dir({'kvm_ops.def': core} if inc is None else {'kvm_ops.def': core, abi.OPS_LIST: inc})
+                d = self._dir({'mvm_ops.def': core} if inc is None else {'mvm_ops.def': core, abi.OPS_LIST: inc})
                 if inc is None:
                     (d / abi.OPS_LIST).unlink()
                 with self.assertRaises(abi.AbiError) as cm:
@@ -77,20 +77,20 @@ class RegistryTests(unittest.TestCase):
                 self.assertIn(needle, str(cm.exception))
 
     def test_cross_registry_duplicates_and_bad_lines_rejected(self):
-        core = (abi.INCLUDE_DIR / 'kvm_ops.def').read_text()
+        core = (abi.INCLUDE_DIR / 'mvm_ops.def').read_text()
         for gpt, needle in [('X(clash, 3, "")\n', 'duplicate operator name or id'),
                             ('X(copy, 99, "")\n', 'duplicate operator name or id'),
                             ('X(bad, 99, "x:f64")\n', 'bad argument'),
                             ('X(bad, 99, "x:buf?, x:buf")\n', 'duplicate argument'),
                             ('X(bad 99)\n', 'unparsable')]:
             with self.subTest(gpt=gpt), self.assertRaises(abi.AbiError) as cm:
-                abi.load_ops(self._dir({'kvm_ops.def': core, 'kvm_ops_gpt.def': gpt}))
+                abi.load_ops(self._dir({'mvm_ops.def': core, 'mvm_ops_gpt.def': gpt}))
             self.assertIn(needle, str(cm.exception))
 
     def test_core_registry_required_others_optional(self):
         with self.assertRaises(abi.AbiError):
-            abi.load_ops(self._dir({'kvm_ops_gpt.def': 'X(a, 40, "")\n'}))
-        self.assertEqual(set(abi.load_ops(self._dir({'kvm_ops.def': 'X(noop, 0, "")\n'}))), {'noop'})
+            abi.load_ops(self._dir({'mvm_ops_gpt.def': 'X(a, 40, "")\n'}))
+        self.assertEqual(set(abi.load_ops(self._dir({'mvm_ops.def': 'X(noop, 0, "")\n'}))), {'noop'})
 
     def test_real_registries_all_have_reference_entries(self):
         missing = set(abi.load_ops()) - set(ref_ops.OPS)
@@ -226,7 +226,7 @@ class SeededInitTests(unittest.TestCase):
 
 class FileInitTests(unittest.TestCase):
     def setUp(self):
-        self.dir = Path(tempfile.mkdtemp(prefix='kvm-file-'))
+        self.dir = Path(tempfile.mkdtemp(prefix='mvm-file-'))
         self.addCleanup(shutil.rmtree, self.dir)
         (self.dir / 'data').mkdir()
         (self.dir / 'data' / 'w.f32').write_bytes(struct.pack('<4f', 1, 2, 3, 4.5))

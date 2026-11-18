@@ -1,6 +1,6 @@
 # perf/combined on the A100: main + fusion-162m + attention-162m + bf16-a100 (2026-11-06/07)
 
-**Verdict.** The four branches compose. gpt_162m, 1 step, `kvm_exec`, median of 7 interleaved rounds in one container (best-worst in brackets):
+**Verdict.** The four branches compose. gpt_162m, 1 step, `mvm_exec`, median of 7 interleaved rounds in one container (best-worst in brackets):
 **main 1092.9 ms -> combined f32 845.5 ms (1.29x) -> combined bf16s 293.3 ms (3.73x)**. Tasks 318,139 -> 270,914 -> 58,634; edges 6,889,225 -> 2,251,649 -> 480,777.
 All correctness suites pass except the two known weight-check failures. One regression is open: the merged executor is ~6% slower than main's on the same (main) bundle.
 
@@ -10,14 +10,14 @@ All correctness suites pass except the two known weight-check failures. One regr
 |---|---|
 | GPU | Modal NVIDIA A100-SXM4-40GB (suites, demo, step times: `steps/env.txt`, driver 610.57.04, nvcc 12.8.93, 108 SMs, max SM clock 1410 MHz). `grads/` and `bisect/` ran on an A100-SXM4-80GB container (same driver; recorded in their `env.txt`). Ratios are only taken inside one container. |
 | Code | branch `perf/combined`; merge commit 7a758c7 (conflict resolution below), results added on top |
-| Executor build | `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 kvm_exec.cu` (main built the same way) |
+| Executor build | `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 mvm_exec.cu` (main built the same way) |
 | Runner | `tests/modal/run_suite.py` (`--suite exec\|litmus\|gpt\|sanitize` or `--suite custom --cmd`), commands in `steps/cmd.sh`, `bisect/cmd.sh` |
 | Model | gpt_162m: 12 layers, d768, 12 heads, seq 1024, batch 4, vocab 50304, tiling a100 |
 
 ## Merge
 
 Conflicts: `bench/vs_pytorch/{gen,grads162,torch_bench}`, `tests/gpt162/torch_ref` took the bf16 side (a superset; `gen.py --reuse` default set to `step`).
-`lower.py`, `nn.py`, `plan.py` are unions (planner keeps fusion's `step` horizon and bf16's dtype-sized accounting). `harness.cuh` uses one `KVM_HARNESS_NO_FULL` guard (`test_bf16` renamed to it).
+`lower.py`, `nn.py`, `plan.py` are unions (planner keeps fusion's `step` horizon and bf16's dtype-sized accounting). `harness.cuh` uses one `MVM_HARNESS_NO_FULL` guard (`test_bf16` renamed to it).
 Composition fix: bf16 weight-gradient tiles are 128 rows tall (`MMA_TILE`), fusion's optimizer chunks rounded to 64; `storage.py` now tags `adamw`/`grad_clip` with `tile_rows=128` when a bf16 matmul lowers to the MMA tile, and `lower._opt_chunks` honours it (f32 unchanged). Tests added in `tests/frontend`.
 Attention stays fp32 in bf16s and uses 128-row tasks; bf16 weight shadows, bf16 saved pre-activations and n-outer tile order are all active in the bf16s bundle.
 
@@ -62,7 +62,7 @@ Same bundle (main's), 7 interleaved rounds, executors from main / main+attention
 | + bf16-a100 | 1119.3 | +4.3% |
 | combined | 1137.4 | +5.9% |
 
-Attribution so far: the cost is spread over both branches (attention +1.7%, bf16 +4.3%, roughly additive). The mechanism is not proven. Candidates: the bf16 branch raises the dynamic shared memory of the persistent kernel from 72 to 96 KiB (`KVM_GPT_MMA_SMEM`, `include/kvm_ops_gpt.cuh`) and adds op 122 to the in-kernel dispatch; the attention branch adds larger 128-row tasks to it. Register / stack numbers of main vs combined from `-Xptxas -v` are in `ptxas/` if that run finished. A fix needs a tile that fits 72 KiB or a per-op smem opt-in, which is not cheap; it is documented, not fixed. The net effect on the real (combined) bundles is still -23% (f32) and -73% (bf16s).
+Attribution so far: the cost is spread over both branches (attention +1.7%, bf16 +4.3%, roughly additive). The mechanism is not proven. Candidates: the bf16 branch raises the dynamic shared memory of the persistent kernel from 72 to 96 KiB (`MVM_GPT_MMA_SMEM`, `include/mvm_ops_gpt.cuh`) and adds op 122 to the in-kernel dispatch; the attention branch adds larger 128-row tasks to it. Register / stack numbers of main vs combined from `-Xptxas -v` are in `ptxas/` if that run finished. A fix needs a tile that fits 72 KiB or a per-op smem opt-in, which is not cheap; it is documented, not fixed. The net effect on the real (combined) bundles is still -23% (f32) and -73% (bf16s).
 
 ## Not done / limits
 

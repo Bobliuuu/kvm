@@ -10,12 +10,12 @@ Nothing on the device side (admission, hop, queue, signalling) is worth a 50-min
 | | |
 |---|---|
 | GPU | A100-SXM4-40GB, 108 SMs, driver 580.105.08, CUDA 12.8 (nvcc), 1410 MHz max, shared box, every run under `flock ~/.gpu.lock` |
-| Executor | tree = main `49f2a1a` (device code unchanged by this branch), `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -diag-suppress 177 -DKVM_LEAN -lineinfo`, sha256 `ed41554d...`; the same binary for every row |
+| Executor | tree = main `49f2a1a` (device code unchanged by this branch), `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -diag-suppress 177 -DMVM_LEAN -lineinfo`, sha256 `ed41554d...`; the same binary for every row |
 | Bundles | `bench/vs_pytorch/gen.py --mode tf32 --tiling a100 [--tiling-set vocab=128,ce_rows=16]`: 162M (1 step; 53,939 tasks before, 54,579 after), `gpt_tiny` / `gpt_small` (50 steps) |
-| Commands | `bench/sched162/` (`trace_idle.py`, `idle_by_op.py`, `tail_phases.py`, `static_chain.py`, `static_wait.py`); A/B = `kvm_exec --quiet --warm-ms 500 BUNDLE`, bundles interleaved, best of N (raw in `raw/job_a.txt`, `raw/job_b.txt`) |
+| Commands | `bench/sched162/` (`trace_idle.py`, `idle_by_op.py`, `tail_phases.py`, `static_chain.py`, `static_wait.py`); A/B = `mvm_exec --quiet --warm-ms 500 BUNDLE`, bundles interleaved, best of N (raw in `raw/job_a.txt`, `raw/job_b.txt`) |
 | Branch | `perf/sched-162m` |
 
-## 1. Where the time goes (traces: `kvm_exec --trace-csv`, `raw/trace_analysis.txt`)
+## 1. Where the time goes (traces: `mvm_exec --trace-csv`, `raw/trace_analysis.txt`)
 
 **162M, dynamic path (mean task 214 us, 228 logical levels, 107 workers):**
 
@@ -59,8 +59,8 @@ each loss row is one warp's. `raw/job_a.txt` holds the `cmp` lines.
 
 ## Correctness
 
-Only `frontend/kvmfe/lower.py` (new `Tiling.ce_rows`, `a100` preset values) and `bench/` changed; `include/`, `kvm_exec.cu` and `kvm_sched*` are untouched, so the
-device suites (core 8,613 checks, `-DKVM_BREAK_FENCE` negative, memcheck/racecheck on `smoke`) read as on main and were not re-run. Run here: CPU suites `tests` 157 OK and
+Only `frontend/mvmfe/lower.py` (new `Tiling.ce_rows`, `a100` preset values) and `bench/` changed; `include/`, `mvm_exec.cu` and `mvm_sched*` are untouched, so the
+device suites (core 8,613 checks, `-DMVM_BREAK_FENCE` negative, memcheck/racecheck on `smoke`) read as on main and were not re-run. Run here: CPU suites `tests` 157 OK and
 `tests/frontend` 137 OK after the rebase onto main `4bbdaab` (157 / 133 before; one `tests` run out of four showed 1 failure that did not reproduce in the next three runs, not investigated); bitwise comparison above; every timed run ended `OK: n/n tasks`.
 
 ## Not done, and why

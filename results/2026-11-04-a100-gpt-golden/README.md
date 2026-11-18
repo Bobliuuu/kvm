@@ -1,7 +1,7 @@
 # GPT golden mismatch: root cause and check (A100, 2026-11-04)
 
-- GPU: NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver 580.105.08, nvcc 12.8; box shared (`flock`). `kvm_exec` built as in `tests/gpu/build.sh` (`--fmad=false -ffp-contract=off`), run with `--blocks 4`.
-- Code: `tests/gptdiff/{gen_bundle.py,golden_check.py,run.sh}` at the commit that adds this file. Command: `KVM_HOST=... tests/gptdiff/run.sh --sanitize`. Raw output: `run.txt`.
+- GPU: NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver 580.105.08, nvcc 12.8; box shared (`flock`). `mvm_exec` built as in `tests/gpu/build.sh` (`--fmad=false -ffp-contract=off`), run with `--blocks 4`.
+- Code: `tests/gptdiff/{gen_bundle.py,golden_check.py,run.sh}` at the commit that adds this file. Command: `MVM_HOST=... tests/gptdiff/run.sh --sanitize`. Raw output: `run.txt`.
 
 ## Verdict: not a bug in the ops, the executor, the lowering or the initial values
 
@@ -15,7 +15,7 @@ The "golden mismatch" of `exec-recycling/README.md` is AdamW amplifying legitima
 ## The check (tests/gptdiff/golden_check.py) and what passes
 `tf32`: losses, step-1 activations/gradients, (1 step) adamw-op reproduction in float64 from the GPU's own gradients, and every GPU weight inside the image of the gradient tolerance band under Adam's monotone update (a flip is accepted only if the gradient is within the documented tolerance of zero). `precise`: every f32 buffer within 2e-4 of the golden. A deliberately wrong weight (+5e-4 on one element) fails both the op and the band checks.
 
-| bundle | 1xTF32 | 3xTF32 | kvm_exec |
+| bundle | 1xTF32 | 3xTF32 | mvm_exec |
 |---|---|---|---|
 | gpt_tiny cpu tiling, 1 step (272 tasks) | PASS | PASS | OK |
 | gpt_tiny cpu tiling, 2 steps (544 tasks) | PASS | PASS | OK |
@@ -26,5 +26,5 @@ compute-sanitizer memcheck, racecheck, synccheck on the 2- and 5-step bundles, 1
 
 ## Not covered
 - The 1xTF32 post-Adam weights are not compared to the golden (they cannot be); only the first update is modelled. Bitwise equality with a CPU run is only possible with an fp32-exact GEMM.
-- `kvm_exec --golden` itself is unchanged (whole-buffer relative L2 is right for fp32 ops, wrong for TF32 + AdamW); use `tests/gptdiff/run.sh` for GPT bundles.
+- `mvm_exec --golden` itself is unchanged (whole-buffer relative L2 is right for fp32 ops, wrong for TF32 + AdamW); use `tests/gptdiff/run.sh` for GPT bundles.
 - The frontend has no switch for 3xTF32; `gen_bundle.py --precise` sets flag 16 on every `matmul_tile` in the emitted workload.

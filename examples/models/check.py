@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Compare a kvm_exec GPU run of a zoo-model bundle with the compiler's CPU golden.
+"""Compare a mvm_exec GPU run of a zoo-model bundle with the compiler's CPU golden.
 
-  kvm_exec --dump-buffers BUNDLE > dump.txt ;  python3 check.py WORKLOAD.json BUNDLE dump.txt --mode precise|tf32 [--tol X] [--json OUT]
+  mvm_exec --dump-buffers BUNDLE > dump.txt ;  python3 check.py WORKLOAD.json BUNDLE dump.txt --mode precise|tf32 [--tol X] [--json OUT]
 
 precise : GEMMs are 3xTF32 -> every f32 buffer (activations, gradients, moments, weights, losses) within --tol relative L2
           (default 1e-3), and every per-step loss within TOL_LOSS_PRECISE = 1e-5. The multi-step weight/moment error is not the GEMM

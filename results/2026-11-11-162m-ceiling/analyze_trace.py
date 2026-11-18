@@ -1,4 +1,4 @@
-"""Where one 162M bf16s step goes, from kvm_exec --trace-csv plus the bundle's tasks.bin/successors.bin (slot == task index).
+"""Where one 162M bf16s step goes, from mvm_exec --trace-csv plus the bundle's tasks.bin/successors.bin (slot == task index).
 usage: python3 -I analyze_trace.py TRACE.csv BUNDLE_DIR"""
 import sys, heapq, collections
 import numpy as np, pandas as pd

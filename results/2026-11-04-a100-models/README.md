@@ -1,18 +1,18 @@
 # Framework generality: five model families through the generic executor on an A100 (2026-11-04)
 
 Claim under test: **nothing in the stack is hardwired to one model, and ops run fast without a hand-written kernel.**
-Every model below is a few dozen lines of the frontend's tracing builder (`frontend/kvmfe/models.py`); the only device code added is
-a pack of 26 *generic, shape-parametrized* registry ops (`include/kvm_ops_extra.def`, ids 96-121: activations, SwiGLU, row softmax,
+Every model below is a few dozen lines of the frontend's tracing builder (`frontend/mvmfe/models.py`); the only device code added is
+a pack of 26 *generic, shape-parametrized* registry ops (`include/mvm_ops_extra.def`, ids 96-121: activations, SwiGLU, row softmax,
 gather / scatter-add, MoE routing, bidirectional attention, bf16 matmul, LR schedule, matmul epilogue wrappers). None of them knows
 a model. Autodiff, tiling, dataflow edges, memory planning, fusion and the compiler's golden are the same code for every model.
 
 - GPU: NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver 580.105.08, CUDA 12.8.93 (shared box; `flock` on the GPU lock, one hold for the whole batch).
-- Executor: `kvm_exec.cu` built with `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177`,
+- Executor: `mvm_exec.cu` built with `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177`,
   default grid (108 blocks, 1 per SM) for the checked runs and timings, `--blocks 4` under compute-sanitizer.
 - Code: branch `feat/models`; bundles from `examples/models/prebuild.sh`, run by `examples/models/run_box.sh logs/prebuilt OUT` on the GPU machine
   (cases: `cases.txt`, raw log: `runs.txt`, one directory per case in `cases/`: `check.txt`, `check.json`, `meta.json`, `times.txt`).
-- Reproduce: `examples/models/prebuild.sh logs/prebuilt && examples/models/run_box.sh logs/prebuilt logs/run` (needs `KVM_HOST`-style access only for the rsync; the
-  scripts take no host names), or `KVM_HOST=user@host examples/models/run.sh` from a laptop.
+- Reproduce: `examples/models/prebuild.sh logs/prebuilt && examples/models/run_box.sh logs/prebuilt logs/run` (needs `MVM_HOST`-style access only for the rsync; the
+  scripts take no host names), or `MVM_HOST=user@host examples/models/run.sh` from a laptop.
 
 ## Models
 
@@ -115,5 +115,5 @@ LR schedule): 24 runs, 0 errors, 0 hazards.
 - Single GPU box, shared: timings are indicative (min of 4 launches). The 1xTF32 cases check losses and step-1 buffers only, by design.
 - The compiler's golden is a pure-Python float32 VM: 10-step Llama/MoE bundles (8-10k tasks) take minutes to generate on an idle core (the Mac was at load 200, so the
   bundles were built on the GPU machine's CPUs); `--golden-timeout` was added to `compile_workload.py` for that.
-- Shared files touched with small hooks: `include/kvm_ops_list.inc` (+4 lines), `include/kvm_exec.cuh` (+3, marked `KVM_MODELS_HOOK`), `runtime/abi.py` (registry name),
+- Shared files touched with small hooks: `include/mvm_ops_list.inc` (+4 lines), `include/mvm_exec.cuh` (+3, marked `MVM_MODELS_HOOK`), `runtime/abi.py` (registry name),
   `runtime/ref_ops.py` (+2), `runtime/compile_workload.py` (`--golden-timeout`).

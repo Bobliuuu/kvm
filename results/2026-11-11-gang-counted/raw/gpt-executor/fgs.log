@@ -1,5 +1,5 @@
-SASS: kvm_fgpt_kernel's program touches 170 registers (10 LDL, 5 STL); its worst MMA loop reloads 7 a pass; prediction <= 100 in all and <= 100 a loop: holds
-SASS static kernel: kvm_dispatch                    197842  3784  5086  2015     252       0  -
+SASS: mvm_fgpt_kernel's program touches 170 registers (10 LDL, 5 STL); its worst MMA loop reloads 7 a pass; prediction <= 100 in all and <= 100 a loop: holds
+SASS static kernel: mvm_dispatch                    197842  3784  5086  2015     252       0  -
 /root/work/gangcnt/fgs/run-20261111T142648Z/w_tiny/bundle: 21 op ids used, each both trees' id for its name
 /root/work/gangcnt/fgs/run-20261111T142648Z/w_small/bundle: 21 op ids used, each both trees' id for its name
 /root/work/gangcnt/fgs/run-20261111T142648Z/w_ho128/bundle: 21 op ids used, each both trees' id for its name

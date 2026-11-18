@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Per-step losses of a kvm_exec run on a gen.py bundle, and their difference to a torch_bench result.
+"""Per-step losses of a mvm_exec run on a gen.py bundle, and their difference to a torch_bench result.
 
-  python3 exec_losses.py WORKLOAD_DIR ./kvm_exec [--torch torch_eager.json --mode eager] [--out losses.json]
+  python3 exec_losses.py WORKLOAD_DIR ./mvm_exec [--torch torch_eager.json --mode eager] [--out losses.json]
 
-kvm_exec --dump-buffers prints every buffer as text; this streams the output and keeps only the pinned `loss.<step>` buffers (element 0 is the
+mvm_exec --dump-buffers prints every buffer as text; this streams the output and keeps only the pinned `loss.<step>` buffers (element 0 is the
 mean cross-entropy), so a 162M-parameter bundle needs no disk for the dump. Relative difference per step = |exec - torch| / torch.
 """
 import argparse

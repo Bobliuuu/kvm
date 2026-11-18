@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check a kvm_exec --dump-buffers run of a bf16-storage gpt_tiny bundle.
+"""Check a mvm_exec --dump-buffers run of a bf16-storage gpt_tiny bundle.
 
   check.py BUNDLE_DIR DUMP [--golden]      (BUNDLE_DIR holds workload.json and bundle/)
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Task-count / critical-path effect of the fusion pass for every zoo model (CPU only, cost model of kvmfe.analyze).
+"""Task-count / critical-path effect of the fusion pass for every zoo model (CPU only, cost model of mvmfe.analyze).
 
   python3 examples/models/fusion_report.py [--tiling cpu|a100] [--steps N]
 """
@@ -8,11 +8,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'frontend'))
-from kvmfe import models, nn  # noqa: E402
-from kvmfe.analyze import CostModel, analyze  # noqa: E402
-from kvmfe.lower import Tiling  # noqa: E402
-from kvmfe.pipeline import compile_training  # noqa: E402
-from kvmfe.train import TrainConfig  # noqa: E402
+from mvmfe import models, nn  # noqa: E402
+from mvmfe.analyze import CostModel, analyze  # noqa: E402
+from mvmfe.lower import Tiling  # noqa: E402
+from mvmfe.pipeline import compile_training  # noqa: E402
+from mvmfe.train import TrainConfig  # noqa: E402
 
 CASES = ['gpt_tiny', 'gpt_small', 'llama_tiny', 'llama_gqa_tied', 'moe_tiny', 'mlp_tiny', 'vit_tiny']
 

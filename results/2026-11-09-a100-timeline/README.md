@@ -1,17 +1,17 @@
-# kvm.cu timeline from the VM's own per-instruction timestamps (A100)
+# mvm.cu timeline from the VM's own per-instruction timestamps (A100)
 
-> Superseded implementation: this result was produced by a `-DKVM_TIMELINE` build of `kvm.cu` (feat/timeline). The landing branch keeps only the `--timeline` implementation from perf/kvm-cu, so this build flag no longer exists; the data and figures stay as a record.
+> Superseded implementation: this result was produced by a `-DMVM_TIMELINE` build of `mvm.cu` (feat/timeline). The landing branch keeps only the `--timeline` implementation from perf/mvm-cu, so this build flag no longer exists; the data and figures stay as a record.
 
 
-Goal 4 of AGENTS.md. `kvm.cu` built with `-DKVM_TIMELINE` stores, per instruction, `%globaltimer` at claim, at dependencies satisfied
+Goal 4 of AGENTS.md. `mvm.cu` built with `-DMVM_TIMELINE` stores, per instruction, `%globaltimer` at claim, at dependencies satisfied
 and at done, plus `%smid` and block index (32 bytes/instruction, written by thread 0 after the instruction's last signal). The default
-build compiles all of it out. Renderer: `tools/kvm_timeline.py` (rows = workers grouped by SM; 7 colors = 5 opcodes + wait + idle).
+build compiles all of it out. Renderer: `tools/mvm_timeline.py` (rows = workers grouped by SM; 7 colors = 5 opcodes + wait + idle).
 
 Machine: NVIDIA A100-SXM4-40GB, 108 SMs, occupancy 2 blocks/SM = 216 workers, driver 580.105.08, CUDA 12.8, sm_80,
-`nvcc -O3 -arch=sm_80 -std=c++17 -DKTILE=32 -DKKC=64 -DKSTG=4 [-DKVM_TIMELINE]`, commit of `kvm.cu` = this PR's head.
+`nvcc -O3 -arch=sm_80 -std=c++17 -DKTILE=32 -DKKC=64 -DKSTG=4 [-DMVM_TIMELINE]`, commit of `mvm.cu` = this PR's head.
 Model: 2-layer MLP B=128 D=128 H=256 O=64, TF32, SGD. Opcodes: H1 fwd hidden, Y fwd out + MSE, DH1 bwd hidden, DW2 / DW1 bwd weight + SGD.
 
-Commands: `./kvm_tl --runs R --steps S --timeline FILE`, then `python3 -I tools/kvm_timeline.py FILE out.png --panels op,step,run`.
+Commands: `./mvm_tl --runs R --steps S --timeline FILE`, then `python3 -I tools/mvm_timeline.py FILE out.png --panels op,step,run`.
 Raw logs: `run.log` (selftest, 1 run, overhead), `run-multi.log` (16 and 48 runs). Data: `timeline-*.csv.gz`.
 
 ## Correctness (instrumented build)
@@ -19,7 +19,7 @@ Selftest ok. 1 run x 6 steps, 16 and 48 runs x 40 steps, and 1/8/32 runs x 300 s
 loss vs CPU fp32 within 3.6e-5; VM weights bitwise equal (max |dW| 0.00e+00) to the three baselines in every run.
 
 ## Overhead (VM total ms, 300 steps, 5 repeats, same box and process family; runs 1 / 8 / 32)
-| runs | plain | -DKVM_TIMELINE | delta |
+| runs | plain | -DMVM_TIMELINE | delta |
 |---|---|---|---|
 | 1 | 6.71-6.76 | 6.65-6.70 | noise (instrumented not slower) |
 | 8 | 8.80-8.82 | 8.87-8.88 | +0.6% |

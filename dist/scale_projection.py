@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MODELLED projection of a trillion-parameter step to N GPUs with NVLink / network links and KVM's measured hop costs.
+"""MODELLED projection of a trillion-parameter step to N GPUs with NVLink / network links and Magni VM's measured hop costs.
 
 EVERYTHING THIS SCRIPT PRINTS IS A COST-MODEL RESULT. No number here was measured on more than one GPU, on NVLink, or on a
 network. The only measured inputs are the hop latencies below (one A100, executors sharing the device) and, when given, the

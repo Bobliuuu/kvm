@@ -2,7 +2,7 @@
 
 Branch `perf/matmul-parity-v2`. Op kernels and the frontend's tile choice only; executor and scheduler code are untouched.
 
-**Result.** gpt_162m f32, 1 step through `kvm_exec`: **755.8 ms on main -> 229.0 ms (3.3x)**. The a100 preset now emits 256 x 128
+**Result.** gpt_162m f32, 1 step through `mvm_exec`: **755.8 ms on main -> 229.0 ms (3.3x)**. The a100 preset now emits 256 x 128
 TF32 tiles (52,615 tasks per step instead of 270,914), and those tiles run 1.6-2.5x faster than before (0.56-0.73x cuBLAS TF32 at 4096^3,
 main 0.37x). The bf16 GEMM tile went from 0.46-0.48x to 0.69-0.75x cuBLAS bf16 at 4096^3 (0.77x at 8192^3).
 **Not met:** the 0.8x target (best in the op kernel is 0.73x); and **gpt_162m bf16s is 11% slower than main** (257 vs 230 ms per step),
@@ -14,8 +14,8 @@ cause not isolated (see "Open: bf16s step").
 |---|---|
 | GPU | Modal NVIDIA A100-SXM4-40GB, driver 610.57.04, max SM clock 1410 MHz; nvcc 12.8.93 (`raw/env.txt`, `raw/steps162_env.txt`) |
 | Benches | `tests/gpu_ops/bench_mm.cu` (TF32 `matmul_tile` vs `cublasSgemm` TF32 tensor-op math), `tests/gpu_ops/bench_mma_bf16.cu` (bf16 tile vs `cublasGemmEx` bf16), both in ONE process with cuBLAS, median of 5-7, every row checked against cuBLAS (all `ok`). Build: `nvcc -O2 -arch=sm_80 -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -lineinfo`. Ratios are to cuBLAS in the same process; main and this branch's TF32 default build ran in different containers of the same type (`raw/tf32_main.txt`, `raw/tf32_new.txt`); the 144 KiB variant ran in main's container (`raw/tf32_new_144k.txt`) |
-| Step time | the method of `results/2026-11-06-a100-combined`: `bench/vs_pytorch/gen.py --model gpt_162m --steps 1 --mode tf32 --tiling a100` on both trees, `kvm_exec -O3` built from both trees in one container, rounds interleaved |
-| Commits | base main `a99fdca` (step A/B 1 used `d12c206`; the difference is `kvm_exec.cu`'s bf16 storage fix, #10) |
+| Step time | the method of `results/2026-11-06-a100-combined`: `bench/vs_pytorch/gen.py --model gpt_162m --steps 1 --mode tf32 --tiling a100` on both trees, `mvm_exec -O3` built from both trees in one container, rounds interleaved |
+| Commits | base main `a99fdca` (step A/B 1 used `d12c206`; the difference is `mvm_exec.cu`'s bf16 storage fix, #10) |
 
 ## TF32 `matmul_tile`, TFLOP/s (ratio to cuBLAS TF32)
 
@@ -75,20 +75,20 @@ the bf16 tile's old epilogue restored, and a per-op trace of both builds.
 
 ## What changed
 
-1. **Staged GEMM epilogue** (`mm_epilogue_staged`, `include/kvm_ops_gpt.cuh`). Both tensor-core tiles finished with a register epilogue
+1. **Staged GEMM epilogue** (`mm_epilogue_staged`, `include/mvm_ops_gpt.cuh`). Both tensor-core tiles finished with a register epilogue
    unrolled over every fragment row and testing each optional operand per element: about 180 KB of straight-line SASS run once per tile.
    ncu on the bf16 tile at 4096^3: `stall_no_inst` 36% of all warp samples, 42% of the time outside the k loop. The accumulators now go to
    shared memory one 64-row slab at a time and a rolled loop does bias / pre / gelu / residual / accumulate with coalesced 16- or 8-byte
    accesses, the same operations in the same order.
 2. **`mm_tf32_tile`**, the fast path of the 128x128 (flag 32) and 256x128 (flag 64) TF32 tiles: cp.async stages of BK 16 x 4 (96 KiB) or,
-   in a `-DKVM_GPT_MMA_SMEM=147456` build, BK 32 x 3; fragment double buffering; one barrier per stage. MN-major operands no longer use
+   in a `-DMVM_GPT_MMA_SMEM=147456` build, BK 32 x 3; fragment double buffering; one barrier per stage. MN-major operands no longer use
    scalar loads plus register shuffles: B loads with LDS.32 in the standard fragment layout, A with LDS.64 into the mma's register pairs
    through a permuted row ownership (rows 8g + 2(i ^ (g&1)) + {0,1}); both shared layouts swizzled to zero bank conflicts (ncu). Unaligned
    shapes and 3xTF32 keep `mm_tile_big`. `__noinline__`: inlined into the op switch, the loop spilled in the k loop.
 3. **TF32 rounding in two instructions** (`f2tf32_op`): `|x| < inf ? bits + 0x1000 : bits` (CUTLASS's round_half_ulp_truncate) instead of
    a three-op integer compare; the tensor core reads the same operand, NaN and -NaN still propagate (`test_ops` checks both on every tile
    size). cuBLAS does the same: our result equals cuBLAS TF32 bitwise.
-4. **Shared memory**: `kvm_gpt_smem_bytes` returns the largest requirement (it returned a flat 104 KiB for hd = 128 builds); test harnesses
+4. **Shared memory**: `mvm_gpt_smem_bytes` returns the largest requirement (it returned a flat 104 KiB for hd = 128 builds); test harnesses
    and `bench_ops` set their attribute from it. The 144 KiB build is opt-in: it is faster for the TN tile in isolation, but the executor's
    larger launch shrinks the L1 carveout of every other op and the 162M step got slower (f32 251 vs 229 ms, bf16s 269 vs 257 ms; medians).
 5. **Frontend**: `Tiling.mm_tile` with shape fallbacks (`mm_choice`, from `perf/frontend-bigtile`); the a100 preset uses 256 (256x128,
@@ -114,7 +114,7 @@ the bf16 tile's old epilogue restored, and a per-op trace of both builds.
 | `test_extra` | 3670 passed, 0 failed |
 | `test_bf16` | 685 passed, 0 failed |
 | `run_suite.py --suite exec` (`tests/gpu/test_exec`, 144 KiB build) | 8609 checks, 0 failed, 0 suites failed, litmus PASS (`raw/exec_suite_summary.txt`) |
-| gpt_162m bundles through `kvm_exec` (96 and 144 KiB builds) | every run `OK`, all tasks completed |
+| gpt_162m bundles through `mvm_exec` (96 and 144 KiB builds) | every run `OK`, all tasks completed |
 | CPU: `tests` / `tests/frontend` | 154 OK / 126 OK (15 skipped: torch not installed locally) |
 
 Not run: the exec suite on the 96 KiB default build (its executor ran the 162M bundles); sanitizers; litmus mutant builds;

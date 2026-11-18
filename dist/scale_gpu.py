@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Sharded AdamW training on ONE GPU: every "rank" is a partition of the in-process multi-executor harness (tests/dist/test_dist.cu
-`plan`), so ZeRO gather / reduce-scatter / tensor-parallel collectives run as ordinary KVM tasks between executors that share
+`plan`), so ZeRO gather / reduce-scatter / tensor-parallel collectives run as ordinary Magni VM tasks between executors that share
 the device. No NCCL, no second GPU: this shows the sharded optimizer and the generated collectives are numerically right and how
 much device memory they take; it says nothing about NVLink or network speed.
 
@@ -27,7 +27,7 @@ sys.path[:0] = [str(ROOT / 'dist'), str(ROOT / 'runtime')]
 import scaleplan as sp          # noqa: E402
 import partition as pt          # noqa: E402
 
-TD = os.environ.get('KVM_TEST_DIST', str(ROOT / 'test_dist'))
+TD = os.environ.get('MVM_TEST_DIST', str(ROOT / 'test_dist'))
 
 
 def run_plan(plan_dir, out_dir, tag, timeout_s, tol=None, log=None):

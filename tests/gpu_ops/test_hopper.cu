@@ -1,32 +1,32 @@
-// sm_90a TMA + wgmma GEMM tiles (include/kvm_hopper.cuh) through the real op entry points (matmul_tile, matmul_mma_bf16).
+// sm_90a TMA + wgmma GEMM tiles (include/mvm_hopper.cuh) through the real op entry points (matmul_tile, matmul_mma_bf16).
 //   correctness: every transpose combination x tile kind (64x64, 128x128 flag 32, 256x128 flag 64; bf16 128x256) x epilogue mix x ragged
 //                and aligned shapes x two launch sizes (the executor's 96 KiB sm_80 launch and the 200 KiB sm_90 launch), against a float64 CPU
-//                reference of the same (tf32-truncated / bf16) inputs, and against the sm_80 mma.sync path of the same binary (kvm_tma_ready
+//                reference of the same (tf32-truncated / bf16) inputs, and against the sm_80 mma.sync path of the same binary (mvm_tma_ready
 //                cleared). The tile counters prove the Hopper path ran (a silent fallback fails the test).
 //   bench (--bench): TFLOP/s of the Hopper tile, the sm_80 tile on the same GPU and cuBLAS (TF32 / bf16, fp32 accumulate), one CTA per tile.
 // Build (sm_90a only): nvcc -O3 -arch=sm_90a -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -I../../include -I. test_hopper.cu -lcublas -o test_hopper
-//   (every layout and the bf16 tile); add -DKVM_HOPPER_DEFAULT_POLICY for test_hopper_default (the executor's default rule).
+//   (every layout and the bf16 tile); add -DMVM_HOPPER_DEFAULT_POLICY for test_hopper_default (the executor's default rule).
 #include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <functional>
 #include <cublas_v2.h>
-#ifndef KVM_GPT_MAX_HD
-#define KVM_GPT_MAX_HD 64
+#ifndef MVM_GPT_MAX_HD
+#define MVM_GPT_MAX_HD 64
 #endif
-#ifndef KVM_HOPPER_DEFAULT_POLICY   // -DKVM_HOPPER_DEFAULT_POLICY: test the executor's default rule (tf32 with K-major A and B only, no bf16)
-#define KVM_HOPPER_ALL_LAYOUTS   // every Hopper layout and the bf16 tile
+#ifndef MVM_HOPPER_DEFAULT_POLICY   // -DMVM_HOPPER_DEFAULT_POLICY: test the executor's default rule (tf32 with K-major A and B only, no bf16)
+#define MVM_HOPPER_ALL_LAYOUTS   // every Hopper layout and the bf16 tile
 #endif
-#define KVM_HARNESS_NO_FULL
+#define MVM_HARNESS_NO_FULL
 #include "harness.cuh"
-#include "kvm_ops_extra.cuh"
+#include "mvm_ops_extra.cuh"
 
-__global__ void __launch_bounds__(256, 1) k_mm(KvmCtx c, const int32_t* w, int which) {
+__global__ void __launch_bounds__(256, 1) k_mm(MvmCtx c, const int32_t* w, int which) {
     const int32_t* a = w + 13 * blockIdx.x;
-    if (which == 0) kvmgpt::matmul_tile<true>(c, a); else kvmextra::matmul_mma_bf16(c, a);   // matmul_tile: the dynamic kernel's forms
+    if (which == 0) mvmgpt::matmul_tile<true>(c, a); else mvmextra::matmul_mma_bf16(c, a);   // matmul_tile: the dynamic kernel's forms
 }
-static void set_ready(int on) { CK(cudaMemcpyToSymbol(kvm_tma_ready, &on, 4)); }
-static unsigned long long counts(int i) { unsigned long long c[4]; kvm_hopper_counts(c, true); return c[i]; }
+static void set_ready(int on) { CK(cudaMemcpyToSymbol(mvm_tma_ready, &on, 4)); }
+static unsigned long long counts(int i) { unsigned long long c[4]; mvm_hopper_counts(c, true); return c[i]; }
 
 static float tf32t(float x) { uint32_t u; memcpy(&u, &x, 4); u &= 0xffffe000u; float y; memcpy(&y, &u, 4); return y; }   // what tf32 wgmma reads
 static float bf16v(float x) { uint32_t u; memcpy(&u, &x, 4); u = (u + 0x7fffu + ((u >> 16) & 1)) & 0xffff0000u; float y; memcpy(&y, &u, 4); return y; }
@@ -38,7 +38,7 @@ struct Case { int M, N, K, fl; bool bias, res, pre, gelu, accum; };
 static int launch(Dev& d, int which, const std::vector<int32_t>& w, int nt, int smem) {
     d.sync_table();
     int32_t* wd; CK(cudaMalloc(&wd, w.size() * 4)); CK(cudaMemcpy(wd, w.data(), w.size() * 4, cudaMemcpyHostToDevice));
-    KvmCtx c{d.tab_d, (int32_t)d.tab.size(), d.err};
+    MvmCtx c{d.tab_d, (int32_t)d.tab.size(), d.err};
     k_mm<<<nt, 256, smem>>>(c, wd, which);
     CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
     cudaFree(wd);
@@ -104,11 +104,11 @@ static void run_case(Rng& rng, int which, const Case& cs, bool ob, int smem) {
     check(std::string(name) + " hopper vs f64", got[0], rout, tol);
     check(std::string(name) + " sm80 vs f64", got[1], rout, which ? tol : 4e-3);
     if (cs.pre) check(std::string(name) + " hopper pre vs f64", gpre[0], rpre, tol);
-    // The Hopper path must run whenever its pipeline fits the launch (same rule as kvm_hopper.cuh: launch - 2048 bytes usable, at least two
+    // The Hopper path must run whenever its pipeline fits the launch (same rule as mvm_hopper.cuh: launch - 2048 bytes usable, at least two
     // stages plus the double-buffered transposed copies); otherwise it must decline for every tile.
     const long avail = (long)smem - 2048;
     const long need = which ? 2L * (128 + 256) * 32 * 2 : 2L * (bm + bn) * 128 + 2L * ((ta ? bm : 0) + (!tb ? bn : 0)) * 128;
-#ifdef KVM_HOPPER_ALL_LAYOUTS
+#ifdef MVM_HOPPER_ALL_LAYOUTS
     const bool fits = need <= avail && !(!which && bm == 64 && (ta || !tb));   // 64x64 tf32: Hopper only for K-major A and B
 #else
     const bool fits = need <= avail && !which && !ta && tb;                    // default policy: tf32, K-major A and B, every tile size
@@ -173,7 +173,7 @@ static void bench(int smem) {
         for (int m0 = 0; m0 < s.M; m0 += bm) for (int n0 = 0; n0 < s.N; n0 += bn) { int32_t a[13] = {ia, ib, io, -1, -1, -1, same ? 0 : m0, same ? 0 : n0, s.M, s.N, s.K, s.fl, af}; w.insert(w.end(), a, a + 13); nt++; }
         d.sync_table();
         int32_t* wd; CK(cudaMalloc(&wd, w.size() * 4)); CK(cudaMemcpy(wd, w.data(), w.size() * 4, cudaMemcpyHostToDevice));
-        KvmCtx c{d.tab_d, (int32_t)d.tab.size(), d.err};
+        MvmCtx c{d.tab_d, (int32_t)d.tab.size(), d.err};
         auto kv = [&] { k_mm<<<nt, 256, smem>>>(c, wd, s.which); };
         set_ready(1); counts(0);
         const double th = time_ms(kv, 7);
@@ -200,8 +200,8 @@ static void bench(int smem) {
 int main(int argc, char** argv) {
     int dev; cudaDeviceProp p; CK(cudaGetDevice(&dev)); CK(cudaGetDeviceProperties(&p, dev));
     printf("device %s sm_%d%d, %d SMs\n", p.name, p.major, p.minor, p.multiProcessorCount);
-    if (!kvm_hopper_host_init()) { printf("FAIL  kvm_hopper_host_init (needs sm_90 and the driver's cuTensorMapEncodeTiled)\n"); return 1; }
-    const int big = KVM_HOP_SMEM_BYTES, small = kvm_gpt_smem_bytes(KVM_GPT_MAX_HD);
+    if (!mvm_hopper_host_init()) { printf("FAIL  mvm_hopper_host_init (needs sm_90 and the driver's cuTensorMapEncodeTiled)\n"); return 1; }
+    const int big = MVM_HOP_SMEM_BYTES, small = mvm_gpt_smem_bytes(MVM_GPT_MAX_HD);
     CK(cudaFuncSetAttribute(k_mm, cudaFuncAttributeMaxDynamicSharedMemorySize, big));
     if (argc > 1 && !strcmp(argv[1], "--bench")) { bench(argc > 2 ? atoi(argv[2]) * 1024 : big); return 0; }
     g_quiet = argc > 1 && !strcmp(argv[1], "--quiet");

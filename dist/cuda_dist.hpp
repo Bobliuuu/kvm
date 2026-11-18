@@ -1,19 +1,19 @@
 #pragma once
-// CUDA side of the distributed runtime (host code). Include AFTER kvm_exec.cu (it uses KvmExec's CK/KLOG helpers).
+// CUDA side of the distributed runtime (host code). Include AFTER mvm_exec.cu (it uses MvmExec's CK/KLOG helpers).
 //
 //   DistDevice  per-rank device resources: inbox (u32 per version variable, in DEVICE memory so peers can store into it over
 //               NVLink/PCIe), the in_vars list, the control block and the send queue (both mapped pinned HOST memory), and the
-//               KvmDistDev descriptor handed to the executor (KvmExec::set_dist).
+//               MvmDistDev descriptor handed to the executor (MvmExec::set_dist).
 //   CudaSink    applies messages received by the proxy to this device: cudaMemcpyAsync of the tile into the destination
 //               buffer, THEN (same stream) a 4-byte copy of the version into the inbox. Stream order completes the data copy
 //               before the inbox write begins, and the executor's pump reads the inbox with ld.acquire.sys.
 //   enable_peer_access  cudaDeviceEnablePeerAccess both ways for every device pair that supports it.
 #include <map>
 
-#include "../include/kvm_dist.cuh"
+#include "../include/mvm_dist.cuh"
 #include "proxy.hpp"
 
-namespace kvmd {
+namespace mvmd {
 
 #define KD_CK(call) do { cudaError_t e_ = (call); if (e_ != cudaSuccess) { \
   char m_[512]; snprintf(m_, sizeof m_, "%s:%d: %s -> %s", __FILE__, __LINE__, #call, cudaGetErrorString(e_)); throw std::runtime_error(m_); } } while (0)
@@ -47,18 +47,18 @@ class DistDevice {
     KD_CK(cudaSetDevice(device));
     KD_CK(cudaMalloc(&inbox_, (size_t)num_vars * 4)); KD_CK(cudaMemset(inbox_, 0, (size_t)num_vars * 4));
     KD_CK(cudaMalloc(&in_vars_, (size_t)std::max(num_vars, 1) * 4));
-    KD_CK(cudaHostAlloc((void**)&ctl_, sizeof(KvmDistCtl), cudaHostAllocMapped));
-    memset((void*)ctl_, 0, sizeof(KvmDistCtl));
+    KD_CK(cudaHostAlloc((void**)&ctl_, sizeof(MvmDistCtl), cudaHostAllocMapped));
+    memset((void*)ctl_, 0, sizeof(MvmDistCtl));
     ctl_->dead_ns = dead_ns;
-    sq_bytes_ = kvm_sq_bytes(sq_slots, sq_slot_bytes);
+    sq_bytes_ = mvm_sq_bytes(sq_slots, sq_slot_bytes);
     KD_CK(cudaHostAlloc(&sq_, sq_bytes_, cudaHostAllocMapped));
     KD_CK(cudaMalloc(&tail_, 8)); KD_CK(cudaMemset(tail_, 0, 8));
     SendQ::init(sq_, sq_slots, sq_slot_bytes, sq_timeout_ns, tail_);
     void* d;
     KD_CK(cudaHostGetDevicePointer(&d, sq_, 0)); sq_dev_ = (float*)d;
-    KD_CK(cudaHostGetDevicePointer(&d, (void*)ctl_, 0)); KvmDistCtl* ctl_dev = (KvmDistCtl*)d;
-    KD_CK(cudaMalloc(&dev_, sizeof(KvmDistDev)));
-    host_ = KvmDistDev{rank, world, 0, 0, in_vars_, inbox_, ctl_dev};
+    KD_CK(cudaHostGetDevicePointer(&d, (void*)ctl_, 0)); MvmDistCtl* ctl_dev = (MvmDistCtl*)d;
+    KD_CK(cudaMalloc(&dev_, sizeof(MvmDistDev)));
+    host_ = MvmDistDev{rank, world, 0, 0, in_vars_, inbox_, ctl_dev};
     KD_CK(cudaMemcpy(dev_, &host_, sizeof host_, cudaMemcpyHostToDevice));
     KD_CK(cudaStreamSynchronize(0));    // pageable H2D copies can return before the DMA lands; kernels run in non-blocking streams
   }
@@ -75,10 +75,10 @@ class DistDevice {
     KD_CK(cudaMemcpy(dev_, &host_, sizeof host_, cudaMemcpyHostToDevice));
     KD_CK(cudaStreamSynchronize(0));
   }
-  const KvmDistDev* dev() const { return dev_; }
-  float* inbox_buf() const { return (float*)inbox_; }       // as a KvmBuf: rows 1, cols num_vars
+  const MvmDistDev* dev() const { return dev_; }
+  float* inbox_buf() const { return (float*)inbox_; }       // as a MvmBuf: rows 1, cols num_vars
   int num_vars() const { return num_vars_; }
-  float* sendq_buf() const { return sq_dev_; }             // as a KvmBuf: rows 1, cols sq_bytes/4
+  float* sendq_buf() const { return sq_dev_; }             // as a MvmBuf: rows 1, cols sq_bytes/4
   size_t sendq_floats() const { return sq_bytes_ / 4; }
   void* sendq_host() const { return sq_; }
   // The proxy's SendQ reads the device-resident ticket counter through this (only after the kernel ended; cudaMemcpy is synchronous).
@@ -87,7 +87,7 @@ class DistDevice {
     q.set_tickets_reader([this]() { unsigned long long t = 0; cudaSetDevice(device_); cudaMemcpy(&t, tail_, 8, cudaMemcpyDeviceToHost); return (uint64_t)t; });
     return q;
   }
-  KvmDistCtl* ctl() const { return ctl_; }
+  MvmDistCtl* ctl() const { return ctl_; }
   int device() const { return device_; }
   std::vector<unsigned> read_inbox() const {
     cudaSetDevice(device_);
@@ -97,9 +97,9 @@ class DistDevice {
  private:
   int rank_, world_, device_, num_vars_;
   unsigned* inbox_ = nullptr; int* in_vars_ = nullptr;
-  KvmDistCtl* ctl_ = nullptr;
+  MvmDistCtl* ctl_ = nullptr;
   void* sq_ = nullptr; size_t sq_bytes_ = 0; float* sq_dev_ = nullptr; unsigned long long* tail_ = nullptr;
-  KvmDistDev host_{}, *dev_ = nullptr;
+  MvmDistDev host_{}, *dev_ = nullptr;
 };
 
 struct DevBuf { float* p; int rows, cols; };
@@ -112,11 +112,11 @@ class CudaSink : public Sink {
     KD_CK(cudaHostAlloc((void**)&vals_, sizeof(unsigned) * kSlab, cudaHostAllocDefault));
   }
   ~CudaSink() override { cudaSetDevice(device_); cudaStreamDestroy(st_); cudaFreeHost(vals_); }
-  int deliver(int, const KvmMsgHdr& h, const uint8_t* payload) override {
-    if (h.dst_buf < 0 || h.dst_buf >= (int)bufs_.size() || h.rows < 1 || h.cols < 1 || h.dst_ld < h.cols || h.dst_off < 0) return KVM_ERR_DIST_BAD_MSG;
+  int deliver(int, const MvmMsgHdr& h, const uint8_t* payload) override {
+    if (h.dst_buf < 0 || h.dst_buf >= (int)bufs_.size() || h.rows < 1 || h.cols < 1 || h.dst_ld < h.cols || h.dst_off < 0) return MVM_ERR_DIST_BAD_MSG;
     const DevBuf& b = bufs_[h.dst_buf];
-    if (!b.p || (long long)h.dst_off + (long long)(h.rows - 1) * h.dst_ld + h.cols > (long long)b.rows * b.cols) return KVM_ERR_DIST_BAD_MSG;
-    if (h.var >= dd_.num_vars()) return KVM_ERR_DIST_BAD_SIGNAL;
+    if (!b.p || (long long)h.dst_off + (long long)(h.rows - 1) * h.dst_ld + h.cols > (long long)b.rows * b.cols) return MVM_ERR_DIST_BAD_MSG;
+    if (h.var >= dd_.num_vars()) return MVM_ERR_DIST_BAD_SIGNAL;
     KD_CK(cudaSetDevice(device_));
     float* dst = b.p + h.dst_off;
     if (h.dst_ld == h.cols) KD_CK(cudaMemcpyAsync(dst, payload, (size_t)h.rows * h.cols * 4, cudaMemcpyHostToDevice, st_));
@@ -139,7 +139,7 @@ class CudaSink : public Sink {
     KD_CK(cudaStreamSynchronize(st_));      // data + versions are on the device; the staging slab may be reused
   }
   void fail(int code, int arg) override {
-    KvmDistCtl* c = dd_.ctl();
+    MvmDistCtl* c = dd_.ctl();
     if (c->fail_code) return;
     c->fail_arg = arg;
     __atomic_store_n((int*)&c->fail_code, code, __ATOMIC_RELEASE);
@@ -157,4 +157,4 @@ class CudaSink : public Sink {
   std::vector<unsigned> last_;
 };
 
-}  // namespace kvmd
+}  // namespace mvmd

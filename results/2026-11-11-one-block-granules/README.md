@@ -11,7 +11,7 @@ Paths on the host are shown as `/root/reads/`.
   fusion-pass test on the gate bundles above (CPU): the run alone fuses into the one-block form, and its 4 copies into 4 such runs, for
   h72 and h48, so gate 2 was read on the one-block form.
 - **`sasshash_cmp.txt`** (CPU, before any timing): each kernel entry's SASS hashed with addresses stripped, this head's binary against the
-  stack's. Only `kvm_static_block`, the one-block form's own entry, differs; the generic kernel and every split and grid entry are identical.
+  stack's. Only `mvm_static_block`, the one-block form's own entry, differs; the generic kernel and every split and grid entry are identical.
 - **`ab_bitwise.json`, `ab_bitwise.log`**: mlp72-r1, mlp72-r8 and the mixed-width row, 5 paired rounds, every weight bitwise to the stack's
   (they take 16-row slices, whose arithmetic the granules keep).
 - **`ab_r32.json`, `ab_r32.log`**: mlp72-r32, its losses within the panel's 2e-3 (its 32-row slices now sum 16-row granules).

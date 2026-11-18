@@ -79,7 +79,7 @@ class Launcher(unittest.TestCase):
         ranks, peers = launch.layout(nodes, 29500, launch.parse_advertise('h1:5000,h2:6000/6001', nodes))
         self.assertEqual(peers, 'h1:5000,h2:6000,h2:6001')
         argv, env = launch.build_cmd(ranks[2], 3, peers, ['x'], '', 10, {}, 41000)
-        self.assertEqual(env['KVM_DIST_LISTEN_PORT'], '41001')
+        self.assertEqual(env['MVM_DIST_LISTEN_PORT'], '41001')
         self.assertEqual(launch.peers_for(ranks[1], ranks, peers, 41000), 'h1:5000,127.0.0.1:41000,127.0.0.1:41001')   # same node: loopback
         self.assertEqual(launch.peers_for(ranks[0], ranks, peers, 41000), '127.0.0.1:41000,h2:6000,h2:6001')
         with self.assertRaises(SystemExit):

@@ -1,11 +1,11 @@
       6     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
       1     32 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
- Function k_oneILi48EEv6KvmCtxPKiS2_:	  REG:241 STACK:0 SHARED:0 LOCAL:0 CONSTANT[2]:12 CONSTANT[0]:392 TEXTUR
- Function k_oneILi47EEv6KvmCtxPKiS2_:	  REG:166 STACK:0 SHARED:0 LOCAL:0 CONSTANT[2]:12 CONSTANT[0]:392 TEXTUR
- Function k_oneILi46EEv6KvmCtxPKiS2_:	  REG:32 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:392 TEXTURE:0 SURFACE:0 SA
- Function k_oneILi45EEv6KvmCtxPKiS2_:	  REG:212 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:392 TEXTURE:0 SURFACE:0 S
- Function k_oneILi34EEv6KvmCtxPKiS2_:	  REG:197 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:392 TEXTURE:0 SURFACE:0 S
- Function k_run6KvmCtxPKiS1_S1_:	  REG:255 STACK:32 SHARED:0 LOCAL:0 CONSTANT[2]:368 CONSTANT[0]:400 TEXTURE:0
+ Function k_oneILi48EEv6MvmCtxPKiS2_:	  REG:241 STACK:0 SHARED:0 LOCAL:0 CONSTANT[2]:12 CONSTANT[0]:392 TEXTUR
+ Function k_oneILi47EEv6MvmCtxPKiS2_:	  REG:166 STACK:0 SHARED:0 LOCAL:0 CONSTANT[2]:12 CONSTANT[0]:392 TEXTUR
+ Function k_oneILi46EEv6MvmCtxPKiS2_:	  REG:32 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:392 TEXTURE:0 SURFACE:0 SA
+ Function k_oneILi45EEv6MvmCtxPKiS2_:	  REG:212 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:392 TEXTURE:0 SURFACE:0 S
+ Function k_oneILi34EEv6MvmCtxPKiS2_:	  REG:197 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:392 TEXTURE:0 SURFACE:0 S
+ Function k_run6MvmCtxPKiS1_S1_:	  REG:255 STACK:32 SHARED:0 LOCAL:0 CONSTANT[2]:368 CONSTANT[0]:400 TEXTURE:0
 test_extra exit 2
 PASS  attn_full B=1 T=100 H=2 Hkv=2 hd=64 bwd bitwise deterministic  
 CUDA error invalid argument at test_extra.cu:50
@@ -68,7 +68,7 @@ BENCH  matmul TF32 NN 512x512x512                     full dispatch    0.021 ms 
 BENCH  matmul TF32 NN 512x512x512                     single-op        0.021 ms [0.021..0.021]    12787.5 GFLOP/s  (8.2% of 156000)
 
 18 passed, 0 failed
-VARIANT KVM_GPT_BIG_BK=32
+VARIANT MVM_GPT_BIG_BK=32
 device: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz
 PASS  bench check: matmul TF32 NN 4096x4096x4096  400 sampled elements relerr 2.67e-04
 BENCH  matmul TF32 NN 4096x4096x4096                  full dispatch    4.304 ms [4.304..4.305]    31929.2 GFLOP/s  (20.5% of 156000)
@@ -126,7 +126,7 @@ BENCH  matmul TF32 NN 512x512x512                     full dispatch    0.021 ms 
 BENCH  matmul TF32 NN 512x512x512                     single-op        0.021 ms [0.021..0.021]    12977.4 GFLOP/s  (8.3% of 156000)
 
 18 passed, 0 failed
-VARIANT KVM_GPT_BIG_NST=4
+VARIANT MVM_GPT_BIG_NST=4
 device: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz
 PASS  bench check: matmul TF32 NN 4096x4096x4096  400 sampled elements relerr 2.67e-04
 BENCH  matmul TF32 NN 4096x4096x4096                  full dispatch    4.504 ms [4.504..4.504]    30514.4 GFLOP/s  (19.6% of 156000)
@@ -242,8 +242,8 @@ BENCH  matmul TF32 NN 512x512x512                     full dispatch    0.022 ms 
 BENCH  matmul TF32 NN 512x512x512                     single-op        0.021 ms [0.021..0.021]    12725.4 GFLOP/s  (8.2% of 156000)
 
 18 passed, 0 failed
-VARIANT BENCH_MINB=2,KVM_GPT_BIG_BK=32
-bash: line 2: ./bench_BENCH_MINB=2,KVM_GPT_BIG_BK=32: No such file or directory
+VARIANT BENCH_MINB=2,MVM_GPT_BIG_BK=32
+bash: line 2: ./bench_BENCH_MINB=2,MVM_GPT_BIG_BK=32: No such file or directory
 BENCH_GROUP=8
 device: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz
 PASS  bench check: matmul TF32 NN 4096x4096x4096  400 sampled elements relerr 2.67e-04

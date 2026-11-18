@@ -2,23 +2,23 @@
 # On the GPU box, from the repository root: build and run R's litmus harness against THIS tree's headers. Called by run_exec_tests.sh --litmus.
 # Properties must report 0 violations; every mutant must report violations (its harness can fail); probes must print no FINDING.
 set -u
-ARCH="${KVM_ARCH:-sm_80}"; NV="$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc | tail -1)"; B="-O3 -arch=$ARCH -std=c++17 -Iinclude --fmad=false -lineinfo"
+ARCH="${MVM_ARCH:-sm_80}"; NV="$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc | tail -1)"; B="-O3 -arch=$ARCH -std=c++17 -Iinclude --fmad=false -lineinfo"
 mkdir -p out
 # LIT_PREBUILT=1: use the binaries already in out/ (built elsewhere with LIT_BUILD_ONLY=1, same tree); LIT_BUILD_ONLY=1: build, then exit.
 # The five executor builds below are independent and each needs a long ptxas run: they run in parallel (host RAM ~35 GB each).
 if [ -z "${LIT_PREBUILT:-}" ]; then
-echo "BUILD: tests/litmus/build.sh (prod + 10 mutants), e2e, e2e -DKVM_BREAK_FENCE|CHUNK_RELEASE|CONT, kvm_exec"
+echo "BUILD: tests/litmus/build.sh (prod + 10 mutants), e2e, e2e -DMVM_BREAK_FENCE|CHUNK_RELEASE|CONT, mvm_exec"
 bash tests/litmus/build.sh "$PWD/out" 2>&1 | tail -2 &
-$NV $B -DKVM_EXEC_NO_MAIN -DKVM_NEW tests/litmus/e2e.cu -o out/e2e 2>&1 | grep -i " error" &
-$NV $B -DKVM_EXEC_NO_MAIN -DKVM_NEW -DKVM_BREAK_FENCE tests/litmus/e2e.cu -o out/e2e_breakfence 2>&1 | grep -i " error" &
-$NV $B kvm_exec.cu -o out/kvm_exec 2>&1 | grep -i " error" &
-$NV $B -DKVM_EXEC_NO_MAIN -DKVM_NEW -DKVM_BREAK_CHUNK_RELEASE tests/litmus/e2e.cu -o out/e2e_breakchunk 2>&1 | grep -i " error" &
-$NV $B -DKVM_EXEC_NO_MAIN -DKVM_NEW -DKVM_BREAK_CONT tests/litmus/e2e.cu -o out/e2e_breakcont 2>&1 | grep -i " error" &
+$NV $B -DMVM_EXEC_NO_MAIN -DMVM_NEW tests/litmus/e2e.cu -o out/e2e 2>&1 | grep -i " error" &
+$NV $B -DMVM_EXEC_NO_MAIN -DMVM_NEW -DMVM_BREAK_FENCE tests/litmus/e2e.cu -o out/e2e_breakfence 2>&1 | grep -i " error" &
+$NV $B mvm_exec.cu -o out/mvm_exec 2>&1 | grep -i " error" &
+$NV $B -DMVM_EXEC_NO_MAIN -DMVM_NEW -DMVM_BREAK_CHUNK_RELEASE tests/litmus/e2e.cu -o out/e2e_breakchunk 2>&1 | grep -i " error" &
+$NV $B -DMVM_EXEC_NO_MAIN -DMVM_NEW -DMVM_BREAK_CONT tests/litmus/e2e.cu -o out/e2e_breakcont 2>&1 | grep -i " error" &
 wait
 ls out | tr '\n' ' '; echo
 fi
 [ -n "${LIT_BUILD_ONLY:-}" ] && exit 0
-L="timeout"; [ -n "${KVM_NO_LOCK:-}" ] || L="flock -w 7200 $HOME/.gpu.lock timeout"; cd out; fail=0; ok_props=0; ok_mut=0
+L="timeout"; [ -n "${MVM_NO_LOCK:-}" ] || L="flock -w 7200 $HOME/.gpu.lock timeout"; cd out; fail=0; ok_props=0; ok_mut=0
 prop() {  # name, timeout, command...
   local n="$1" t="$2"; shift 2; local o; o="$($L "$t" "$@" 2>&1)"; local rc=$?; local last; last="$(echo "$o" | grep -E "^TOTAL" | tail -1)"
   echo "property $n: $last (exit $rc)"; if [ $rc -eq 0 ]; then ok_props=$((ok_props+1)); else fail=$((fail+1)); echo "$o" | tail -5; fi; }
@@ -43,7 +43,7 @@ mut popticket/queue 120 ./litmus_popticket queue 2
 mut fifoticket/queuefifo 120 ./litmus_fifoticket queuefifo 2
 mut fifotail/queuefifo 120 ./litmus_fifotail queuefifo 2
 o="$($L 400 ./litmus_qrelax queue 5 2>&1)"; echo "mutant qrelax/queue (S4, expected NOT detected on A100: the release store is required by the model, not observable here): $(echo "$o" | grep ^TOTAL | tail -1)"
-echo "== e2e scenarios with slot recycling and windows (each must pass), and the KVM_BREAK_FENCE control (must report stale reads)"
+echo "== e2e scenarios with slot recycling and windows (each must pass), and the MVM_BREAK_FENCE control (must report stale reads)"
 for t in dag versions ring bigrecord lateadmit contver probe_closerace; do o="$($L 900 ./e2e $t "${ES:-2}" 2>&1)"; rc=$?; echo "e2e $t: $(echo "$o" | tail -1) (exit $rc)"; [ $rc -eq 0 ] && ok_props=$((ok_props+1)) || { fail=$((fail+1)); echo "$o" | tail -5; }; done
 o="$($L 900 ./e2e_breakfence versions 1 2>&1)"; rc=$?; echo "e2e_breakfence versions: $(echo "$o" | tail -1) (exit $rc)"; [ $rc -ne 0 ] && ok_mut=$((ok_mut+1)) || { fail=$((fail+1)); echo "  EXPECTED stale reads"; }
 # chunked release (indegree add-then-check) and continuation (version wait) controls, each on the scenario that exercises it: lateadmit

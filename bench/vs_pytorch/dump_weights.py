@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run kvm_exec --dump-buffers on a bundle; keep the buffers named w.* (parameters after the run) and loss.* as float32 files in OUT.
+"""Run mvm_exec --dump-buffers on a bundle; keep the buffers named w.* (parameters after the run) and loss.* as float32 files in OUT.
    usage: dump_weights.py EXE BUNDLE OUT        compare: dump_weights.py --compare OUT_A OUT_B"""
 import json, re, subprocess, sys
 from pathlib import Path

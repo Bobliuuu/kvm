@@ -6,29 +6,29 @@
 // Run:   ./bench_attn [B T H Hkv]   (default 4 1024 12 12 = the 162M GPT; hd is -DBENCH_HD, default 64)   BENCH_REPS=n repetitions.
 //        BENCH_BF16=1: q, k, v, dO and every output in raw bf16 storage (the bf16s step's attention), inputs rounded to bf16; the double
 //        reference then reads the rounded inputs and the checks allow one bf16 rounding of the output.
-#define KVM_HARNESS_NO_FULL
+#define MVM_HARNESS_NO_FULL
 #ifndef BENCH_HD
 #define BENCH_HD 64
 #endif
-#define KVM_GPT_MAX_HD BENCH_HD
+#define MVM_GPT_MAX_HD BENCH_HD
 #include <algorithm>
 #include "harness.cuh"
 #include "refs.hpp"
 
 #define ONE_OP_KERNEL(NAME) \
-    __global__ void __launch_bounds__(KVM_GPT_THREADS) k_##NAME(KvmCtx c, const int32_t* w, const int* off) { kvm_op_##NAME(c, w + off[blockIdx.x]); }
+    __global__ void __launch_bounds__(MVM_GPT_THREADS) k_##NAME(MvmCtx c, const int32_t* w, const int* off) { mvm_op_##NAME(c, w + off[blockIdx.x]); }
 ONE_OP_KERNEL(attn_fwd) ONE_OP_KERNEL(attn_bwd_delta) ONE_OP_KERNEL(attn_bwd_dq) ONE_OP_KERNEL(attn_bwd_dkv)
 
-struct Stage { int32_t* w; int* off; int n; KvmCtx c; };
+struct Stage { int32_t* w; int* off; int n; MvmCtx c; };
 static Stage stage(Dev& d, const Batch& b) {
     d.sync_table(); Stage s{}; s.n = (int)b.op.size();
     CK(cudaMalloc(&s.w, b.w.size() * 4 + 4)); CK(cudaMalloc(&s.off, s.n * 4));
     CK(cudaMemcpy(s.w, b.w.data(), b.w.size() * 4, cudaMemcpyHostToDevice)); CK(cudaMemcpy(s.off, b.off.data(), s.n * 4, cudaMemcpyHostToDevice));
-    s.c = KvmCtx{d.tab_d, (int32_t)d.tab.size(), d.err};
+    s.c = MvmCtx{d.tab_d, (int32_t)d.tab.size(), d.err};
     return s;
 }
-using Kernel = void (*)(KvmCtx, const int32_t*, const int*);
-static void launch(Kernel k, const Stage& s, int smem) { k<<<s.n, KVM_GPT_THREADS, smem>>>(s.c, s.w, s.off); }
+using Kernel = void (*)(MvmCtx, const int32_t*, const int*);
+static void launch(Kernel k, const Stage& s, int smem) { k<<<s.n, MVM_GPT_THREADS, smem>>>(s.c, s.w, s.off); }
 
 static std::vector<double> time_ms(const std::function<void()>& f, int iters, int reps) {
     cudaEvent_t a, b; cudaEventCreate(&a); cudaEventCreate(&b);
@@ -52,7 +52,7 @@ static void report(const char* what, int tasks, const std::vector<double>& t, do
 int main(int argc, char** argv) {
     int B = 4, T = 1024, H = 12, Hkv = 12, HD = BENCH_HD;
     if (argc >= 5) { B = atoi(argv[1]); T = atoi(argv[2]); H = atoi(argv[3]); Hkv = atoi(argv[4]); }
-    const int reps = getenv("BENCH_REPS") ? atoi(getenv("BENCH_REPS")) : 7, R = B * T, RB = KVM_GPT_ATTN_ROWS;
+    const int reps = getenv("BENCH_REPS") ? atoi(getenv("BENCH_REPS")) : 7, R = B * T, RB = MVM_GPT_ATTN_ROWS;
     cudaDeviceProp pr; CK(cudaGetDeviceProperties(&pr, 0));
     printf("device: %s, %d SMs, %d MHz; B=%d T=%d H=%d Hkv=%d hd=%d, %d rows per task\n", pr.name, pr.multiProcessorCount, pr.clockRate / 1000, B, T, H, Hkv, HD, RB);
     const bool bf = getenv("BENCH_BF16") && atoi(getenv("BENCH_BF16"));
@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
         bkv.add(OP_attn_bwd_dkv, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dk).b(dvv).i(b).i(h).i(k0).i(T).i(H).i(HD).f(sc));
     const int drows = getenv("BENCH_DELTA_ROWS") ? atoi(getenv("BENCH_DELTA_ROWS")) : 128;   // rows per attn_bwd_delta task
     for (int r0 = 0; r0 < R; r0 += drows) bd.add(OP_attn_bwd_delta, A().b(o).b(dO).b(delta).i(r0).i(std::min(R, r0 + drows)).i(T).i(H).i(HD));
-    const int smem = kvm_gpt_smem_bytes(HD);
+    const int smem = mvm_gpt_smem_bytes(HD);
     for (Kernel kk : {(Kernel)k_attn_fwd, (Kernel)k_attn_bwd_delta, (Kernel)k_attn_bwd_dq, (Kernel)k_attn_bwd_dkv})
         CK(cudaFuncSetAttribute(kk, cudaFuncAttributeMaxDynamicSharedMemorySize, smem));
     auto sf = stage(dv, f), sd = stage(dv, bd), sq = stage(dv, bq), skv = stage(dv, bkv);

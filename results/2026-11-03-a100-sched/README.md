@@ -3,20 +3,20 @@
 - GPU: NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver 580.105.08 (CUDA 13.0), nvcc/runtime 12.8.93, SM clock max 1410 MHz. Shared box: every run under `flock ~/.gpu.lock`.
 - Branch `feat/sched` (based on `feat/executor` 083513e). Device code is commit a001893; later commits touch tests and the runner only. Each file's own header line
   names the commit it ran at (`+dirty` = tests/runner edits not yet committed; the device sources were identical to the commit).
-- Build: `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DKVM_EXEC_NO_MAIN tests/gpu/test_sched.cu` (and `test_exec.cu`).
-- Commands: `KVM_HOST=... ./run_sched_tests.sh` / `--negative` / `--sanitize` / `--exec` / `--bench [suite...]`.
+- Build: `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DMVM_EXEC_NO_MAIN tests/gpu/test_sched.cu` (and `test_exec.cu`).
+- Commands: `MVM_HOST=... ./run_sched_tests.sh` / `--negative` / `--sanitize` / `--exec` / `--bench [suite...]`.
 - Files: functional.txt, negative.txt, sanitizer.txt, exec-suites.txt, bench.txt (calib, dispatch, arbiter, rebalance, baselines, affinity), overload.txt.
 
-## What was built (all in `include/kvm_sched.h|cuh`, `include/kvm_ops_cost.inc`, hunks marked SCHED in `kvm_exec.cuh`)
+## What was built (all in `include/mvm_sched.h|cuh`, `include/mvm_ops_cost.inc`, hunks marked SCHED in `mvm_exec.cuh`)
 
 The scheduler sees `workload_id` (the class), `priority`, `deadline_us` and the per-op cost table; nothing else.
 
 | Part | Mechanism |
 |---|---|
 | Sharing | per-class queues; tier 0 inherited boost, tier 1 below reservation (`min_cta`), tier 2 deadline (EDF over bucket heads, `urgent_us`), tier 3 weighted virtual time (charged at claim, corrected at end, catch-up on activation = work conserving, no banked credit). Caps `max_cta`, `bw_cta`; aging inside a class unchanged |
-| Runtime updates | host writes `KvmSchedParams` under a seqlock into the mapped control block; the policy block (block 1) mirrors it to device memory within a tick (about 2 us). No relaunch |
-| Bandwidth | `kvm_ops_cost.inc` (by op NAME, default MIXED/0 bytes): resource profile + bytes from typed args (`matmul`: 4(mk+kn+mn)); BW tasks under 16 KiB are demoted to latency-bound. Concurrent-BW-CTA limit per class and global; the policy block measures achieved MB/s from finished tasks' bytes and device timestamps and runs AIMD on the global limit when a protected class's queue wait exceeds its target |
-| Rebalancing | work conservation (idle share lent at once, reclaimed at the next task boundary) + `KvmController` (host thread over the mapped telemetry: smoothed demand, fast attack, slow release, deadband) |
+| Runtime updates | host writes `MvmSchedParams` under a seqlock into the mapped control block; the policy block (block 1) mirrors it to device memory within a tick (about 2 us). No relaunch |
+| Bandwidth | `mvm_ops_cost.inc` (by op NAME, default MIXED/0 bytes): resource profile + bytes from typed args (`matmul`: 4(mk+kn+mn)); BW tasks under 16 KiB are demoted to latency-bound. Concurrent-BW-CTA limit per class and global; the policy block measures achieved MB/s from finished tasks' bytes and device timestamps and runs AIMD on the global limit when a protected class's queue wait exceeds its target |
+| Rebalancing | work conservation (idle share lent at once, reclaimed at the next task boundary) + `MvmController` (host thread over the mapped telemetry: smoothed demand, fast attack, slow release, deadband) |
 | Inheritance | parked-waiter counts per (version, class), publisher classes per version, transitive closure each tick; a boosted class ignores caps and runs as if under reservation. Class granular |
 | Affinity | a ready task is offered only to the block that released it for `affinity_us` |
 | Telemetry | live: per-class running/ready/CTA-ns/tasks/bytes/misses/window waits/BW MB/s/limit/boost mask in the mapped block; after the run: trace CSV with bytes, resource, start-reason (resv/boost/urgent), and a per-workload report (CTA-seconds, wait p50/p99/max, misses, GB/s) |
@@ -38,7 +38,7 @@ Chunking is host-side: a long op split into independent tasks over sub-views of 
 | Priority inheritance | 3 shapes (publisher class throttled to 0 CTAs; transitive 2-hop with both throttled; waiter parked before the publisher bundle is admitted): the waiter finishes in under 1 ms, started under boost |
 | The harness detects the deadlock | `inherit_neg` (inheritance off): the waiter does not finish in 400 ms behind the throttled publisher; the host then lifts the throttle (also exercising a run-time update) |
 | Existing exec suites | `test_exec` with the new tree, scheduler off: 8505 checks, 0 failed (exec-suites.txt) |
-| Compiler bundle | `kvm_exec --sched dynamic --classes 2 --weights 3,1 --min 1,0 --arbiter --golden` on `examples/live_training_inference.json`: 10/10 buffer values bitwise, versions and observed versions match (not in these logs) |
+| Compiler bundle | `mvm_exec --sched dynamic --classes 2 --weights 3,1 --min 1,0 --arbiter --golden` on `examples/live_training_inference.json`: 10/10 buffer values bitwise, versions and observed versions match (not in these logs) |
 | Sanitizers | compute-sanitizer memcheck, racecheck, synccheck on the `smoke` suite (all three modes, a throttled-publisher inheritance case): 0 errors, 0 hazards |
 
 ## Dispatch cost: where dynamic sharing loses (bench.txt, `dispatch`; 32 workers, equal tasks, 3 runs)

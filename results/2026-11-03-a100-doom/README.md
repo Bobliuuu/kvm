@@ -16,7 +16,7 @@ sha256), the 64-bit fingerprint the device computes in `doom_status`, and the 14
 
 | Test | Command | Result |
 |---|---|---|
-| Standalone, one 256-thread CTA, same device functions as the ops | `KVM_HOST=... doom/tests/run_gpu.sh 2000` | 2000/2000 frames raw-identical, fingerprint-identical, state-identical. Final: 6/6 kills, 0 deaths, 5 items, level finished at tic 1500 (42.9 s) |
+| Standalone, one 256-thread CTA, same device functions as the ops | `MVM_HOST=... doom/tests/run_gpu.sh 2000` | 2000/2000 frames raw-identical, fingerprint-identical, state-identical. Final: 6/6 kills, 0 deaths, 5 items, level finished at tic 1500 (42.9 s) |
 | compute-sanitizer memcheck, 12 frames (boot + 11 tics) | `SANITIZE=memcheck doom/tests/run_gpu.sh 12` | 0 errors, frames still identical |
 | compute-sanitizer racecheck, 8 frames | `SANITIZE=racecheck doom/tests/run_gpu.sh 8` | 0 hazards, frames still identical |
 | Through the executor, 700 frames, alone | `doom/tests/run_exec.sh 700` | 700/700 identical (raw, fingerprint, state) |
@@ -54,15 +54,15 @@ Reading it honestly:
 - compute-sanitizer found a real code-generation bug: LLVM GlobalOpt shrinks 0/1 int globals to `i1` and llc NVPTX loads them with `ld.u16` from a 1-byte symbol
   (out-of-bounds read). `doom/glue/widen_i1_globals.py` rewrites those 15 globals to i8; memcheck is clean.
 - The engine keeps `argv` after start-up; a stack-allocated argv crashed the CPU oracle at the level exit (tic 1500). Fixed (static storage) in both builds.
-- `include/kvm_exec.cuh` `registry_ok()` still demands dense op ids (`id == position`), so any id >= 32 (gpt, game) fails its static_assert although
-  `kvm_ops_list.inc` and its own message promise sparse ids. Not my file; `doom/tests/run_exec.sh` removes that one condition from the scratch copy on the box
-  before building (logged as WORKAROUND). Fix = drop `kKvmOps[i].id != i ||`; `kvm_op()` already searches by id.
-- The stock `kvm_exec` CLI cannot run Doom (no hook to upload the WAD and set the stack limit): `doom/exec_main.cu` (`doom_exec`) reuses its `KvmExec` and
-  bundle reader and does both through `kvm_doom_host_init()`.
+- `include/mvm_exec.cuh` `registry_ok()` still demands dense op ids (`id == position`), so any id >= 32 (gpt, game) fails its static_assert although
+  `mvm_ops_list.inc` and its own message promise sparse ids. Not my file; `doom/tests/run_exec.sh` removes that one condition from the scratch copy on the box
+  before building (logged as WORKAROUND). Fix = drop `kMvmOps[i].id != i ||`; `mvm_op()` already searches by id.
+- The stock `mvm_exec` CLI cannot run Doom (no hook to upload the WAD and set the stack limit): `doom/exec_main.cu` (`doom_exec`) reuses its `MvmExec` and
+  bundle reader and does both through `mvm_doom_host_init()`.
 
 ## Watch it
 
 `doom_executor_700frames.mp4` (700 frames, 320x200, 35 fps) is the executor run beside the load. Any run's `frames.bin` converts with
 `python3 doom/view.py frames.bin --video out.mp4` (needs imageio + imageio-ffmpeg) or `--png DIR --every 5` (stdlib only).
 
-Raw logs: `logs/<UTC>-doomtest`, `logs/<UTC>-doomexec` (git-ignored); per-task traces (`trace.csv`) stay on the box in `~/kvm-doom-scratch/logs/doomexec/`.
+Raw logs: `logs/<UTC>-doomtest`, `logs/<UTC>-doomexec` (git-ignored); per-task traces (`trace.csv`) stay on the box in `~/mvm-doom-scratch/logs/doomexec/`.

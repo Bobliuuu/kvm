@@ -17,7 +17,7 @@
    6,
    7
   ],
-  "survivors_kvm": [
+  "survivors_mvm": [
    6,
    7
   ],
@@ -39,12 +39,12 @@
    "6": 0.06720338761806488,
    "7": 0.045380234718322754
   },
-  "final_loss_kvm": {
+  "final_loss_mvm": {
    "6": 0.06720557808876038,
    "7": 0.045377880334854126
   },
   "runs_diverged_in_full_pop_ref": [],
-  "kill_rung_kvm": [
+  "kill_rung_mvm": [
    1,
    1,
    1,
@@ -190,16 +190,16 @@
    ]
   }
  },
- "kvm_ms": {
+ "mvm_ms": {
   "full_population": 6.9345,
   "controlled": 6.782
  },
  "speedup": {
-  "kvm_ctrl_vs_best_torch_ctrl_eager": 1.8272557395005853,
-  "kvm_ctrl_vs_best_torch_ctrl_compiled": 1.692725507533153,
-  "kvm_ctrl_vs_best_torch_any": 1.692725507533153,
-  "kvm_full_vs_B0_eager": 2.279247234701225,
-  "kvm_full_vs_B0_compiled": 1.6408807929312197
+  "mvm_ctrl_vs_best_torch_ctrl_eager": 1.8272557395005853,
+  "mvm_ctrl_vs_best_torch_ctrl_compiled": 1.692725507533153,
+  "mvm_ctrl_vs_best_torch_any": 1.692725507533153,
+  "mvm_full_vs_B0_eager": 2.279247234701225,
+  "mvm_full_vs_B0_compiled": 1.6408807929312197
  },
  "torch_per_run_gpu_mem_note": "all torch variants use manual fwd/bwd with bmm, TF32, CUDA graphs"
 }

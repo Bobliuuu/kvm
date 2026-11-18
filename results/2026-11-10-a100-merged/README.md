@@ -33,8 +33,8 @@ Clocks: every stage ran at a 1,410 MHz median; GPT 162M dipped to 1,260 MHz unde
 
 ## What ran
 
-* **Executor:** one `kvm_exec` for every row, sha256 `43cb2f0c…7bc7c` (`env.json`), built with
-  `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -diag-suppress 177 -DKVM_LEAN`.
+* **Executor:** one `mvm_exec` for every row, sha256 `43cb2f0c…7bc7c` (`env.json`), built with
+  `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -diag-suppress 177 -DMVM_LEAN`.
   The tree is this branch's, before its last two changes: `softmax_ce_fused` still at id 134, and `runtime/abi.py`, `runtime/ref_ops.py`,
   `tests/test_registries.py` as on main. The id move changes one case label in the executor's dispatch; the `abi.py` change is Python only.
 * **Bench:** `bench/` in this folder, the bench exactly as run (bench_version 3.3). It is the repository's `bench/exec_vs_torch` and
@@ -69,7 +69,7 @@ Clocks: every stage ran at a 1,410 MHz median; GPT 162M dipped to 1,260 MHz unde
 | static path `run_check.sh` on the production executor | A100-SXM4-40GB | PASS (fused step against float64 6.58e-6, bound 1.33e-4) | `tests/static_run_check_a100.log` |
 | litmus `mp` on the production build; `weakpub` mutant | A100-SXM4-40GB | 0 violations in 2,000,000 rounds, every control detected; the mutant shows 63 violations (caught) | `tests/litmus_mp_a100.txt`, `tests/litmus_weakpub_a100.txt` |
 
-The sm_86 builds add `-DKVM_GPT_BIG_BK=16 -DKVM_GPT_MMA_SMEM=90112`, since those GPUs opt into 99 KB of shared memory a block where the
+The sm_86 builds add `-DMVM_GPT_BIG_BK=16 -DMVM_GPT_MMA_SMEM=90112`, since those GPUs opt into 99 KB of shared memory a block where the
 production tiles launch with 144 KiB.
 
 ## The GPT rows on main, same host and session

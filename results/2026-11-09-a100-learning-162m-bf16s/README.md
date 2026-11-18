@@ -3,13 +3,13 @@
 ![loss](loss.png)
 
 The bf16s twin of `results/2026-11-06-a100-learning-162m` (f32). Same model, init, token stream, AdamW, LR schedule and clip; the model runs with
-`precision: "bf16s"` (bf16 activations in 2-byte buffers, bf16 tensor-core GEMM tiles, fp32 master weights, gradients and AdamW state). One `kvm_run`
+`precision: "bf16s"` (bf16 activations in 2-byte buffers, bf16 tensor-core GEMM tiles, fp32 master weights, gradients and AdamW state). One `mvm_run`
 launch, 300 admissions of one step each (window 1).
 
 | | |
 |---|---|
-| GPU | NVIDIA A100-SXM4-40GB (Modal), 108 SMs, driver 610.57.04; `kvm_run` built with nvcc 12.4; torch 2.15.0+cu132 |
-| Build | `nvcc -O3 -arch=sm_80 -std=c++17 -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 demo/kvm_run.cu` |
+| GPU | NVIDIA A100-SXM4-40GB (Modal), 108 SMs, driver 610.57.04; `mvm_run` built with nvcc 12.4; torch 2.15.0+cu132 |
+| Build | `nvcc -O3 -arch=sm_80 -std=c++17 -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 demo/mvm_run.cu` |
 | Code | main at `bdda80d` (executor, ops and frontend), plus the test tools of this branch (`tests/gpt162/*`, `tests/modal/run_gpt162.py`: bf16 torch curve, `--prec`, `--bin-dir`, `--gpu40`) |
 | Command | `modal run --detach tests/modal/run_gpt162.py --stage build --bin-dir BIN-main-bdda80d`, then `--stage learn --tag learn-bf16s-main-bdda80d --prec bf16s --bin-dir BIN-main-bdda80d --gpu40 --k 256 --noise 0.1 --steps 300 --lr 3e-4 --warmup 5` |
 | Model | `model.json`: gpt_162m (12 layers, d768, 12 heads, seq 1024, batch 4, vocab 50304), 256-token noisy bigram stream (`data_vocab 256`, `data_noise 0.1`, exact entropy 0.876 nats) |
@@ -44,10 +44,10 @@ torch's own bf16 and tf32 runs at every step; it reaches the entropy floor and g
 - Step time is not comparable to the f32 record directly: that run used older executor code on an A100-80GB (1.3 s/step). Both precisions on the same tree
   and GPU are not measured here.
 - This branch's storage changes (`results/2026-11-10-a100-bf16-attention-storage`) were NOT in this run: its own curve was queued when all Modal work was
-  stopped (its `kvm_run` is built, `BIN-bf16-78239dc` in the `kvm-gpt162` volume); the step-1 gradient check of bf16s (`--stage grads --prec bf16s`) was not run either.
-- `main` before `bdda80d` could not run bf16s at all: `kvm_exec.cu` rejected dtype 2 buffers ("bad buffer shape or dtype"); #10/#17/#18 restored it.
+  stopped (its `mvm_run` is built, `BIN-bf16-78239dc` in the `mvm-gpt162` volume); the step-1 gradient check of bf16s (`--stage grads --prec bf16s`) was not run either.
+- `main` before `bdda80d` could not run bf16s at all: `mvm_exec.cu` rejected dtype 2 buffers ("bad buffer shape or dtype"); #10/#17/#18 restored it.
 
 ## Files
 
 `learn.log` (full log), `curve.log`, `curve.json` (executor, torch tf32 / fp32 / autocast-bf16 curves, hold-out), `loss.csv` (executor, tf32, fp32), `loss.png`,
-`summary.json`, `exec_observations.jsonl`, `exec_run.json`, `exec_kvm_run.log`, `exec_wall.txt`, `nvidia.txt`, `model.json`.
+`summary.json`, `exec_observations.jsonl`, `exec_run.json`, `exec_mvm_run.log`, `exec_wall.txt`, `nvidia.txt`, `model.json`.

@@ -9,7 +9,7 @@
 //     declare the peer DEAD.
 //   * Flow control = a send window (messages and bytes) per peer. send() returns FULL instead of blocking: the proxy then stops
 //     draining the device send queue, the queue fills, and the producing task waits with a timeout on the device
-//     (KVM_ERR_DIST_SENDQ_TIMEOUT). Nothing buffers without bound anywhere. For a WAN link, set window_bytes >= the
+//     (MVM_ERR_DIST_SENDQ_TIMEOUT). Nothing buffers without bound anywhere. For a WAN link, set window_bytes >= the
 //     bandwidth-delay product (bandwidth x RTT) or the link idles waiting for ACKs: that IS the pipeline-depth parameter.
 //   * Liveness: idle links exchange PINGs; a peer silent for dead_ms after first contact, or never heard from within
 //     startup_grace_ms while we have data for it, is DEAD. The first dead peer is reported once via dead_peer().
@@ -21,7 +21,7 @@
 
 #include "transport.hpp"
 
-namespace kvmd {
+namespace mvmd {
 
 struct ReliableConfig {
   int window_msgs = 256;
@@ -224,4 +224,4 @@ class Reliable {
   int reported_ = -1;
 };
 
-}  // namespace kvmd
+}  // namespace mvmd

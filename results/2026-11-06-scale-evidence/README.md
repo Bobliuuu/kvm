@@ -7,11 +7,11 @@ or cost model, never a measurement.
 
 | Item | Status | Where |
 |---|---|---|
-| Planner: params / bytes per device / FLOPs / comm volume of a ZeRO, DP and Megatron-TP sharded AdamW training step, emitted as KVM task graphs by `runtime/partition.py` | CHECKED: predictor (no tasks built) equals the emitted tasks exactly (comm bytes, FLOPs per device, buffer bytes per device) for 8 configs; partitioned CPU simulation equals the unpartitioned VM bitwise (1 step) / 1.3e-5 (3 steps, AdamW makes values non-integer) | `dist/scaleplan.py`, `tests/dist/test_scaleplan.py` (5 tests), `step1_check_cpu.txt` |
+| Planner: params / bytes per device / FLOPs / comm volume of a ZeRO, DP and Megatron-TP sharded AdamW training step, emitted as Magni VM task graphs by `runtime/partition.py` | CHECKED: predictor (no tasks built) equals the emitted tasks exactly (comm bytes, FLOPs per device, buffer bytes per device) for 8 configs; partitioned CPU simulation equals the unpartitioned VM bitwise (1 step) / 1.3e-5 (3 steps, AdamW makes values non-integer) | `dist/scaleplan.py`, `tests/dist/test_scaleplan.py` (5 tests), `step1_check_cpu.txt` |
 | New partitioner rule: sharded AdamW (ZeRO: p/m/v ROWS, gradient PART -> reduce-scatter, no all-reduce) and symbolic init (shapes too big for Python lists) | CHECKED + MEASURED (below) | `runtime/partition.py`, `tests/dist/test_dist.cu` (`gen` init, i32 buffers, `--dump`, `--timeout`, memory report) |
 | Sharded stacks, ranks as in-kernel partitions of one A100 (2 and 4 ranks, ZeRO and tensor parallel, ring and direct collectives) vs the CPU golden | MEASURED: bitwise equal (1 step; every value of 8 plans), 1.3e-5 after 3 AdamW steps; **device buffer bytes equal the planner's prediction exactly** | `a100_golden/` |
 | Trillion-parameter planner output (4096 GPUs, TP8 x PP16 x DP32, ZeRO-3): 9.7 GB/GPU state+activations, comm volumes, 1F1B lower bound | MODELLED | `plan_1T_4096gpu_modelled.json`, `taskgraph_1T_representative_gpu.json` |
-| Step-time projection for 512-8192 GPUs with NVLink / NIC and KVM's hop costs | MODELLED (inputs: hop 5.6 / 57 / 203 us were measured on ONE GPU; links and GEMM efficiency are assumptions) | `projection_modelled.md`, `dist/scale_projection.py` |
+| Step-time projection for 512-8192 GPUs with NVLink / NIC and Magni VM's hop costs | MODELLED (inputs: hop 5.6 / 57 / 203 us were measured on ONE GPU; links and GEMM efficiency are assumptions) | `projection_modelled.md`, `dist/scale_projection.py` |
 
 ## What the registry's ops cannot do (limits of the stack)
 
@@ -25,7 +25,7 @@ every rank holds the whole gathered model (see the memory numbers). A buffer-liv
 
 Each run: the same seeded data generated on the device, an unsharded run (1 rank, replicated) and a sharded run (ZeRO: W, WT, m, v ROWS
 over the ranks, batch ROWS, gradients reduce-scattered) executed by the in-process multi-executor harness (`tests/dist/test_dist.cu plan`),
-final parameters and per-step losses compared. "Logical params" counts W once (each is stored twice). Collectives are KVM tasks, no NCCL.
+final parameters and per-step losses compared. "Logical params" counts W once (each is stored twice). Collectives are Magni VM tasks, no NCCL.
 
 | logical params | shape | ranks | device bytes, all ranks | unsharded bytes | comm bytes planned (3 steps) | kernel ms sharded / unsharded | max abs diff of final W | worst loss rel diff | planner bytes and comm == emitted |
 |---|---|---|---|---|---|---|---|---|---|
@@ -63,4 +63,4 @@ The projection is a model. Real 2/4/8-GPU runs: `HARDWARE_PLAN.md`; the Modal la
 
 CPU: `python3 -I -m unittest discover -s tests/dist -p test_scaleplan.py` and `python3 -I dist/scaleplan.py check`.
 GPU (box with nvcc, under its lock): build `tests/dist/test_dist.cu` as in `dist/run_multigpu_tests.sh`, then
-`KVM_TEST_DIST=./test_dist python3 dist/scale_gpu.py golden OUT` and `... pair OUT --d 2048 --layers 16 --ranks 4 --lr 1e-3`.
+`MVM_TEST_DIST=./test_dist python3 dist/scale_gpu.py golden OUT` and `... pair OUT --d 2048 --layers 16 --ranks 4 --lr 1e-3`.

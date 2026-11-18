@@ -24,10 +24,10 @@ using namespace nvcuda;
 
 #define CK(x) do { cudaError_t e_ = (x); if (e_ != cudaSuccess) { fprintf(stderr, "CUDA error %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(e_)); exit(1); } } while (0)
 
-#include "kvm_fused_mlp.h"
-#include "kvm_fused_mlp.cuh"
+#include "mvm_fused_mlp.h"
+#include "mvm_fused_mlp.cuh"
 
-constexpr int MAXL = KVM_FMLP_MAXL;
+constexpr int MAXL = MVM_FMLP_MAXL;
 constexpr float LR = 0.05f;
 __host__ __device__ inline int rnd16(int x) { return (x + 15) & ~15; }
 __host__ __device__ inline int rnd8(int x) { return (x + 7) & ~7; }
@@ -39,10 +39,10 @@ __device__ __forceinline__ void st_rel(int* p, int v) { asm volatile("st.release
 
 constexpr int NPH = 16;
 struct Globals {
-  const KvmFusedDesc* d;                 // the run's descriptor (device memory, as the op reads it)
+  const MvmFusedDesc* d;                 // the run's descriptor (device memory, as the op reads it)
   int bt, nsl;
   int* ids, *tgt;                        // [steps][BT]
-  float* loss;                           // [steps * ngr]: each granule's sum of row losses (KVM_FMLP_GRANULE rows, kvm_fused_mlp.h)
+  float* loss;                           // [steps * ngr]: each granule's sum of row losses (MVM_FMLP_GRANULE rows, mvm_fused_mlp.h)
   int ngr;                               // gradient granules a step
   int* progress;                         // [nsl * 32] (one 128-byte line per slice)
   long long* ph;                         // [NPH] accumulated cycles per phase (slice 0, thread 0)
@@ -55,18 +55,18 @@ __global__ void __launch_bounds__(256) fused_kernel(const Globals g) {
   const int sc = blockIdx.x, nsl = g.nsl, bt = g.bt;
   __shared__ long long t_ph;
   const bool ph0 = sc == 0;
-  kvm_fmlp::PhaseTimer ph{ph0 ? g.ph : nullptr, &t_ph};
+  mvm_fmlp::PhaseTimer ph{ph0 ? g.ph : nullptr, &t_ph};
   int* pc = g.progress;
   for (int st = 0; st < g.steps; ++st) {
-    kvm_fmlp::prefetch_desc(g.d, sm);
-    kvm_fmlp::slice_run(sc, g.ids + (size_t)st * bt, g.tgt + (size_t)st * bt, g.loss + (size_t)st * g.ngr + (size_t)sc * (g.ngr / nsl), sm, ph, kvm_fmlp::NoFail{});
+    mvm_fmlp::prefetch_desc(g.d, sm);
+    mvm_fmlp::slice_run(sc, g.ids + (size_t)st * bt, g.tgt + (size_t)st * bt, g.loss + (size_t)st * g.ngr + (size_t)sc * (g.ngr / nsl), sm, ph, mvm_fmlp::NoFail{});
     __threadfence();
     __syncthreads(); ph(11);
     if (threadIdx.x == 0) st_rel(pc + (size_t)sc * 32, 2 * st + 1);
     if (threadIdx.x < nsl) { while (ld_acq(pc + (size_t)threadIdx.x * 32) < 2 * st + 1) {} }
     __syncthreads(); ph(12);
-    kvm_fmlp::prefetch_desc(g.d, sm);
-    kvm_fmlp::sgd_run(sc, nullptr, sm);
+    mvm_fmlp::prefetch_desc(g.d, sm);
+    mvm_fmlp::sgd_run(sc, nullptr, sm);
     __threadfence();
     __syncthreads(); ph(13);
     if (threadIdx.x == 0) st_rel(pc + (size_t)sc * 32, 2 * st + 2);
@@ -90,12 +90,12 @@ __global__ void __launch_bounds__(256) gemm_bench_kernel(long long* out, const f
   __syncthreads();
   long long t0 = clock64();
   for (int it = 0; it < iters; ++it) {
-    if (c.kind == 0) kvm_fmlp::gemm<false, false, 8>(A, lda, B, ldb, C, ldb, c.M, c.N, c.K);
-    else if (c.kind == 1) kvm_fmlp::gemm<false, false, 4>(A, lda, B, ldb, C, ldb, c.M, c.N, c.K);
-    else if (c.kind == 2) kvm_fmlp::gemm<false, true, 4>(A, lda, B, ldb, C, ldb, c.M, c.N, c.K);
-    else if (c.kind == 3) kvm_fmlp::gemm<true, false, 8>(A, lda, B, ldb, C, ldb, c.M, c.N, c.K);
-    else if (c.kind == 4) kvm_fmlp::gemm<false, false, 1, false, 1>(A, lda, B, ldb, C, ldb, 16, c.N, c.K);
-    else kvm_fmlp::gemm<false, true, 1, false, 1>(A, lda, B, ldb, C, ldb, 16, c.N, c.K);
+    if (c.kind == 0) mvm_fmlp::gemm<false, false, 8>(A, lda, B, ldb, C, ldb, c.M, c.N, c.K);
+    else if (c.kind == 1) mvm_fmlp::gemm<false, false, 4>(A, lda, B, ldb, C, ldb, c.M, c.N, c.K);
+    else if (c.kind == 2) mvm_fmlp::gemm<false, true, 4>(A, lda, B, ldb, C, ldb, c.M, c.N, c.K);
+    else if (c.kind == 3) mvm_fmlp::gemm<true, false, 8>(A, lda, B, ldb, C, ldb, c.M, c.N, c.K);
+    else if (c.kind == 4) mvm_fmlp::gemm<false, false, 1, false, 1>(A, lda, B, ldb, C, ldb, 16, c.N, c.K);
+    else mvm_fmlp::gemm<false, true, 1, false, 1>(A, lda, B, ldb, C, ldb, 16, c.N, c.K);
     __syncthreads();
   }
   long long t1 = clock64();
@@ -104,7 +104,7 @@ __global__ void __launch_bounds__(256) gemm_bench_kernel(long long* out, const f
 }
 
 // ---------------- host ----------------
-struct Shape {   // the model the bed trains (host, for the CPU reference); the device reads KvmFusedDesc
+struct Shape {   // the model the bed trains (host, for the CPU reference); the device reads MvmFusedDesc
   int V, E, L, bt, nsl, H[MAXL];
   int K(int l) const { return l == 0 ? E : H[l - 1]; }
 };
@@ -170,7 +170,7 @@ int main(int argc, char** argv) {
                           {16, 80, 48, 0, 0, 4}, {16, 80, 72, 0, 0, 4}, {16, 80, 72, 0, 0, 5}, {16, 80, 104, 0, 0, 5}};
       for (GemmCase& c : cases) {
         // pitches: A [M][K] (TN: [K][M]), B [K][N] (NT: [N][K]), each congruent to 4 mod 16 like the slice's
-        c.lda = kvm_fmlp_pitch(c.kind == 3 ? c.M : c.K); c.ldb = kvm_fmlp_pitch(c.kind == 2 || c.kind == 5 ? c.K : c.N);
+        c.lda = mvm_fmlp_pitch(c.kind == 3 ? c.M : c.K); c.ldb = mvm_fmlp_pitch(c.kind == 2 || c.kind == 5 ? c.K : c.N);
         gemm_bench_kernel<<<1, 256, MAXSM * 4>>>(out, src, iters, c); CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
         long long v; CK(cudaMemcpy(&v, out, 8, cudaMemcpyDeviceToHost));
         static const char* kinds[] = {"NN8", "NN4", "NT4", "TN8", "NN1f", "NT1f"};
@@ -183,14 +183,14 @@ int main(int argc, char** argv) {
     else if (a == "--hidden") { hidden.clear(); std::stringstream ss(argv[++i]); std::string tok; while (std::getline(ss, tok, ',')) hidden.push_back(atoi(tok.c_str())); }
   }
   Shape s{}; s.V = V; s.E = E; s.L = (int)hidden.size(); s.bt = bt; s.nsl = bt / slice;
-  if (s.bt % slice || s.nsl > MAXSLICE || s.L > MAXL || (slice & 15) || slice > KVM_FMLP_MAX_SLICE_ROWS || (E & 7) || (V & 3)) { fprintf(stderr, "shape constraints: tokens a multiple of --slice, at most %d slices and %d layers, slice a multiple of 16 up to %d, E a multiple of 8, V of 4\n", MAXSLICE, MAXL, KVM_FMLP_MAX_SLICE_ROWS); return 2; }
-  KvmFusedDesc d{}; d.R = slice; d.V = V; d.E = E; d.L = s.L; d.nsl = s.nsl; d.T = bt; d.lr = LR; d.groups = s.nsl;   // the bed: one owner per slice
+  if (s.bt % slice || s.nsl > MAXSLICE || s.L > MAXL || (slice & 15) || slice > MVM_FMLP_MAX_SLICE_ROWS || (E & 7) || (V & 3)) { fprintf(stderr, "shape constraints: tokens a multiple of --slice, at most %d slices and %d layers, slice a multiple of 16 up to %d, E a multiple of 8, V of 4\n", MAXSLICE, MAXL, MVM_FMLP_MAX_SLICE_ROWS); return 2; }
+  MvmFusedDesc d{}; d.R = slice; d.V = V; d.E = E; d.L = s.L; d.nsl = s.nsl; d.T = bt; d.lr = LR; d.groups = s.nsl;   // the bed: one owner per slice
   for (int l = 0; l < s.L; ++l) { if (hidden[l] & 7) { fprintf(stderr, "hidden widths must be multiples of 8\n"); return 2; } s.H[l] = d.H[l] = hidden[l]; }
   // the budget as the executor sizes it: the kernel's opt-in maximum less its own static shared memory (kept activations fit when they fit there)
   int budget = 0;
   { int dev; CK(cudaGetDevice(&dev)); cudaDeviceProp p; CK(cudaGetDeviceProperties(&p, dev)); cudaFuncAttributes fa; CK(cudaFuncGetAttributes(&fa, fused_kernel));
     budget = std::min(MAXSM, (int)(((long long)p.sharedMemPerBlockOptin - (long long)fa.sharedSizeBytes) / 4) & ~15); }
-  const int total_floats = kvm_fmlp_layout(d, budget);
+  const int total_floats = mvm_fmlp_layout(d, budget);
   if (total_floats > MAXSM) { fprintf(stderr, "shape needs %d floats of shared memory (limit %d): use a smaller --slice\n", total_floats, MAXSM); return 2; }
   std::mt19937 rng(42);
   auto mk = [&](size_t n, float sc_) { std::vector<float> v(n); std::uniform_real_distribution<float> d(-sc_, sc_); for (auto& x : v) x = d(rng); return v; };
@@ -198,17 +198,17 @@ int main(int argc, char** argv) {
   for (int l = 0; l < s.L; ++l) { ref.w[l] = mk((size_t)s.K(l) * s.H[l], 0.13f); ref.b[l] = mk(s.H[l], 0.02f); }
   std::vector<int> ids((size_t)steps * bt), tgt((size_t)steps * bt);
   { std::uniform_int_distribution<int> d(0, V - 1); for (auto& x : ids) x = d(rng); for (auto& x : tgt) x = d(rng); }
-  const int ngr = bt / KVM_FMLP_GRANULE;   // the step's gradient granules: one partial each (kvm_fused_mlp.h)
-  if (bt % KVM_FMLP_GRANULE || ngr > KVM_FMLP_MAX_SLICES) { fprintf(stderr, "tokens must be a multiple of %d, at most %d granules\n", KVM_FMLP_GRANULE, KVM_FMLP_MAX_SLICES); return 2; }
+  const int ngr = bt / MVM_FMLP_GRANULE;   // the step's gradient granules: one partial each (mvm_fused_mlp.h)
+  if (bt % MVM_FMLP_GRANULE || ngr > MVM_FMLP_MAX_SLICES) { fprintf(stderr, "tokens must be a multiple of %d, at most %d granules\n", MVM_FMLP_GRANULE, MVM_FMLP_MAX_SLICES); return 2; }
   Globals g{}; g.bt = bt; g.nsl = s.nsl; g.ngr = ngr; g.steps = steps;
   auto dm = [](size_t n) { float* p; CK(cudaMalloc(&p, n * 4)); CK(cudaMemset(p, 0, n * 4)); return p; };
   d.we = dm((size_t)V * E); d.ge = dm((size_t)ngr * V * E); d.wh = dm((size_t)s.H[s.L - 1] * V); d.loss_part = dm(ngr);
-  d.ghld = kvm_fmlp_pad16(V); d.gh = dm((size_t)ngr * rnd16(s.H[s.L - 1]) * d.ghld);
+  d.ghld = mvm_fmlp_pad16(V); d.gh = dm((size_t)ngr * rnd16(s.H[s.L - 1]) * d.ghld);
   for (int l = 0; l < s.L; ++l) {
-    d.w[l] = dm((size_t)s.K(l) * s.H[l]); d.b[l] = dm(s.H[l]); d.gwld[l] = kvm_fmlp_pad16(s.H[l]);
+    d.w[l] = dm((size_t)s.K(l) * s.H[l]); d.b[l] = dm(s.H[l]); d.gwld[l] = mvm_fmlp_pad16(s.H[l]);
     d.gw[l] = dm((size_t)ngr * rnd16(s.K(l)) * d.gwld[l]); d.gb[l] = dm((size_t)ngr * s.H[l]);
   }
-  KvmFusedDesc* ddesc; CK(cudaMalloc(&ddesc, sizeof(KvmFusedDesc))); CK(cudaMemcpy(ddesc, &d, sizeof(KvmFusedDesc), cudaMemcpyHostToDevice));
+  MvmFusedDesc* ddesc; CK(cudaMalloc(&ddesc, sizeof(MvmFusedDesc))); CK(cudaMemcpy(ddesc, &d, sizeof(MvmFusedDesc), cudaMemcpyHostToDevice));
   g.d = ddesc;
   CK(cudaMalloc(&g.ph, NPH * 8)); CK(cudaMemset(g.ph, 0, NPH * 8));
   CK(cudaMalloc(&g.ids, (size_t)steps * bt * 4)); CK(cudaMalloc(&g.tgt, (size_t)steps * bt * 4)); CK(cudaMalloc(&g.loss, (size_t)steps * ngr * 4)); CK(cudaMalloc(&g.progress, (size_t)s.nsl * 32 * 4));

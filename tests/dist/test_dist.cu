@@ -1,40 +1,40 @@
 // Distributed-execution tests on real GPUs. Build (per-op IEEE arithmetic so results compare bitwise with the CPU reference):
-//   nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -DKVM_EXEC_NO_MAIN tests/dist/test_dist.cu -o test_dist -lpthread
+//   nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -DMVM_EXEC_NO_MAIN tests/dist/test_dist.cu -o test_dist -lpthread
 //   ./test_dist [suite...]            suites: ops pingpong errors backpressure bw plan   (default: all but plan)
 //   ./test_dist plan DIR [--net loopback|tcp] [--fault drop=0.1,dup=0.1,delay=0.2] [--blocks N]
 //        runs every rank of a partitioner plan (runtime/partition.py --plan) as threads of this process
 //   ./test_dist plan DIR --rank R --peers host:port,host:port,...      one rank of a MULTI-PROCESS / multi-node run
-//   ./test_dist --expect-fail=stale pingpong     negative test (-DKVM_DIST_BREAK_ORDER): exits 0 only if the suite DETECTS stale data;
-//   ./test_dist --expect-fail=timeout backpressure   (-DKVM_DIST_NO_BP_POLL) exits 0 only if the receiver hits the device stall timeout (TIMEOUT / PARK_STALL)
+//   ./test_dist --expect-fail=stale pingpong     negative test (-DMVM_DIST_BREAK_ORDER): exits 0 only if the suite DETECTS stale data;
+//   ./test_dist --expect-fail=timeout backpressure   (-DMVM_DIST_NO_BP_POLL) exits 0 only if the receiver hits the device stall timeout (TIMEOUT / PARK_STALL)
 // Everything that needs more than one physical GPU prints "SKIP: needs 2 GPUs" when fewer are present; with >= 2 GPUs the same
 // suites place rank r on device r % ngpus and use real peer-to-peer.
-#include "../../kvm_exec.cu"
+#include "../../mvm_exec.cu"
 #include "../../dist/cuda_dist.hpp"
 
 #include <functional>
 #include <random>
 #include <sstream>
 
-using namespace kvmd;
+using namespace mvmd;
 
 static int g_fail = 0, g_checks = 0, g_skip = 0, g_stale = 0, g_timeouts = 0;   // g_stale / g_timeouts: WHICH way a negative test failed
 static bool g_mute = false;
 #define CHECK(c, ...) do { ++g_checks; if (!(c)) { ++g_fail; if (!g_mute) { fprintf(stderr, "  FAIL %s:%d: %s -- ", __FILE__, __LINE__, #c); fprintf(stderr, __VA_ARGS__); fputc('\n', stderr); } } } while (0)
 static int g_ngpu = 1;
-static KvmArg Bf(int i) { return KvmArg::buf(i); }
-static KvmArg I(int v) { return KvmArg::i32(v); }
-static KvmArg F(float v) { return KvmArg::f32(v); }
+static MvmArg Bf(int i) { return MvmArg::buf(i); }
+static MvmArg I(int v) { return MvmArg::i32(v); }
+static MvmArg F(float v) { return MvmArg::f32(v); }
 static bool same_bits(float a, float b) { return memcmp(&a, &b, 4) == 0; }
 
-static KvmConfig small_cfg(int blocks = 4, int num_vars = 64) {
-  KvmConfig c; c.blocks = blocks; c.max_tasks = 1 << 14; c.live_cap = 1 << 11; c.ring_words = 1 << 14; c.timeout_us = 30ull * 1000000; c.num_vars = num_vars; return c;
+static MvmConfig small_cfg(int blocks = 4, int num_vars = 64) {
+  MvmConfig c; c.blocks = blocks; c.max_tasks = 1 << 14; c.live_cap = 1 << 11; c.ring_words = 1 << 14; c.timeout_us = 30ull * 1000000; c.num_vars = num_vars; return c;
 }
 static std::vector<float> download(const float* d, size_t n) { std::vector<float> v(n); CK(cudaMemcpy(v.data(), d, n * 4, cudaMemcpyDeviceToHost)); return v; }
 
 // ==================================================================================================== ops (one executor)
 // Local buffers only: the comm ops are ordinary ops, so a "peer" buffer on the same device is just another allocation.
 struct OpsEnv {
-  KvmExec ex; DistDevice dd; float *a, *b, *c; int ia, ib, ic, iin, iq;
+  MvmExec ex; DistDevice dd; float *a, *b, *c; int ia, ib, ic, iin, iq;
   static constexpr int N = 4096;
   OpsEnv(int sq_slots = 4, int sq_bytes = 1024) : ex(small_cfg()), dd(0, 1, 0, 64, sq_slots, sq_bytes, 300ull * 1000000) {
     std::mt19937 g(5);
@@ -54,12 +54,12 @@ static uint16_t bf16_bits(float x) {
 }
 static float bf16_to_f(uint32_t b16) { uint32_t u = b16 << 16; float f; memcpy(&f, &u, 4); return f; }
 
-static int run_one(const std::function<void(OpsEnv&, KvmBundleBuilder&)>& build, OpsEnv& env, std::vector<float>* ra = nullptr, std::vector<float>* rb = nullptr, std::vector<float>* rc = nullptr) {
-  KvmBundleBuilder bb; build(env, bb);
+static int run_one(const std::function<void(OpsEnv&, MvmBundleBuilder&)>& build, OpsEnv& env, std::vector<float>* ra = nullptr, std::vector<float>* rb = nullptr, std::vector<float>* rc = nullptr) {
+  MvmBundleBuilder bb; build(env, bb);
   env.ex.start();
-  KvmSubmit s = env.ex.submit(bb.build());
-  CHECK(s == KvmSubmit::OK, "submit %s", kvm_submit_name(s));
-  const KvmResult& r = env.ex.finish();
+  MvmSubmit s = env.ex.submit(bb.build());
+  CHECK(s == MvmSubmit::OK, "submit %s", mvm_submit_name(s));
+  const MvmResult& r = env.ex.finish();
   if (r.ok()) { if (ra) *ra = env.ex.read_buffer(env.ia); if (rb) *rb = env.ex.read_buffer(env.ib); if (rc) *rc = env.ex.read_buffer(env.ic); }
   return r.err_code;
 }
@@ -69,7 +69,7 @@ static void suite_ops() {
   std::mt19937 g(11);
   // --- put / put_signal: random tiles, strided, unaligned (exercise the float4 and scalar paths)
   int mismatch = 0, tiles = 0;
-  const int trials = getenv("KVM_DIST_QUICK") ? 6 : 40;   // sanitizer runs: every launch is slow under instrumentation
+  const int trials = getenv("MVM_DIST_QUICK") ? 6 : 40;   // sanitizer runs: every launch is slow under instrumentation
   for (int trial = 0; trial < trials; ++trial) {
     OpsEnv env;
     std::vector<float> a0 = env.ex.read_buffer(env.ia), c0 = env.ex.read_buffer(env.ic), want = c0;
@@ -89,7 +89,7 @@ static void suite_ops() {
       ++tiles;
     }
     std::vector<float> got;
-    int err = run_one([&](OpsEnv& e, KvmBundleBuilder& bb) {
+    int err = run_one([&](OpsEnv& e, MvmBundleBuilder& bb) {
       int prev = -1;
       for (auto& t : ts) {
         int id = t.sig ? bb.add("put_signal", {Bf(e.ia), Bf(e.ic), I(t.so), I(t.dof), I(t.rows), I(t.cols), I(t.sld), I(t.dld), Bf(e.iin), I(t.var), I(t.ver)})
@@ -98,7 +98,7 @@ static void suite_ops() {
         prev = id;
       }
     }, env, nullptr, nullptr, &got);
-    CHECK(err == 0, "device error %s", kvm_err_name(err));
+    CHECK(err == 0, "device error %s", mvm_err_name(err));
     if (!err) for (size_t i = 0; i < got.size(); ++i) mismatch += !same_bits(got[i], want[i]);
     std::vector<unsigned> in = env.dd.read_inbox();
     std::vector<unsigned> win(64, 0);
@@ -114,12 +114,12 @@ static void suite_ops() {
     int n1 = 1000, n2 = 777;
     for (int i = 0; i < n1; ++i) want[10 + i] = a0[5 + i] + b0[20 + i];
     for (int i = 0; i < n2; ++i) want[2000 + i] = a0[100 + i] + b0[3 + i];
-    int err = run_one([&](OpsEnv& e, KvmBundleBuilder& bb) {
+    int err = run_one([&](OpsEnv& e, MvmBundleBuilder& bb) {
       int t1 = bb.add("reduce2", {Bf(e.ia), Bf(e.ib), Bf(e.ic), I(5), I(20), I(10), I(n1)});
       int t2 = bb.add("reduce_put_signal", {Bf(e.ia), Bf(e.ib), Bf(e.ic), I(100), I(3), I(2000), I(n2), Bf(e.iin), I(7), I(3)});
       bb.edge(t1, t2);
     }, env, nullptr, nullptr, &got);
-    CHECK(err == 0, "device error %s", kvm_err_name(err));
+    CHECK(err == 0, "device error %s", mvm_err_name(err));
     int bad = 0; if (!err) for (size_t i = 0; i < got.size(); ++i) bad += !same_bits(got[i], want[i]);
     CHECK(bad == 0, "%d wrong elements", bad);
     CHECK(env.dd.read_inbox()[7] == 3u, "reduce_put_signal did not signal");
@@ -133,15 +133,15 @@ static void suite_ops() {
     int n = 1001;
     std::vector<float> got_c; std::vector<float> want(4096, 0.f);
     // we upload the patched a0 through a fresh executor
-    KvmExec ex(small_cfg()); DistDevice dd(0, 1, 0, 8);
+    MvmExec ex(small_cfg()); DistDevice dd(0, 1, 0, 8);
     int ia = ex.add_buffer(64, 64, a0), ib = ex.add_buffer(64, 64), ic = ex.add_buffer(64, 64, std::vector<float>(4096, 2.f));
-    KvmBundleBuilder bb;
+    MvmBundleBuilder bb;
     int p = bb.add("pack_bf16", {Bf(ia), Bf(ib), I(0), I(0), I(n)});
     int u = bb.add("unpack_bf16", {Bf(ib), Bf(ic), I(0), I(10), I(n), I(1)});   // acc: 2 + bf16(a)
     int u2 = bb.add("unpack_bf16", {Bf(ib), Bf(ic), I(0), I(2000), I(n), I(0)});
     bb.edge(p, u); bb.edge(u, u2);
-    ex.start(); CHECK(ex.submit(bb.build()) == KvmSubmit::OK, "submit"); const KvmResult& r = ex.finish();
-    CHECK(r.ok(), "device error %s", kvm_err_name(r.err_code));
+    ex.start(); CHECK(ex.submit(bb.build()) == MvmSubmit::OK, "submit"); const MvmResult& r = ex.finish();
+    CHECK(r.ok(), "device error %s", mvm_err_name(r.err_code));
     std::vector<float> got = ex.read_buffer(ic); int bad = 0;
     for (int i = 0; i < n; ++i) {
       float v = bf16_to_f(bf16_bits(a0[i]));
@@ -151,22 +151,22 @@ static void suite_ops() {
     fprintf(stderr, "  pack_bf16/unpack_bf16: %d values bitwise equal (RNE, tie, subnormal, odd n)\n", n);
   }
   // --- validation: every misuse is a decoded device error, never UB
-  struct Neg { const char* what; int want; std::function<void(OpsEnv&, KvmBundleBuilder&)> f; };
+  struct Neg { const char* what; int want; std::function<void(OpsEnv&, MvmBundleBuilder&)> f; };
   std::vector<Neg> negs = {
-    {"put source tile out of range", KVM_ERR_BOUNDS, [](OpsEnv& e, KvmBundleBuilder& b) { b.add("put", {Bf(e.ia), Bf(e.ic), I(4090), I(0), I(2), I(10), I(10), I(10)}); }},
-    {"put ld < cols", KVM_ERR_BOUNDS, [](OpsEnv& e, KvmBundleBuilder& b) { b.add("put", {Bf(e.ia), Bf(e.ic), I(0), I(0), I(2), I(10), I(10), I(5)}); }},
-    {"put negative offset", KVM_ERR_BOUNDS, [](OpsEnv& e, KvmBundleBuilder& b) { b.add("put", {Bf(e.ia), Bf(e.ic), I(-1), I(0), I(1), I(10), I(10), I(10)}); }},
-    {"signal var outside the mailbox", KVM_ERR_DIST_BAD_SIGNAL, [](OpsEnv& e, KvmBundleBuilder& b) { b.add("signal", {Bf(e.iin), I(64), I(1)}); }},
-    {"signal version 0", KVM_ERR_DIST_BAD_SIGNAL, [](OpsEnv& e, KvmBundleBuilder& b) { b.add("signal", {Bf(e.iin), I(3), I(0)}); }},
-    {"send_proxy to a buffer that is not a queue", KVM_ERR_DIST_BAD_QUEUE, [](OpsEnv& e, KvmBundleBuilder& b) { b.add("send_proxy", {Bf(e.ia), Bf(e.ib), I(0), I(1), I(8), I(8), I(1), I(0), I(0), I(8), I(1), I(1)}); }},
-    {"send_proxy payload larger than a slot", KVM_ERR_DIST_MSG_TOO_BIG, [](OpsEnv& e, KvmBundleBuilder& b) { b.add("send_proxy", {Bf(e.ia), Bf(e.iq), I(0), I(1), I(512), I(512), I(1), I(0), I(0), I(512), I(1), I(1)}); }},
-    {"send_proxy negative destination rank", KVM_ERR_DIST_BAD_MSG, [](OpsEnv& e, KvmBundleBuilder& b) { b.add("send_proxy", {Bf(e.ia), Bf(e.iq), I(0), I(1), I(8), I(8), I(-1), I(0), I(0), I(8), I(1), I(1)}); }},
-    {"reduce2 out of range", KVM_ERR_BOUNDS, [](OpsEnv& e, KvmBundleBuilder& b) { b.add("reduce2", {Bf(e.ia), Bf(e.ib), Bf(e.ic), I(0), I(0), I(4000), I(200)}); }},
-    {"unpack_bf16 source too short", KVM_ERR_BOUNDS, [](OpsEnv& e, KvmBundleBuilder& b) { b.add("unpack_bf16", {Bf(e.ia), Bf(e.ib), I(4090), I(0), I(100), I(0)}); }},
+    {"put source tile out of range", MVM_ERR_BOUNDS, [](OpsEnv& e, MvmBundleBuilder& b) { b.add("put", {Bf(e.ia), Bf(e.ic), I(4090), I(0), I(2), I(10), I(10), I(10)}); }},
+    {"put ld < cols", MVM_ERR_BOUNDS, [](OpsEnv& e, MvmBundleBuilder& b) { b.add("put", {Bf(e.ia), Bf(e.ic), I(0), I(0), I(2), I(10), I(10), I(5)}); }},
+    {"put negative offset", MVM_ERR_BOUNDS, [](OpsEnv& e, MvmBundleBuilder& b) { b.add("put", {Bf(e.ia), Bf(e.ic), I(-1), I(0), I(1), I(10), I(10), I(10)}); }},
+    {"signal var outside the mailbox", MVM_ERR_DIST_BAD_SIGNAL, [](OpsEnv& e, MvmBundleBuilder& b) { b.add("signal", {Bf(e.iin), I(64), I(1)}); }},
+    {"signal version 0", MVM_ERR_DIST_BAD_SIGNAL, [](OpsEnv& e, MvmBundleBuilder& b) { b.add("signal", {Bf(e.iin), I(3), I(0)}); }},
+    {"send_proxy to a buffer that is not a queue", MVM_ERR_DIST_BAD_QUEUE, [](OpsEnv& e, MvmBundleBuilder& b) { b.add("send_proxy", {Bf(e.ia), Bf(e.ib), I(0), I(1), I(8), I(8), I(1), I(0), I(0), I(8), I(1), I(1)}); }},
+    {"send_proxy payload larger than a slot", MVM_ERR_DIST_MSG_TOO_BIG, [](OpsEnv& e, MvmBundleBuilder& b) { b.add("send_proxy", {Bf(e.ia), Bf(e.iq), I(0), I(1), I(512), I(512), I(1), I(0), I(0), I(512), I(1), I(1)}); }},
+    {"send_proxy negative destination rank", MVM_ERR_DIST_BAD_MSG, [](OpsEnv& e, MvmBundleBuilder& b) { b.add("send_proxy", {Bf(e.ia), Bf(e.iq), I(0), I(1), I(8), I(8), I(-1), I(0), I(0), I(8), I(1), I(1)}); }},
+    {"reduce2 out of range", MVM_ERR_BOUNDS, [](OpsEnv& e, MvmBundleBuilder& b) { b.add("reduce2", {Bf(e.ia), Bf(e.ib), Bf(e.ic), I(0), I(0), I(4000), I(200)}); }},
+    {"unpack_bf16 source too short", MVM_ERR_BOUNDS, [](OpsEnv& e, MvmBundleBuilder& b) { b.add("unpack_bf16", {Bf(e.ia), Bf(e.ib), I(4090), I(0), I(100), I(0)}); }},
   };
   for (auto& n : negs) {
     OpsEnv env; g_mute = true; int err = run_one(n.f, env); g_mute = false;
-    CHECK(err == n.want, "%s: got %s (%d), want %s", n.what, kvm_err_name(err), err, kvm_err_name(n.want));
+    CHECK(err == n.want, "%s: got %s (%d), want %s", n.what, mvm_err_name(err), err, mvm_err_name(n.want));
   }
   fprintf(stderr, "  %zu misuse cases end the kernel with the right decoded device error\n", negs.size());
 }
@@ -180,7 +180,7 @@ struct DumpSpec { int idx; std::string name; int r0, c0, gr, gc; };
 struct PlanRank {
   int rank = 0, world = 1, nvars = 1;
   std::vector<PlanBuf> bufs; std::vector<std::pair<int, int>> vars; std::vector<int> in_vars; std::map<int, std::vector<float>> expect; std::vector<DumpSpec> dumps;
-  KvmBundle bundle;
+  MvmBundle bundle;
   bool uses_sendq() const { for (auto& b : bufs) if (b.kind == PlanBuf::SENDQ) return true; return false; }
   bool uses_peer() const { for (auto& b : bufs) if (b.kind == PlanBuf::PEER || b.kind == PlanBuf::INBOX) return true; return false; }
 };
@@ -193,7 +193,7 @@ template <class T> static std::vector<T> slurp(const std::string& path) {
 }
 static PlanRank load_rank(const std::string& dir) {
   PlanRank pr;
-  pr.bundle.tasks = slurp<KvmTaskDesc>(dir + "/tasks.bin");
+  pr.bundle.tasks = slurp<MvmTaskDesc>(dir + "/tasks.bin");
   pr.bundle.succ = slurp<int32_t>(dir + "/successors.bin");
   pr.bundle.args = slurp<int32_t>(dir + "/args.bin");
   std::ifstream f(dir + "/dist.txt"); if (!f) throw std::runtime_error("cannot read " + dir + "/dist.txt");
@@ -257,7 +257,7 @@ struct Net {   // the inter-node fabric of an in-process run: one transport per 
     base.resize(world); top.resize(world); rel.resize(world);
     if (self >= 0 && !hosts.empty()) {   // multi-process: only our own rank exists here
       TcpConfig c; c.rank = self; c.hosts = hosts; c.ports = ports; c.cluster_id = 0x4b564d;
-      if (const char* lp = getenv("KVM_DIST_LISTEN_PORT")) c.listen_port = atoi(lp);   // container port mapping: bind here, peers dial the advertised port
+      if (const char* lp = getenv("MVM_DIST_LISTEN_PORT")) c.listen_port = atoi(lp);   // container port mapping: bind here, peers dial the advertised port
       base[self] = std::make_unique<TcpTransport>(c);
     } else if (tcp) {
       auto ports2 = pick_free_ports(world); std::vector<std::thread> th;
@@ -276,7 +276,7 @@ struct Net {   // the inter-node fabric of an in-process run: one transport per 
   }
 };
 
-struct RankOut { KvmResult res; bool ok = false; std::string msg; double ms = 0, start_ms = 0, submit_ms = 0, finish_ms = 0; };
+struct RankOut { MvmResult res; bool ok = false; std::string msg; double ms = 0, start_ms = 0, submit_ms = 0, finish_ms = 0; };
 
 // Runs a set of ranks (all of them in-process, or just `only`). `devs[r]` = CUDA device of rank r.
 struct World {
@@ -284,12 +284,12 @@ struct World {
   std::vector<int> dev;
   std::vector<std::unique_ptr<DistDevice>> dd;
   std::vector<std::vector<float*>> local;
-  std::vector<std::unique_ptr<KvmExec>> ex;
+  std::vector<std::unique_ptr<MvmExec>> ex;
   std::vector<std::unique_ptr<CudaSink>> sink;
   std::vector<std::unique_ptr<Proxy>> px;
   Net net;
   int only = -1;
-  KvmConfig cfg = small_cfg(4);
+  MvmConfig cfg = small_cfg(4);
   uint32_t sq_slots = 16, sq_slot_bytes = 256 * 1024;      // slot = the partitioner's max_msg_bytes
   std::vector<float*> allocs;
   std::map<int, size_t> local_bytes, local_count;
@@ -327,8 +327,8 @@ struct World {
       if (!active(r)) continue;
       PlanRank& p = pr[r];
       CK(cudaSetDevice(dev[r]));
-      KvmConfig c = cfg; c.num_vars = p.nvars;
-      ex[r] = std::make_unique<KvmExec>(c);
+      MvmConfig c = cfg; c.num_vars = p.nvars;
+      ex[r] = std::make_unique<MvmExec>(c);
       for (size_t i = 0; i < p.bufs.size(); ++i) {
         PlanBuf& b = p.bufs[i]; float* ptr = nullptr; int rows = b.rows, cols = b.cols;
         switch (b.kind) {
@@ -346,7 +346,7 @@ struct World {
       for (auto& v : p.vars) if (v.second) ex[r]->set_version(v.first, v.second);
       ex[r]->set_dist(dd[r]->dev());
     }
-    // every executor allocates BEFORE any kernel runs: cudaMalloc may wait for all kernels on the device (see KvmExec::prepare)
+    // every executor allocates BEFORE any kernel runs: cudaMalloc may wait for all kernels on the device (see MvmExec::prepare)
     for (int r = 0; r < W; ++r) if (active(r)) { CK(cudaSetDevice(dev[r])); ex[r]->prepare(); }
     bool need_net = false; for (auto& p : pr) need_net |= p.uses_sendq();
     if (need_net) {
@@ -363,21 +363,21 @@ struct World {
 
   // A timed-out rank: which tasks never ran, what they waited for, and what the inbox and the executor's version said. Tells a lost
   // signal (inbox 0) from a lost wakeup (inbox >= need, version < need) from a lost wake after the version moved.
-  void diagnose(int r, const KvmResult& res) {
+  void diagnose(int r, const MvmResult& res) {
     std::vector<unsigned> inbox = dd[r]->read_inbox();
     int shown = 0, stuck = 0;
     for (size_t i = 0; i < res.tasks.size() && i < res.trace.size(); ++i) {
       if (res.trace[i].exec_count != 0) continue;
       ++stuck;
-      const KvmTaskDesc& t = res.tasks[i];
+      const MvmTaskDesc& t = res.tasks[i];
       if (shown++ >= 6) continue;
       const bool w = t.wait_var >= 0;
-      fprintf(stderr, "  diagnosis rank %d: task %zu (%s) never ran; wait var %d >= %d; executor version %d, inbox %u%s\n", r, i, kvm_op(t.op_id)->name, t.wait_var,
+      fprintf(stderr, "  diagnosis rank %d: task %zu (%s) never ran; wait var %d >= %d; executor version %d, inbox %u%s\n", r, i, mvm_op(t.op_id)->name, t.wait_var,
               t.wait_ver, w ? res.version[t.wait_var] : -1, w ? inbox[t.wait_var] : 0u,
               w && (int)inbox[t.wait_var] >= t.wait_ver && res.version[t.wait_var] < t.wait_ver ? "   <- signal arrived, pump did not publish it" :
               w && res.version[t.wait_var] >= t.wait_ver ? "   <- version reached, task never woken (lost wakeup)" : "");
     }
-    const KvmDistCtl* c = dd[r]->ctl();
+    const MvmDistCtl* c = dd[r]->ctl();
     fprintf(stderr, "  diagnosis rank %d: %d tasks never ran; pump polled %llu times, last publish var %d ver %d; in_vars:", r, stuck, (unsigned long long)c->polls, c->last_pub_var, c->last_pub_ver);
     for (int v : pr[r].in_vars) fprintf(stderr, " %d(inbox %u, version %d)", v, inbox[v], res.version[v]);
     fprintf(stderr, "\n");
@@ -396,10 +396,10 @@ struct World {
     });
     // Kernels are launched from THIS thread, one executor after another, before any rank thread runs. Launching the persistent kernels
     // of several executors concurrently from one host thread each left one executor's kernel unscheduled until its peers timed out
-    // in ~7% of runs (6/80 vs 0/80 for sequential or 3 ms-staggered launches; see DISTRIBUTED.md). KVM_DIST_LAUNCH=threads restores
-    // the concurrent launch for experiments; KVM_DIST_STAGGER_MS=n sleeps n ms between launches.
-    const bool main_launch = !(getenv("KVM_DIST_LAUNCH") && std::string(getenv("KVM_DIST_LAUNCH")) == "threads");
-    const int stagger = getenv("KVM_DIST_STAGGER_MS") ? atoi(getenv("KVM_DIST_STAGGER_MS")) : 0;
+    // in ~7% of runs (6/80 vs 0/80 for sequential or 3 ms-staggered launches; see DISTRIBUTED.md). MVM_DIST_LAUNCH=threads restores
+    // the concurrent launch for experiments; MVM_DIST_STAGGER_MS=n sleeps n ms between launches.
+    const bool main_launch = !(getenv("MVM_DIST_LAUNCH") && std::string(getenv("MVM_DIST_LAUNCH")) == "threads");
+    const int stagger = getenv("MVM_DIST_STAGGER_MS") ? atoi(getenv("MVM_DIST_STAGGER_MS")) : 0;
     if (main_launch) for (int r = 0; r < W; ++r) if (active(r)) { CK(cudaSetDevice(dev[r])); ex[r]->start(); if (stagger) std::this_thread::sleep_for(std::chrono::milliseconds(stagger)); }
     for (int r = 0; r < W; ++r) {
       if (!active(r)) continue;
@@ -412,9 +412,9 @@ struct World {
           if (!main_launch) ex[r]->start();
           where[r] = 2;
           out[r].start_ms = (double)ms_since(t0);
-          KvmSubmit s = ex[r]->submit(pr[r].bundle);
+          MvmSubmit s = ex[r]->submit(pr[r].bundle);
           out[r].submit_ms = (double)ms_since(t0);
-          if (s != KvmSubmit::OK && s != KvmSubmit::DEVICE_ERROR) throw std::runtime_error(std::string("submit: ") + kvm_submit_name(s));   // DEVICE_ERROR: the device already failed (e.g. dead peer); finish() reports which
+          if (s != MvmSubmit::OK && s != MvmSubmit::DEVICE_ERROR) throw std::runtime_error(std::string("submit: ") + mvm_submit_name(s));   // DEVICE_ERROR: the device already failed (e.g. dead peer); finish() reports which
           where[r] = 3;
           out[r].res = ex[r]->finish();
           where[r] = 4;
@@ -422,7 +422,7 @@ struct World {
           out[r].finish_ms = out[r].ms;
           if (px[r]) px[r]->kernel_done();
           out[r].ok = out[r].res.ok();
-          if (!out[r].ok) out[r].msg = std::string(kvm_err_name(out[r].res.err_code)) + " (" + kvm_err_text(out[r].res.err_code) + ") slot " + std::to_string(out[r].res.err_slot) + " a=" + std::to_string(out[r].res.err_a);
+          if (!out[r].ok) out[r].msg = std::string(mvm_err_name(out[r].res.err_code)) + " (" + mvm_err_text(out[r].res.err_code) + ") slot " + std::to_string(out[r].res.err_slot) + " a=" + std::to_string(out[r].res.err_a);
         } catch (const std::exception& e) { out[r].ok = false; out[r].msg = e.what(); if (px[r]) px[r]->kernel_done(); }
       });
     }
@@ -431,11 +431,11 @@ struct World {
     for (int r = 0; r < W; ++r) if (px[r]) { if (!px[r]->wait_finished(out[r].ok ? 60000 : 3000)) { out[r].msg += " [proxy shutdown incomplete]"; } }
     for (int r = 0; r < W; ++r) if (px[r]) px[r]->stop();
     bool any_timeout = false;
-    for (int r = 0; r < W; ++r) any_timeout |= active(r) && !out[r].ok && out[r].res.err_code == KVM_ERR_TIMEOUT;
+    for (int r = 0; r < W; ++r) any_timeout |= active(r) && !out[r].ok && out[r].res.err_code == MVM_ERR_TIMEOUT;
     if (any_timeout) for (int r = 0; r < W; ++r) if (active(r))
       fprintf(stderr, "  host timeline rank %d: start() returned at %.0f ms, submit() at %.0f ms, finish() at %.0f ms; kernel %.3f ms; err %s\n", r, out[r].start_ms, out[r].submit_ms,
-              out[r].finish_ms, out[r].res.kernel_ms, kvm_err_name(out[r].res.err_code));
-    for (int r = 0; r < W; ++r) if (active(r) && !out[r].ok && out[r].res.err_code == KVM_ERR_TIMEOUT) diagnose(r, out[r].res);
+              out[r].finish_ms, out[r].res.kernel_ms, mvm_err_name(out[r].res.err_code));
+    for (int r = 0; r < W; ++r) if (active(r) && !out[r].ok && out[r].res.err_code == MVM_ERR_TIMEOUT) diagnose(r, out[r].res);
     return out;
   }
 };
@@ -443,7 +443,7 @@ struct World {
 static void report(const char* label, std::vector<RankOut>& out, World& w) {
   for (size_t r = 0; r < out.size(); ++r) if (w.active((int)r)) {
     CHECK(out[r].ok, "%s rank %zu: %s", label, r, out[r].msg.c_str());
-    g_timeouts += out[r].res.err_code == KVM_ERR_TIMEOUT;
+    g_timeouts += out[r].res.err_code == MVM_ERR_TIMEOUT;
   }
 }
 
@@ -466,19 +466,19 @@ static std::vector<PlanRank> make_pingpong(int R, int N, bool proxy) {
   pr[1].bufs = {local(1, R * N), peer(0, 2, 1, R * N), inbox(0), sq};
   if (!proxy) { pr[0].bufs.pop_back(); pr[1].bufs.pop_back(); }   // peer pointers only: no send queue, so no proxy threads either
   if (proxy) { pr[0].bufs[3] = local(1, 1); pr[0].bufs[4] = local(1, 1); pr[1].bufs[1] = local(1, 1); pr[1].bufs[2] = local(1, 1); }   // no peer pointers: all traffic via the queue
-  KvmBundleBuilder b0, b1;
+  MvmBundleBuilder b0, b1;
   for (int r = 1; r <= R; ++r) {
-    KvmTaskOpts o; o.wait_var = r > 1 ? 0 : -1; o.wait_ver = r - 1;
+    MvmTaskOpts o; o.wait_var = r > 1 ? 0 : -1; o.wait_ver = r - 1;
     int s = b0.add("scale", {Bf(0), Bf(1), F((float)r), I(N)}, o);
     int p = proxy ? b0.add("send_proxy", {Bf(1), Bf(5), I(0), I(1), I(N), I(N), I(1), I(0), I((r - 1) * N), I(N), I(0), I(r)})
                   : b0.add("put_signal", {Bf(1), Bf(3), I(0), I((r - 1) * N), I(1), I(N), I(N), I(N), Bf(4), I(0), I(r)});
     b0.edge(s, p);
-    KvmTaskOpts o1; o1.wait_var = 0; o1.wait_ver = r;
+    MvmTaskOpts o1; o1.wait_var = 0; o1.wait_ver = r;
     if (proxy) b1.add("send_proxy", {Bf(0), Bf(3), I((r - 1) * N), I(1), I(N), I(N), I(0), I(2), I((r - 1) * N), I(N), I(0), I(r)}, o1);
     else b1.add("put_signal", {Bf(0), Bf(1), I((r - 1) * N), I((r - 1) * N), I(1), I(N), I(N), I(N), Bf(2), I(0), I(r)}, o1);
   }
   // rank 0 final waiter so the kernel only ends after the last reply arrived (and nothing is left in flight)
-  KvmTaskOpts ow; ow.wait_var = 0; ow.wait_ver = R; b0.add("noop", {}, ow);
+  MvmTaskOpts ow; ow.wait_var = 0; ow.wait_ver = R; b0.add("noop", {}, ow);
   pr[0].bundle = b0.build(); pr[1].bundle = b1.build();
   return pr;
 }
@@ -528,7 +528,7 @@ static void suite_pingpong(bool proxy, FaultSpec f = {}, bool tcp = false, int R
       std::vector<double> h01, h10;
       const auto &t0 = out[0].res.trace, &t1 = out[1].res.trace;
       for (int r = 0; r < R; ++r) {
-        const KvmTrace &put = t0[2 * r + 1], &back = t1[r];                 // rank0: scale, put_signal per round; rank1: one put_signal
+        const MvmTrace &put = t0[2 * r + 1], &back = t1[r];                 // rank0: scale, put_signal per round; rank1: one put_signal
         h01.push_back((double)((long long)back.start_ns - (long long)put.end_ns) / 1e3);
         if (r + 1 < R) h10.push_back((double)((long long)t0[2 * (r + 1)].start_ns - (long long)back.end_ns) / 1e3);
       }
@@ -543,43 +543,43 @@ static void suite_pingpong(bool proxy, FaultSpec f = {}, bool tcp = false, int R
 static void suite_errors() {
   fprintf(stderr, "== errors: nothing hangs\n");
   {   // a wait nobody will ever satisfy: the executor's own timeout ends it (device-side), with a decoded code
-    KvmConfig c = small_cfg(3, 8); c.timeout_us = 800 * 1000;
-    KvmExec ex(c); DistDevice dd(0, 1, 0, 8); dd.set_in_vars({1}); ex.set_dist(dd.dev());
+    MvmConfig c = small_cfg(3, 8); c.timeout_us = 800 * 1000;
+    MvmExec ex(c); DistDevice dd(0, 1, 0, 8); dd.set_in_vars({1}); ex.set_dist(dd.dev());
     ex.add_buffer(1, 4);
-    KvmBundleBuilder bb; KvmTaskOpts o; o.wait_var = 1; o.wait_ver = 1; bb.add("noop", {}, o);
-    ex.start(); ex.submit(bb.build()); auto t0 = Clock::now(); const KvmResult& r = ex.finish();
-    CHECK(r.err_code == KVM_ERR_TIMEOUT, "unsatisfiable remote wait: got %s", kvm_err_name(r.err_code));
+    MvmBundleBuilder bb; MvmTaskOpts o; o.wait_var = 1; o.wait_ver = 1; bb.add("noop", {}, o);
+    ex.start(); ex.submit(bb.build()); auto t0 = Clock::now(); const MvmResult& r = ex.finish();
+    CHECK(r.err_code == MVM_ERR_TIMEOUT, "unsatisfiable remote wait: got %s", mvm_err_name(r.err_code));
     CHECK(ms_since(t0) < 5000, "took %d ms", ms_since(t0));
-    fprintf(stderr, "  never-signalled remote wait -> %s after %d ms\n", kvm_err_name(r.err_code), ms_since(t0));
+    fprintf(stderr, "  never-signalled remote wait -> %s after %d ms\n", mvm_err_name(r.err_code), ms_since(t0));
   }
   {   // send queue full and nobody draining it: the producing task times out on the device
-    KvmExec ex(small_cfg(3, 8)); DistDevice dd(0, 1, 0, 8, 2, 256, 300ull * 1000000);
+    MvmExec ex(small_cfg(3, 8)); DistDevice dd(0, 1, 0, 8, 2, 256, 300ull * 1000000);
     int src = ex.add_buffer(1, 64), q = ex.add_view(dd.sendq_buf(), 1, (int)dd.sendq_floats());
-    KvmBundleBuilder bb; int prev = -1;
+    MvmBundleBuilder bb; int prev = -1;
     for (int i = 0; i < 4; ++i) { int t = bb.add("send_proxy", {Bf(src), Bf(q), I(0), I(1), I(8), I(8), I(1), I(0), I(0), I(8), I(0), I(i + 1)}); if (prev >= 0) bb.edge(prev, t); prev = t; }
-    ex.start(); ex.submit(bb.build()); auto t0 = Clock::now(); const KvmResult& r = ex.finish();
-    CHECK(r.err_code == KVM_ERR_DIST_SENDQ_TIMEOUT, "full queue: got %s", kvm_err_name(r.err_code));
-    fprintf(stderr, "  full send queue, no proxy -> %s after %d ms\n", kvm_err_name(r.err_code), ms_since(t0));
+    ex.start(); ex.submit(bb.build()); auto t0 = Clock::now(); const MvmResult& r = ex.finish();
+    CHECK(r.err_code == MVM_ERR_DIST_SENDQ_TIMEOUT, "full queue: got %s", mvm_err_name(r.err_code));
+    fprintf(stderr, "  full send queue, no proxy -> %s after %d ms\n", mvm_err_name(r.err_code), ms_since(t0));
   }
   {   // proxy stops heartbeating: the pump fails the device
-    KvmConfig c = small_cfg(3, 8); c.timeout_us = 10ull * 1000000;
-    KvmExec ex(c); DistDevice dd(0, 1, 0, 8, 4, 256, 1000000000ull, 300ull * 1000000); dd.set_in_vars({1}); ex.set_dist(dd.dev());
+    MvmConfig c = small_cfg(3, 8); c.timeout_us = 10ull * 1000000;
+    MvmExec ex(c); DistDevice dd(0, 1, 0, 8, 4, 256, 1000000000ull, 300ull * 1000000); dd.set_in_vars({1}); ex.set_dist(dd.dev());
     ex.add_buffer(1, 4);
     dd.ctl()->heartbeat = 1;                    // a proxy that beat once and then died
-    KvmBundleBuilder bb; KvmTaskOpts o; o.wait_var = 1; o.wait_ver = 1; bb.add("noop", {}, o);
-    ex.start(); ex.submit(bb.build()); auto t0 = Clock::now(); const KvmResult& r = ex.finish();
-    CHECK(r.err_code == KVM_ERR_DIST_PROXY_DEAD, "dead proxy: got %s", kvm_err_name(r.err_code));
+    MvmBundleBuilder bb; MvmTaskOpts o; o.wait_var = 1; o.wait_ver = 1; bb.add("noop", {}, o);
+    ex.start(); ex.submit(bb.build()); auto t0 = Clock::now(); const MvmResult& r = ex.finish();
+    CHECK(r.err_code == MVM_ERR_DIST_PROXY_DEAD, "dead proxy: got %s", mvm_err_name(r.err_code));
     CHECK(ms_since(t0) < 5000, "took %d ms", ms_since(t0));
-    fprintf(stderr, "  silent proxy -> %s after %d ms\n", kvm_err_name(r.err_code), ms_since(t0));
+    fprintf(stderr, "  silent proxy -> %s after %d ms\n", mvm_err_name(r.err_code), ms_since(t0));
   }
   {   // peer rank dies: the proxy tells the device, the device ends with PEER_DOWN
     World w; w.pr = make_pingpong(5, 256, true); w.dev = {device_of(0), device_of(1)}; w.only = 0; w.cfg.timeout_us = 20ull * 1000000;
     w.build(false, FaultSpec{});
     w.net.hub->kill(1);
     auto t0 = Clock::now(); auto out = w.run();
-    CHECK(!out[0].ok && out[0].res.err_code == KVM_ERR_DIST_PEER_DOWN, "dead peer: rank0 %s", out[0].ok ? "succeeded" : out[0].msg.c_str());
+    CHECK(!out[0].ok && out[0].res.err_code == MVM_ERR_DIST_PEER_DOWN, "dead peer: rank0 %s", out[0].ok ? "succeeded" : out[0].msg.c_str());
     CHECK(ms_since(t0) < 8000, "took %d ms", ms_since(t0));
-    fprintf(stderr, "  peer rank killed -> %s after %d ms\n", kvm_err_name(out[0].res.err_code), ms_since(t0));
+    fprintf(stderr, "  peer rank killed -> %s after %d ms\n", mvm_err_name(out[0].res.err_code), ms_since(t0));
   }
 }
 
@@ -593,28 +593,28 @@ static void suite_backpressure() {
   d1.set_in_vars({0});
   if (device_of(0) != device_of(1)) enable_peer_access({device_of(0), device_of(1)});
   CK(cudaSetDevice(device_of(1)));
-  KvmConfig c1 = small_cfg(3, 4); c1.live_cap = 8; c1.timeout_us = 8ull * 1000000;
-  KvmExec e1(c1); e1.add_buffer(1, 4); e1.set_dist(d1.dev());
+  MvmConfig c1 = small_cfg(3, 4); c1.live_cap = 8; c1.timeout_us = 8ull * 1000000;
+  MvmExec e1(c1); e1.add_buffer(1, 4); e1.set_dist(d1.dev());
   CK(cudaSetDevice(device_of(0)));
-  KvmExec e0(small_cfg(3, 4)); int flag = e0.add_view(d1.inbox_buf(), 1, 4);
+  MvmExec e0(small_cfg(3, 4)); int flag = e0.add_view(d1.inbox_buf(), 1, 4);
   CK(cudaSetDevice(device_of(1))); e1.prepare();
   CK(cudaSetDevice(device_of(0))); e0.prepare();          // before either kernel runs (cudaMalloc can wait for running kernels)
-  KvmBundleBuilder a, a2, b, s;
-  for (int i = 0; i < 8; ++i) { KvmTaskOpts o; o.wait_var = 0; o.wait_ver = 1; a.add("noop", {}, o); a2.add("noop", {}, o); }
+  MvmBundleBuilder a, a2, b, s;
+  for (int i = 0; i < 8; ++i) { MvmTaskOpts o; o.wait_var = 0; o.wait_ver = 1; a.add("noop", {}, o); a2.add("noop", {}, o); }
   b.add("noop", {});
   s.add("signal", {Bf(flag), I(0), I(1)});
-  KvmResult r1;
+  MvmResult r1;
   std::thread t1([&] {
     CK(cudaSetDevice(device_of(1)));
     e1.start(); e1.submit(a.build()); e1.submit(a2.build()); e1.submit(b.build()); r1 = e1.finish();
   });
   std::this_thread::sleep_for(std::chrono::milliseconds(300));     // let the window fill and admission block
   CK(cudaSetDevice(device_of(0)));
-  e0.start(); e0.submit(s.build()); const KvmResult& r0 = e0.finish();
+  e0.start(); e0.submit(s.build()); const MvmResult& r0 = e0.finish();
   t1.join();
-  CHECK(r0.ok(), "signaller: %s", kvm_err_name(r0.err_code));
-  g_timeouts += r1.err_code == KVM_ERR_TIMEOUT || r1.err_code == KVM_ERR_PARK_STALL;
-  CHECK(r1.ok() && r1.done == 17, "receiver: %s, %d/17 tasks done", kvm_err_name(r1.err_code), r1.done);
+  CHECK(r0.ok(), "signaller: %s", mvm_err_name(r0.err_code));
+  g_timeouts += r1.err_code == MVM_ERR_TIMEOUT || r1.err_code == MVM_ERR_PARK_STALL;
+  CHECK(r1.ok() && r1.done == 17, "receiver: %s, %d/17 tasks done", mvm_err_name(r1.err_code), r1.done);
 }
 
 // ==================================================================================================== bandwidth (needs 2 GPUs for the NVLink number)
@@ -627,12 +627,12 @@ static void suite_bw() {
     CK(cudaSetDevice(src_dev)); CK(cudaMalloc(&a, BYTES)); CK(cudaMemset(a, 1, BYTES));
     if (src_dev != dst_dev) enable_peer_access({src_dev, dst_dev});
     CK(cudaSetDevice(src_dev));
-    KvmConfig c = small_cfg(0, 8); c.blocks = 0; KvmExec ex(c);
+    MvmConfig c = small_cfg(0, 8); c.blocks = 0; MvmExec ex(c);
     int ia = ex.add_view(a, 1, (int)(BYTES / 4)), ib = ex.add_view(b, 1, (int)(BYTES / 4));
-    KvmBundleBuilder bb; int n = (int)(BYTES / TILE);
+    MvmBundleBuilder bb; int n = (int)(BYTES / TILE);
     for (int i = 0; i < n; ++i) bb.add("put", {Bf(ia), Bf(ib), I((int)(i * TILE / 4)), I((int)(i * TILE / 4)), I(1), I((int)(TILE / 4)), I((int)(TILE / 4)), I((int)(TILE / 4))});
-    ex.start(); ex.submit(bb.build()); const KvmResult& r = ex.finish();
-    CHECK(r.ok(), "device error %s", kvm_err_name(r.err_code));
+    ex.start(); ex.submit(bb.build()); const MvmResult& r = ex.finish();
+    CHECK(r.ok(), "device error %s", mvm_err_name(r.err_code));
     double gbs = (double)BYTES / (r.kernel_ms * 1e-3) / 1e9;
     fprintf(stderr, "  %-34s %6.1f GB/s  (%zu MiB in %.2f ms, %d blocks)\n", label, gbs, BYTES >> 20, r.kernel_ms, r.grid);
     CK(cudaSetDevice(src_dev)); cudaFree(a); CK(cudaSetDevice(dst_dev)); cudaFree(b);
@@ -669,10 +669,10 @@ static int suite_plan(int argc, char** argv) {
   w.only = only; w.cfg = small_cfg(blocks); w.cfg.timeout_us = (only >= 0 ? 180ull : 20ull) * 1000000;
   w.cfg.max_tasks = 1 << 16; w.cfg.live_cap = 1 << 12; w.cfg.ring_words = 1 << 20;   // big plans: thousands of tasks per rank (the comment on the line above used to swallow these)   // processes/hosts start with skew w.cfg.max_tasks = 1 << 16; w.cfg.live_cap = 1 << 13;
   if (timeout_s > 0) w.cfg.timeout_us = (unsigned long long)(timeout_s * 1e6);
-  if (const char* e = getenv("KVM_DIST_MAX_TASKS")) w.cfg.max_tasks = atoi(e);     // model-sized plans (dp of a GPT): more tasks than the defaults
-  if (const char* e = getenv("KVM_DIST_LIVE_CAP")) w.cfg.live_cap = atoi(e);
-  if (const char* e = getenv("KVM_DIST_RING_WORDS")) w.cfg.ring_words = atoi(e);
-  if (const char* e = getenv("KVM_DIST_SUCC_CAP")) w.cfg.succ_cap = (unsigned)atoll(e);   // successor-edge pool (power of two)
+  if (const char* e = getenv("MVM_DIST_MAX_TASKS")) w.cfg.max_tasks = atoi(e);     // model-sized plans (dp of a GPT): more tasks than the defaults
+  if (const char* e = getenv("MVM_DIST_LIVE_CAP")) w.cfg.live_cap = atoi(e);
+  if (const char* e = getenv("MVM_DIST_RING_WORDS")) w.cfg.ring_words = atoi(e);
+  if (const char* e = getenv("MVM_DIST_SUCC_CAP")) w.cfg.succ_cap = (unsigned)atoll(e);   // successor-edge pool (power of two)
   fprintf(stderr, "== plan %s: %d ranks on %d GPU(s), net %s%s\n", dir.c_str(), W, g_ngpu, only >= 0 ? "tcp (multi-process)" : tcp ? "tcp" : "loopback", (f.drop > 0 || f.dup > 0 || f.delay > 0) ? " + faults" : "");
   if (only >= 0 && hosts.size() != (size_t)W) { fprintf(stderr, "--rank needs --peers with %d entries\n", W); return 2; }
   w.build(tcp || only >= 0, f, hosts, ports);

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Executor vs PyTorch eager / whole-step CUDA graph / torch.compile on a frontend GPT (gen.py workload), reps interleaved in one driver.
 
-  python3 -I run_gpt.py WORKLOAD_DIR --exe ./kvm_exec --modes eager,graph,compile_mat,compile_graph --reps 7 --tol 2e-3 --out OUT.json
+  python3 -I run_gpt.py WORKLOAD_DIR --exe ./mvm_exec --modes eager,graph,compile_mat,compile_graph --reps 7 --tol 2e-3 --out OUT.json
 
 Same bytes on both sides (initial weights, token stream, AdamW lr 3e-3 betas (0.9, 0.95) wd 0.01, clip 1.0: torch_bench.Trainer reads them
 from the executor's workload.json). One driver process owns the GPU context and all PyTorch modes (built and warmed first); per rep every
-mode is timed once (CUDA events around the N steps), then one `kvm_exec` child runs the whole N-step bundle (the kernel's own cudaEvent
+mode is timed once (CUDA events around the N steps), then one `mvm_exec` child runs the whole N-step bundle (the kernel's own cudaEvent
 ms: persistent-kernel start and admission of the whole tape included). Ratios come from one time window; best of reps with the spread.
 Gate before timing: executor per-step loss vs eager (relative) within --tol, and every other mode vs eager.
 """
@@ -40,12 +40,12 @@ def exec_run(exe, bundle, extra=(), dump_idx=()):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('workload_dir')
-    ap.add_argument('--exe', default='./kvm_exec')
+    ap.add_argument('--exe', default='./mvm_exec')
     ap.add_argument('--modes', default='eager,graph,compile_mat,compile_graph,graph_whole,compile_graph_whole')
     ap.add_argument('--reps', type=int, default=7)
     ap.add_argument('--tol', type=float, default=2e-3, help='max relative per-step loss difference to eager that still counts as correct')
     ap.add_argument('--compile-tol', type=float, default=1e-2, help='the same for torch.compile modes (Triton TF32 matmuls round differently from cuBLAS)')
-    ap.add_argument('--exec-args', default='', help='extra kvm_exec arguments')
+    ap.add_argument('--exec-args', default='', help='extra mvm_exec arguments')
     ap.add_argument('--out')
     a = ap.parse_args()
     import torch

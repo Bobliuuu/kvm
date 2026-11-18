@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""PyTorch reference for a kvmfe.demo training directory (any GPT preset; built for gpt_162m), from the executor's own bytes.
+"""PyTorch reference for a mvmfe.demo training directory (any GPT preset; built for gpt_162m), from the executor's own bytes.
 
   torch_ref.py DEMO_DIR --model gpt_162m|JSON --steps N --lr LR --warmup W --out RESULT.json
                [--grads RUN_DIR/buffers]  [--curve] [--device cuda]
 
-DEMO_DIR is what `python3 -m kvmfe.demo --out DEMO_DIR --train-steps N --window 1 ...` wrote. Initial weights and the token stream are
+DEMO_DIR is what `python3 -m mvmfe.demo --out DEMO_DIR --train-steps N --window 1 ...` wrote. Initial weights and the token stream are
 rebuilt from workloads/train.json exactly as the executor allocates them (counter-based generator in numpy, self-checked against
 runtime/initgen.py; token stream from the data file), so both sides start from identical bytes. Optimiser: AdamW betas (0.9, 0.95),
 eps 1e-8, weight decay 0.01 on matrices only, global grad-norm clip 1.0 (coef = min(1, 1/(norm + 1e-6))), device-side linear
-warmup lr_t = lr * t/W for t <= W (t 1-based) then constant (lr_schedule op, include/kvm_ops_extra.cuh).
+warmup lr_t = lr * t/W for t <= W (t 1-based) then constant (lr_schedule op, include/mvm_ops_extra.cuh).
 
-  --grads DIR   compare step 1 with a kvm_run --dump of the one-step run (reuse none): loss, per-parameter gradient rel L2 and
+  --grads DIR   compare step 1 with a mvm_run --dump of the one-step run (reuse none): loss, per-parameter gradient rel L2 and
                 global norm against torch fp64 (truth), torch 1xTF32 (same arithmetic class as the executor) and torch fp32-highest;
                 m after step 1 (= (1-b1) * coef * g, linear in g so no sign-flip noise) and the weight update w1 - w0.
   --holdout N   with --curve: also the mean loss on N fresh batches (steps 10^6+i of the same stream, never trained on) at init, after the
-                torch runs and, with --exec-weights DIR (a kvm_run --dump '^w\\.' of the N-step run), for the executor's final weights
+                torch runs and, with --exec-weights DIR (a mvm_run --dump '^w\\.' of the N-step run), for the executor's final weights
   --curve       train N steps in torch (1xTF32 and fp32-highest) and print/record the loss curves; --obs FILE adds the executor's.
 """
 import argparse
@@ -29,7 +29,7 @@ import torch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'bench' / 'vs_pytorch'))
 import torch_bench as tb  # noqa: E402
-from kvmfe.nn import GPT, ModelConfig  # noqa: E402
+from mvmfe.nn import GPT, ModelConfig  # noqa: E402
 
 B1, B2, EPS, WD, CLIP = 0.9, 0.95, 1e-8, 0.01, 1.0
 
@@ -192,7 +192,7 @@ HOLDOUT_BASE = 10 ** 6
 
 def holdout_loss(ref, p, n, dtype=torch.float32):
     """Mean loss of weights `p` on n fresh batches of the stream (steps HOLDOUT_BASE+i; the noise and starts differ from every training step)."""
-    from kvmfe.train import batch_tokens
+    from mvmfe.train import batch_tokens
     tot = 0.0
     with torch.no_grad():
         for i in range(n):
@@ -279,9 +279,9 @@ def main():
     ap.add_argument('--warmup', type=int, default=0)
     ap.add_argument('--grads')
     ap.add_argument('--curve', action='store_true')
-    ap.add_argument('--obs', help='kvm_run observations.jsonl of the same N-step window-1 run (adds executor losses and the comparison)')
+    ap.add_argument('--obs', help='mvm_run observations.jsonl of the same N-step window-1 run (adds executor losses and the comparison)')
     ap.add_argument('--holdout', type=int, default=0, help='with --curve: evaluate on this many fresh held-out batches')
-    ap.add_argument('--exec-weights', help='directory of a kvm_run --dump of the executor weights (w.<param>.bin) for the hold-out evaluation')
+    ap.add_argument('--exec-weights', help='directory of a mvm_run --dump of the executor weights (w.<param>.bin) for the hold-out evaluation')
     ap.add_argument('--curve-labels', default='tf32,fp32', help="with --curve: torch curves to run, of tf32, fp32, bf16 (autocast)")
     ap.add_argument('--device', default='cuda')
     ap.add_argument('--out')

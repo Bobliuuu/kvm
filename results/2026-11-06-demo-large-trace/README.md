@@ -6,9 +6,9 @@ persistent kernel from `MANIFEST.json`, re-run to keep the complete per-task tra
 | | |
 |---|---|
 | GPU | NVIDIA A100-SXM4-40GB, 108 SMs (grid 108: 1 admitter + 1 policy + 106 workers), driver 580.105.08, nvcc 12.8.93 |
-| Build | `nvcc -O3 -arch=sm_80 -std=c++17 -rdc=true -DKVM_WITH_GAME --fmad=false -Xcompiler -ffp-contract=off -lineinfo` |
+| Build | `nvcc -O3 -arch=sm_80 -std=c++17 -rdc=true -DMVM_WITH_GAME --fmad=false -Xcompiler -ffp-contract=off -lineinfo` |
 | Flags | preset `large`: gpt_162m, 6 steps, window 1, request every 2 steps, 700 frames, tiling a100, 1xTF32 GEMMs, AdamW lr 3e-4 with 2 warmup steps, no CPU golden, sched dynamic |
-| Command | `KVM_HOST=<alias> KVM_KEY=<key> KVM_REMOTE=<private scratch dir> demo/run_demo.sh large --tag large-trace --lock-wait 14400` |
+| Command | `MVM_HOST=<alias> MVM_KEY=<key> MVM_REMOTE=<private scratch dir> demo/run_demo.sh large --tag large-trace --lock-wait 14400` |
 | Code | commit d657dde (branch docs/readme-visuals; the demo code is that of `test/demo-run`) |
 
 | Check (`check.log`, `report.json`) | Result |

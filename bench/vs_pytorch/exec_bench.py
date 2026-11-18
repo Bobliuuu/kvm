@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Time `kvm_exec` on a bundle made by gen.py: REPS launches (one process each), the kernel's own cudaEvent time per launch.
+"""Time `mvm_exec` on a bundle made by gen.py: REPS launches (one process each), the kernel's own cudaEvent time per launch.
 
-  python3 exec_bench.py WORKLOAD_DIR ./kvm_exec [--reps 7] [--out kvm.json] [--timeout 3600] [-- extra kvm_exec args]
+  python3 exec_bench.py WORKLOAD_DIR ./mvm_exec [--reps 7] [--out mvm.json] [--timeout 3600] [-- extra mvm_exec args]
 
 One launch runs all N steps of the bundle; persistent-kernel start and host admission of the whole tape are inside the time.
 Writes {"steps", "tasks", "ms_total": [...], "ms_per_step_best|median|worst", "tokens_per_s_best", "exit_codes"}.

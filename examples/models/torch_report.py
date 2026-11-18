@@ -2,11 +2,11 @@
 """Tie the executor to PyTorch for every model family of the zoo (goal 2, independent reference: not the repo's CPU golden).
 
   torch_report.py cpu     [--json OUT]                    frontend program on the CPU float64 VM vs torch autograd (examples/models/torch_models.py)
-  torch_report.py build   OUT_DIR                         one-step bundles of CASES (no CPU golden needed), for kvm_exec
-  torch_report.py compare OUT_DIR [--json OUT] [--md OUT] executor step-1 loss and all gradients (kvm_exec --dump-buffers of each bundle,
+  torch_report.py build   OUT_DIR                         one-step bundles of CASES (no CPU golden needed), for mvm_exec
+  torch_report.py compare OUT_DIR [--json OUT] [--md OUT] executor step-1 loss and all gradients (mvm_exec --dump-buffers of each bundle,
                                                           OUT_DIR/CASE/dump.txt) vs torch float64 autograd on the same initial bytes and batch
 
-GPU side, per case: `kvm_exec --quiet --dump-buffers OUT_DIR/CASE/bundle > OUT_DIR/CASE/dump.txt` (examples/models/torch_run.sh does it under the GPU lock).
+GPU side, per case: `mvm_exec --quiet --dump-buffers OUT_DIR/CASE/bundle > OUT_DIR/CASE/dump.txt` (examples/models/torch_run.sh does it under the GPU lock).
 Bundles use `reuse none`, so the step-0 gradient buffer of every parameter survives the run: it is the `g` of the step-0 adamw tasks.
 
 Tolerances (relative L2 per tensor against torch float64; loss relative; see the table in the results README for the measured values):
@@ -62,7 +62,7 @@ def rel_l2(a, b):
 
 def build_model_of(spec):
     import importlib.util
-    from kvmfe.pipeline import build_model
+    from mvmfe.pipeline import build_model
     s = importlib.util.spec_from_file_location('zoo_gen_bundle', HERE / 'gen_bundle.py')       # by path: tests/gptdiff has a gen_bundle.py too
     gb = importlib.util.module_from_spec(s)
     s.loader.exec_module(gb)

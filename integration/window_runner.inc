@@ -3,7 +3,7 @@
   auto run_queue_window = [&]() {
     const int window_tasks = perStep * 4;
     for (int first = 0; first < ntape; first += window_tasks) {
-      KvmGraphWindow w = kvm_slice_graph(qgraph, first,
+      MvmGraphWindow w = mvm_slice_graph(qgraph, first,
           std::min(window_tasks, ntape - first));
       CK(cudaMemcpy(q_offsets, w.offsets.data(), w.offsets.size() * sizeof(int), cudaMemcpyHostToDevice));
       if (!w.successors.empty())

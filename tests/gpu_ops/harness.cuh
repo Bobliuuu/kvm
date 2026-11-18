@@ -8,33 +8,33 @@
 #include <cstring>
 #include <string>
 #include <vector>
-#ifndef KVM_TMA_MAXB
-#define KVM_TMA_MAXB 65536   // one block per tile here: every concurrent block needs its own tensor-map slot (sm_90a path)
+#ifndef MVM_TMA_MAXB
+#define MVM_TMA_MAXB 65536   // one block per tile here: every concurrent block needs its own tensor-map slot (sm_90a path)
 #endif
-#include "kvm_ctx_shim.cuh"
-#include "kvm_ops_gpt.cuh"
+#include "mvm_ctx_shim.cuh"
+#include "mvm_ops_gpt.cuh"
 
 #define CK(x) do { cudaError_t e_ = (x); if (e_ != cudaSuccess) { printf("CUDA error %s at %s:%d\n", cudaGetErrorString(e_), __FILE__, __LINE__); exit(2); } } while (0)
 
 // The dynamic shared memory a test kernel may launch with: what the executor would ask for (at least 112 KiB), capped at what this device
 // can opt into (99 KiB on sm_86/sm_89/sm_120, 163 KiB on an A100). A launch above the cap then fails at that launch, by name, instead of the
-// whole program failing at the attribute call. A small-memory device runs a reduced-tile build (-DKVM_GPT_BIG_NST=3 -DKVM_GPT_MMA_SMEM=90112 -DKVM_GPT_MAX_HD=64: 88 KiB);
-// its cases above KVM_GPT_MAX_HD (hd=128 attention, whose variant that build does not compile) are skipped and counted, not run.
-static int kvm_test_smem_cap() {
+// whole program failing at the attribute call. A small-memory device runs a reduced-tile build (-DMVM_GPT_BIG_NST=3 -DMVM_GPT_MMA_SMEM=90112 -DMVM_GPT_MAX_HD=64: 88 KiB);
+// its cases above MVM_GPT_MAX_HD (hd=128 attention, whose variant that build does not compile) are skipped and counted, not run.
+static int mvm_test_smem_cap() {
     int dev = 0, optin = 0;
     CK(cudaGetDevice(&dev));
     CK(cudaDeviceGetAttribute(&optin, cudaDevAttrMaxSharedMemoryPerBlockOptin, dev));
-    return std::min(optin, std::max(112 * 1024, (int)kvm_gpt_smem_bytes(KVM_GPT_MAX_HD)));
+    return std::min(optin, std::max(112 * 1024, (int)mvm_gpt_smem_bytes(MVM_GPT_MAX_HD)));
 }
 struct OpInfo { const char* name; int id; const char* sig; };
 static const OpInfo OPS[] = {
 #define X(n, id, s) {#n, id, s},
-#include "kvm_ops_gpt.def"
+#include "mvm_ops_gpt.def"
 #undef X
 };
 enum {
 #define X(n, id, s) OP_##n = id,
-#include "kvm_ops_gpt.def"
+#include "mvm_ops_gpt.def"
 #undef X
 };
 
@@ -46,20 +46,20 @@ struct A {   // typed argument words
 };
 
 struct Dev {
-    std::vector<KvmBuf> tab;
+    std::vector<MvmBuf> tab;
     int32_t* err = nullptr;
-    KvmBuf* tab_d = nullptr;
+    MvmBuf* tab_d = nullptr;
     Dev() { CK(cudaMalloc(&err, 4)); CK(cudaMemset(err, 0, 4)); }
     ~Dev() { for (auto& b : tab) cudaFree(b.p); cudaFree(err); cudaFree(tab_d); }
     int add(int rows, int cols, int ld, int dtype) {
         if (!ld) ld = cols;
         void* p; CK(cudaMalloc(&p, (size_t)rows * ld * 4 + 16)); CK(cudaMemset(p, 0, (size_t)rows * ld * 4 + 16));
-        KvmBuf b{}; b.p = p; b.rows = rows; b.cols = cols; b.ld = ld; b.dtype = dtype; tab.push_back(b);
+        MvmBuf b{}; b.p = p; b.rows = rows; b.cols = cols; b.ld = ld; b.dtype = dtype; tab.push_back(b);
         return (int)tab.size() - 1;
     }
     int addf(int rows, int cols, int ld = 0) { return add(rows, cols, ld, 0); }
     int addi(int n) { return add(1, n, 0, 1); }
-    int addb(int rows, int cols, int ld = 0) { return add(rows, cols, ld, 2); }   // raw bf16 storage (KvmBuf.dtype 2)
+    int addb(int rows, int cols, int ld = 0) { return add(rows, cols, ld, 2); }   // raw bf16 storage (MvmBuf.dtype 2)
     void upb(int i, const std::vector<float>& h) {   // host floats must already be bf16-representable: stores the top 16 bits
         auto& b = tab[i]; std::vector<uint16_t> t((size_t)b.rows * b.ld, 0);
         for (int r = 0; r < b.rows; r++) for (int c = 0; c < b.cols; c++) { uint32_t u; memcpy(&u, &h[(size_t)r * b.cols + c], 4); t[(size_t)r * b.ld + c] = (uint16_t)(u >> 16); }
@@ -90,18 +90,18 @@ struct Dev {
     // earlier (staged launches) stay valid; add all buffers before staging.
     void sync_table() {
         if (tab_d && tab_cap != tab.size()) { cudaFree(tab_d); tab_d = nullptr; }
-        if (!tab_d) { CK(cudaMalloc(&tab_d, tab.size() * sizeof(KvmBuf))); tab_cap = tab.size(); }
-        CK(cudaMemcpy(tab_d, tab.data(), tab.size() * sizeof(KvmBuf), cudaMemcpyHostToDevice));
+        if (!tab_d) { CK(cudaMalloc(&tab_d, tab.size() * sizeof(MvmBuf))); tab_cap = tab.size(); }
+        CK(cudaMemcpy(tab_d, tab.data(), tab.size() * sizeof(MvmBuf), cudaMemcpyHostToDevice));
     }
     int geterr() { int e; CK(cudaMemcpy(&e, err, 4, cudaMemcpyDeviceToHost)); CK(cudaMemset(err, 0, 4)); return e; }
 };
 
-#ifndef KVM_HARNESS_NO_FULL   // KVM_HARNESS_NO_FULL: skip the all-ops kernel (compiles for minutes); the includer launches its own kernels
+#ifndef MVM_HARNESS_NO_FULL   // MVM_HARNESS_NO_FULL: skip the all-ops kernel (compiles for minutes); the includer launches its own kernels
 #ifndef BENCH_MINB
 #define BENCH_MINB 1   // -DBENCH_MINB=2 caps the all-ops kernel at 128 registers (two blocks per SM), as an executor could
 #endif
-__global__ void __launch_bounds__(KVM_GPT_THREADS, BENCH_MINB) k_run(KvmCtx c, const int32_t* w, const int* op, const int* off) {
-    if (!kvm_gpt_dispatch(c, op[blockIdx.x], w + off[blockIdx.x])) atomicCAS(c.err, 0, 99);
+__global__ void __launch_bounds__(MVM_GPT_THREADS, BENCH_MINB) k_run(MvmCtx c, const int32_t* w, const int* op, const int* off) {
+    if (!mvm_gpt_dispatch(c, op[blockIdx.x], w + off[blockIdx.x])) atomicCAS(c.err, 0, 99);
 }
 
 #endif
@@ -115,37 +115,37 @@ struct Batch {   // independent tasks, one block each
         op.push_back(id); off.push_back((int)w.size()); w.insert(w.end(), a.w.begin(), a.w.end());
     }
 };
-#ifndef KVM_HARNESS_NO_FULL
+#ifndef MVM_HARNESS_NO_FULL
 static int g_smem_attr = 0;
-// The launch the executor gives a bundle of these tasks (KvmExec::size_launch): the largest of their kvm_gpt_task_smem, at least the small
+// The launch the executor gives a bundle of these tasks (MvmExec::size_launch): the largest of their mvm_gpt_task_smem, at least the small
 // ops' size; an op outside the GPT pack keeps the build's maximum. So every test runs its op at the executor's launch, and a footprint its
 // formula does not count writes past the launch, which compute-sanitizer reports.
 static int launch_smem(const Batch& b) {
-    int need = KVM_GPT_SMEM_SMALL;
+    int need = MVM_GPT_SMEM_SMALL;
     for (size_t i = 0; i < b.op.size(); i++) {
-        const int n = kvm_gpt_task_smem(b.op[i], b.w.data() + b.off[i]);
-        need = std::max(need, n < 0 ? (int)kvm_gpt_smem_bytes(KVM_GPT_MAX_HD) : n);
+        const int n = mvm_gpt_task_smem(b.op[i], b.w.data() + b.off[i]);
+        need = std::max(need, n < 0 ? (int)mvm_gpt_smem_bytes(MVM_GPT_MAX_HD) : n);
     }
     return need;
 }
 // Runs the batch (one block of 256 threads per task) and returns the device error word (0 = ok). smem < 0: the executor's launch for it.
 static int run(Dev& d, const Batch& b, int smem = -1) {
     if (smem < 0) smem = launch_smem(b);
-    if (!g_smem_attr) { CK(cudaFuncSetAttribute(k_run, cudaFuncAttributeMaxDynamicSharedMemorySize, kvm_test_smem_cap())); kvm_hopper_host_init(); g_smem_attr = 1; }
+    if (!g_smem_attr) { CK(cudaFuncSetAttribute(k_run, cudaFuncAttributeMaxDynamicSharedMemorySize, mvm_test_smem_cap())); mvm_hopper_host_init(); g_smem_attr = 1; }
     d.sync_table();
     int32_t* w; int *op, *off;
     CK(cudaMalloc(&w, b.w.size() * 4 + 4)); CK(cudaMalloc(&op, b.op.size() * 4)); CK(cudaMalloc(&off, b.off.size() * 4));
     CK(cudaMemcpy(w, b.w.data(), b.w.size() * 4, cudaMemcpyHostToDevice));
     CK(cudaMemcpy(op, b.op.data(), b.op.size() * 4, cudaMemcpyHostToDevice));
     CK(cudaMemcpy(off, b.off.data(), b.off.size() * 4, cudaMemcpyHostToDevice));
-    KvmCtx c{d.tab_d, (int32_t)d.tab.size(), d.err};
-    k_run<<<(unsigned)b.op.size(), KVM_GPT_THREADS, smem>>>(c, w, op, off);
+    MvmCtx c{d.tab_d, (int32_t)d.tab.size(), d.err};
+    k_run<<<(unsigned)b.op.size(), MVM_GPT_THREADS, smem>>>(c, w, op, off);
     CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
     cudaFree(w); cudaFree(op); cudaFree(off);
     return d.geterr();
 }
 static int run1(Dev& d, int id, const A& a, int smem = -1) { Batch b; b.add(id, a); return run(d, b, smem); }
-#endif  // KVM_HARNESS_NO_FULL
+#endif  // MVM_HARNESS_NO_FULL
 
 // ---- accounting / comparison ------------------------------------------------------------------------------------------
 static int g_pass = 0, g_fail = 0, g_skip = 0;
@@ -154,7 +154,7 @@ static void verdict(const std::string& name, bool ok, const char* detail) {
     if (!ok || !g_quiet) printf("%s  %s  %s\n", ok ? "PASS" : "FAIL", name.c_str(), detail);
     (ok ? g_pass : g_fail)++;
 }
-// A case outside what this build compiles (an attention head size above KVM_GPT_MAX_HD): listed and counted, never passed, so a reduced
+// A case outside what this build compiles (an attention head size above MVM_GPT_MAX_HD): listed and counted, never passed, so a reduced
 // build's total says what it left out. Quiet sweeps count it without a line.
 static void skip(const std::string& name, const char* why) {
     if (!g_quiet) printf("SKIP  %s  %s\n", name.c_str(), why);

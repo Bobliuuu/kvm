@@ -38,7 +38,7 @@
 
 #include "log.hpp"
 
-namespace kvmd {
+namespace mvmd {
 
 using Clock = std::chrono::steady_clock;
 inline int ms_since(Clock::time_point t) { return (int)std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - t).count(); }
@@ -376,4 +376,4 @@ inline std::vector<int> pick_free_ports(int n) {
   return ports;
 }
 
-}  // namespace kvmd
+}  // namespace mvmd

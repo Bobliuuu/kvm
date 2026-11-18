@@ -10,19 +10,19 @@
    "rep": 0,
    "rc": 1,
    "stdout": "",
-   "stderr": "[kvm_exec][E] bad buffer shape or dtype\n"
+   "stderr": "[mvm_exec][E] bad buffer shape or dtype\n"
   },
   {
    "rep": 1,
    "rc": 1,
    "stdout": "",
-   "stderr": "[kvm_exec][E] bad buffer shape or dtype\n"
+   "stderr": "[mvm_exec][E] bad buffer shape or dtype\n"
   },
   {
    "rep": 2,
    "rc": 1,
    "stdout": "",
-   "stderr": "[kvm_exec][E] bad buffer shape or dtype\n"
+   "stderr": "[mvm_exec][E] bad buffer shape or dtype\n"
   }
  ]
 }

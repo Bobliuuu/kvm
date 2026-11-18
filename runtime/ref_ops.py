@@ -1,6 +1,6 @@
-"""Reference (CPU, float32) semantics of the operators in include/kvm_ops*.def.
+"""Reference (CPU, float32) semantics of the operators in include/mvm_ops*.def.
 
-The operator *table* (names, ids, argument types) lives in kvm_ops.def; this module only adds what a table
+The operator *table* (names, ids, argument types) lives in mvm_ops.def; this module only adds what a table
 cannot say: what an operator does and which buffer extents / value ranges it needs. The compiler uses the
 extents to reject out-of-bounds tasks at compile time; the CPU VM uses the functions to execute.
 
@@ -105,7 +105,7 @@ def _opaque(extents=lambda a: {}):
 
 # Operators with no CPU semantics: they execute as noops with their declared extents, only when the runtime is told to
 # allow opaque operators. The game engine (doomgeneric) and the inter-device communication ops have no CPU model here, nor the
-# fused MLP step's members (kvm_ops_fmlp.def): the executor's bundle pass (kvm_fuse.h) makes them, and no workload emits them.
+# fused MLP step's members (mvm_ops_fmlp.def): the executor's bundle pass (mvm_fuse.h) makes them, and no workload emits them.
 OPAQUE_OPS = {
     'fmlp_slice': _opaque(), 'fmlp_sgd': _opaque(), 'fmlp_split': _opaque(), 'fmlp_grid': _opaque(), 'fmlp_batch': _opaque(), 'fgpt_step': _opaque(),
     'doom_tick': _opaque(), 'doom_status': _opaque(),

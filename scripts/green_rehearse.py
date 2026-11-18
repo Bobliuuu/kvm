@@ -43,10 +43,10 @@ BINARIES = {   # $B/name: argument-aware stand-ins (bash case on "$*")
     'test_extra': {PASS: '*) echo "%s"; exit %d;;' % OK_OPS, FAIL: '*) echo "%s"; exit %d;;' % BAD_OPS},
     'test_bf16': {PASS: '*) echo "%s"; exit %d;;' % OK_OPS, FAIL: '*) echo "%s"; exit %d;;' % BAD_OPS},
     'test_sched': {PASS: '*) echo "%s"; exit %d;;' % OK_EXEC, FAIL: '*) echo "%s"; exit %d;;' % BAD_EXEC},
-    'kvm_exec': {PASS: '*--dump-buffers*) echo "buffer 0 w.fc1 ok"; exit 0;; *) echo "OK: 544/544 tasks"; exit 0;;',
-                 FAIL: '*) echo "DEVICE ERROR KVM_ERR_TIMEOUT (code 3)"; exit 2;;'},
-    'kvm_run_nogame': {PASS: '*) exit 0;;', FAIL: '*) exit 1;;'},
-    'kvm_run_game': {PASS: '*) exit 0;;', FAIL: '*) exit 1;;'},
+    'mvm_exec': {PASS: '*--dump-buffers*) echo "buffer 0 w.fc1 ok"; exit 0;; *) echo "OK: 544/544 tasks"; exit 0;;',
+                 FAIL: '*) echo "DEVICE ERROR MVM_ERR_TIMEOUT (code 3)"; exit 2;;'},
+    'mvm_run_nogame': {PASS: '*) exit 0;;', FAIL: '*) exit 1;;'},
+    'mvm_run_game': {PASS: '*) exit 0;;', FAIL: '*) exit 1;;'},
 }
 TOOLS = {   # stand-ins on PATH for the GPU's own tools
     'nvidia-smi': {PASS: '*) echo "NVIDIA A100-SXM4-40GB (stand-in), 570.00, 1410 MHz"; exit 0;;', FAIL: '*) echo "NVIDIA A100-SXM4-40GB (stand-in)"; exit 0;;'},
@@ -73,10 +73,10 @@ SCRIPTS = {   # tree scripts the jobs call, replaced in the copy: {path: {mode: 
                                        '"last_mean": {"executor": 0.6123, "torch_tf32": 0.5121}}\nEOF\necho "300 steps done"'},
     'tests/gpt162/learning_plot.py': {PASS: 'print("plot written")', FAIL: 'print("plot written")'},
     'demo/remote_demo.sh': {PASS: 'mkdir -p runs/big; printf "PASS game: compared 700 frames, raw-identical 700/700\\nPASS cadence 35.0 Hz\\nALL CHECKS PASSED\\n" > runs/big/check.log; '
-                                  'echo "window sizing: 8 windows" > runs/big/kvm_run.log; echo "{}" > runs/big/report.json',
-                            FAIL: 'mkdir -p runs/big; printf "FAIL game: compared 700 frames, raw-identical 698/700\\n" > runs/big/check.log; : > runs/big/kvm_run.log; exit 1'},
+                                  'echo "window sizing: 8 windows" > runs/big/mvm_run.log; echo "{}" > runs/big/report.json',
+                            FAIL: 'mkdir -p runs/big; printf "FAIL game: compared 700 frames, raw-identical 698/700\\n" > runs/big/check.log; : > runs/big/mvm_run.log; exit 1'},
     'dist/run_multigpu_tests.sh': {PASS: 'echo "PASS multigpu-p2p-pingpong (3s)"; echo "SKIP rdma-device-present: no RDMA device node (/dev/infiniband/uverbs*)"; '
-                                         'echo "SKIP multinode-tcp-plans: needs KVM_NODES with 2+ nodes"; echo "passed 14, failed 0, skipped 2   (GPUs: 2; logs: logs/x-dist)"; echo "RESULT: PASS"',
+                                         'echo "SKIP multinode-tcp-plans: needs MVM_NODES with 2+ nodes"; echo "passed 14, failed 0, skipped 2   (GPUs: 2; logs: logs/x-dist)"; echo "RESULT: PASS"',
                                    FAIL: 'echo "SKIP multigpu-p2p-pingpong: needs 2 GPUs"; echo "passed 9, failed 0, skipped 1"; echo "RESULT: PASS"'},
 }
 
@@ -102,7 +102,7 @@ def load_green(path: Path) -> types.SimpleNamespace:
     return types.SimpleNamespace(**{k: scope[k] for k in ('BUILDS', 'JOBS', 'NEEDS', 'HEAD', 'PASSFN', 'IGN')})
 
 
-PATHS = re.compile(r'(?<![\w/$.-])((?:tests|examples|bench|demo|doom|dist|frontend|runtime|scripts|include)/[\w./-]+|kvm_exec\.cu)')
+PATHS = re.compile(r'(?<![\w/$.-])((?:tests|examples|bench|demo|doom|dist|frontend|runtime|scripts|include)/[\w./-]+|mvm_exec\.cu)')
 
 
 def wiring(g) -> list[str]:

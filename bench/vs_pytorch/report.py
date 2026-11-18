@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Merge the PyTorch and executor results of one configuration into a markdown table with loss agreement and roofline floors.
 
-  python3 report.py RESULT_DIR [RESULT_DIR ...]     (each holds info.json, torch.json, kvm*.json)
+  python3 report.py RESULT_DIR [RESULT_DIR ...]     (each holds info.json, torch.json, mvm*.json)
 
 Floor per step = max(FLOPs / peak, bytes / HBM bandwidth, logical dependency depth x one hop). A100-SXM4-40GB: 156 TFLOP/s TF32
 tensor (52 for 3xTF32), 1555 GB/s. Hop: the executor's measured dependent hop is 7.0 us (results/2026-11-04-a100-exec-recycling);
@@ -13,7 +13,7 @@ from pathlib import Path
 
 PEAK = {'tf32': 156e12, 'precise': 52e12}
 BW = 1555e9
-HOP_KVM, HOP_GRAPH = 7.0e-6, 1.3e-6
+HOP_MVM, HOP_GRAPH = 7.0e-6, 1.3e-6
 
 
 def load(p):
@@ -28,25 +28,25 @@ def agree(a, b):
 def main():
     for d in map(Path, sys.argv[1:]):
         info, torch_r = load(d / 'info.json'), load(d / 'torch.json')
-        kvm = {p.stem: load(p) for p in sorted(d.glob('kvm*.json'))}
+        mvm = {p.stem: load(p) for p in sorted(d.glob('mvm*.json'))}
         mode = info['mode']
         t_fb = max(info['flops_per_step'] / PEAK[mode], info['min_bytes_per_step'] / BW)
         depth = info['logical_depth'] / info['steps']                 # the unrolled program chains all steps: per-step share
-        floor_kvm, floor_graph = max(t_fb, depth * HOP_KVM), max(t_fb, depth * HOP_GRAPH)
+        floor_mvm, floor_graph = max(t_fb, depth * HOP_MVM), max(t_fb, depth * HOP_GRAPH)
         tok = info['tokens_per_step']
-        rows = [(m, r) for m, r in torch_r['modes'].items() if 'error' not in r] + [(k, v) for k, v in kvm.items()]
+        rows = [(m, r) for m, r in torch_r['modes'].items() if 'error' not in r] + [(k, v) for k, v in mvm.items()]
         ref = torch_r['modes']['eager']['losses']
         print(f'### {d.name}: {info["model"]["name"]}  {info["params"]:,} params, {tok} tokens/step, {info["steps"]} steps, {mode}, '
               f'{info["tasks"]} tasks ({info["tasks"] / info["steps"]:.0f}/step), depth {depth:.0f} ops/step\n')
         print(f'roofline per step: compute {info["flops_per_step"] / PEAK[mode] * 1e6:.1f} us, bytes {info["min_bytes_per_step"] / BW * 1e6:.1f} us, '
-              f'chain {depth * HOP_GRAPH * 1e6:.1f} us at a graph edge / {depth * HOP_KVM * 1e6:.1f} us at the executor hop; '
-              f'floor {floor_graph * 1e6:.1f} us (graph-style) / {floor_kvm * 1e6:.1f} us (executor)\n')
+              f'chain {depth * HOP_GRAPH * 1e6:.1f} us at a graph edge / {depth * HOP_MVM * 1e6:.1f} us at the executor hop; '
+              f'floor {floor_graph * 1e6:.1f} us (graph-style) / {floor_mvm * 1e6:.1f} us (executor)\n')
         print('| run | us/step best | median | worst | tokens/s (best) | vs eager | vs graph | x floor (own chain) | loss diff vs eager: step 0 / worst step |')
         print('|---|---|---|---|---|---|---|---|---|')
         eb, gb = torch_r['modes']['eager']['ms_per_step_best'], torch_r['modes'].get('graph', {}).get('ms_per_step_best')
         for name, r in rows:
             b = r['ms_per_step_best']
-            fl = floor_kvm if name.startswith('kvm') else floor_graph
+            fl = floor_mvm if name.startswith('mvm') else floor_graph
             print(f'| {name} | {b * 1e3:.1f} | {r["ms_per_step_median"] * 1e3:.1f} | {r["ms_per_step_worst"] * 1e3:.1f} | {r["tokens_per_s_best"]:,.0f} | '
                   f'{eb / b:.2f}x | {(gb / b if gb else float("nan")):.2f}x | {b * 1e-3 / fl:.1f} | {agree(r["losses"][:1], ref[:1]):.1e} / {agree(r["losses"], ref):.1e} |')
         print()

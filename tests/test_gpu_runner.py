@@ -11,5 +11,5 @@ class RunnerTests(unittest.TestCase):
         self.assertIn('compute-sanitizer',s)
     def test_runner_does_not_modify_upstream(self):
         s=(ROOT/'integration/apply.py').read_text()
-        self.assertIn("path.with_name('kvm_ready.cu')",s)
+        self.assertIn("path.with_name('mvm_ready.cu')",s)
         self.assertNotIn('path.write_text(result)',s)

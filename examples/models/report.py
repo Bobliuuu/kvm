@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Assemble the results table from a run.sh log directory: python3 examples/models/report.py LOGDIR > table.md
 
-Per case: model, steps, tasks, loss curve (GPU), max error vs the CPU golden, kvm_exec wall time (best of 4 launches: the
+Per case: model, steps, tasks, loss curve (GPU), max error vs the CPU golden, mvm_exec wall time (best of 4 launches: the
 checked run plus three repeats; the time is the executor's own, from first admission to last completion).
 """
 import json

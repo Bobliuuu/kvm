@@ -1,4 +1,4 @@
-_Z17kvm_static_kernel12KvmStaticDev: every block, 94424 instructions in 4981 blocks
+_Z17mvm_static_kernel12MvmStaticDev: every block, 94424 instructions in 4981 blocks
   192 MMA loops; by kind (HMMA a pass, LDGSTS a pass):
     HMMA   2 LDGSTS   0:   4 loops; registers used in the loop median 22, passengers median 7 (range 5-21), LDL a pass median 0 (range 0-0)
     HMMA   4 LDGSTS   0:   1 loops; registers used in the loop median 38, passengers median 6 (range 6-6), LDL a pass median 0 (range 0-0)

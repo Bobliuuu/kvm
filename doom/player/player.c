@@ -85,7 +85,7 @@ void player_ticcmd(ticcmd_t* cmd) {
   player_t* p = &players[consoleplayer];
   mobj_t* me = p->mo;
   cmd->forwardmove = 0; cmd->sidemove = 0; cmd->angleturn = 0; cmd->buttons = 0;
-  if (doom_input_word != 0xFFFFFFFFu) {            // host-written input for this tic (include/kvm_ops_game.cuh): the keyboard path, no script
+  if (doom_input_word != 0xFFFFFFFFu) {            // host-written input for this tic (include/mvm_ops_game.cuh): the keyboard path, no script
     cmd->forwardmove = (signed char)(doom_input_word & 255); cmd->sidemove = (signed char)((doom_input_word >> 8) & 255);
     cmd->angleturn = (short)((signed char)((doom_input_word >> 16) & 255) * 32); cmd->buttons = (byte)(doom_input_word >> 24);
     return;

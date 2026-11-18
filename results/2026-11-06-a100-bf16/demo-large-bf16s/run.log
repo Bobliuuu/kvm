@@ -1,4 +1,4 @@
-# demo bf16s-large2  host=<KVM_HOST>  commit=0deb1fe  preset=large model={"name":"gpt_162m","vocab":50304,"d_model":768,"layers":12,"heads":12,"seq":1024,"batch":4,"precision":"bf16s"} steps=6 window=1 serve_every=2 frames=700 tiling=a100 precise=0 lr=3e-4 warmup=2 sanitize=0
+# demo bf16s-large2  host=<MVM_HOST>  commit=0deb1fe  preset=large model={"name":"gpt_162m","vocab":50304,"d_model":768,"layers":12,"heads":12,"seq":1024,"batch":4,"precision":"bf16s"} steps=6 window=1 serve_every=2 frames=700 tiling=a100 precise=0 lr=3e-4 warmup=2 sanitize=0
 
 === 2026-11-07T00:34:59Z  environment
 Build cuda_12.8.r12.8/compiler.35583870_0
@@ -9,8 +9,8 @@ commit: 0deb1fe
 -rw-rw-r-- 1 user user 1308688 Nov  3 23:37 doom/build/doom_dev.o
 -rw-rw-r-- 1 user user 4196020 Nov  3 23:17 doom/third_party/doom1.wad
 
-=== 2026-11-07T00:34:59Z  build kvm_run
-/usr/bin/nvcc -O3 -arch=sm_80 -std=c++17 -rdc=true -DKVM_WITH_GAME -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 demo/kvm_run.cu doom/build/doom_dev.o -o demo/kvm_run
+=== 2026-11-07T00:34:59Z  build mvm_run
+/usr/bin/nvcc -O3 -arch=sm_80 -std=c++17 -rdc=true -DMVM_WITH_GAME -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 demo/mvm_run.cu doom/build/doom_dev.o -o demo/mvm_run
 
 === 2026-11-07T01:05:11Z  CPU oracle for Doom (700 frames)
 
@@ -21,24 +21,24 @@ INFO demo: {'train': (103804, 2407048), 'serve_s0': (8711, 77532), 'serve_s2': (
 INFO manifest: 11 admissions, 1982 buffers (196 shared) -> ../runs/bf16s-large2/demo/MANIFEST.json
 
 === 2026-11-07T01:06:48Z  CPU-only manifest check (parse, version flow, every bundle loads/remaps/validates)
-[kvm_exec][D] bundle train_w5       103804 tasks (precompiled)
-[kvm_exec][D] bundle serve_s6         8711 tasks (precompiled)
-[kvm_exec][I] check-only: 11 bundles load, remap and validate
-[kvm_exec][I] check-only: manifest, bundles and version flow are consistent
+[mvm_exec][D] bundle train_w5       103804 tasks (precompiled)
+[mvm_exec][D] bundle serve_s6         8711 tasks (precompiled)
+[mvm_exec][I] check-only: 11 bundles load, remap and validate
+[mvm_exec][I] check-only: manifest, bundles and version flow are consistent
 
 === 2026-11-07T01:06:49Z  golden skipped (pure-Python CPU VM cannot run this model)
 
 === 2026-11-07T01:06:49Z  GPU: one lock hold (7200 s max wait)
 lock acquired 2026-11-07T01:06:49Z
-kvm_run exit 0
+mvm_run exit 0
 lock released 2026-11-07T01:07:01Z
-[kvm_exec][I] version check: 22935 version-carrying tasks (22935 exact), 0 violations, 0 at_least readers saw the version advance while they ran; 7645 reads of version 0 carry no tag (ordered by the host barrier only)
-[kvm_exec][I] workload 0: 622824 tasks, 53.886 CTA-s, queue wait p50 725.0 p99 4869.1 max 5569.5 us, 0 deadline misses, 29.75 GB moved (3.8 GB/s over the run)
-[kvm_exec][I] workload 1: 34844 tasks, 1.009 CTA-s, queue wait p50 31.7 p99 1262.6 max 1306.6 us, 34844 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
-[kvm_exec][I] workload 2: 5600 tasks, 4.295 CTA-s, queue wait p50 13.3 p99 22.5 max 112.6 us, 56 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
-[kvm_exec][I] trace: 663268 tasks -> runs/bf16s-large2/out/trace.csv
-[kvm_exec][I] dumped 701 buffers to runs/bf16s-large2/out/buffers
-[kvm_exec][I] wrote runs/bf16s-large2/out/run.json
+[mvm_exec][I] version check: 22935 version-carrying tasks (22935 exact), 0 violations, 0 at_least readers saw the version advance while they ran; 7645 reads of version 0 carry no tag (ordered by the host barrier only)
+[mvm_exec][I] workload 0: 622824 tasks, 53.886 CTA-s, queue wait p50 725.0 p99 4869.1 max 5569.5 us, 0 deadline misses, 29.75 GB moved (3.8 GB/s over the run)
+[mvm_exec][I] workload 1: 34844 tasks, 1.009 CTA-s, queue wait p50 31.7 p99 1262.6 max 1306.6 us, 34844 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[mvm_exec][I] workload 2: 5600 tasks, 4.295 CTA-s, queue wait p50 13.3 p99 22.5 max 112.6 us, 56 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[mvm_exec][I] trace: 663268 tasks -> runs/bf16s-large2/out/trace.csv
+[mvm_exec][I] dumped 701 buffers to runs/bf16s-large2/out/buffers
+[mvm_exec][I] wrote runs/bf16s-large2/out/run.json
 OK: 663268/663268 tasks, 7797.782 ms, 11 admissions
 
 === 2026-11-07T01:07:01Z  verify

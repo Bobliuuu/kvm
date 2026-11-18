@@ -1,5 +1,5 @@
 {
- "kind": "kvm-task-graph-summary",
+ "kind": "mvm-task-graph-summary",
  "model": {
   "layers": 128,
   "d": 25472,

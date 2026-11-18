@@ -12,8 +12,8 @@
 #include <cstdlib>
 #include <vector>
 #include <cublas_v2.h>
-#include "kvm_ctx_shim.cuh"
-#include "kvm_ops_gpt.cuh"
+#include "mvm_ctx_shim.cuh"
+#include "mvm_ops_gpt.cuh"
 #ifndef MM_MINB
 #define MM_MINB 2
 #endif
@@ -43,10 +43,10 @@ static_assert(TILE_WM * 64 < 256 || MM_MINB == 1, "the 256x128 tile holds 128 ac
 
 __global__ void __launch_bounds__(256, MM_MINB) k_tile(const float* A, int lda, const float* B, int ldb, float* C, const float* P, int M, int N, int K) {
     const int tn = (N + TILE_BN - 1) / TILE_BN, m0 = (blockIdx.x / tn) * TILE_BM, n0 = (blockIdx.x % tn) * TILE_BN;
-    kvmgpt::mm_tile_big<TILE_TA, TILE_TB, false, TILE_WM, TILE_WN, TILE_WTN, false, TILE_RZ>(A, lda, B, ldb, C, N, nullptr, nullptr, 0, const_cast<float*>(P),
+    mvmgpt::mm_tile_big<TILE_TA, TILE_TB, false, TILE_WM, TILE_WN, TILE_WTN, false, TILE_RZ>(A, lda, B, ldb, C, N, nullptr, nullptr, 0, const_cast<float*>(P),
                                                                                           N, m0, n0, M, N, K, 1.f, TILE_ACT, false);
 }
-static double gelu_grad_host(double x) {   // kvmgpt::gelu_grad in double: the reference's own error is far under the bound
+static double gelu_grad_host(double x) {   // mvmgpt::gelu_grad in double: the reference's own error is far under the bound
     const double k0 = 0.7978845608028654, t = std::tanh(k0 * (x + 0.044715 * x * x * x));
     return 0.5 * (1 + t) + 0.5 * x * (1 - t * t) * k0 * (1 + 3 * 0.044715 * x * x);
 }
@@ -75,7 +75,7 @@ int main(int argc, char** argv) {
     CK(cudaMalloc(&A, (size_t)M * K * 4)); CK(cudaMalloc(&B, (size_t)K * N * 4)); CK(cudaMalloc(&C, (size_t)M * N * 4)); CK(cudaMalloc(&R, (size_t)M * N * 4));
     fill<<<1024, 256>>>(A, (size_t)M * K, 1); fill<<<1024, 256>>>(B, (size_t)K * N, 2);
     if (TILE_ACT) { CK(cudaMalloc(&P, (size_t)M * N * 4)); fill<<<1024, 256>>>(P, (size_t)M * N, 3); }
-    const int lda = TILE_TA ? M : K, ldb = TILE_TB ? K : N, smem = std::max(kvm_gpt_smem_bytes(64), (TILE_BM + TILE_BN) * KVM_GPT_BIG_BK * KVM_GPT_BIG_NST * 4);
+    const int lda = TILE_TA ? M : K, ldb = TILE_TB ? K : N, smem = std::max(mvm_gpt_smem_bytes(64), (TILE_BM + TILE_BN) * MVM_GPT_BIG_BK * MVM_GPT_BIG_NST * 4);
     CK(cudaFuncSetAttribute(k_tile, cudaFuncAttributeMaxDynamicSharedMemorySize, smem));
     const int nt = ((M + TILE_BM - 1) / TILE_BM) * ((N + TILE_BN - 1) / TILE_BN);
     auto tile = [&] { k_tile<<<nt, 256, smem>>>(A, lda, B, ldb, C, P, M, N, K); };

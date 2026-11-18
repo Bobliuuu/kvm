@@ -15,7 +15,7 @@
 ## The step
 
 Member q * S + s takes row slice q (16 rows) and share s, the hidden units [h_s, h_s + w_s) of every layer: those columns of each layer's weights
-and bias, and those rows of the head. The members meet at the gang barrier (`include/kvm_gang.cuh`) 2 x depth + 1 times a step:
+and bias, and those rows of the head. The members meet at the gang barrier (`include/mvm_gang.cuh`) 2 x depth + 1 times a step:
 
 | crossing | what crosses it (through L2) |
 |---|---|
@@ -29,12 +29,12 @@ Every sum has a fixed order, so a run is deterministic. GEMMs are the fused MLP 
 
 ## What changed
 
-* `include/kvm_fused_split.h` holds the descriptor and the shared-memory layout. `include/kvm_fused_split.cuh` holds `split_run`, one member's
+* `include/mvm_fused_split.h` holds the descriptor and the shared-memory layout. `include/mvm_fused_split.cuh` holds `split_run`, one member's
   share of one step.
-* `include/kvm_ops_fmlp.def`: `fmlp_split` is op 192, in the fused-step ops' range 176..199.
-* `include/kvm_static.cuh`: the static worker prefetches the run's split descriptor during the record's waits and dispatches on its S and Q.
+* `include/mvm_ops_fmlp.def`: `fmlp_split` is op 192, in the fused-step ops' range 176..199.
+* `include/mvm_static.cuh`: the static worker prefetches the run's split descriptor during the record's waits and dispatches on its S and Q.
   `split_run` passes the run's error word to every barrier, so a failure ends the gang.
-* `include/kvm_fuse.h` decides from the DAG alone:
+* `include/mvm_fuse.h` decides from the DAG alone:
   - **The split form:** a run the one-block form cannot take (a width past 128, or no slice inside the budget) takes the split form when it has
     one hidden width, at most 4 layers, 96 rows a step, and a share count whose member layout fits the budget.
   - **Share count:** each run takes the largest share count its shape fits (a member within the budget, one gang of 6 x S members within the
@@ -46,7 +46,7 @@ Every sum has a fixed order, so a run is deterministic. GEMMs are the fused MLP 
     - consecutive steps join member to member.
   - **Parser:** it now reads what wide layers lower to: GEMMs on 128x128 and 256x128 tiles, a bias gradient in column ranges, an update in
     element ranges, and ordering noops between a GEMM's tiles or between updates.
-* `kvm_exec.cu`: `make_fused_state` builds each split run's descriptor with its partials, exchanges and barrier words. The planner prices the op at
+* `mvm_exec.cu`: `make_fused_state` builds each split run's descriptor with its partials, exchanges and barrier words. The planner prices the op at
   40 us.
 * `bench/fused_mlp/split_bed.cu`: the bed runs `split_run` itself on one gang, step after step, against a float64 reference.
 
@@ -94,7 +94,7 @@ form checked at 108, an A100's default):
 - **16 shares** (`fix(fused)`): at 8 to 15 shares h256-d4's widest share is 24 units, padded to 32 columns, so a member needs 39,900 floats
   against 38,400. Without 16, the panel's mlp256 split only at 108 workers.
 
-**Executor** (`ptx_check.log`): `kvm_exec.cu` with every change above, LEAN, compiles to PTX (`-gencode arch=compute_80,code=compute_80`) with
+**Executor** (`ptx_check.log`): `mvm_exec.cu` with every change above, LEAN, compiles to PTX (`-gencode arch=compute_80,code=compute_80`) with
 rc 0. That checks every changed line of C++. ptxas has not run on the executor.
 
 **The op body's registers** (`bed_regs.log`, the bed's full sm_80 build, 22 s): all 11 `split_run` instantiations (2 to 18 shares) use 227-234

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""kvm.cu's MLP, trained by PyTorch (eager, whole-run CUDA graph, torch.compile, torch.func.vmap, hand-batched bmm) and by the VM,
+"""mvm.cu's MLP, trained by PyTorch (eager, whole-run CUDA graph, torch.compile, torch.func.vmap, hand-batched bmm) and by the VM,
 all IN ONE PROCESS so that every ratio is measured on the same GPU state.
 
-  python3 torch_mlp.py --lib ./kvm_lib.so --runs 8 --steps 300 --rounds 3 --reps 5 --out result.json
+  python3 torch_mlp.py --lib ./mvm_lib.so --runs 8 --steps 300 --rounds 3 --reps 5 --out result.json
 
-kvm_lib.so is kvm.cu built with `nvcc -shared -Xcompiler -fPIC -DKVM_LIB` (exports kvm_main). The VM call dumps the exact data
+mvm_lib.so is mvm.cu built with `nvcc -shared -Xcompiler -fPIC -DMVM_LIB` (exports mvm_main). The VM call dumps the exact data
 (X, T, W1, W2, per-run learning rates) and its own final weights/losses; PyTorch trains from those very bits.
 
-Model (identical to kvm.cu): y = relu(x W1) W2, loss = mean((y - t)^2), plain SGD with a per-run learning rate, batch k = step % NB,
+Model (identical to mvm.cu): y = relu(x W1) W2, loss = mean((y - t)^2), plain SGD with a per-run learning rate, batch k = step % NB,
 R independent runs (an LR sweep) from the same init. Matmuls use TF32 (the VM's wmma path): the fastest conventional precision.
 Timing: reset the weights, then CUDA-event time one whole R-run training (R*steps SGD steps); best of --reps, repeated --rounds times,
 alternating torch variants and the VM so a drifting GPU hits both.
@@ -22,7 +22,7 @@ p.add_argument('--runs', type=int, default=8)
 p.add_argument('--steps', type=int, default=300)
 p.add_argument('--reps', type=int, default=5)
 p.add_argument('--rounds', type=int, default=3)
-p.add_argument('--progs', default='tiles,fused', help='VM programs to time (kvm.cu --prog)')
+p.add_argument('--progs', default='tiles,fused', help='VM programs to time (mvm.cu --prog)')
 p.add_argument('--timeline-prefix', default='', help='first VM call per program also writes PREFIX_<prog>.csv (per-instruction timestamps)')
 p.add_argument('--tl-steps', default='100,103')
 p.add_argument('--variants', default='all', help='comma list of class names, or all')
@@ -38,19 +38,19 @@ dev = 'cuda'
 
 # ------------------------------------------------------------------------------------------------ the VM, in this process
 lib = ctypes.CDLL(os.path.abspath(a.lib))
-lib.kvm_main.argtypes = [ctypes.c_int, ctypes.POINTER(ctypes.c_char_p)]
+lib.mvm_main.argtypes = [ctypes.c_int, ctypes.POINTER(ctypes.c_char_p)]
 
 
 def vm_call(args):
-    argv = [b'kvm'] + [x.encode() for x in args]
+    argv = [b'mvm'] + [x.encode() for x in args]
     arr = (ctypes.c_char_p * len(argv))(*argv)
     sys.stdout.flush()
-    rc = lib.kvm_main(len(argv), arr)
+    rc = lib.mvm_main(len(argv), arr)
     ctypes.CDLL(None).fflush(None)
     return rc
 
 
-tmp = tempfile.mkdtemp(prefix='kvmmlp')
+tmp = tempfile.mkdtemp(prefix='mvmmlp')
 vm_base = ['--runs', str(R), '--steps', str(S), '--reps', str(a.reps), '--ref-steps', '20']
 PROGS = a.progs.split(',')
 vm_rc = {}

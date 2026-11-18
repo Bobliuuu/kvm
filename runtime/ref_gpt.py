@@ -1,4 +1,4 @@
-"""CPU reference for the GPT operator library (include/kvm_ops_gpt.def, device code in kvm_ops_gpt.cuh).
+"""CPU reference for the GPT operator library (include/mvm_ops_gpt.def, device code in mvm_ops_gpt.cuh).
 
 Numerics: inputs and outputs are float32 values; inside an operator, reductions and transcendentals run in double and
 every stored result is rounded to float32 (AdamW follows the device's float32 step order). This matches the device to its
@@ -10,7 +10,7 @@ import math
 from ref_types import Buf, RefOp, f32
 
 M32 = 0xFFFFFFFF
-ATTN_ROWS = 128   # rows per causal attention task (queries for attn_fwd / attn_bwd_dq, keys for attn_bwd_dkv); KVM_GPT_ATTN_ROWS
+ATTN_ROWS = 128   # rows per causal attention task (queries for attn_fwd / attn_bwd_dq, keys for attn_bwd_dkv); MVM_GPT_ATTN_ROWS
 _I = frozenset
 
 
@@ -215,7 +215,7 @@ def _residual_add(b, a):
 
 
 def _tf32_round(x):
-    """float32 value as a TF32 value, as f2tf32 in kvm_ops_gpt.cuh: to nearest, ties away from zero, low 13 bits cleared; NaN keeps its high bits."""
+    """float32 value as a TF32 value, as f2tf32 in mvm_ops_gpt.cuh: to nearest, ties away from zero, low 13 bits cleared; NaN keeps its high bits."""
     import struct
     u = struct.unpack('<I', struct.pack('<f', x))[0]
     if (u & 0x7fffffff) <= 0x7f800000:

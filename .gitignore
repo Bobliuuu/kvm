@@ -2,8 +2,8 @@
 # run_remote.sh honors this file too, so ignored files never reach a remote GPU box either.
 
 # Build outputs
-kvm
-kvm_*
+mvm
+mvm_*
 *.o
 *.ptx
 *.cubin
@@ -36,10 +36,10 @@ logs/
 .idea/
 CLAUDE.local.md
 
-# ABI headers and executor sources match kvm_* but are source
-!include/kvm_*
-!kvm_exec.cu
-!demo/kvm_run.cu
+# ABI headers and executor sources match mvm_* but are source
+!include/mvm_*
+!mvm_exec.cu
+!demo/mvm_run.cu
 
 # Doom: the GPL engine source and the WAD are fetched by doom/setup.sh, never committed; build outputs
 doom/third_party/

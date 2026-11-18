@@ -8,10 +8,10 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / 'frontend'), str(ROOT / 'tests/frontend')]
 import numpy as np  # noqa: E402
 import oracle_models as om  # noqa: E402
-from kvmfe import models  # noqa: E402
-from kvmfe.lower import Tiling  # noqa: E402
-from kvmfe.pipeline import build_model, compile_training  # noqa: E402
-from kvmfe.train import TrainConfig  # noqa: E402
+from mvmfe import models  # noqa: E402
+from mvmfe.lower import Tiling  # noqa: E402
+from mvmfe.pipeline import build_model, compile_training  # noqa: E402
+from mvmfe.train import TrainConfig  # noqa: E402
 
 CASES = {n: models.PRESETS[n] for n in ('mlp_tiny', 'vit_tiny', 'llama_tiny', 'llama_gqa_tied', 'moe_tiny')}
 CASES['moe_drop_k1'] = models.LlamaConfig('moe_drop_k1', layers=1, heads=4, kv_heads=4, ffn=32, batch=2, experts=4, top_k=1, capacity_factor=0.5)

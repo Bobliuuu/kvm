@@ -8,16 +8,16 @@ for most model families, not to PyTorch. Branch `fix/correctness-gaps` (from `or
 |---|---|
 | GPU | NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver 580.105.08, CUDA 12.8 (nvcc 12.8.93); shared box, every GPU job inside one `flock ~/.gpu.lock` hold |
 | PyTorch (box) | 2.7.0 (CPU float64 for the serving golden; the zoo comparison needs no GPU torch) |
-| Executors used | (a) `demo/kvm_run` as built for `2026-11-06-demo-large-trace` (unchanged sources: only `demo/*.py`, `demo/remote_demo.sh` changed); (d) the `kvm_exec` of the bf16 branch tree (a superset of main: f32 paths regression-tested there, `1396 / 3669` ops checks), because it was already built; (b) the same binary and the bf16 branch's own zoo bundles |
+| Executors used | (a) `demo/mvm_run` as built for `2026-11-06-demo-large-trace` (unchanged sources: only `demo/*.py`, `demo/remote_demo.sh` changed); (d) the `mvm_exec` of the bf16 branch tree (a superset of main: f32 paths regression-tested there, `1396 / 3669` ops checks), because it was already built; (b) the same binary and the bf16 branch's own zoo bundles |
 | Commits | see `git log origin/main..fix/correctness-gaps`; the numbers below come from scripts at the tip named in the last line of this file |
 
 ## (a) Serving at 162M now has a golden decode
 
-`demo/serve_golden.py` recomputes a serve request in PyTorch float64 without a KV cache and without any kvmfe op (pre-LN, RoPE, causal SDPA, tanh-GELU, untied head). `demo/check_demo.py --no-golden --model gpt_162m`
+`demo/serve_golden.py` recomputes a serve request in PyTorch float64 without a KV cache and without any mvmfe op (pre-LN, RoPE, causal SDPA, tanh-GELU, untied head). `demo/check_demo.py --no-golden --model gpt_162m`
 (the new default of `remote_demo.sh` when the CPU golden is off) runs it on every request whose weights are known:
 
 * **version 0**: the executor's initial values are rebuilt from the config alone (counter-based generator, self-checked against `runtime/initgen.py`);
-* **final version**: the weights are read from `kvm_run --dump '^w\.'` (`remote_demo.sh` now adds it when the CPU golden is off), so the decode is checked against the weights the executor actually holds;
+* **final version**: the weights are read from `mvm_run --dump '^w\.'` (`remote_demo.sh` now adds it when the CPU golden is off), so the decode is checked against the weights the executor actually holds;
 * **middle versions** (`serve_s2`, `serve_s4`): not checked and reported as such. No snapshot of them survives (the next window overwrites the weights) and a CPU re-training cannot reproduce them (AdamW amplifies 1xTF32 noise, `2026-11-04-a100-gpt-golden`).
 
 The comparison is teacher-forced per token (the reference is fed the prompt plus the executor's own earlier tokens, one causal forward gives every step's logits). A token passes if it is the float64 argmax,
@@ -52,15 +52,15 @@ Fix of the check, not by loosening: the model now declares the parameter (`Param
 (|dw| <= lr x max(1, (1-b1)/sqrt(1-b2)) per step, so |w_gpu - w_golden| <= 2T, |w_gpu| <= T with T = steps x lr), the moments at the noise level (<= 2^-6 of the live gradients' scale). Live parameters keep the 1e-2 bound.
 `examples/models/test_check.py` (8 tests, generates a real vit_bf16 bundle): sign-flipped noise inside the envelope passes; a weight outside it, moments at gradient scale, and a wrong live weight each fail.
 Re-run on the A100 (bf16 bundles/binary from `origin/perf/bf16-a100`, whose `meta.json` need `invariant_params`; this branch does not merge it):
-`python3 examples/models/check.py WORKLOAD BUNDLE DUMP --mode lowp` for `vit_bf16`, `vit_bf16s`, `san_bf16s` (dump: `kvm_exec --quiet --dump-buffers BUNDLE`).
+`python3 examples/models/check.py WORKLOAD BUNDLE DUMP --mode lowp` for `vit_bf16`, `vit_bf16s`, `san_bf16s` (dump: `mvm_exec --quiet --dump-buffers BUNDLE`).
 
 ## (c) Dynamic shapes and data-dependent control flow
 
 Design note: `FRAMEWORK.md`, section "Dynamic shapes and data-dependent control flow" (scope, three features ranked by size, what is not built). Prototype of the smallest honest one, **admission guards**
 (manifest_version 2): an admission runs only if a scalar of a buffer passes a comparison; a `while` with a data-dependent trip count is a chain of guarded admissions, early exit is the next chunk's guard reading a `done` flag.
-Built in the CPU reference runner (`frontend/kvmfe/run_manifest.py`: validation, guard evaluation, skip cascade through `after_bundles`, "a guarded admission cannot publish" so the version flow stays static) and tested
-(`tests/frontend/test_guard.py`: trip counts 0, 1, 2, 4 and the unroll bound for five initial values; cascade; publishing and malformed guards rejected). It touches neither the admitter's ingest path nor `kvm_claim`,
-and `demo/kvm_run.cu` is **unchanged**: it accepts only `manifest_version` 1, so a guarded manifest stops there with an error instead of running every admission unconditionally. Not built: guards in `kvm_run`
+Built in the CPU reference runner (`frontend/mvmfe/run_manifest.py`: validation, guard evaluation, skip cascade through `after_bundles`, "a guarded admission cannot publish" so the version flow stays static) and tested
+(`tests/frontend/test_guard.py`: trip counts 0, 1, 2, 4 and the unroll bound for five initial values; cascade; publishing and malformed guards rejected). It touches neither the admitter's ingest path nor `mvm_claim`,
+and `demo/mvm_run.cu` is **unchanged**: it accepts only `manifest_version` 1, so a guarded manifest stops there with an error instead of running every admission unconditionally. Not built: guards in `mvm_run`
 (needs a 15-minute device build and an A100 test; the change is small, described in the note), masked tiles for variable sequence length (padding with `ignore = -1` is already correct, only the padded tiles' FLOPs are wasted),
 and device-side conditional admission (belongs to the admission rework).
 
@@ -71,7 +71,7 @@ It shares only the initial values and the first batch with the frontend. Two lev
 
 1. **CPU, exact** (`cpu_vm_vs_torch.txt`, also `tests/frontend/test_torch_models.py`, 11 tests): the frontend's program on the CPU float64 VM against torch autograd: loss and the gradient of **every** parameter tensor.
    Worst gradient relative L2 over the f32 families: **2e-15** (tolerance 1e-10); bf16 emulation 4.4e-3 (Llama, tolerance 1e-2: one bf16 ulp is 3.9e-3; torch sums unrounded branch gradients before a cast where the frontend rounds per consumer) and 0 (MLP).
-2. **A100, executor** (`torch-zoo/torch_compare.{txt,md,json}`, `torch_report.py compare`, `torch_run.sh`): one-step bundles of 14 cases run through `kvm_exec`, the executor's step-0 loss(es) and the step-0 gradient of every parameter
+2. **A100, executor** (`torch-zoo/torch_compare.{txt,md,json}`, `torch_report.py compare`, `torch_run.sh`): one-step bundles of 14 cases run through `mvm_exec`, the executor's step-0 loss(es) and the step-0 gradient of every parameter
    tensor (the `g` of the step-0 AdamW tasks; `reuse none` keeps them) against torch float64 on the same bytes. 14 of 14 PASS:
 
 | case | mode | params | loss rel err vs torch f64 | worst gradient rel L2 (tensor) | global grad norm rel | tolerance (loss / grad) | verdict |
@@ -105,4 +105,4 @@ The ViT key bias, whose true gradient is exactly zero, is judged in absolute ter
 
 * Known failures: add "bf16 zoo: `san_bf16s` weights 1.7e-2 vs 1e-2 (open); ViT key-bias weight check replaced by an absolute envelope check (pending A100 confirmation)".
 * "Implemented + measured": serving at 162M checked against a PyTorch float64 decode for the version-0 and final-weights requests (`2026-11-06-a100-correctness`); every zoo family's step-1 loss and gradients tied to PyTorch float64 (14 cases, 3xTF32 <= 3e-6, 1xTF32 <= 8.6e-4, bf16 <= 6.8e-3).
-* "Not built": dynamic shapes / data-dependent control flow -> "guards exist only in the CPU reference runner; kvm_run, masked tiles, device-side conditional admission not built (FRAMEWORK.md)".
+* "Not built": dynamic shapes / data-dependent control flow -> "guards exist only in the CPU reference runner; mvm_run, masked tiles, device-side conditional admission not built (FRAMEWORK.md)".

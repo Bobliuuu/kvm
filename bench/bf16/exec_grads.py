@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Step-1 numerics of a gen.py bundle on the executor against PyTorch fp64 / TF32 / fp32 / autocast-bf16 (tests/gpt162/torch_ref.py).
 
-  python3 bench/bf16/exec_grads.py WORKLOAD_DIR ./kvm_exec --out OUT_DIR [--lr 3e-3] [--warmup 0] [--keep]
+  python3 bench/bf16/exec_grads.py WORKLOAD_DIR ./mvm_exec --out OUT_DIR [--lr 3e-3] [--warmup 0] [--keep]
 
 WORKLOAD_DIR comes from `bench/vs_pytorch/gen.py OUT --steps 1 --reuse none` (reuse none: every gradient buffer survives the step). The executor runs
 once with `--dump-bin` for the loss, the clip coefficient and every parameter's gradient (with --update also the first moment and updated weight; raw little-endian f32; bf16
@@ -46,7 +46,7 @@ def main():
     missing = sorted(want - set(index))
     if missing:
         raise SystemExit(f'buffers not in the bundle: {missing[:5]}')
-    tmp = Path(tempfile.mkdtemp(prefix='exec_grads_', dir=os.environ.get('KVM_TMP')))
+    tmp = Path(tempfile.mkdtemp(prefix='exec_grads_', dir=os.environ.get('MVM_TMP')))
     try:
         dump = tmp / 'buffers'
         dump.mkdir()

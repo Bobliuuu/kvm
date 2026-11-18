@@ -1,10 +1,10 @@
 import unittest
 
 import _path  # noqa: F401
-from kvmfe.nn import ModelConfig
+from mvmfe.nn import ModelConfig
 import math
 
-from kvmfe.train import batch_stream, batch_tokens, stream_entropy
+from mvmfe.train import batch_stream, batch_tokens, stream_entropy
 
 
 class RepeatBatch(unittest.TestCase):

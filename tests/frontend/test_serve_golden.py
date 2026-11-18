@@ -11,8 +11,8 @@ import numpy as np
 
 import _path  # noqa: F401
 import oracle_gpt as ref_gpt
-from kvmfe.nn import GPT, ModelConfig
-from kvmfe.optim import OptimConfig
+from mvmfe.nn import GPT, ModelConfig
+from mvmfe.optim import OptimConfig
 
 try:
     import torch  # noqa: F401

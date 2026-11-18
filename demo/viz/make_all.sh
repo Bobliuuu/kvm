@@ -3,7 +3,7 @@
 #   demo/viz/make_all.sh              charts + animation + demo/index.html from results/2026-11-05-showcase (committed raw data)
 #                                     + the Doom video when logs/showcase-dynamic holds frames (else the committed video is kept)
 #   demo/viz/make_all.sh --package    first copy logs/showcase-*/ (from collect.sh) into results/2026-11-05-showcase/
-# New GPU data: KVM_HOST=user@host demo/viz/collect.sh && demo/viz/make_all.sh --package
+# New GPU data: MVM_HOST=user@host demo/viz/collect.sh && demo/viz/make_all.sh --package
 # Needs: python3 with matplotlib, numpy, pillow; ffmpeg (GIF + MP4).
 set -euo pipefail
 cd "$(dirname "$0")/../.."

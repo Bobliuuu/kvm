@@ -1,4 +1,4 @@
-"""Makes `import kvmfe` work under `python3 -I -m unittest discover -s tests/frontend` (isolated mode ignores cwd)."""
+"""Makes `import mvmfe` work under `python3 -I -m unittest discover -s tests/frontend` (isolated mode ignores cwd)."""
 import sys
 from pathlib import Path
 

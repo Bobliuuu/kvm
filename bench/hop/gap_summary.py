@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""The dispatch-gap phases of a -DKVM_PROF_GAP build, from its --trace-csv (gp columns, written by kvm_write_trace_csv):
+"""The dispatch-gap phases of a -DMVM_PROF_GAP build, from its --trace-csv (gp columns, written by mvm_write_trace_csv):
 
   gap_summary.py TRACE.csv
 
-Each phase is measured by thread 0 of one block between two tasks it ran, in SM cycles (KVM_PG in kvm_exec.cuh). The clock is read from the trace itself, by comparing a block's
+Each phase is measured by thread 0 of one block between two tasks it ran, in SM cycles (MVM_PG in mvm_exec.cuh). The clock is read from the trace itself, by comparing a block's
 cycle counter with its %globaltimer across tasks, because the SM runs at one of two clocks (1095 or 1410 MHz) that the phases must be converted with. Tasks are split by how they
 were started: continuation (the block's previous task released them) or queue (a pop).
 """

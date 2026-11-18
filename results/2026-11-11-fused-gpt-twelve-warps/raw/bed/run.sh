@@ -1,5 +1,5 @@
 #!/bin/bash
-# the head of #48's chain) with KVM_FGPT_NT made overridable. Built 13:19Z and 13:25Z (fgpt_kernel<false> / <true>, the plain and the clocked
+# the head of #48's chain) with MVM_FGPT_NT made overridable. Built 13:19Z and 13:25Z (fgpt_kernel<false> / <true>, the plain and the clocked
 # instance): 182/178 registers at 256 threads, 160/157 at 384, 128/128 at 512; spills 0 at 256 and 384, 8 B / 0 at 512.
 # resync at 64), then 5 rounds of the three arms, order rotating, at each shape's rule width (phase clock, 20 steps). Not bitwise by construction:
 # the column sums' chunks, the block reductions' partials and the squares' per-thread sums follow NT; the hashes say whether they differ.

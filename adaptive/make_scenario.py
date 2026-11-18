@@ -21,12 +21,12 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / 'frontend'))
 
-from kvmfe import _runtime  # noqa: E402,F401  (puts runtime/ on sys.path)
-from kvmfe.lower import Tiling  # noqa: E402
-from kvmfe.nn import GPT, ModelConfig  # noqa: E402
-from kvmfe.pipeline import compile_training  # noqa: E402
-from kvmfe.serve import ServeRequest, compile_serving  # noqa: E402
-from kvmfe.train import TrainConfig  # noqa: E402
+from mvmfe import _runtime  # noqa: E402,F401  (puts runtime/ on sys.path)
+from mvmfe.lower import Tiling  # noqa: E402
+from mvmfe.nn import GPT, ModelConfig  # noqa: E402
+from mvmfe.pipeline import compile_training  # noqa: E402
+from mvmfe.serve import ServeRequest, compile_serving  # noqa: E402
+from mvmfe.train import TrainConfig  # noqa: E402
 import compile_workload as cw  # noqa: E402
 
 log = logging.getLogger('make_scenario')

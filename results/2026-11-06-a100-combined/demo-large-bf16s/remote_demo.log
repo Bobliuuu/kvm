@@ -19,8 +19,8 @@ variadic functions: ['I_Error', 'M_StringJoin', 'M_snprintf', 'fprintf', 'fscanf
 -rw-r--r-- 1 root root 1308552 Nov  7 06:58 doom/build/doom_dev.o
 -rw-r--r-- 1 root root 4196020 Nov  7 06:58 doom/third_party/doom1.wad
 
-=== 2026-11-07T06:59:04Z  build kvm_run
-/usr/local/cuda/bin/nvcc -O3 -arch=sm_80 -std=c++17 -rdc=true -DKVM_WITH_GAME -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 demo/kvm_run.cu doom/build/doom_dev.o -o demo/kvm_run
+=== 2026-11-07T06:59:04Z  build mvm_run
+/usr/local/cuda/bin/nvcc -O3 -arch=sm_80 -std=c++17 -rdc=true -DMVM_WITH_GAME -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 demo/mvm_run.cu doom/build/doom_dev.o -o demo/mvm_run
 
 === 2026-11-07T07:22:21Z  CPU oracle for Doom (700 frames)
 
@@ -31,24 +31,24 @@ INFO demo: {'train': (58635, 481521), 'serve_s0': (8805, 49430), 'serve_s2': (88
 INFO manifest: 11 admissions, 2301 buffers (196 shared) -> ../runs/combined-large/demo/MANIFEST.json
 
 === 2026-11-07T07:22:41Z  CPU-only manifest check (parse, version flow, every bundle loads/remaps/validates)
-[kvm_exec][D] bundle train_w5        58635 tasks (precompiled)
-[kvm_exec][D] bundle serve_s6         8805 tasks (precompiled)
-[kvm_exec][I] check-only: 11 bundles load, remap and validate
-[kvm_exec][I] check-only: manifest, bundles and version flow are consistent
+[mvm_exec][D] bundle train_w5        58635 tasks (precompiled)
+[mvm_exec][D] bundle serve_s6         8805 tasks (precompiled)
+[mvm_exec][I] check-only: 11 bundles load, remap and validate
+[mvm_exec][I] check-only: manifest, bundles and version flow are consistent
 
 === 2026-11-07T07:22:41Z  golden skipped (pure-Python CPU VM cannot run this model)
 
 === 2026-11-07T07:22:41Z  GPU: one lock hold (900 s max wait)
 lock acquired 2026-11-07T07:22:41Z
-kvm_run exit 0
+mvm_run exit 0
 lock released 2026-11-07T07:22:49Z
-[kvm_exec][I] version check: 22935 version-carrying tasks (22935 exact), 0 violations, 0 at_least readers saw the version advance while they ran; 7645 reads of version 0 carry no tag (ordered by the host barrier only)
-[kvm_exec][I] workload 0: 351810 tasks, 51.360 CTA-s, queue wait p50 144.4 p99 3733.5 max 5588.0 us, 0 deadline misses, 29.75 GB moved (5.8 GB/s over the run)
-[kvm_exec][I] workload 1: 35220 tasks, 1.011 CTA-s, queue wait p50 31.7 p99 1260.5 max 1309.7 us, 35220 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
-[kvm_exec][I] workload 2: 5600 tasks, 4.430 CTA-s, queue wait p50 13.3 p99 22.5 max 123.9 us, 56 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
-[kvm_exec][I] trace: 392630 tasks -> runs/combined-large/out/trace.csv
-[kvm_exec][I] dumped 701 buffers to runs/combined-large/out/buffers
-[kvm_exec][I] wrote runs/combined-large/out/run.json
+[mvm_exec][I] version check: 22935 version-carrying tasks (22935 exact), 0 violations, 0 at_least readers saw the version advance while they ran; 7645 reads of version 0 carry no tag (ordered by the host barrier only)
+[mvm_exec][I] workload 0: 351810 tasks, 51.360 CTA-s, queue wait p50 144.4 p99 3733.5 max 5588.0 us, 0 deadline misses, 29.75 GB moved (5.8 GB/s over the run)
+[mvm_exec][I] workload 1: 35220 tasks, 1.011 CTA-s, queue wait p50 31.7 p99 1260.5 max 1309.7 us, 35220 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[mvm_exec][I] workload 2: 5600 tasks, 4.430 CTA-s, queue wait p50 13.3 p99 22.5 max 123.9 us, 56 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[mvm_exec][I] trace: 392630 tasks -> runs/combined-large/out/trace.csv
+[mvm_exec][I] dumped 701 buffers to runs/combined-large/out/buffers
+[mvm_exec][I] wrote runs/combined-large/out/run.json
 OK: 392630/392630 tasks, 5157.633 ms, 11 admissions
 
 === 2026-11-07T07:22:49Z  verify
@@ -69,7 +69,7 @@ drwxr-xr-x 1 root root   60 Nov  7 06:58 ..
 -rw-r--r-- 1 root root  931 Nov  7 07:22 check_only.log
 drwxr-xr-x 1 root root  100 Nov  7 07:22 demo
 -rw-r--r-- 1 root root  944 Nov  7 07:22 gpu.sh
--rw-r--r-- 1 root root 4697 Nov  7 07:22 kvm_run.log
+-rw-r--r-- 1 root root 4697 Nov  7 07:22 mvm_run.log
 drwxr-xr-x 1 root root   80 Nov  7 07:22 oracle
 drwxr-xr-x 1 root root  140 Nov  7 07:22 out
 -rw-r--r-- 1 root root 2624 Nov  7 07:22 report.json

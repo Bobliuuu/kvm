@@ -2,15 +2,15 @@ import unittest
 
 import _path  # noqa: F401
 import oracle_gpt as ref_gpt
-from kvmfe.emit import merge
-from kvmfe.ir import FrontendError
-from kvmfe.lower import Tiling
-from kvmfe.nn import GPT, ModelConfig
-from kvmfe.optim import OptimConfig
-from kvmfe.pipeline import compile_training
-from kvmfe.refvm import execute
-from kvmfe.serve import ServeRequest, compile_serving
-from kvmfe.train import TrainConfig, weights_version
+from mvmfe.emit import merge
+from mvmfe.ir import FrontendError
+from mvmfe.lower import Tiling
+from mvmfe.nn import GPT, ModelConfig
+from mvmfe.optim import OptimConfig
+from mvmfe.pipeline import compile_training
+from mvmfe.refvm import execute
+from mvmfe.serve import ServeRequest, compile_serving
+from mvmfe.train import TrainConfig, weights_version
 
 CFG = ModelConfig(name='t', vocab=32, d_model=32, layers=2, heads=2, seq=32, batch=1)
 TILING = Tiling.preset('cpu')

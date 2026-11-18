@@ -5,7 +5,7 @@
   modal run --detach tests/modal/run_h100.py --stage bench --tag NAME     # H100: test_hopper --bench
   modal run --detach tests/modal/run_h100.py --stage custom --tag NAME --cmd 'bash ...'   # H100, binaries in bin_h100/, logs to OUT
   modal run --detach tests/modal/run_h100.py --stage cpu --tag NAME --cmd 'bash ...'      # the same on the CPU-only build container
-  modal volume get kvm-h100-logs /NAME results/<dir>/raw
+  modal volume get mvm-h100-logs /NAME results/<dir>/raw
 
 Wraps tests/gpu_ops/run_hopper_box.sh (the same script runs on any sm_90 box); binaries live in the volume under /NAME/bin_h100.
 """
@@ -22,8 +22,8 @@ image = (modal.Image.from_registry("nvidia/cuda:12.8.1-devel-ubuntu22.04", add_p
          .add_local_dir(str(ROOT), "/src", copy=True,
                         ignore=[".tmp", "results", "logs", ".git", ".claude", "docs", "assets", "**/__pycache__", "doom/third_party", "doom/build",
                                 "out", "bin_h100"]))
-app = modal.App("kvm-h100", image=image)
-vol = modal.Volume.from_name("kvm-h100-logs", create_if_missing=True)
+app = modal.App("mvm-h100", image=image)
+vol = modal.Volume.from_name("mvm-h100-logs", create_if_missing=True)
 
 
 def _run(tag: str, body: str, logname: str):

@@ -1,4 +1,4 @@
-// CPU tests of the static-schedule compiler (include/kvm_static.h): build with g++ and run on a real bundle.
+// CPU tests of the static-schedule compiler (include/mvm_static.h): build with g++ and run on a real bundle.
 //   g++ -std=c++17 -O2 -Iinclude tests/static/test_static_plan.cpp -o /tmp/test_static_plan && /tmp/test_static_plan BUNDLE_DIR [WORKERS,...]
 // The check replays the EMITTED RECORDS (not the plan) the way the device runs them, in a discrete-event simulation: every task runs exactly
 // once, every dependency edge is honoured by the records' waits, no deadlock, and it prints the predicted step shape.
@@ -11,7 +11,7 @@
 #include <set>
 #include <sstream>
 #include <vector>
-#include "kvm_static.h"
+#include "mvm_static.h"
 #include "registry.h"
 
 static std::string slurp(const std::string& p) { std::ifstream f(p, std::ios::binary); if (!f) { fprintf(stderr, "cannot read %s\n", p.c_str()); exit(2); } std::stringstream s; s << f.rdbuf(); return s.str(); }
@@ -25,22 +25,22 @@ int main(int argc, char** argv) {
     if (argc > 2) { wlist.clear(); std::stringstream s(argv[2]); std::string t; while (std::getline(s, t, ',')) wlist.push_back(std::stoi(t)); }
     std::string meta = slurp(dir + "/metadata.json");
     const int nt = jint(meta, "task_count");
-    auto tasks = load<KvmTaskDesc>(dir + "/tasks.bin"); auto succ = load<int32_t>(dir + "/successors.bin"); auto args = load<int32_t>(dir + "/args.bin");
+    auto tasks = load<MvmTaskDesc>(dir + "/tasks.bin"); auto succ = load<int32_t>(dir + "/successors.bin"); auto args = load<int32_t>(dir + "/args.bin");
     assert((int)tasks.size() == nt);
-    const KvmSOpLookup op_of = kvm_test_registry::registry().lookup();
-    KvmSCostFn cost = [](int op, const int32_t*) { return op == 0 ? 0.1 : 5.0; };   // flat model for the structural checks
-    int nbufs = 0; for (auto& t : tasks) { KvmSOpInfo o = op_of(t.op_id); for (int j = 0; j < t.args_words; ++j) { int ty = (o.types >> (3 * j)) & 7; if ((ty == 0 || ty == 3) && args[t.args_off + j] >= nbufs) nbufs = args[t.args_off + j] + 1; } }
-    std::vector<KvmBuf> bufs(nbufs); for (int i = 0; i < nbufs; ++i) { bufs[i].p = (void*)(uintptr_t)(0x1000 + 64 * i); bufs[i].rows = bufs[i].cols = bufs[i].ld = 1; bufs[i].dtype = 0; }
-    auto dag = kvm_static::build_dag(tasks, succ);
+    const MvmSOpLookup op_of = mvm_test_registry::registry().lookup();
+    MvmSCostFn cost = [](int op, const int32_t*) { return op == 0 ? 0.1 : 5.0; };   // flat model for the structural checks
+    int nbufs = 0; for (auto& t : tasks) { MvmSOpInfo o = op_of(t.op_id); for (int j = 0; j < t.args_words; ++j) { int ty = (o.types >> (3 * j)) & 7; if ((ty == 0 || ty == 3) && args[t.args_off + j] >= nbufs) nbufs = args[t.args_off + j] + 1; } }
+    std::vector<MvmBuf> bufs(nbufs); for (int i = 0; i < nbufs; ++i) { bufs[i].p = (void*)(uintptr_t)(0x1000 + 64 * i); bufs[i].rows = bufs[i].cols = bufs[i].ld = 1; bufs[i].dtype = 0; }
+    auto dag = mvm_static::build_dag(tasks, succ);
     long edges = 0; for (auto& e : dag) edges += (long)e.size();
     printf("bundle %s: %d tasks, %ld edges (successors + versions), %d buffers\n", dir.c_str(), nt, edges, nbufs);
     for (int W : wlist) {
-        KvmSConfig cfg; cfg.workers = W;
-        KvmSPlan p = kvm_static_plan(tasks, succ, args, cfg, op_of, cost);
-        KvmSLayout l = kvm_static_layout(p);
-        std::vector<std::vector<KvmSRec>> st(W);
+        MvmSConfig cfg; cfg.workers = W;
+        MvmSPlan p = mvm_static_plan(tasks, succ, args, cfg, op_of, cost);
+        MvmSLayout l = mvm_static_layout(p);
+        std::vector<std::vector<MvmSRec>> st(W);
         int nrec = 0;
-        for (int w = 0; w < W; ++w) { st[w].resize(l.nrecs[w]); nrec += l.nrecs[w]; if (l.nrecs[w]) kvm_static_emit(p, l, w, tasks, args, bufs.data(), nbufs, op_of, st[w].data()); }
+        for (int w = 0; w < W; ++w) { st[w].resize(l.nrecs[w]); nrec += l.nrecs[w]; if (l.nrecs[w]) mvm_static_emit(p, l, w, tasks, args, bufs.data(), nbufs, op_of, st[w].data()); }
         // replay: each worker a sequence; a record starts when its worker is free and the watermarks it waits for have been published
         std::vector<int> pc(W, 0); std::vector<double> ft(W, 0.0); std::vector<int> progress(W, 0);
         struct Ev { double t; int w, val; bool operator>(const Ev& o) const { return t > o.t; } };
@@ -56,16 +56,16 @@ int main(int argc, char** argv) {
             progressed = false;
             for (int w = 0; w < W; ++w) {
                 while (cur[w] < (int)st[w].size()) {
-                    const KvmSRec& r = st[w][cur[w]];
+                    const MvmSRec& r = st[w][cur[w]];
                     double t = ft[w]; bool ready = true;
                     for (int j = 0; j < r.nwait; ++j) { int nw = r.waits[j].worker, need = r.waits[j].need; if (vt[nw][need] > 1e200) { ready = false; break; } t = std::max(t, vt[nw][need]); }
                     if (!ready) break;
-                    double c = (r.flags & KVM_S_WAITONLY) ? 0.0 : (r.op == 0 ? 0.1 : 5.0);
+                    double c = (r.flags & MVM_S_WAITONLY) ? 0.0 : (r.op == 0 ? 0.1 : 5.0);
                     double end = t + c;
                     if (r.nwait) end += 1.5;   // hop model
-                    if (!(r.flags & KVM_S_WAITONLY)) { if (runs[r.task]++) { printf("FAIL: task %d run twice\n", r.task); return 1; } task_start[r.task] = t; task_end[r.task] = end; }
+                    if (!(r.flags & MVM_S_WAITONLY)) { if (runs[r.task]++) { printf("FAIL: task %d run twice\n", r.task); return 1; } task_start[r.task] = t; task_end[r.task] = end; }
                     ft[w] = end;
-                    if (r.flags & KVM_S_PUBLISH) { for (int k = 0; k <= r.pos1; ++k) vt[w][k] = std::min(vt[w][k], end); }
+                    if (r.flags & MVM_S_PUBLISH) { for (int k = 0; k <= r.pos1; ++k) vt[w][k] = std::min(vt[w][k], end); }
                     assert(r.pos1 == cur[w] + 1);
                     cur[w]++; done++; progressed = true;
                 }

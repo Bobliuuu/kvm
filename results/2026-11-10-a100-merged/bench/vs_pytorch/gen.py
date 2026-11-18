@@ -55,10 +55,10 @@ def main():
     ap.add_argument('--reuse', default='step', help="buffer reuse: 'step' (default), 'shape' or 'none' (every tensor keeps its own buffer: needed to read gradients back)")
     a = ap.parse_args()
     from dataclasses import asdict
-    from kvmfe.lower import Tiling
-    from kvmfe.nn import ModelConfig
-    from kvmfe.pipeline import compile_training
-    from kvmfe.train import TrainConfig
+    from mvmfe.lower import Tiling
+    from mvmfe.nn import ModelConfig
+    from mvmfe.pipeline import compile_training
+    from mvmfe.train import TrainConfig
     cfg = ModelConfig.load(a.model)
     c = compile_training(cfg, TrainConfig(steps=a.steps), Tiling.preset(a.tiling), reuse=a.reuse, fuse=a.fuse)
     if a.mode == 'precise':

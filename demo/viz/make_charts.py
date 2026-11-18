@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import vizdata as V
 
 matplotlib.rcParams.update({"svg.fonttype": "none", "font.size": 9, "axes.spines.top": False, "axes.spines.right": False,
-                            "axes.titlesize": 10, "axes.titleweight": "bold", "figure.dpi": 100, "svg.hashsalt": "kvm"})
+                            "axes.titlesize": 10, "axes.titleweight": "bold", "figure.dpi": 100, "svg.hashsalt": "mvm"})
 PERIOD_MS = 1000 / 35
 
 
@@ -213,19 +213,19 @@ def chart_scaleout(out):
 def chart_scoreboard(out):
     """Numbers typed from committed result files (each cited); this is the only chart not computed from a run directory."""
     fig, (a, b) = plt.subplots(1, 2, figsize=(10, 3.4))
-    # kvm.cu MLP, README table (A100): us/step/run, 1 run
-    names = ["sequential\nlaunches", "sequential\nCUDA graphs", "batched\ngraph", "KVM"]
+    # mvm.cu MLP, README table (A100): us/step/run, 1 run
+    names = ["sequential\nlaunches", "sequential\nCUDA graphs", "batched\ngraph", "Magni VM"]
     v = [45.1, 38.0, 37.9, 25.3]
     a.bar(names, v, color=["#999", "#999", "#999", V.COLORS["train"]])
     for i, y in enumerate(v):
         a.text(i, y + 0.8, f"{y}", ha="center", fontsize=8)
-    a.set_ylabel("us per step"); a.set_title("WIN: kvm.cu MLP step, 1 run: 1.50x over best baseline", loc="left", fontsize=9)
+    a.set_ylabel("us per step"); a.set_title("WIN: mvm.cu MLP step, 1 run: 1.50x over best baseline", loc="left", fontsize=9)
     # executor vs whole-step CUDA graph, claims audit table 5 (A100)
     labs = ["MLP (2 hidden)", "3-layer transformer"]
     graph, vm = [132.5, 981], [721, 3810]
     x = [0, 1]
     b.bar([i - 0.2 for i in x], graph, 0.4, color="#999", label="PyTorch whole-step CUDA graph")
-    b.bar([i + 0.2 for i in x], vm, 0.4, color="#D55E00", label="KVM executor")
+    b.bar([i + 0.2 for i in x], vm, 0.4, color="#D55E00", label="Magni VM executor")
     for i in x:
         b.text(i - 0.2, graph[i] + 50, f"{graph[i]:g}", ha="center", fontsize=8); b.text(i + 0.2, vm[i] + 50, f"{vm[i]:g}", ha="center", fontsize=8)
     b.set_xticks(x); b.set_xticklabels(labs); b.set_ylabel("us per step"); b.legend(frameon=False, fontsize=8, loc="upper left")

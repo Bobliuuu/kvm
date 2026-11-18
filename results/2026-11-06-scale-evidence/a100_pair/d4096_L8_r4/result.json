@@ -24,7 +24,7 @@
    "bitwise_equal": 0,
    "worst_rel": 0.0,
    "tail": [
-    "[kvm_exec][I] kernel done: 195/195 tasks in 14324.268 ms, 1 records, 0 ring wraps, 0 backpressure waits",
+    "[mvm_exec][I] kernel done: 195/195 tasks in 14324.268 ms, 1 records, 0 ring wraps, 0 backpressure waits",
     "  rank 0: 195 tasks, 14322.00 ms kernel, device 0",
     "  0 values compared, 0 bitwise equal, worst relative difference 0"
    ],

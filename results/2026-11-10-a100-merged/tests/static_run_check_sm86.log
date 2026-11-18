@@ -1,21 +1,21 @@
-=== tree the merged tree: kvm_exec.cu md5 bde292337d07, files with conflict markers: 0
-kbuild (--extra '-DKVM_GPT_BIG_BK=16 -DKVM_GPT_MMA_SMEM=90112'): HIT 378df1d6780fb8b066cd6a91 /root/builds/378df1d6780fb8b066cd6a91/kvm_exec
-2026-11-10 22:15:15,786 INFO kvm.compiler: compiled 102 tasks (0 gates), 340 edges, 73 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
-2026-11-10 22:15:15,788 INFO kvm.compiler: wrote bundle to /root/rb/m05/h48/bundle
-2026-11-10 22:15:15,966 INFO kvm.compiler: compiled 144 tasks (0 gates), 589 edges, 73 buffers, 1 variables in 0.01s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
-2026-11-10 22:15:15,968 INFO kvm.compiler: wrote bundle to /root/rb/m05/h72/bundle
+=== tree the merged tree: mvm_exec.cu md5 bde292337d07, files with conflict markers: 0
+kbuild (--extra '-DMVM_GPT_BIG_BK=16 -DMVM_GPT_MMA_SMEM=90112'): HIT 378df1d6780fb8b066cd6a91 /root/builds/378df1d6780fb8b066cd6a91/mvm_exec
+2026-11-10 22:15:15,786 INFO mvm.compiler: compiled 102 tasks (0 gates), 340 edges, 73 buffers, 1 variables in 0.00s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+2026-11-10 22:15:15,788 INFO mvm.compiler: wrote bundle to /root/rb/m05/h48/bundle
+2026-11-10 22:15:15,966 INFO mvm.compiler: compiled 144 tasks (0 gates), 589 edges, 73 buffers, 1 variables in 0.01s (parse 0.00s, graph+versions 0.00s, pack 0.00s)
+2026-11-10 22:15:15,968 INFO mvm.compiler: wrote bundle to /root/rb/m05/h72/bundle
 hold: sm86-static queued 2026-11-10T22:15:55Z; waiting for its turn (hold --ls)
 hold: sm86-static started 2026-11-10T22:15:55Z
 === h48, default run (static path, fusion on)
-[kvm_exec][I] path: static (mean estimated task 3.53 us <= 6.0)
-[kvm_exec][I] fuse: component 0: fused: 3 steps, T=96 V=100 widths 48x48x48, 6 slices of 16 rows, 16 reduction owners
-[kvm_exec][I] fuse: shared-memory budget 24032 floats (96128 bytes) a fused block
-[kvm_exec][I] fuse: 1 run(s) fused, 0 unchanged; 95 tasks replaced by 73
+[mvm_exec][I] path: static (mean estimated task 3.53 us <= 6.0)
+[mvm_exec][I] fuse: component 0: fused: 3 steps, T=96 V=100 widths 48x48x48, 6 slices of 16 rows, 16 reduction owners
+[mvm_exec][I] fuse: shared-memory budget 24032 floats (96128 bytes) a fused block
+[mvm_exec][I] fuse: 1 run(s) fused, 0 unchanged; 95 tasks replaced by 73
 OK: 73/73 tasks, 0.092 ms
 === h72, default run (static path, fusion on)
-[kvm_exec][I] path: static (mean estimated task 3.72 us <= 6.0)
-[kvm_exec][I] fuse: component 0 (144 tasks): unchanged: no slice size fits (25432 floats of shared memory at the smallest slice, at most 8 slices, limit 24032)
-[kvm_exec][I] fuse: 0 run(s) fused, 1 unchanged; 0 tasks replaced by 0
+[mvm_exec][I] path: static (mean estimated task 3.72 us <= 6.0)
+[mvm_exec][I] fuse: component 0 (144 tasks): unchanged: no slice size fits (25432 floats of shared memory at the smallest slice, at most 8 slices, limit 24032)
+[mvm_exec][I] fuse: 0 run(s) fused, 1 unchanged; 0 tasks replaced by 0
 OK: 144/144 tasks, 0.351 ms
 === run_check.sh at h48
 MLP bundle: hidden 48, depth 2, 3 steps
@@ -46,10 +46,10 @@ ok: mlp W=107: 1 run(s) fused
 ok: mlp W=107 fused run repeats bitwise
 ok: mlp W=107 fused run within 1e-3 of the CPU golden (worst 0.000179)
 fused_vs_fp64: 3 steps; eager vs float64 1.31e-07, so the executor may sit at 1.00e-04; loss vs eager <= 0.003, weights vs eager <= 0.001 relative L2
-ok: /tmp/kvm-static-check.fXhOLL/mlp.fu1.out: vs float64 6.05e-06 (bound 1.00e-04); loss vs eager 6.16e-06; weights vs eager 1.79e-04 relative L2
-ok: /tmp/kvm-static-check.fXhOLL/mlp.fu4.out: vs float64 6.05e-06 (bound 1.00e-04); loss vs eager 6.16e-06; weights vs eager 1.79e-04 relative L2
-ok: /tmp/kvm-static-check.fXhOLL/mlp.fu16.out: vs float64 5.84e-06 (bound 1.00e-04); loss vs eager 5.95e-06; weights vs eager 1.79e-04 relative L2
-ok: /tmp/kvm-static-check.fXhOLL/mlp.fu107.out: vs float64 5.84e-06 (bound 1.00e-04); loss vs eager 5.95e-06; weights vs eager 1.79e-04 relative L2
+ok: /tmp/mvm-static-check.fXhOLL/mlp.fu1.out: vs float64 6.05e-06 (bound 1.00e-04); loss vs eager 6.16e-06; weights vs eager 1.79e-04 relative L2
+ok: /tmp/mvm-static-check.fXhOLL/mlp.fu4.out: vs float64 6.05e-06 (bound 1.00e-04); loss vs eager 6.16e-06; weights vs eager 1.79e-04 relative L2
+ok: /tmp/mvm-static-check.fXhOLL/mlp.fu16.out: vs float64 5.84e-06 (bound 1.00e-04); loss vs eager 5.95e-06; weights vs eager 1.79e-04 relative L2
+ok: /tmp/mvm-static-check.fXhOLL/mlp.fu107.out: vs float64 5.84e-06 (bound 1.00e-04); loss vs eager 5.95e-06; weights vs eager 1.79e-04 relative L2
 PASS: static schedule bitwise equal to the dynamic path; fused MLP step within its gates
 run_check rc=0
 === gptdiff

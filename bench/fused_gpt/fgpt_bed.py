@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Run the fused GPT step's device program (include/kvm_fused_gpt.cuh) on a GPU, alone or in the executor, and judge it against the workload VM.
+"""Run the fused GPT step's device program (include/mvm_fused_gpt.cuh) on a GPU, alone or in the executor, and judge it against the workload VM.
 
   python3 -I bench/fused_gpt/fgpt_bed.py WORKLOAD_DIR --bed BINARY [--steps 2] [--gangs 1,4] [--work DIR] [--tol 3e-4] [--launcher CMD]
-  python3 -I bench/fused_gpt/fgpt_bed.py WORKLOAD_DIR --exec KVM_EXEC [--exec-flags FLAGS] [--steps 50] ...    (with or without --bed)
+  python3 -I bench/fused_gpt/fgpt_bed.py WORKLOAD_DIR --exec MVM_EXEC [--exec-flags FLAGS] [--steps 50] ...    (with or without --bed)
   python3 -I bench/fused_gpt/fgpt_bed.py WORKLOAD_DIR --bed BINARY --time-only [--bed-args clock] [--steps 20] [--gangs 32]
   python3 -I bench/fused_gpt/fgpt_bed.py WORKLOAD_DIR --bed BINARY --steps 1 --resync K [--gangs 32]       (step K + 1 alone, from the VM's state)
 
@@ -15,7 +15,7 @@ bundle's workload directory (workload.json and its data/). This script:
      difference over its largest magnitude (a float32 GEMM's error scales with its operands); the weights are reported, not judged
      (AdamW's first update is about lr x sign(g), so float32 noise flips it where a gradient is near zero);
   4. compares each gang size with the first (the decomposition: only the order of a few sums changes with G);
-  5. with --exec, runs kvm_exec on the workload's own bundle (WORKLOAD_DIR/bundle; its default path, which is the fused GPT kernel when
+  5. with --exec, runs mvm_exec on the workload's own bundle (WORKLOAD_DIR/bundle; its default path, which is the fused GPT kernel when
      the run fuses, plus --exec-flags) and judges its first --steps losses against the same VM run.
 Run one step for the gradient bars, in either numerics: after the first AdamW update the trajectories part (its update is about
 lr x sign(g), so rounding flips it where a gradient is near zero, TF32's and float32's alike), and later steps' gradients and moments are
@@ -190,7 +190,7 @@ def judge(run: dict, vmr: dict, names: list[str], tol: float, lr: float, unjudge
 
 
 def exec_losses(a, wdir: Path, work: Path) -> list | None:
-    """kvm_exec on the workload's own bundle, every step's loss buffer dumped; its first --steps (loss, 1/count) pairs, or None if it failed."""
+    """mvm_exec on the workload's own bundle, every step's loss buffer dumped; its first --steps (loss, 1/count) pairs, or None if it failed."""
     bundle = wdir / 'bundle'
     idx = {b['name']: b['index'] for b in json.loads((bundle / 'metadata.json').read_text())['buffers']}
     missing = [s for s in range(a.steps) if f'loss.{s}' not in idx]
@@ -205,10 +205,10 @@ def exec_losses(a, wdir: Path, work: Path) -> list | None:
     p = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
     (work / 'exec.log').write_text(p.stdout + p.stderr)
     for line in (p.stdout + p.stderr).splitlines():
-        if line.startswith(('[kvm_exec][I] path:', '[kvm_exec][I] fuse gpt:', '[kvm_exec][I] fused GPT', 'OK:', 'FAIL')) or '[E]' in line or '[W]' in line:
+        if line.startswith(('[mvm_exec][I] path:', '[mvm_exec][I] fuse gpt:', '[mvm_exec][I] fused GPT', 'OK:', 'FAIL')) or '[E]' in line or '[W]' in line:
             log(f'  {line}')
     if p.returncode:
-        log(f'exec: kvm_exec exited {p.returncode}: FAIL (its whole log: {work / "exec.log"})')
+        log(f'exec: mvm_exec exited {p.returncode}: FAIL (its whole log: {work / "exec.log"})')
         return None
     return [read_f32(out / f'{idx[f"loss.{s}"]}.bin')[:2] for s in range(a.steps)]
 
@@ -219,8 +219,8 @@ def main() -> int:
     ap.add_argument('--gangs', default='1,4'); ap.add_argument('--work', default=None); ap.add_argument('--tol', type=float, default=3e-4)
     ap.add_argument('--launcher', default='', help='command prefix for each bed run, e.g. a GPU lock')
     ap.add_argument('--decomp-tol', type=float, default=1e-4, help='gradients of each gang size against the first, of each tensor\'s scale')
-    ap.add_argument('--exec', default=None, help='a kvm_exec binary: run the workload\'s bundle on it and judge its losses too')
-    ap.add_argument('--exec-flags', default='', help='kvm_exec flags for --exec, split on spaces (e.g. --no-fuse for the unfused path)')
+    ap.add_argument('--exec', default=None, help='a mvm_exec binary: run the workload\'s bundle on it and judge its losses too')
+    ap.add_argument('--exec-flags', default='', help='mvm_exec flags for --exec, split on spaces (e.g. --no-fuse for the unfused path)')
     ap.add_argument('--time-only', action='store_true', help='no VM, no judgment: the bed runs for its time (a timing read, not a check)')
     ap.add_argument('--bed-args', default='', help='arguments after the bed\'s gang size, split on spaces (e.g. clock, qb=2)')
     ap.add_argument('--resync', type=int, default=None, metavar='K', help='one step from the VM\'s own state after K steps (weights, moments, '

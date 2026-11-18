@@ -12,8 +12,8 @@ mode 1
 target 0.0500000007
 divthr 1
 prune 3
-kvm_full_ms 31.1910
-kvm_sh_ms 13.4420
+mvm_full_ms 31.1910
+mvm_sh_ms 13.4420
 lr 0.0500000007
 lr 0.0588939451
 lr 0.0693699345

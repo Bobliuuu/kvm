@@ -18,9 +18,9 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 import zoo  # noqa: E402
-from kvmfe import demo  # noqa: E402
-from kvmfe.lower import Tiling  # noqa: E402
-from kvmfe.pipeline import compile_training  # noqa: E402
+from mvmfe import demo  # noqa: E402
+from mvmfe.lower import Tiling  # noqa: E402
+from mvmfe.pipeline import compile_training  # noqa: E402
 
 
 def main():

@@ -22,10 +22,10 @@ def main():
     ap.add_argument('--steps', type=int, default=50)
     ap.add_argument('--tiling', default='a100')
     a = ap.parse_args()
-    from kvmfe import models
-    from kvmfe.lower import Tiling
-    from kvmfe.pipeline import compile_training
-    from kvmfe.train import TrainConfig
+    from mvmfe import models
+    from mvmfe.lower import Tiling
+    from mvmfe.pipeline import compile_training
+    from mvmfe.train import TrainConfig
     spec = json.loads(a.model)
     family = spec['family']
     cfg = models.build(spec).cfg

@@ -12,7 +12,7 @@ gpt_162m (data parallel, two GPUs, one step), and RDMA has never touched a NIC.
 |---|---|---|
 | Remote version variables (inbox + pump), ABI v2 unchanged | built, tested on one A100 (two executors in one process, same GPU) | `test_dist pingpong`, `errors` |
 | Comm ops 64-74 (`put`, `put_signal`, `signal`, `reduce2`, `reduce_put_signal`, `send_proxy`, `pack_bf16`, `unpack_bf16`; i32 twins `put_i32`, `put_signal_i32`, `send_proxy_i32`) | built, tested numerically (bitwise) on A100 and RTX 3090 | `test_dist ops`: 240 random tiles, reductions, bf16; the i32 twins carry step counters across GPUs in the pipeline plans |
-| Data-before-signal ordering across executors | built; the checker is shown to fail when the order is broken | `-DKVM_DIST_BREAK_ORDER` negative run |
+| Data-before-signal ordering across executors | built; the checker is shown to fail when the order is broken | `-DMVM_DIST_BREAK_ORDER` negative run |
 | Peer-to-peer over NVLink/PCIe (`cudaDeviceEnablePeerAccess`, peer pointers) | built, **tested on two physical GPUs over NVLink** (2x RTX 3090, NV4) | `multigpu-p2p-pingpong`, `multigpu-plans-one-rank-per-gpu`, `multigpu-model-plans` (`results/2026-11-09-multigpu`) |
 | Host proxy + reliable channel (ack/retransmit/ordering/windows/liveness) | built, tested on CPU and with the real device queue on A100 | `test_transport` (Mac and box), `gpu-plans-tcp-faults` |
 | TCP transport (framing, CRC-32, reconnect-free, WAN buffers) with drop/dup/delay/corrupt injection | built, tested on loopback, between processes, and **between two hosts in two countries** (container port maps: bind locally, peers dial the advertised port) | `test_transport proc`, `multinode-tcp-plans` |
@@ -33,16 +33,16 @@ stores the next version after its writes; parked waiters are woken by the publis
 if "publish" can happen across a link. So no new scheduler concept was added:
 
 * **ABI v2 is untouched.** A consumer is an ordinary task with `wait_var/wait_ver`. A *remote* variable is just a variable id in
-  the consumer's own table that is fed from outside. A remote buffer is a `KvmBuf` entry whose pointer is valid on this device
+  the consumer's own table that is fed from outside. A remote buffer is a `MvmBuf` entry whose pointer is valid on this device
   (a peer pointer, or on one GPU another allocation). Producer-side addressing uses typed op arguments: a `flag` buffer (the
   target's inbox) plus the target's variable id. Variable ids are therefore namespaced by owner device: `(inbox of device d, var)`.
-  The one extension to shared structures is a trailing `const KvmDistDev* dist` in `KvmDevState`, null on a single device.
+  The one extension to shared structures is a trailing `const MvmDistDev* dist` in `MvmDevState`, null on a single device.
 * **Inbox.** `u32[num_vars]` in the owner's device memory. A producer on device A finishes its writes, then does
   `fence.sc.sys; st.release.sys inbox[var] = ver` into the owner's inbox through a peer pointer. Each inbox slot is a
   single-writer chain with strictly increasing versions (the partitioner guarantees it; a test checks it), so a plain release
   store suffices and no PCIe atomics are needed.
-* **Pump.** The owner's admitter block (block 0, idle between bundles) polls `KvmDistDev::in_vars`; when `inbox[v] > version[v]`
-  it does the local publish (`fence`, `st.release version[v]`) and wakes the parked tasks exactly like `kvm_publish`. After the
+* **Pump.** The owner's admitter block (block 0, idle between bundles) polls `MvmDistDev::in_vars`; when `inbox[v] > version[v]`
+  it does the local publish (`fence`, `st.release version[v]`) and wakes the parked tasks exactly like `mvm_publish`. After the
   last bundle the admitter keeps pumping until every admitted task is done. Workers never poll, and a remote waiter occupies no
   block (it is parked like any waiter).
 * **Why one-shot variables.** Every cross-device landing buffer is written once (fresh, single assignment) and announced by its own
@@ -59,18 +59,18 @@ release, then `fence.sc.gpu; st.release.gpu version[var]`. A waiter's `ld.acquir
 observes it, and causality order is transitive across the two scopes, so a waiter that sees `ver` sees all of T's data. The fence
 is what drains posted writes over NVLink/PCIe; it is not an optimisation target. Host notes: x86-64 (TSO) needs the compiler
 and acquire/release ordering the C++ atomics already give; aarch64 (Grace) needs the hardware acquire/release `std::atomic`
-emits, which is why the proxy never uses `volatile` for synchronisation. `-DKVM_DIST_BREAK_ORDER` publishes before the data
+emits, which is why the proxy never uses `volatile` for synchronisation. `-DMVM_DIST_BREAK_ORDER` publishes before the data
 (plus a 200 us delay) and the harness must report stale reads: it does.
 
-## 2. Comm ops (`include/kvm_ops_comm.def`, ids 64-95)
+## 2. Comm ops (`include/mvm_ops_comm.def`, ids 64-95)
 
 Ordinary registered ops, one X-line each, parsed by `runtime/abi.py` (merged in by `dist/commops.py`) and implemented in
-`include/kvm_ops_comm.cuh`. Tiles are row-major `rows x cols` with leading dimensions, 16-byte vectorised when aligned.
+`include/mvm_ops_comm.cuh`. Tiles are row-major `rows x cols` with leading dimensions, 16-byte vectorised when aligned.
 
 | op | meaning |
 |---|---|
 | `put` | tile copy; with a peer pointer it is a device-to-device copy |
-| `put_signal` | tile copy, then `kvm_remote_publish` of (var, ver) into the target inbox |
+| `put_signal` | tile copy, then `mvm_remote_publish` of (var, ver) into the target inbox |
 | `signal` | bare remote publish (cross-device version variables) |
 | `reduce2`, `reduce_put_signal` | fixed-order add; fused add-and-forward for ring reduce-scatter |
 | `send_proxy` | tile into the host send queue (mapped pinned memory), slot published with `st.release.sys`; the proxy moves it |
@@ -81,7 +81,7 @@ Collectives are not ops. The partitioner decomposes them into these tasks in the
 direct all-gather, ring / binary-tree / direct all-reduce (results are copied, never recomputed per device, so replicas stay
 bitwise identical), and all-to-all as `P(P-1)` tile puts. `chunks=k` cuts a collective into k independent rings whose landings
 are tracked separately. Misuse (tile out of range, bad signal slot, wrong queue, oversized payload, bad destination) ends the
-kernel with a decoded device error (`KVM_ERR_DIST_*`, codes 64-70), never undefined behaviour.
+kernel with a decoded device error (`MVM_ERR_DIST_*`, codes 64-70), never undefined behaviour.
 
 ## 3. Transport
 
@@ -103,7 +103,7 @@ kernel with a decoded device error (`KVM_ERR_DIST_*`, codes 64-70), never undefi
 * **Receive:** `cudaMemcpyAsync` of the tile, then a 4-byte copy of the version into the inbox, in one stream (data completes
   before the signal starts); the pump reads the inbox with `ld.acquire.sys`.
 * **Failure model.** Retransmit limit, silence past `dead_ms`, a lost connection or a refused send mark a peer dead; the proxy
-  writes `KVM_ERR_DIST_PEER_DOWN` into the control block and the pump fails the device. A stalled proxy stops heartbeating
+  writes `MVM_ERR_DIST_PEER_DOWN` into the control block and the pump fails the device. A stalled proxy stops heartbeating
   and the pump raises `DIST_PROXY_DEAD`. A wait that nobody satisfies ends with the executor's own `TIMEOUT`. Shutdown
   is a FIN exchange over the same ordered stream, so no rank leaves while a peer may still deliver to it, and it ends at the
   deadline when a peer is dead. There is no checkpoint/restart: a failure ends the run with a code.
@@ -152,7 +152,7 @@ buffers and the inbox variables.
 python3 runtime/partition.py workload.json cluster.json strategy.json out/ --plan
 # run every rank as a thread of one process (ranks spread over the GPUs that exist), or one OS process per rank / per host
 build/test_dist plan out/plan [--net tcp --fault drop=0.05,dup=0.05,delay=0.1]
-python3 dist/launch.py --nodes "$KVM_NODES" -- build/test_dist plan out/plan --rank {rank} --peers {peers}
+python3 dist/launch.py --nodes "$MVM_NODES" -- build/test_dist plan out/plan --rank {rank} --peers {peers}
 ```
 
 `cluster.json`: `{"devices": [{"node": 0}, ...], "links": {"intra": {"kind": "p2p", "bandwidth_gbs": 300, "latency_us": 2},
@@ -166,7 +166,7 @@ python3 dist/launch.py --nodes "$KVM_NODES" -- build/test_dist plan out/plan --r
 
 `dist/run_multigpu_tests.sh` is the single command. It prints one line per stage (PASS / FAIL / SKIP), bounds every stage with a
 timeout, exits 1 on any FAIL, and `--dry-run` lists everything without running it. Stages that need more than one physical GPU
-print `SKIP: needs 2 GPUs` below that and run automatically otherwise; the multi-node stage runs when `KVM_NODES` is set.
+print `SKIP: needs 2 GPUs` below that and run automatically otherwise; the multi-node stage runs when `MVM_NODES` is set.
 
 | Stage | Needs | Proves |
 |---|---|---|
@@ -182,7 +182,7 @@ print `SKIP: needs 2 GPUs` below that and run automatically otherwise; the multi
 | `gpu-plans-in-process`, `gpu-plans-tcp-faults`, `gpu-multiprocess-tcp` | 1 GPU | partitioner output on the GPU against golden: all ranks as threads, over TCP with faults, and one OS process per rank |
 | `multigpu-p2p-bandwidth`, `multigpu-p2p-pingpong`, `multigpu-plans-one-rank-per-gpu` | **2+ GPUs** | real peer-to-peer stores, NVLink/PCIe bandwidth, ranks on distinct GPUs |
 | `multigpu-model-plans` | **2+ GPUs** | frontend models (gpt_tiny, llama_tiny, gpt_small) in `dp` and pipeline partitions on the GPUs vs the CPU golden, each next to the same reference program on one GPU (`dist/run_model_plans.sh`) |
-| `multinode-tcp-plans` | **`KVM_NODES`** | ranks on several hosts over TCP (sources rsynced to `~/kvm-dist-run`, built on every node, or `KVM_PREBUILT=1` ships this node's binary); behind port maps add `KVM_ADVERTISE` + `KVM_LISTEN_BASE` |
+| `multinode-tcp-plans` | **`MVM_NODES`** | ranks on several hosts over TCP (sources rsynced to `~/mvm-dist-run`, built on every node, or `MVM_PREBUILT=1` ships this node's binary); behind port maps add `MVM_ADVERTISE` + `MVM_LISTEN_BASE` |
 | `cpu-rdma-ibverbs-build`, `rdma-device-present` | libibverbs headers; an RDMA device node | the real verbs backend compiles and its shim tests pass; a device is reachable (none was, so far) |
 
 Recorded outcomes: `results/2026-11-03-dist-singlebox/` (one A100: 14 passed, 4 skipped); `results/2026-11-09-multigpu/` (2x RTX 3090 over
@@ -236,18 +236,18 @@ sequence 4096, global batch 4096 sequences (16.8M tokens), 4096 GPUs = TP 8 x PP
 * `matmul` needs exact shapes; ops cover whole buffers when sharded; `matmul` row tiling needs offset-capable tile ops.
 * Cross-device `exact` snapshot reads are refused (use `at_least` plus the hazard ordering the planner derives).
 * bf16 wire format: all-gather of `ROWS` weights and place-mode transfers; collective reductions are fp32.
-* `KvmExec` takes at least `num_vars` slots in the inbox; plans with thousands of one-shot variables need `num_vars` raised.
-* Several executors in ONE process on ONE GPU (the single-box tests) must call `KvmExec::prepare()` on all of them before the first
+* `MvmExec` takes at least `num_vars` slots in the inbox; plans with thousands of one-shot variables need `num_vars` raised.
+* Several executors in ONE process on ONE GPU (the single-box tests) must call `MvmExec::prepare()` on all of them before the first
   `start()`: `cudaMalloc`/`cudaHostAlloc` can wait for every kernel running on the device, so allocating while a peer's persistent kernel waits
   for this executor deadlocks until the peer's timeout. One process per GPU (the normal multi-GPU layout) never meets this. The same
   work found that the executor's constructor memsets and table upload were not ordered before the kernel (legacy vs non-blocking
-  stream); `prepare()` also fixes that. Both are small hooks in `kvm_exec.cu`.
+  stream); `prepare()` also fixes that. Both are small hooks in `mvm_exec.cu`.
 * **Concurrent kernel launches (found and avoided).** Launching the persistent kernels of several executors on ONE GPU from one host
   thread each left one executor's kernel unscheduled until its peers' stall timeouts fired in about 7% of runs (6/80 on an idle A100;
   every rank thread sat in `finish()`, the delayed executor's event-measured kernel time was ~0.14 ms because it started late). Launching
   them sequentially from one thread, or 3 ms apart, gave 0/80, and with sequential launch 0/600 plan runs. Not affected by
   `CUDA_DEVICE_MAX_CONNECTIONS` or `CUDA_MODULE_LOADING`; the CUDA-internal reason was not established. `World::run` therefore launches
-  from the main thread (`KVM_DIST_LAUNCH=threads` restores the concurrent launch). A host that drives several GPUs from several
+  from the main thread (`MVM_DIST_LAUNCH=threads` restores the concurrent launch). A host that drives several GPUs from several
   threads in one process (the in-process multi-GPU mode of `test_dist`) launches from one thread too; one process per GPU is unaffected.
 * x86-64 and aarch64 little-endian hosts only (wire structs are not byte-swapped).
 
@@ -257,7 +257,7 @@ Failure model: a rank (GPU, node, or its proxy) disappears mid-step. Everything 
 landing buffers, its inbox, the messages in flight to and from it.
 
 * **Detection (built, tested on CPU and the single A100):** `reliable.hpp` declares a peer DEAD (retransmit limit, silence past
-  `dead_ms`, connection lost, refused send) and the proxy turns it into `KVM_ERR_DIST_PEER_DOWN`; a wait nobody satisfies ends in `TIMEOUT`.
+  `dead_ms`, connection lost, refused send) and the proxy turns it into `MVM_ERR_DIST_PEER_DOWN`; a wait nobody satisfies ends in `TIMEOUT`.
   What is missing is a coordinator that turns "one rank died" into "everybody stops": design below.
 * **Recovery unit = a training step.** Every cross-device landing buffer is single-assignment and every version variable is one-shot
   *within a step*, so a step has no state that survives it except the weights/optimizer shards. The step boundary is therefore a

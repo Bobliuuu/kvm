@@ -1,4 +1,4 @@
-// div_small (include/kvm_fused_gpt.cuh) against the integer division, on the device it runs on:
+// div_small (include/mvm_fused_gpt.cuh) against the integer division, on the device it runs on:
 //   1. every x in [0, 2^21) for every d in [1, 512];
 //   2. grid_loop's own domain: every x in [0, 1024] (its BT and the thread index) for every d in [1, 2^20];
 //   3. the range's top edge for d in [1, 2048], every power of two up to 2^30 and its neighbours, and 2^31 - 1: x in [2^21 - 4096, 2^21),
@@ -8,9 +8,9 @@
 // Prints the first mismatch and exits 1, else "div_small: PASS" and the counts. nvcc -O3 -arch=sm_XX -std=c++17 -Iinclude tests/static/test_div_small.cu
 #include <cstdio>
 #include <cstdlib>
-#include "kvm_fused_gpt.cuh"
+#include "mvm_fused_gpt.cuh"
 
-using kvm_fgpt::div_small;
+using mvm_fgpt::div_small;
 __device__ unsigned long long g_checked;
 __device__ int g_bad, g_bad_x, g_bad_d, g_bad_q;
 
@@ -34,8 +34,8 @@ __global__ void edges(const int* ds, int nd) {
   unsigned long long c = 0;
   for (int k = blockIdx.x; k < nd; k += gridDim.x) {
     const int d = ds[k];
-    for (int x = kvm_fgpt::kDivSmallMax - 4096 + threadIdx.x; x < kvm_fgpt::kDivSmallMax; x += blockDim.x, ++c) check(x, d);
-    if (threadIdx.x < 3) { const long long x = (long long)d - 1 + threadIdx.x; if (x >= 0 && x < kvm_fgpt::kDivSmallMax) { check((int)x, d); ++c; } }
+    for (int x = mvm_fgpt::kDivSmallMax - 4096 + threadIdx.x; x < mvm_fgpt::kDivSmallMax; x += blockDim.x, ++c) check(x, d);
+    if (threadIdx.x < 3) { const long long x = (long long)d - 1 + threadIdx.x; if (x >= 0 && x < mvm_fgpt::kDivSmallMax) { check((int)x, d); ++c; } }
   }
   atomicAdd(&g_checked, c);
 }
@@ -44,7 +44,7 @@ __global__ void random_pairs(unsigned long long n, unsigned long long seed) {
   for (unsigned long long i = blockIdx.x * (unsigned long long)blockDim.x + threadIdx.x; i < n; i += (unsigned long long)gridDim.x * blockDim.x, ++c) {
     unsigned long long z = (i + 1) * 0x9E3779B97F4A7C15ull ^ seed;
     z = (z ^ (z >> 31)) * 0xBF58476D1CE4E5B9ull; z ^= z >> 29;
-    const int x = (int)(z & (kvm_fgpt::kDivSmallMax - 1)), d = (int)((z >> 32) & 0x7fffffff) | 1;
+    const int x = (int)(z & (mvm_fgpt::kDivSmallMax - 1)), d = (int)((z >> 32) & 0x7fffffff) | 1;
     check(x >> (int)(i % 21), d >> (int)((i / 21) % 31) | 1);
   }
   atomicAdd(&g_checked, c);
@@ -56,7 +56,7 @@ int main() {
   for (int k = 12; k <= 30; ++k) { ds[nd++] = (1 << k) - 1; ds[nd++] = 1 << k; ds[nd++] = (1 << k) + 1; }
   ds[nd++] = 0x7fffffff;
   int* dd; CK(cudaMalloc(&dd, sizeof(int) * nd)); CK(cudaMemcpy(dd, ds, sizeof(int) * nd, cudaMemcpyHostToDevice));
-  dense<<<dim3(64, 512), 256>>>(kvm_fgpt::kDivSmallMax);
+  dense<<<dim3(64, 512), 256>>>(mvm_fgpt::kDivSmallMax);
   domain<<<4096, 256>>>(1 << 20);
   edges<<<512, 256>>>(dd, nd);
   random_pairs<<<1024, 256>>>(1ull << 24, 0x5DEECE66Dull);

@@ -36,7 +36,7 @@ sanitizer exit 0
 OK: 2294/2294 tasks, 154.765 ms
 ========= ERROR SUMMARY: 0 errors
 sanitizer exit 0
-llama_bf16 kvm_exec: OK: 9636/9636 tasks, 49.133 ms
+llama_bf16 mvm_exec: OK: 9636/9636 tasks, 49.133 ms
 lowp: 1266 f32 buffers (1 signal-free skipped: ['version_token']), 10 loss buffers
   ok   losses rel L2 <= 0.001: worst 1.99e-04
   ok   119 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act62 4.97e-06
@@ -44,7 +44,7 @@ lowp: 1266 f32 buffers (1 signal-free skipped: ['version_token']), 10 loss buffe
   ok   weights rel L2 <= 0.01: worst 1.81e-03
   ok   no NaN/Inf in any GPU buffer: []
 PASS
-mlp_bf16 kvm_exec: OK: 2790/2790 tasks, 21.078 ms
+mlp_bf16 mvm_exec: OK: 2790/2790 tasks, 21.078 ms
 lowp: 831 f32 buffers (1 signal-free skipped: ['version_token']), 30 loss buffers
   ok   losses rel L2 <= 0.001: worst 8.26e-07
   ok   26 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act25 1.31e-07
@@ -52,7 +52,7 @@ lowp: 831 f32 buffers (1 signal-free skipped: ['version_token']), 30 loss buffer
   ok   weights rel L2 <= 0.01: worst 3.87e-08
   ok   no NaN/Inf in any GPU buffer: []
 PASS
-vit_bf16 kvm_exec: OK: 6530/6530 tasks, 30.320 ms
+vit_bf16 mvm_exec: OK: 6530/6530 tasks, 30.320 ms
 lowp: 863 f32 buffers (2 signal-free skipped: ['v.vit.h0.attn.k.b', 'version_token']), 10 loss buffers
   ok   losses rel L2 <= 0.001: worst 6.00e-04
   ok   78 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act67 5.33e-03
@@ -60,7 +60,7 @@ lowp: 863 f32 buffers (2 signal-free skipped: ['v.vit.h0.attn.k.b', 'version_tok
   FAIL weights rel L2 <= 0.01: worst 9.78e-01
   ok   no NaN/Inf in any GPU buffer: []
 FAIL: weights rel L2 <= 0.01
-san_bf16 kvm_exec: OK: 1922/1922 tasks, 10.334 ms
+san_bf16 mvm_exec: OK: 1922/1922 tasks, 10.334 ms
 lowp: 305 f32 buffers (1 signal-free skipped: ['version_token']), 2 loss buffers
   ok   losses rel L2 <= 0.001: worst 6.07e-08
   ok   119 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act62 4.97e-06
@@ -68,7 +68,7 @@ lowp: 305 f32 buffers (1 signal-free skipped: ['version_token']), 2 loss buffers
   ok   weights rel L2 <= 0.01: worst 1.14e-06
   ok   no NaN/Inf in any GPU buffer: []
 PASS
-llama_bf16s kvm_exec: OK: 11480/11480 tasks, 53.711 ms
+llama_bf16s mvm_exec: OK: 11480/11480 tasks, 53.711 ms
 lowp: 846 f32 buffers (1 signal-free skipped: ['version_token']), 10 loss buffers
   ok   losses rel L2 <= 0.001: worst 4.33e-04
   ok   77 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act133 4.81e-03
@@ -76,7 +76,7 @@ lowp: 846 f32 buffers (1 signal-free skipped: ['version_token']), 10 loss buffer
   ok   weights rel L2 <= 0.01: worst 8.54e-03
   ok   no NaN/Inf in any GPU buffer: []
 PASS
-mlp_bf16s kvm_exec: OK: 3810/3810 tasks, 29.314 ms
+mlp_bf16s mvm_exec: OK: 3810/3810 tasks, 29.314 ms
 lowp: 651 f32 buffers (1 signal-free skipped: ['version_token']), 30 loss buffers
   ok   losses rel L2 <= 0.001: worst 8.26e-07
   ok   20 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act31 1.31e-07
@@ -84,7 +84,7 @@ lowp: 651 f32 buffers (1 signal-free skipped: ['version_token']), 30 loss buffer
   ok   weights rel L2 <= 0.01: worst 3.87e-08
   ok   no NaN/Inf in any GPU buffer: []
 PASS
-vit_bf16s kvm_exec: OK: 8820/8820 tasks, 42.082 ms
+vit_bf16s mvm_exec: OK: 8820/8820 tasks, 42.082 ms
 lowp: 663 f32 buffers (2 signal-free skipped: ['v.vit.h0.attn.k.b', 'version_token']), 10 loss buffers
   ok   losses rel L2 <= 0.001: worst 7.14e-04
   ok   58 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act73 8.28e-06
@@ -92,7 +92,7 @@ lowp: 663 f32 buffers (2 signal-free skipped: ['v.vit.h0.attn.k.b', 'version_tok
   FAIL weights rel L2 <= 0.01: worst 9.00e-01
   ok   no NaN/Inf in any GPU buffer: []
 FAIL: weights rel L2 <= 0.01
-san_bf16s kvm_exec: OK: 2294/2294 tasks, 13.897 ms
+san_bf16s mvm_exec: OK: 2294/2294 tasks, 13.897 ms
 lowp: 221 f32 buffers (1 signal-free skipped: ['version_token']), 2 loss buffers
   ok   losses rel L2 <= 0.001: worst 2.57e-05
   ok   77 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act133 4.81e-03

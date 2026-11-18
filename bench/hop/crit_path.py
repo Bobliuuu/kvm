@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The critical path of a kvm_exec run, from its --trace-csv and its bundle: how much of the path is op time and how much is the hop between tasks.
+"""The critical path of a mvm_exec run, from its --trace-csv and its bundle: how much of the path is op time and how much is the hop between tasks.
 
   python3 crit_path.py TRACE.csv BUNDLE_DIR [STEPS]
 

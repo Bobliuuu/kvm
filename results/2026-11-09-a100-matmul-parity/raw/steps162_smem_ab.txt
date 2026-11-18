@@ -1,4 +1,4 @@
-# gpt_162m 1-step kvm_exec, one container: main (a99fdca) vs this branch built with 144 KiB (-DKVM_GPT_MMA_SMEM=147456 equivalent) and 96 KiB (the default)
+# gpt_162m 1-step mvm_exec, one container: main (a99fdca) vs this branch built with 144 KiB (-DMVM_GPT_MMA_SMEM=147456 equivalent) and 96 KiB (the default)
 rep 1 main m_b16 OK: 58634/58634 tasks, 230.723 ms
 rep 1 new144 n_b16 OK: 58634/58634 tasks, 272.234 ms
 rep 1 new96 n_b16 OK: 58634/58634 tasks, 256.704 ms

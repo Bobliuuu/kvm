@@ -2,11 +2,11 @@
 import unittest
 
 import _path  # noqa: F401
-from kvmfe.dataflow import build_edges
-from kvmfe.ir import Builder, FrontendError, Tensor
-from kvmfe.lower import Tiling, lower_op
-from kvmfe.nn import GPT, ModelConfig, PRESETS
-from kvmfe.plan import plan_memory
+from mvmfe.dataflow import build_edges
+from mvmfe.ir import Builder, FrontendError, Tensor
+from mvmfe.lower import Tiling, lower_op
+from mvmfe.nn import GPT, ModelConfig, PRESETS
+from mvmfe.plan import plan_memory
 
 
 class DataflowRules(unittest.TestCase):
@@ -138,7 +138,7 @@ class Lowering(unittest.TestCase):
 
     def test_big_tiles_give_the_same_cpu_result(self):
         import random
-        from kvmfe.opset import Buf, op as device_op
+        from mvmfe.opset import Buf, op as device_op
         rnd = random.Random(1)
         M, N, K = 300, 140, 5
         res = {}
@@ -188,7 +188,7 @@ class OptimizerChunks(unittest.TestCase):
             self.rows, self.cols = rows, cols
 
     def test_multi_row_chunks_are_whole_matmul_tile_rows(self):
-        from kvmfe.lower import _opt_chunks
+        from mvmfe.lower import _opt_chunks
         tc = Tiling(opt_elems=262144)
         ch = _opt_chunks(self.W(768, 3072), tc)                    # 85 rows fit; rounded down to one tile row
         self.assertEqual(ch, [(a, a + 64) for a in range(0, 768, 64)])
@@ -196,12 +196,12 @@ class OptimizerChunks(unittest.TestCase):
         self.assertEqual([b - a for a, b in ch], [320, 320, 128])
 
     def test_tile_rows_follow_the_bf16_tensor_core_tile(self):
-        from kvmfe.lower import _opt_chunks
+        from mvmfe.lower import _opt_chunks
         ch = _opt_chunks(self.W(768, 768), Tiling(opt_elems=262144), 128)    # 341 rows -> 256 (whole 128-row MMA tiles)
         self.assertEqual([b - a for a, b in ch], [256, 256, 256])
 
     def test_wide_matrices_keep_their_short_chunks(self):
-        from kvmfe.lower import _opt_chunks
+        from mvmfe.lower import _opt_chunks
         ch = _opt_chunks(self.W(768, 50304), Tiling(opt_elems=262144))      # 5 rows < one tile row
         self.assertEqual(ch[0], (0, 5))
         self.assertEqual(ch[-1][1], 768)

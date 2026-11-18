@@ -1,11 +1,11 @@
 # GPT operator library on A100 (sm_80)
 
-Code commit: 2d364bf (branch feat/gptops). Ops: `include/kvm_ops_gpt.def` (ids 32-63), `include/kvm_ops_gpt.cuh`.
+Code commit: 2d364bf (branch feat/gptops). Ops: `include/mvm_ops_gpt.def` (ids 32-63), `include/mvm_ops_gpt.cuh`.
 Tests: `tests/gpu_ops/{test_ops,test_e2e,bench_ops}.cu`, CPU double references in `tests/gpu_ops/refs.hpp`.
 
 - GPU: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz; driver 580.105.08; CUDA 12.8 (nvcc 12.8.93)
 - Flags: `nvcc -O2 -arch=sm_80 -std=c++17 -lineinfo -I../../include -I. <test>.cu` (no fast-math)
-- Command: `KVM_HOST=user@host ./run_gpu_ops.sh <test_ops|test_e2e|bench_ops> [args]`; sanitizers via
+- Command: `MVM_HOST=user@host ./run_gpu_ops.sh <test_ops|test_e2e|bench_ops> [args]`; sanitizers via
   `WRAP="compute-sanitizer --tool <tool> --error-exitcode 9" ./run_gpu_ops.sh test_ops`. Every run is under `flock ~/.gpu.lock`.
 - The box is shared and serialized by the lock; clocks and thermals are not controlled, so timings are indicative.
 

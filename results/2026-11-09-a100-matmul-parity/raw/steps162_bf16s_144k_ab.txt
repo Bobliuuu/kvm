@@ -1,4 +1,4 @@
-# gpt_162m bf16s 1-step kvm_exec, main (a99fdca) vs this branch at 144 KiB, one container
+# gpt_162m bf16s 1-step mvm_exec, main (a99fdca) vs this branch at 144 KiB, one container
 rep 1 main OK: 58634/58634 tasks, 229.243 ms
 rep 1 new OK: 58634/58634 tasks, 267.686 ms
 rep 2 main OK: 58634/58634 tasks, 227.078 ms

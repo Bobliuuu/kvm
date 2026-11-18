@@ -8,7 +8,7 @@
 set -uo pipefail
 export PATH=$PATH:/usr/local/cuda/bin
 MODE="${1:?build|test|bench}"; OUT="$(realpath -m "${2:?OUT}")"; mkdir -p "$OUT" bin_h100
-ARCH="${KVM_ARCH:-sm_90a}"
+ARCH="${MVM_ARCH:-sm_90a}"
 OPF="-O2 -arch=$ARCH -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -lineinfo -I../../include -I."
 EXF="-O3 -arch=$ARCH -std=c++17 -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177"
 stage() { local n="$1" t="$2"; shift 2; echo "== $n $(date -u +%T)" >> "$OUT/stages.txt"; timeout "$t" "$@" > "$OUT/$n.log" 2>&1; echo "$n exit $? $(date -u +%T)" >> "$OUT/stages.txt"; }
@@ -16,12 +16,12 @@ case "$MODE" in
 build)
   { nvidia-smi --query-gpu=name,driver_version,clocks.max.sm --format=csv,noheader; nvcc --version | tail -1; nproc; free -g | head -2; } > "$OUT/env.txt" 2>&1
   stage b_test_hopper 3600 bash -c "cd tests/gpu_ops && nvcc $OPF test_hopper.cu -lcublas -o ../../bin_h100/test_hopper" &
-  stage b_test_hopper_default 3600 bash -c "cd tests/gpu_ops && nvcc $OPF -DKVM_HOPPER_DEFAULT_POLICY test_hopper.cu -lcublas -o ../../bin_h100/test_hopper_default" &
+  stage b_test_hopper_default 3600 bash -c "cd tests/gpu_ops && nvcc $OPF -DMVM_HOPPER_DEFAULT_POLICY test_hopper.cu -lcublas -o ../../bin_h100/test_hopper_default" &
   stage b_test_ops 5400 bash -c "cd tests/gpu_ops && nvcc $OPF test_ops.cu -o ../../bin_h100/test_ops" &
   stage b_test_bf16 5400 bash -c "cd tests/gpu_ops && nvcc $OPF test_bf16.cu -o ../../bin_h100/test_bf16" &
   stage b_test_extra 7200 bash -c "cd tests/gpu_ops && nvcc $OPF test_extra.cu -o ../../bin_h100/test_extra" &
-  stage b_test_exec 7200 bash -c "KVM_ARCH=$ARCH bash tests/gpu/build.sh && mv test_exec bin_h100/test_exec" &
-  stage b_kvm_exec 7200 bash -c "nvcc $EXF kvm_exec.cu -o bin_h100/kvm_exec" &
+  stage b_test_exec 7200 bash -c "MVM_ARCH=$ARCH bash tests/gpu/build.sh && mv test_exec bin_h100/test_exec" &
+  stage b_mvm_exec 7200 bash -c "nvcc $EXF mvm_exec.cu -o bin_h100/mvm_exec" &
   wait
   ls -la bin_h100 >> "$OUT/stages.txt"
   ;;
@@ -40,19 +40,19 @@ bench)
   stage bench_hopper 3600 bash -c "cd tests/gpu_ops && ../../bin_h100/test_hopper --bench"
   stage bench_hopper_96k 3600 bash -c "cd tests/gpu_ops && ../../bin_h100/test_hopper --bench 96"
   ;;
-step)   # gpt_162m, 1 step: executor with the Hopper tiles (default) vs KVM_NO_HOPPER=1 (sm_80 tiles, same binary), interleaved; then PyTorch
-  D="${KVM_DATA:-/tmp/kvm_data}"; mkdir -p "$D"
+step)   # gpt_162m, 1 step: executor with the Hopper tiles (default) vs MVM_NO_HOPPER=1 (sm_80 tiles, same binary), interleaved; then PyTorch
+  D="${MVM_DATA:-/tmp/mvm_data}"; mkdir -p "$D"
   M='{"name":"gpt_162m","vocab":50304,"d_model":768,"layers":12,"heads":12,"seq":1024,"batch":4'
   for v in "f32_1 f32 1" "b16_1 bf16s 1" "b16_3 bf16s 3"; do set -- $v
     python3 bench/vs_pytorch/gen.py "$D/$1" --model "$M,\"precision\":\"$2\"}" --steps "$3" --mode tf32 --tiling a100 > "$OUT/gen_$1.log" 2>&1 &
   done; wait
   for r in 1 2 3 4 5; do
     for v in hop:f32_1: sm80:f32_1:1 hop:b16_1: sm80:b16_1:1; do IFS=: read n b off <<< "$v"
-      o=$(KVM_NO_HOPPER=$off timeout 900 ./bin_h100/kvm_exec --quiet "$D/$b/bundle" 2>&1 | grep -E '^(OK|FAIL):' | tail -1)
+      o=$(MVM_NO_HOPPER=$off timeout 900 ./bin_h100/mvm_exec --quiet "$D/$b/bundle" 2>&1 | grep -E '^(OK|FAIL):' | tail -1)
       echo "rep $r $n $b $o" | tee -a "$OUT/ab_runs.txt"
     done
   done
-  KVM_LOG=2 ./bin_h100/kvm_exec "$D/f32_1/bundle" 2>&1 | grep -iE 'hopper|dynamic smem' | head -3 > "$OUT/hopper_armed.txt"
+  MVM_LOG=2 ./bin_h100/mvm_exec "$D/f32_1/bundle" 2>&1 | grep -iE 'hopper|dynamic smem' | head -3 > "$OUT/hopper_armed.txt"
   stage torch_tf32 3600 python3 bench/vs_pytorch/torch_bench.py "$D/b16_3" --modes eager,graph,compile_graph --precision tf32 --reps 5 --out "$OUT/torch_tf32.json"
   stage torch_bf16 3600 python3 bench/vs_pytorch/torch_bench.py "$D/b16_3" --modes eager,graph,compile_graph --precision bf16 --reps 5 --out "$OUT/torch_bf16.json"
   ;;

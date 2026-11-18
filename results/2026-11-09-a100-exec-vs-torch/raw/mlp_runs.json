@@ -55,7 +55,7 @@
  },
  "args": {
   "work": "out/final2/work_h72",
-  "exe": "./kvm_exec",
+  "exe": "./mvm_exec",
   "hidden": 72,
   "depth": 2,
   "steps": 50,

@@ -1,5 +1,5 @@
-   control: [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang); gangs [64]; /root/builds/e5b215c6ad3c05c5612594e8/kvm_exec
-   candidate: [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang); gangs [64]; /root/builds/68a5d88f397bcef25685e10c/kvm_exec
+   control: [mvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang); gangs [64]; /root/builds/e5b215c6ad3c05c5612594e8/mvm_exec
+   candidate: [mvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang); gangs [64]; /root/builds/68a5d88f397bcef25685e10c/mvm_exec
 == ho128-golden1: 1 step(s), 68 trained parameters, one bundle, two executors
    loss at step 0: float64 5.552339859, control 5.552337170, candidate 5.552337170, eager TF32 5.552336216
    first moments, relative L2 against float64 (a flag: the candidate above 2x the larger reference):

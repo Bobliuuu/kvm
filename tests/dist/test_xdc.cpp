@@ -8,7 +8,7 @@
 
 #include "../../dist/xdc.hpp"
 
-using namespace kvmd;
+using namespace mvmd;
 
 static std::atomic<int> g_fail{0};
 static std::atomic<int> g_checks{0};

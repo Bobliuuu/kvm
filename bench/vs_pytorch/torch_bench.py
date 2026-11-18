@@ -8,7 +8,7 @@ weights and token stream, and time each. Everything the executor workload fixes 
 --precision bf16 is torch.autocast(bfloat16): fp32 master weights, matmuls / attention in bf16, norms, softmax and the loss in fp32
 (a fp32 residual stream, unlike the executor's 'bf16s' precision mode which stores the stream in bf16 too).
 
-Model (kvmfe.nn.GPT): pre-LayerNorm (eps 1e-5), RoPE (rotate-half, theta 1e4), causal attention scale hd^-0.5, tanh-GELU MLP,
+Model (mvmfe.nn.GPT): pre-LayerNorm (eps 1e-5), RoPE (rotate-half, theta 1e4), causal attention scale hd^-0.5, tanh-GELU MLP,
 untied bias-free head, mean cross-entropy. Optimizer: AdamW lr 3e-3, betas (0.9, 0.95), eps 1e-8, weight decay 0.01 on matrices
 only (not on embeddings, biases, norm gains), global grad-norm clip 1.0 (coef = min(1, 1/(norm + 1e-6)), as the executor's grad_clip).
 Initial weights come from the executor's counter-based generator (reimplemented with numpy; self-checked against runtime/initgen.py).
@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'frontend'))
 sys.path.insert(0, str(ROOT / 'runtime'))
 import initgen  # noqa: E402
-from kvmfe.nn import GPT, ModelConfig  # noqa: E402
+from mvmfe.nn import GPT, ModelConfig  # noqa: E402
 
 OPT = dict(lr=3e-3, betas=(0.9, 0.95), eps=1e-8)
 WD, CLIP = 0.01, 1.0

@@ -20,7 +20,7 @@ mutant popplain/queue:  (exit 124)
   (hung: the broken claim livelocks the queue; counted as detected)
 mutant popticket/queue: TOTAL rounds=287255 violations=2385 (exit 1)
 mutant qrelax/queue (S4, expected NOT detected on A100: the release store is required by the model, not observable here): TOTAL rounds=1000073 violations=0
-== e2e scenarios with slot recycling and windows (each must pass), and the KVM_BREAK_FENCE control (must report stale reads)
+== e2e scenarios with slot recycling and windows (each must pass), and the MVM_BREAK_FENCE control (must report stale reads)
 e2e dag: E2E summary: failures=0 findings=0 (exit 0)
 e2e versions: E2E summary: failures=0 findings=0 (exit 0)
 e2e ring: E2E summary: failures=0 findings=0 (exit 0)

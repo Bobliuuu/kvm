@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Apply an opt-in ready-only scheduling A/B experiment to upstream kvm.cu.
+"""Apply an opt-in ready-only scheduling A/B experiment to upstream mvm.cu.
 
-Usage: python3 integration/apply.py /path/to/kvm/kvm.cu
-Writes kvm_ready.cu beside original; never overwrites original.
+Usage: python3 integration/apply.py /path/to/mvm/mvm.cu
+Writes mvm_ready.cu beside original; never overwrites original.
 """
 import pathlib, sys
 
@@ -35,9 +35,9 @@ def integrate(source: str, kernel: str) -> str:
     replace(anchors[4], anchors[4] + '\n  auto run_ready = [&]() { ready_scan_kernel<<<ready_grid, NT, DSMEM>>>(dtapeP, ntape, dready_states, dready_cursor, dready_done, dctr, dloss); };')
     replace(anchors[5], '  double t[5]; Out o[5];')
     replace(anchors[6], anchors[6] + '\n  best(run_ready, 4);')
-    replace('  const char* nm[4] = {"sequential, launch-per-op", "sequential, CUDA graph/run", "batched across runs (vmap-like graph)", "KVM: all runs, ONE kernel"};', '  const char* nm[5] = {"sequential, launch-per-op", "sequential, CUDA graph/run", "batched across runs (vmap-like graph)", "KVM: claim-and-wait", "KVM: ready-only scan"};')
+    replace('  const char* nm[4] = {"sequential, launch-per-op", "sequential, CUDA graph/run", "batched across runs (vmap-like graph)", "Magni VM: all runs, ONE kernel"};', '  const char* nm[5] = {"sequential, launch-per-op", "sequential, CUDA graph/run", "batched across runs (vmap-like graph)", "Magni VM: claim-and-wait", "Magni VM: ready-only scan"};')
     replace('  for (int i = 0; i < 4; i++) printf("%-40s %10.2f %14.2f %11.0f %8.2fx\\n",', '  for (int i = 0; i < 5; i++) printf("%-40s %10.2f %14.2f %11.0f %8.2fx\\n",')
-    replace('  printf("KVM vs best baseline: %.2fx\\n", std::min(std::min(t[0], t[1]), t[2]) / t[3]);', '  printf("KVM claim vs best baseline: %.2fx\\n", std::min(std::min(t[0], t[1]), t[2]) / t[3]);\n  printf("KVM ready vs claim: %.2fx\\n", t[3] / t[4]);')
+    replace('  printf("Magni VM vs best baseline: %.2fx\\n", std::min(std::min(t[0], t[1]), t[2]) / t[3]);', '  printf("Magni VM claim vs best baseline: %.2fx\\n", std::min(std::min(t[0], t[1]), t[2]) / t[3]);\n  printf("Magni VM ready vs claim: %.2fx\\n", t[3] / t[4]);')
     replace('  for (int i = 0; i < 4; i++) { e_ref =', '  for (int i = 0; i < 5; i++) { e_ref =')
     replace('  for (int i = 0; i < 3; i++) for (size_t j = 0; j < o[3].w.size(); j++)', '  for (int i = 0; i < 5; i++) for (size_t j = 0; j < o[3].w.size(); j++)')
     replace('  bool dec = true; for (int r = 0; r < R; r++) dec = dec && o[3].L[(size_t)r * steps + steps - 1] < o[3].L[(size_t)r * steps];', '  bool dec = true; for (int mode : {3, 4}) for (int r = 0; r < R; r++) dec = dec && o[mode].L[(size_t)r * steps + steps - 1] < o[mode].L[(size_t)r * steps];')
@@ -48,7 +48,7 @@ def main():
     path = pathlib.Path(sys.argv[1])
     kernel = (pathlib.Path(__file__).parent/'ready_scan_kernel.inc').read_text()
     result = integrate(path.read_text(), kernel)
-    out = path.with_name('kvm_ready.cu')
+    out = path.with_name('mvm_ready.cu')
     out.write_text(result)
     print(f'Wrote {out} ({len(result)} bytes)')
 

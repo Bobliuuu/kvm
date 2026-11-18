@@ -6,11 +6,11 @@ GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
   ops: 48074 integer elements bitwise equal, 48074 fp elements within 1e-5 rel (max rel err 0); spin(300us) ran 302.1 us
 == ops: PASS (0.1s, 0 new failures)
 == types
-[kvm_exec][E] DEVICE ERROR BAD_BUF (buffer not f32 / ld != cols): slot 0, a=1, b=0; done 1/1
-[kvm_exec][E] DEVICE ERROR BAD_BUF (buffer not f32 / ld != cols): slot 0, a=0, b=0; done 1/1
-[kvm_exec][E] DEVICE ERROR BAD_BUF (buffer not f32 / ld != cols): slot 0, a=9, b=0; done 0/0
-[kvm_exec][E] DEVICE ERROR BAD_BUF_INDEX (buffer index outside the device table): slot 0, a=200, b=0; done 0/0
-[kvm_exec][E] DEVICE ERROR BOUNDS (element count exceeds buffer): slot 0, a=99, b=0; done 1/1
+[mvm_exec][E] DEVICE ERROR BAD_BUF (buffer not f32 / ld != cols): slot 0, a=1, b=0; done 1/1
+[mvm_exec][E] DEVICE ERROR BAD_BUF (buffer not f32 / ld != cols): slot 0, a=0, b=0; done 1/1
+[mvm_exec][E] DEVICE ERROR BAD_BUF (buffer not f32 / ld != cols): slot 0, a=9, b=0; done 0/0
+[mvm_exec][E] DEVICE ERROR BAD_BUF_INDEX (buffer index outside the device table): slot 0, a=200, b=0; done 0/0
+[mvm_exec][E] DEVICE ERROR BOUNDS (element count exceeds buffer): slot 0, a=99, b=0; done 1/1
   error i32 buffer into f32 op       -> BAD_BUF
   error f32 buffer as i32 index      -> BAD_BUF
   error required buf given as -1     -> BAD_BUF
@@ -24,22 +24,22 @@ GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
   file: 20 MB streamed in chunks, size mismatch rejected
 == init: PASS (0.1s, 0 new failures)
 == errors
-[kvm_exec][E] DEVICE ERROR BAD_OP (op_id not in registry): slot 0, a=126, b=0; done 0/0
-[kvm_exec][E] DEVICE ERROR BAD_ARITY (args_words != operator arity): slot 0, a=0, b=0; done 0/0
-[kvm_exec][E] DEVICE ERROR BAD_BUF_INDEX (buffer index outside the device table): slot 0, a=9, b=0; done 0/0
-[kvm_exec][E] DEVICE ERROR BOUNDS (element count exceeds buffer): slot 0, a=9, b=0; done 1/1
-[kvm_exec][E] DEVICE ERROR BOUNDS (element count exceeds buffer): slot 0, a=-1, b=0; done 1/1
-[kvm_exec][E] DEVICE ERROR BAD_TASK (task descriptor out of range (succ/args/priority/indegree)): slot 0, a=0, b=0; done 0/0
-[kvm_exec][E] DEVICE ERROR BAD_VAR (version variable out of range): slot 0, a=0, b=0; done 0/0
-[kvm_exec][E] DEVICE ERROR VERSION_GAP (pub_ver != version[pub_var]+1 (publisher not contiguous or two writers)): slot 0, a=0, b=5; done 1/1
-[kvm_exec][E] DEVICE ERROR BAD_TASK (task descriptor out of range (succ/args/priority/indegree)): slot 0, a=5, b=0; done 0/0
-[kvm_exec][E] DEVICE ERROR SLOTS (task slot pool exhausted (max_tasks)): slot -1, a=9, b=0; done 0/0
-[kvm_exec][E] DEVICE ERROR BATCH_TOO_LARGE (bundle larger than live_cap): slot -1, a=9, b=0; done 0/0
-[kvm_exec][E] DEVICE ERROR POOL (successor/args pool exhausted): slot -1, a=4, b=0; done 0/0
-[kvm_exec][E] DEVICE ERROR TIMEOUT (device timeout (deadlock or stalled admission)): slot -1, a=1, b=0; done 0/1
-[kvm_exec][E] bundle rejected: task 0: priority 99 outside [0,31]
-[kvm_exec][E] bundle rejected: dependency cycle
-[kvm_exec][E] bundle rejected: 4097 tasks > live_cap 4096
+[mvm_exec][E] DEVICE ERROR BAD_OP (op_id not in registry): slot 0, a=126, b=0; done 0/0
+[mvm_exec][E] DEVICE ERROR BAD_ARITY (args_words != operator arity): slot 0, a=0, b=0; done 0/0
+[mvm_exec][E] DEVICE ERROR BAD_BUF_INDEX (buffer index outside the device table): slot 0, a=9, b=0; done 0/0
+[mvm_exec][E] DEVICE ERROR BOUNDS (element count exceeds buffer): slot 0, a=9, b=0; done 1/1
+[mvm_exec][E] DEVICE ERROR BOUNDS (element count exceeds buffer): slot 0, a=-1, b=0; done 1/1
+[mvm_exec][E] DEVICE ERROR BAD_TASK (task descriptor out of range (succ/args/priority/indegree)): slot 0, a=0, b=0; done 0/0
+[mvm_exec][E] DEVICE ERROR BAD_VAR (version variable out of range): slot 0, a=0, b=0; done 0/0
+[mvm_exec][E] DEVICE ERROR VERSION_GAP (pub_ver != version[pub_var]+1 (publisher not contiguous or two writers)): slot 0, a=0, b=5; done 1/1
+[mvm_exec][E] DEVICE ERROR BAD_TASK (task descriptor out of range (succ/args/priority/indegree)): slot 0, a=5, b=0; done 0/0
+[mvm_exec][E] DEVICE ERROR SLOTS (task slot pool exhausted (max_tasks)): slot -1, a=9, b=0; done 0/0
+[mvm_exec][E] DEVICE ERROR BATCH_TOO_LARGE (bundle larger than live_cap): slot -1, a=9, b=0; done 0/0
+[mvm_exec][E] DEVICE ERROR POOL (successor/args pool exhausted): slot -1, a=4, b=0; done 0/0
+[mvm_exec][E] DEVICE ERROR TIMEOUT (device timeout (deadlock or stalled admission)): slot -1, a=1, b=0; done 0/1
+[mvm_exec][E] bundle rejected: task 0: priority 99 outside [0,31]
+[mvm_exec][E] bundle rejected: dependency cycle
+[mvm_exec][E] bundle rejected: 4097 tasks > live_cap 4096
   error bad op id          -> BAD_OP (slot 0 a=126 b=0)
   error bad arity          -> BAD_ARITY (slot 0 a=0 b=0)
   error bad buffer index   -> BAD_BUF_INDEX (slot 0 a=9 b=0)
@@ -65,8 +65,8 @@ GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
   deadlines: missed flag set only for the 1 us deadline; smid/block recorded; CSV written
 == sched: PASS (0.1s, 0 new failures)
 == admission
-[kvm_exec][E] bundle record larger than the admission ring (200 > 128 words)
-[kvm_exec][E] DEVICE ERROR PARK_STALL (more tasks parked on versions than the park budget (live_cap) and admission needs room): slot -1, a=32, b=0; done 0/32
+[mvm_exec][E] bundle record larger than the admission ring (200 > 128 words)
+[mvm_exec][E] DEVICE ERROR PARK_STALL (more tasks parked on versions than the park budget (live_cap) and admission needs room): slot -1, a=32, b=0; done 0/32
   admission ring: 300 bundles / 3600 tasks through a 512-word ring: 218 wraps (pad records), 257 backpressure waits, values bitwise vs CPU
   backpressure: 30 bundles x 3 x 300 us on one worker, 256-word ring: host waited 11 times, nothing dropped (90/90 done)
   explicit failures: TOO_BIG for an oversized record; BACKPRESSURE_TIMEOUT after 22 submits against a stalled live window; device ended with PARK_STALL (admitted 32, done 0)
@@ -75,8 +75,8 @@ GPU NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver CUDA 13.0, runtime 12.8
   4 producer threads x 60 bundles concurrently: 2400 tasks, exactly-once, values bitwise vs CPU
 == admission: PASS (1.6s, 0 new failures)
 == admit_chunks
-[kvm_exec][E] DEVICE ERROR BAD_OP (op_id not in registry): slot 130, a=126, b=130; done 0/0
-[kvm_exec][E] DEVICE ERROR BAD_BUF_INDEX (buffer index outside the device table): slot 261, a=9, b=261; done 0/0
+[mvm_exec][E] DEVICE ERROR BAD_OP (op_id not in registry): slot 130, a=126, b=130; done 0/0
+[mvm_exec][E] DEVICE ERROR BAD_BUF_INDEX (buffer index outside the device table): slot 261, a=9, b=261; done 0/0
   admit chunks: 9 records of 1..1000 tasks (chunk 128) admitted exactly, values bitwise vs CPU
   error bad op in 2nd chunk -> BAD_OP (slot 130 a=126 b=130)
   error bad buffer in 3rd chunk -> BAD_BUF_INDEX (slot 261 a=9 b=261)

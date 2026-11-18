@@ -5,8 +5,8 @@ mode                                       total ms    us/step/run run-steps/s  
 sequential, launch-per-op                     16.12          53.74       18609     1.00x
 sequential, CUDA graph/run                     5.81          19.36       51643     2.78x
 batched across runs (vmap-like graph)          5.78          19.28       51864     2.79x
-KVM: all runs, ONE kernel                      6.58          21.95       45564     2.45x
-KVM vs best baseline: 0.88x
+Magni VM: all runs, ONE kernel                      6.58          21.95       45564     2.45x
+Magni VM vs best baseline: 0.88x
 
 loss run0: 0.31605 -> 0.17337 (lr 0.0500)
 max rel loss err vs cpu fp32 (runs 0 and 0, first 100 steps, all modes): 2.73e-05

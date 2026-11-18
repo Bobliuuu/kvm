@@ -12,11 +12,11 @@ build pr6nc: rc=0
 $ grep -i error pr6nc/build.log | head -5; cp pr6nc/build.log /logs/ab0-main-vs-pr6/build_pr6nc.log
 builds done in 354 s
 $ python3 -I main/bench/vs_pytorch/gen.py w_tiny --model gpt_tiny --steps 50 --mode tf32 --tiling a100 > /logs/ab0-main-vs-pr6/gen_tiny.json
-2026-11-10 02:15:16,010 INFO kvm.compiler: compiled 5150 tasks (0 gates), 36153 edges, 176 buffers, 1 variables in 0.09s (parse 0.06s, graph+versions 0.02s, pack 0.01s)
-2026-11-10 02:15:16,018 INFO kvm.compiler: wrote bundle to w_tiny/bundle
+2026-11-10 02:15:16,010 INFO mvm.compiler: compiled 5150 tasks (0 gates), 36153 edges, 176 buffers, 1 variables in 0.09s (parse 0.06s, graph+versions 0.02s, pack 0.01s)
+2026-11-10 02:15:16,018 INFO mvm.compiler: wrote bundle to w_tiny/bundle
 $ python3 -I main/bench/vs_pytorch/gen.py w_small --model gpt_small --steps 50 --mode tf32 --tiling a100 > /logs/ab0-main-vs-pr6/gen_small.json
-2026-11-10 02:15:18,628 INFO kvm.compiler: compiled 13898 tasks (0 gates), 127024 edges, 268 buffers, 1 variables in 0.30s (parse 0.20s, graph+versions 0.06s, pack 0.04s)
-2026-11-10 02:15:18,647 INFO kvm.compiler: wrote bundle to w_small/bundle
+2026-11-10 02:15:18,628 INFO mvm.compiler: compiled 13898 tasks (0 gates), 127024 edges, 268 buffers, 1 variables in 0.30s (parse 0.20s, graph+versions 0.06s, pack 0.04s)
+2026-11-10 02:15:18,647 INFO mvm.compiler: wrote bundle to w_small/bundle
 $ python3 -I main/bench/vs_pytorch/torch_bench.py w_tiny --reps 5 --precision tf32 --modes graph,compile_graph --out /logs/ab0-main-vs-pr6/r0_tiny_torch.json 2>&1 | grep -v Warning
 graph: best 354.6 us/step  median 432.0  worst 432.1  loss 4.1460 -> 1.2453  (setup 1s)
 AUTOTUNE addmm(32x128, 32x32, 32x128)
@@ -179,21 +179,21 @@ AUTOTUNE mm(32x32, 32x32)
   mm 0.0092 ms 66.7% 
 SingleProcess AUTOTUNE benchmarking takes 0.1140 seconds and 0.0001 seconds precompiling for 7 choices
 compile_graph: best 201.0 us/step  median 201.1  worst 201.4  loss 4.1461 -> 1.2461  (setup 30s)
-$ python3 -I main/bench/vs_pytorch/exec_bench.py w_tiny main/kvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r0_tiny_main.json
+$ python3 -I main/bench/vs_pytorch/exec_bench.py w_tiny main/mvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r0_tiny_main.json
 rep 1/5: 43.4 ms (0.87 ms/step), wall 0.4 s
 rep 2/5: 42.2 ms (0.84 ms/step), wall 0.4 s
 rep 3/5: 42.2 ms (0.84 ms/step), wall 0.4 s
 rep 4/5: 42.3 ms (0.85 ms/step), wall 0.5 s
 rep 5/5: 42.2 ms (0.84 ms/step), wall 0.5 s
 executor: best 845 us/step  median 845  worst 868
-$ python3 -I main/bench/vs_pytorch/exec_bench.py w_tiny pr6/kvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r0_tiny_pr6.json
+$ python3 -I main/bench/vs_pytorch/exec_bench.py w_tiny pr6/mvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r0_tiny_pr6.json
 rep 1/5: 41.3 ms (0.83 ms/step), wall 0.5 s
 rep 2/5: 41.6 ms (0.83 ms/step), wall 0.4 s
 rep 3/5: 41.9 ms (0.84 ms/step), wall 0.4 s
 rep 4/5: 41.6 ms (0.83 ms/step), wall 0.4 s
 rep 5/5: 41.4 ms (0.83 ms/step), wall 0.4 s
 executor: best 826 us/step  median 833  worst 837
-$ python3 -I main/bench/vs_pytorch/exec_bench.py w_tiny pr6nc/kvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r0_tiny_pr6nc.json -- --no-cont
+$ python3 -I main/bench/vs_pytorch/exec_bench.py w_tiny pr6nc/mvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r0_tiny_pr6nc.json -- --no-cont
 rep 1/5: 43.7 ms (0.87 ms/step), wall 0.4 s
 rep 2/5: 43.8 ms (0.88 ms/step), wall 0.4 s
 rep 3/5: 43.8 ms (0.88 ms/step), wall 0.4 s
@@ -418,21 +418,21 @@ AUTOTUNE addmm(128x64, 128x64, 64x64)
   triton_mm_441 0.0092 ms 88.9% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=3, num_warps=4
 SingleProcess AUTOTUNE benchmarking takes 0.3490 seconds and 0.0002 seconds precompiling for 19 choices
 compile_graph: best 425.5 us/step  median 425.6  worst 425.6  loss 4.8782 -> 0.0960  (setup 49s)
-$ python3 -I main/bench/vs_pytorch/exec_bench.py w_small main/kvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r0_small_main.json
+$ python3 -I main/bench/vs_pytorch/exec_bench.py w_small main/mvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r0_small_main.json
 rep 1/5: 118.1 ms (2.36 ms/step), wall 0.5 s
 rep 2/5: 89.8 ms (1.80 ms/step), wall 0.5 s
 rep 3/5: 89.7 ms (1.79 ms/step), wall 0.5 s
 rep 4/5: 89.8 ms (1.80 ms/step), wall 0.4 s
 rep 5/5: 89.7 ms (1.79 ms/step), wall 0.5 s
 executor: best 1793 us/step  median 1796  worst 2363
-$ python3 -I main/bench/vs_pytorch/exec_bench.py w_small pr6/kvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r0_small_pr6.json
+$ python3 -I main/bench/vs_pytorch/exec_bench.py w_small pr6/mvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r0_small_pr6.json
 rep 1/5: 103.6 ms (2.07 ms/step), wall 0.5 s
 rep 2/5: 90.8 ms (1.82 ms/step), wall 0.5 s
 rep 3/5: 87.8 ms (1.76 ms/step), wall 0.6 s
 rep 4/5: 89.3 ms (1.79 ms/step), wall 0.5 s
 rep 5/5: 87.2 ms (1.74 ms/step), wall 0.5 s
 executor: best 1744 us/step  median 1786  worst 2072
-$ python3 -I main/bench/vs_pytorch/exec_bench.py w_small pr6nc/kvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r0_small_pr6nc.json -- --no-cont
+$ python3 -I main/bench/vs_pytorch/exec_bench.py w_small pr6nc/mvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r0_small_pr6nc.json -- --no-cont
 rep 1/5: 91.2 ms (1.82 ms/step), wall 0.5 s
 rep 2/5: 90.8 ms (1.82 ms/step), wall 0.5 s
 rep 3/5: 89.5 ms (1.79 ms/step), wall 0.6 s
@@ -442,21 +442,21 @@ executor: best 1791 us/step  median 1824  worst 1894
 $ python3 -I main/bench/vs_pytorch/torch_bench.py w_tiny --reps 5 --precision tf32 --modes graph,compile_graph --out /logs/ab0-main-vs-pr6/r1_tiny_torch.json 2>&1 | grep -v Warning
 graph: best 432.0 us/step  median 432.0  worst 432.2  loss 4.1460 -> 1.2453  (setup 1s)
 compile_graph: best 200.6 us/step  median 200.7  worst 200.7  loss 4.1461 -> 1.2461  (setup 3s)
-$ python3 -I main/bench/vs_pytorch/exec_bench.py w_tiny pr6/kvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r1_tiny_pr6.json
+$ python3 -I main/bench/vs_pytorch/exec_bench.py w_tiny pr6/mvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r1_tiny_pr6.json
 rep 1/5: 43.3 ms (0.87 ms/step), wall 0.4 s
 rep 2/5: 41.1 ms (0.82 ms/step), wall 0.4 s
 rep 3/5: 43.0 ms (0.86 ms/step), wall 0.5 s
 rep 4/5: 41.1 ms (0.82 ms/step), wall 0.4 s
 rep 5/5: 40.7 ms (0.81 ms/step), wall 0.4 s
 executor: best 815 us/step  median 822  worst 866
-$ python3 -I main/bench/vs_pytorch/exec_bench.py w_tiny pr6nc/kvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r1_tiny_pr6nc.json -- --no-cont
+$ python3 -I main/bench/vs_pytorch/exec_bench.py w_tiny pr6nc/mvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r1_tiny_pr6nc.json -- --no-cont
 rep 1/5: 43.8 ms (0.88 ms/step), wall 0.4 s
 rep 2/5: 44.0 ms (0.88 ms/step), wall 0.4 s
 rep 3/5: 45.7 ms (0.91 ms/step), wall 0.4 s
 rep 4/5: 43.6 ms (0.87 ms/step), wall 0.4 s
 rep 5/5: 45.5 ms (0.91 ms/step), wall 0.5 s
 executor: best 872 us/step  median 879  worst 913
-$ python3 -I main/bench/vs_pytorch/exec_bench.py w_tiny main/kvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r1_tiny_main.json
+$ python3 -I main/bench/vs_pytorch/exec_bench.py w_tiny main/mvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r1_tiny_main.json
 rep 1/5: 42.6 ms (0.85 ms/step), wall 0.5 s
 rep 2/5: 42.3 ms (0.85 ms/step), wall 0.5 s
 rep 3/5: 42.8 ms (0.86 ms/step), wall 0.4 s
@@ -466,21 +466,21 @@ executor: best 843 us/step  median 847  worst 857
 $ python3 -I main/bench/vs_pytorch/torch_bench.py w_small --reps 5 --precision tf32 --modes graph,compile_graph --out /logs/ab0-main-vs-pr6/r1_small_torch.json 2>&1 | grep -v Warning
 graph: best 651.8 us/step  median 766.9  worst 834.7  loss 4.8782 -> 0.0957  (setup 1s)
 compile_graph: best 425.4 us/step  median 425.5  worst 425.5  loss 4.8782 -> 0.0960  (setup 3s)
-$ python3 -I main/bench/vs_pytorch/exec_bench.py w_small pr6/kvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r1_small_pr6.json
+$ python3 -I main/bench/vs_pytorch/exec_bench.py w_small pr6/mvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r1_small_pr6.json
 rep 1/5: 102.8 ms (2.06 ms/step), wall 0.5 s
 rep 2/5: 86.7 ms (1.73 ms/step), wall 0.4 s
 rep 3/5: 87.1 ms (1.74 ms/step), wall 0.5 s
 rep 4/5: 87.0 ms (1.74 ms/step), wall 0.6 s
 rep 5/5: 87.0 ms (1.74 ms/step), wall 0.5 s
 executor: best 1733 us/step  median 1740  worst 2056
-$ python3 -I main/bench/vs_pytorch/exec_bench.py w_small pr6nc/kvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r1_small_pr6nc.json -- --no-cont
+$ python3 -I main/bench/vs_pytorch/exec_bench.py w_small pr6nc/mvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r1_small_pr6nc.json -- --no-cont
 rep 1/5: 86.7 ms (1.73 ms/step), wall 0.5 s
 rep 2/5: 87.3 ms (1.75 ms/step), wall 0.4 s
 rep 3/5: 87.3 ms (1.75 ms/step), wall 0.4 s
 rep 4/5: 86.8 ms (1.74 ms/step), wall 0.4 s
 rep 5/5: 87.0 ms (1.74 ms/step), wall 0.5 s
 executor: best 1734 us/step  median 1741  worst 1746
-$ python3 -I main/bench/vs_pytorch/exec_bench.py w_small main/kvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r1_small_main.json
+$ python3 -I main/bench/vs_pytorch/exec_bench.py w_small main/mvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r1_small_main.json
 rep 1/5: 89.3 ms (1.79 ms/step), wall 0.4 s
 rep 2/5: 89.9 ms (1.80 ms/step), wall 0.5 s
 rep 3/5: 91.0 ms (1.82 ms/step), wall 0.5 s
@@ -490,21 +490,21 @@ executor: best 1785 us/step  median 1791  worst 1820
 $ python3 -I main/bench/vs_pytorch/torch_bench.py w_tiny --reps 5 --precision tf32 --modes graph,compile_graph --out /logs/ab0-main-vs-pr6/r2_tiny_torch.json 2>&1 | grep -v Warning
 graph: best 432.0 us/step  median 432.2  worst 432.6  loss 4.1460 -> 1.2453  (setup 1s)
 compile_graph: best 200.7 us/step  median 200.9  worst 200.9  loss 4.1461 -> 1.2461  (setup 3s)
-$ python3 -I main/bench/vs_pytorch/exec_bench.py w_tiny pr6nc/kvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r2_tiny_pr6nc.json -- --no-cont
+$ python3 -I main/bench/vs_pytorch/exec_bench.py w_tiny pr6nc/mvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r2_tiny_pr6nc.json -- --no-cont
 rep 1/5: 43.3 ms (0.87 ms/step), wall 0.4 s
 rep 2/5: 43.8 ms (0.88 ms/step), wall 0.5 s
 rep 3/5: 43.5 ms (0.87 ms/step), wall 0.4 s
 rep 4/5: 43.7 ms (0.87 ms/step), wall 0.4 s
 rep 5/5: 44.6 ms (0.89 ms/step), wall 0.4 s
 executor: best 865 us/step  median 875  worst 893
-$ python3 -I main/bench/vs_pytorch/exec_bench.py w_tiny main/kvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r2_tiny_main.json
+$ python3 -I main/bench/vs_pytorch/exec_bench.py w_tiny main/mvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r2_tiny_main.json
 rep 1/5: 42.3 ms (0.85 ms/step), wall 0.4 s
 rep 2/5: 42.3 ms (0.85 ms/step), wall 0.4 s
 rep 3/5: 42.2 ms (0.84 ms/step), wall 0.4 s
 rep 4/5: 42.0 ms (0.84 ms/step), wall 0.6 s
 rep 5/5: 42.2 ms (0.84 ms/step), wall 0.5 s
 executor: best 841 us/step  median 844  worst 846
-$ python3 -I main/bench/vs_pytorch/exec_bench.py w_tiny pr6/kvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r2_tiny_pr6.json
+$ python3 -I main/bench/vs_pytorch/exec_bench.py w_tiny pr6/mvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r2_tiny_pr6.json
 rep 1/5: 44.8 ms (0.90 ms/step), wall 0.4 s
 rep 2/5: 41.2 ms (0.82 ms/step), wall 0.4 s
 rep 3/5: 41.3 ms (0.83 ms/step), wall 0.4 s
@@ -514,21 +514,21 @@ executor: best 821 us/step  median 823  worst 896
 $ python3 -I main/bench/vs_pytorch/torch_bench.py w_small --reps 5 --precision tf32 --modes graph,compile_graph --out /logs/ab0-main-vs-pr6/r2_small_torch.json 2>&1 | grep -v Warning
 graph: best 649.9 us/step  median 836.2  worst 838.9  loss 4.8782 -> 0.0957  (setup 1s)
 compile_graph: best 425.5 us/step  median 427.6  worst 427.6  loss 4.8782 -> 0.0960  (setup 3s)
-$ python3 -I main/bench/vs_pytorch/exec_bench.py w_small pr6nc/kvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r2_small_pr6nc.json -- --no-cont
+$ python3 -I main/bench/vs_pytorch/exec_bench.py w_small pr6nc/mvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r2_small_pr6nc.json -- --no-cont
 rep 1/5: 106.5 ms (2.13 ms/step), wall 0.5 s
 rep 2/5: 86.9 ms (1.74 ms/step), wall 0.4 s
 rep 3/5: 87.3 ms (1.75 ms/step), wall 0.4 s
 rep 4/5: 87.5 ms (1.75 ms/step), wall 0.4 s
 rep 5/5: 87.4 ms (1.75 ms/step), wall 0.5 s
 executor: best 1738 us/step  median 1749  worst 2131
-$ python3 -I main/bench/vs_pytorch/exec_bench.py w_small main/kvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r2_small_main.json
+$ python3 -I main/bench/vs_pytorch/exec_bench.py w_small main/mvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r2_small_main.json
 rep 1/5: 117.4 ms (2.35 ms/step), wall 0.5 s
 rep 2/5: 89.3 ms (1.79 ms/step), wall 0.4 s
 rep 3/5: 89.9 ms (1.80 ms/step), wall 0.4 s
 rep 4/5: 89.2 ms (1.78 ms/step), wall 0.4 s
 rep 5/5: 88.9 ms (1.78 ms/step), wall 0.5 s
 executor: best 1777 us/step  median 1786  worst 2348
-$ python3 -I main/bench/vs_pytorch/exec_bench.py w_small pr6/kvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r2_small_pr6.json
+$ python3 -I main/bench/vs_pytorch/exec_bench.py w_small pr6/mvm_exec --reps 5 --out /logs/ab0-main-vs-pr6/r2_small_pr6.json
 rep 1/5: 86.2 ms (1.72 ms/step), wall 0.4 s
 rep 2/5: 86.9 ms (1.74 ms/step), wall 0.5 s
 rep 3/5: 86.9 ms (1.74 ms/step), wall 0.4 s

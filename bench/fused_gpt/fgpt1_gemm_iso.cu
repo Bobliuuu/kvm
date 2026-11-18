@@ -1,4 +1,4 @@
-// One GEMM of the one-block step alone (kvm_fused_gpt.cuh's gemm, as kvm_fgpt1.cuh calls it), in one block of NT threads: where does a
+// One GEMM of the one-block step alone (mvm_fused_gpt.cuh's gemm, as mvm_fgpt1.cuh calls it), in one block of NT threads: where does a
 // small GEMM's time go, its k-steps or its fixed part (the epilogue, the barrier, the tile setup)? Time against K gives the k-step's cost
 // (the slope) and the fixed cost (the intercept), with and without whole tiles (gemm's Full flag: no bounds branch between a lane's
 // epilogue elements), and with an epilogue that does real work per element (gelu_grad's tanhf). Two epilogue edits of a
@@ -6,10 +6,10 @@
 //   nvcc <kbuild's flags> -Iinclude bench/fused_gpt/fgpt1_gemm_iso.cu -o fgpt1_gemm_iso && ./fgpt1_gemm_iso
 #include <cstdio>
 #include <cuda_runtime.h>
-#include "kvm_fgpt1.cuh"
+#include "mvm_fgpt1.cuh"
 
 #define CK(x) do { cudaError_t e_ = (x); if (e_ != cudaSuccess) { printf("CUDA error %s at %s\n", cudaGetErrorString(e_), #x); return 1; } } while (0)
-using namespace kvm_fgpt1;
+using namespace mvm_fgpt1;
 
 __device__ __forceinline__ unsigned long long gt() { unsigned long long t; asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(t)); return t; }
 
@@ -22,7 +22,7 @@ constexpr int SMEM_FLOATS = 22272;
 template <bool FULL, bool PREC, int EPI>
 __global__ void __launch_bounds__(NT, 1) iso(int reps, int M, int N, int K, unsigned long long* out, float* sink) {   // out: ns, cycles
   extern __shared__ float sm[];
-  const int lda = kvm_fgpt_ldk(K), ldb = kvm_fgpt_ldmn(N), ldc = kvm_fgpt_ldk(N);
+  const int lda = mvm_fgpt_ldk(K), ldb = mvm_fgpt_ldmn(N), ldc = mvm_fgpt_ldk(N);
   float* const A = sm;
   float* const B = sm + OFF_B;
   float* const C = sm + OFF_C;
@@ -42,7 +42,7 @@ __global__ void __launch_bounds__(NT, 1) iso(int reps, int M, int N, int K, unsi
 template <bool FULL, bool PREC, int EPI>
 static int run(int M, int N, int K, unsigned long long* dout, float* sink) {
   const int reps = 2000, smem = SMEM_FLOATS * 4;
-  if (M != 32 || K > 256 || (long long)K * kvm_fgpt_ldmn(N) > OFF_C - OFF_B || (long long)M * kvm_fgpt_ldk(N) > SMEM_FLOATS - OFF_C) {
+  if (M != 32 || K > 256 || (long long)K * mvm_fgpt_ldmn(N) > OFF_C - OFF_B || (long long)M * mvm_fgpt_ldk(N) > SMEM_FLOATS - OFF_C) {
     printf("GEMM %d x %d x %d does not fit the bed's layout\n", M, N, K); return 1;
   }
   auto* k = iso<FULL, PREC, EPI>;

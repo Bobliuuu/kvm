@@ -1,6 +1,6 @@
 # The fused GPT step on 12 warps a member (A100)
 
-`KVM_FGPT_NT` (include/kvm_fused_gpt.h) grows from 256 threads to 384: each gang member's block runs 12 warps, three to each SM
+`MVM_FGPT_NT` (include/mvm_fused_gpt.h) grows from 256 threads to 384: each gang member's block runs 12 warps, three to each SM
 sub-partition where there were two. The step's tile loops are latency-bound: each k step waits on its fragments' shared-memory loads and
 on the MMA chain. With a third warp on each sub-partition there is one more to switch to. The kernel's registers fall to fit 384 threads a
 block without spilling.
@@ -14,7 +14,7 @@ Every figure here was re-derived from these raw files by the team's verifier (No
 ## The bed
 
 `bench/fused_gpt/fgpt_bed.cu` on an A100-SXM4-80GB, built at 256, 384 and 512 threads from one source (`d6f6c75`, whose fused GPT
-sources and bed equal #48's head's, with `KVM_FGPT_NT` made overridable for the bed). Each shape ran at its gang width, 20 steps with the phase clock, 5 rounds with the arms' order rotating, no slow
+sources and bed equal #48's head's, with `MVM_FGPT_NT` made overridable for the bed). Each shape ran at its gang width, 20 steps with the phase clock, 5 rounds with the arms' order rotating, no slow
 run. The 384- and 512-thread builds pass the workload's float64 checks first: gpt-tiny and gpt-small at 2 steps, the two d128s at one
 step and resynced (`raw/bed/`).
 
@@ -39,9 +39,9 @@ fused GPT step's three rows, 9 interleaved rounds a row, `--warm-ms 500`, no slo
 | gpt-small (50 steps) | 32 | 14.323 | 13.812 | **x1.038** | x1.035-1.042 |
 | gpt-tiny (50 steps) | 16 | 6.628 | 6.488 | **x1.021** | x1.019-1.024 |
 
-The executor's `kvm_fgpt_kernel` goes from 178 registers to 168, with a 56-byte stack and no local memory in either (`cuobjdump
+The executor's `mvm_fgpt_kernel` goes from 178 registers to 168, with a 56-byte stack and no local memory in either (`cuobjdump
 -res-usage`). Rows that run no fused GPT step run the same code: every other kernel's SASS is identical in the two builds, 18 of 19
-functions, and `kvm_fgpt_kernel` goes from 41,120 instructions to 38,256 (`raw/executor/sass-identity.txt`, by `sass_ident.py` beside it).
+functions, and `mvm_fgpt_kernel` goes from 41,120 instructions to 38,256 (`raw/executor/sass-identity.txt`, by `sass_ident.py` beside it).
 
 ## Numerics
 

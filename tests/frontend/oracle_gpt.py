@@ -1,14 +1,14 @@
 """Independent float64 reference of the frontend's GPT: plain Python lists, hand-written forward AND backward, AdamW.
 
-Shares nothing with kvmfe except the deterministic initial values and batches (so both start from the same point). It does not
+Shares nothing with mvmfe except the deterministic initial values and batches (so both start from the same point). It does not
 use tiles, buffers, device ops or autodiff: it is the oracle the emitted workload is checked against.
 """
 import math
 
 import _path  # noqa: F401
-from kvmfe.emit import init_values
-from kvmfe.nn import GPT
-from kvmfe.train import batch_tokens, param_init
+from mvmfe.emit import init_values
+from mvmfe.nn import GPT
+from mvmfe.train import batch_tokens, param_init
 
 
 def mm(a, b):                       # [m,k] @ [k,n]

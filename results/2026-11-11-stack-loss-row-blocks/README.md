@@ -17,5 +17,5 @@ of the `main` PR to the stack's pass.
     the covering four ways (a gap, an overlap, a short cover, another vocabulary in one block): each stays unfused, with a warning.
   - Every rewritten bundle's records replay through its gangs' barriers, as the test always checks.
 
-The change is host code only (the fusion pass, and one log line in `kvm_exec.cu`): the device code is the stack's, so the stack's reads of
+The change is host code only (the fusion pass, and one log line in `mvm_exec.cu`): the device code is the stack's, so the stack's reads of
 its fused steps hold for these bundles, whose rewritten form is byte for byte the one from `main`'s frontend.

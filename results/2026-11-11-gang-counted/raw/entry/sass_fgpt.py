@@ -4,7 +4,7 @@
 import collections, hashlib, re, subprocess, sys
 INS = re.compile(r'^\s+/\*[0-9a-f]{4,}\*/\s+(.*?)\s*;')
 for path in sys.argv[1:]:
-    out = subprocess.run(['nice', '-n', '19', 'cuobjdump', '-sass', '-fun', 'kvm_fgpt_kernel', path], capture_output=True, text=True).stdout
+    out = subprocess.run(['nice', '-n', '19', 'cuobjdump', '-sass', '-fun', 'mvm_fgpt_kernel', path], capture_output=True, text=True).stdout
     if 'Function' not in out:
         out = subprocess.run(['nice', '-n', '19', 'cuobjdump', '-sass', path], capture_output=True, text=True, check=True).stdout
     d, f = collections.defaultdict(list), None

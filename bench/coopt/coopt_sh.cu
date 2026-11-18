@@ -1,4 +1,4 @@
-// kvm: "kittens"-style GPU virtual machine, v2 prototype (sm_80).
+// mvm: whole-GPU virtual machine, v2 prototype (sm_80).
 //
 // ONE persistent kernel interprets an instruction tape. The tape encodes an ENTIRE training run
 // (every step: fwd, loss, bwd, SGD) of a 2-layer MLP. No kernel boundaries between ops or steps:
@@ -8,8 +8,8 @@
 // Baselines execute the *same* tape with the classic model: one launch per op-phase, and the same
 // launches captured in a CUDA graph.
 //
-// Build: nvcc -O3 -arch=sm_80 -std=c++17 kvm.cu -o kvm
-// Run:   ./kvm [--steps 1000] [--B 128] [--D 128] [--H 256] [--O 64] [--nb 8] [--lr 0.05] [--ref-steps 100]
+// Build: nvcc -O3 -arch=sm_80 -std=c++17 mvm.cu -o mvm
+// Run:   ./mvm [--steps 1000] [--B 128] [--D 128] [--H 256] [--O 64] [--nb 8] [--lr 0.05] [--ref-steps 100]
 
 #include <cstdio>
 #include <cstdlib>
@@ -395,7 +395,7 @@ int main(int argc, char** argv) {
   int perStep = (int)tapeP.size();
   int ntape = perStep * steps, nctr = steps * SC;
   int tiles_per_runstep = (perStep - 1) / R;
-  printf("SH-KVM: B=%d D=%d H=%d O=%d runs=%d steps=%d rung every E=%d, K=%d rungs, %d tile instrs/run-step, tape %d executed instrs (%d-entry template)\n", B, D, Hd, O, R, steps, E, K, tiles_per_runstep, ntape, perStep);
+  printf("SH-MVM: B=%d D=%d H=%d O=%d runs=%d steps=%d rung every E=%d, K=%d rungs, %d tile instrs/run-step, tape %d executed instrs (%d-entry template)\n", B, D, Hd, O, R, steps, E, K, tiles_per_runstep, ntape, perStep);
 
   Instr* dtapeP; int *dhead, *dctr, *dsel; float* dloss;
   CK(cudaMalloc(&dtapeP, perStep * sizeof(Instr))); CK(cudaMemcpy(dtapeP, tapeP.data(), perStep * sizeof(Instr), cudaMemcpyHostToDevice));
@@ -438,15 +438,15 @@ int main(int argc, char** argv) {
     o[mode] = fetch();
   }
   std::vector<double> s1 = all[1]; std::sort(s1.begin(), s1.end()); std::vector<double> s0 = all[0]; std::sort(s0.begin(), s0.end());
-  printf("\nKVM full population (no halving): best %.3f ms  median %.3f ms\n", best[0], s0[s0.size() / 2]);
-  printf("KVM in-kernel successive halving : best %.3f ms  median %.3f ms\n", best[1], s1[s1.size() / 2]);
+  printf("\nMVM full population (no halving): best %.3f ms  median %.3f ms\n", best[0], s0[s0.size() / 2]);
+  printf("Magni VM in-kernel successive halving : best %.3f ms  median %.3f ms\n", best[1], s1[s1.size() / 2]);
   printf("halving saves %.2fx (best), %.2fx (median)\n", best[0] / best[1], s0[s0.size() / 2] / s1[s1.size() / 2]);
   printf("survivors:"); for (int r = 0; r < R; r++) if (o[1].alive[r]) printf(" %d(lr %.4f)", r, lrs[r]); printf("\nkill rung per run:"); for (int r = 0; r < R; r++) printf(" %d", o[1].kill[r]); printf("\n");
   int nl = 0; for (int r = 0; r < R; r++) { float l = o[1].L[(size_t)r * steps]; if (!(l == l)) nl++; }
   if (!out.empty()) {
     std::string cmd = "mkdir -p " + out; if (system(cmd.c_str())) return 1;
     FILE* m = fopen((out + "/meta.txt").c_str(), "w");
-    fprintf(m, "B %d\nD %d\nH %d\nO %d\nNB %d\nR %d\nsteps %d\nE %d\nK %d\nwin %d\nmode %d\ntarget %.9g\ndivthr %.9g\nprune %.9g\nkvm_full_ms %.4f\nkvm_sh_ms %.4f\n", B, D, Hd, O, NB, R, steps, E, K, NB, mode, target, divthr, prune, best[0], best[1]);
+    fprintf(m, "B %d\nD %d\nH %d\nO %d\nNB %d\nR %d\nsteps %d\nE %d\nK %d\nwin %d\nmode %d\ntarget %.9g\ndivthr %.9g\nprune %.9g\nmvm_full_ms %.4f\nmvm_sh_ms %.4f\n", B, D, Hd, O, NB, R, steps, E, K, NB, mode, target, divthr, prune, best[0], best[1]);
     for (int r = 0; r < R; r++) fprintf(m, "lr %.9g\n", lrs[r]); fclose(m);
     for (int k = 0; k < NB; k++) { dump(out, ("X" + std::to_string(k) + ".bin").c_str(), X[k].data(), X[k].size() * 4); dump(out, ("T" + std::to_string(k) + ".bin").c_str(), T[k].data(), T[k].size() * 4); }
     dump(out, "W1.bin", W1.data(), W1.size() * 4); dump(out, "W2.bin", W2.data(), W2.size() * 4);

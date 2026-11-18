@@ -1,10 +1,10 @@
-# dist/run_multigpu_tests.sh on box D (2x RTX 3090, NVLink NV4), KVM_PREBUILT=1 (sm_86 binaries); stage lines + per-stage result lines
-== KVM distributed test run 20261110T050548Z  commit ?  GPUs: 2  arch: sm_86  nvcc: /usr/local/cuda/bin/nvcc  dry-run: 0
+# dist/run_multigpu_tests.sh on box D (2x RTX 3090, NVLink NV4), MVM_PREBUILT=1 (sm_86 binaries); stage lines + per-stage result lines
+== Magni VM distributed test run 20261110T050548Z  commit ?  GPUs: 2  arch: sm_86  nvcc: /usr/local/cuda/bin/nvcc  dry-run: 0
 PASS cpu-partitioner-sim (5s)
 PASS cpu-transport-proxy (12s)
 PASS cpu-rdma-shim (8s)
 PASS cpu-rdma-ibverbs-build (8s)
-FAIL rdma-device-present (exit 1, 0s)  log: /root/kvm/logs/20261110T050548Z-dist/rdma-device-present.log
+FAIL rdma-device-present (exit 1, 0s)  log: /root/mvm/logs/20261110T050548Z-dist/rdma-device-present.log
 PASS cpu-xdc-wan (18s)
 PASS cpu-scaleout-sim (59s)
 PASS cpu-fault-recovery (6s)
@@ -24,7 +24,7 @@ PASS multigpu-p2p-bandwidth (0s)
 PASS multigpu-p2p-pingpong (3s)
 PASS multigpu-plans-one-rank-per-gpu (5s)
 PASS multigpu-model-plans (277s)
-SKIP multinode-tcp-plans: needs KVM_NODES with 2+ nodes
+SKIP multinode-tcp-plans: needs MVM_NODES with 2+ nodes
 ================ SUMMARY (20261110T050548Z) ================
 PASS   cpu-partitioner-sim                  5s
 PASS   cpu-transport-proxy                  12s
@@ -50,8 +50,8 @@ PASS   multigpu-p2p-bandwidth               0s
 PASS   multigpu-p2p-pingpong                3s
 PASS   multigpu-plans-one-rank-per-gpu      5s
 PASS   multigpu-model-plans                 277s
-SKIP   multinode-tcp-plans                  needs KVM_NODES with 2+ nodes
-passed 23, failed 1, skipped 1   (GPUs: 2; logs: /root/kvm/logs/20261110T050548Z-dist)
+SKIP   multinode-tcp-plans                  needs MVM_NODES with 2+ nodes
+passed 23, failed 1, skipped 1   (GPUs: 2; logs: /root/mvm/logs/20261110T050548Z-dist)
 RESULT: FAIL
 ## cpu-fault-recovery
 ## cpu-launcher-dry-run
@@ -74,10 +74,10 @@ PASS: 2 checks, 0 failed, 0 skipped stage(s)
 63 checks, 0 failed, 0 suites failed
 ## gpu-multiprocess-tcp
 == plan zero_net: one process per rank
-[rank 1] == plan /root/kvm/logs/dist-build/plans/zero_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
-[rank 0] == plan /root/kvm/logs/dist-build/plans/zero_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
-[rank 3] == plan /root/kvm/logs/dist-build/plans/zero_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
-[rank 2] == plan /root/kvm/logs/dist-build/plans/zero_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 1] == plan /root/mvm/logs/dist-build/plans/zero_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 0] == plan /root/mvm/logs/dist-build/plans/zero_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 3] == plan /root/mvm/logs/dist-build/plans/zero_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 2] == plan /root/mvm/logs/dist-build/plans/zero_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
 [rank 1]   336 values compared, 336 bitwise equal, worst relative difference 0
 [rank 1] PASS: 2 checks, 0 failed, 0 skipped stage(s)
 [rank 0]   336 values compared, 336 bitwise equal, worst relative difference 0
@@ -87,10 +87,10 @@ PASS: 2 checks, 0 failed, 0 skipped stage(s)
 [rank 3] PASS: 2 checks, 0 failed, 0 skipped stage(s)
 [rank 0] PASS: 2 checks, 0 failed, 0 skipped stage(s)
 == plan tp_ring_net: one process per rank
-[rank 0] == plan /root/kvm/logs/dist-build/plans/tp_ring_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
-[rank 1] == plan /root/kvm/logs/dist-build/plans/tp_ring_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
-[rank 3] == plan /root/kvm/logs/dist-build/plans/tp_ring_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
-[rank 2] == plan /root/kvm/logs/dist-build/plans/tp_ring_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 0] == plan /root/mvm/logs/dist-build/plans/tp_ring_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 1] == plan /root/mvm/logs/dist-build/plans/tp_ring_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 3] == plan /root/mvm/logs/dist-build/plans/tp_ring_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 2] == plan /root/mvm/logs/dist-build/plans/tp_ring_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
 [rank 0]   320 values compared, 320 bitwise equal, worst relative difference 0
 [rank 0] PASS: 2 checks, 0 failed, 0 skipped stage(s)
 [rank 3]   320 values compared, 320 bitwise equal, worst relative difference 0
@@ -100,9 +100,9 @@ PASS: 2 checks, 0 failed, 0 skipped stage(s)
 [rank 3] PASS: 2 checks, 0 failed, 0 skipped stage(s)
 [rank 2] PASS: 2 checks, 0 failed, 0 skipped stage(s)
 == plan pipe_net: one process per rank
-[rank 0] == plan /root/kvm/logs/dist-build/plans/pipe_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
-[rank 3] == plan /root/kvm/logs/dist-build/plans/pipe_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
-[rank 2] == plan /root/kvm/logs/dist-build/plans/pipe_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 0] == plan /root/mvm/logs/dist-build/plans/pipe_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 3] == plan /root/mvm/logs/dist-build/plans/pipe_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
+[rank 2] == plan /root/mvm/logs/dist-build/plans/pipe_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
 ## gpu-negative-break-order
   200 round trips in 100.0 ms = 500.0 us per round trip including setup (two cross-executor version hops + two 4096-float tile copies each)
   cross-GPU round trip on rank 0's clock (its put_signal end -> its next task start: two version hops + rank 1's tile copy): median -104.4 us (p90 61.4)
@@ -120,50 +120,50 @@ PASS: 148 checks, 0 failed, 0 skipped stage(s)
 PASS: 20 checks, 0 failed, 0 skipped stage(s)
 ## gpu-plans-in-process
 == plan tp_direct
-== plan /root/kvm/logs/dist-build/plans/tp_direct: 4 ranks on 2 GPU(s), net loopback
+== plan /root/mvm/logs/dist-build/plans/tp_direct: 4 ranks on 2 GPU(s), net loopback
   1280 values compared, 1280 bitwise equal, worst relative difference 0
 PASS: 5 checks, 0 failed, 0 skipped stage(s)
 == plan tp_ring
-== plan /root/kvm/logs/dist-build/plans/tp_ring: 4 ranks on 2 GPU(s), net loopback
+== plan /root/mvm/logs/dist-build/plans/tp_ring: 4 ranks on 2 GPU(s), net loopback
   1280 values compared, 1280 bitwise equal, worst relative difference 0
 PASS: 5 checks, 0 failed, 0 skipped stage(s)
 == plan tp_tree
-== plan /root/kvm/logs/dist-build/plans/tp_tree: 4 ranks on 2 GPU(s), net loopback
+== plan /root/mvm/logs/dist-build/plans/tp_tree: 4 ranks on 2 GPU(s), net loopback
   1280 values compared, 1280 bitwise equal, worst relative difference 0
 PASS: 5 checks, 0 failed, 0 skipped stage(s)
 == plan zero_mixed
-== plan /root/kvm/logs/dist-build/plans/zero_mixed: 4 ranks on 2 GPU(s), net loopback
+== plan /root/mvm/logs/dist-build/plans/zero_mixed: 4 ranks on 2 GPU(s), net loopback
   1344 values compared, 1344 bitwise equal, worst relative difference 0
 PASS: 5 checks, 0 failed, 0 skipped stage(s)
 == plan zero_net
-== plan /root/kvm/logs/dist-build/plans/zero_net: 4 ranks on 2 GPU(s), net loopback
+== plan /root/mvm/logs/dist-build/plans/zero_net: 4 ranks on 2 GPU(s), net loopback
   1344 values compared, 1344 bitwise equal, worst relative difference 0
 PASS: 5 checks, 0 failed, 0 skipped stage(s)
 == plan zero_bf16_net
-== plan /root/kvm/logs/dist-build/plans/zero_bf16_net: 4 ranks on 2 GPU(s), net loopback
+== plan /root/mvm/logs/dist-build/plans/zero_bf16_net: 4 ranks on 2 GPU(s), net loopback
   1344 values compared, 1344 bitwise equal, worst relative difference 0
 PASS: 5 checks, 0 failed, 0 skipped stage(s)
 == plan dp_fp_net
-== plan /root/kvm/logs/dist-build/plans/dp_fp_net: 4 ranks on 2 GPU(s), net loopback
+== plan /root/mvm/logs/dist-build/plans/dp_fp_net: 4 ranks on 2 GPU(s), net loopback
   52 values compared, 52 bitwise equal, worst relative difference 0
 PASS: 5 checks, 0 failed, 0 skipped stage(s)
 == plan pipe_net
-== plan /root/kvm/logs/dist-build/plans/pipe_net: 4 ranks on 2 GPU(s), net loopback
+== plan /root/mvm/logs/dist-build/plans/pipe_net: 4 ranks on 2 GPU(s), net loopback
 ## gpu-plans-tcp-faults
 == plan zero_net over TCP with drop/dup/delay
-== plan /root/kvm/logs/dist-build/plans/zero_net: 4 ranks on 2 GPU(s), net tcp + faults
+== plan /root/mvm/logs/dist-build/plans/zero_net: 4 ranks on 2 GPU(s), net tcp + faults
   1344 values compared, 1344 bitwise equal, worst relative difference 0
 PASS: 5 checks, 0 failed, 0 skipped stage(s)
 == plan tp_ring_net over TCP with drop/dup/delay
-== plan /root/kvm/logs/dist-build/plans/tp_ring_net: 4 ranks on 2 GPU(s), net tcp + faults
+== plan /root/mvm/logs/dist-build/plans/tp_ring_net: 4 ranks on 2 GPU(s), net tcp + faults
   1280 values compared, 1280 bitwise equal, worst relative difference 0
 PASS: 5 checks, 0 failed, 0 skipped stage(s)
 == plan pipe_net over TCP with drop/dup/delay
-== plan /root/kvm/logs/dist-build/plans/pipe_net: 4 ranks on 2 GPU(s), net tcp + faults
+== plan /root/mvm/logs/dist-build/plans/pipe_net: 4 ranks on 2 GPU(s), net tcp + faults
   832 values compared, 832 bitwise equal, worst relative difference 0
 PASS: 5 checks, 0 failed, 0 skipped stage(s)
 == plan zero_mixed over TCP with drop/dup/delay
-== plan /root/kvm/logs/dist-build/plans/zero_mixed: 4 ranks on 2 GPU(s), net tcp + faults
+== plan /root/mvm/logs/dist-build/plans/zero_mixed: 4 ranks on 2 GPU(s), net tcp + faults
   1344 values compared, 1344 bitwise equal, worst relative difference 0
 PASS: 5 checks, 0 failed, 0 skipped stage(s)
 ## gpu-sanitizer
@@ -203,23 +203,23 @@ PASS: 3 checks, 0 failed, 0 skipped stage(s)
 PASS: 20 checks, 0 failed, 0 skipped stage(s)
 ## multigpu-plans-one-rank-per-gpu
 == plan tp_gpus, ranks spread over 2 GPUs
-== plan /root/kvm/logs/dist-build/plans_gpus/tp_gpus: 2 ranks on 2 GPU(s), net loopback
+== plan /root/mvm/logs/dist-build/plans_gpus/tp_gpus: 2 ranks on 2 GPU(s), net loopback
   1024 values compared, 1024 bitwise equal, worst relative difference 0
 PASS: 3 checks, 0 failed, 0 skipped stage(s)
 == plan zero_gpus, ranks spread over 2 GPUs
-== plan /root/kvm/logs/dist-build/plans_gpus/zero_gpus: 2 ranks on 2 GPU(s), net loopback
+== plan /root/mvm/logs/dist-build/plans_gpus/zero_gpus: 2 ranks on 2 GPU(s), net loopback
   960 values compared, 960 bitwise equal, worst relative difference 0
 PASS: 3 checks, 0 failed, 0 skipped stage(s)
 == plan pipe_p2p, ranks spread over 2 GPUs
-== plan /root/kvm/logs/dist-build/plans_gpus/pipe_p2p: 4 ranks on 2 GPU(s), net loopback
+== plan /root/mvm/logs/dist-build/plans_gpus/pipe_p2p: 4 ranks on 2 GPU(s), net loopback
   832 values compared, 832 bitwise equal, worst relative difference 0
 PASS: 5 checks, 0 failed, 0 skipped stage(s)
 == plan tp_ring, ranks spread over 2 GPUs
-== plan /root/kvm/logs/dist-build/plans_gpus/tp_ring: 4 ranks on 2 GPU(s), net loopback
+== plan /root/mvm/logs/dist-build/plans_gpus/tp_ring: 4 ranks on 2 GPU(s), net loopback
   1280 values compared, 1280 bitwise equal, worst relative difference 0
 PASS: 5 checks, 0 failed, 0 skipped stage(s)
 == plan zero_mixed, ranks spread over 2 GPUs
-== plan /root/kvm/logs/dist-build/plans_gpus/zero_mixed: 4 ranks on 2 GPU(s), net loopback
+== plan /root/mvm/logs/dist-build/plans_gpus/zero_mixed: 4 ranks on 2 GPU(s), net loopback
   1344 values compared, 1344 bitwise equal, worst relative difference 0
 PASS: 5 checks, 0 failed, 0 skipped stage(s)
 ## rdma-device-present
@@ -229,4 +229,4 @@ No IB devices found
 # container, so it ran ibv_devices instead of skipping ("No IB devices found"). Guard fixed to look for /dev/infiniband/uverbs*;
 # rerun of that stage alone on the same box:
 SKIP rdma-device-present: no RDMA device node (/dev/infiniband/uverbs*): none passed into this container (sysfs may still list the host's NIC); Soft-RoCE needs CAP_NET_ADMIN
-# multinode-tcp-plans above SKIPs because this run had no KVM_NODES; it ran from a separate launch host: see multinode.txt.
+# multinode-tcp-plans above SKIPs because this run had no MVM_NODES; it ran from a separate launch host: see multinode.txt.

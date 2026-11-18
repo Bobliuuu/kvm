@@ -10,9 +10,9 @@
 #include <cstring>
 #include <vector>
 #include <cublas_v2.h>
-#include "kvm_ctx_shim.cuh"
-#include "kvm_ops_gpt.cuh"
-#include "kvm_ops_extra.cuh"
+#include "mvm_ctx_shim.cuh"
+#include "mvm_ops_gpt.cuh"
+#include "mvm_ops_extra.cuh"
 
 #define CK(x) do { cudaError_t e_ = (x); if (e_ != cudaSuccess) { printf("CUDA error %s at %s:%d\n", cudaGetErrorString(e_), __FILE__, __LINE__); exit(2); } } while (0)
 
@@ -20,8 +20,8 @@
 #define MMA_MINB 1
 #endif
 enum Which { MMA = 0, OLD_BF16 = 1 };
-__global__ void __launch_bounds__(256, MMA_MINB) k_mma(KvmCtx c, const int32_t* w, int words) { kvmextra::matmul_mma_bf16(c, w + (size_t)blockIdx.x * words); }
-__global__ void __launch_bounds__(256, 1) k_old(KvmCtx c, const int32_t* w, int words) { kvmextra::matmul_tile_bf16(c, w + (size_t)blockIdx.x * words); }
+__global__ void __launch_bounds__(256, MMA_MINB) k_mma(MvmCtx c, const int32_t* w, int words) { mvmextra::matmul_mma_bf16(c, w + (size_t)blockIdx.x * words); }
+__global__ void __launch_bounds__(256, 1) k_old(MvmCtx c, const int32_t* w, int words) { mvmextra::matmul_tile_bf16(c, w + (size_t)blockIdx.x * words); }
 
 static double med(std::vector<double> t) { std::sort(t.begin(), t.end()); return t[t.size() / 2]; }
 template <typename F> static std::vector<double> time_ms(F f, int iters) {
@@ -51,13 +51,13 @@ template <typename F, typename G> static void time_pair(F f, G g, int iters, std
 __global__ void reduce_splits(const float* part, size_t mn, int s, uint16_t* out) {   // fixed-order sum of s fp32 partial tiles -> bf16
     for (size_t i = blockIdx.x * (size_t)blockDim.x + threadIdx.x; i < mn; i += (size_t)gridDim.x * blockDim.x) {
         float v = 0.f; for (int q = 0; q < s; q++) v += part[q * mn + i];
-        out[i] = kvmgpt::bf16_bits(v);
+        out[i] = mvmgpt::bf16_bits(v);
     }
 }
 __global__ void fill_bf16(uint16_t* p, size_t n, unsigned seed) {
     for (size_t i = blockIdx.x * (size_t)blockDim.x + threadIdx.x; i < n; i += (size_t)gridDim.x * blockDim.x) {
         unsigned x = (unsigned)i * 2654435761u + seed; x ^= x >> 15; x *= 2246822519u; x ^= x >> 13;
-        p[i] = kvmgpt::bf16_bits(((x & 0xffff) / 65536.f - 0.5f));
+        p[i] = mvmgpt::bf16_bits(((x & 0xffff) / 65536.f - 0.5f));
     }
 }
 __global__ void widen(const uint16_t* s, float* d, size_t n) { for (size_t i = blockIdx.x * (size_t)blockDim.x + threadIdx.x; i < n; i += (size_t)gridDim.x * blockDim.x) d[i] = __uint_as_float((uint32_t)s[i] << 16); }
@@ -76,8 +76,8 @@ static void run(int M, int N, int K, int ta, int tb, Which which, const char* ta
     const int kslabs = (K + 31) / 32, kchunk = ((kslabs + splits - 1) / splits) * 32;
     int ns = 0; for (int q = 0; q < splits; q++) if (q * kchunk < K) ns++;
     float* part = nullptr; if (splits > 1) CK(cudaMalloc(&part, (size_t)ns * M * N * 4));
-    std::vector<KvmBuf> tabv(3 + 3 * (splits > 1 ? ns : 0));
-    KvmBuf* tab = tabv.data();
+    std::vector<MvmBuf> tabv(3 + 3 * (splits > 1 ? ns : 0));
+    MvmBuf* tab = tabv.data();
     tab[0].p = A; tab[0].rows = ta ? K : M; tab[0].cols = ta ? M : K; tab[0].dtype = 2;
     tab[1].p = B; tab[1].rows = tb ? N : K; tab[1].cols = tb ? K : N; tab[1].dtype = 2;
     tab[2].p = g_bf_out ? (void*)Cb : (void*)Cf; tab[2].rows = M; tab[2].cols = N; tab[2].dtype = g_bf_out ? 2 : 0;
@@ -89,9 +89,9 @@ static void run(int M, int N, int K, int ta, int tb, Which which, const char* ta
         tab[4 + 3 * q].p = tb ? (void*)(B + k0) : (void*)(B + (size_t)k0 * ldb_); tab[4 + 3 * q].rows = tb ? N : kq; tab[4 + 3 * q].cols = tb ? kq : N;
         tab[5 + 3 * q] = tab[2]; tab[5 + 3 * q].p = part + (size_t)q * M * N; tab[5 + 3 * q].dtype = 0; tab[5 + 3 * q].ld = N;
     }
-    KvmBuf* tab_d; CK(cudaMalloc(&tab_d, tabv.size() * sizeof(KvmBuf))); CK(cudaMemcpy(tab_d, tab, tabv.size() * sizeof(KvmBuf), cudaMemcpyHostToDevice));
+    MvmBuf* tab_d; CK(cudaMalloc(&tab_d, tabv.size() * sizeof(MvmBuf))); CK(cudaMemcpy(tab_d, tab, tabv.size() * sizeof(MvmBuf), cudaMemcpyHostToDevice));
     int32_t* err; CK(cudaMalloc(&err, 4)); CK(cudaMemset(err, 0, 4));
-    const int bm = which == MMA ? KVM_MMA_BM : 64, bn = which == MMA ? KVM_MMA_BN : 64, fl = ta | (tb << 1);
+    const int bm = which == MMA ? MVM_MMA_BM : 64, bn = which == MMA ? MVM_MMA_BN : 64, fl = ta | (tb << 1);
     (void)0;
     const float alpha = 1.f; int32_t afw; memcpy(&afw, &alpha, 4);
     std::vector<int32_t> w; int nt = 0;
@@ -106,12 +106,12 @@ static void run(int M, int N, int K, int ta, int tb, Which which, const char* ta
     const bool same = getenv("MMA_SAME") != nullptr;   // diagnostic: every CTA computes tile (0,0): data stays in L2, wave quantisation vanishes
     if (same) { const int total = 108 * 6; w.clear(); nt = total; for (int i = 0; i < total; i++) { int32_t a[13] = {0, 1, 2, -1, -1, -1, 0, 0, M, N, K, fl, afw}; w.insert(w.end(), a, a + 13); } }
     int32_t* wd; CK(cudaMalloc(&wd, w.size() * 4)); CK(cudaMemcpy(wd, w.data(), w.size() * 4, cudaMemcpyHostToDevice));
-    KvmCtx c{tab_d, 3, err};
-    const int smem = MMA_MINB > 1 ? std::max(KVM_MMA_SMEM, KVM_MMA_BM * (KVM_MMA_BN + 8) * 2) : std::max(kvm_gpt_smem_bytes(64), KVM_MMA_SMEM);
+    MvmCtx c{tab_d, 3, err};
+    const int smem = MMA_MINB > 1 ? std::max(MVM_MMA_SMEM, MVM_MMA_BM * (MVM_MMA_BN + 8) * 2) : std::max(mvm_gpt_smem_bytes(64), MVM_MMA_SMEM);
     static bool attr = false;
     if (!attr) { CK(cudaFuncSetAttribute(k_mma, cudaFuncAttributeMaxDynamicSharedMemorySize, smem)); CK(cudaFuncSetAttribute(k_old, cudaFuncAttributeMaxDynamicSharedMemorySize, smem)); attr = true; }
-    auto kvm = [&] { if (which == MMA) k_mma<<<nt, 256, smem>>>(c, wd, 13); else k_old<<<nt, 256, smem>>>(c, wd, 13); if (splits > 1) reduce_splits<<<432, 256>>>(part, (size_t)M * N, ns, Cb); };
-    kvm(); CK(cudaDeviceSynchronize());
+    auto mvm = [&] { if (which == MMA) k_mma<<<nt, 256, smem>>>(c, wd, 13); else k_old<<<nt, 256, smem>>>(c, wd, 13); if (splits > 1) reduce_splits<<<432, 256>>>(part, (size_t)M * N, ns, Cb); };
+    mvm(); CK(cudaDeviceSynchronize());
     int e; CK(cudaMemcpy(&e, err, 4, cudaMemcpyDeviceToHost));
     // reference: cuBLAS bf16 inputs, fp32 accumulate, fp32 out (column-major view: C^T = op(B)^T op(A)^T)
     const float one = 1.f, zero = 0.f;
@@ -129,9 +129,9 @@ static void run(int M, int N, int K, int ta, int tb, Which which, const char* ta
     const bool ok = me / mx < tol && e == 0;
     if (!ok) g_fail++;
     const double flops = same ? 2.0 * bm * bn * K * nt : 2.0 * M * N * K;
-    std::vector<double> tk, tc; time_pair(kvm, cb, 10, tk, tc);
+    std::vector<double> tk, tc; time_pair(mvm, cb, 10, tk, tc);
     const double mk = med(tk), mc = med(tc);
-    printf("%-9s %-5s %c%c %5dx%5dx%5d tile %3dx%-3d sk%d kvm %6.1f [%6.1f..%6.1f] cuBLAS %6.1f [%6.1f..%6.1f] TFLOP/s ratio %.3f err %.1e %s dev_err %d\n", tag, which == MMA ? "mma" : "old64",
+    printf("%-9s %-5s %c%c %5dx%5dx%5d tile %3dx%-3d sk%d mvm %6.1f [%6.1f..%6.1f] cuBLAS %6.1f [%6.1f..%6.1f] TFLOP/s ratio %.3f err %.1e %s dev_err %d\n", tag, which == MMA ? "mma" : "old64",
            ta ? 'T' : 'N', tb ? 'T' : 'N', M, N, K, bm, bn, splits, flops / mk * 1e-9, flops / *std::max_element(tk.begin(), tk.end()) * 1e-9, flops / *std::min_element(tk.begin(), tk.end()) * 1e-9,
            flops / mc * 1e-9, flops / *std::max_element(tc.begin(), tc.end()) * 1e-9, flops / *std::min_element(tc.begin(), tc.end()) * 1e-9, mc / mk, me / mx, ok ? "ok" : "FAIL", e);
     fflush(stdout);

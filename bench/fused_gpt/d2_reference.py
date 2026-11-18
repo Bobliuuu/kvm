@@ -38,7 +38,7 @@ import workload_vm as vm  # noqa: E402
 # ---------------------------------------------------------------------------------------------- the model, read from the workload
 class Model:
     """Shapes, hyperparameters and initial values of a GPT workload, read by buffer and task names (this is a test tool: the matcher
-    in include/kvm_fuse_gpt.h decides from the DAG alone)."""
+    in include/mvm_fuse_gpt.h decides from the DAG alone)."""
 
     def __init__(self, spec: dict, compiled: cw.Compiled, steps: int):
         bufs = {b.name: b for b in compiled.buffers}

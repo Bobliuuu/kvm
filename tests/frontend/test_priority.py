@@ -5,12 +5,12 @@ from collections import defaultdict
 
 import _path  # noqa: F401
 from _path import ROOT
-from kvmfe.emit import PRIORITY_MAX, GraphPolicy, task_levels, to_workload
-from kvmfe.ir import FrontendError
-from kvmfe.lower import Tiling
-from kvmfe.nn import ModelConfig
-from kvmfe.pipeline import compile_training
-from kvmfe.train import TrainConfig
+from mvmfe.emit import PRIORITY_MAX, GraphPolicy, task_levels, to_workload
+from mvmfe.ir import FrontendError
+from mvmfe.lower import Tiling
+from mvmfe.nn import ModelConfig
+from mvmfe.pipeline import compile_training
+from mvmfe.train import TrainConfig
 
 TINY = ModelConfig(name='rank_tiny', vocab=64, d_model=32, layers=2, heads=2, seq=32, batch=2)
 
@@ -83,9 +83,9 @@ class Policies(unittest.TestCase):
                 to_workload(self.low, {'train': pol})
 
     def test_priority_max_is_the_executors_top_bucket(self):
-        src = (ROOT / 'include' / 'kvm_exec.cuh').read_text()
-        m = re.search(r'#define\s+KVM_NBUCKETS\s+(\d+)', src)
-        self.assertIsNotNone(m, 'KVM_NBUCKETS not found in include/kvm_exec.cuh')
+        src = (ROOT / 'include' / 'mvm_exec.cuh').read_text()
+        m = re.search(r'#define\s+MVM_NBUCKETS\s+(\d+)', src)
+        self.assertIsNotNone(m, 'MVM_NBUCKETS not found in include/mvm_exec.cuh')
         self.assertEqual(PRIORITY_MAX, int(m.group(1)) - 1)
 
 

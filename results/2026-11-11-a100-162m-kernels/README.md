@@ -1,6 +1,6 @@
 # bf16 tensor-core causal attention for the 162M GPT step (A100)
 
-Branch `perf/kernels-162m`. Op files only: `include/kvm_attn_bf16.cuh` (new), `include/kvm_ops_gpt.cuh` (dispatch, `attn_bwd_delta`),
+Branch `perf/kernels-162m`. Op files only: `include/mvm_attn_bf16.cuh` (new), `include/mvm_ops_gpt.cuh` (dispatch, `attn_bwd_delta`),
 `tests/gpu_ops/{bench_attn,test_bf16,bench_mma_bf16}.cu`.
 
 **Verdict (micro-benchmark, whole step pending below).** At the gpt_162m attention shape (B=4, T=1024, H=12, hd=64, q/k/v/dO/outputs in bf16
@@ -14,7 +14,7 @@ per op). Over 12 layers that is 21.1 -> 5.0 ms of GPU time per step, 16.1 ms sav
   (`.trans` for V and K as the second operand), 64-key tiles in a 3-stage `cp.async` pipeline, P / dS packed to bf16 straight from the
   accumulator registers. Same task geometry as before (128 rows per task, one m16 tile per warp, no cross-warp reduction). The old
   3xTF32 path computed three products of values whose low halves are zero when the inputs are bf16; everything else (fp32 operands, hd != 64)
-  still takes it. `-DKVM_GPT_ATTN_BF16=0` turns the new path off.
+  still takes it. `-DMVM_GPT_ATTN_BF16=0` turns the new path off.
 * Numerics: products of bf16 values are exact in fp32; the new path rounds P (forward, dV) and dS (dQ, dK) to bf16 before the tensor
   cores, as every bf16 flash attention does. Results are therefore not bitwise equal to the 3xTF32 path; `test_bf16` `t_attn_tc` holds them
   to the float64 reference (o 1.2e-2, lse 1e-5, dq/dk/dv 1e-2 relative to the maximum; measured o 1.6e-3, dq 2.0e-3, dk 2.1e-3, dv 2.6e-3,

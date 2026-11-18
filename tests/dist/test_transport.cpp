@@ -11,7 +11,7 @@
 
 #include "../../dist/proxy.hpp"
 
-using namespace kvmd;
+using namespace mvmd;
 
 static std::atomic<int> g_fail{0};
 static int g_checks = 0;
@@ -223,21 +223,21 @@ static void suite_wan() {
 
 // ---------------------------------------------------------------------------------------------- proxy end to end
 // A thread plays the DEVICE: it takes tickets, writes the payload, then publishes the slot with release semantics (exactly the
-// protocol of kvm_ops_comm.cuh send_proxy). Two such "devices" with HostSinks and TCP/faulty transports run the proxy loops.
+// protocol of mvm_ops_comm.cuh send_proxy). Two such "devices" with HostSinks and TCP/faulty transports run the proxy loops.
 struct FakeDevice {
   std::vector<uint8_t> qmem;
   unsigned long long tail = 0;                    // plays the device-memory ticket counter
-  KvmSqHdr* hdr() { return (KvmSqHdr*)qmem.data(); }
-  FakeDevice(uint32_t slots, uint32_t slot_bytes) : qmem(kvm_sq_bytes(slots, slot_bytes) + 64) { SendQ::init(qmem.data(), slots, slot_bytes, 5ull * 1000000000ull, &tail); }
+  MvmSqHdr* hdr() { return (MvmSqHdr*)qmem.data(); }
+  FakeDevice(uint32_t slots, uint32_t slot_bytes) : qmem(mvm_sq_bytes(slots, slot_bytes) + 64) { SendQ::init(qmem.data(), slots, slot_bytes, 5ull * 1000000000ull, &tail); }
   // returns false if the queue stayed full past the timeout (the device-side SENDQ_TIMEOUT)
   bool produce(int dst, int dst_buf, int dst_off, int rows, int cols, int var, int ver, const float* data, int timeout_ms = 5000) {
-    KvmSqHdr* h = hdr();
+    MvmSqHdr* h = hdr();
     unsigned long long t = __atomic_fetch_add(h->tail_dev, 1, __ATOMIC_RELAXED);
     auto t0 = Clock::now();
     while (t - __atomic_load_n(&h->head, __ATOMIC_ACQUIRE) >= h->slots) { if (ms_since(t0) > timeout_ms) return false; std::this_thread::yield(); }
-    uint8_t* slot = qmem.data() + sizeof(KvmSqHdr) + (t % h->slots) * kvm_sq_stride(h->slot_bytes);
-    memcpy(slot + KVM_SQ_SLOT_HDR, data, (size_t)rows * cols * 4);
-    KvmSqSlot* s = (KvmSqSlot*)slot;
+    uint8_t* slot = qmem.data() + sizeof(MvmSqHdr) + (t % h->slots) * mvm_sq_stride(h->slot_bytes);
+    memcpy(slot + MVM_SQ_SLOT_HDR, data, (size_t)rows * cols * 4);
+    MvmSqSlot* s = (MvmSqSlot*)slot;
     s->dst_rank = dst; s->dst_buf = dst_buf; s->dst_off = dst_off; s->dst_ld = cols; s->rows = rows; s->cols = cols; s->var = var; s->ver = ver; s->nbytes = rows * cols * 4;
     __atomic_store_n(&s->seq, t + 1, __ATOMIC_RELEASE);
     return true;
@@ -319,7 +319,7 @@ static void suite_proxy_failure() {
   dev.produce(1, 0, 0, 1, 8, 0, 1, d);
   auto t0 = Clock::now();
   while (sink.fail_code == 0 && ms_since(t0) < 5000) std::this_thread::sleep_for(std::chrono::milliseconds(5));
-  CHECK(sink.fail_code == KVM_ERR_DIST_PEER_DOWN && sink.fail_arg == 1, "device not told about the dead peer (code %d)", sink.fail_code.load());
+  CHECK(sink.fail_code == MVM_ERR_DIST_PEER_DOWN && sink.fail_arg == 1, "device not told about the dead peer (code %d)", sink.fail_code.load());
   px.kernel_done();
   CHECK(px.wait_finished(5000), "proxy must finish even though a peer is dead");
   px.stop();
@@ -366,11 +366,11 @@ static int proc_main(int argc, char** argv) {
     else if (tok.rfind("delay=", 0) == 0) f.delay = atof(tok.c_str() + 6);
     else ports.push_back(atoi(tok.c_str()));
   }
-  const char* hosts_env = getenv("KVM_PEER_HOSTS");     // comma separated, one per rank; default all loopback
+  const char* hosts_env = getenv("MVM_PEER_HOSTS");     // comma separated, one per rank; default all loopback
   std::vector<std::string> hosts(world, "127.0.0.1");
   if (hosts_env) { std::stringstream hs(hosts_env); for (int i = 0; i < world && std::getline(hs, tok, ','); ++i) hosts[i] = tok; }
   TcpConfig c; c.rank = rank; c.hosts = hosts; c.ports = ports; c.cluster_id = 7;
-  if (const char* lp = getenv("KVM_DIST_LISTEN_PORT")) c.listen_port = atoi(lp);   // NAT / container port map: bind here, peers dial ports[rank]
+  if (const char* lp = getenv("MVM_DIST_LISTEN_PORT")) c.listen_port = atoi(lp);   // NAT / container port map: bind here, peers dial ports[rank]
   TcpTransport tcp(c);
   FaultyTransport faulty(tcp, f);
   Transport& t = (f.drop > 0 || f.dup > 0 || f.delay > 0) ? (Transport&)faulty : (Transport&)tcp;

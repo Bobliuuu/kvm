@@ -35,6 +35,7 @@
 #include "kvm_fused_mlp.h"
 #include "kvm_fused_split.h"
 #include "kvm_fused_grid.h"
+#include "kvm_fused_batch.h"
 #include "kvm_static.h"
 #include "kvm_task_abi.h"
 
@@ -47,12 +48,17 @@ struct KvmFuseOps {   // operator ids (from the registry, by name); a missing op
   int fmlp_slice = -1, fmlp_sgd = -1;   // the fused ops the pass emits
   int fmlp_split = -1;                  // the split form's gang op (-1: the split form is off)
   int fmlp_grid = -1;                   // the grid form's gang op (-1: the grid form is off)
+  int fmlp_batch = -1;                  // the batched form's gang op (-1: the batched form is off)
 };
 
 struct KvmFuseOptions {
   int smem_floats = KVM_FMLP_SMEM_FLOATS;   // shared memory a fused block may use (a split member's too)
   int workers = 108;                  // blocks the run has: more slices per run shorten each slice, but every slice needs a worker of its own
   std::vector<int> keep;              // buffers read after the run (a dump): a step whose interior holds one is not fused
+  int batch_min_runs = 8;             // the fewest grid runs of one shape the batched form carries (fewer keep the grid form; both compute one arithmetic)
+  int grid_virtual_min_runs = 2;      // the fewest grid runs of one gang that take one wave on virtual members (KvmFuseRun::phys; 0: never)
+  int grid_virtual_over_batch = 16;   // the most grid runs the virtual form takes ahead of the batched form, which keeps more (the executor, Nov 13:
+                                      // the chunked member ahead of the batched op at R = 8 and 16 on six grid shapes); 0: the batched form first
 };
 inline constexpr int kvm_fuse_slice_choices[] = {16, 32};   // rows per slice, multiples of 16 (the mma fragment height), smallest first, at most KVM_FMLP_MAX_SLICE_ROWS
 static_assert(kvm_fuse_slice_choices[1] <= KVM_FMLP_MAX_SLICE_ROWS, "a slice choice exceeds what the fused body handles");
@@ -69,10 +75,34 @@ struct KvmFuseRun {
                                         // slice_rows = KVM_SPLIT_R; nsl and groups unused)
   int kc = 0;                           // the split form's member: 0 holds its weights for the step, else streams them in tiles of kc rows (the same bits)
   int grid = 0, P = 0;                  // the grid form: one gang of P members a step over one copy of the model (nsl and groups unused)
+  int phys = 0;                         // the grid form's blocks: 0 holds the P members on P blocks; 1 <= phys < P carries them on phys blocks (virtual
+                                        // members, their blocks streamed: kvm_fused_grid_virtual.cuh), so R runs share one wave with the same bits
+  int batch = 0, B = 0;                 // the batched form: each step of every run of the bundle as one gang of B members (kvm_fused_batch.h), with
+                                        // the arithmetic of the run's own form, kept in its count: the split step's at Sv (split, S and Q cleared),
+                                        // or the grid step's at a gang of P (grid cleared); KvmFuseResult::batches lists the gang's runs
 };
-// A run whose steps run as gangs (the split or the grid form), and the size of its gangs.
-inline bool kvm_fuse_gang(const KvmFuseRun& r) { return r.split || r.grid; }
-inline int kvm_fuse_members(const KvmFuseRun& r) { return r.split ? r.Q * r.S : r.grid ? r.P : 0; }
+// A run whose steps run as gangs (the split, grid or batched form), and the size of its gangs.
+inline bool kvm_fuse_gang(const KvmFuseRun& r) { return r.split || r.grid || r.batch; }
+inline int kvm_fuse_members(const KvmFuseRun& r) { return r.batch ? r.B : r.split ? r.Q * r.S : r.grid ? (r.phys ? r.phys : r.P) : 0; }
+
+// A batched run's arithmetic into the batched step's descriptor (kvm_fused_batch.h): the split step's at the run's Sv, or the grid step's at its
+// gang of P, as kvm_grid_layout cuts it. False for a run with neither (the one-block form's arithmetic is not matched).
+inline bool kvm_fuse_batch_arith(const KvmFuseRun& r, KvmBatchDesc& d) {
+  d.Sv = 0; d.gHp = d.gka = d.gnb = d.gnb0 = d.gkah = 0;
+  if (r.Sv > 0) { d.Sv = r.Sv; return true; }
+  if (r.P <= 0) return false;
+  KvmGridDesc g{}; g.V = r.V; g.E = r.E; g.L = r.L; g.H = r.H[0]; g.T = r.T; g.P = r.P;
+  if (kvm_grid_layout(g) < 0) return false;
+  d.gHp = g.Hp; d.gka = g.ka; d.gnb = g.nb; d.gnb0 = g.nb0; d.gkah = g.kah;
+  return true;
+}
+
+// The runs one batched gang carries (indices into KvmFuseResult::runs, in the descriptor's order), and each run's buffers of every step: its
+// tokens, targets and loss (bundle buffer indices; the executor resolves them to the descriptor's per-step pointers).
+struct KvmFuseBatch {
+  std::vector<int> runs;
+  std::vector<std::vector<std::array<int, 3>>> steps;   // steps[i][s] = {ids, tgt, loss} of run runs[i] at step s
+};
 
 // The static kernel entry a rewritten bundle runs on (kvm_static.cuh). Every fused form runs on an entry of its own: ptxas sets an
 // out-of-line function's registers by what every other function of its kernel holds across calls, and beside the one-block form's
@@ -81,7 +111,8 @@ inline int kvm_fuse_members(const KvmFuseRun& r) { return r.split ? r.Q * r.S : 
 // noops; `mixed` names what else it holds (the executor then runs the pass again with fewer forms). Nothing fused: the generic entry,
 // which holds no fused function and refuses the fused ops.
 struct KvmFuseEntry {
-  enum Kind { generic, block, split, grid, mixed } kind = generic;
+  enum Kind { generic, block, split, grid, batch, batch_grid, grid_virtual, mixed } kind = generic;   // batch_grid: the batched form with the grid's
+                                                                                                    // arithmetic; grid_virtual: grid runs on virtual members
   int S = 0;           // the split entry's virtual share count (its instantiation; each gang's physical count is the descriptor's)
   bool stream = false; // the split entry's member streams its weights (KvmFuseRun::kc > 0): an entry of its own (kvm_static_gang_split_stream)
   std::string why;     // mixed: what keeps the bundle off a gang entry
@@ -90,6 +121,7 @@ struct KvmFuseResult {
   std::vector<KvmTaskDesc> tasks;
   std::vector<int32_t> succ, args;
   std::vector<KvmFuseRun> runs;
+  std::vector<KvmFuseBatch> batches;   // the batched form's gangs (each run's `batch` set); a batched task's `desc` indexes this
   std::vector<std::string> report;     // one line per component (and per reason it did not fire)
   std::vector<std::string> warnings;   // the unchanged runs whose steps matched the template's model (embedding, GELU layers, head) and then
                                        // missed: a run the fused step was written for, falling silently to the per-op path (a lowering the
@@ -102,28 +134,32 @@ struct KvmFuseResult {
 
 inline KvmFuseEntry kvm_fuse_entry(const KvmFuseResult& r, const KvmFuseOps& ops) {
   KvmFuseEntry e;
-  int nsplit = 0, ngrid = 0, nblock = 0;
+  int nsplit = 0, ngrid = 0, nblock = 0, nbatch = 0, nbatch_grid = 0, ngrid_virtual = 0;
   for (const KvmFuseRun& run : r.runs) {
+    if (run.batch) { ++nbatch; nbatch_grid += run.Sv == 0; continue; }   // a batched run's Sv is its arithmetic, not an entry's: one entry runs every count
     if (run.split) {
       if (nsplit++ && run.Sv != e.S) { e.kind = KvmFuseEntry::mixed; e.why = "split runs at " + std::to_string(e.S) + " and " + std::to_string(run.Sv) + " virtual shares"; return e; }
       if (nsplit > 1 && (run.kc > 0) != e.stream) { e.kind = KvmFuseEntry::mixed; e.why = "split runs with resident and streamed weights"; return e; }
       e.S = run.Sv; e.stream = run.kc > 0;
     }
-    else if (run.grid) ++ngrid;
+    else if (run.grid) { ++ngrid; ngrid_virtual += run.phys > 0; }
     else ++nblock;
   }
-  if (!nsplit && !ngrid && !nblock) return e;
-  if ((nsplit > 0) + (ngrid > 0) + (nblock > 0) > 1) {
-    e.kind = KvmFuseEntry::mixed; e.why = std::to_string(nblock) + " one-block, " + std::to_string(nsplit) + " split and " + std::to_string(ngrid) + " grid run(s)"; return e;
+  if (!nsplit && !ngrid && !nblock && !nbatch) return e;
+  if ((nsplit > 0) + (ngrid > 0) + (nblock > 0) + (nbatch > 0) > 1) {
+    e.kind = KvmFuseEntry::mixed; e.why = std::to_string(nblock) + " one-block, " + std::to_string(nsplit) + " split, " + std::to_string(ngrid) + " grid and " + std::to_string(nbatch) + " batched run(s)"; return e;
   }
-  const int a = nsplit ? ops.fmlp_split : ngrid ? ops.fmlp_grid : ops.fmlp_slice, b = nblock ? ops.fmlp_sgd : a;
+  const int a = nbatch ? ops.fmlp_batch : nsplit ? ops.fmlp_split : ngrid ? ops.fmlp_grid : ops.fmlp_slice, b = nblock ? ops.fmlp_sgd : a;
   for (size_t t = 0; t < r.tasks.size(); ++t) {
     const int op = r.tasks[t].op_id;
     if (op != a && op != b && op != ops.select_window && op != ops.noop) {
       e.kind = KvmFuseEntry::mixed; e.why = "task " + std::to_string(t) + " (op " + std::to_string(op) + ") beside the fused runs"; return e;
     }
   }
-  e.kind = nsplit ? KvmFuseEntry::split : ngrid ? KvmFuseEntry::grid : KvmFuseEntry::block;
+  if (nbatch && nbatch_grid && nbatch_grid != nbatch) { e.kind = KvmFuseEntry::mixed; e.why = "batched runs with the split and the grid arithmetic"; return e; }
+  if (ngrid_virtual && ngrid_virtual != ngrid) { e.kind = KvmFuseEntry::mixed; e.why = "grid runs on resident and on virtual members"; return e; }
+  e.kind = nbatch ? (nbatch_grid ? KvmFuseEntry::batch_grid : KvmFuseEntry::batch) : nsplit ? KvmFuseEntry::split
+         : ngrid ? (ngrid_virtual ? KvmFuseEntry::grid_virtual : KvmFuseEntry::grid) : KvmFuseEntry::block;
   return e;
 }
 inline std::string kvm_fuse_entry_name(const KvmFuseEntry& e) {
@@ -132,6 +168,9 @@ inline std::string kvm_fuse_entry_name(const KvmFuseEntry& e) {
     case KvmFuseEntry::block: return "one-block";
     case KvmFuseEntry::split: return "split, " + std::to_string(e.S) + " shares" + (e.stream ? ", weights streamed" : "");
     case KvmFuseEntry::grid: return "grid";
+    case KvmFuseEntry::batch: return "batched";
+    case KvmFuseEntry::batch_grid: return "batched (grid arithmetic)";
+    case KvmFuseEntry::grid_virtual: return "grid, virtual members";
     default: return "mixed (" + e.why + ")";
   }
 }
@@ -650,16 +689,112 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
         }
       }
     }
+    // Whether the virtual grid member (below) takes the bundle as it stands, and on how many blocks a run: the batched form reads it first, since
+    // the virtual form runs ahead of it up to opts.grid_virtual_over_batch runs.
+    auto virtual_why = [&](int& phys) {
+      int nruns = 0;
+      for (const Plan& p : plans) nruns += p.run.grid && !p.run.batch;
+      const int P0 = nruns ? plans[0].run.P : 0;
+      phys = nruns ? opts.workers / nruns : 0;
+      if (opts.grid_virtual_min_runs <= 0) return std::string("off");
+      if (nruns < 2 || nruns < opts.grid_virtual_min_runs) return std::to_string(nruns) + " grid run(s), the form takes at least " + std::to_string(std::max(2, opts.grid_virtual_min_runs));
+      if (nruns != (int)plans.size()) return std::string("not every run is an unbatched grid run");
+      for (const Plan& p : plans) if (p.run.P != P0) return std::string("the runs' grid gangs differ");
+      if (phys >= P0) return std::string("the runs fit one wave on their own members");
+      for (const Plan& p : plans) {
+        const KvmFuseRun& r = p.run;
+        KvmGridDesc d{}; d.V = r.V; d.E = r.E; d.L = r.L; d.H = r.H[0]; d.T = r.T; d.P = r.P; d.phys = phys;
+        const int f = kvm_grid_layout_chunked(d, r.smem_floats);
+        if (f < 0) return std::string("the virtual member does not take the shape");
+        if (f > r.smem_floats) return std::to_string(f) + " floats a virtual member, limit " + std::to_string(r.smem_floats);
+      }
+      return std::string();
+    };
+    // The batched form (kvm_fused_batch.h): step s of every run as one gang of all the workers, each run with its own form's arithmetic: the
+    // split step's at its Sv, or the grid step's at its gang of P. It computes that form's bits (the batched bed's dumps equal split_bed's and
+    // grid_bed's at one run and at eight), so a bundle may take it by its run count and gate 2 holds: R copies of a run train here as the run
+    // alone trains on its form. It takes a bundle whose runs are all grid runs of one shape, one P, one step count and one learning rate (the
+    // gang's descriptor holds one of each), at least opts.batch_min_runs of them, when its member's layout fits the budget; any other bundle
+    // keeps the forms above, and the report says why. Split runs keep the split form: on 108 SMs it runs several gangs a wave, and the batched
+    // form lost to it at every R up to 16 (x0.45-0.74 on the A100; h224-d2 x8 x1.12). Grid runs win from 8 (x1.55-3.35, h640 x4 even), but the
+    // virtual grid member runs ahead of it up to opts.grid_virtual_over_batch runs, so such a bundle is left to the virtual form.
+    {
+      std::string why;
+      const Plan& p0 = plans[0];
+      if (ops.fmlp_batch < 0) why = "off (no fmlp_batch op)";
+      else if ((int)plans.size() < opts.batch_min_runs) why = std::to_string(plans.size()) + " run(s), the form takes at least " + std::to_string(opts.batch_min_runs);
+      else if ((int)plans.size() > KVM_BATCH_MAXR) why = std::to_string(plans.size()) + " runs, a gang carries at most " + std::to_string(KVM_BATCH_MAXR);
+      else if (int vphys = 0; (int)plans.size() <= opts.grid_virtual_over_batch && virtual_why(vphys).empty())
+        why = "the virtual grid form takes " + std::to_string(plans.size()) + " grid runs, ahead of the batched form up to " + std::to_string(opts.grid_virtual_over_batch);
+      for (const Plan& p : plans) {
+        if (!why.empty()) break;
+        const KvmFuseRun &a = p.run, &b = p0.run;
+        if (!a.grid) why = a.split ? "a run is a split run (the split form runs several gangs a wave and stays faster)" : "a run is a one-block run (only the grid form's arithmetic is batched)";
+        else if (a.split != b.split || a.grid != b.grid) why = "the runs' forms differ";
+        else if (a.L != b.L || a.E != b.E || a.V != b.V || a.T != b.T || a.H[0] != b.H[0]) why = "the runs differ in shape";
+        else if (a.Sv != b.Sv) why = "the runs' virtual share counts differ";
+        else if (a.P != b.P) why = "the runs' grid gangs differ";
+        else if (a.steps != b.steps) why = "the runs' step counts differ";
+        else if (a.lr != b.lr) why = "the runs' learning rates differ";
+      }
+      KvmBatchDesc bd{};
+      if (why.empty()) {
+        bd.R = (int)plans.size(); bd.E = p0.run.E; bd.V = p0.run.V; bd.H = p0.run.H[0]; bd.L = p0.run.L; bd.T = p0.run.T; bd.members = opts.workers;
+        const int f = kvm_fuse_batch_arith(p0.run, bd) ? kvm_batch_layout(bd) : -1;
+        if (f < 0) why = "the shape is outside the op's bounds (E 48, V a multiple of 4 up to 112, H a multiple of 8 up to 4096, 96 rows a step, 1 to " + std::to_string(KVM_BATCH_MAXL) + " layers)";
+        else if (f > opts.smem_floats) why = std::to_string(f) + " floats a member, limit " + std::to_string(opts.smem_floats);
+      }
+      if (why.empty()) {
+        KvmFuseBatch bt;
+        for (size_t i = 0; i < plans.size(); ++i) {
+          KvmFuseRun& r = plans[i].run;
+          r.batch = 1; r.B = opts.workers; r.split = r.S = r.Q = r.grid = 0;   // Sv or P stays: the arithmetic
+          bt.runs.push_back((int)i);
+          std::vector<std::array<int, 3>> io;
+          for (const Step& st : plans[i].steps) io.push_back({st.ids, st.tgt, st.loss});
+          bt.steps.push_back(std::move(io));
+        }
+        R.batches.push_back(std::move(bt));
+        R.report.push_back("batched form: " + std::to_string(bd.R) + " runs in one gang of " + std::to_string(bd.members) + " members a step, " +
+                           (bd.Sv ? std::to_string(bd.Sv) + " virtual shares (the split form's arithmetic)" : "the grid form's arithmetic at " + std::to_string(p0.run.P) + " members") + "; forward tiles of " + std::to_string(16 * bd.fm) + " rows x " + std::to_string(bd.nw) + " columns, backward blocks of " +
+                           std::to_string(bd.kw) + " rows (" + (bd.bsplit ? "split" : "fused") + "), " + std::to_string(bd.smem_floats) + " floats a member");
+      } else if (plans.size() > 1) R.report.push_back("batched form: not taken: " + why);   // (a run alone is no candidate)
+    }
+    // The virtual grid member (kvm_fused_grid_virtual.cuh): a bundle of R grid runs on one gang count P, none batched, puts each run on
+    // workers / R blocks carrying its P members, so the R runs take one wave instead of R. A block runs its members' arithmetic in turn, so each
+    // run computes its P-member bits and gate 2 holds: R copies train as the run alone. The grid step costs per phase, not per member's work
+    // (the grid bed: four times a member's work, +14-16% a step), so one wave of R runs costs little more than one run.
+    {
+      int phys = 0;
+      const std::string why = virtual_why(phys);
+      int nruns = 0;
+      for (const Plan& p : plans) nruns += p.run.grid && !p.run.batch;
+      const int P0 = nruns ? plans[0].run.P : 0;
+      if (why.empty()) {
+        for (Plan& p : plans) p.run.phys = phys;
+        R.report.push_back("virtual grid form: " + std::to_string(nruns) + " runs in one wave, each on " + std::to_string(phys) + " blocks carrying its " +
+                           std::to_string(P0) + " members (a contiguous chunk of each role family a block; blocks streamed, the same bits)");
+      } else if (nruns > 1) R.report.push_back("virtual grid form: not taken: " + why);
+    }
     for (size_t i = 0; i < plans.size(); ++i) {
       KvmFuseRun& r = plans[i].run;
+      if (r.batch) {
+        std::string shape = std::to_string(r.E);
+        for (int l = 0; l < r.L; ++l) shape += "x" + std::to_string(r.H[l]);
+        R.report.push_back("component " + std::to_string(plan_comp[i]) + ": fused, batched form (" + plans[i].split_why + "): " + std::to_string(plans[i].steps.size()) + " steps, T=" + std::to_string(r.T) +
+                           " V=" + std::to_string(r.V) + " widths " + shape + ", one of the gang's " + std::to_string(plans.size()) + " runs, " +
+                           (r.Sv ? std::to_string(r.Sv) + " virtual shares" : "the grid's arithmetic at " + std::to_string(r.P) + " members"));
+        continue;
+      }
       if (r.grid) {
-        KvmGridDesc d{}; d.V = r.V; d.E = r.E; d.L = r.L; d.H = r.H[0]; d.T = r.T; d.P = r.P;
-        const int floats = kvm_grid_layout(d);
+        KvmGridDesc d{}; d.V = r.V; d.E = r.E; d.L = r.L; d.H = r.H[0]; d.T = r.T; d.P = r.P; d.phys = r.phys;
+        const int floats = r.phys ? kvm_grid_layout_chunked(d, r.smem_floats) : kvm_grid_layout(d);
         std::string shape = std::to_string(r.E);
         for (int l = 0; l < r.L; ++l) shape += "x" + std::to_string(r.H[l]);
         R.report.push_back("component " + std::to_string(plan_comp[i]) + ": fused, grid form (" + plans[i].split_why + "): " + std::to_string(plans[i].steps.size()) + " steps, T=" + std::to_string(r.T) +
                            " V=" + std::to_string(r.V) + " widths " + shape + ", gangs of " + std::to_string(r.P) + " members (layer 0 1 x " + std::to_string(d.nb0) + ", hidden " + std::to_string(d.ka) + " x " +
-                           std::to_string(d.nb) + ", head " + std::to_string(d.kah) + " x 1), " + std::to_string(floats) + " floats a member");
+                           std::to_string(d.nb) + ", head " + std::to_string(d.kah) + " x 1)" + (r.phys ? " on " + std::to_string(r.phys) + " blocks (virtual members)" : "") + ", " +
+                           std::to_string(floats) + " floats a member");
         continue;
       }
       if (r.split) {
@@ -686,7 +821,10 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
   // ---- emission: which step (of which plan) replaces each old task
   struct Node { int plan, step; };
   std::vector<int> run_of(nt, -1), step_of(nt, -1);
-  for (size_t p = 0; p < plans.size(); ++p) for (size_t si = 0; si < plans[p].steps.size(); ++si) for (int t : plans[p].steps[si].replaced) { run_of[t] = (int)p; step_of[t] = (int)si; ++R.replaced_tasks; }
+  // A batched run's steps are its gang's: every batched plan takes plan 0's (plan, step) key, so step s of all of them is one gang (their
+  // components share no edge, so no edge joins two runs inside a step)
+  const auto key_of = [&](size_t p) { return plans[p].run.batch ? 0 : (int)p; };
+  for (size_t p = 0; p < plans.size(); ++p) for (size_t si = 0; si < plans[p].steps.size(); ++si) for (int t : plans[p].steps[si].replaced) { run_of[t] = key_of(p); step_of[t] = (int)si; ++R.replaced_tasks; }
   // new task ids: kept tasks in order, each step's fused tasks where the step's first replaced task stood
   std::vector<int> new_of(nt, -1);
   std::map<std::pair<int, int>, int> first_new;
@@ -730,7 +868,7 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
   for (size_t p = 0; p < plans.size(); ++p) if (!kvm_fuse_gang(plans[p].run)) for (size_t st = 0; st < plans[p].steps.size(); ++st) for (int i = 0; i < plans[p].run.nsl; ++i) for (int j = 0; j < plans[p].run.groups; ++j) out[slice_id((int)p, (int)st, i)].insert(group_id((int)p, (int)st, j));
   // gang ids: one per gang step, unique in the bundle (kvm_static_plan groups a gang's members by it)
   std::map<std::pair<int, int>, int> gang_of_step;
-  for (size_t p = 0; p < plans.size(); ++p) if (kvm_fuse_gang(plans[p].run)) for (size_t st = 0; st < plans[p].steps.size(); ++st) gang_of_step[{(int)p, (int)st}] = (int)gang_of_step.size();
+  for (size_t p = 0; p < plans.size(); ++p) if (kvm_fuse_gang(plans[p].run) && key_of(p) == (int)p) for (size_t st = 0; st < plans[p].steps.size(); ++st) gang_of_step[{(int)p, (int)st}] = (int)gang_of_step.size();
   // ---- the new CSR and argument arrays
   R.tasks.resize(nnew);
   std::vector<int> indeg(nnew, 0);
@@ -748,7 +886,11 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
       const int pl = o.first >> 20, st = o.first & 0xFFFFF, nsl = plans[pl].run.nsl;
       const Step& s = plans[pl].steps[st];
       d.workload_id = tasks[s.replaced[0]].workload_id;
-      if (kvm_fuse_gang(plans[pl].run)) {   // fmlp_split and fmlp_grid take the same arguments
+      if (plans[pl].run.batch) {   // the bundle's one batched gang (KvmFuseResult::batches[0]): its runs' buffers are in its descriptor
+        id = member_id(pl, st, o.second);
+        d.op_id = ops.fmlp_batch; d.args_off = (int)R.args.size(); d.args_words = 5;
+        R.args.insert(R.args.end(), {0, gang_of_step.at({pl, st}), o.second, kvm_fuse_members(plans[pl].run), st});
+      } else if (kvm_fuse_gang(plans[pl].run)) {   // fmlp_split and fmlp_grid take the same arguments
         id = member_id(pl, st, o.second);
         d.op_id = plans[pl].run.split ? ops.fmlp_split : ops.fmlp_grid; d.args_off = (int)R.args.size(); d.args_words = 7;
         R.args.insert(R.args.end(), {pl, gang_of_step.at({pl, st}), o.second, kvm_fuse_members(plans[pl].run), s.ids, s.tgt, s.loss});

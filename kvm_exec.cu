@@ -105,7 +105,7 @@ static double kvm_tile_mflop(int op, const int32_t* a) {
 static const std::map<std::string, double>& kvm_static_costs() {
   static const std::map<std::string, double> base = {{"noop", 0.1}, {"matmul_tile", 4.0}, {"adamw", 5.0}, {"gradnorm_partial", 2.0}, {"gradnorm_finish", 2.0}, {"colsum", 2.0},
     {"layernorm_fwd", 7.0}, {"layernorm_bwd_dx", 8.0}, {"norm_bwd_params", 5.0}, {"attn_fwd", 8.0}, {"attn_bwd_dq", 9.0}, {"attn_bwd_dkv", 10.0}, {"attn_bwd_delta", 6.0},
-    {"rope_fwd", 4.0}, {"rope_bwd", 4.0}, {"embedding_fwd", 3.0}, {"embedding_bwd", 3.0}, {"softmax_ce_fwd", 3.0}, {"softmax_ce_bwd", 3.0}, {"softmax_ce_reduce", 2.0}, {"gelu_bwd", 3.0}, {"gelu_fwd", 3.0}, {"select_window", 2.0}, {"counter_inc", 1.0}, {"fmlp_slice", 60.0}, {"fmlp_sgd", 8.0}, {"fmlp_split", 40.0}, {"fmlp_grid", 60.0},
+    {"rope_fwd", 4.0}, {"rope_bwd", 4.0}, {"embedding_fwd", 3.0}, {"embedding_bwd", 3.0}, {"softmax_ce_fwd", 3.0}, {"softmax_ce_bwd", 3.0}, {"softmax_ce_reduce", 2.0}, {"gelu_bwd", 3.0}, {"gelu_fwd", 3.0}, {"select_window", 2.0}, {"counter_inc", 1.0}, {"fmlp_slice", 60.0}, {"fmlp_sgd", 8.0}, {"fmlp_split", 40.0}, {"fmlp_grid", 60.0}, {"fmlp_batch", 80.0},
     {"sgd_range", 4.0}, {"softmax_ce_fused", 4.0}};
   return base;
 }
@@ -896,18 +896,26 @@ class KvmExec {
     const long long bytes = (long long)p.sharedMemPerBlockOptin - (long long)fa.sharedSizeBytes;
     return bytes > 0 ? (int)(bytes / 4) & ~15 : 0;
   }
-  KvmFuseResult fuse_bundle(const KvmBundle& b, int workers, const std::vector<int>& keep) const {
+  // batch_min_runs: the fewest grid runs of one shape the batched form takes (KvmFuseOptions); 0 turns the batched form off (--no-batch).
+  // virtual_over_batch: the most grid runs the virtual form takes ahead of the batched form (KvmFuseOptions::grid_virtual_over_batch; 0: the
+  // batched form first). Neither count has a default, so a call names both.
+  KvmFuseResult fuse_bundle(const KvmBundle& b, int workers, const std::vector<int>& keep, int batch_min_runs, int virtual_over_batch) const {
     KvmFuseOps ops;
     ops.noop = kvm_op_by_name("noop"); ops.select_window = kvm_op_by_name("select_window"); ops.embedding_fwd = kvm_op_by_name("embedding_fwd"); ops.matmul_tile = kvm_op_by_name("matmul_tile");
     ops.softmax_ce_fwd = kvm_op_by_name("softmax_ce_fwd"); ops.softmax_ce_reduce = kvm_op_by_name("softmax_ce_reduce"); ops.softmax_ce_bwd = kvm_op_by_name("softmax_ce_bwd"); ops.softmax_ce_fused = kvm_op_by_name("softmax_ce_fused");
     ops.gelu_bwd = kvm_op_by_name("gelu_bwd"); ops.colsum = kvm_op_by_name("colsum"); ops.embedding_bwd = kvm_op_by_name("embedding_bwd"); ops.sgd = kvm_op_by_name("sgd"); ops.sgd_range = kvm_op_by_name("sgd_range");
     ops.fmlp_slice = kvm_op_by_name("fmlp_slice"); ops.fmlp_sgd = kvm_op_by_name("fmlp_sgd"); ops.fmlp_split = kvm_op_by_name("fmlp_split"); ops.fmlp_grid = kvm_op_by_name("fmlp_grid");
+    ops.fmlp_batch = batch_min_runs > 0 ? kvm_op_by_name("fmlp_batch") : -1;
     const std::vector<KvmFuseBuf> infos = fuse_bufs();
     const KvmSOpLookup op_of = [](int id) { const KvmOpInfo* i = kvm_op(id); KvmSOpInfo v; if (i) { v.arity = i->arity; v.types = i->types; kvm_static_gang_args(i->sig, v); } return v; };
-    KvmFuseOptions opts; opts.workers = workers; opts.keep = keep; opts.smem_floats = fused_smem_floats();
+    KvmFuseOptions opts; opts.workers = workers; opts.keep = keep; opts.smem_floats = fused_smem_floats(); opts.batch_min_runs = std::max(batch_min_runs, 1);
+    opts.grid_virtual_over_batch = virtual_over_batch;
     KvmFuseResult r = kvm_fuse_mlp(b.tasks, b.succ, b.args, infos, ops, op_of, opts);
     for (const std::string& line : r.report) KLOG(2, "fuse: %s", line.c_str());
     for (const std::string& line : r.warnings) KLOG(1, "fuse: %s", line.c_str());
+    if (batch_min_runs <= 0) KLOG(2, "fuse: the batched form is off (--no-batch)");
+    else KLOG(2, "fuse: the batched form takes %d to %d grid runs of one shape (--batch-min-runs), the virtual form ahead of it up to %d (--virtual-over-batch)",
+              opts.batch_min_runs, KVM_BATCH_MAXR, virtual_over_batch);
     if (!r.dropped.empty()) KLOG(1, "fuse: nothing fused: %s, and each fused form runs on a static-kernel entry of its own", r.dropped.c_str());
     if (r.fused_runs) KLOG(2, "fuse: shared-memory budget %d floats (%d bytes) a fused block", opts.smem_floats, opts.smem_floats * 4);
     KLOG(2, "fuse: %d run(s) fused, %d unchanged; %d tasks replaced by %d; static kernel entry: %s", r.fused_runs, r.unchanged_runs, r.replaced_tasks, r.new_tasks, kvm_fuse_entry_name(r.entry).c_str());
@@ -951,10 +959,10 @@ class KvmExec {
   }
   KvmFuseGptPlan fuse_gpt(const KvmBundle& b, int workers, const std::vector<int>& keep, bool log = true) const { return plan_fgpt(b, fuse_bufs(), workers, keep, log, fgpt1_); }
 
-  struct FusedState { KvmFusedDesc* desc = nullptr; KvmSplitDesc* split = nullptr; KvmGridDesc* grid = nullptr; std::vector<void*> allocs; int smem_bytes = 0; };
+  struct FusedState { KvmFusedDesc* desc = nullptr; KvmSplitDesc* split = nullptr; KvmGridDesc* grid = nullptr; KvmBatchDesc* batch = nullptr; std::vector<void*> allocs; int smem_bytes = 0; };
   // One descriptor per fused run, with its partial-gradient scratch (zeroed), and the shared memory the largest run's slice (or split member) needs. A run's index is its descriptor's in both
   // tables, the one its form uses (kvm_fuse.h's ops carry it as `desc`); the other table's entry is unused. Buffers are already device-allocated (after prepare()).
-  FusedState make_fused_state(const std::vector<KvmFuseRun>& runs) {
+  FusedState make_fused_state(const std::vector<KvmFuseRun>& runs, const std::vector<KvmFuseBatch>& batches) {
     FusedState st;
     std::vector<KvmFusedDesc> descs(runs.size());
     std::vector<KvmSplitDesc> splits(runs.size());
@@ -964,10 +972,12 @@ class KvmExec {
     const auto param = [&](int idx) { return static_cast<float*>(bufs_[idx].p); };
     for (size_t i = 0; i < runs.size(); ++i) {
       const KvmFuseRun& r = runs[i];
-      if (r.grid) {   // the grid form: one copy of the model over P members, its partials and exchanges, the gang's barrier words (kvm_fused_grid.h)
+      if (r.batch) continue;   // its batch's descriptor below holds it
+      if (r.grid) {   // the grid form: one copy of the model over P members, its partials and exchanges, the gang's barrier words (kvm_fused_grid.h);
+                      // on virtual members (r.phys), phys blocks carry the P members and gelu'(Z) goes to L2 (gq)
         KvmGridDesc& d = grids[i]; any_grid = true;
-        d.V = r.V; d.E = r.E; d.L = r.L; d.H = r.H[0]; d.T = r.T; d.P = r.P; d.lr = r.lr;
-        const int floats = kvm_grid_layout(d);
+        d.V = r.V; d.E = r.E; d.L = r.L; d.H = r.H[0]; d.T = r.T; d.P = r.P; d.lr = r.lr; d.phys = r.phys;
+        const int floats = r.phys ? kvm_grid_layout_chunked(d, r.smem_floats) : kvm_grid_layout(d);
         if (floats < 0 || floats > r.smem_floats) throw std::runtime_error("fuse: a grid run's layout does not fit what the pass sized it for");
         st.smem_bytes = std::max(st.smem_bytes, floats * (int)sizeof(float));
         const size_t TH = (size_t)d.T * d.Hp;   // the step's activations and partials, at the padded width
@@ -975,7 +985,8 @@ class KvmExec {
         for (int l = 0; l < r.L; ++l) { d.w[l] = param(r.w[l]); d.b[l] = param(r.b[l]); d.Y[l] = scratch(TH); }
         d.part = scratch(d.L > 1 ? (size_t)d.ka * TH : 1); d.hpart = scratch((size_t)d.kah * d.T * d.VP); d.dlog = scratch((size_t)d.T * d.VP);
         d.dyp = scratch((size_t)std::max(d.nb, 1) * TH); d.dz = scratch(TH); d.dx0 = scratch((size_t)d.nb0 * d.T * d.E); d.rloss = scratch(d.T);
-        d.ctl = reinterpret_cast<unsigned*>(scratch(kvm_gang::line_words(d.P)));   // the gang's control words (kvm_gang::cross), zeroed once (cudaMalloc: 256-byte aligned)
+        if (d.phys) d.gq = scratch((size_t)d.phys * d.gqs);   // each block's gelu'(Z) of its chunk, written in the forward, read in the backward
+        d.ctl = reinterpret_cast<unsigned*>(scratch(kvm_gang::line_words(d.phys ? d.phys : d.P)));   // the gang's control words (kvm_gang::cross: one a block), zeroed once
         continue;
       }
       if (r.split) {   // the split form: Q x S members, their partials, the exchanges, the gang's barrier words (kvm_fused_split.h)
@@ -1028,6 +1039,62 @@ class KvmExec {
       CK(cudaMemcpy(st.grid, grids.data(), grids.size() * sizeof(KvmGridDesc), cudaMemcpyHostToDevice));
       st.allocs.push_back(st.grid);
     }
+    // The batched form (kvm_fused_batch.h): a descriptor a batch, holding each run's model (the bundle's buffers), its steps' tokens, targets
+    // and loss (a device pointer a step), its scratch, and the gang's control words. The pass batches only runs of one shape, Sv, step count
+    // and learning rate (the descriptor holds one of each); checked again here, since another run's shape would compute garbage, not fail.
+    const auto upload = [&](const auto& v) {
+      using E = typename std::decay_t<decltype(v)>::value_type;
+      E* p; CK(cudaMalloc(&p, std::max<size_t>(v.size(), 1) * sizeof(E))); CK(cudaMemcpy(p, v.data(), v.size() * sizeof(E), cudaMemcpyHostToDevice));
+      st.allocs.push_back((void*)p); return p;
+    };
+    const auto stream = [&](int b, int dtype, long long n, const char* what) {   // a step's tokens or targets (i32), or its loss pair (f32)
+      if (b < 0 || b >= (int)bufs_.size() || bufs_[b].dtype != dtype || (bufs_[b].rows > 1 && bufs_[b].ld != bufs_[b].cols) || (long long)bufs_[b].rows * bufs_[b].cols < n)
+        throw std::runtime_error(std::string("fuse: batched ") + what + " buffer " + std::to_string(b) + " is not " + std::to_string(n) + " contiguous " + (dtype ? "i32" : "f32"));
+      return bufs_[b].p;
+    };
+    std::vector<KvmBatchDesc> bdescs(batches.size());
+    for (size_t k = 0; k < batches.size(); ++k) {
+      const KvmFuseBatch& bt = batches[k];
+      if (bt.runs.empty() || bt.steps.size() != bt.runs.size()) throw std::logic_error("fuse: batch " + std::to_string(k) + " has no runs, or step buffers for another run count");
+      const KvmFuseRun& r0 = runs.at(bt.runs[0]);
+      KvmBatchDesc& d = bdescs[k];
+      d.R = (int)bt.runs.size(); d.E = r0.E; d.V = r0.V; d.H = r0.H[0]; d.L = r0.L; d.T = r0.T; d.members = r0.B; d.steps = r0.steps; d.lr = r0.lr;
+      if (!kvm_fuse_batch_arith(r0, d)) throw std::logic_error("fuse: batch " + std::to_string(k) + "'s runs carry neither a split nor a grid arithmetic");
+      const int floats = kvm_batch_layout(d);
+      if (floats < 0 || floats > r0.smem_floats) throw std::runtime_error("fuse: a batch's layout does not fit what the pass sized it for");
+      st.smem_bytes = std::max(st.smem_bytes, floats * (int)sizeof(float));
+      const size_t TH = (size_t)d.T * d.H;
+      std::vector<KvmBatchRun> hr(d.R);
+      for (int i = 0; i < d.R; ++i) {
+        const KvmFuseRun& r = runs.at(bt.runs[i]);
+        bool same = r.batch && r.B == d.members && r.L == d.L && r.E == d.E && r.V == d.V && r.T == d.T && r.Sv == r0.Sv && r.P == r0.P && r.steps == d.steps && r.lr == d.lr &&
+                    (int)bt.steps[i].size() == d.steps;
+        for (int l = 0; l < r.L && same; ++l) same = r.H[l] == d.H;
+        if (!same) throw std::logic_error("fuse: batch " + std::to_string(k) + ": run " + std::to_string(bt.runs[i]) + " is not of the batch's shape, arithmetic, step count and learning rate");
+        KvmBatchRun& x = hr[i];
+        x.emb = param(r.wte); x.wh = param(r.head);
+        for (int l = 0; l < r.L; ++l) { x.w[l] = param(r.w[l]); x.b[l] = param(r.b[l]); x.y[l] = scratch(TH); x.g[l] = scratch(TH); }
+        x.x0 = scratch((size_t)d.T * d.E); x.dlog = scratch((size_t)d.T * d.VP); x.dx0 = scratch((size_t)d.T * d.E); x.rloss = scratch(d.T);
+        for (float*& z : x.dz) z = scratch(TH);
+        std::vector<const int32_t*> ids(d.steps), tgt(d.steps); std::vector<float*> loss(d.steps);
+        for (int s = 0; s < d.steps; ++s) {
+          ids[s] = static_cast<const int32_t*>(stream(bt.steps[i][s][0], 1, d.T, "tokens"));
+          tgt[s] = static_cast<const int32_t*>(stream(bt.steps[i][s][1], 1, d.T, "targets"));
+          loss[s] = static_cast<float*>(stream(bt.steps[i][s][2], 0, 2, "loss"));
+        }
+        x.ids = upload(ids); x.tgt = upload(tgt); x.loss = upload(loss);
+      }
+      d.runs = upload(hr);
+      d.ctl = reinterpret_cast<unsigned*>(scratch(kvm_gang::line_words(d.members)));   // the gang's control words (kvm_gang::cross), zeroed once (cudaMalloc: 256-byte aligned)
+      if (d.gHp > 0) {   // the grid sums' walks, one word a piece (kvm_batch_grid_table)
+        std::vector<unsigned> tab((size_t)kvm_batch_grid_words(d));
+        tab.resize((size_t)kvm_batch_grid_table(d, tab.data()));
+        d.gtab = upload(tab);
+      }
+      KLOG(2, "fuse: batch %zu: %d runs in a gang of %d, %d steps, arithmetic %s, forward tiles %d x %d, backward blocks of %d rows (%s), %.2f MB of scratch, %d bytes of shared memory a member", k, d.R,
+           d.members, d.steps, (d.Sv ? std::to_string(d.Sv) + " virtual shares (split)" : "grid at " + std::to_string(r0.P) + " members").c_str(), 16 * d.fm, d.nw, d.kw, d.bsplit ? "split" : "fused", (double)d.R * ((2.0 * d.L + 3) * TH + 2.0 * d.T * d.E + (double)d.T * d.VP + d.T) * 4 / 1e6, floats * 4);
+    }
+    if (!bdescs.empty()) st.batch = upload(bdescs);
     return st;
   }
 
@@ -1258,7 +1325,7 @@ class KvmExec {
 
   // STATIC SCHEDULE: compile `b` (kvm_static.h) into one program per worker and run them all in one launch (kvm_static.cuh), instead of start()/submit():
   // no admission, no ready queue, no per-edge atomics. Fills the same KvmResult (no per-task trace; final versions from the plan).
-  struct StaticOptions { int workers = 0; double comm_us = 1.5; const char* trace_csv = nullptr; bool spin_idle = false, partition = true, fuse_phases = false; const std::vector<KvmFuseRun>* fused = nullptr; KvmFuseEntry entry; };
+  struct StaticOptions { int workers = 0; double comm_us = 1.5; const char* trace_csv = nullptr; bool spin_idle = false, partition = true, fuse_phases = false; const std::vector<KvmFuseRun>* fused = nullptr; const std::vector<KvmFuseBatch>* batches = nullptr; KvmFuseEntry entry; };
   const KvmResult& run_static(const KvmBundle& b, const StaticOptions& o) {
     if (started_ || finished_) throw std::logic_error("run_static replaces start()");
     std::string why = b.validate(nbufs(), cfg_.num_vars, 0);
@@ -1279,7 +1346,16 @@ class KvmExec {
     KLOG(2, "static schedule: %d tasks -> %d records on %d/%d workers, %d of %d edges cross workers, %d records publish; runs partitioned: %s; plan %.1f us, work %.1f us (compiled in %.3f s)", plan.nt, nrec, used, sc.workers, plan.cross_edges, plan.edges, plan.publishing, plan.partitioned ? "yes" : "no", plan.makespan_us, plan.total_work_us,
          std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
     FusedState fused;
-    if (o.fused && !o.fused->empty()) fused = make_fused_state(*o.fused);   // the buffers' device pointers exist since prepare()
+    if (o.fused && !o.fused->empty()) fused = make_fused_state(*o.fused, o.batches ? *o.batches : std::vector<KvmFuseBatch>{});   // the buffers' device pointers exist since prepare()
+    for (size_t t = 0; t < b.tasks.size(); ++t) {   // a batched member names its batch, its gang's size and its step: checked here, before the device reads past a table
+      if (b.tasks[t].op_id != KVM_OP_fmlp_batch) continue;
+      const int32_t* a = b.args.data() + b.tasks[t].args_off;
+      const int nb = o.batches ? (int)o.batches->size() : 0;
+      if (!fused.batch || a[0] < 0 || a[0] >= nb) throw std::logic_error("static kernel: task " + std::to_string(t) + " names batch " + std::to_string(a[0]) + " of the " + std::to_string(nb) + " built");
+      const KvmFuseRun& r0 = o.fused->at((*o.batches)[a[0]].runs.at(0));
+      if (a[3] != r0.B || a[4] < 0 || a[4] >= r0.steps)
+        throw std::logic_error("static kernel: task " + std::to_string(t) + " is a member of " + std::to_string(a[3]) + " at step " + std::to_string(a[4]) + "; its batch's gang has " + std::to_string(r0.B) + " members and " + std::to_string(r0.steps) + " steps");
+    }
     const size_t static_smem = std::max(dyn_smem_, (size_t)fused.smem_bytes);
     long long* dphases = nullptr;
     if (o.fuse_phases && fused.desc) { const size_t bytes = (size_t)sc.workers * KVM_FMLP_NPHASES * sizeof(long long); CK(cudaMalloc(&dphases, bytes)); CK(cudaMemset(dphases, 0, bytes)); }
@@ -1292,7 +1368,7 @@ class KvmExec {
     CK(cudaMalloc(&dcnt, sizeof(KvmCounters))); CK(cudaMemset(dcnt, 0, sizeof(KvmCounters)));
     if (o.trace_csv) { CK(cudaMalloc(&dtrace, (size_t)nrec * KVM_S_TRACE_WORDS * 8)); CK(cudaMemset(dtrace, 0, (size_t)nrec * KVM_S_TRACE_WORDS * 8)); }
     CK(cudaMalloc(&dfinished, sizeof(int))); CK(cudaMemset(dfinished, 0, sizeof(int)));
-    S.recs = drecs; S.offs = doffs; S.progress = dprog; S.nworkers = sc.workers; S.nactive = used; S.spin_idle = o.spin_idle; S.finished = dfinished; S.timeout_ns = cfg_.timeout_us * 1000ull; S.cnt = dcnt; S.herr = S_.herr; S.fused = fused.desc; S.split = fused.split; S.grid = fused.grid; S.trace = dtrace; S.trace_on = dtrace != nullptr;
+    S.recs = drecs; S.offs = doffs; S.progress = dprog; S.nworkers = sc.workers; S.nactive = used; S.spin_idle = o.spin_idle; S.finished = dfinished; S.timeout_ns = cfg_.timeout_us * 1000ull; S.cnt = dcnt; S.herr = S_.herr; S.fused = fused.desc; S.split = fused.split; S.grid = fused.grid; S.batch = fused.batch; S.trace = dtrace; S.trace_on = dtrace != nullptr;
     // The entry the pass chose (kvm_fuse_entry): every fused form runs on an entry of its own, and the generic one refuses the fused ops, so
     // a fused task bound for it is a host bug, caught here before any launch. The fused budget subtracted the generic entry's static shared
     // memory (fused_smem_floats), so the chosen entry may hold no more than that.
@@ -1300,7 +1376,7 @@ class KvmExec {
     if (!entry) throw std::logic_error("static kernel: no entry for " + kvm_fuse_entry_name(o.entry));
     if (o.entry.kind == KvmFuseEntry::generic)
       for (size_t t = 0; t < b.tasks.size(); ++t)
-        if (b.tasks[t].op_id == KVM_OP_fmlp_slice || b.tasks[t].op_id == KVM_OP_fmlp_sgd || b.tasks[t].op_id == KVM_OP_fmlp_split || b.tasks[t].op_id == KVM_OP_fmlp_grid)
+        if (b.tasks[t].op_id == KVM_OP_fmlp_slice || b.tasks[t].op_id == KVM_OP_fmlp_sgd || b.tasks[t].op_id == KVM_OP_fmlp_split || b.tasks[t].op_id == KVM_OP_fmlp_grid || b.tasks[t].op_id == KVM_OP_fmlp_batch)
           throw std::logic_error("static kernel: task " + std::to_string(t) + " is a fused op (" + kvm_op(b.tasks[t].op_id)->name + "), which the generic entry refuses");
     if (o.entry.kind == KvmFuseEntry::split && o.fused)   // the split entry runs one member, resident or streamed: each run's descriptor is laid out for it
       for (size_t i = 0; i < o.fused->size(); ++i)
@@ -1838,6 +1914,9 @@ static void usage() {
     "  --trace-csv FILE   per-task timeline  --dump-buffers   print buffers   --quiet   errors only   --check-ops   print registry\n"
     "  --warm-ms N   keep the GPU busy N ms right before the timed launch (the SM clock runs low under sparse work; short timed runs inherit it)\n"
     "  --full-smem   launch with the build's maximum dynamic shared memory instead of the bundles' largest task's (less L1 for every op)\n"
+    "  --batch-min-runs N (the fewest grid runs of one shape that run as one batched gang a step; default 8)\n"
+    "  --no-batch (no batched form: grid runs take the virtual form, else their own gangs a wave each)\n"
+    "  --virtual-over-batch N (the most grid runs of one gang the virtual form takes ahead of the batched form; default 16; 0: the batched form first)\n"
     "  --no-dissolve      keep the noops that only order tasks (default: spliced out of a plain single-bundle run on the dynamic path)\n"
     "  --no-tape-sort     admit the tape as the bundle wrote it (default on the dynamic path: dependency order, which starts every replicated run at once)\n"
     "  --dump-bin DIR i,j,..  write the listed buffers (by metadata index, widened to little-endian f32 / raw i32) to DIR/<index>.bin after the run\n"
@@ -1851,6 +1930,8 @@ int main(int argc, char** argv) {
   bool sized = false;   // the caller gave a sizing flag: keep its live_cap/ring/slots
   bool no_fifo = false;  // --no-fifo: keep the 32-bucket ready rings even for a bundle set that qualifies for the FIFO ring
   bool opt_static = false, opt_dynamic = false, static_spin = false, static_partition = true, opt_fuse = true, fuse_phases = false, full_smem = false; int static_workers = 0; double static_comm = 1.5;
+  int batch_min_runs = 8;     // --batch-min-runs N, --no-batch (0): the batched form's threshold (two arms of one binary in a paired read)
+  int virtual_over_batch = KvmFuseOptions{}.grid_virtual_over_batch;   // --virtual-over-batch N (0: the batched form first): the pass's default
   bool opt_fuse_gpt = true;   // --no-fuse-gpt: the GPT pass off, the MLP passes on (a read of an MLP lever that must leave the GPT rows on their old path)
   bool opt_fgpt1 = true;      // --no-fgpt1: the one-block form off, every fused GPT run on its gang (a read of the form against its gang)
   for (int i = 1; i < argc; ++i) {
@@ -1883,6 +1964,9 @@ int main(int argc, char** argv) {
     else if (a == "--no-partition") static_partition = false;
     else if (a == "--fuse") opt_fuse = true;
     else if (a == "--no-fuse") opt_fuse = false;
+    else if (a == "--no-batch") batch_min_runs = 0;
+    else if (a == "--batch-min-runs") batch_min_runs = (int)val(1, KVM_BATCH_MAXR);
+    else if (a == "--virtual-over-batch") virtual_over_batch = (int)val(0, KVM_BATCH_MAXR);
     else if (a == "--no-fuse-gpt") opt_fuse_gpt = false;
     else if (a == "--no-fgpt1") opt_fgpt1 = false;
     else if (a == "--fuse-phases") fuse_phases = true;
@@ -2064,8 +2148,8 @@ int main(int argc, char** argv) {
         // the pass sizes slices and owners for the workers the schedule will have (run_static's own count: --workers, at most the grid; the grid when unset). Measured: given 0, it took the
         // widest slice that fits, so a single run chose 32-row slices and the same run inside a merged bundle 16, and their rounding differed.
         const int workers = so.workers ? std::min(so.workers, ex.grid()) : ex.grid();
-        fused = ex.fuse_bundle(bundles[0], workers, dump_idx);   // --dump-buffers keeps the fused path: a gate must read the path that is timed; the buffers no fused run writes dump as they started
-        if (fused.fused_runs) { bundles[0].tasks = fused.tasks; bundles[0].succ = fused.succ; bundles[0].args = fused.args; so.fused = &fused.runs; }
+        fused = ex.fuse_bundle(bundles[0], workers, dump_idx, batch_min_runs, virtual_over_batch);   // --dump-buffers keeps the fused path: a gate must read the path that is timed; the buffers no fused run writes dump as they started
+        if (fused.fused_runs) { bundles[0].tasks = fused.tasks; bundles[0].succ = fused.succ; bundles[0].args = fused.args; so.fused = &fused.runs; so.batches = &fused.batches; }
         so.entry = fused.entry;
       }
       resp = &ex.run_static(bundles[0], so);

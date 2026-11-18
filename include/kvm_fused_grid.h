@@ -42,6 +42,10 @@ struct alignas(16) KvmGridDesc {   // copied to shared memory with 16-byte cp.as
   int sW0, sW[KVM_GRID_MAXL], sWh, sb0, sb[KVM_GRID_MAXL], sg0, sg[KVM_GRID_MAXL], sA, sB, sints, total;
   int pA, pB, pW0, pW, pWh;        // pitches (floats) of the staging and weight blocks: width + 4, so ldmatrix rows fall in distinct banks
   float lr;
+  // the virtual member (kvm_grid_layout_chunked; phys 0 is the resident member): its blocks, the regions of a chunk's weight block (sS[0]) and
+  // biases (sSb[0]); sA2, sS[1] and sSb[1] unused (-1); gqs the floats of each block's gelu' factors in L2 (gq)
+  int phys, sA2, sS[2], sSb[2], gqs;
+  int G;                           // the chunked member (kvm_grid_layout_chunked): hidden blocks of a column a load carries, at most
   // the model, row-major as the bundle holds it: embedding [V][E], w[0] [E][H], w[l > 0] [H][H], b[l] [H], head [H][V]
   float* emb; float* w[KVM_GRID_MAXL]; float* b[KVM_GRID_MAXL]; float* wh;
   // global scratch (zeroed or not: every element is written before it is read): Y[l] [T][H] each layer's output; part [ka][T][H] the hidden
@@ -49,6 +53,7 @@ struct alignas(16) KvmGridDesc {   // copied to shared memory with 16-byte cp.as
   // blocks; dz [T][H]; dx0 [nb0][T][E]; rloss [T] each row's loss term
   float* Y[KVM_GRID_MAXL]; float* part; float* hpart; float* dlog; float* dyp; float* dz; float* dx0; float* rloss;
   unsigned* ctl;                   // the gang's control words (kvm_gang::cross: line_words(P) words, 128-byte aligned), zero before the first step
+  float* gq;                       // the virtual member's: [phys][gqs] each block's gelu'(Z) of its chunk (kvm_grid_layout_chunked)
 };
 
 KVM_GRID_HD inline constexpr int kvm_grid_desc_floats() { return (int)((sizeof(KvmGridDesc) + 63) / 64 * 16); }
@@ -91,4 +96,51 @@ KVM_GRID_HD inline int kvm_grid_layout(KvmGridDesc& d) {
   d.sints = take(2 * d.T);
   d.total = off;
   return off;
+}
+
+// The chunked virtual member (kvm_fused_grid_virtual.cuh: grid_run_chunked): the grid step of P members, its arithmetic and every sum in its
+// order, run by phys < P physical members, each owning a contiguous chunk of every role family: the hidden layers' blocks in column-major order
+// (i = hb ka + ha), layer 0's column blocks, the head's row blocks, the cross-entropy's rows and the embedding's rows. Chunk p of n is
+// [p n / phys, (p + 1) n / phys). A chunk's hidden blocks of one column are consecutive in ha, so their K rows are contiguous: a group of up to G
+// of them loads as one A slice and one weight block, its GEMMs run back to back from shared memory, and its reduce rows are contiguous.
+KVM_GRID_HD inline int kvm_grid_chunk(int n, int phys, int p) { return (int)((long long)p * n / phys); }
+struct KvmGridChunkShape {   // the widest a chunk can be in each family, and the regions' pitches
+  int hmax, kc, wn, rows, c0max, w0, khmax, kh, pA, pW, pWh, pW0, pB, bias;
+};
+KVM_GRID_HD inline KvmGridChunkShape kvm_grid_chunk_shape(const KvmGridDesc& d, int G) {
+  KvmGridChunkShape c;
+  const int nh = d.L > 1 ? d.ka * d.nb : 0, wk = d.L > 1 ? kvm_grid_widest(d.Hp, d.ka) : 0;
+  c.hmax = nh ? (nh + d.phys - 1) / d.phys : 0;
+  c.kc = (G < c.hmax ? G : c.hmax) * wk;                                   // the K rows of a group of hidden blocks
+  c.wn = d.L > 1 ? kvm_grid_widest(d.Hp, d.nb) : 0;
+  c.rows = c.hmax * ((d.T + (d.ka > 0 ? d.ka : 1) - 1) / (d.ka > 0 ? d.ka : 1));   // a chunk's reduce rows of one column, at most
+  c.c0max = (d.nb0 + d.phys - 1) / d.phys; c.w0 = c.c0max * kvm_grid_widest(d.Hp, d.nb0);
+  c.khmax = (d.kah + d.phys - 1) / d.phys; c.kh = c.khmax * kvm_grid_widest(d.Hp, d.kah);
+  int ka = c.kc > c.kh ? c.kc : c.kh; ka = ka > d.E ? ka : d.E;
+  c.pA = ka + 4; c.pW = c.wn + 4; c.pWh = d.VP + 4; c.pW0 = c.w0 + 4;
+  int b = c.wn > d.VP ? c.wn : d.VP; b = b > c.w0 ? b : c.w0; c.pB = b + 4;
+  c.bias = c.wn > c.w0 ? c.wn : c.w0;
+  return c;
+}
+// The chunked member's layout: the largest G (hidden blocks a load) whose regions fit `budget` floats. A: a group's A slice, the head's or X0;
+// W: a group's weight block, the head's or layer 0's; B: the output or the other operand ([T][pB]); bias; the tokens. gelu'(Z) goes to L2:
+// gqs floats a physical member (layer 0's chunk [T][w0], then each hidden layer's chunk rows [rows][wn] by column run). Returns the floats a
+// member needs, or -1 for a shape or count it does not take.
+KVM_GRID_HD inline int kvm_grid_layout_chunked(KvmGridDesc& d, int budget) {
+  if (d.phys < 1 || d.phys >= d.P || kvm_grid_layout(d) < 0) return -1;
+  for (int G = (d.L > 1 ? (d.ka * d.nb + d.phys - 1) / d.phys : 1); G >= 1; --G) {
+    const KvmGridChunkShape c = kvm_grid_chunk_shape(d, G);
+    int off = kvm_grid_desc_floats();
+    auto take = [&off](int n) { const int o = off; off += (n + 3) & ~3; return o; };
+    int w = c.kc * c.pW; w = w > c.kh * c.pWh ? w : c.kh * c.pWh; w = w > d.E * c.pW0 ? w : d.E * c.pW0;
+    const int sA = take(d.T * c.pA), sW = take(w), sB = take(d.T * c.pB), sBias = take(c.bias), sints = take(2 * d.T + 1);
+    if (off > budget && G > 1) continue;
+    d.sW0 = d.sWh = d.sb0 = d.sg0 = -1;
+    for (int l = 0; l < KVM_GRID_MAXL; ++l) d.sW[l] = d.sb[l] = d.sg[l] = -1;
+    d.sA = sA; d.sA2 = -1; d.sS[0] = sW; d.sS[1] = -1; d.sB = sB; d.sSb[0] = sBias; d.sSb[1] = -1; d.sints = sints;
+    d.G = G; d.gqs = d.T * c.w0 + (d.L > 1 ? (d.L - 1) * c.rows * c.wn : 0);
+    d.total = off;
+    return off;
+  }
+  return -1;
 }

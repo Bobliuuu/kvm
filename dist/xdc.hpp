@@ -42,7 +42,7 @@
 
 #include "reliable.hpp"
 
-namespace kvmd {
+namespace mvmd {
 
 constexpr uint8_t XDC_DATA = 0xD1, XDC_SIGNALS = 0xB5;
 
@@ -234,4 +234,4 @@ class BottleneckTransport : public Transport {
   std::mutex m_; std::deque<Held> held_; Clock::time_point free_at_{};
 };
 
-}  // namespace kvmd
+}  // namespace mvmd

@@ -1,6 +1,6 @@
 """Independent float64 forward oracles (numpy) of the model zoo: Llama/GQA/SwiGLU/tied embeddings/MoE, MLP classifier, ViT.
 
-Shares nothing with kvmfe except the deterministic initial values and data streams (so both start from the same point). No tiles,
+Shares nothing with mvmfe except the deterministic initial values and data streams (so both start from the same point). No tiles,
 buffers, device ops or autodiff: gradients are checked by central finite differences of these functions (fd_check), which makes
 the frontend's autodiff the thing under test. mixed precision: `lp` rounds matmul operands and stored activations to bfloat16.
 """
@@ -9,8 +9,8 @@ import math
 import numpy as np
 
 import _path  # noqa: F401
-from kvmfe.emit import init_values
-from kvmfe.train import param_init
+from mvmfe.emit import init_values
+from mvmfe.train import param_init
 
 
 def params(model):

@@ -3,17 +3,17 @@
 # crosses the network. One hold of the GPU lock for all runs; compute-sanitizer (memcheck, racecheck, synccheck) runs on cases named san_*
 # (small bundles: racecheck is ~1000x slower) or on all cases with --sanitize. Usage, from the repository root on the GPU machine:
 #   examples/models/prebuild.sh logs/prebuilt && examples/models/run_box.sh logs/prebuilt logs/models-run [--sanitize] [--cases FILE]
-# --check-only re-runs only check.py on the dumps of an earlier run (no GPU, no lock). KVM_NO_LOCK=1 skips the GPU lock too (an outer
+# --check-only re-runs only check.py on the dumps of an earlier run (no GPU, no lock). MVM_NO_LOCK=1 skips the GPU lock too (an outer
 # hold exists). This script runs on the box and copies nothing remote: its only scratch is OUT_DIR, which you choose. See RUNNING_TESTS.md.
 set -euo pipefail
 PRE="${1:?usage: run_box.sh PREBUILT_DIR OUT_DIR [--sanitize] [--cases FILE]}"; OUT="${2:?}"; shift 2
 SANITIZE=0; CHECK_ONLY=0; ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; CASES_FILE="$ROOT/examples/models/cases.txt"
 while [ $# -gt 0 ]; do case "$1" in --sanitize) SANITIZE=1;; --check-only) CHECK_ONLY=1;; --cases) CASES_FILE="$2"; shift;; *) echo "unknown $1"; exit 2;; esac; shift; done
-ARCH="${KVM_ARCH:-sm_80}"; mkdir -p "$OUT/bundles"; cd "$ROOT"
+ARCH="${MVM_ARCH:-sm_80}"; mkdir -p "$OUT/bundles"; cd "$ROOT"
 NVCC="$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc | tail -1)"
-if [ "$CHECK_ONLY" != 1 ]; then   # KVM_EXEC_BIN=path reuses an executor already built from this tree (the build takes tens of minutes on a busy box)
-  if [ -n "${KVM_EXEC_BIN:-}" ]; then cp "$KVM_EXEC_BIN" "$OUT/kvm_exec"
-  else "$NVCC" -O3 -arch="$ARCH" -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 kvm_exec.cu -o "$OUT/kvm_exec"; fi
+if [ "$CHECK_ONLY" != 1 ]; then   # MVM_EXEC_BIN=path reuses an executor already built from this tree (the build takes tens of minutes on a busy box)
+  if [ -n "${MVM_EXEC_BIN:-}" ]; then cp "$MVM_EXEC_BIN" "$OUT/mvm_exec"
+  else "$NVCC" -O3 -arch="$ARCH" -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 mvm_exec.cu -o "$OUT/mvm_exec"; fi
 fi
 trim() { sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
 declare -a NAMES MODES TOLS
@@ -26,10 +26,10 @@ done < "$CASES_FILE"
 run_all() {
   for c in "${NAMES[@]}"; do
     d="$OUT/bundles/$c"
-    "$OUT/kvm_exec" --quiet --dump-buffers "$d/bundle" > "$d/dump.txt" 2> "$d/err.txt"; echo "$c exit $?"
-    for i in 1 2 3; do "$OUT/kvm_exec" --quiet "$d/bundle" | tail -n1; done > "$d/times.txt"
+    "$OUT/mvm_exec" --quiet --dump-buffers "$d/bundle" > "$d/dump.txt" 2> "$d/err.txt"; echo "$c exit $?"
+    for i in 1 2 3; do "$OUT/mvm_exec" --quiet "$d/bundle" | tail -n1; done > "$d/times.txt"
     if [ "$SANITIZE" = 1 ] || [[ "$c" == san_* ]]; then for tool in memcheck racecheck synccheck; do
-      echo "== compute-sanitizer $tool $c"; compute-sanitizer --tool $tool --error-exitcode 9 "$OUT/kvm_exec" --blocks 4 --quiet "$d/bundle" 2>&1 | tail -3; echo "sanitizer exit ${PIPESTATUS[0]}"
+      echo "== compute-sanitizer $tool $c"; compute-sanitizer --tool $tool --error-exitcode 9 "$OUT/mvm_exec" --blocks 4 --quiet "$d/bundle" 2>&1 | tail -3; echo "sanitizer exit ${PIPESTATUS[0]}"
     done; fi
   done
 }
@@ -37,12 +37,12 @@ export -f run_all; export NAMES_STR="${NAMES[*]}"
 # shellcheck disable=SC2155
 declare -f run_all > "$OUT/run_all.sh"
 { declare -p NAMES SANITIZE OUT; cat "$OUT/run_all.sh"; echo run_all; } > "$OUT/run_all_full.sh"
-FLK="flock -w 14400 $HOME/.gpu.lock"; [ -z "${KVM_NO_LOCK:-}" ] || FLK=""
+FLK="flock -w 14400 $HOME/.gpu.lock"; [ -z "${MVM_NO_LOCK:-}" ] || FLK=""
 [ "$CHECK_ONLY" = 1 ] || $FLK timeout 3400 bash "$OUT/run_all_full.sh" | tee "$OUT/runs.txt"
 fail=0; grep -E "exit [1-9]" "$OUT/runs.txt" && fail=1
 for i in "${!NAMES[@]}"; do
   c="${NAMES[$i]}"; d="$OUT/bundles/$c"
-  tail -n1 "$d/dump.txt" | sed "s/^/$c kvm_exec: /"
+  tail -n1 "$d/dump.txt" | sed "s/^/$c mvm_exec: /"
   python3 "$ROOT/examples/models/check.py" "$d/workload.json" "$d/bundle" "$d/dump.txt" --mode "${MODES[$i]}" --tol "${TOLS[$i]}" --json "$d/check.json" | tee "$d/check.txt" || fail=1
 done
 echo "out: $OUT"; exit $fail

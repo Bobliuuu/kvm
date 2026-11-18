@@ -1,4 +1,4 @@
-# demo fusion-large  host=<KVM_HOST>  commit=6f67953+dirty  preset=large model=gpt_162m steps=6 window=1 serve_every=2 frames=700 tiling=a100 precise=0 lr=3e-4 warmup=2 sanitize=0
+# demo fusion-large  host=<MVM_HOST>  commit=6f67953+dirty  preset=large model=gpt_162m steps=6 window=1 serve_every=2 frames=700 tiling=a100 precise=0 lr=3e-4 warmup=2 sanitize=0
 
 === 2026-11-06T23:10:42Z  environment
 Build cuda_12.8.r12.8/compiler.35583870_0
@@ -9,8 +9,8 @@ commit: 6f67953
 -rw-rw-r-- 1 user user 1308688 Nov  3 23:37 doom/build/doom_dev.o
 -rw-rw-r-- 1 user user 4196020 Nov  3 23:17 doom/third_party/doom1.wad
 
-=== 2026-11-06T23:10:42Z  build kvm_run
-/usr/bin/nvcc -O3 -arch=sm_80 -std=c++17 -rdc=true -DKVM_WITH_GAME -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 demo/kvm_run.cu doom/build/doom_dev.o -o demo/kvm_run
+=== 2026-11-06T23:10:42Z  build mvm_run
+/usr/bin/nvcc -O3 -arch=sm_80 -std=c++17 -rdc=true -DMVM_WITH_GAME -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 demo/mvm_run.cu doom/build/doom_dev.o -o demo/mvm_run
 
 === 2026-11-06T23:28:38Z  CPU oracle for Doom (700 frames)
 
@@ -21,24 +21,24 @@ INFO demo: {'train': (312803, 3463542), 'serve_s0': (8481, 72605), 'serve_s2': (
 INFO manifest: 11 admissions, 2043 buffers (196 shared) -> ../runs/fusion-large/demo/MANIFEST.json
 
 === 2026-11-06T23:31:46Z  CPU-only manifest check (parse, version flow, every bundle loads/remaps/validates)
-[kvm_exec][D] bundle train_w5       312803 tasks (precompiled)
-[kvm_exec][D] bundle serve_s6         8481 tasks (precompiled)
-[kvm_exec][I] check-only: 11 bundles load, remap and validate
-[kvm_exec][I] check-only: manifest, bundles and version flow are consistent
+[mvm_exec][D] bundle train_w5       312803 tasks (precompiled)
+[mvm_exec][D] bundle serve_s6         8481 tasks (precompiled)
+[mvm_exec][I] check-only: 11 bundles load, remap and validate
+[mvm_exec][I] check-only: manifest, bundles and version flow are consistent
 
 === 2026-11-06T23:31:48Z  golden skipped (pure-Python CPU VM cannot run this model)
 
 === 2026-11-06T23:31:48Z  GPU: one lock hold (7200 s max wait)
 lock acquired 2026-11-06T23:37:07Z
-kvm_run exit 0
+mvm_run exit 0
 lock released 2026-11-06T23:37:25Z
-[kvm_exec][I] version check: 22935 version-carrying tasks (22935 exact), 0 violations, 0 at_least readers saw the version advance while they ran; 7645 reads of version 0 carry no tag (ordered by the host barrier only)
-[kvm_exec][I] workload 0: 1876818 tasks, 96.276 CTA-s, queue wait p50 1897.5 p99 44581.9 max 52669.4 us, 0 deadline misses, 29.75 GB moved (2.7 GB/s over the run)
-[kvm_exec][I] workload 1: 33924 tasks, 1.043 CTA-s, queue wait p50 32.8 p99 1270.8 max 1314.8 us, 33924 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
-[kvm_exec][I] workload 2: 5600 tasks, 4.279 CTA-s, queue wait p50 13.3 p99 22.5 max 42.0 us, 56 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
-[kvm_exec][I] trace: 1916342 tasks -> runs/fusion-large/out/trace.csv
-[kvm_exec][I] dumped 701 buffers to runs/fusion-large/out/buffers
-[kvm_exec][I] wrote runs/fusion-large/out/run.json
+[mvm_exec][I] version check: 22935 version-carrying tasks (22935 exact), 0 violations, 0 at_least readers saw the version advance while they ran; 7645 reads of version 0 carry no tag (ordered by the host barrier only)
+[mvm_exec][I] workload 0: 1876818 tasks, 96.276 CTA-s, queue wait p50 1897.5 p99 44581.9 max 52669.4 us, 0 deadline misses, 29.75 GB moved (2.7 GB/s over the run)
+[mvm_exec][I] workload 1: 33924 tasks, 1.043 CTA-s, queue wait p50 32.8 p99 1270.8 max 1314.8 us, 33924 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[mvm_exec][I] workload 2: 5600 tasks, 4.279 CTA-s, queue wait p50 13.3 p99 22.5 max 42.0 us, 56 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[mvm_exec][I] trace: 1916342 tasks -> runs/fusion-large/out/trace.csv
+[mvm_exec][I] dumped 701 buffers to runs/fusion-large/out/buffers
+[mvm_exec][I] wrote runs/fusion-large/out/run.json
 OK: 1916342/1916342 tasks, 11235.875 ms, 11 admissions
 
 === 2026-11-06T23:37:25Z  verify

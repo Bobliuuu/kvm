@@ -1,9 +1,9 @@
-// One arrival-fence form of the shipped gang barriers, for fence_bench.cu: built once per KVM_GANG_FENCE value (0, 1, 2), each
-// build in its own namespace FENCE_NS, so one process launches the three forms' barrier_counted and barrier_lines (include/kvm_gang.cuh),
+// One arrival-fence form of the shipped gang barriers, for fence_bench.cu: built once per MVM_GANG_FENCE value (0, 1, 2), each
+// build in its own namespace FENCE_NS, so one process launches the three forms' barrier_counted and barrier_lines (include/mvm_gang.cuh),
 // called as the fused steps call them, with the run's abort word.
-#include "kvm_gang.cuh"
+#include "mvm_gang.cuh"
 #ifndef FENCE_NS
-#error "build with -DKVM_GANG_FENCE=F -DFENCE_NS=fF, F in 0, 1, 2 (fence_bench.cu's header)"
+#error "build with -DMVM_GANG_FENCE=F -DFENCE_NS=fF, F in 0, 1, 2 (fence_bench.cu's header)"
 #endif
 
 namespace FENCE_NS {
@@ -13,11 +13,11 @@ __device__ __forceinline__ unsigned long long gtimer() { unsigned long long t; a
 // every block writes a value before the first crossing and reads every other block's after it (a stale read counts an error).
 template <bool Lines>
 __global__ void __launch_bounds__(256, 1) bench(unsigned* ctl, int* data, int K, int G, const int* abort, unsigned long long* ns, int* errors) {
-  unsigned long long target = Lines ? 0ull : kvm_gang::counted_base(ctl, G);
-  unsigned epoch = Lines ? kvm_gang::lines_epoch(ctl, blockIdx.x) : 0u;
+  unsigned long long target = Lines ? 0ull : mvm_gang::counted_base(ctl, G);
+  unsigned epoch = Lines ? mvm_gang::lines_epoch(ctl, blockIdx.x) : 0u;
   const auto cross = [&]() {
-    if constexpr (Lines) return kvm_gang::barrier_lines(ctl, blockIdx.x, G, epoch, abort);
-    else return kvm_gang::barrier_counted(ctl, G, target, abort);
+    if constexpr (Lines) return mvm_gang::barrier_lines(ctl, blockIdx.x, G, epoch, abort);
+    else return mvm_gang::barrier_counted(ctl, G, target, abort);
   };
   const unsigned long long t0 = gtimer();
   int bad = 0;
@@ -31,7 +31,7 @@ __global__ void __launch_bounds__(256, 1) bench(unsigned* ctl, int* data, int K,
   if (blockIdx.x == 0 && threadIdx.x == 0) *ns = gtimer() - t0;
 }
 
-int fence() { return KVM_GANG_FENCE; }
+int fence() { return MVM_GANG_FENCE; }
 void launch(bool lines, unsigned* ctl, int* data, int K, int G, const int* abort, unsigned long long* ns, int* errors) {
   if (lines) bench<true><<<G, 256>>>(ctl, data, K, G, abort, ns, errors);
   else bench<false><<<G, 256>>>(ctl, data, K, G, abort, ns, errors);

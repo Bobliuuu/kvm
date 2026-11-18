@@ -8,11 +8,11 @@ Everything that can be exercised without a second GPU, plus CPU stages. The stag
   `cudaDevAttrHostNativeAtomicSupported = 0`.
 - Commit: 77b7775 (branch feat/multigpu, clean tree, the sources were rsynced from it). The directory name keeps the local date of
   the first recorded run.
-- Command (from a laptop; `KVM_HOST` is an environment variable, never committed): `KVM_HOST=<user@gpu-box> dist/run_multigpu_tests.sh --remote`.
+- Command (from a laptop; `MVM_HOST` is an environment variable, never committed): `MVM_HOST=<user@gpu-box> dist/run_multigpu_tests.sh --remote`.
   On the box itself it is `dist/run_multigpu_tests.sh`. Stage timeout 600 s.
-- Build flags (GPU stages): `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DKVM_EXEC_NO_MAIN`
-  (`--fmad=false` so device floats compare bitwise with the CPU reference); negative builds add `-DKVM_DIST_BREAK_ORDER` /
-  `-DKVM_DIST_NO_BP_POLL`.
+- Build flags (GPU stages): `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DMVM_EXEC_NO_MAIN`
+  (`--fmad=false` so device floats compare bitwise with the CPU reference); negative builds add `-DMVM_DIST_BREAK_ORDER` /
+  `-DMVM_DIST_NO_BP_POLL`.
 
 ## Result: RESULT: PASS (14 passed, 0 failed, 4 skipped); no stage needed a retry
 
@@ -33,14 +33,14 @@ Everything that can be exercised without a second GPU, plus CPU stages. The stag
 | multigpu-p2p-bandwidth | SKIP: needs 2 GPUs (found 1) | not measured |
 | multigpu-p2p-pingpong | SKIP: needs 2 GPUs | peer-to-peer across physical GPUs untested |
 | multigpu-plans-one-rank-per-gpu | SKIP: needs 2 GPUs | not run |
-| multinode-tcp-plans | SKIP: needs KVM_NODES with 2+ nodes | not run |
+| multinode-tcp-plans | SKIP: needs MVM_NODES with 2+ nodes | not run |
 
 ## What the idle-GPU runs found (fixed, and one open item)
 
 The first recorded run (commit 6167fad, 14/14 on a busy GPU) hid two real bugs that only showed once the lock gave the GPU to the
 tests alone:
 
-1. `KvmExec`'s constructor memsets and buffer-table upload run in the legacy default stream while the kernel runs in a
+1. `MvmExec`'s constructor memsets and buffer-table upload run in the legacy default stream while the kernel runs in a
    non-blocking stream, so nothing ordered them (random BAD_BUF / TIMEOUT). Fixed with a `cudaStreamSynchronize(0)`.
 2. `start()` called `cudaMalloc` while a peer executor's persistent kernel was already waiting for it; `cudaMalloc` may wait for
    all kernels on the device (deadlock until the peer's timeout). Fixed by splitting `start()` into `prepare()` (allocations) and the

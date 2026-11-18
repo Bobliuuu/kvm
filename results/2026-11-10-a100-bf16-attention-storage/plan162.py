@@ -3,10 +3,10 @@
 """
 import sys, collections, logging
 sys.path.insert(0, sys.argv[1] + '/frontend')
-from kvmfe.nn import ModelConfig
-from kvmfe.pipeline import compile_training
-from kvmfe.train import TrainConfig
-from kvmfe.lower import Tiling
+from mvmfe.nn import ModelConfig
+from mvmfe.pipeline import compile_training
+from mvmfe.train import TrainConfig
+from mvmfe.lower import Tiling
 for prec in sys.argv[2].split(','):
     cfg = ModelConfig(name='gpt_162m', vocab=50304, d_model=768, layers=12, heads=12, seq=1024, batch=4, precision=prec)
     c = compile_training(cfg, TrainConfig(steps=1), Tiling.preset('a100'), reuse='shape', with_spec=False)

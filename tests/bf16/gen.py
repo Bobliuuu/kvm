@@ -15,10 +15,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'frontend'))
-from kvmfe.lower import Tiling  # noqa: E402
-from kvmfe.nn import PRESETS  # noqa: E402
-from kvmfe.pipeline import compile_training  # noqa: E402
-from kvmfe.train import TrainConfig  # noqa: E402
+from mvmfe.lower import Tiling  # noqa: E402
+from mvmfe.nn import PRESETS  # noqa: E402
+from mvmfe.pipeline import compile_training  # noqa: E402
+from mvmfe.train import TrainConfig  # noqa: E402
 
 CASES = [('f32_s50', 'f32', 50, 'shape', False), ('bf16s_s50', 'bf16s', 50, 'shape', False),
          ('bf16s_s1', 'bf16s', 1, 'none', True), ('bf16s_s5', 'bf16s', 5, 'none', True)]

@@ -27,7 +27,7 @@
  },
  "args": {
   "work": "/root/reads/form1m/run-20261111T133103Z/h48-d2",
-  "exe": "/root/builds/ee481fa1490c83f35629dcda/kvm_exec",
+  "exe": "/root/builds/ee481fa1490c83f35629dcda/mvm_exec",
   "hidden": 48,
   "depth": 2,
   "steps": 50,

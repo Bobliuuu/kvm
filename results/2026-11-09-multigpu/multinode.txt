@@ -92,8 +92,8 @@
 [rank 1]   336 values compared, 336 bitwise equal, worst relative difference 0
 [launch] PASS: 4/4 ranks succeeded
 
-## the suite's own stage (dist/run_multigpu_tests.sh, KVM_NODES + KVM_ADVERTISE + KVM_LISTEN_BASE from the environment)
-== plan zero_net across 4 ranks on the KVM_NODES hosts
+## the suite's own stage (dist/run_multigpu_tests.sh, MVM_NODES + MVM_ADVERTISE + MVM_LISTEN_BASE from the environment)
+== plan zero_net across 4 ranks on the MVM_NODES hosts
 [rank 2] == plan plans_nodes/zero_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
 [rank 0] == plan plans_nodes/zero_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
 [rank 3] == plan plans_nodes/zero_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
@@ -103,7 +103,7 @@
 [rank 1]   336 values compared, 336 bitwise equal, worst relative difference 0
 [rank 0]   336 values compared, 336 bitwise equal, worst relative difference 0
 [launch] PASS: 4/4 ranks succeeded
-== plan zero_bf16_net across 4 ranks on the KVM_NODES hosts
+== plan zero_bf16_net across 4 ranks on the MVM_NODES hosts
 [rank 3] == plan plans_nodes/zero_bf16_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
 [rank 2] == plan plans_nodes/zero_bf16_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
 [rank 0] == plan plans_nodes/zero_bf16_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
@@ -113,7 +113,7 @@
 [rank 0]   336 values compared, 336 bitwise equal, worst relative difference 0
 [rank 1]   336 values compared, 336 bitwise equal, worst relative difference 0
 [launch] PASS: 4/4 ranks succeeded
-== plan tp_ring_net across 4 ranks on the KVM_NODES hosts
+== plan tp_ring_net across 4 ranks on the MVM_NODES hosts
 [rank 2] == plan plans_nodes/tp_ring_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
 [rank 3] == plan plans_nodes/tp_ring_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
 [rank 0] == plan plans_nodes/tp_ring_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
@@ -123,7 +123,7 @@
 [rank 2]   320 values compared, 320 bitwise equal, worst relative difference 0
 [rank 1]   320 values compared, 320 bitwise equal, worst relative difference 0
 [launch] PASS: 4/4 ranks succeeded
-== plan dp_fp_net across 4 ranks on the KVM_NODES hosts
+== plan dp_fp_net across 4 ranks on the MVM_NODES hosts
 [rank 2] == plan plans_nodes/dp_fp_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
 [rank 3] == plan plans_nodes/dp_fp_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
 [rank 0] == plan plans_nodes/dp_fp_net: 4 ranks on 2 GPU(s), net tcp (multi-process)
@@ -133,7 +133,7 @@
 [rank 2]   13 values compared, 13 bitwise equal, worst relative difference 0
 [rank 3]   13 values compared, 13 bitwise equal, worst relative difference 0
 [launch] PASS: 4/4 ranks succeeded
-== plan pipe_net across 4 ranks on the KVM_NODES hosts
+== plan pipe_net across 4 ranks on the MVM_NODES hosts
 [rank 2] == plan plans_nodes/pipe_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
 [rank 3] == plan plans_nodes/pipe_net: 4 ranks on 1 GPU(s), net tcp (multi-process)
 [rank 0] == plan plans_nodes/pipe_net: 4 ranks on 2 GPU(s), net tcp (multi-process)

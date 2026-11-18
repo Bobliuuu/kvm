@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SASS identity of two kvm_exec binaries, function by function: each function's instruction text (cuobjdump -sass, addresses and encodings
+"""SASS identity of two mvm_exec binaries, function by function: each function's instruction text (cuobjdump -sass, addresses and encodings
 dropped), hashed. Prints, for every function in either binary: identical, differs (instruction counts), or only in one.
     sass_ident.py BIN_A BIN_B [--skip SUBSTRING]"""
 import argparse, collections, hashlib, re, subprocess, sys

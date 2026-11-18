@@ -3,15 +3,15 @@
  "steps": 1,
  "arms": {
   "control": {
-   "exe": "/root/builds/e5b215c6ad3c05c5612594e8/kvm_exec",
-   "path": "[kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang)",
+   "exe": "/root/builds/e5b215c6ad3c05c5612594e8/mvm_exec",
+   "path": "[mvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang)",
    "gangs": [
     64
    ]
   },
   "candidate": {
-   "exe": "/root/builds/68a5d88f397bcef25685e10c/kvm_exec",
-   "path": "[kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang)",
+   "exe": "/root/builds/68a5d88f397bcef25685e10c/mvm_exec",
+   "path": "[mvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang)",
    "gangs": [
     64
    ]

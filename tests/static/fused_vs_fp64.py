@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """The fused MLP step's numerics, judged as the MLP bench judges a run (bench/exec_vs_torch/run_mlp.py, gate 3).
 
-  KVM_PY tests/static/fused_vs_fp64.py WORKLOAD_DIR DUMP...
+  MVM_PY tests/static/fused_vs_fp64.py WORKLOAD_DIR DUMP...
 
-WORKLOAD_DIR is gen_mlp.py's output (workload.json, bundle/); each DUMP is the stdout of `kvm_exec --dump-buffers WORKLOAD_DIR/bundle`.
+WORKLOAD_DIR is gen_mlp.py's output (workload.json, bundle/); each DUMP is the stdout of `mvm_exec --dump-buffers WORKLOAD_DIR/bundle`.
 For each dump: the executor's per-step loss against a float64 run of the same SGD problem must sit within twice eager PyTorch's distance
 plus 1e-4 (the float64 rule), and its per-step loss and final weights against eager within the bench's own tolerances.
 Eager and float64 run once for all dumps. Every number is printed. Exit 0 when every dump is within all three bounds, 1 when one is not,

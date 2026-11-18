@@ -10,7 +10,7 @@ set -u -o pipefail
 TD="${1:?test_dist binary}"; OUT="${2:?out dir}"; WHAT="${3:-all}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; PY="python3 -I"
 NGPU="$(nvidia-smi -L | grep -c '^GPU')"; SMS="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)"
-BLOCKS="${KVM_BLOCKS:-$(python3 - <<'PY'
+BLOCKS="${MVM_BLOCKS:-$(python3 - <<'PY'
 import ctypes
 try:
     cu = ctypes.CDLL('libcuda.so.1'); cu.cuInit(0); v = ctypes.c_int(); cu.cuDeviceGetAttribute(ctypes.byref(v), 16, 0); print(v.value)
@@ -18,14 +18,14 @@ except Exception:
     print(80)
 PY
 )}"
-GTOL="${KVM_GOLDEN_TOL:-2e-3}"   # GPU (3xTF32) vs CPU golden after AdamW steps: the 1-GPU reference run measures the same noise floor
+GTOL="${MVM_GOLDEN_TOL:-2e-3}"   # GPU (3xTF32) vs CPU golden after AdamW steps: the 1-GPU reference run measures the same noise floor
 mkdir -p "$OUT"; SUM="$OUT/summary.txt"; : > "$SUM"; FAIL=0
 echo "# $(date -u +%FT%TZ) GPUs: $NGPU x $SMS, executor blocks per rank: $BLOCKS" | tee -a "$SUM"
 run() {  # name plan_dir [extra test_dist args]
   local n="$1" d="$2"; shift 2
   # persistent executors must be co-resident: ranks sharing a GPU split its SMs (1 block per SM with the GPT pack)
   local nr; nr="$(ls -d "$d"/rank* | wc -l)"; local per=$(( (nr + NGPU - 1) / NGPU )); local blocks=$(( BLOCKS / per ))
-  KVM_DIST_MAX_TASKS=${KVM_DIST_MAX_TASKS:-1048576} KVM_DIST_LIVE_CAP=${KVM_DIST_LIVE_CAP:-262144} KVM_DIST_RING_WORDS=${KVM_DIST_RING_WORDS:-67108864} KVM_DIST_SUCC_CAP=${KVM_DIST_SUCC_CAP:-16777216} timeout "${KVM_PLAN_TIMEOUT:-900}" "$TD" plan "$d" --blocks "$blocks" "$@" > "$OUT/$n.log" 2>&1
+  MVM_DIST_MAX_TASKS=${MVM_DIST_MAX_TASKS:-1048576} MVM_DIST_LIVE_CAP=${MVM_DIST_LIVE_CAP:-262144} MVM_DIST_RING_WORDS=${MVM_DIST_RING_WORDS:-67108864} MVM_DIST_SUCC_CAP=${MVM_DIST_SUCC_CAP:-16777216} timeout "${MVM_PLAN_TIMEOUT:-900}" "$TD" plan "$d" --blocks "$blocks" "$@" > "$OUT/$n.log" 2>&1
   local rc=$?
   local ms; ms="$(grep -o 'tasks, [0-9.]* ms kernel' "$OUT/$n.log" | awk '{print $2}' | sort -g | tail -1)"
   local wr; wr="$(grep -o '[0-9]* values compared.*' "$OUT/$n.log" | tail -1)"
@@ -56,14 +56,14 @@ if [ "$WHAT" = scaling ] || [ "$WHAT" = all ]; then
   NEED_EXPECT=
   # 3xTF32 GEMMs (--precise): with 1xTF32 the AdamW step turns gradient rounding noise into weight differences of order lr (see
   # tests/gptdiff/golden_check.py), so the dp-vs-reference state check would only bound noise, not test the partition
-  MID="${KVM_SCALE_MODEL:-{\"name\": \"gpt_dp_mid\", \"vocab\": 1024, \"d_model\": 512, \"layers\": 6, \"heads\": 8, \"seq\": 256, \"batch\": 4}}"
+  MID="${MVM_SCALE_MODEL:-{\"name\": \"gpt_dp_mid\", \"vocab\": 1024, \"d_model\": 512, \"layers\": 6, \"heads\": 8, \"seq\": 256, \"batch\": 4}}"
   for P in 2 4 8; do
     [ "$P" -gt "$NGPU" ] && continue
-    gen "$OUT/plans/scale_x$P" --model "$MID" --ranks $P --steps "${KVM_SCALE_STEPS:-3}" --tiling a100 --precise --symbolic || continue
+    gen "$OUT/plans/scale_x$P" --model "$MID" --ranks $P --steps "${MVM_SCALE_STEPS:-3}" --tiling a100 --precise --symbolic || continue
     mkdir -p "$OUT/dump_x$P" "$OUT/dump_ref_x$P"
     run "scale_dp_x$P" "$OUT/plans/scale_x$P/plan" --dump "$OUT/dump_x$P"
     run "scale_ref1gpu_accum$P" "$OUT/plans/scale_x$P/ref_plan" --dump "$OUT/dump_ref_x$P"
-    (cd "$ROOT" && $PY tests/dist/compare_dumps.py "$OUT/dump_x$P" "$OUT/dump_ref_x$P" --tol "${KVM_SCALE_TOL:-1e-3}" --json "$OUT/compare_x$P.json") 2>&1 | tee -a "$SUM" | grep -q '^PASS' || FAIL=1
+    (cd "$ROOT" && $PY tests/dist/compare_dumps.py "$OUT/dump_x$P" "$OUT/dump_ref_x$P" --tol "${MVM_SCALE_TOL:-1e-3}" --json "$OUT/compare_x$P.json") 2>&1 | tee -a "$SUM" | grep -q '^PASS' || FAIL=1
   done
 fi
 echo "RESULT: $([ $FAIL = 0 ] && echo PASS || echo FAIL)" | tee -a "$SUM"

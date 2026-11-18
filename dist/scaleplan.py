@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scale planner: parameters / memory / FLOPs / communication of a sharded training step, emitted as KVM task graphs, with exact
+"""Scale planner: parameters / memory / FLOPs / communication of a sharded training step, emitted as Magni VM task graphs, with exact
 accounting that is checked against the real partitioner on CPU.
 
 Two layers, kept apart on purpose:
@@ -532,7 +532,7 @@ def transformer(model: Model, par: Par, peak_tflops=312.0, eff=0.5, hbm_gb=40.0)
 
 
 def emit_graph(model: Model, par: Par):
-    """KVM task graph (JSON) of ONE microbatch through ONE layer of ONE representative GPU, plus the per-step tasks. Op names and
+    """Magni VM task graph (JSON) of ONE microbatch through ONE layer of ONE representative GPU, plus the per-step tasks. Op names and
     argument names are the registry's (matmul m/n/k, put_signal/send_proxy rows/cols, adamw e0/e1); `repeat` says how many times
     the group runs per step on that GPU. Dependencies are in program order (`after` = previous task of the group unless noted).
     It is a description for the cost model and for review, not something partition.py can instantiate at this size."""
@@ -566,7 +566,7 @@ def emit_graph(model: Model, par: Par):
             dict(group='sharded_optimizer', repeat=1,
                  tasks=[dict(id='o0', op='adamw', args=dict(e0=0, e1=int((lps * model.layer_params() / tp) / (dp if par.zero >= 1 else 1)), lr=1e-4),
                              after=[])])]
-    return dict(kind='kvm-task-graph-summary', model=model.__dict__, par=par.__dict__, groups=[layer] + step)
+    return dict(kind='mvm-task-graph-summary', model=model.__dict__, par=par.__dict__, groups=[layer] + step)
 
 
 def small_configs():

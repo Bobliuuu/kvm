@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fit one global table of op costs for the static scheduler, from per-record traces (kvm_exec --static --trace-csv FILE).
+"""Fit one global table of op costs for the static scheduler, from per-record traces (mvm_exec --static --trace-csv FILE).
 
   fit_costs.py --fit TRACE.csv:BUNDLE[,TRACE.csv:BUNDLE ...] [--check TRACE.csv:BUNDLE ...] [--out TABLE] [--sig include_dir]
 

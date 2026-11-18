@@ -9,7 +9,7 @@ default `--mode tf32` (matmul_tile's 1xTF32) and in `--mode precise` (3xTF32).
 
 ## What runs
 
-`bench/fused_gpt/fgpt_bed.cu` launches the device program (`include/kvm_fused_gpt.cuh`) as one cooperative launch of G blocks, one
+`bench/fused_gpt/fgpt_bed.cu` launches the device program (`include/mvm_fused_gpt.cuh`) as one cooperative launch of G blocks, one
 gang member each, for every step of the run. `bench/fused_gpt/fgpt_bed.py` writes the model and its token streams from a workload, runs
 the bundle's own tasks for the same steps on the workload VM (float32 a op), and judges the bed's run against it:
 - every step's loss;
@@ -65,9 +65,9 @@ chains (dependent shared-memory loads, conversions, synchronizations, round trip
 
 ## In the executor
 
-`kvm_exec` takes the fused path by itself when every task of a bundle belongs to a GPT training run that fuses (its log says
-`path: fused GPT kernel`). The pass (`include/kvm_fuse_gpt.h`) rewrites each run into the G members of one gang, and `KvmExec::run_fgpt`
-launches each gang as one kernel of G blocks (`include/kvm_fgpt_kernel.cuh`). `--no-fuse` runs the same bundle unfused, on the path it
+`mvm_exec` takes the fused path by itself when every task of a bundle belongs to a GPT training run that fuses (its log says
+`path: fused GPT kernel`). The pass (`include/mvm_fuse_gpt.h`) rewrites each run into the G members of one gang, and `MvmExec::run_fgpt`
+launches each gang as one kernel of G blocks (`include/mvm_fgpt_kernel.cuh`). `--no-fuse` runs the same bundle unfused, on the path it
 took before.
 
 **Why a kernel of its own:** ptxas allocates registers per kernel. Compiled as a function inside the static kernel, the program got 153
@@ -134,9 +134,9 @@ inside the static kernel (gpt-tiny) and 2 against 1 (gpt-small).
 ## The gang's barrier
 
 A step crosses 8 L + 6 gang barriers: 14 on gpt-tiny, 26 on gpt-small, whose query blocks add 2 L. The program crosses them on the gang's flag
-lines (`kvm_gang::barrier_lines`, from #29). Each member publishes its count of crossings in its own word of a 128-byte line, and warp 0
+lines (`mvm_gang::barrier_lines`, from #29). Each member publishes its count of crossings in its own word of a 128-byte line, and warp 0
 polls the whole line, one member a lane (a gang of 32 is one line). That is one round trip to L2 a crossing, with no atomic. The counter
-barrier (`kvm_gang::barrier`) waits for an atomic's round trip, then a release, then a poll.
+barrier (`mvm_gang::barrier`) waits for an atomic's round trip, then a release, then a poll.
 
 | read (RTX 5070) | counter barrier | flag line | ratio |
 |---|---|---|---|
@@ -152,7 +152,7 @@ Under the counter barrier, 2 blocks had made gpt-tiny 10% slower.
 **Correctness:**
 - The bench's ordering check is clean at every G: after each crossing, every block reads every other block's value.
 - The bed's outputs are bitwise equal over five 50-step runs of each shape (`raw/bed-determinism.log`).
-- On `kvm_gang::barrier_lines` in place of this branch's own copy of the flag line, every output stays bitwise equal
+- On `mvm_gang::barrier_lines` in place of this branch's own copy of the flag line, every output stays bitwise equal
   (`raw/restack-bitwise.log`), and where both arms ran fast the executor's step is no slower: gpt-tiny 76.3 to 74.9 us over 3 rounds,
   gpt-small 182.3 to 174.0 over 1. By median it reads x0.798 and x0.926, with slow runs in 6 rounds of 10 against 4 (gpt-tiny) and 6
   against 5 (gpt-small), not a significant split (Fisher p 0.66 and 1.0; `raw/restack-exec-paired.log`, a loaded laptop).
@@ -168,7 +168,7 @@ Under the counter barrier, 2 blocks had made gpt-tiny 10% slower.
 A run fuses only where a gang's phases fit shared memory. The MLP's forward and backward, the logits, the head's backward and the
 embedding's gradient used to stage all N rows of a d-wide stream next to the member's weight slices, so past a small N x d no gang fit.
 They now walk N in chunks of R rows, with the weights resident:
-- `kvm_fgpt_fit` picks the gang G and the largest chunk that fits: all of N, else 128 rows, else 64.
+- `mvm_fgpt_fit` picks the gang G and the largest chunk that fits: all of N, else 128 rows, else 64.
 - A weight gradient, a GEMM over the rows, is written by the first chunk and added to by each later one, in order. The embedding's
   gradient resumes each running sum, so its result is bitwise the whole N's.
 - The attention backward's h rows and Wq columns now go below DQ, over its dead buffers, where they fit there.
@@ -211,9 +211,9 @@ python3 bench/vs_pytorch/gen.py W/w_tiny --model gpt_tiny --steps 50 --mode tf32
 nvcc -O3 -std=c++17 -arch=sm_120 -Iinclude bench/fused_gpt/fgpt_bed.cu -o fgpt_bed
 python3 -I bench/fused_gpt/fgpt_bed.py W/w_tiny --bed ./fgpt_bed --steps 2 --gangs 1,2,4               # judges against the VM
 ./fgpt_bed W/fgpt-bed-w_tiny-k2 4 clock                                                                  # the phase table
-nvcc -O3 -arch=sm_120 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off kvm_exec.cu -o kvm_exec  # the executor
-python3 -I bench/fused_gpt/fgpt_bed.py W/w_tiny --exec ./kvm_exec --steps 50 --tol 2e-3                  # its own path: the fused GPT kernel
-./kvm_exec --no-fuse W/w_tiny/bundle                                                                     # the same bundle, unfused
+nvcc -O3 -arch=sm_120 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off mvm_exec.cu -o mvm_exec  # the executor
+python3 -I bench/fused_gpt/fgpt_bed.py W/w_tiny --exec ./mvm_exec --steps 50 --tol 2e-3                  # its own path: the fused GPT kernel
+./mvm_exec --no-fuse W/w_tiny/bundle                                                                     # the same bundle, unfused
 g++ -std=c++17 -O1 -Iinclude results/2026-11-11-fused-gpt-step-bed/raw/reach.cpp -o reach && ./reach  # the reach table's row (-DBEFORE on the tree before row chunks: the first)
 ```
 

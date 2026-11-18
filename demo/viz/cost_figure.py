@@ -15,7 +15,7 @@ SAVED, ADDED = '#2a9d8f', '#d1495b'
 ROWS = [  # (label, microseconds, kind, source)
     ('kernel launch, stream (H100)', 2.1, SAVED, 'AGENTS.md'),
     ('kernel launch, CUDA graph (H100)', 1.3, SAVED, 'AGENTS.md'),
-    ('dependent hop through global memory, kvm.cu (A100)', 5.0, ADDED, 'README, kvm.cu findings'),
+    ('dependent hop through global memory, mvm.cu (A100)', 5.0, ADDED, 'README, mvm.cu findings'),
     ('dependent hop, executor (A100)', 7.0, ADDED, '2026-11-04-a100-exec-recycling'),
     ('dispatch per task, 108 blocks (A100)', 1.38, ADDED, '2026-11-04-a100-exec-recycling'),
     ('admission per task, single admitter (A100)', 1.9, ADDED, '2026-11-04-a100-adaptive'),

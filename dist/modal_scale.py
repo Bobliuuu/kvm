@@ -1,10 +1,10 @@
-"""Real multi-GPU runs of the sharded KVM task graphs and comm ops on Modal (single containers with 2/4/8 GPUs: NVLink inside the
+"""Real multi-GPU runs of the sharded Magni VM task graphs and comm ops on Modal (single containers with 2/4/8 GPUs: NVLink inside the
 container; NO multi-node network, Modal cannot give that in one container).
 
     modal run --detach dist/modal_scale.py::main --gpus a100x2      # also a100x4, h100x8 (only after the A100 runs pass)
 
 Each remote call builds test_dist for the GPU's arch, runs the suites, prints every result as one JSON line (app logs) and writes
-files to the Modal Volume `kvm-scale-results` under /results/<tag>/. Spend per run = wall hours x GPUs x list price (printed).
+files to the Modal Volume `mvm-scale-results` under /results/<tag>/. Spend per run = wall hours x GPUs x list price (printed).
 """
 import json
 import os
@@ -14,8 +14,8 @@ import time
 import modal
 
 SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-app = modal.App('kvm-scale-evidence')
-vol = modal.Volume.from_name('kvm-scale-results', create_if_missing=True)
+app = modal.App('mvm-scale-evidence')
+vol = modal.Volume.from_name('mvm-scale-results', create_if_missing=True)
 image = (modal.Image.from_registry('nvidia/cuda:12.4.1-devel-ubuntu22.04', add_python='3.11')
          .pip_install('numpy')
          .add_local_dir(SRC, '/src', copy=True, ignore=['.git', 'results', 'logs', 'doom', 'demo', 'frontend', 'examples', '**/__pycache__']))
@@ -46,12 +46,12 @@ def body(tag, ngpu, arch, price, big):
     rc, out, _ = sh('nvidia-smi -L; nvidia-smi topo -m; nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv; nvcc --version | tail -1',
                     f'{R}/hw.txt', 120)
     emit(stage='hw', rc=rc, text=out[-3000:])
-    rc, out, dt = sh(f'nvcc -O3 -arch={arch} -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DKVM_EXEC_NO_MAIN '
+    rc, out, dt = sh(f'nvcc -O3 -arch={arch} -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DMVM_EXEC_NO_MAIN '
                      f'-diag-suppress 177 tests/dist/test_dist.cu -o /tmp/test_dist -lpthread 2>&1 | grep -v warning | tail -20', f'{R}/build.txt', 1500)
     emit(stage='build', rc=rc, s=round(dt, 1), tail=out[-500:])
     if not os.path.exists('/tmp/test_dist'):
         return
-    env = 'export KVM_TEST_DIST=/tmp/test_dist; '
+    env = 'export MVM_TEST_DIST=/tmp/test_dist; '
     # -- real peer-to-peer: bandwidth and cross-GPU hop latency
     for suite in ('bw', 'pingpong', 'ops'):
         rc, out, dt = sh(f'{env} /tmp/test_dist {suite}', f'{R}/{suite}.txt', 900)

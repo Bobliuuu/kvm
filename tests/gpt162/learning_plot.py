@@ -15,8 +15,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'frontend'))
-from kvmfe.nn import ModelConfig  # noqa: E402
-from kvmfe.train import stream_entropy  # noqa: E402
+from mvmfe.nn import ModelConfig  # noqa: E402
+from mvmfe.train import stream_entropy  # noqa: E402
 
 
 def main():
@@ -78,7 +78,7 @@ def main():
         ax.plot(x, tf, color='#d95f02', lw=1.8, label='PyTorch 1xTF32 AdamW')
         if bf:
             ax.plot(x, bf, color='#7570b3', lw=1.4, label='PyTorch autocast-bf16 AdamW')
-        ax.plot(x, ex, color='#1b6ca8', lw=1.2, label='kvm executor 1xTF32')
+        ax.plot(x, ex, color='#1b6ca8', lw=1.2, label='mvm executor 1xTF32')
         for nm, v, st in ((f'ln(vocab) = {ref["ln_vocab"]:.2f}', ref['ln_vocab'], ':'), (f'ln(K={k}) = {ref["ln_K"]:.2f}', ref['ln_K'], '--'),
                           (f'stream entropy = {h:.3f}', h, '-.')):
             ax.axhline(v, color='k', ls=st, lw=0.8)

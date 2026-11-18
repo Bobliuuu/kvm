@@ -1,7 +1,7 @@
-"""Build and run GEMM tile benchmark variants on a Modal A100 (kvm-gemm app). No hosts/keys.
+"""Build and run GEMM tile benchmark variants on a Modal A100 (mvm-gemm app). No hosts/keys.
 
-  modal run --detach tests/modal/run_gemm_bench.py --tag NAME --variants 'v1=-DKVM_MMA_BK=64 -DKVM_MMA_NST=3 -DKVM_GPT_MMA_SMEM=147456;v2=...' [--prog bench_mma_bf16|test_bf16] [--env 'MMA_SET=gpt']
-  modal volume get kvm-gemm /NAME results/<dir>/raw
+  modal run --detach tests/modal/run_gemm_bench.py --tag NAME --variants 'v1=-DMVM_MMA_BK=64 -DMVM_MMA_NST=3 -DMVM_GPT_MMA_SMEM=147456;v2=...' [--prog bench_mma_bf16|test_bf16] [--env 'MMA_SET=gpt']
+  modal volume get mvm-gemm /NAME results/<dir>/raw
 """
 import os
 import pathlib
@@ -13,8 +13,8 @@ ROOT = _p[2] if len(_p) > 2 else pathlib.Path('/')
 image = (modal.Image.from_registry("nvidia/cuda:12.8.1-devel-ubuntu22.04", add_python="3.11")
          .add_local_dir(str(ROOT), "/src", copy=True,
                         ignore=[".tmp", "results", "logs", ".git", ".claude", "docs", "assets", "**/__pycache__", "doom", "out", "dist", "demo"]))
-app = modal.App("kvm-gemm", image=image)
-vol = modal.Volume.from_name("kvm-gemm", create_if_missing=True)
+app = modal.App("mvm-gemm", image=image)
+vol = modal.Volume.from_name("mvm-gemm", create_if_missing=True)
 
 
 @app.function(gpu="A100-40GB", cpu=8, memory=32768, timeout=3 * 3600, volumes={"/logs": vol})

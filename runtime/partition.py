@@ -1,6 +1,6 @@
-"""KVM graph partitioner: one ABI-v2 workload + a cluster + a strategy -> one sub-workload per device, with communication tasks
+"""Magni VM graph partitioner: one ABI-v2 workload + a cluster + a strategy -> one sub-workload per device, with communication tasks
 inserted and cross-device version variables assigned. No NCCL: collectives are ordinary tasks (dist/commops.py, include/
-kvm_ops_comm.def) in the same DAG, so communication overlaps compute at tile granularity inside the persistent kernel.
+mvm_ops_comm.def) in the same DAG, so communication overlaps compute at tile granularity inside the persistent kernel.
 
     python3 runtime/partition.py workload.json cluster.json strategy.json out_dir [--plan]
 
@@ -45,7 +45,7 @@ import compile_workload as cw        # noqa: E402
 import ref_ops                       # noqa: E402
 
 commops.install()
-log = logging.getLogger('kvm.partition')
+log = logging.getLogger('mvm.partition')
 
 R, ROWS, COLS, PART = 'R', 'ROWS', 'COLS', 'PART'
 LAYOUT_NAMES = {'repl': R, 'r': R, 'rows': ROWS, 'cols': COLS, 'part': PART, 'partial': PART}
@@ -354,7 +354,7 @@ class Shard:
     spec: dict               # a normal ABI-v2 workload (compile_workload accepts it once dist/commops.install() ran)
     remotes: dict            # buffer name -> {'kind': 'peer'|'inbox'|'sendq', ...}: table entries that point off-device
     in_vars: list            # variables fed by remote publishers (the pump polls their inbox slots)
-    buffer_names: list       # declaration order == KvmBuf table index
+    buffer_names: list       # declaration order == MvmBuf table index
     meta: dict = field(default_factory=dict)    # buffer name -> {dtype, gen (symbolic init descriptor), place (r0, c0, GR, GC)}
 
     def buf_index(self, name):

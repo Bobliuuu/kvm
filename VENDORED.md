@@ -1,6 +1,6 @@
 # Vendored third-party files
 
-The 256x128 GEMM tile in `include/kvm_ops_gpt.cuh` runs NVIDIA CUTLASS's sm80 multistage mainloop, vendored unmodified under
+The 256x128 GEMM tile in `include/mvm_ops_gpt.cuh` runs NVIDIA CUTLASS's sm80 multistage mainloop, vendored unmodified under
 `include/cutlass/` and `include/cute/` (why, and how to refresh the subset: `include/cutlass/VENDORED.md`). The block below lists
 every vendored file with its path upstream at the pinned commit; each is byte-identical to that upstream file.
 

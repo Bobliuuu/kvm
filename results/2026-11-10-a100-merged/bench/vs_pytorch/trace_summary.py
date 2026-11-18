@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""What the executor's time is made of, from kvm_exec --trace-csv: per op kind task count, summed run time, mean run time; the
+"""What the executor's time is made of, from mvm_exec --trace-csv: per op kind task count, summed run time, mean run time; the
 fraction of worker-time spent running tasks (utilisation), and the mean ready-to-start wait.
 
   python3 trace_summary.py TRACE.csv STEPS      (workers = distinct blocks that ran a task)

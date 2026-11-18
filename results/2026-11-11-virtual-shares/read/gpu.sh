@@ -1,13 +1,13 @@
 #!/bin/bash
 cd "/root/trees/vshare-3836127" || exit 2
-"/root/py/bin/python3" -I "/root/reads/vsread/run-20261111T132656Z/report.py" "/root/reads/vsread/run-20261111T132656Z" "/root/builds/f590861a18c7331e8a759a42/kvm_exec" "/root/builds/ee481fa1490c83f35629dcda/kvm_exec" "/root/reads/ab_bench.py" || echo "REPORT FAILED"
-rc_check() { name=$1; shift; env KVM_EXE="/root/builds/f590861a18c7331e8a759a42/kvm_exec" KVM_PY="/root/py/bin/python3" "$@" > "/root/reads/vsread/run-20261111T132656Z/rc_$name.log" 2>&1; rc=$?; echo "$name $rc" >> "/root/reads/vsread/run-20261111T132656Z/rc.txt"
+"/root/py/bin/python3" -I "/root/reads/vsread/run-20261111T132656Z/report.py" "/root/reads/vsread/run-20261111T132656Z" "/root/builds/f590861a18c7331e8a759a42/mvm_exec" "/root/builds/ee481fa1490c83f35629dcda/mvm_exec" "/root/reads/ab_bench.py" || echo "REPORT FAILED"
+rc_check() { name=$1; shift; env MVM_EXE="/root/builds/f590861a18c7331e8a759a42/mvm_exec" MVM_PY="/root/py/bin/python3" "$@" > "/root/reads/vsread/run-20261111T132656Z/rc_$name.log" 2>&1; rc=$?; echo "$name $rc" >> "/root/reads/vsread/run-20261111T132656Z/rc.txt"
   echo "run_check $name rc=$rc: $(grep -c '^ok: ' "/root/reads/vsread/run-20261111T132656Z/rc_$name.log") ok, $(grep -c '^FAIL' "/root/reads/vsread/run-20261111T132656Z/rc_$name.log") FAIL; $(tail -1 "/root/reads/vsread/run-20261111T132656Z/rc_$name.log")"; }
 rc_check default tests/static/run_check.sh 1 4 16 107 108
-rc_check h256d4 KVM_CHECK_MLP_HIDDEN=256 KVM_CHECK_MLP_DEPTH=4 KVM_CHECK_MLP_DIR=/root/reads/goldens-count1/h256d4 tests/static/run_check.sh 107 108
-rc_check h128d4 KVM_CHECK_MLP_HIDDEN=128 KVM_CHECK_MLP_DEPTH=4  tests/static/run_check.sh 48 107 108
-rc_check h1024d2 KVM_CHECK_MLP_HIDDEN=1024 KVM_CHECK_MLP_DIR=/root/reads/goldens-count1/h1024d2 tests/static/run_check.sh 107 108
-one() { row=$1; pool=$2; b=$3; prefix=$4; tol=$5; reps=$6; out=$("/root/py/bin/python3" -I "/root/reads/ab_bench.py" --exe "/root/builds/ee481fa1490c83f35629dcda/kvm_exec" --cand-exe "/root/builds/f590861a18c7331e8a759a42/kvm_exec" "--flags=--warm-ms 500" --reps $reps         --gate-prefix $prefix --gate-tol $tol --pool $pool --out "$7" --row $row $b $b 2>&1); rc=$?
+rc_check h256d4 MVM_CHECK_MLP_HIDDEN=256 MVM_CHECK_MLP_DEPTH=4 MVM_CHECK_MLP_DIR=/root/reads/goldens-count1/h256d4 tests/static/run_check.sh 107 108
+rc_check h128d4 MVM_CHECK_MLP_HIDDEN=128 MVM_CHECK_MLP_DEPTH=4  tests/static/run_check.sh 48 107 108
+rc_check h1024d2 MVM_CHECK_MLP_HIDDEN=1024 MVM_CHECK_MLP_DIR=/root/reads/goldens-count1/h1024d2 tests/static/run_check.sh 107 108
+one() { row=$1; pool=$2; b=$3; prefix=$4; tol=$5; reps=$6; out=$("/root/py/bin/python3" -I "/root/reads/ab_bench.py" --exe "/root/builds/ee481fa1490c83f35629dcda/mvm_exec" --cand-exe "/root/builds/f590861a18c7331e8a759a42/mvm_exec" "--flags=--warm-ms 500" --reps $reps         --gate-prefix $prefix --gate-tol $tol --pool $pool --out "$7" --row $row $b $b 2>&1); rc=$?
   echo "$out" | grep -vE '^rep [0-9]'; [ $rc -eq 0 ] || echo "ROW FAILED $row rc=$rc"; return $rc; }
 ab() { local row=$1 pool=$2 b=$3 g; g=$(awk -v r="$row" '$1 == r {print $2, $3}' "/root/reads/vsread/run-20261111T132656Z/gates.txt"); [ -n "$g" ] || { echo "ROW FAILED $row: no gate"; return 1; }
   one $row $pool $b $g 5 "/root/reads/vsread/run-20261111T132656Z/ab_$row.json" || return

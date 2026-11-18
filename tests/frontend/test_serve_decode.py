@@ -6,14 +6,14 @@ import unittest
 
 import _path  # noqa: F401
 import oracle_models as orc
-from kvmfe.emit import merge
-from kvmfe.ir import FrontendError
-from kvmfe.lower import Tiling
-from kvmfe.models import Llama, LlamaConfig
-from kvmfe.pipeline import compile_training
-from kvmfe.refvm import Memory, execute
-from kvmfe.serve import ServeRequest, compile_serving
-from kvmfe.train import TrainConfig, weights_version
+from mvmfe.emit import merge
+from mvmfe.ir import FrontendError
+from mvmfe.lower import Tiling
+from mvmfe.models import Llama, LlamaConfig
+from mvmfe.pipeline import compile_training
+from mvmfe.refvm import Memory, execute
+from mvmfe.serve import ServeRequest, compile_serving
+from mvmfe.train import TrainConfig, weights_version
 
 TILING = Tiling.preset('cpu')
 PROMPT, N_NEW = (3, 17, 5, 40), 4

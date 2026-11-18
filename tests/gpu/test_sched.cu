@@ -1,5 +1,5 @@
-// Scheduler tests and measurements for the KVM executor (include/kvm_sched.h, include/kvm_sched.cuh).
-//   nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DKVM_EXEC_NO_MAIN tests/gpu/test_sched.cu -o test_sched
+// Scheduler tests and measurements for the Magni VM executor (include/mvm_sched.h, include/mvm_sched.cuh).
+//   nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DMVM_EXEC_NO_MAIN tests/gpu/test_sched.cu -o test_sched
 //   ./test_sched [suite...]   functional: cost share reserve edf inherit rand      (default)
 //                             measurements: arbiter rebalance baselines            (explicit; they print the numbers quoted in results/)
 //                             sanitizer smoke: smoke
@@ -9,19 +9,19 @@
 #define main exec_suite_main
 #include "test_exec.cu"
 #undef main
-#include "../../include/kvm_sched.h"
+#include "../../include/mvm_sched.h"
 
 // ---------------- trace analysis ----------------
 struct TV { int cls, op, flags; double ready, start, end; };   // microseconds since the first admission
-static void check_once(const KvmResult& r, int total) {
+static void check_once(const MvmResult& r, int total) {
   int bad = 0; for (auto& t : r.trace) bad += t.exec_count != 1;
   CHECK(r.done == total && r.admitted == total && bad == 0, "done %d admitted %d (want %d), %d tasks with exec_count != 1", r.done, r.admitted, total, bad);
 }
-static std::vector<TV> tview(const KvmResult& r) {
+static std::vector<TV> tview(const MvmResult& r) {
   unsigned long long t0 = ~0ull; for (auto& t : r.trace) if (t.admit_ns) t0 = std::min(t0, t.admit_ns);
   std::vector<TV> v(r.trace.size());
   for (size_t i = 0; i < v.size(); ++i) {
-    const KvmTrace& t = r.trace[i];
+    const MvmTrace& t = r.trace[i];
     v[i] = {r.tasks[i].workload_id, r.tasks[i].op_id, t.flags, (t.ready_ns - t0) / 1e3, (t.start_ns - t0) / 1e3, (t.end_ns - t0) / 1e3};
   }
   return v;
@@ -32,41 +32,41 @@ struct Spread { double lo, med, hi; };
 static Spread spread(std::vector<double> v) { std::sort(v.begin(), v.end()); return {v.front(), v[v.size() / 2], v.back()}; }
 
 static int g_sms = 0;
-static KvmConfig sched_cfg(int blocks, int nc, int mode = KVM_SCHED_DYNAMIC) {
-  KvmConfig c = small_cfg(blocks); c.sched.on = true; c.sched.mode = mode; c.sched.num_classes = nc;
+static MvmConfig sched_cfg(int blocks, int nc, int mode = MVM_SCHED_DYNAMIC) {
+  MvmConfig c = small_cfg(blocks); c.sched.on = true; c.sched.mode = mode; c.sched.num_classes = nc;
   return c;
 }
-static KvmBundle spin_bundle(int n, int us, int cls, int prio = 0, int deadline_us = -1) {
-  KvmBundleBuilder b; KvmTaskOpts o; o.workload = cls; o.priority = prio; o.deadline_us = deadline_us;
+static MvmBundle spin_bundle(int n, int us, int cls, int prio = 0, int deadline_us = -1) {
+  MvmBundleBuilder b; MvmTaskOpts o; o.workload = cls; o.priority = prio; o.deadline_us = deadline_us;
   for (int i = 0; i < n; ++i) b.add("spin", {I(us)}, o);
   return b.build();
 }
 // Submit bundles alternating between the given lists so that every class keeps a backlog.
-static void submit_all(KvmExec& ex, const std::vector<KvmBundle>& bs) {
-  for (auto& b : bs) { KvmSubmit s = ex.submit(b, 30000); CHECK(s == KvmSubmit::OK, "submit %s %s", kvm_submit_name(s), ex.last_error().c_str()); }
+static void submit_all(MvmExec& ex, const std::vector<MvmBundle>& bs) {
+  for (auto& b : bs) { MvmSubmit s = ex.submit(b, 30000); CHECK(s == MvmSubmit::OK, "submit %s %s", mvm_submit_name(s), ex.last_error().c_str()); }
 }
 
 // ================= cost table =================
 static bool suite_cost() {
   int before = g_fail;
-  CHECK(kvm_cost_names_registered(), "a name in kvm_ops_cost.inc is not a registered operator");
+  CHECK(mvm_cost_names_registered(), "a name in mvm_ops_cost.inc is not a registered operator");
   int32_t a[8] = {0, 1, 100000, 0, 0, 0, 0, 0};
-  KvmCost c = kvm_cost(KVM_OP_copy, a);
-  CHECK(c.res == KVM_RES_BW && c.bytes == 800000ull, "copy 1e5 floats: res %d bytes %llu", c.res, (unsigned long long)c.bytes);
+  MvmCost c = mvm_cost(MVM_OP_copy, a);
+  CHECK(c.res == MVM_RES_BW && c.bytes == 800000ull, "copy 1e5 floats: res %d bytes %llu", c.res, (unsigned long long)c.bytes);
   int32_t s[8] = {0, 1, 0, 100, 50, 30, 0, 0};  // matmul a,b,out,m,n,k
-  c = kvm_cost(KVM_OP_matmul, s);
-  CHECK(c.res == KVM_RES_MIXED && c.bytes == 4ull * (100 * 30 + 30 * 50 + 100 * 50) && c.flops == 2ull * 100 * 50 * 30, "matmul bytes %llu flops %llu", (unsigned long long)c.bytes, (unsigned long long)c.flops);
+  c = mvm_cost(MVM_OP_matmul, s);
+  CHECK(c.res == MVM_RES_MIXED && c.bytes == 4ull * (100 * 30 + 30 * 50 + 100 * 50) && c.flops == 2ull * 100 * 50 * 30, "matmul bytes %llu flops %llu", (unsigned long long)c.bytes, (unsigned long long)c.flops);
   int32_t small[8] = {0, 1, 256, 0, 0, 0, 0, 0};
-  c = kvm_cost(KVM_OP_copy, small);
-  CHECK(c.res == KVM_RES_LAT, "a 2 KiB copy must be latency-bound, got res %d", c.res);
-  c = kvm_cost(KVM_OP_spin, a); CHECK(c.res == KVM_RES_LAT && c.bytes == 0, "spin is latency-bound");
+  c = mvm_cost(MVM_OP_copy, small);
+  CHECK(c.res == MVM_RES_LAT, "a 2 KiB copy must be latency-bound, got res %d", c.res);
+  c = mvm_cost(MVM_OP_spin, a); CHECK(c.res == MVM_RES_LAT && c.bytes == 0, "spin is latency-bound");
   int32_t ad[16] = {0, 1, 2, 3, -1, 5, 100, 1124, 0, 0, 0, 0, 0, 0, 0, 0};   // adamw p,g,m,v,gscale?,step,e0,e1,...: 1024 elements, 7 words each
-  c = kvm_cost(KVM_OP_adamw, ad); CHECK(c.res == KVM_RES_BW && c.bytes == 28ull * 1024, "adamw 1024 elements: res %d bytes %llu", c.res, (unsigned long long)c.bytes);
-  ad[7] = 100 + 256; c = kvm_cost(KVM_OP_adamw, ad); CHECK(c.res == KVM_RES_LAT, "a 7 KiB adamw chunk is latency-bound (demoted), got res %d", c.res);
-  c = kvm_cost(9999, a); CHECK(c.res == KVM_RES_MIXED && c.bytes == 0, "unknown op must get the default (MIXED, 0 bytes)");
-  int listed = 0; for (const KvmOpInfo& o : kKvmOps) { bool in = false; for (const char* n : kKvmCostNames) in = in || !strcmp(n, o.name); listed += in; }
+  c = mvm_cost(MVM_OP_adamw, ad); CHECK(c.res == MVM_RES_BW && c.bytes == 28ull * 1024, "adamw 1024 elements: res %d bytes %llu", c.res, (unsigned long long)c.bytes);
+  ad[7] = 100 + 256; c = mvm_cost(MVM_OP_adamw, ad); CHECK(c.res == MVM_RES_LAT, "a 7 KiB adamw chunk is latency-bound (demoted), got res %d", c.res);
+  c = mvm_cost(9999, a); CHECK(c.res == MVM_RES_MIXED && c.bytes == 0, "unknown op must get the default (MIXED, 0 bytes)");
+  int listed = 0; for (const MvmOpInfo& o : kMvmOps) { bool in = false; for (const char* n : kMvmCostNames) in = in || !strcmp(n, o.name); listed += in; }
   printf("  cost table: %zu entries, all registered; %d of %d registered ops listed, the rest use the default (MIXED, 0 bytes); copy/matmul/default estimates checked\n",
-         sizeof(kKvmCostNames) / sizeof(kKvmCostNames[0]), listed, KVM_NUM_OPS);
+         sizeof(kMvmCostNames) / sizeof(kMvmCostNames[0]), listed, MVM_NUM_OPS);
   return g_fail == before;
 }
 
@@ -86,14 +86,14 @@ static bool suite_share() {
   struct Case { const char* name; std::vector<int> weights; };
   for (const Case& cs : std::vector<Case>{{"3:1", {3, 1}}, {"1:2:4:1", {1, 2, 4, 1}}}) {
     const int nc = (int)cs.weights.size();
-    KvmConfig c = sched_cfg(W + 2, nc); c.max_tasks = 1 << 16; c.live_cap = 1 << 13;
+    MvmConfig c = sched_cfg(W + 2, nc); c.max_tasks = 1 << 16; c.live_cap = 1 << 13;
     for (int k = 0; k < nc; ++k) c.sched.p.cls[k].weight = cs.weights[k];
-    KvmExec ex(c); ex.start();
-    std::vector<KvmBundle> bs;
+    MvmExec ex(c); ex.start();
+    std::vector<MvmBundle> bs;
     for (int rep = 0; rep < 12; ++rep) for (int k = 0; k < nc; ++k) bs.push_back(spin_bundle(300, 200, k));
     submit_all(ex, bs);
-    const KvmResult& r = ex.finish();
-    CHECK(r.ok(), "device error %s", kvm_err_name(r.err_code));
+    const MvmResult& r = ex.finish();
+    CHECK(r.ok(), "device error %s", mvm_err_name(r.err_code));
     check_once(r, 12 * nc * 300);
     auto v = tview(r); double span; auto cta = window_share(v, nc, &span);
     double tot = 0, wt = 0; for (int k = 0; k < nc; ++k) { tot += cta[k]; wt += cs.weights[k]; }
@@ -111,13 +111,13 @@ static bool suite_share() {
   }
   // Work conservation: an idle class's share is lent out at once, and taken back at the next task boundary.
   {
-    KvmConfig c = sched_cfg(W + 2, 2); c.max_tasks = 1 << 16; c.live_cap = 1 << 13;
+    MvmConfig c = sched_cfg(W + 2, 2); c.max_tasks = 1 << 16; c.live_cap = 1 << 13;
     c.sched.p.cls[0].weight = 1; c.sched.p.cls[1].weight = 1; c.sched.p.cls[1].min_cta = 16;
-    KvmExec ex(c); ex.start();
-    for (int i = 0; i < 20; ++i) CHECK(ex.submit(spin_bundle(400, 200, 0)) == KvmSubmit::OK, "submit");   // class 0 alone for ~50 ms
+    MvmExec ex(c); ex.start();
+    for (int i = 0; i < 20; ++i) CHECK(ex.submit(spin_bundle(400, 200, 0)) == MvmSubmit::OK, "submit");   // class 0 alone for ~50 ms
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    for (int i = 0; i < 4; ++i) CHECK(ex.submit(spin_bundle(200, 200, 1)) == KvmSubmit::OK, "submit");    // class 1 arrives mid-run
-    const KvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
+    for (int i = 0; i < 4; ++i) CHECK(ex.submit(spin_bundle(200, 200, 1)) == MvmSubmit::OK, "submit");    // class 1 arrives mid-run
+    const MvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
     auto v = tview(r);
     double t1 = 1e30; for (auto& t : v) if (t.cls == 1) t1 = std::min(t1, t.ready);
     // utilisation before class 1 arrived: class 0 alone must have used all workers (lending)
@@ -159,18 +159,18 @@ static ResvReport check_reservation(const std::vector<TV>& v, int cls, int mn, d
 }
 static bool reserve_scenario(bool guarantee, ResvReport* out) {
   const int W = 32, MN = 6;
-  KvmConfig c = sched_cfg(W + 2, 2); c.max_tasks = 1 << 16; c.live_cap = 1 << 13;
+  MvmConfig c = sched_cfg(W + 2, 2); c.max_tasks = 1 << 16; c.live_cap = 1 << 13;
   c.sched.p.cls[0].weight = 1000; c.sched.p.cls[1].weight = 1; c.sched.p.cls[1].min_cta = MN;
-  if (!guarantee) c.sched.p.flags &= ~KVM_SF_GUARANTEE;
-  KvmExec exs(c); KvmExec* ex = &exs; ex->start();
-  std::vector<KvmBundle> bs;
+  if (!guarantee) c.sched.p.flags &= ~MVM_SF_GUARANTEE;
+  MvmExec exs(c); MvmExec* ex = &exs; ex->start();
+  std::vector<MvmBundle> bs;
   for (int rep = 0; rep < 16; ++rep) bs.push_back(spin_bundle(250, 300, 0));
   // class 1 arrives in pulses of MN tasks with gaps (so every pulse needs a reclaim), class 0 saturates all along
   std::thread prod([&] { submit_all(*ex, bs); });
-  for (int k = 0; k < 40; ++k) { std::this_thread::sleep_for(std::chrono::microseconds(700)); CHECK(ex->submit(spin_bundle(MN, 200, 1)) == KvmSubmit::OK, "submit"); }
+  for (int k = 0; k < 40; ++k) { std::this_thread::sleep_for(std::chrono::microseconds(700)); CHECK(ex->submit(spin_bundle(MN, 200, 1)) == MvmSubmit::OK, "submit"); }
   prod.join();
-  const KvmResult& r = ex->finish();
-  if (!r.ok()) { CHECK(false, "device error %s", kvm_err_name(r.err_code)); return false; }
+  const MvmResult& r = ex->finish();
+  if (!r.ok()) { CHECK(false, "device error %s", mvm_err_name(r.err_code)); return false; }
   auto v = tview(r);
   *out = check_reservation(v, 1, MN, 150);
   double span = 0, w0 = 1e30, w1 = 0; for (auto& t : v) if (t.cls == 1) { w0 = std::min(w0, t.start); w1 = std::max(w1, t.end); }
@@ -201,20 +201,20 @@ static bool suite_starve_neg() {
 static bool suite_edf() {
   int before = g_fail;
   for (int urgent_us : {0, 100000}) {
-    KvmConfig c = sched_cfg(3, 1); c.sched.p.cls[0].urgent_us = urgent_us;   // one worker
-    KvmExec ex(c); ex.start();
-    KvmBundleBuilder bb; KvmTaskOpts g; g.priority = 31; bb.add("spin", {I(3000)}, g);   // gate: keeps the single worker busy while the rest queue
+    MvmConfig c = sched_cfg(3, 1); c.sched.p.cls[0].urgent_us = urgent_us;   // one worker
+    MvmExec ex(c); ex.start();
+    MvmBundleBuilder bb; MvmTaskOpts g; g.priority = 31; bb.add("spin", {I(3000)}, g);   // gate: keeps the single worker busy while the rest queue
     std::vector<int> hi, dl;   // 20 no-deadline tasks at priority 20; 6 deadline tasks at priority 0..3 with deadlines in reverse order
-    for (int i = 0; i < 20; ++i) { KvmTaskOpts o; o.priority = 20; hi.push_back(bb.add("spin", {I(50)}, o)); }
-    for (int i = 0; i < 6; ++i) { KvmTaskOpts o; o.priority = i; o.deadline_us = 20000 - 1000 * i;   // one task per bucket: EDF is exact across bucket heads (FIFO inside a bucket)
+    for (int i = 0; i < 20; ++i) { MvmTaskOpts o; o.priority = 20; hi.push_back(bb.add("spin", {I(50)}, o)); }
+    for (int i = 0; i < 6; ++i) { MvmTaskOpts o; o.priority = i; o.deadline_us = 20000 - 1000 * i;   // one task per bucket: EDF is exact across bucket heads (FIFO inside a bucket)
  dl.push_back(bb.add("spin", {I(50)}, o)); }
-    CHECK(ex.submit(bb.build()) == KvmSubmit::OK, "submit");
-    const KvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
+    CHECK(ex.submit(bb.build()) == MvmSubmit::OK, "submit");
+    const MvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
     int dl_first = 0; double last_hi = 0; for (int s : hi) last_hi = std::max(last_hi, r.trace[s].start_ns / 1e3);
     for (int s : dl) dl_first += r.trace[s].start_ns / 1e3 < last_hi;
     std::vector<int> ord = dl; std::sort(ord.begin(), ord.end(), [&](int a, int b) { return r.trace[a].start_ns < r.trace[b].start_ns; });
     int edf_bad = 0; for (size_t i = 0; i + 1 < ord.size(); ++i) if (r.tasks[ord[i]].deadline_us > r.tasks[ord[i + 1]].deadline_us) ++edf_bad;
-    int urgent_flag = 0; for (int s : dl) urgent_flag += (r.trace[s].flags & KVM_TRACE_URGENT) != 0;
+    int urgent_flag = 0; for (int s : dl) urgent_flag += (r.trace[s].flags & MVM_TRACE_URGENT) != 0;
     printf("  urgent_us %6d: %d of 6 low-priority deadline tasks overtook the 20 high-priority tasks, EDF order violations among them: %d, started by the deadline tier: %d\n", urgent_us, dl_first, edf_bad, urgent_flag);
     if (urgent_us == 0) CHECK(dl_first == 0 && urgent_flag == 0, "deadline boost off: deadline tasks must not overtake priority");
     else CHECK(dl_first == 6 && edf_bad == 0 && urgent_flag == 6, "deadline boost: all 6 overtake (%d), EDF order (%d bad), flagged %d", dl_first, edf_bad, urgent_flag);
@@ -226,7 +226,7 @@ static bool suite_edf() {
 // Serve (class 0) has a task waiting for version 1 of variable 0. Train (class 1) publishes it, behind a chain of 3 train tasks,
 // and train is fully throttled (max_cta 0) with filler tasks queued ahead. A scheduler that honours the throttle never runs the
 // publisher and the waiter parks forever; with inheritance the publisher's class is boosted past the throttle.
-static int wait_done(KvmExec& ex, int cls, unsigned long long want, int timeout_ms) {
+static int wait_done(MvmExec& ex, int cls, unsigned long long want, int timeout_ms) {
   auto t0 = std::chrono::steady_clock::now();
   while (ex.telemetry()->cls[cls].done < want) {
     if (std::chrono::steady_clock::now() - t0 > std::chrono::milliseconds(timeout_ms)) return -1;
@@ -234,37 +234,37 @@ static int wait_done(KvmExec& ex, int cls, unsigned long long want, int timeout_
   }
   return (int)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
 }
-static void release_throttle(KvmExec& ex, int cls) {
-  KvmSchedParams p = ex.config().sched.p; for (int c = 0; c < ex.num_classes(); ++c) p.cls[c].max_cta = KVM_UNLIMITED; (void)cls;
-  p.flags = ex.config().sched.p.flags | KVM_SF_INHERIT | KVM_SF_GUARANTEE; ex.set_sched_params(p);
+static void release_throttle(MvmExec& ex, int cls) {
+  MvmSchedParams p = ex.config().sched.p; for (int c = 0; c < ex.num_classes(); ++c) p.cls[c].max_cta = MVM_UNLIMITED; (void)cls;
+  p.flags = ex.config().sched.p.flags | MVM_SF_INHERIT | MVM_SF_GUARANTEE; ex.set_sched_params(p);
 }
 static bool inherit_scenario(bool inherit, int shape, int* waited_ms, int* boosted_runs) {
-  KvmConfig c = sched_cfg(6, 3);
+  MvmConfig c = sched_cfg(6, 3);
   c.sched.p.cls[1].max_cta = 0; c.sched.p.cls[2].max_cta = 0;     // classes 1 and 2 are fully throttled
   c.sched.p.cls[0].min_cta = 1;                                    // the waiter's class holds a reservation
-  if (!inherit) c.sched.p.flags &= ~KVM_SF_INHERIT;
-  KvmExec ex(c); ex.start();
-  std::vector<KvmBundle> bs; const int NFILL = 30;
+  if (!inherit) c.sched.p.flags &= ~MVM_SF_INHERIT;
+  MvmExec ex(c); ex.start();
+  std::vector<MvmBundle> bs; const int NFILL = 30;
   // shape 0: serve waits v0 <- train.  shape 1: serve waits v0 <- class 1 task that waits v1 <- class 2 (transitive).
   // shape 2: the waiter is admitted and parked BEFORE the publisher's bundle exists.
-  KvmBundleBuilder tr; KvmTaskOpts f; f.workload = 1;
+  MvmBundleBuilder tr; MvmTaskOpts f; f.workload = 1;
   for (int i = 0; i < NFILL; ++i) tr.add("spin", {I(20)}, f);
-  KvmTaskOpts pub; pub.workload = 1; pub.pub_var = 0; pub.pub_ver = 1; if (shape == 1) { pub.wait_var = 1; pub.wait_ver = 1; }
+  MvmTaskOpts pub; pub.workload = 1; pub.pub_var = 0; pub.pub_ver = 1; if (shape == 1) { pub.wait_var = 1; pub.wait_ver = 1; }
   int a = tr.add("spin", {I(20)}, f), b2 = tr.add("spin", {I(20)}, f), p = tr.add("spin", {I(20)}, pub);
   tr.edge(a, b2); tr.edge(b2, p);
-  KvmBundleBuilder sv; KvmTaskOpts w; w.workload = 0; w.wait_var = 0; w.wait_ver = 1;
-  sv.add("spin", {I(20)}, w); KvmTaskOpts pl; pl.workload = 0; for (int i = 0; i < 5; ++i) sv.add("spin", {I(20)}, pl);
-  KvmBundleBuilder d2; KvmTaskOpts f2; f2.workload = 2;
-  if (shape == 1) { KvmTaskOpts q; q.workload = 2; q.pub_var = 1; q.pub_ver = 1; for (int i = 0; i < 10; ++i) d2.add("spin", {I(20)}, f2); d2.add("spin", {I(20)}, q); }
-  if (shape == 2) { CHECK(ex.submit(sv.build()) == KvmSubmit::OK, "submit"); std::this_thread::sleep_for(std::chrono::milliseconds(5)); CHECK(ex.submit(tr.build()) == KvmSubmit::OK, "submit"); }
-  else { CHECK(ex.submit(tr.build()) == KvmSubmit::OK, "submit"); if (shape == 1) CHECK(ex.submit(d2.build()) == KvmSubmit::OK, "submit"); CHECK(ex.submit(sv.build()) == KvmSubmit::OK, "submit"); }
+  MvmBundleBuilder sv; MvmTaskOpts w; w.workload = 0; w.wait_var = 0; w.wait_ver = 1;
+  sv.add("spin", {I(20)}, w); MvmTaskOpts pl; pl.workload = 0; for (int i = 0; i < 5; ++i) sv.add("spin", {I(20)}, pl);
+  MvmBundleBuilder d2; MvmTaskOpts f2; f2.workload = 2;
+  if (shape == 1) { MvmTaskOpts q; q.workload = 2; q.pub_var = 1; q.pub_ver = 1; for (int i = 0; i < 10; ++i) d2.add("spin", {I(20)}, f2); d2.add("spin", {I(20)}, q); }
+  if (shape == 2) { CHECK(ex.submit(sv.build()) == MvmSubmit::OK, "submit"); std::this_thread::sleep_for(std::chrono::milliseconds(5)); CHECK(ex.submit(tr.build()) == MvmSubmit::OK, "submit"); }
+  else { CHECK(ex.submit(tr.build()) == MvmSubmit::OK, "submit"); if (shape == 1) CHECK(ex.submit(d2.build()) == MvmSubmit::OK, "submit"); CHECK(ex.submit(sv.build()) == MvmSubmit::OK, "submit"); }
   int ms = wait_done(ex, 0, 6, 400);   // all 6 serve tasks done?
   *waited_ms = ms;
   // let train finish cleanly (also exercises a run-time parameter update)
   release_throttle(ex, 1);
-  const KvmResult& r = ex.finish();
-  CHECK(r.ok(), "device error %s", kvm_err_name(r.err_code));
-  int boosted = 0; for (size_t i = 0; i < r.trace.size(); ++i) boosted += (r.trace[i].flags & KVM_TRACE_BOOST) != 0;
+  const MvmResult& r = ex.finish();
+  CHECK(r.ok(), "device error %s", mvm_err_name(r.err_code));
+  int boosted = 0; for (size_t i = 0; i < r.trace.size(); ++i) boosted += (r.trace[i].flags & MVM_TRACE_BOOST) != 0;
   *boosted_runs = boosted;
   return ms >= 0;
 }
@@ -292,19 +292,19 @@ static bool suite_inherit_neg() {
 static bool suite_rand(bool quick) {
   int before = g_fail; long long total = 0; int dupes = 0, runs = 0;
   for (unsigned seed = 1; seed <= (quick ? 2u : 10u); ++seed)
-    for (int mode : {KVM_SCHED_GLOBAL, KVM_SCHED_STATIC, KVM_SCHED_DYNAMIC})
+    for (int mode : {MVM_SCHED_GLOBAL, MVM_SCHED_STATIC, MVM_SCHED_DYNAMIC})
       for (int blocks : {4, 18, 0}) {
-        if (mode == KVM_SCHED_STATIC && blocks != 0) continue;   // a static split needs workers on every class's SMs: whole grid only
-        if (mode != KVM_SCHED_STATIC && blocks == 0) continue;
+        if (mode == MVM_SCHED_STATIC && blocks != 0) continue;   // a static split needs workers on every class's SMs: whole grid only
+        if (mode != MVM_SCHED_STATIC && blocks == 0) continue;
         Rng rg(seed * 131 + mode);
         int nb = 2 + (int)(seed % 4);                          // workload ids 0..nb-1 = classes
-        KvmConfig c = sched_cfg(blocks, nb, mode); c.live_cap = 1 << 13; c.ring_words = 1 << 17;
+        MvmConfig c = sched_cfg(blocks, nb, mode); c.live_cap = 1 << 13; c.ring_words = 1 << 17;
         for (int k = 0; k < nb; ++k) {
-          KvmClassParams& q = c.sched.p.cls[k];
-          q.weight = rg.in(1, 8); q.min_cta = rg.p(50) ? rg.in(0, 2) : 0; q.max_cta = rg.p(30) ? rg.in(std::max(1, q.min_cta), 3) : KVM_UNLIMITED;
-          q.bw_cta = rg.p(30) ? rg.in(1, 2) : KVM_UNLIMITED; q.urgent_us = rg.p(40) ? 5000 : 0;
+          MvmClassParams& q = c.sched.p.cls[k];
+          q.weight = rg.in(1, 8); q.min_cta = rg.p(50) ? rg.in(0, 2) : 0; q.max_cta = rg.p(30) ? rg.in(std::max(1, q.min_cta), 3) : MVM_UNLIMITED;
+          q.bw_cta = rg.p(30) ? rg.in(1, 2) : MVM_UNLIMITED; q.urgent_us = rg.p(40) ? 5000 : 0;
         }
-        if (mode == KVM_SCHED_STATIC) kvm_static_split(c.sched.p, std::vector<double>(nb, 1.0), g_sms);
+        if (mode == MVM_SCHED_STATIC) mvm_static_split(c.sched.p, std::vector<double>(nb, 1.0), g_sms);
         int d; dag_run(seed * 6151 + mode, nb, 500 + 200 * (seed % 3), 6 + seed % 20, c, 31, &total, &d); dupes += d; ++runs;
       }
   printf("  %d runs (GLOBAL / STATIC / DYNAMIC, 2 grid sizes, random weights, reservations, caps, BW caps, deadline windows), %lld tasks: exactly-once, edges ordered by timestamps, node values bitwise vs CPU\n", runs, total);
@@ -312,9 +312,9 @@ static bool suite_rand(bool quick) {
 }
 static bool suite_smoke_sched() {
   int before = g_fail; long long t = 0; int d;
-  for (int mode : {KVM_SCHED_GLOBAL, KVM_SCHED_STATIC, KVM_SCHED_DYNAMIC}) {
-    const int nc = mode == KVM_SCHED_STATIC ? 1 : 3;   // a static split needs workers on every class's SMs; 4 blocks sit on 2 SMs
-    KvmConfig c = sched_cfg(4, nc, mode); c.max_tasks = 4096; c.live_cap = 256; c.ring_words = 4096;
+  for (int mode : {MVM_SCHED_GLOBAL, MVM_SCHED_STATIC, MVM_SCHED_DYNAMIC}) {
+    const int nc = mode == MVM_SCHED_STATIC ? 1 : 3;   // a static split needs workers on every class's SMs; 4 blocks sit on 2 SMs
+    MvmConfig c = sched_cfg(4, nc, mode); c.max_tasks = 4096; c.live_cap = 256; c.ring_words = 4096;
     if (nc == 3) { c.sched.p.cls[1].min_cta = 1; c.sched.p.cls[2].max_cta = 1; }
     dag_run(3 + mode, nc, 60, 6, c, 31, &t, &d);
   }
@@ -322,15 +322,15 @@ static bool suite_smoke_sched() {
   return g_fail == before;
 }
 
-#ifndef KVM_SCHED_NO_BENCH
+#ifndef MVM_SCHED_NO_BENCH
 #include "sched_bench.inc"
 #endif
 
-#ifndef KVM_SCHED_NO_MAIN   // test_adaptive.cu reuses the helpers above with its own main
+#ifndef MVM_SCHED_NO_MAIN   // test_adaptive.cu reuses the helpers above with its own main
 int main(int argc, char** argv) {
   bool expect_fail = false; std::vector<std::string> want;
-  for (int i = 1; i < argc; ++i) { std::string a = argv[i]; if (a == "--expect-fail") expect_fail = true; else if (a == "--quiet") g_kvm_log = 0; else if (a == "--log") g_kvm_log = atoi(argv[++i]); else want.push_back(a); }
-  bool quick = getenv("KVM_TEST_QUICK") != nullptr;
+  for (int i = 1; i < argc; ++i) { std::string a = argv[i]; if (a == "--expect-fail") expect_fail = true; else if (a == "--quiet") g_mvm_log = 0; else if (a == "--log") g_mvm_log = atoi(argv[++i]); else want.push_back(a); }
+  bool quick = getenv("MVM_TEST_QUICK") != nullptr;
   if (want.empty()) want = {"cost", "share", "reserve", "edf", "inherit", "rand"};
   int dev; cudaDeviceProp p; CK(cudaGetDevice(&dev)); CK(cudaGetDeviceProperties(&p, dev));
   g_sms = p.multiProcessorCount;
@@ -344,7 +344,7 @@ int main(int argc, char** argv) {
       if (s == "cost") ok = suite_cost(); else if (s == "share") ok = suite_share(); else if (s == "reserve") ok = suite_reserve();
       else if (s == "edf") ok = suite_edf(); else if (s == "inherit") ok = suite_inherit(); else if (s == "rand") ok = suite_rand(quick);
       else if (s == "starve_neg") ok = suite_starve_neg(); else if (s == "inherit_neg") ok = suite_inherit_neg(); else if (s == "smoke") ok = suite_smoke_sched();
-#ifndef KVM_SCHED_NO_BENCH
+#ifndef MVM_SCHED_NO_BENCH
       else if (sched_bench_suite(s, ok)) {}
 #endif
       else { fprintf(stderr, "unknown suite %s\n", s.c_str()); return 2; }
@@ -358,4 +358,4 @@ int main(int argc, char** argv) {
   printf(failed_suites ? "FAIL\n" : "PASS\n");
   return failed_suites ? 1 : 0;
 }
-#endif  // KVM_SCHED_NO_MAIN
+#endif  // MVM_SCHED_NO_MAIN

@@ -1,19 +1,19 @@
 ptxas info    : 24 bytes gmem, 8 bytes cmem[4]
-ptxas info    : Compiling entry function '_Z11fgpt_kernelILb0EEvPK11KvmFgptDesciPiS3_Pyii' for 'sm_80'
-ptxas info    : Function properties for _Z11fgpt_kernelILb0EEvPK11KvmFgptDesciPiS3_Pyii
+ptxas info    : Compiling entry function '_Z11fgpt_kernelILb0EEvPK11MvmFgptDesciPiS3_Pyii' for 'sm_80'
+ptxas info    : Function properties for _Z11fgpt_kernelILb0EEvPK11MvmFgptDesciPiS3_Pyii
     56 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
 ptxas info    : Used 160 registers, used 1 barriers, 56 bytes cumulative stack size, 400 bytes cmem[0], 192 bytes cmem[2]
 ptxas info    : Compile time = 6900.848 ms
-ptxas info    : Function properties for _ZN8kvm_fgpt3runIZ11fgpt_kernelILb0EEvPK11KvmFgptDesciPiS5_PyiiEUliE_NS_8NoPhasesEEEbRS3_iPfiPKiT_RT0_
+ptxas info    : Function properties for _ZN8mvm_fgpt3runIZ11fgpt_kernelILb0EEvPK11MvmFgptDesciPiS5_PyiiEUliE_NS_8NoPhasesEEEbRS3_iPfiPKiT_RT0_
     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
 ptxas info    : Function properties for __internal_accurate_pow
     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
-ptxas info    : Compiling entry function '_Z11fgpt_kernelILb1EEvPK11KvmFgptDesciPiS3_Pyii' for 'sm_80'
-ptxas info    : Function properties for _Z11fgpt_kernelILb1EEvPK11KvmFgptDesciPiS3_Pyii
+ptxas info    : Compiling entry function '_Z11fgpt_kernelILb1EEvPK11MvmFgptDesciPiS3_Pyii' for 'sm_80'
+ptxas info    : Function properties for _Z11fgpt_kernelILb1EEvPK11MvmFgptDesciPiS3_Pyii
     96 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
 ptxas info    : Used 157 registers, used 1 barriers, 96 bytes cumulative stack size, 416 bytes smem, 400 bytes cmem[0], 192 bytes cmem[2]
 ptxas info    : Compile time = 4792.581 ms
-ptxas info    : Function properties for _ZN8kvm_fgpt3runIZ11fgpt_kernelILb1EEvPK11KvmFgptDesciPiS5_PyiiEUliE_10PhaseClockEEbRS3_iPfiPKiT_RT0_
+ptxas info    : Function properties for _ZN8mvm_fgpt3runIZ11fgpt_kernelILb1EEvPK11MvmFgptDesciPiS5_PyiiEUliE_10PhaseClockEEbRS3_iPfiPKiT_RT0_
     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
 ptxas info    : Function properties for __internal_accurate_pow
     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads

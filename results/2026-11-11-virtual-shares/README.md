@@ -1,7 +1,7 @@
 # Virtual shares for the split MLP step (Nov 11)
 
 A split run's arithmetic runs over its shape's own count of virtual shares, Sv, and a gang may carry them on fewer members, S <= Sv
-(`include/kvm_fused_split.h` has the design). These files check it.
+(`include/mvm_fused_split.h` has the design). These files check it.
 
 - **`fuse-pass/`** (CPU, `tests/static/test_fuse_pass` on gen_mlp bundles at 1, 4, 8, 48, 107 and 108 workers): every expected form and
   entry holds, and every gang's records replay through its barriers. At 108 workers a run alone carries its 18 virtual shares on 18
@@ -36,7 +36,7 @@ A split run's arithmetic runs over its shape's own count of virtual shares, Sv, 
   `single_runs.txt`: one run each of ho576, ho128 and mlp256 dumped on this head and on the stack without virtual shares: every buffer
   line identical (only the run's own timing line differs).
 - **`bed_regs.log`**: the bed's 11 entries (one per virtual share count) at 229-233 registers, no spill.
-- **`ptx_check.log`**: `kvm_exec.cu` compiles to PTX (sm_80, LEAN) with no new warning.
+- **`ptx_check.log`**: `mvm_exec.cu` compiles to PTX (sm_80, LEAN) with no new warning.
 - **`python_tests.log`**: the three unittest suites on this branch's code (run at `c646862`, before its rebase onto the granule fix's
   results commit, which adds files under `results/` only), on the A100 host's Python (numpy and torch present, no GPU visible to the
   tests): 157, 74 and 137 tests, all OK.

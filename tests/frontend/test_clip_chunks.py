@@ -4,11 +4,11 @@ for speed must leave the norm's chunks, and with them its weights, as they were.
 import unittest
 
 import _path  # noqa: F401
-from kvmfe.ir import FrontendError
-from kvmfe.lower import Tiling
-from kvmfe.nn import ModelConfig
-from kvmfe.pipeline import compile_training
-from kvmfe.train import TrainConfig
+from mvmfe.ir import FrontendError
+from mvmfe.lower import Tiling
+from mvmfe.nn import ModelConfig
+from mvmfe.pipeline import compile_training
+from mvmfe.train import TrainConfig
 
 MODEL = '{"name":"clip-chunks","vocab":64,"d_model":192,"layers":1,"heads":3,"seq":32,"batch":1,"ffn_mult":4}'
 

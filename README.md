@@ -1,4 +1,4 @@
-# 🐱⚡ KVM — a "kittens" GPU virtual machine 🖥️🔥
+# ⚡ Magni VM — one kernel for the whole GPU 🖥️🔥
 
 ### 🧠 one kernel · 🎮 real Doom · 🤖 162M GPT training · 🔁 live inference · 🚀 whole GPU
 
@@ -8,12 +8,38 @@
 
 Legend used below: ✅ measured and on main, 🧪 code only (no result measures it), ❌ target not met, 🚧 in progress or on an unmerged branch.
 
+## 📈 Latest results (one A100-SXM4-40GB, Nov 17)
+
+Each ratio is PyTorch's time over Magni VM's for one optimizer step (training) or one decode step, read on the same GPU in
+the same run, the lower of two GPUs, with every numerics check passing (loss and weights against PyTorch's own run, and the
+deviation from a higher-precision reference within twice PyTorch's own).
+
+| Workload | vs PyTorch's best mode | vs eager |
+|---|---:|---:|
+| 9 small training jobs (MLPs, GPT tiny, small and 162M), geomean | **2.35×** | |
+| GPT 355M training, TF32 | **1.10×** | 1.27× |
+| GPT 162M training, TF32 | **1.07×** | 1.25× |
+| GPT 162M training, BF16 | 0.86× | 1.37× |
+| Qwen3-8B-shape decode, 1 / 8 users (bf16, 4K context) | 0.97× / 0.89× | 1.92× / 1.85× |
+| Qwen3-14B-shape decode, 1 / 8 users | 0.96× / 0.87× | 1.65× / — |
+
+- **PyTorch's best mode:**
+  - For the small jobs, it is the fastest of eager, torch.compile, CUDA graphs and batched variants on PyTorch 2.15. PyTorch
+    2.11's CUDA-graph path is about 15% faster; against the faster of the two, the small jobs read 2.00× on Nov 16.
+  - For the larger rows, it is torch.compile with CUDA graphs, the faster of PyTorch 2.11 and 2.15.
+- **Where the numbers come from:** the training rows were read on a development build that carries every merged PR plus
+  later levers. The decode rows were read on the decode line built on #79, which #86 brings onto `main`. The remaining work
+  lands in follow-up PRs, each with its A100 read.
+- **Decode has little headroom.** PyTorch's CUDA graph already reads the 8B model's weights at 84-87% of memory bandwidth,
+  so decode's ceiling is 1.15-1.24×. Training has about 2× of headroom left.
+- The sections below record the project's earlier milestones as they were measured.
+
 ## 🚀 Demo ready
 
 One persistent kernel runs a **162M-parameter GPT training**, **live inference on the weights being trained** and **real Doom** at the same time, then verifies itself.
 
 ```
-export KVM_HOST=user@host                      # an sm_80 GPU box reachable over ssh (optional: KVM_KEY, KVM_REMOTE=<scratch dir on the box>)
+export MVM_HOST=user@host                      # an sm_80 GPU box reachable over ssh (optional: MVM_KEY, MVM_REMOTE=<scratch dir on the box>)
 demo/run_demo.sh large --lock-wait 14400       # 162M GPT, 6 steps, serving, 700 Doom frames
 demo/run_demo.sh tiny  --lock-wait 14400       # gpt_tiny, 200 steps: the quick one (~4 s of GPU)
 ```
@@ -87,23 +113,23 @@ frames/s; workers are mostly idle, so it is latency-bound. The axis is split at 
 | ❌ Matmul and attention speed | matmul about 0.5x cuBLAS TF32 (51.0 vs 105.6 TFLOP/s at 4096^3); attention 15-30% below torch fp32 SDPA | `results/2026-11-04-a100-ops-perf` |
 | ✅/❌ Executor vs PyTorch (current: 9-workload panel, geomean 1.090x: 2.2-3.8x faster on the four small MLPs, 0.34-0.73x on wide MLPs and GPT) | **Superseded by `results/2026-11-10-a100-merged`**; the row below is the pre-#13 executor: | same bytes, one driver, interleaved reps, loss and weights within 1e-3 of eager and float64. Executor beats eager 1.1-3.9x and `torch.compile` without graphs 1.2-1.9x on the small MLP, but is 1.9-4.8x slower than a whole-step CUDA graph, 5.7-7x slower than R graphs on R streams and 5.5-69x slower than a batched graph; 17.7x slower than eager at 162M. Why: the tape is admitted (2.4-3.1 us/task) before any task runs, about 28 us per dependency level. | `results/2026-11-09-a100-exec-vs-torch` |
 | ❌ Executor vs PyTorch on the same 162M model and AdamW | **15-18x slower before the merge** (main now: 845 ms f32 = 12x, 293 ms bf16s = 6x vs torch autocast-bf16 eager; see the journey): executor 1042 ms/step (1-step tape) against torch eager 69.6, whole-step CUDA graph 68.2, `torch.compile` 59-60 ms. Why: admission is 604 ms of the 1042 (318k tasks/step at 1.9 us, single FIFO); the workers are only 27% busy; tile work alone would be about 190 ms/step at perfect admission (matmul tiles at 0.5x cuBLAS); the dependency-hop term is 0.5% of the step. At tiny/small sizes it beats eager 1.6-2.3x but never a CUDA graph (3.2-12.6x slower). The demo does not beat PyTorch. | `results/2026-11-06-gpt162-vs-torch`, `results/2026-11-06-vs-pytorch` |
-| 🧪 Generic training: any traced module, `CrossEntropy`/`MSE`, SGD/AdamW (`frontend/kvmfe/generic.py`) | four never-shipped models (regression MLP, residual MLP, 1-D CNN, transformer encoder) match numpy float64 oracles on the CPU; the A100 run on the landing branch: 3 of 4 models pass the 2e-4 golden bound, `encoder_reg` fails (worst `v.enc.k.b` 10.5 relative L2) and the MANIFEST stage stopped after the first demo | `results/2026-11-09-landing` |
+| 🧪 Generic training: any traced module, `CrossEntropy`/`MSE`, SGD/AdamW (`frontend/mvmfe/generic.py`) | four never-shipped models (regression MLP, residual MLP, 1-D CNN, transformer encoder) match numpy float64 oracles on the CPU; the A100 run on the landing branch: 3 of 4 models pass the 2e-4 golden bound, `encoder_reg` fails (worst `v.enc.k.b` 10.5 relative L2) and the MANIFEST stage stopped after the first demo | `results/2026-11-09-landing` |
 | 🚧 Admission change (class-aware / sliced) | **PLACEHOLDER: `perf/admission-bottleneck` (about 1.8x on the f32 bundle) is unmerged; numbers on this page are main's.** | pending |
 | 🧪 Runs on more than one GPU, NVLink or a network | not done (no hardware); the timeline above therefore has no comm ops | `results/2026-11-03-dist-singlebox` |
 
-Beyond the demo, the one place the VM beats a conventional baseline is the `kvm.cu` MLP prototype (1.50x at 1 run, 1.13x at 32; table at the bottom).
+Beyond the demo, the one place the VM beats a conventional baseline is the `mvm.cu` MLP prototype (1.50x at 1 run, 1.13x at 32; table at the bottom).
 Known failures and negatives are listed in full under "Known failures and honest negatives" below.
 
 ## ▶️ Run the demo in detail (needs an sm_80 GPU box over ssh)
 
 ```
-export KVM_HOST=user@host KVM_KEY=~/.ssh/key KVM_REMOTE=my-private-scratch   # KVM_REMOTE: a scratch dir on the box (default kvm-demo-scratch)
+export MVM_HOST=user@host MVM_KEY=~/.ssh/key MVM_REMOTE=my-private-scratch   # MVM_REMOTE: a scratch dir on the box (default mvm-demo-scratch)
 demo/run_demo.sh tiny  --lock-wait 14400    # gpt_tiny, 200 steps: all checks pass (about 4 s of GPU), results/2026-11-06-demo-tiny
 demo/run_demo.sh large --lock-wait 14400    # gpt_162m, 6 steps: all checks pass, 1.8 s/step = 2,260 tokens/s, results/2026-11-06-demo-large-trace
 ```
 
 `demo/run_demo.sh` rsyncs, builds, takes the GPU lock, runs the one launch and verifies it (loss, version coherence, Doom bytes against the CPU engine,
-35 Hz cadence). The first build on a busy box takes about 15 minutes (nvcc); later runs reuse `demo/kvm_run` while it is newer than its sources.
+35 Hz cadence). The first build on a busy box takes about 15 minutes (nvcc); later runs reuse `demo/mvm_run` while it is newer than its sources.
 Raw output lands in `logs/<UTC>-demo-<tag>/` (git-ignored): `run.json`, `trace.csv`, `observations.jsonl`, `check.log`, `report.json`. Options: the header of `demo/run_demo.sh`.
 
 ### 🔁 Reproduce the figures
@@ -143,7 +169,7 @@ autocast-bf16 eager (47.1 ms), 9-10x than its CUDA graph (30.9-44.7 ms) and 12x 
 | `perf/admission-bottleneck` | unmerged | dispatch fix, about 1.8x on the f32 bundle (no results dir on the branch yet) | pending |
 | `perf/combined2` | unmerged | bigger tiles: 83,861 tasks, f32 358 ms, bf16s 290 ms | `results/2026-11-06-a100-tiles`, `results/2026-11-06-matmul2-perf` |
 | `perf/sched-tail` | unmerged | express (per-class) admission and a strict-priority tier for tail latency | `results/2026-11-06-a100-sched-tail` |
-| `perf/kvm-cu` | in the landing PR | `kvm.cu` timeline, exact weights, torch baselines, fp16 fused programs | `results/2026-11-06-a100-kvm-cu` |
+| `perf/mvm-cu` | in the landing PR | `mvm.cu` timeline, exact weights, torch baselines, fp16 fused programs | `results/2026-11-06-a100-mvm-cu` |
 | `perf/completion-path` | unmerged | cheaper task end: **no end-to-end change** (the step is bound by the ready-queue pop) | `results/2026-11-06-a100-completion` |
 | `results/learning-162m` | merged to main | 162M learns on a 256-token stream, executor vs PyTorch 300 steps | `results/2026-11-06-a100-learning-162m` |
 
@@ -160,10 +186,10 @@ priority is admission and task count, not faster kernels.
 
 | Check | Result |
 |---|---|
-| ✅ Serving golden at 162M | `demo/serve_golden.py` recomputes a request in PyTorch float64 (no KV cache, no kvmfe op): the first request (initial weights) and the last (final weights) match token for token; **middle versions are not checked** (no snapshot survives). A negative control (tokens of another version) fails as it must |
+| ✅ Serving golden at 162M | `demo/serve_golden.py` recomputes a request in PyTorch float64 (no KV cache, no mvmfe op): the first request (initial weights) and the last (final weights) match token for token; **middle versions are not checked** (no snapshot survives). A negative control (tokens of another version) fails as it must |
 | ✅ Every zoo family tied to PyTorch | 14/14 cases (GPT, Llama, GQA, MoE, ViT, MLP; exact, TF32 and bf16 modes) agree with a torch float64 cross-check within stated tolerances |
 | ✅ Combined suites | 8,586 executor checks, litmus 15 properties and 7 mutants detected, `test_ops` 3,224, `test_bf16` 685, sanitizers clean; 162M step-1 gradients vs float64: f32 worst 1.46e-3 (= torch TF32), bf16s worst 1.69e-2 (torch autocast-bf16 3.36e-2) |
-| 🧪 Control flow | design note in `FRAMEWORK.md` ("Dynamic shapes and data-dependent control flow"): admission guards prototyped in the CPU reference runner only; the device runner `demo/kvm_run.cu` does not run them |
+| 🧪 Control flow | design note in `FRAMEWORK.md` ("Dynamic shapes and data-dependent control flow"): admission guards prototyped in the CPU reference runner only; the device runner `demo/mvm_run.cu` does not run them |
 | ✅ Model zoo on the merged executor | all 36 cases pass `check.py` on an A100-SXM4-40GB with a full build of this tree: 28 of 28 in `examples/models/cases.txt` and 8 of 8 in `cases_bf16s.txt`, `vit_bf16s` and `san_bf16s` included, the two the weight check used to fail (the check's fixes `eeac44e` and `4d09833`). Their `san_*` cases (9 and 2) are clean under memcheck, racecheck and synccheck, 33 runs (`results/2026-11-12-a100-zoo`) |
 | ❌ Open, not hidden | the merged executor is ~6% slower than the pre-merge one on main's own bundle (cause not proven) |
 
@@ -171,8 +197,8 @@ priority is admission and task count, not faster kernels.
 
 ```mermaid
 flowchart LR
-  F["frontend/kvmfe<br/>model config -> autodiff -> tiles -> dataflow edges"] -->|workload JSON| C["runtime/compile_workload.py<br/>ABI v2 bundle: tasks, edges, args, versions<br/>+ CPU golden"]
-  C -->|bundle records| H["host runner<br/>demo/kvm_run.cu"]
+  F["frontend/mvmfe<br/>model config -> autodiff -> tiles -> dataflow edges"] -->|workload JSON| C["runtime/compile_workload.py<br/>ABI v2 bundle: tasks, edges, args, versions<br/>+ CPU golden"]
+  C -->|bundle records| H["host runner<br/>demo/mvm_run.cu"]
   H -->|"admission ring (records)"| A
   subgraph K["ONE persistent kernel (grid = 1 admitter + 1 policy + 106 workers)"]
     A["admitter<br/>slots, edge counters"] -->|task ready| R["ready rings"]
@@ -184,7 +210,7 @@ flowchart LR
   T --> P["demo/viz/timeline.py"]
 ```
 
-The ready-queue pop is the single serialized stage (admission itself is cheap, 0.2 us/task); everything else is parallel across SMs. Source: `kvm_exec.cu`, `include/kvm_exec.cuh`, `include/kvm_sched.*`.
+The ready-queue pop is the single serialized stage (admission itself is cheap, 0.2 us/task); everything else is parallel across SMs. Source: `mvm_exec.cu`, `include/mvm_exec.cuh`, `include/mvm_sched.*`.
 
 ### Three workloads, one weight-version flow
 
@@ -211,7 +237,7 @@ version-carrying tasks saw the version they asked for.
 
 ```mermaid
 flowchart TD
-  Q{"what dominates the step?"} -->|"launch gaps, last-wave tails, cold starts between small dependent ops"| W1["VM can win<br/>kvm.cu MLP: 1.50x at 1 run (25.3 vs 37.9 us)"]
+  Q{"what dominates the step?"} -->|"launch gaps, last-wave tails, cold starts between small dependent ops"| W1["VM can win<br/>mvm.cu MLP: 1.50x at 1 run (25.3 vs 37.9 us)"]
   Q -->|"many independent runs / workloads to interleave"| W2["VM can win<br/>Doom + serve + train share one GPU, Doom held at 35 Hz"]
   Q -->|"big GEMMs, compute or bandwidth bound"| L1["VM has little to win<br/>matmul 0.5x cuBLAS in the registry; graphs lose nothing"]
   Q -->|"hundreds of thousands of tiny tasks"| L2["VM loses to its own admission and dependency path<br/>162M GPT: 5.5 us/task, 30x off the critical path"]
@@ -231,23 +257,23 @@ graphs beat it on a 162M GPT (43.1 s vs 48.1 s, B200).
 ## 🏗️ The integrated framework
 
 ```
- frontend/kvmfe  model config -> autodiff -> tiles -> dataflow edges     FRONTEND.md
+ frontend/mvmfe  model config -> autodiff -> tiles -> dataflow edges     FRONTEND.md
         |  workload JSON
  runtime/compile_workload.py   ABI v2 bundle (tasks, edges, args, versions) + CPU golden     FRAMEWORK.md
         |  bundle
- kvm_exec.cu / kvm_exec.cuh    persistent kernel: admission ring, slot recycling, ready rings, version waits
-   + kvm_sched.*               per-workload scheduler (reservations, weights, EDF, inheritance, bandwidth arbiter), host controller kvm_adapt.h
-   + operator registry packs   kvm_ops.def (core, ids 0-31), kvm_ops_gpt (32-63), kvm_ops_comm (64-95), kvm_ops_extra (96-121), kvm_ops_game (Doom)
+ mvm_exec.cu / mvm_exec.cuh    persistent kernel: admission ring, slot recycling, ready rings, version waits
+   + mvm_sched.*               per-workload scheduler (reservations, weights, EDF, inheritance, bandwidth arbiter), host controller mvm_adapt.h
+   + operator registry packs   mvm_ops.def (core, ids 0-31), mvm_ops_gpt (32-63), mvm_ops_comm (64-95), mvm_ops_extra (96-121), mvm_ops_game (Doom)
    + dist/, runtime/partition.py   multi-GPU / multi-node code without NCCL                  DISTRIBUTED.md
 ```
 
 | Part | Where |
 |---|---|
-| ABI v2 (64-byte task descriptor, typed args, weight versions) | `include/kvm_task_abi.h`, `runtime/abi.py`, FRAMEWORK.md |
-| Operator registry packs (one `.def` per pack, sparse unique ids) | `include/kvm_ops*.def`, `.cuh` bodies, CPU references `runtime/ref_*.py` |
-| Executor (dynamic admission, slot recycling, streaming, litmus-tested ordering) | `kvm_exec.cu`, `include/kvm_exec.cuh`, `results/2026-11-03-a100-exec`, `results/2026-11-04-a100-exec-recycling` |
-| Scheduler and adaptive controller | `include/kvm_sched.*`, `include/kvm_adapt.h`, `adaptive/`, `results/2026-11-03-a100-sched`, `results/2026-11-04-a100-sched-integrated`, `results/2026-11-04-a100-adaptive` |
-| Frontend and model zoo (GPT, Llama/GQA, MoE, MLP, ViT, bf16, fusion, remat) | `frontend/kvmfe`, FRONTEND.md, `results/2026-11-04-a100-models` |
+| ABI v2 (64-byte task descriptor, typed args, weight versions) | `include/mvm_task_abi.h`, `runtime/abi.py`, FRAMEWORK.md |
+| Operator registry packs (one `.def` per pack, sparse unique ids) | `include/mvm_ops*.def`, `.cuh` bodies, CPU references `runtime/ref_*.py` |
+| Executor (dynamic admission, slot recycling, streaming, litmus-tested ordering) | `mvm_exec.cu`, `include/mvm_exec.cuh`, `results/2026-11-03-a100-exec`, `results/2026-11-04-a100-exec-recycling` |
+| Scheduler and adaptive controller | `include/mvm_sched.*`, `include/mvm_adapt.h`, `adaptive/`, `results/2026-11-03-a100-sched`, `results/2026-11-04-a100-sched-integrated`, `results/2026-11-04-a100-adaptive` |
+| Frontend and model zoo (GPT, Llama/GQA, MoE, MLP, ViT, bf16, fusion, remat) | `frontend/mvmfe`, FRONTEND.md, `results/2026-11-04-a100-models` |
 | Real Doom (doomgeneric compiled for the device) | `doom/`, `results/2026-11-03-a100-doom` |
 | Multi-GPU code | `dist/`, `runtime/partition.py`, DISTRIBUTED.md, `results/2026-11-03-dist-singlebox` |
 
@@ -256,7 +282,7 @@ graphs beat it on a 162M GPT (43.1 s vs 48.1 s, B200).
 | Status | What |
 |---|---|
 | ✅ **Implemented and measured** | Rendered executor timeline from the per-task trace (`demo/viz/timeline.py`, `results/2026-11-06-demo-tiny`); the full demo (training windows + serving on versioned weights + Doom in one launch), `results/2026-11-06-demo-tiny`. |
-| | `kvm.cu` MLP training: 1.50x over the best baseline at 1 run, 1.13x at 32 (table below; predates the loop opcode). |
+| | `mvm.cu` MLP training: 1.50x over the best baseline at 1 run, 1.13x at 32 (table below; predates the loop opcode). |
 | | Executor: 8582 checks, 0 failed, in two recorded runs (`2026-11-04-a100-sched-integrated`, `2026-11-04-a100-ops-perf`); 2.1M-task DAG through 65,536 slots; both negative builds detected; sanitizers clean; litmus 15 properties pass, 7 mutants detected. Dispatch 1.38 us/task at 108 blocks, dependent hop 7.0 us (`2026-11-04-a100-exec-recycling`). |
 | | Scheduler: weighted shares, reservations, EDF, priority inheritance, overload isolation (train 8-11x better than a priority queue under a serve flood) (`2026-11-03-a100-sched`, `2026-11-04-a100-sched-integrated`). |
 | | Real Doom: every frame equals the CPU oracle in all recorded runs (2000 standalone, 700 per executor scenario, 12/12 scheduler scenarios, 162 adaptive runs with up to 8 instances); 35 Hz held beside a saturating load under the dynamic scheduler (0 of 698 gaps over 28.57 ms). |
@@ -282,16 +308,16 @@ graphs beat it on a 162M GPT (43.1 s vs 48.1 s, B200).
 | Adaptive controller | Did not beat a hand-set fixed priority configuration (Doom frames late 470 vs 353 of 4030; serve p99 70.7 vs 60.8 ms). Its value is robustness (starvation floor, fast attack), not better numbers. | `2026-11-04-a100-adaptive` |
 | Dynamic scheduler vs plain priority | Serve p99 1.7-1.8x worse than a global queue giving serve a higher priority, at equal throughput; adds 3-4 us per task dispatch. Wins only against static splits and under overload. | `2026-11-04-a100-sched-integrated` |
 | Dispatch ceiling | About 0.7M tasks/s; the GPT-pack kernel uses 255 registers, so 1 block per SM (grid 108). Tasks under about 100 us per CTA are dispatch-bound. | `2026-11-04-a100-exec-recycling`, `2026-11-04-a100-ops-perf` |
-| RTX 5070 Laptop (sm_120) | `kvm.cu` passes but never clearly beats the batched graph (0.73-1.12x). | `2026-11-03-rtx5070-laptop-sm120` |
+| RTX 5070 Laptop (sm_120) | `mvm.cu` passes but never clearly beats the batched graph (0.73-1.12x). | `2026-11-03-rtx5070-laptop-sm120` |
 
 Tests and how to run them: [RUNNING_TESTS.md](RUNNING_TESTS.md). Quick check without a GPU:
 `python3 -I -m unittest discover -s tests && python3 -I -m unittest discover -s tests/frontend`.
 
-## 🐱 The `kvm.cu` prototype
+## 🐱 The `mvm.cu` prototype
 
-Timeline: run `./kvm --timeline FILE --tl-steps A B`, render with `bench/mlp_vs_torch/plot_timeline.py` (figures: `results/2026-11-06-a100-kvm-cu`). An earlier build-flag implementation (`-DKVM_TIMELINE`, 73-row-style figures with overhead 0-1.5%) is recorded in `results/2026-11-09-a100-timeline`; its code was dropped in favor of the one `--timeline` path.
+Timeline: run `./mvm --timeline FILE --tl-steps A B`, render with `bench/mlp_vs_torch/plot_timeline.py` (figures: `results/2026-11-06-a100-mvm-cu`). An earlier build-flag implementation (`-DMVM_TIMELINE`, 73-row-style figures with overhead 0-1.5%) is recorded in `results/2026-11-09-a100-timeline`; its code was dropped in favor of the one `--timeline` path.
 
-`kvm.cu` is a self-contained prototype (CUDA, sm_80, one file). The numbers below predate its loop opcode: rerun before quoting.
+`mvm.cu` is a self-contained prototype (CUDA, sm_80, one file). The numbers below predate its loop opcode: rerun before quoting.
 
 ## How it works
 
@@ -311,20 +337,20 @@ Timeline: run `./kvm --timeline FILE --tl-steps A B`, render with `bench/mlp_vs_
 ## Build / run
 
 ```bash
-nvcc -O3 -arch=sm_80 -std=c++17 -DKTILE=32 -DKKC=64 -DKSTG=4 kvm.cu -o kvm
-./kvm --selftest                       # GEMM, all 4 transpose combos vs CPU
-./kvm --runs 8 --steps 300             # 8 fused LR-sweep runs vs baselines
+nvcc -O3 -arch=sm_80 -std=c++17 -DKTILE=32 -DKKC=64 -DKSTG=4 mvm.cu -o mvm
+./mvm --selftest                       # GEMM, all 4 transpose combos vs CPU
+./mvm --runs 8 --steps 300             # 8 fused LR-sweep runs vs baselines
 ```
 
 Knobs: `-DKTILE` (32|64), `-DKKC` (K chunk, 32|64), `-DKSTG` (cp.async stages). Dims must be multiples
-of max(KTILE, KKC). `run_remote.sh` rsyncs to a GPU box (`KVM_HOST`), builds and runs under `flock`.
+of max(KTILE, KKC). `run_remote.sh` rsyncs to a GPU box (`MVM_HOST`), builds and runs under `flock`.
 
 ## Results (A100-SXM4-40GB, MLP B=128 D=128 H=256 O=64, KTILE=32 KKC=64 KSTG=4)
 
 Every mode is checked: loss matches a CPU fp32 reference (~3e-5 rel), final weights are bitwise identical
 across all four modes (the check is exact equality: it counts differing elements and fails on any).
 
-| runs | sequential launches | sequential graphs | batched graph (vmap-like) | **KVM** | KVM vs best baseline |
+| runs | sequential launches | sequential graphs | batched graph (vmap-like) | **Magni VM** | Magni VM vs best baseline |
 |---|---|---|---|---|---|
 | 1  | 45.1 us/step | 38.0 | 37.9 | **25.3** | 1.50x |
 | 8  | 37.0 us/step/run | 31.1 | 6.83 | **4.18** | 1.63x (8.9x vs sequential) |
@@ -335,8 +361,8 @@ across all four modes (the check is exact equality: it counts differing elements
 - Most of the "10.7x at 32 runs" is **batching, not the VM**: the batched graph (one launch per phase for all runs, vmap-like) alone
   gives 36.9 / 3.88 = 9.5x over sequential launches; the VM adds the remaining 1.13x (3.88 -> 3.45). The VM's own win is largest at
   1 run (1.50x over the best baseline) and shrinks as the baseline learns to batch.
-- Against torch (same process, best valid variant incl. `torch.compile` + whole-run CUDA graph, vmap/bmm batching; `results/2026-11-06-a100-kvm-cu`,
-  branch `perf/kvm-cu`, now merged here): TF32 like-for-like 1.50x / 1.51x / **0.70x at 1 / 8 / 32 runs, so the VM loses at 32 runs**; with fp16 operands
+- Against torch (same process, best valid variant incl. `torch.compile` + whole-run CUDA graph, vmap/bmm batching; `results/2026-11-06-a100-mvm-cu`,
+  branch `perf/mvm-cu`, now merged here): TF32 like-for-like 1.50x / 1.51x / **0.70x at 1 / 8 / 32 runs, so the VM loses at 32 runs**; with fp16 operands
   (a precision switch, compared with torch fp16 autocast) 2.01x / 2.24x / 1.25x.
 - The 32-run win with fp16 operands comes from halved shared-memory bytes (two blocks per SM), not from the VM idea itself.
 
@@ -350,4 +376,4 @@ across all four modes (the check is exact equality: it counts differing elements
 - Tile GEMM is far from peak (TF32 wmma, 4 warps, ~10 TFLOPs at the largest size tried). Tape is
   host-generated (88 MB at 32 runs x 300 steps); a loop opcode would shrink it.
 - Not done: on-chip weight residency across steps, bf16 path, transformer ops, H100 features
-  (TMA/wgmma). That is what a real kittens VM would add.
+  (TMA/wgmma). Those are what a complete VM of this kind would add.

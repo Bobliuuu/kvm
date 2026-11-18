@@ -7,9 +7,9 @@ and real Doom (700 frames), all driven only by `MANIFEST.json`. The check script
 |---|---|
 | GPU | NVIDIA A100-SXM4-40GB, 108 SMs (grid 108) |
 | Driver / CUDA | 580.105.08 / nvcc 12.8.93 |
-| Build | `nvcc -O3 -arch=sm_80 -std=c++17 -rdc=true -DKVM_WITH_GAME --fmad=false -Xcompiler -ffp-contract=off -lineinfo` |
+| Build | `nvcc -O3 -arch=sm_80 -std=c++17 -rdc=true -DMVM_WITH_GAME --fmad=false -Xcompiler -ffp-contract=off -lineinfo` |
 | Flags | model gpt_tiny, 200 steps, window 10, request every 50, 700 frames, tiling a100, exact 3xTF32 GEMMs (`--precise`), sched dynamic |
-| Command | `KVM_HOST=<alias> KVM_KEY=<key> KVM_REMOTE=<private scratch dir> demo/run_demo.sh tiny --lock-wait 14400` |
+| Command | `MVM_HOST=<alias> MVM_KEY=<key> MVM_REMOTE=<private scratch dir> demo/run_demo.sh tiny --lock-wait 14400` |
 | Code | commit 5dcf3d9 (main + window_done wraparound fix); the GPU stage was re-run by hand from the generated `gpu.sh` after the first wrapper hit its 900 s GPU-lock wait (box shared) |
 
 Results (`check.log`, `report.json`, `run.json` here; raw logs in the git-ignored `logs/20261106-tiny-demo/`):

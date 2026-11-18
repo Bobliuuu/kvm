@@ -10,11 +10,11 @@ No A100 re-run had been recorded. This is that re-run, on this tree (`4bbdaab`).
 ## Setup
 
 - **GPU:** NVIDIA A100-SXM4-40GB (sm_80), driver 590.48 (CUDA 13.1).
-- **Executor:** this tree's `kvm_exec.cu`, as a full build: every op pack, including the extra pack the zoo uses, so no `-DKVM_LEAN`. Built with:
+- **Executor:** this tree's `mvm_exec.cu`, as a full build: every op pack, including the extra pack the zoo uses, so no `-DMVM_LEAN`. Built with:
   `nvcc 12.8.93 -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -diag-suppress 177 -Xptxas --split-compile=16`.
 - **Run on the GPU machine:**
   1. Bundles and CPU goldens: `examples/models/prebuild.sh`, for `cases.txt` and then `cases_bf16s.txt`.
-  2. Runs and checks: `KVM_EXEC_BIN=<that binary> examples/models/run_box.sh`, once per list (`--cases examples/models/cases_bf16s.txt` for the second). It runs compute-sanitizer (memcheck, racecheck and synccheck) on the `san_*` cases.
+  2. Runs and checks: `MVM_EXEC_BIN=<that binary> examples/models/run_box.sh`, once per list (`--cases examples/models/cases_bf16s.txt` for the second). It runs compute-sanitizer (memcheck, racecheck and synccheck) on the `san_*` cases.
 - **Raw files:**
   - `runs_cases.txt` and `runs_bf16s.txt`: the runner's logs.
   - `cases/` and `cases_bf16s/`: one folder per case, with `check.txt`, `check.json` and `times.txt`. The two lists share some case names, so each list has its own folder.

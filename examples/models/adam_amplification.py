@@ -3,7 +3,7 @@
 
   adam_amplification.py CASE_DIR [--json OUT]
 
-CASE_DIR: workload.json, meta.json, bundle/{metadata,golden}.json, dump.txt (kvm_exec --dump-buffers) of a zoo case compiled with `reuse none`, so the raw
+CASE_DIR: workload.json, meta.json, bundle/{metadata,golden}.json, dump.txt (mvm_exec --dump-buffers) of a zoo case compiled with `reuse none`, so the raw
 gradient buffer of every step survives in BOTH the golden and the dump. The optimizer is replayed in float64 from the common initial weights, with the
 hyper-parameters, learning-rate schedule, loss scale and global-norm clip read from the workload's own tasks:
 
@@ -88,7 +88,7 @@ def load_model(info):
     sys.path.insert(0, str(ROOT / 'frontend'))
     sys.path.insert(0, str(ROOT / 'tests' / 'frontend'))
     import importlib.util
-    from kvmfe.pipeline import build_model
+    from mvmfe.pipeline import build_model
     s = importlib.util.spec_from_file_location('zoo_gen_bundle', ROOT / 'examples/models/gen_bundle.py')
     gb = importlib.util.module_from_spec(s)
     s.loader.exec_module(gb)

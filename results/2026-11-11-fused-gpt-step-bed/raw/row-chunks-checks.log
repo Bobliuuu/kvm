@@ -30,8 +30,8 @@ bed, precise, 2 steps, G 32: rc=0
   G 32: losses: 4.874084, 4.359669 (VM 4.874084, 4.359669): worst of 2 1.09e-07 relative, 1/count off by 0.0e+00: ok
   G 32: gradients (last step): worst 2.57e-04 of its tensor's scale (w.gpt.h1.mlp.fc1.w): ok
 executor, 1xTF32, 3 steps: rc=0
-    [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang)
-    [kvm_exec][I] fuse gpt: run 0: a gang of 32, 3 steps, attention in 2 query block(s) a unit, rows in chunks of 128 of 256, 6.52 MB of scratch, 75744 bytes of shared memory a member
+    [mvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang)
+    [mvm_exec][I] fuse gpt: run 0: a gang of 32, 3 steps, attention in 2 query block(s) a unit, rows in chunks of 128 of 256, 6.52 MB of scratch, 75744 bytes of shared memory a member
   exec: losses: 4.874073, 4.359650, 4.134085 (VM 4.874084, 4.359669, 4.133796): worst of 3 6.99e-05 relative, 1/count off by 0.0e+00: ok
 == 4. the executor on the panel rows
 w_tiny: rc=0 worst of 50 6.90e-04 relative, 1/count off by 0.0e+00: ok

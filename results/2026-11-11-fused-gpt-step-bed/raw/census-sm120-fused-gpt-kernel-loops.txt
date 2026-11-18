@@ -1,4 +1,4 @@
-_Z15kvm_fgpt_kernelPK11KvmFgptDescP11KvmCountersP10KvmHostErri: every block, 36424 instructions in 2675 blocks
+_Z15mvm_fgpt_kernelPK11MvmFgptDescP11MvmCountersP10MvmHostErri: every block, 36424 instructions in 2675 blocks
   72 MMA loops; by kind (HMMA a pass, LDGSTS a pass):
     HMMA   6 LDGSTS   0:  14 loops; registers used in the loop median 55, passengers median 78 (range 52-86), LDL a pass median 0 (range 0-0)
     HMMA   8 LDGSTS   0:  34 loops; registers used in the loop median 49, passengers median 68 (range 46-85), LDL a pass median 0 (range 0-0)

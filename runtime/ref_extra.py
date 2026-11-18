@@ -1,7 +1,7 @@
-"""CPU reference (compiler golden, float32 results) of the extra operator pack (include/kvm_ops_extra.def, ids 96-121).
+"""CPU reference (compiler golden, float32 results) of the extra operator pack (include/mvm_ops_extra.def, ids 96-121).
 
 Same model as ref_gpt.py: inputs/outputs are float32, intermediates in double, every stored result rounded to float32. The
-semantics are the comments of kvm_ops_extra.def; the frontend's float64 oracle (frontend/kvmfe/opset.py) is an independent
+semantics are the comments of mvm_ops_extra.def; the frontend's float64 oracle (frontend/mvmfe/opset.py) is an independent
 second implementation of the same text.
 """
 import math
@@ -396,7 +396,7 @@ def _gemv_ext(a):
 
 
 def _gemv_bf16(b, a):
-    """kvm_ops_extra.def gemv_bf16: v = bf16(prologue(x)), out[0,n] = f32(sum_k v[k] w[n,k] (+ res[0,n]))."""
+    """mvm_ops_extra.def gemv_bf16: v = bf16(prologue(x)), out[0,n] = f32(sum_k v[k] w[n,k] (+ res[0,n]))."""
     x, K, pro = b['x'], a['K'], a['pro']
     xs = [x[i] for i in range(K)]
     if pro == 1:
@@ -415,7 +415,7 @@ def _gemv_bf16(b, a):
         out[n] = bf16_round(y) if out.dtype == 'bf16' else y   # bf16 storage: one rounding of the fp32 result
 
 
-ATTN_EMPTY_M = -3.4028234663852886e38   # m of an empty split (kvm_ops_extra.cuh KVM_ATTN_EMPTY_M, the most negative float32)
+ATTN_EMPTY_M = -3.4028234663852886e38   # m of an empty split (mvm_ops_extra.cuh MVM_ATTN_EMPTY_M, the most negative float32)
 
 
 def _attn_part_ext(a):

@@ -60,6 +60,6 @@ The 5070's times are sm_120 at a laptop's clocks: they show where the step's tim
 ## Not yet done
 
 - **The A100 read of mlp1024** (h1024-d2) at 108 members: `grid_bed --hidden 1024 --depth 2 --members 108`, beside today's 304.7 us a step for
-  the row (block 1's final panel) and PyTorch's 104.6. Then the executor build, `KVM_CHECK_MLP_HIDDEN=1024 tests/static/run_check.sh 107 108`, and the row's
+  the row (block 1's final panel) and PyTorch's 104.6. Then the executor build, `MVM_CHECK_MLP_HIDDEN=1024 tests/static/run_check.sh 107 108`, and the row's
   paired read.
 - **Depth 4:** every hidden block stays resident through the step, so h1024-d4 needs 60,528 floats a member; streaming the blocks per layer lifts it.

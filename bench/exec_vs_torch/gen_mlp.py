@@ -22,7 +22,7 @@ a = ap.parse_args()
 tl = g.Tiling.preset(a.tiling)
 sgd = g.TrainConfig(steps=a.steps, optim=g.OptimConfig(kind='sgd', lr=0.05), clip=0)
 cfg = g.ModelConfig('mlp', vocab=100, d_model=48, layers=1, heads=3, seq=32, batch=3)
-from kvmfe import nn as _nn
+from mvmfe import nn as _nn
 
 
 class Net(g.MLPNet):   # the audit's MLPNet predates the training-program protocol (batch_streams / losses) of the integrated tree

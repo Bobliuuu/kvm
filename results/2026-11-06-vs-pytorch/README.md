@@ -4,16 +4,16 @@
 `torch.compile` + CUDA graph by more, and on the 3.4M-parameter model it is slower than plain PyTorch eager (3.5x). It beats eager
 only on the two smallest models (2.3x on `gpt_tiny`, 1.6x on `gpt_small`), where eager is launch-bound; there it also beats
 `torch.compile` without graphs (1.1-1.7x) but not with `reduce-overhead` on `gpt_small`.** README goal 3 ("faster than the strongest
-conventional execution") is therefore **not met** for transformer training; only the `kvm.cu` MLP result stands.
+conventional execution") is therefore **not met** for transformer training; only the `mvm.cu` MLP result stands.
 
 ## Setup
 
 - GPU: NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver 580.105.08, CUDA 12.8 (nvcc 12.8.93), max SM clock 1410 MHz; shared box, one hold of
   the GPU lock for the whole campaign. PyTorch 2.7.0+cu128, Triton 3.3.0 (`round2/env.txt`).
-- Executor: `kvm_exec` built with `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177
-  kvm_exec.cu`, base commit `6d31aba` (`fix/window-done-wrap`), run with the default grid (occupancy-sized, 108 SMs x resident blocks) and,
-  as `kvm_b4`, `--blocks 4`. Bundle: frontend `compile_training`, `a100` tiling, `reuse='shape'`, no fusion, `gen.py`. Bench code: commit `454f0b4`.
-- Models (`kvmfe.nn.GPT`: pre-LayerNorm, RoPE, causal attention, tanh-GELU MLP, untied bias-free head, mean CE):
+- Executor: `mvm_exec` built with `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177
+  mvm_exec.cu`, base commit `6d31aba` (`fix/window-done-wrap`), run with the default grid (occupancy-sized, 108 SMs x resident blocks) and,
+  as `mvm_b4`, `--blocks 4`. Bundle: frontend `compile_training`, `a100` tiling, `reuse='shape'`, no fusion, `gen.py`. Bench code: commit `454f0b4`.
+- Models (`mvmfe.nn.GPT`: pre-LayerNorm, RoPE, causal attention, tanh-GELU MLP, untied bias-free head, mean CE):
   `gpt_tiny` (d32, 1 layer, 2 heads, T32, B1, V64, 16.9k params, 50 steps), `gpt_small` preset (d64, 2 layers, 4 heads, T64, B2, V128, 116k, 50 steps),
   `gpt_mid` (d256, 4 layers, 4 heads, T128, B8, V512, 3.42M params, 1024 tokens/step, 20 steps; chosen as the largest size whose
   155k-task bundle the executor ran in this campaign without tuning, not a limit probe).
@@ -30,9 +30,9 @@ conventional execution") is therefore **not met** for transformer training; only
   Executor = the kernel's own cudaEvent time ("OK: n/n tasks, X ms"), 7 launches (separate processes, run right after the PyTorch modes in
   the same lock hold). One executor launch runs all N steps: persistent-kernel start and admission of the whole N-step tape are inside the time.
   **Ratios between PyTorch variants are from one process; ratios to the executor compare two processes minutes apart** (AGENTS.md asks for one
-  process; `kvm_exec` has no PyTorch-side hook). Best of 7 is the headline, median and worst are in the tables. Round 1 (`round1/`) is a full
+  process; `mvm_exec` has no PyTorch-side hook). Best of 7 is the headline, median and worst are in the tables. Round 1 (`round1/`) is a full
   repeat before a fix: its `compile_ro` loss list was invalid (CUDA-graph output aliasing, fixed in round 2), its timings are valid.
-- Reproduce: `bench/vs_pytorch/gen.py` (workloads), `campaign.sh` (box side, one lock hold), `report.py` (tables), `exec_bench.py` (was `kvm_bench.py`, never committed: `.gitignore` ignores `kvm_*`), `trace_summary.py`.
+- Reproduce: `bench/vs_pytorch/gen.py` (workloads), `campaign.sh` (box side, one lock hold), `report.py` (tables), `exec_bench.py` (was `mvm_bench.py`, never committed: `.gitignore` ignores `mvm_*`), `trace_summary.py`.
 
 ## Correctness first
 
@@ -91,6 +91,6 @@ and cuBLAS/Triton GEMMs are better, so the VM's two costs (README "Where a VM ca
 - Where the executor wins: against eager (launch-bound, 2.2-2.3x at 32 tokens, 1.6x at 128) and against `torch.compile` without CUDA graphs
   at the smallest sizes. A user who does not use CUDA graphs would see a win on tiny models; that is not the baseline AGENTS.md demands.
 - Not tested: fused-op bundles (`fuse=True`), larger models, an H100/B200 (the VM's design target), several runs per launch (vmap-like batching, the
-  setting where `kvm.cu` wins), a `-fmad=true` executor build, other tilings. Executor timing is per launch of N steps (ramp included); N = 20-50.
+  setting where `mvm.cu` wins), a `-fmad=true` executor build, other tilings. Executor timing is per launch of N steps (ramp included); N = 20-50.
 - Executor and PyTorch numbers come from different processes on a shared box (the lock serialises GPU jobs, not CPU load or clocks); the repeat
   round agrees within 10% except where noted.

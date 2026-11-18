@@ -1,10 +1,10 @@
 # The fused GPT step: attention's independent GEMMs at once, and grid_loop's divisions through a float reciprocal (A100)
 
-Two changes to the fused GPT step (`include/kvm_fused_gpt.cuh`), each keeping every bit of the step:
+Two changes to the fused GPT step (`include/mvm_fused_gpt.cuh`), each keeping every bit of the step:
 - **Attention's independent GEMMs at once** (`perf(fused): run the attention items' independent GEMMs at once`). The attention items'
   backward has GEMMs that read nothing another writes: do with P, dV with dS, dq with dK, dWq beside q's dh rows, dWk and dWv beside k's
   and v's. `gemm_par` runs them on disjoint warps, sized by each GEMM's tiles times its k steps. Each output's k chain stays whole in one
-  warp, in order, so every bit is the serial order's. `KVM_FGPT_PAIR` 0 runs them one after another, for a bed's control.
+  warp, in order, so every bit is the serial order's. `MVM_FGPT_PAIR` 0 runs them one after another, for a bed's control.
 - **grid_loop's divisions through a float reciprocal** (`perf(fused): divide grid_loop's bounds through a float reciprocal`). Every
   staging pass, `zero()` and row loop of the step runs `grid_loop`, and each call divided by a run-time value twice on every thread.
   `div_small` divides through `__fdividef`'s reciprocal and fixes the float quotient with one integer step.
@@ -51,7 +51,7 @@ Two builds also place their code differently in GPU memory, which alone has move
 ## The step's bed
 
 `raw/bed/` holds `bench/fused_gpt/fgpt_bed.cu` built from each tree with the executor's flags (`-O3 -arch=sm_80 -std=c++17 --fmad=false
--Xcompiler -ffp-contract=off -diag-suppress 177 -DKVM_LEAN`): b0 is the base, b1 this branch. Over 20 steps, b1's losses, parameters,
+-Xcompiler -ffp-contract=off -diag-suppress 177 -DMVM_LEAN`): b0 is the base, b1 this branch. Over 20 steps, b1's losses, parameters,
 moments and gradients are bitwise b0's on all four shapes. Then 5 rounds of 20 steps, the order alternating, in-kernel time a step:
 
 | shape | base, µs a step | this branch | rounds |

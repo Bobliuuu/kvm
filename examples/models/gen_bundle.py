@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Emit a training bundle of any zoo model (plus the compiler's float32 CPU golden) for a GPU run through kvm_exec.
+"""Emit a training bundle of any zoo model (plus the compiler's float32 CPU golden) for a GPU run through mvm_exec.
 
   python3 examples/models/gen_bundle.py OUT_DIR --model moe_tiny --steps 5 [--precise] [--fuse] [--accum K] [--tiling cpu|a100]
          [--schedule cosine --warmup 2] [--loss-scale 1024] [--clip 1.0]
@@ -21,8 +21,8 @@ sys.path.insert(0, str(ROOT / 'frontend'))
 
 
 def load_model(spec):
-    from kvmfe import models, nn
-    from kvmfe.ir import FrontendError
+    from mvmfe import models, nn
+    from mvmfe.ir import FrontendError
     if isinstance(spec, str) and spec in nn.PRESETS:
         return nn.PRESETS[spec]
     try:
@@ -32,9 +32,9 @@ def load_model(spec):
 
 
 def build(model, steps, tiling='cpu', precise=False, fuse=False, accum=1, schedule=None, warmup=0, loss_scale=1.0, clip=1.0, reuse='none'):
-    from kvmfe.lower import Tiling
-    from kvmfe.pipeline import compile_training
-    from kvmfe.train import Schedule, TrainConfig
+    from mvmfe.lower import Tiling
+    from mvmfe.pipeline import compile_training
+    from mvmfe.train import Schedule, TrainConfig
     cfg = load_model(model)
     tc = TrainConfig(steps=steps, accum=accum, clip=clip, loss_scale=loss_scale,
                      schedule=Schedule(schedule, warmup=warmup) if schedule else None)
@@ -67,8 +67,8 @@ def main():
     ops = {}
     for t in c.spec['graphs'][0]['tasks']:
         ops[t['op']] = ops.get(t['op'], 0) + 1
-    from kvmfe.optim import OptimConfig
-    from kvmfe.pipeline import build_model
+    from mvmfe.optim import OptimConfig
+    from mvmfe.pipeline import build_model
     specs = build_model(cfg).specs
     opt = OptimConfig()
     meta = dict(model=getattr(cfg, 'name', a.model), config=json.loads(json.dumps(cfg.__dict__, default=list)), steps=a.steps,

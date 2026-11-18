@@ -11,9 +11,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'frontend'))
-from kvmfe.generic import MLP, MSE, ArrayData, Conv1D, CrossEntropy, GeneratedData, SequencePool  # noqa: E402
-from kvmfe.nn import Linear, Module, Norm  # noqa: E402
-from kvmfe.optim import OptimConfig  # noqa: E402
+from mvmfe.generic import MLP, MSE, ArrayData, Conv1D, CrossEntropy, GeneratedData, SequencePool  # noqa: E402
+from mvmfe.nn import Linear, Module, Norm  # noqa: E402
+from mvmfe.optim import OptimConfig  # noqa: E402
 
 
 @dataclass

@@ -2,13 +2,13 @@
 
 ![loss](loss.png)
 
-The 162M GPT (12 layers, d768, 12 heads, seq 1024, batch 4, vocab 50304) trains on the executor, one `kvm_run` launch per step (window 1), and
+The 162M GPT (12 layers, d768, 12 heads, seq 1024, batch 4, vocab 50304) trains on the executor, one `mvm_run` launch per step (window 1), and
 its loss curve matches PyTorch's on the same init, token stream, AdamW, LR schedule and clip, at every step.
 
 | | |
 |---|---|
 | GPU | NVIDIA A100-SXM4-80GB (Modal), 108 SMs, driver 610.57.04, nvcc 12.4 (executor build), torch 2.15.0+cu132 |
-| Build | `nvcc -O3 -arch=sm_80 -std=c++17 -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 demo/kvm_run.cu` |
+| Build | `nvcc -O3 -arch=sm_80 -std=c++17 -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 demo/mvm_run.cu` |
 | Executor | 1xTF32 GEMMs (main), tiling a100, `--reuse shape`, 300 admissions of one step, 95,442,000 / 95,442,000 tasks OK, 389 s kernel time (395 s wall, 1.3 s/step) |
 | Optimiser | AdamW lr 3e-4, 5 warmup steps then constant, betas (0.9, 0.95), wd 0.01 on matrices, clip 1.0 |
 | Command | `modal run --detach tests/modal/run_gpt162.py --stage learn --tag learn256b --k 256 --noise 0.1 --steps 300 --lr 3e-4 --warmup 5` (runs `tests/gpt162/learning.sh`, then `learning_plot.py`) |
@@ -44,7 +44,7 @@ bigram and the noise rate, and generalises (hold-out equals train). No divergenc
 ## Files
 
 `learn.log` (full log), `curve.log`, `curve.json` (executor/torch curves, hold-out), `loss.csv`, `loss.png`, `summary.json`, `exec_observations.jsonl`, `exec_run.json`,
-`exec_kvm_run.log`, `nvidia.txt`, `model.json`.
+`exec_mvm_run.log`, `nvidia.txt`, `model.json`.
 
 ## Proposed text for README.md (not applied)
 

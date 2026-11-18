@@ -3,11 +3,11 @@ NVIDIA A100-SXM4-40GB, 610.57.04
       unsigned long long t0 = 0, t1 = 0, t2 = 0;
       unsigned long long t0 = 0, t1 = 0, t2 = 0;
   static double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
-SH-KVM: B=64 D=64 H=128 O=64 runs=8 steps=300 rung every E=75, K=2 rungs, 36 tile instrs/run-step, tape 86700 executed instrs (289-entry template)
+SH-MVM: B=64 D=64 H=128 O=64 runs=8 steps=300 rung every E=75, K=2 rungs, 36 tile instrs/run-step, tape 86700 executed instrs (289-entry template)
 NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
 
-KVM full population (no halving): best 6.935 ms  median 6.944 ms
-KVM in-kernel successive halving : best 6.782 ms  median 6.798 ms
+Magni VM full population (no halving): best 6.935 ms  median 6.944 ms
+Magni VM in-kernel successive halving : best 6.782 ms  median 6.798 ms
 halving saves 1.02x (best), 1.02x (median)
 survivors: 6(lr 0.3343) 7(lr 0.6000)
 kill rung per run: 1 1 1 1 2 2 0 0
@@ -30,7 +30,7 @@ kill rung per run: 1 1 1 1 2 2 0 0
    6,
    7
   ],
-  "survivors_kvm": [
+  "survivors_mvm": [
    6,
    7
   ],
@@ -52,12 +52,12 @@ kill rung per run: 1 1 1 1 2 2 0 0
    "6": 0.06720338761806488,
    "7": 0.045380234718322754
   },
-  "final_loss_kvm": {
+  "final_loss_mvm": {
    "6": 0.06720557808876038,
    "7": 0.045377880334854126
   },
   "runs_diverged_in_full_pop_ref": [],
-  "kill_rung_kvm": [
+  "kill_rung_mvm": [
    1,
    1,
    1,
@@ -203,24 +203,24 @@ kill rung per run: 1 1 1 1 2 2 0 0
    ]
   }
  },
- "kvm_ms": {
+ "mvm_ms": {
   "full_population": 6.9345,
   "controlled": 6.782
  },
  "speedup": {
-  "kvm_ctrl_vs_best_torch_ctrl_eager": 1.8272557395005853,
-  "kvm_ctrl_vs_best_torch_ctrl_compiled": 1.692725507533153,
-  "kvm_ctrl_vs_best_torch_any": 1.692725507533153,
-  "kvm_full_vs_B0_eager": 2.279247234701225,
-  "kvm_full_vs_B0_compiled": 1.6408807929312197
+  "mvm_ctrl_vs_best_torch_ctrl_eager": 1.8272557395005853,
+  "mvm_ctrl_vs_best_torch_ctrl_compiled": 1.692725507533153,
+  "mvm_ctrl_vs_best_torch_any": 1.692725507533153,
+  "mvm_full_vs_B0_eager": 2.279247234701225,
+  "mvm_full_vs_B0_compiled": 1.6408807929312197
  },
  "torch_per_run_gpu_mem_note": "all torch variants use manual fwd/bwd with bmm, TF32, CUDA graphs"
 }
-SH-KVM: B=64 D=64 H=128 O=64 runs=16 steps=300 rung every E=75, K=3 rungs, 36 tile instrs/run-step, tape 173100 executed instrs (577-entry template)
+SH-MVM: B=64 D=64 H=128 O=64 runs=16 steps=300 rung every E=75, K=3 rungs, 36 tile instrs/run-step, tape 173100 executed instrs (577-entry template)
 NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
 
-KVM full population (no halving): best 7.705 ms  median 7.711 ms
-KVM in-kernel successive halving : best 7.216 ms  median 7.233 ms
+Magni VM full population (no halving): best 7.705 ms  median 7.711 ms
+Magni VM in-kernel successive halving : best 7.216 ms  median 7.233 ms
 halving saves 1.07x (best), 1.07x (median)
 survivors: 14(lr 0.4567) 15(lr 0.6000)
 kill rung per run: 1 1 1 1 1 1 1 1 2 2 2 2 3 3 0 0
@@ -243,7 +243,7 @@ kill rung per run: 1 1 1 1 1 1 1 1 2 2 2 2 3 3 0 0
    14,
    15
   ],
-  "survivors_kvm": [
+  "survivors_mvm": [
    14,
    15
   ],
@@ -273,12 +273,12 @@ kill rung per run: 1 1 1 1 1 1 1 1 2 2 2 2 3 3 0 0
    "14": 0.054626546800136566,
    "15": 0.045380234718322754
   },
-  "final_loss_kvm": {
+  "final_loss_mvm": {
    "14": 0.054624803364276886,
    "15": 0.045377880334854126
   },
   "runs_diverged_in_full_pop_ref": [],
-  "kill_rung_kvm": [
+  "kill_rung_mvm": [
    1,
    1,
    1,
@@ -448,24 +448,24 @@ kill rung per run: 1 1 1 1 1 1 1 1 2 2 2 2 3 3 0 0
    ]
   }
  },
- "kvm_ms": {
+ "mvm_ms": {
   "full_population": 7.7046,
   "controlled": 7.2161
  },
  "speedup": {
-  "kvm_ctrl_vs_best_torch_ctrl_eager": 1.740179877180021,
-  "kvm_ctrl_vs_best_torch_ctrl_compiled": 1.634460676321194,
-  "kvm_ctrl_vs_best_torch_any": 1.634460676321194,
-  "kvm_full_vs_B0_eager": 2.126787550720511,
-  "kvm_full_vs_B0_compiled": 1.5106279895866541
+  "mvm_ctrl_vs_best_torch_ctrl_eager": 1.740179877180021,
+  "mvm_ctrl_vs_best_torch_ctrl_compiled": 1.634460676321194,
+  "mvm_ctrl_vs_best_torch_any": 1.634460676321194,
+  "mvm_full_vs_B0_eager": 2.126787550720511,
+  "mvm_full_vs_B0_compiled": 1.5106279895866541
  },
  "torch_per_run_gpu_mem_note": "all torch variants use manual fwd/bwd with bmm, TF32, CUDA graphs"
 }
-SH-KVM: B=64 D=64 H=128 O=64 runs=32 steps=300 rung every E=75, K=3 rungs, 36 tile instrs/run-step, tape 345900 executed instrs (1153-entry template)
+SH-MVM: B=64 D=64 H=128 O=64 runs=32 steps=300 rung every E=75, K=3 rungs, 36 tile instrs/run-step, tape 345900 executed instrs (1153-entry template)
 NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
 
-KVM full population (no halving): best 10.524 ms  median 10.526 ms
-KVM in-kernel successive halving : best 8.786 ms  median 8.818 ms
+Magni VM full population (no halving): best 10.524 ms  median 10.526 ms
+Magni VM in-kernel successive halving : best 8.786 ms  median 8.818 ms
 halving saves 1.20x (best), 1.19x (median)
 survivors: 28(lr 0.4037) 29(lr 0.4607) 30(lr 0.5258) 31(lr 0.6000)
 kill rung per run: 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 3 3 3 3 0 0 0 0
@@ -490,7 +490,7 @@ kill rung per run: 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 3 3 3 3 0 0 0
    30,
    31
   ],
-  "survivors_kvm": [
+  "survivors_mvm": [
    28,
    29,
    30,
@@ -540,14 +540,14 @@ kill rung per run: 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 3 3 3 3 0 0 0
    "30": 0.04964994266629219,
    "31": 0.045380234718322754
   },
-  "final_loss_kvm": {
+  "final_loss_mvm": {
    "28": 0.059344932436943054,
    "29": 0.05430150032043457,
    "30": 0.049647148698568344,
    "31": 0.045377884060144424
   },
   "runs_diverged_in_full_pop_ref": [],
-  "kill_rung_kvm": [
+  "kill_rung_mvm": [
    1,
    1,
    1,
@@ -765,24 +765,24 @@ kill rung per run: 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 3 3 3 3 0 0 0
    ]
   }
  },
- "kvm_ms": {
+ "mvm_ms": {
   "full_population": 10.5236,
   "controlled": 8.7859
  },
  "speedup": {
-  "kvm_ctrl_vs_best_torch_ctrl_eager": 1.4845022558589305,
-  "kvm_ctrl_vs_best_torch_ctrl_compiled": 1.379024089797211,
-  "kvm_ctrl_vs_best_torch_any": 1.379024089797211,
-  "kvm_full_vs_B0_eager": 1.6395910385510566,
-  "kvm_full_vs_B0_compiled": 1.1914037118466823
+  "mvm_ctrl_vs_best_torch_ctrl_eager": 1.4845022558589305,
+  "mvm_ctrl_vs_best_torch_ctrl_compiled": 1.379024089797211,
+  "mvm_ctrl_vs_best_torch_any": 1.379024089797211,
+  "mvm_full_vs_B0_eager": 1.6395910385510566,
+  "mvm_full_vs_B0_compiled": 1.1914037118466823
  },
  "torch_per_run_gpu_mem_note": "all torch variants use manual fwd/bwd with bmm, TF32, CUDA graphs"
 }
-SH-KVM: B=128 D=128 H=256 O=64 runs=32 steps=300 rung every E=25, K=11 rungs, 120 tile instrs/run-step, tape 1152300 executed instrs (3841-entry template)
+SH-MVM: B=128 D=128 H=256 O=64 runs=32 steps=300 rung every E=25, K=11 rungs, 120 tile instrs/run-step, tape 1152300 executed instrs (3841-entry template)
 NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
 
-KVM full population (no halving): best 31.191 ms  median 31.318 ms
-KVM in-kernel successive halving : best 13.442 ms  median 13.456 ms
+Magni VM full population (no halving): best 31.191 ms  median 31.318 ms
+Magni VM in-kernel successive halving : best 13.442 ms  median 13.456 ms
 halving saves 2.32x (best), 2.33x (median)
 survivors:
 kill rung per run: 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 7 6 5 5 4 4 3 3 2 2 2 2 1 1
@@ -802,7 +802,7 @@ kill rung per run: 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 7 6 5 5 4 4 3 3 2 2 2 2 1
  },
  "correctness": {
   "survivors_ref": [],
-  "survivors_kvm": [],
+  "survivors_mvm": [],
   "same_survivors": true,
   "max_rel_loss_err_sh_alive_steps": 0.0002216394350398332,
   "max_rel_loss_err_full_population": 0.3459344208240509,
@@ -842,12 +842,12 @@ kill rung per run: 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 7 6 5 5 4 4 3 3 2 2 2 2 1
    1
   ],
   "final_loss_ref": {},
-  "final_loss_kvm": {},
+  "final_loss_mvm": {},
   "runs_diverged_in_full_pop_ref": [
    30,
    31
   ],
-  "kill_rung_kvm": [
+  "kill_rung_mvm": [
    1,
    1,
    1,
@@ -1038,24 +1038,24 @@ kill rung per run: 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 7 6 5 5 4 4 3 3 2 2 2 2 1
    ]
   }
  },
- "kvm_ms": {
+ "mvm_ms": {
   "full_population": 31.191,
   "controlled": 13.442
  },
  "speedup": {
-  "kvm_ctrl_vs_best_torch_ctrl_eager": 0.9060746731990116,
-  "kvm_ctrl_vs_best_torch_ctrl_compiled": 1.79173339426012,
-  "kvm_ctrl_vs_best_torch_any": 0.9060746731990116,
-  "kvm_full_vs_B0_eager": 0.766350311771437,
-  "kvm_full_vs_B0_compiled": 0.7537764013300863
+  "mvm_ctrl_vs_best_torch_ctrl_eager": 0.9060746731990116,
+  "mvm_ctrl_vs_best_torch_ctrl_compiled": 1.79173339426012,
+  "mvm_ctrl_vs_best_torch_any": 0.9060746731990116,
+  "mvm_full_vs_B0_eager": 0.766350311771437,
+  "mvm_full_vs_B0_compiled": 0.7537764013300863
  },
  "torch_per_run_gpu_mem_note": "all torch variants use manual fwd/bwd with bmm, TF32, CUDA graphs"
 }
-SH-KVM: B=64 D=64 H=128 O=64 runs=16 steps=300 rung every E=25, K=11 rungs, 36 tile instrs/run-step, tape 173100 executed instrs (577-entry template)
+SH-MVM: B=64 D=64 H=128 O=64 runs=16 steps=300 rung every E=25, K=11 rungs, 36 tile instrs/run-step, tape 173100 executed instrs (577-entry template)
 NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
 
-KVM full population (no halving): best 7.709 ms  median 7.717 ms
-KVM in-kernel successive halving : best 5.010 ms  median 5.020 ms
+Magni VM full population (no halving): best 7.709 ms  median 7.717 ms
+Magni VM in-kernel successive halving : best 5.010 ms  median 5.020 ms
 halving saves 1.54x (best), 1.54x (median)
 survivors:
 kill rung per run: 1 1 1 1 1 1 1 1 1 7 5 4 3 2 2 1
@@ -1075,7 +1075,7 @@ kill rung per run: 1 1 1 1 1 1 1 1 1 7 5 4 3 2 2 1
  },
  "correctness": {
   "survivors_ref": [],
-  "survivors_kvm": [],
+  "survivors_mvm": [],
   "same_survivors": true,
   "max_rel_loss_err_sh_alive_steps": 0.00031808321364223957,
   "max_rel_loss_err_full_population": 0.0021431678906083107,
@@ -1099,9 +1099,9 @@ kill rung per run: 1 1 1 1 1 1 1 1 1 7 5 4 3 2 2 1
    1
   ],
   "final_loss_ref": {},
-  "final_loss_kvm": {},
+  "final_loss_mvm": {},
   "runs_diverged_in_full_pop_ref": [],
-  "kill_rung_kvm": [
+  "kill_rung_mvm": [
    1,
    1,
    1,
@@ -1244,24 +1244,24 @@ kill rung per run: 1 1 1 1 1 1 1 1 1 7 5 4 3 2 2 1
    ]
   }
  },
- "kvm_ms": {
+ "mvm_ms": {
   "full_population": 7.7087,
   "controlled": 5.0104
  },
  "speedup": {
-  "kvm_ctrl_vs_best_torch_ctrl_eager": 1.9331821975817645,
-  "kvm_ctrl_vs_best_torch_ctrl_compiled": 2.402835773161648,
-  "kvm_ctrl_vs_best_torch_any": 1.9331821975817645,
-  "kvm_full_vs_B0_eager": 1.6600630982865747,
-  "kvm_full_vs_B0_compiled": 1.825976350424467
+  "mvm_ctrl_vs_best_torch_ctrl_eager": 1.9331821975817645,
+  "mvm_ctrl_vs_best_torch_ctrl_compiled": 2.402835773161648,
+  "mvm_ctrl_vs_best_torch_any": 1.9331821975817645,
+  "mvm_full_vs_B0_eager": 1.6600630982865747,
+  "mvm_full_vs_B0_compiled": 1.825976350424467
  },
  "torch_per_run_gpu_mem_note": "all torch variants use manual fwd/bwd with bmm, TF32, CUDA graphs"
 }
-SH-KVM: B=128 D=128 H=256 O=64 runs=8 steps=300 rung every E=75, K=2 rungs, 120 tile instrs/run-step, tape 288300 executed instrs (961-entry template)
+SH-MVM: B=128 D=128 H=256 O=64 runs=8 steps=300 rung every E=75, K=2 rungs, 120 tile instrs/run-step, tape 288300 executed instrs (961-entry template)
 NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
 
-KVM full population (no halving): best 12.201 ms  median 12.212 ms
-KVM in-kernel successive halving : best 10.348 ms  median 10.372 ms
+Magni VM full population (no halving): best 12.201 ms  median 12.212 ms
+Magni VM in-kernel successive halving : best 10.348 ms  median 10.372 ms
 halving saves 1.18x (best), 1.18x (median)
 survivors: 6(lr 0.3343) 7(lr 0.6000)
 kill rung per run: 1 1 1 1 2 2 0 0
@@ -1284,7 +1284,7 @@ kill rung per run: 1 1 1 1 2 2 0 0
    6,
    7
   ],
-  "survivors_kvm": [
+  "survivors_mvm": [
    6,
    7
   ],
@@ -1306,12 +1306,12 @@ kill rung per run: 1 1 1 1 2 2 0 0
    "6": 0.06993453949689865,
    "7": 0.04700247198343277
   },
-  "final_loss_kvm": {
+  "final_loss_mvm": {
    "6": 0.06993447244167328,
    "7": 0.04700496792793274
   },
   "runs_diverged_in_full_pop_ref": [],
-  "kill_rung_kvm": [
+  "kill_rung_mvm": [
    1,
    1,
    1,
@@ -1457,24 +1457,24 @@ kill rung per run: 1 1 1 1 2 2 0 0
    ]
   }
  },
- "kvm_ms": {
+ "mvm_ms": {
   "full_population": 12.201,
   "controlled": 10.3475
  },
  "speedup": {
-  "kvm_ctrl_vs_best_torch_ctrl_eager": 1.431373398958931,
-  "kvm_ctrl_vs_best_torch_ctrl_compiled": 1.4019818892367193,
-  "kvm_ctrl_vs_best_torch_any": 1.4019818892367193,
-  "kvm_full_vs_B0_eager": 1.2482543937808792,
-  "kvm_full_vs_B0_compiled": 1.2008353399747747
+  "mvm_ctrl_vs_best_torch_ctrl_eager": 1.431373398958931,
+  "mvm_ctrl_vs_best_torch_ctrl_compiled": 1.4019818892367193,
+  "mvm_ctrl_vs_best_torch_any": 1.4019818892367193,
+  "mvm_full_vs_B0_eager": 1.2482543937808792,
+  "mvm_full_vs_B0_compiled": 1.2008353399747747
  },
  "torch_per_run_gpu_mem_note": "all torch variants use manual fwd/bwd with bmm, TF32, CUDA graphs"
 }
-SH-KVM: B=128 D=128 H=256 O=64 runs=32 steps=300 rung every E=75, K=3 rungs, 120 tile instrs/run-step, tape 1152300 executed instrs (3841-entry template)
+SH-MVM: B=128 D=128 H=256 O=64 runs=32 steps=300 rung every E=75, K=3 rungs, 120 tile instrs/run-step, tape 1152300 executed instrs (3841-entry template)
 NVIDIA A100-SXM4-40GB  SMs=108 occ=2  vm grid=216
 
-KVM full population (no halving): best 31.315 ms  median 40.169 ms
-KVM in-kernel successive halving : best 20.264 ms  median 20.286 ms
+Magni VM full population (no halving): best 31.315 ms  median 40.169 ms
+Magni VM in-kernel successive halving : best 20.264 ms  median 20.286 ms
 halving saves 1.55x (best), 1.98x (median)
 survivors: 28(lr 0.4037) 29(lr 0.4607) 30(lr 0.5258) 31(lr 0.6000)
 kill rung per run: 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 3 3 3 3 0 0 0 0
@@ -1499,7 +1499,7 @@ kill rung per run: 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 3 3 3 3 0 0 0
    30,
    31
   ],
-  "survivors_kvm": [
+  "survivors_mvm": [
    28,
    29,
    30,
@@ -1549,14 +1549,14 @@ kill rung per run: 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 3 3 3 3 0 0 0
    "30": 0.05147182196378708,
    "31": 0.04700247198343277
   },
-  "final_loss_kvm": {
+  "final_loss_mvm": {
    "28": 0.06163650378584862,
    "29": 0.05634171515703201,
    "30": 0.051471225917339325,
    "31": 0.04700496792793274
   },
   "runs_diverged_in_full_pop_ref": [],
-  "kill_rung_kvm": [
+  "kill_rung_mvm": [
    1,
    1,
    1,
@@ -1774,16 +1774,16 @@ kill rung per run: 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 3 3 3 3 0 0 0
    ]
   }
  },
- "kvm_ms": {
+ "mvm_ms": {
   "full_population": 31.3149,
   "controlled": 20.2639
  },
  "speedup": {
-  "kvm_ctrl_vs_best_torch_ctrl_eager": 0.9054541326043193,
-  "kvm_ctrl_vs_best_torch_ctrl_compiled": 0.8881717593952774,
-  "kvm_ctrl_vs_best_torch_any": 0.8881717593952774,
-  "kvm_full_vs_B0_eager": 0.76106188273662,
-  "kvm_full_vs_B0_compiled": 0.7491263433164503
+  "mvm_ctrl_vs_best_torch_ctrl_eager": 0.9054541326043193,
+  "mvm_ctrl_vs_best_torch_ctrl_compiled": 0.8881717593952774,
+  "mvm_ctrl_vs_best_torch_any": 0.8881717593952774,
+  "mvm_full_vs_B0_eager": 0.76106188273662,
+  "mvm_full_vs_B0_compiled": 0.7491263433164503
  },
  "torch_per_run_gpu_mem_note": "all torch variants use manual fwd/bwd with bmm, TF32, CUDA graphs"
 }
@@ -1797,42 +1797,42 @@ kill rung per run: 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 3 3 3 3 0 0 0
 + mkdir -p /logs/final/c0
 + echo 'CONFIG --runs 8 --steps 300 --E 75 --K 2 --B 64 --D 64 --H 128 --O 64'
 + ./coopt_sh --runs 8 --steps 300 --E 75 --K 2 --B 64 --D 64 --H 128 --O 64 --out /logs/final/c0/dump
-+ tee -a /logs/final/c0/kvm.log
++ tee -a /logs/final/c0/mvm.log
 + python3 -I torch_sh.py /logs/final/c0/dump
 + tee /logs/final/c0/torch.log
 + mkdir -p /logs/final/c1
 + echo 'CONFIG --runs 16 --steps 300 --E 75 --K 3 --B 64 --D 64 --H 128 --O 64'
 + ./coopt_sh --runs 16 --steps 300 --E 75 --K 3 --B 64 --D 64 --H 128 --O 64 --out /logs/final/c1/dump
-+ tee -a /logs/final/c1/kvm.log
++ tee -a /logs/final/c1/mvm.log
 + python3 -I torch_sh.py /logs/final/c1/dump
 + tee /logs/final/c1/torch.log
 + mkdir -p /logs/final/c2
 + echo 'CONFIG --runs 32 --steps 300 --E 75 --K 3 --B 64 --D 64 --H 128 --O 64'
 + ./coopt_sh --runs 32 --steps 300 --E 75 --K 3 --B 64 --D 64 --H 128 --O 64 --out /logs/final/c2/dump
-+ tee -a /logs/final/c2/kvm.log
++ tee -a /logs/final/c2/mvm.log
 + python3 -I torch_sh.py /logs/final/c2/dump
 + tee /logs/final/c2/torch.log
 + mkdir -p /logs/final/c3
 + echo 'CONFIG --runs 32 --steps 300 --mode 1 --E 25 --K 11 --lrlo 0.05 --lrhi 8 --target 0.05 --divthr 1.0 --prune 3.0'
 + ./coopt_sh --runs 32 --steps 300 --mode 1 --E 25 --K 11 --lrlo 0.05 --lrhi 8 --target 0.05 --divthr 1.0 --prune 3.0 --out /logs/final/c3/dump
-+ tee -a /logs/final/c3/kvm.log
++ tee -a /logs/final/c3/mvm.log
 + python3 -I torch_sh.py /logs/final/c3/dump
 + tee /logs/final/c3/torch.log
 + mkdir -p /logs/final/c4
 + echo 'CONFIG --runs 16 --steps 300 --mode 1 --E 25 --K 11 --lrlo 0.05 --lrhi 8 --target 0.05 --divthr 1.0 --prune 3.0 --B 64 --D 64 --H 128 --O 64'
 + ./coopt_sh --runs 16 --steps 300 --mode 1 --E 25 --K 11 --lrlo 0.05 --lrhi 8 --target 0.05 --divthr 1.0 --prune 3.0 --B 64 --D 64 --H 128 --O 64 --out /logs/final/c4/dump
-+ tee -a /logs/final/c4/kvm.log
++ tee -a /logs/final/c4/mvm.log
 + python3 -I torch_sh.py /logs/final/c4/dump
 + tee /logs/final/c4/torch.log
 + mkdir -p /logs/final/c5
 + echo 'CONFIG --runs 8 --steps 300 --E 75 --K 2'
 + ./coopt_sh --runs 8 --steps 300 --E 75 --K 2 --out /logs/final/c5/dump
-+ tee -a /logs/final/c5/kvm.log
++ tee -a /logs/final/c5/mvm.log
 + python3 -I torch_sh.py /logs/final/c5/dump
 + tee /logs/final/c5/torch.log
 + mkdir -p /logs/final/c6
 + echo 'CONFIG --runs 32 --steps 300 --E 75 --K 3'
 + ./coopt_sh --runs 32 --steps 300 --E 75 --K 3 --out /logs/final/c6/dump
-+ tee -a /logs/final/c6/kvm.log
++ tee -a /logs/final/c6/mvm.log
 + python3 -I torch_sh.py /logs/final/c6/dump
 + tee /logs/final/c6/torch.log

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Where the time of a static-schedule run went, worker by worker (kvm_exec --static --trace-csv FILE):
+"""Where the time of a static-schedule run went, worker by worker (mvm_exec --static --trace-csv FILE):
 
   static_balance.py TRACE.csv [STEPS]
 

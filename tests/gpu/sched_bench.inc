@@ -1,6 +1,6 @@
 // Measurement suites (included by test_sched.cu): dispatch, arbiter, rebalance, baselines. They print the numbers quoted in results/.
 struct GapStats { double p50, p90, p99, occ; };
-static GapStats gap_stats(const KvmResult& r, int workers) {
+static GapStats gap_stats(const MvmResult& r, int workers) {
   auto v = tview(r); std::vector<std::vector<std::pair<double, double>>> byb(r.grid);
   double w0 = 1e30, w1 = 0, busy = 0;
   for (size_t i = 0; i < r.trace.size(); ++i) { byb[r.trace[i].block].push_back({v[i].start, v[i].end}); w0 = std::min(w0, v[i].start); w1 = std::max(w1, v[i].end); busy += v[i].end - v[i].start; }
@@ -8,7 +8,7 @@ static GapStats gap_stats(const KvmResult& r, int workers) {
   return {pct(gaps, 50), pct(gaps, 90), pct(gaps, 99), busy / ((w1 - w0) * workers)};
 }
 
-static GapStats gap_stats_cls(const KvmResult& r, int workers, int cls) {   // gaps between consecutive tasks of one class on one CTA
+static GapStats gap_stats_cls(const MvmResult& r, int workers, int cls) {   // gaps between consecutive tasks of one class on one CTA
   auto v = tview(r); std::vector<std::vector<std::pair<double, double>>> byb(r.grid);
   for (size_t i = 0; i < r.trace.size(); ++i) if (v[i].cls == cls) byb[r.trace[i].block].push_back({v[i].start, v[i].end});
   std::vector<double> gaps; for (auto& b : byb) { std::sort(b.begin(), b.end()); for (size_t i = 1; i < b.size(); ++i) gaps.push_back(b[i].first - b[i - 1].second); }
@@ -18,14 +18,14 @@ static GapStats gap_stats_cls(const KvmResult& r, int workers, int cls) {   // g
 static bool suite_dispatch() {
   int before = g_fail; const int W = 32;
   struct Cfg { const char* name; bool on; int mode, nc; };
-  for (int us : {200, 20}) for (const Cfg& cf : std::vector<Cfg>{{"sched off (original)", false, 0, 1}, {"GLOBAL", true, KVM_SCHED_GLOBAL, 4}, {"DYNAMIC 1 class", true, KVM_SCHED_DYNAMIC, 1}, {"DYNAMIC 4 classes", true, KVM_SCHED_DYNAMIC, 4}}) {
+  for (int us : {200, 20}) for (const Cfg& cf : std::vector<Cfg>{{"sched off (original)", false, 0, 1}, {"GLOBAL", true, MVM_SCHED_GLOBAL, 4}, {"DYNAMIC 1 class", true, MVM_SCHED_DYNAMIC, 1}, {"DYNAMIC 4 classes", true, MVM_SCHED_DYNAMIC, 4}}) {
     std::vector<double> occ, p50;
     for (int rep = 0; rep < 3; ++rep) {
-      KvmConfig c = sched_cfg(W + (cf.on ? 2 : 1), cf.nc, cf.mode); c.sched.on = cf.on; c.max_tasks = 1 << 17; c.live_cap = 1 << 14; c.ring_words = 1 << 17;
-      KvmExec ex(c); ex.start();
+      MvmConfig c = sched_cfg(W + (cf.on ? 2 : 1), cf.nc, cf.mode); c.sched.on = cf.on; c.max_tasks = 1 << 17; c.live_cap = 1 << 14; c.ring_words = 1 << 17;
+      MvmExec ex(c); ex.start();
       const int nt = us == 200 ? 400 : 3000;
-      for (int b = 0; b < 12; ++b) CHECK(ex.submit(spin_bundle(nt, us, b % cf.nc), 30000) == KvmSubmit::OK, "submit");
-      const KvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
+      for (int b = 0; b < 12; ++b) CHECK(ex.submit(spin_bundle(nt, us, b % cf.nc), 30000) == MvmSubmit::OK, "submit");
+      const MvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
       GapStats g = gap_stats(r, W); occ.push_back(g.occ); p50.push_back(g.p50);
     }
     Spread so = spread(occ), sg = spread(p50);
@@ -34,19 +34,19 @@ static bool suite_dispatch() {
   return g_fail == before;
 }
 
-#ifdef KVM_PROF_GAP
-// Where the dispatch gap goes (build with -DKVM_PROF_GAP): mean/p50 SM-clock time of each phase between the end of one op and the start
-// of the next on the same block (see KVM_PG in kvm_exec.cuh). 32 workers, equal spin tasks, no successors.
+#ifdef MVM_PROF_GAP
+// Where the dispatch gap goes (build with -DMVM_PROF_GAP): mean/p50 SM-clock time of each phase between the end of one op and the start
+// of the next on the same block (see MVM_PG in mvm_exec.cuh). 32 workers, equal spin tasks, no successors.
 static bool suite_gapprof() {
   int before = g_fail; const int W = 32;
   static const char* ph[] = {"end bookkeeping+publish", "fence+succ release", "sched_done", "window credit", "free slot", "done count", "POP", "desc copy", "start bookkeeping"};
   struct Cfg { const char* name; bool on; int mode, nc; };
-  for (int us : {200, 20}) for (const Cfg& cf : std::vector<Cfg>{{"sched off", false, 0, 1}, {"DYNAMIC 4 classes", true, KVM_SCHED_DYNAMIC, 4}}) {
-    KvmConfig c = sched_cfg(W + (cf.on ? 2 : 1), cf.nc, cf.mode); c.sched.on = cf.on; c.max_tasks = 1 << 17; c.live_cap = 1 << 14; c.ring_words = 1 << 17;
-    KvmExec ex(c); ex.start();
+  for (int us : {200, 20}) for (const Cfg& cf : std::vector<Cfg>{{"sched off", false, 0, 1}, {"DYNAMIC 4 classes", true, MVM_SCHED_DYNAMIC, 4}}) {
+    MvmConfig c = sched_cfg(W + (cf.on ? 2 : 1), cf.nc, cf.mode); c.sched.on = cf.on; c.max_tasks = 1 << 17; c.live_cap = 1 << 14; c.ring_words = 1 << 17;
+    MvmExec ex(c); ex.start();
     const int nt = us == 200 ? 400 : 3000;
-    for (int b = 0; b < 12; ++b) CHECK(ex.submit(spin_bundle(nt, us, b % cf.nc), 30000) == KvmSubmit::OK, "submit");
-    const KvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
+    for (int b = 0; b < 12; ++b) CHECK(ex.submit(spin_bundle(nt, us, b % cf.nc), 30000) == MvmSubmit::OK, "submit");
+    const MvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
     std::vector<std::vector<double>> v(9); double gaps = 0; int n = 0;
     for (auto& t : r.trace) if (t.gp[15] == 1 && t.gp[6] < 200000) { for (int k = 0; k < 9; ++k) v[k].push_back(t.gp[k] / 1.41); ++n; }
     printf("  %3d us tasks, %-18s: %d samples (ns, SM clock 1.41 GHz)  ", us, cf.name, n);
@@ -59,24 +59,24 @@ static bool suite_gapprof() {
 
 // Admission: how long the admitter takes per record (the next record's admission starts when this one is done), and how long a
 // 1-task record of another class waits behind a big one (head-of-line blocking).
-static KvmBundle noop_bundle(int n, int cls, bool chain = false) {
-  KvmBundleBuilder b; KvmTaskOpts o; o.workload = cls; int prev = -1;
+static MvmBundle noop_bundle(int n, int cls, bool chain = false) {
+  MvmBundleBuilder b; MvmTaskOpts o; o.workload = cls; int prev = -1;
   for (int i = 0; i < n; ++i) { int t = b.add("noop", {}, o); if (chain && prev >= 0) b.edge(prev, t); prev = t; }
   return b.build();
 }
 static bool suite_admit() {
   int before = g_fail; const int W = 64;
   auto cfg = [&](bool on) {
-    KvmConfig c = sched_cfg(W + 2, 2, KVM_SCHED_DYNAMIC); c.sched.on = on; c.max_tasks = 1 << 18; c.live_cap = 1 << 17; c.succ_cap = 1 << 18; c.ring_words = 1 << 21; c.win_cap = 1 << 10;
+    MvmConfig c = sched_cfg(W + 2, 2, MVM_SCHED_DYNAMIC); c.sched.on = on; c.max_tasks = 1 << 18; c.live_cap = 1 << 17; c.succ_cap = 1 << 18; c.ring_words = 1 << 21; c.win_cap = 1 << 10;
     return c;
   };
   printf("  admission time per record = admit instant of the next record minus this one's (2 records back to back, 4 repeats, median [min,max])\n");
   for (bool chain : {false, true}) for (int n : {1024, 16384, 65536}) {
     std::vector<double> dur;
     for (int rep = 0; rep < 4; ++rep) {
-      KvmExec ex(cfg(true)); ex.start();
-      CHECK(ex.submit(noop_bundle(n, 0, chain), 30000) == KvmSubmit::OK, "submit"); CHECK(ex.submit(noop_bundle(n, 0, chain), 30000) == KvmSubmit::OK, "submit");
-      const KvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
+      MvmExec ex(cfg(true)); ex.start();
+      CHECK(ex.submit(noop_bundle(n, 0, chain), 30000) == MvmSubmit::OK, "submit"); CHECK(ex.submit(noop_bundle(n, 0, chain), 30000) == MvmSubmit::OK, "submit");
+      const MvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
       unsigned long long a0 = ~0ull, a1 = 0; for (auto& t : r.trace) if (t.admit_ns) { a0 = std::min(a0, t.admit_ns); a1 = std::max(a1, t.admit_ns); }
       dur.push_back((a1 - a0) / 1e3);
     }
@@ -87,9 +87,9 @@ static bool suite_admit() {
   for (int n : {1024, 16384, 65536}) {
     std::vector<double> wt;
     for (int rep = 0; rep < 4; ++rep) {
-      KvmExec ex(cfg(true)); ex.start();
-      CHECK(ex.submit(noop_bundle(n, 1), 30000) == KvmSubmit::OK, "submit"); CHECK(ex.submit(noop_bundle(1, 0), 30000) == KvmSubmit::OK, "submit");
-      const KvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
+      MvmExec ex(cfg(true)); ex.start();
+      CHECK(ex.submit(noop_bundle(n, 1), 30000) == MvmSubmit::OK, "submit"); CHECK(ex.submit(noop_bundle(1, 0), 30000) == MvmSubmit::OK, "submit");
+      const MvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
       unsigned long long big0 = ~0ull, small_ready = 0; for (size_t i = 0; i < r.trace.size(); ++i) { if (r.tasks[i].workload_id == 1) big0 = std::min(big0, r.trace[i].admit_ns); else small_ready = r.trace[i].ready_ns; }
       wt.push_back((small_ready - big0) / 1e3);
     }
@@ -100,30 +100,30 @@ static bool suite_admit() {
 }
 
 // Latency probes (1 noop task of class 0 with a deadline, every ~1 ms) while a 65,536-task flood of 20 us tasks of class 1 is being admitted.
-// direct = ex.submit of the flood as one record (the ring is FIFO); front = the KvmFront (chunks of 2048 tasks, ring budget 4096 tasks).
+// direct = ex.submit of the flood as one record (the ring is FIFO); front = the MvmFront (chunks of 2048 tasks, ring budget 4096 tasks).
 static bool suite_hol() {
   int before = g_fail; const int W = 64, NF = 65536, NP = 40;
   printf("  flood: %d x spin(20 us) of class 1 (%d workers); probes: 1 noop of class 0, 200 us deadline, end-to-end host latency submit -> window done\n", NF, W);
   for (int mode = 0; mode < 2; ++mode) {
     std::vector<double> lat, wall; 
     for (int rep = 0; rep < 3; ++rep) {
-      KvmConfig c = sched_cfg(W + 2, 2, KVM_SCHED_DYNAMIC); c.max_tasks = 1 << 18; c.live_cap = 1 << 17; c.succ_cap = 1 << 18; c.ring_words = 1 << 21; c.sched.p.cls[0].urgent_us = KVM_URGENT_ALL;
-      KvmExec ex(c); ex.start();
-      std::unique_ptr<KvmFront> fr; if (mode == 1) { KvmFront::Cfg fc; fc.classes = 2; fr.reset(new KvmFront(ex, fc)); }
-      KvmBundle flood = spin_bundle(NF, 20, 1), probe; { KvmBundleBuilder b; KvmTaskOpts o; o.workload = 0; o.deadline_us = 200; b.add("noop", {}, o); probe = b.build(); }
+      MvmConfig c = sched_cfg(W + 2, 2, MVM_SCHED_DYNAMIC); c.max_tasks = 1 << 18; c.live_cap = 1 << 17; c.succ_cap = 1 << 18; c.ring_words = 1 << 21; c.sched.p.cls[0].urgent_us = MVM_URGENT_ALL;
+      MvmExec ex(c); ex.start();
+      std::unique_ptr<MvmFront> fr; if (mode == 1) { MvmFront::Cfg fc; fc.classes = 2; fr.reset(new MvmFront(ex, fc)); }
+      MvmBundle flood = spin_bundle(NF, 20, 1), probe; { MvmBundleBuilder b; MvmTaskOpts o; o.workload = 0; o.deadline_us = 200; b.add("noop", {}, o); probe = b.build(); }
       auto t0 = std::chrono::steady_clock::now();
-      if (mode == 0) CHECK(ex.submit(flood, 30000) == KvmSubmit::OK, "flood submit"); else fr->submit(flood, 1);
+      if (mode == 0) CHECK(ex.submit(flood, 30000) == MvmSubmit::OK, "flood submit"); else fr->submit(flood, 1);
       std::this_thread::sleep_for(std::chrono::microseconds(300));
       for (int k = 0; k < NP; ++k) {
         auto ts = std::chrono::steady_clock::now(); bool ok;
-        if (mode == 0) { unsigned wid = 0; ok = ex.submit(probe, 30000, true, &wid) == KvmSubmit::OK; while (ok && !ex.window_done(wid) && std::chrono::steady_clock::now() - ts < std::chrono::seconds(10)) {} }
-        else { KvmFront::Ticket t = fr->submit(probe, 0); ok = fr->wait(t, 10000); }
+        if (mode == 0) { unsigned wid = 0; ok = ex.submit(probe, 30000, true, &wid) == MvmSubmit::OK; while (ok && !ex.window_done(wid) && std::chrono::steady_clock::now() - ts < std::chrono::seconds(10)) {} }
+        else { MvmFront::Ticket t = fr->submit(probe, 0); ok = fr->wait(t, 10000); }
         double l = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - ts).count();
         CHECK(ok, "probe %d did not complete", k); lat.push_back(l);
         std::this_thread::sleep_for(std::chrono::microseconds(700));
       }
       if (fr) { CHECK(fr->flush(30000), "front flush"); }
-      ex.close(); const KvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
+      ex.close(); const MvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
       wall.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
       int bad = 0; for (auto& t : r.trace) bad += t.exec_count != 1; CHECK(bad == 0 && r.done == NF + NP, "done %d (want %d), %d tasks with exec_count != 1", r.done, NF + NP, bad);
     }
@@ -135,23 +135,23 @@ static bool suite_hol() {
 
 // Per-op running time of the generator's task types on an otherwise idle GPU (one wave of 30 CTAs), to size the loads.
 static bool suite_calib() {
-  KvmConfig c = sched_cfg(32, 1); c.sched.on = false; c.max_tasks = 1 << 14; c.live_cap = 1 << 12; c.ring_words = 1 << 17;
-  KvmExec ex(c);
+  MvmConfig c = sched_cfg(32, 1); c.sched.on = false; c.max_tasks = 1 << 14; c.live_cap = 1 << 12; c.ring_words = 1 << 17;
+  MvmExec ex(c);
   const int SL = 64, N = 65536;
   float* big = ex.arena((size_t)SL * 3 * N); std::vector<int> v;
   for (int i = 0; i < SL * 3; ++i) v.push_back(ex.add_view(big + (size_t)i * N, 1, N));
   int m64a = ex.add_view(ex.arena(64 * 64), 64, 64), m64b = ex.add_view(ex.arena(64 * 64), 64, 64), m64c = ex.add_view(ex.arena(64 * 64), 64, 64);
   int m128a = ex.add_view(ex.arena(128 * 128), 128, 128), m128b = ex.add_view(ex.arena(128 * 128), 128, 128), m128c = ex.add_view(ex.arena(128 * 128), 128, 128);
   ex.start();
-  KvmBundleBuilder bb; std::vector<std::vector<int>> ids(4);
+  MvmBundleBuilder bb; std::vector<std::vector<int>> ids(4);
   for (int i = 0; i < 30; ++i) {
     ids[0].push_back(bb.add("add", {Bf(v[3 * i]), Bf(v[3 * i + 1]), Bf(v[3 * i + 2]), I(N)}));
     ids[1].push_back(bb.add("matmul", {Bf(m64a), Bf(m64b), Bf(m64c), I(64), I(64), I(64)}));
     ids[2].push_back(bb.add("matmul", {Bf(m128a), Bf(m128b), Bf(m128c), I(128), I(128), I(128)}));
     ids[3].push_back(bb.add("copy", {Bf(v[3 * i]), Bf(v[3 * i + 1]), I(4096)}));
   }
-  CHECK(ex.submit(bb.build()) == KvmSubmit::OK, "submit");
-  const KvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
+  CHECK(ex.submit(bb.build()) == MvmSubmit::OK, "submit");
+  const MvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
   const char* nm[] = {"add 65536 floats (786 KB moved)", "matmul 64^3", "matmul 128^3", "copy 4096 floats (32 KB moved)"};
   for (int k = 0; k < 4; ++k) { std::vector<double> t; for (int id : ids[k]) t.push_back((r.trace[id].end_ns - r.trace[id].start_ns) / 1e3); printf("  %-34s median %.1f us (30 concurrent)\n", nm[k], median(t)); }
   return g_fail == 0;
@@ -175,12 +175,12 @@ struct Metrics {
   double reclaim_max_us = 0, hop_run_p50 = 0, hop_run_p99 = 0, train_gap_p50 = 0, train_gap_p90 = 0; int err = 0;
 };
 struct PhaseM { double ms = 0, rate = 0, serve_p99 = 0, serve_p50 = 0, train_busy = 0, serve_busy = 0; int nreq = 0; double ctl_lo = 0, ctl_hi = 0; };
-struct RunOut { Metrics m; std::vector<KvmCtlSample> ctl; std::vector<PhaseM> ph; double ctl_lead_ms = 0; int ctl_changes = 0; };
+struct RunOut { Metrics m; std::vector<MvmCtlSample> ctl; std::vector<PhaseM> ph; double ctl_lead_ms = 0; int ctl_changes = 0; };
 
-static RunOut run_load(KvmConfig cfg, const LoadSpec& L, bool with_ctl = false, KvmCtlConfig ctlcfg = {}) {
+static RunOut run_load(MvmConfig cfg, const LoadSpec& L, bool with_ctl = false, MvmCtlConfig ctlcfg = {}) {
   RunOut out; Rng rg(L.seed);
   cfg.max_tasks = 1 << 20; cfg.live_cap = 1 << 14; cfg.ring_words = 1 << 18; cfg.timeout_us = 120ull * 1000000;
-  KvmExec ex(cfg);
+  MvmExec ex(cfg);
   const int SL = 128, N = 524288;                      // train slices: 3 x 128 x 2 MB = 768 MB, far beyond the 40 MB L2; an `add` moves 6.3 MB (~1 ms)
   float* big = ex.arena((size_t)SL * 3 * N); std::vector<int> tv;
   for (int i = 0; i < SL * 3; ++i) tv.push_back(ex.add_view(big + (size_t)i * N, 1, N));
@@ -193,7 +193,7 @@ static RunOut run_load(KvmConfig cfg, const LoadSpec& L, bool with_ctl = false, 
   ex.start();
   // serve request pool
   auto make_req = [&](int variant) {
-    KvmBundleBuilder b; KvmTaskOpts o; o.workload = 0; o.priority = L.serve_prio; o.deadline_us = (int)L.slo_us;
+    MvmBundleBuilder b; MvmTaskOpts o; o.workload = 0; o.priority = L.serve_prio; o.deadline_us = (int)L.slo_us;
     for (int f = 0; f < L.fan; ++f) {
       int prev = -1;
       for (int h = 0; h < L.hops; ++h) {
@@ -207,11 +207,11 @@ static RunOut run_load(KvmConfig cfg, const LoadSpec& L, bool with_ctl = false, 
     }
     return b.build();
   };
-  std::vector<KvmBundle> pool; for (int i = 0; i < 64; ++i) pool.push_back(make_req(i));
+  std::vector<MvmBundle> pool; for (int i = 0; i < 64; ++i) pool.push_back(make_req(i));
   const int req_tasks = L.fan * L.hops;
   // train bundle: independent tasks over distinct slices
   auto make_train = [&](int base) {
-    KvmBundleBuilder b; KvmTaskOpts o; o.workload = 1; o.priority = L.train_prio;
+    MvmBundleBuilder b; MvmTaskOpts o; o.workload = 1; o.priority = L.train_prio;
     for (int i = 0; i < L.train_bundle; ++i) {
       int sl = (base + i) % SL;
       if (!L.train_bw_only && rg.in(0, 99) < (int)(L.train_matmul_frac * 100)) b.add("matmul", {Bf(Ma), Bf(Mb), Bf(Mc), I(128), I(128), I(128)}, o);
@@ -224,12 +224,12 @@ static RunOut run_load(KvmConfig cfg, const LoadSpec& L, bool with_ctl = false, 
     int base = 0;
     while (!stop.load()) {
       long long done = (long long)ex.telemetry()->cls[1].done;
-      if (train_sub.load() - done < L.train_outstanding) { KvmBundle b = make_train(base); base += L.train_bundle; if (ex.submit(b, 5000) != KvmSubmit::OK) break; train_sub += L.train_bundle; }
+      if (train_sub.load() - done < L.train_outstanding) { MvmBundle b = make_train(base); base += L.train_bundle; if (ex.submit(b, 5000) != MvmSubmit::OK) break; train_sub += L.train_bundle; }
       else std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
   });
-  std::unique_ptr<KvmController> ctl;
-  if (with_ctl) { ctl.reset(new KvmController(ex.sched_params(), ex.telemetry(), cfg.sched.p, ctlcfg)); ctl->start(); }
+  std::unique_ptr<MvmController> ctl;
+  if (with_ctl) { ctl.reset(new MvmController(ex.sched_params(), ex.telemetry(), cfg.sched.p, ctlcfg)); ctl->start(); }
   // serve arrivals: Poisson within each phase, open loop (the producer busy-waits to each arrival time)
   std::vector<int> req_phase; std::vector<double> req_arr; auto t0 = std::chrono::steady_clock::now(); double t_phase0 = 0;
   std::this_thread::sleep_for(std::chrono::milliseconds(20));   // let the train backlog build
@@ -242,16 +242,16 @@ static RunOut run_load(KvmConfig cfg, const LoadSpec& L, bool with_ctl = false, 
       if (L.phases[ph].rate > 0) t += -std::log(1.0 - (rg.in(0, 999999) / 1e6)) / L.phases[ph].rate * 1e6; else t = tend;
       if (t >= tend) break;
       while (std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count() < t) {}
-      if (ex.submit(pool[variant++ % pool.size()], 5000) != KvmSubmit::OK) { CHECK(false, "serve submit failed"); break; }
+      if (ex.submit(pool[variant++ % pool.size()], 5000) != MvmSubmit::OK) { CHECK(false, "serve submit failed"); break; }
       req_phase.push_back((int)ph); req_arr.push_back(t);
     }
     while (std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count() < tend) std::this_thread::sleep_for(std::chrono::microseconds(50));
     t_phase0 = tend;
   }
   stop.store(true); tp.join(); if (ctl) { ctl->stop(); out.ctl = ctl->log(); out.ctl_changes = ctl->changes(); }
-  const KvmResult& r = ex.finish();
+  const MvmResult& r = ex.finish();
   Metrics& m = out.m; m.err = r.err_code;
-  if (!r.ok()) { CHECK(false, "device error %s", kvm_err_name(r.err_code)); return out; }
+  if (!r.ok()) { CHECK(false, "device error %s", mvm_err_name(r.err_code)); return out; }
   auto v = tview(r);
   // serve requests = consecutive groups of req_tasks workload-0 slots
   std::vector<double> lat, hopw, hopr; std::vector<std::vector<double>> by_phase_t0(L.phases.size());
@@ -283,7 +283,7 @@ static RunOut run_load(KvmConfig cfg, const LoadSpec& L, bool with_ctl = false, 
   m.train_ktasks_s = train_n / span * 1e3; m.train_gbs = train_b / (span * 1e3); m.train_burst_ktasks_s = burst_t > 0 ? burst_n / burst_t * 1e3 : 0;
   m.util = busy / (span * ex.workers()); m.wall_ms = span / 1e3; m.serve_cta_ms = serve_busy / 1e3;
   // reclaim latency: worst wait of a task started under its class's reservation
-  for (size_t i = 0; i < v.size(); ++i) if (v[i].flags & KVM_TRACE_RESV) m.reclaim_max_us = std::max(m.reclaim_max_us, v[i].start - v[i].ready);
+  for (size_t i = 0; i < v.size(); ++i) if (v[i].flags & MVM_TRACE_RESV) m.reclaim_max_us = std::max(m.reclaim_max_us, v[i].start - v[i].ready);
   // per-phase device-time windows, anchored by the lowest observed (arrival -> admission) offset
   double off = 1e30; for (size_t k = 0; k < rq0.size() && k < req_arr.size(); ++k) off = std::min(off, rq0[k] - req_arr[k]);
   double ps = 0;
@@ -304,15 +304,15 @@ static void print_metrics(const char* name, const Metrics& m) {
          name, m.nreq, m.req_p50, m.req_p99, m.req_max, m.hop_wait_p50, m.hop_wait_p99, 100 * m.miss_frac, m.train_ktasks_s, m.train_gbs, m.train_burst_ktasks_s, 100 * m.util);
 }
 
-static KvmConfig mode_cfg(int mode, int workers_blocks) {
-  KvmConfig c = sched_cfg(workers_blocks, 2, mode); c.sched.p.cls[0].weight = 4; c.sched.p.cls[1].weight = 1;
+static MvmConfig mode_cfg(int mode, int workers_blocks) {
+  MvmConfig c = sched_cfg(workers_blocks, 2, mode); c.sched.p.cls[0].weight = 4; c.sched.p.cls[1].weight = 1;
   return c;
 }
 
 
 // ---- repeated runs, median [min, max] ----
 struct Rep { std::vector<Metrics> m; };
-static Rep repeat(const KvmConfig& cfg, const LoadSpec& L, int n, bool ctl = false, const KvmCtlConfig& cc = {}) {
+static Rep repeat(const MvmConfig& cfg, const LoadSpec& L, int n, bool ctl = false, const MvmCtlConfig& cc = {}) {
   Rep r; for (int i = 0; i < n; ++i) { LoadSpec l = L; l.seed = L.seed + i; RunOut o = run_load(cfg, l, ctl, cc); r.m.push_back(o.m); }
   return r;
 }
@@ -336,16 +336,16 @@ static bool suite_arbiter() {
   printf("  chain request = 16 dependent cold 32 KB copies (5 us each when idle), 4000 req/s, SLO %.0f us; stream = 6.3 MB `add` tasks (~1 ms), always 1200 outstanding; whole GPU\n", L.slo_us);
   struct Cfg { const char* name; int mode; int serve_prio; bool resv; bool arb; };
   std::vector<std::pair<std::string, Rep>> res;
-  for (const Cfg& cf : std::vector<Cfg>{{"global queue, flat", KVM_SCHED_GLOBAL, 0, false, false}, {"global queue, chain prio 20", KVM_SCHED_GLOBAL, 20, false, false},
-                                         {"dynamic, arbiter OFF", KVM_SCHED_DYNAMIC, 0, true, false}, {"dynamic, arbiter ON (60us)", KVM_SCHED_DYNAMIC, 0, true, true}, {"dynamic, arbiter ON (25us)", KVM_SCHED_DYNAMIC, 0, true, true}}) {
-    KvmConfig c = mode_cfg(cf.mode, 0); LoadSpec l = L; l.serve_prio = cf.serve_prio;
+  for (const Cfg& cf : std::vector<Cfg>{{"global queue, flat", MVM_SCHED_GLOBAL, 0, false, false}, {"global queue, chain prio 20", MVM_SCHED_GLOBAL, 20, false, false},
+                                         {"dynamic, arbiter OFF", MVM_SCHED_DYNAMIC, 0, true, false}, {"dynamic, arbiter ON (60us)", MVM_SCHED_DYNAMIC, 0, true, true}, {"dynamic, arbiter ON (25us)", MVM_SCHED_DYNAMIC, 0, true, true}}) {
+    MvmConfig c = mode_cfg(cf.mode, 0); LoadSpec l = L; l.serve_prio = cf.serve_prio;
     if (cf.resv) { c.sched.p.cls[0].min_cta = 8; c.sched.p.cls[0].urgent_us = 150; c.sched.p.cls[0].weight = 4; }
-    if (cf.arb) { c.sched.p.flags |= KVM_SF_ARBITER; c.sched.p.cls[0].protect = 1; c.sched.p.cls[0].target_wait_us = strstr(cf.name, "25us") ? 25 : 60; c.sched.p.bw_limit_init = 1 << 20; c.sched.p.bw_limit_min = 16; c.sched.p.window_us = 200; }
+    if (cf.arb) { c.sched.p.flags |= MVM_SF_ARBITER; c.sched.p.cls[0].protect = 1; c.sched.p.cls[0].target_wait_us = strstr(cf.name, "25us") ? 25 : 60; c.sched.p.bw_limit_init = 1 << 20; c.sched.p.bw_limit_min = 16; c.sched.p.window_us = 200; }
     Rep r = repeat(c, l, N); CHECK(reps_ok(r), "%s: device error or no requests", cf.name); print_rep(cf.name, r); res.push_back({cf.name, r});
   }
   printf("  sweep of a static cap on concurrent stream (BW-bound) CTAs, arbiter flag off (the curve the adaptive limit searches):\n");
   for (int cap : {320, 256, 192, 128, 96, 64, 32}) {
-    KvmConfig c = mode_cfg(KVM_SCHED_DYNAMIC, 0); c.sched.p.cls[0].min_cta = 8; c.sched.p.cls[0].urgent_us = 150; c.sched.p.cls[0].weight = 4; c.sched.p.cls[1].bw_cta = cap;
+    MvmConfig c = mode_cfg(MVM_SCHED_DYNAMIC, 0); c.sched.p.cls[0].min_cta = 8; c.sched.p.cls[0].urgent_us = 150; c.sched.p.cls[0].weight = 4; c.sched.p.cls[1].bw_cta = cap;
     char nm[64]; snprintf(nm, sizeof nm, "stream BW cap %d", cap); Rep r = repeat(c, L, 3); CHECK(reps_ok(r), "%s", nm); print_rep(nm, r);
   }
   for (int k : {3, 4}) {
@@ -364,8 +364,8 @@ static bool suite_headroom() {
   L.train_bw_only = true; L.train_outstanding = 1200; L.train_bundle = 128;
   printf("  chain request = 16 dependent cold 32 KB copies, 4000 req/s; stream = 6.3 MB adds always outstanding; stream max_cta = workers - k\n");
   for (int blocks : {108, 0}) for (int k : {0, 1, 2, 4, 8, 16}) {
-    KvmConfig c = mode_cfg(KVM_SCHED_DYNAMIC, blocks); c.sched.p.cls[0].weight = 4; c.sched.p.cls[0].urgent_us = KVM_URGENT_ALL;
-    int w = blocks ? blocks - 2 : 0; if (!w) { KvmExec probe(c); w = probe.workers(); }
+    MvmConfig c = mode_cfg(MVM_SCHED_DYNAMIC, blocks); c.sched.p.cls[0].weight = 4; c.sched.p.cls[0].urgent_us = MVM_URGENT_ALL;
+    int w = blocks ? blocks - 2 : 0; if (!w) { MvmExec probe(c); w = probe.workers(); }
     c.sched.p.cls[1].max_cta = w - k;
     char nm[80]; snprintf(nm, sizeof nm, "%d workers, headroom %d", w, k); Rep r = repeat(c, L, N); CHECK(reps_ok(r), "%s", nm); print_rep(nm, r);
   }
@@ -377,10 +377,10 @@ static bool suite_bwcap() {
   int before = g_fail; const int N = 5;
   LoadSpec L; L.serve_kind = SK_COLD; L.hops = 16; L.fan = 1; L.slo_us = 250; L.phases = {{300, 4000}};
   L.train_bw_only = true; L.train_outstanding = 1200; L.train_bundle = 128;
-  KvmConfig c0 = mode_cfg(KVM_SCHED_DYNAMIC, 0); int w; { KvmExec probe(c0); w = probe.workers(); }
+  MvmConfig c0 = mode_cfg(MVM_SCHED_DYNAMIC, 0); int w; { MvmExec probe(c0); w = probe.workers(); }
   printf("  full grid: %d workers; chain = 16 dependent cold 32 KB copies at 4000 req/s; stream = 6.3 MB adds; stream bw_cta = cap\n", w);
   for (int cap : {w, w * 3 / 4, w / 2, w * 3 / 8, w / 4, w / 8}) {
-    KvmConfig c = mode_cfg(KVM_SCHED_DYNAMIC, 0); c.sched.p.cls[0].weight = 4; c.sched.p.cls[0].urgent_us = KVM_URGENT_ALL; c.sched.p.cls[1].bw_cta = cap;
+    MvmConfig c = mode_cfg(MVM_SCHED_DYNAMIC, 0); c.sched.p.cls[0].weight = 4; c.sched.p.cls[0].urgent_us = MVM_URGENT_ALL; c.sched.p.cls[1].bw_cta = cap;
     char nm[80]; snprintf(nm, sizeof nm, "stream BW cap %d of %d", cap, w); Rep r = repeat(c, L, N); CHECK(reps_ok(r), "%s", nm); print_rep(nm, r);
   }
   return g_fail == before;
@@ -392,11 +392,11 @@ static LoadSpec rebalance_load() {
   LoadSpec L; L.serve_kind = SK_MATMUL; L.hops = 1; L.fan = 48; L.slo_us = 3000; L.phases = trace_phases(); L.train_outstanding = 1500; L.train_bundle = 128; L.train_matmul_frac = 0.5;
   return L;
 }
-static KvmCtlConfig ctl_for_serve(int hi) { KvmCtlConfig cc; cc.classes = {{0, 0, hi}}; cc.period_us = 500; cc.alpha = 0.3; cc.slack = 2; cc.deadband = 2; cc.release_periods = 8; return cc; }
+static MvmCtlConfig ctl_for_serve(int hi) { MvmCtlConfig cc; cc.classes = {{0, 0, hi}}; cc.period_us = 500; cc.alpha = 0.3; cc.slack = 2; cc.deadband = 2; cc.release_periods = 8; return cc; }
 static bool suite_rebalance() {
   int before = g_fail; const int W = 106;   // 108 blocks = one per SM: 1 admitter + 1 policy + 106 workers, identical in every mode
   LoadSpec L = rebalance_load();
-  KvmConfig c = mode_cfg(KVM_SCHED_DYNAMIC, 108); c.sched.p.cls[0].weight = 1; c.sched.p.cls[0].urgent_us = 1500; c.sched.p.cls[0].target_wait_us = 500; c.sched.p.cls[0].protect = 1;
+  MvmConfig c = mode_cfg(MVM_SCHED_DYNAMIC, 108); c.sched.p.cls[0].weight = 1; c.sched.p.cls[0].urgent_us = 1500; c.sched.p.cls[0].target_wait_us = 500; c.sched.p.cls[0].protect = 1;
   RunOut o = run_load(c, L, true, ctl_for_serve(W / 2));
   CHECK(o.m.err == 0 && o.m.nreq > 100, "run failed");
   printf("  serve: bursts of 48-task requests (matmul 128^3); train: saturating mix of 6.3 MB adds and matmuls; %d workers; controller period 500 us, deadband 2, slow release 8 periods\n", W);
@@ -429,13 +429,13 @@ static bool suite_baselines() {
   printf("  scripted load: %zu phases (idle/low/BURST/low/idle/BURST/idle) over %d ms, %d workers (108 blocks: 1 admitter, 1 policy, the rest workers), best-of-%d, median [min,max]\n", L.phases.size(), 1600, W, N);
   struct Cfg { const char* name; int mode; int serve_prio; double share; bool ctl; bool arb; };
   std::vector<std::pair<std::string, Rep>> res;
-  for (const Cfg& cf : std::vector<Cfg>{{"global queue, flat", KVM_SCHED_GLOBAL, 0, 0, false, false}, {"global queue, serve prio 20", KVM_SCHED_GLOBAL, 20, 0, false, false},
-                                         {"static split 25% serve", KVM_SCHED_STATIC, 0, 0.25, false, false}, {"static split 50% serve", KVM_SCHED_STATIC, 0, 0.5, false, false},
-                                         {"dynamic + controller", KVM_SCHED_DYNAMIC, 0, 0, true, false}, {"dynamic + ctl + arbiter", KVM_SCHED_DYNAMIC, 0, 0, true, true}}) {
-    KvmConfig c = mode_cfg(cf.mode, 108); LoadSpec l = L; l.serve_prio = cf.serve_prio;
-    if (cf.mode == KVM_SCHED_STATIC) { kvm_static_split(c.sched.p, {cf.share, 1 - cf.share}, g_sms); }
-    c.sched.p.cls[0].weight = 1; c.sched.p.cls[0].urgent_us = cf.mode == KVM_SCHED_DYNAMIC ? KVM_URGENT_ALL : 0; c.sched.p.cls[0].protect = 1; c.sched.p.cls[0].target_wait_us = 500;
-    if (cf.arb) c.sched.p.flags |= KVM_SF_ARBITER;
+  for (const Cfg& cf : std::vector<Cfg>{{"global queue, flat", MVM_SCHED_GLOBAL, 0, 0, false, false}, {"global queue, serve prio 20", MVM_SCHED_GLOBAL, 20, 0, false, false},
+                                         {"static split 25% serve", MVM_SCHED_STATIC, 0, 0.25, false, false}, {"static split 50% serve", MVM_SCHED_STATIC, 0, 0.5, false, false},
+                                         {"dynamic + controller", MVM_SCHED_DYNAMIC, 0, 0, true, false}, {"dynamic + ctl + arbiter", MVM_SCHED_DYNAMIC, 0, 0, true, true}}) {
+    MvmConfig c = mode_cfg(cf.mode, 108); LoadSpec l = L; l.serve_prio = cf.serve_prio;
+    if (cf.mode == MVM_SCHED_STATIC) { mvm_static_split(c.sched.p, {cf.share, 1 - cf.share}, g_sms); }
+    c.sched.p.cls[0].weight = 1; c.sched.p.cls[0].urgent_us = cf.mode == MVM_SCHED_DYNAMIC ? MVM_URGENT_ALL : 0; c.sched.p.cls[0].protect = 1; c.sched.p.cls[0].target_wait_us = 500;
+    if (cf.arb) c.sched.p.flags |= MVM_SF_ARBITER;
     Rep r = repeat(c, l, N, cf.ctl, ctl_for_serve(W / 2)); CHECK(reps_ok(r), "%s: device error or no requests", cf.name); print_rep(cf.name, r); res.push_back({cf.name, r});
   }
   auto med = [&](int i, auto f) { return sp(res[i].second, f).med; };
@@ -452,17 +452,17 @@ static bool suite_p99() {
   LoadSpec L = rebalance_load();
   printf("  scripted load as in `baselines` (SLO %.0f us), %d workers, %d reps, median [min,max]\n", L.slo_us, W, N);
   struct Cfg { const char* name; int mode; int prio; int urgent; int serve_min; bool ctl; bool arb; };
-  const int ALWAYS = KVM_URGENT_ALL;
+  const int ALWAYS = MVM_URGENT_ALL;
   std::vector<std::pair<std::string, Rep>> res;
-  for (const Cfg& cf : std::vector<Cfg>{{"global queue, serve prio 20", KVM_SCHED_GLOBAL, 20, 0, 0, false, false},
-                                         {"dyn+ctl, urgent 1500 (as before)", KVM_SCHED_DYNAMIC, 0, 1500, 0, true, false},
-                                         {"dyn+ctl, urgent always", KVM_SCHED_DYNAMIC, 0, ALWAYS, 0, true, false},
-                                         {"dyn static resv 53, urgent 1500", KVM_SCHED_DYNAMIC, 0, 1500, 53, false, false},
-                                         {"dyn static resv 53, urgent always", KVM_SCHED_DYNAMIC, 0, ALWAYS, 53, false, false},
-                                         {"dyn no resv, urgent always", KVM_SCHED_DYNAMIC, 0, ALWAYS, 0, false, false}}) {
-    KvmConfig c = mode_cfg(cf.mode, 108); LoadSpec l = L; l.serve_prio = cf.prio;
+  for (const Cfg& cf : std::vector<Cfg>{{"global queue, serve prio 20", MVM_SCHED_GLOBAL, 20, 0, 0, false, false},
+                                         {"dyn+ctl, urgent 1500 (as before)", MVM_SCHED_DYNAMIC, 0, 1500, 0, true, false},
+                                         {"dyn+ctl, urgent always", MVM_SCHED_DYNAMIC, 0, ALWAYS, 0, true, false},
+                                         {"dyn static resv 53, urgent 1500", MVM_SCHED_DYNAMIC, 0, 1500, 53, false, false},
+                                         {"dyn static resv 53, urgent always", MVM_SCHED_DYNAMIC, 0, ALWAYS, 53, false, false},
+                                         {"dyn no resv, urgent always", MVM_SCHED_DYNAMIC, 0, ALWAYS, 0, false, false}}) {
+    MvmConfig c = mode_cfg(cf.mode, 108); LoadSpec l = L; l.serve_prio = cf.prio;
     c.sched.p.cls[0].weight = 1; c.sched.p.cls[0].urgent_us = cf.urgent; c.sched.p.cls[0].protect = 1; c.sched.p.cls[0].target_wait_us = 500; c.sched.p.cls[0].min_cta = cf.serve_min;
-    if (cf.arb) c.sched.p.flags |= KVM_SF_ARBITER;
+    if (cf.arb) c.sched.p.flags |= MVM_SF_ARBITER;
     Rep r = repeat(c, l, N, cf.ctl, ctl_for_serve(W / 2)); CHECK(reps_ok(r), "%s: device error or no requests", cf.name); print_rep(cf.name, r); res.push_back({cf.name, r});
   }
   return g_fail == before;
@@ -476,14 +476,14 @@ static bool suite_affinity() {
   for (int aff : {0, 20, 100}) {
     std::vector<double> hop, same;
     for (int rep = 0; rep < 5; ++rep) {
-      KvmConfig c = sched_cfg(W + 2, 2); c.max_tasks = 1 << 15; c.live_cap = 1 << 13; c.ring_words = 1 << 17; c.sched.p.affinity_us = aff;
-      KvmExec ex(c); float* arena = ex.arena(2 * N); int x = ex.add_view(arena, 1, N), y = ex.add_view(arena + N, 1, N); ex.start();
-      for (int b = 0; b < 20; ++b) CHECK(ex.submit(spin_bundle(300, 100, 1)) == KvmSubmit::OK, "submit");
+      MvmConfig c = sched_cfg(W + 2, 2); c.max_tasks = 1 << 15; c.live_cap = 1 << 13; c.ring_words = 1 << 17; c.sched.p.affinity_us = aff;
+      MvmExec ex(c); float* arena = ex.arena(2 * N); int x = ex.add_view(arena, 1, N), y = ex.add_view(arena + N, 1, N); ex.start();
+      for (int b = 0; b < 20; ++b) CHECK(ex.submit(spin_bundle(300, 100, 1)) == MvmSubmit::OK, "submit");
       std::this_thread::sleep_for(std::chrono::milliseconds(2));
-      KvmBundleBuilder bb; KvmTaskOpts o; o.workload = 0; int prev = -1;
+      MvmBundleBuilder bb; MvmTaskOpts o; o.workload = 0; int prev = -1;
       for (int h = 0; h < HOPS; ++h) { int t = bb.add("add", {Bf(x), Bf(y), Bf(x), I(N)}, o); if (prev >= 0) bb.edge(prev, t); prev = t; }
-      CHECK(ex.submit(bb.build()) == KvmSubmit::OK, "submit");
-      const KvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
+      CHECK(ex.submit(bb.build()) == MvmSubmit::OK, "submit");
+      const MvmResult& r = ex.finish(); CHECK(r.ok(), "device error");
       std::vector<int> ids; for (size_t i = 0; i < r.tasks.size(); ++i) if (r.tasks[i].workload_id == 0) ids.push_back((int)i);
       int sb = 0; for (size_t k = 1; k < ids.size(); ++k) { hop.push_back((r.trace[ids[k]].end_ns - r.trace[ids[k - 1]].end_ns) / 1e3); sb += r.trace[ids[k]].block == r.trace[ids[k - 1]].block; }
       same.push_back((double)sb / (ids.size() - 1));
@@ -502,8 +502,8 @@ static bool suite_overload() {
   printf("  serve flood: 9000 req/s x 48 matmul tasks (~115 CTAs of demand on 106 workers) for 300 ms, train saturating; train reservation 26 CTAs (25%%) in the dynamic row\n");
   struct Cfg { const char* name; int mode; int prio; int train_min; };
   std::vector<std::pair<std::string, Rep>> res;
-  for (const Cfg& cf : std::vector<Cfg>{{"global queue, serve prio 20", KVM_SCHED_GLOBAL, 20, 0}, {"dynamic, train min 26 CTAs", KVM_SCHED_DYNAMIC, 0, 26}}) {
-    KvmConfig c = mode_cfg(cf.mode, 108); c.sched.p.cls[0].weight = 4; c.sched.p.cls[0].urgent_us = 0; c.sched.p.cls[1].min_cta = cf.train_min;
+  for (const Cfg& cf : std::vector<Cfg>{{"global queue, serve prio 20", MVM_SCHED_GLOBAL, 20, 0}, {"dynamic, train min 26 CTAs", MVM_SCHED_DYNAMIC, 0, 26}}) {
+    MvmConfig c = mode_cfg(cf.mode, 108); c.sched.p.cls[0].weight = 4; c.sched.p.cls[0].urgent_us = 0; c.sched.p.cls[1].min_cta = cf.train_min;
     LoadSpec l = L; l.serve_prio = cf.prio; Rep r = repeat(c, l, N); CHECK(reps_ok(r), "%s", cf.name); print_rep(cf.name, r); res.push_back({cf.name, r});
   }
   auto kt = [](const Metrics& m) { return m.train_ktasks_s; };
@@ -513,7 +513,7 @@ static bool suite_overload() {
 }
 
 static bool sched_bench_suite(const std::string& s, bool& ok) {
-#ifdef KVM_PROF_GAP
+#ifdef MVM_PROF_GAP
   if (s == "gapprof") { ok = suite_gapprof(); return true; }
 #endif
   if (s == "calib") { ok = suite_calib(); return true; }
@@ -530,7 +530,7 @@ static bool sched_bench_suite(const std::string& s, bool& ok) {
   if (s == "baselines") { ok = suite_baselines(); return true; }
   if (s == "loadsmoke") {
     LoadSpec L = rebalance_load(); L.phases = {{150, 2500}, {100, 0}};
-    KvmConfig c = mode_cfg(KVM_SCHED_DYNAMIC, 132); RunOut o = run_load(c, L); print_metrics("dynamic", o.m); ok = o.m.nreq > 100; return true;
+    MvmConfig c = mode_cfg(MVM_SCHED_DYNAMIC, 132); RunOut o = run_load(c, L); print_metrics("dynamic", o.m); ok = o.m.nreq > 100; return true;
   }
   return false;
 }

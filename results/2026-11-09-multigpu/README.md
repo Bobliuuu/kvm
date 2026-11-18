@@ -1,4 +1,4 @@
-# KVM on more than one GPU, and across the internet (2026-11-09/10 UTC)
+# Magni VM on more than one GPU, and across the internet (2026-11-09/10 UTC)
 
 Every multi-GPU and multi-node stage of `dist/run_multigpu_tests.sh` ran for the first time on hardware that has them. Before this run
 nothing in the repository had used a second physical GPU, NVLink or a network (`results/2026-11-03-dist-singlebox`: 4 stages SKIP).
@@ -11,7 +11,7 @@ nothing in the repository had used a second physical GPU, NVLink or a network (`
 | node B | 1x RTX 3090, 32 cores, Romania | second node for the multi-node runs; build host |
 | (A) | 2x A100-SXM4-40GB, NV12 | lost: the host went offline after ~40 min, before any GPU stage finished; no result is from it |
 
-Build: `nvcc -O3 -arch=sm_86 -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DKVM_EXEC_NO_MAIN -DKVM_MMA_NST=3 -DKVM_GPT_MMA_SMEM=73728`.
+Build: `nvcc -O3 -arch=sm_86 -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DMVM_EXEC_NO_MAIN -DMVM_MMA_NST=3 -DMVM_GPT_MMA_SMEM=73728`.
 sm_86 needs the 3-stage bf16 MMA variant: its opt-in shared memory is 99 KiB per block (sm_80: 163 KiB), and the default 96 KiB of
 dynamic plus the kernel's static shared memory does not fit (`cudaFuncSetAttribute ... invalid argument`); the suite now adds those two
 flags for sm_86/87/89/120. Commit: branch `feat/multigpu-real` (this PR). Raw logs are kept outside the repo; the `.txt` files here are
@@ -19,9 +19,9 @@ extracts with addresses and ports removed.
 
 ## Result: every stage that hardware allows PASSES
 
-`dist/run_multigpu_tests.sh` on box D (`KVM_PREBUILT=1`, binaries built by the same flags): **23 passed, 0 failed** (after the RDMA
-guard fix), plus the multi-node stage launched from a separate host with `KVM_NODES` (box D x2 ranks + node B x2 ranks), `KVM_ADVERTISE`
-and `KVM_LISTEN_BASE` taken from the environment: **PASS**. 25 stages, 24 PASS, 1 SKIP that the hardware cannot satisfy:
+`dist/run_multigpu_tests.sh` on box D (`MVM_PREBUILT=1`, binaries built by the same flags): **23 passed, 0 failed** (after the RDMA
+guard fix), plus the multi-node stage launched from a separate host with `MVM_NODES` (box D x2 ranks + node B x2 ranks), `MVM_ADVERTISE`
+and `MVM_LISTEN_BASE` taken from the environment: **PASS**. 25 stages, 24 PASS, 1 SKIP that the hardware cannot satisfy:
 
 | Stage | Result | What it measured here |
 |---|---|---|
@@ -84,8 +84,8 @@ construction: scaling by 1/2 is exact, and a 2-rank reduction adds the two halve
 and 3xTF32 (row above) the tile-level accumulation order differs and the state agrees to 2e-5 instead. This is one step of one model on
 one 2-GPU box: not a scaling curve, and no comparison with NCCL/DDP was made.
 
-Running 162M needed harness capacity, not executor changes: the whole rank graph is one bundle record, so `KVM_DIST_LIVE_CAP` (2^19 / 2^20),
-`KVM_DIST_SUCC_CAP` (2^25 successor words) and `KVM_DIST_RING_WORDS` (2^26) are raised from the defaults (the first attempts stopped
+Running 162M needed harness capacity, not executor changes: the whole rank graph is one bundle record, so `MVM_DIST_LIVE_CAP` (2^19 / 2^20),
+`MVM_DIST_SUCC_CAP` (2^25 successor words) and `MVM_DIST_RING_WORDS` (2^26) are raised from the defaults (the first attempts stopped
 with `TOO_BIG` and `POOL`). Device buffers per rank: 8.05 GB (dp), 7.40 GB (reference).
 
 ## Multi-node TCP across two countries
@@ -94,8 +94,8 @@ The reliable channel (`dist/reliable.hpp`) over real TCP between box D and node 
 500 messages each way exactly once and in order, clean and with 10% drop / 10% dup / 20% delay injected (retransmits 1,569-1,954 because
 the test's RTO is 20 ms, far below the WAN RTT; correctness does not depend on it).
 
-Containers sit behind port maps: a rank binds port `KVM_DIST_LISTEN_PORT` inside its container while peers dial the advertised
-`host:port` (`dist/launch.py --advertise` / `KVM_ADVERTISE`, `--listen-base` / `KVM_LISTEN_BASE`). Ranks on the same node dial each other
+Containers sit behind port maps: a rank binds port `MVM_DIST_LISTEN_PORT` inside its container while peers dial the advertised
+`host:port` (`dist/launch.py --advertise` / `MVM_ADVERTISE`, `--listen-base` / `MVM_LISTEN_BASE`). Ranks on the same node dial each other
 on loopback: a container cannot reach its own public mapped port (no hairpin NAT), which is what failed the first 4-rank attempt
 (rank 0 never connected to rank 1, the peer timeout fired: `DIST_PEER_DOWN`).
 

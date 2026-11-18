@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | GPU | NVIDIA A100-SXM4-40GB (Modal), sm_80, driver 610.57.04, CUDA 12.8.93 |
-| Tree | `origin/perf/bf16-a100` (real bf16 storage), `tests/modal/run_suite.py` from `origin/tools/modal-suite`, `kvm_exec` built `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177` |
-| Command | `modal run --detach tests/modal/run_suite.py --suite custom --tag bf16zoo --cmd "source tests/modal/zoo_bf16.sh"` (script: build, then `gen_bundle.py` + `kvm_exec --dump-buffers` of `vit_bf16 vit_bf16s san_bf16s llama_bf16s` from `examples/models/cases_bf16s.txt`); log `bf16zoo/custom.log`. Dumps (370 MB) not committed |
+| Tree | `origin/perf/bf16-a100` (real bf16 storage), `tests/modal/run_suite.py` from `origin/tools/modal-suite`, `mvm_exec` built `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177` |
+| Command | `modal run --detach tests/modal/run_suite.py --suite custom --tag bf16zoo --cmd "source tests/modal/zoo_bf16.sh"` (script: build, then `gen_bundle.py` + `mvm_exec --dump-buffers` of `vit_bf16 vit_bf16s san_bf16s llama_bf16s` from `examples/models/cases_bf16s.txt`); log `bf16zoo/custom.log`. Dumps (370 MB) not committed |
 | Checked with | `examples/models/check.py` of this branch, `--mode lowp`; `meta.json` completed with `invariant_params` by this branch's frontend (the bf16 branch's `gen_bundle` predates it) |
 
 The Modal run reproduces the lab-box numbers digit for digit (vit_bf16s weights 0.90 before the fix, san_bf16s 1.73e-2, llama_bf16s 8.54e-3): the failures were the check, not noise of one machine.

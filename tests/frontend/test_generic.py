@@ -1,4 +1,4 @@
-"""Generic training API (kvmfe.generic + pipeline.compile_training(module, loss=, data=, optimizer=)) on the CPU golden VM.
+"""Generic training API (mvmfe.generic + pipeline.compile_training(module, loss=, data=, optimizer=)) on the CPU golden VM.
 
 Models the repo never shipped (tests/generic/zoo.py) are checked against independent float64 numpy oracles written here (forward +
 central finite differences, so autodiff is the thing under test), then trained for a few steps in program order and in random
@@ -13,14 +13,14 @@ import numpy as np
 
 import _path  # noqa: F401
 import oracle_models as om
-from kvmfe import demo, run_manifest
-from kvmfe.generic import MLP, MSE, ArrayData, Conv1D, CrossEntropy, GeneratedData, TrainableModule
-from kvmfe.ir import FrontendError
-from kvmfe.lower import Tiling
-from kvmfe.nn import GPT, ModelConfig
-from kvmfe.optim import OptimConfig
-from kvmfe.pipeline import compile_training
-from kvmfe.train import TrainConfig, batch_stream
+from mvmfe import demo, run_manifest
+from mvmfe.generic import MLP, MSE, ArrayData, Conv1D, CrossEntropy, GeneratedData, TrainableModule
+from mvmfe.ir import FrontendError
+from mvmfe.lower import Tiling
+from mvmfe.nn import GPT, ModelConfig
+from mvmfe.optim import OptimConfig
+from mvmfe.pipeline import compile_training
+from mvmfe.train import TrainConfig, batch_stream
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'generic'))
 import zoo  # noqa: E402
@@ -152,7 +152,7 @@ class Oracle(unittest.TestCase):
 class Training(unittest.TestCase):
     def test_every_case_trains_in_any_dataflow_order(self):
         """Complete dataflow edges: a random topological order gives the same final buffers as program order, for all four models."""
-        from kvmfe.refvm import execute
+        from mvmfe.refvm import execute
         for name, make in zoo.CASES.items():
             comp = build(make())
             a = comp.run()
@@ -198,7 +198,7 @@ class Training(unittest.TestCase):
 
 class Manifest(unittest.TestCase):
     def test_manifest_bundle_runs_on_the_host_runner_semantics(self):
-        """write_training_demo -> MANIFEST.json -> the generic runner (kvmfe.run_manifest, the spec of demo/kvm_run) == direct run."""
+        """write_training_demo -> MANIFEST.json -> the generic runner (mvmfe.run_manifest, the spec of demo/mvm_run) == direct run."""
         case = zoo.CASES['reg_mlp']()
         with tempfile.TemporaryDirectory() as tmp:
             m = demo.write_training_demo(tmp, case.module, loss=case.loss, data=case.data, optimizer=case.optimizer, steps=4, window=2,
@@ -286,7 +286,7 @@ class Refusals(unittest.TestCase):
 
 class Optimizers(unittest.TestCase):
     def test_adamw_with_schedule_and_clip_on_a_generic_module(self):
-        from kvmfe.train import Schedule
+        from mvmfe.train import Schedule
         case = zoo.CASES['res_rms_mlp']()
         comp = compile_training(case.module, TrainConfig(steps=3, schedule=Schedule('cosine', warmup=1), clip=0.5), CPU, reuse='none',
                                 loss=case.loss, data=case.data, optimizer=case.optimizer)

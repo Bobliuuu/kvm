@@ -2,10 +2,10 @@
 //   nvcc -O3 -arch=sm_80 -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -Iinclude bench/fused_mlp/grid_bed.cu -o grid_bed
 //   ./grid_bed [--hidden 1024] [--depth 2] [--members 108] [--steps 50] [--check 3] [--embed 48] [--vocab 100] [--seed 1] [--dump FILE]
 //              [--phys P_PHYS] [--runs R]
-// --phys runs the arithmetic of --members on fewer physical members, each carrying several (kvm_fused_grid_virtual.cuh: blocks streamed);
+// --phys runs the arithmetic of --members on fewer physical members, each carrying several (mvm_fused_grid_virtual.cuh: blocks streamed);
 // --runs R launches R gangs side by side, each with a model of its own trained on the same tokens, and checks every copy equals the first
 // byte for byte. A virtual run's dump compares to the resident run's of the same --members byte for byte.
-// The step is include/kvm_fused_grid.cuh's grid_run (kvm_fused_grid.h has the design), looped over the steps on one gang of P blocks, so this bed
+// The step is include/mvm_fused_grid.cuh's grid_run (mvm_fused_grid.h has the design), looped over the steps on one gang of P blocks, so this bed
 // times and checks the code an executor op would run. The model and data are mlp_ref.h's, drawn as split_bed draws them, so the two beds train the
 // same model on one seed and shape. Prints block 0's per-phase cycles (each phase ends at its last warp's end), the step time by the kernel's own
 // %globaltimer, and, with --check K, the first K steps against the float64 reference. --dump writes the losses and the model after the check's
@@ -22,22 +22,22 @@
 
 #define CK(x) do { cudaError_t e_ = (x); if (e_ != cudaSuccess) { fprintf(stderr, "CUDA error %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(e_)); exit(1); } } while (0)
 
-#include "kvm_fused_grid.cuh"
-#include "kvm_fused_grid_virtual.cuh"
+#include "mvm_fused_grid.cuh"
+#include "mvm_fused_grid_virtual.cuh"
 #include "bed_clock.cuh"
 #include "mlp_ref.h"
-using kvm_fmlp::NT;
+using mvm_fmlp::NT;
 
 constexpr float LR = 0.05f;
-constexpr int NPH = kvm_fgrid::NPH;
-constexpr int NALL = NPH + kvm_fgrid::NPH_SUB;   // every stamp index: the phases, then the sub-phases (kvm_fused_grid.cuh)
+constexpr int NPH = mvm_fgrid::NPH;
+constexpr int NALL = NPH + mvm_fgrid::NPH_SUB;   // every stamp index: the phases, then the sub-phases (mvm_fused_grid.cuh)
 extern __shared__ __align__(128) float smem[];
 
 // R gangs of `phys` blocks, gang r = blocks [r phys, (r + 1) phys), each running its own run (descriptor gd[r], loss slots loss + r * lstride) over
 // the steps: grid_run (resident, phys = P) or grid_run_chunked; the descriptor is prefetched before each step, as the static worker does.
 template <bool VIRT>
-__global__ void __launch_bounds__(NT, 1) grid_kernel(const KvmGridDesc* gd, int phys, const int* ids, const int* tgt, float* loss, int lstride, int steps, Timing tm) {
-  const int tid = threadIdx.x, T = kvm_fgrid::T96, run = blockIdx.x / phys, member = blockIdx.x % phys;
+__global__ void __launch_bounds__(NT, 1) grid_kernel(const MvmGridDesc* gd, int phys, const int* ids, const int* tgt, float* loss, int lstride, int steps, Timing tm) {
+  const int tid = threadIdx.x, T = mvm_fgrid::T96, run = blockIdx.x / phys, member = blockIdx.x % phys;
   gd += run; loss += (size_t)run * lstride;
   if (tid == 0) tm.smid[blockIdx.x] = sm_id();
   __shared__ unsigned long long stamp[2][NALL];
@@ -57,9 +57,9 @@ __global__ void __launch_bounds__(NT, 1) grid_kernel(const KvmGridDesc* gd, int 
   for (int step = 0; step < steps; ++step) {
     if (step > 0 && blockIdx.x == 0 && tid == 0) take(step - 1);   // every warp of block 0 is past step - 1's last stamp: it passed the last barrier
     if (step > 0 && blockIdx.x == 0 && tid < 32) for (int i = tid; i < NALL; i += 32) raw[(size_t)(step - 1) * NALL + i] = stamp[(step - 1) & 1][i];
-    kvm_fgrid::prefetch_desc(gd, smem);
-    if constexpr (VIRT) kvm_fgrid::grid_run_chunked(member, ids + (size_t)step * T, tgt + (size_t)step * T, loss + 2 * step, smem, nullptr, Stamps{stamp[step & 1]});
-    else kvm_fgrid::grid_run(member, ids + (size_t)step * T, tgt + (size_t)step * T, loss + 2 * step, smem, nullptr, Stamps{stamp[step & 1]});
+    mvm_fgrid::prefetch_desc(gd, smem);
+    if constexpr (VIRT) mvm_fgrid::grid_run_chunked(member, ids + (size_t)step * T, tgt + (size_t)step * T, loss + 2 * step, smem, nullptr, Stamps{stamp[step & 1]});
+    else mvm_fgrid::grid_run(member, ids + (size_t)step * T, tgt + (size_t)step * T, loss + 2 * step, smem, nullptr, Stamps{stamp[step & 1]});
   }
   __syncthreads();
   if (blockIdx.x == 0 && tid == 0) {
@@ -71,7 +71,7 @@ __global__ void __launch_bounds__(NT, 1) grid_kernel(const KvmGridDesc* gd, int 
 }
 
 int main(int argc, char** argv) {
-  KvmGridDesc d{}; d.V = 100; d.E = 48; d.L = 2; d.H = 1024; d.T = kvm_fgrid::T96; d.P = 108; d.lr = LR;
+  MvmGridDesc d{}; d.V = 100; d.E = 48; d.L = 2; d.H = 1024; d.T = mvm_fgrid::T96; d.P = 108; d.lr = LR;
   int steps = 50, check = 3, phys = 0, runs = 1, budget = 40928; unsigned seed = 1; std::string dump;   // budget: the A100 executor's fused floats
   for (int i = 1; i + 1 < argc; i += 2) {
     const std::string a = argv[i]; const int v = atoi(argv[i + 1]);
@@ -87,8 +87,8 @@ int main(int argc, char** argv) {
   const bool virt = phys < d.P;
   if (phys > d.P) { fprintf(stderr, "--phys %d: at most --members (%d)\n", phys, d.P); return 2; }
   d.phys = virt ? phys : 0;
-  const int total = virt ? kvm_grid_layout_chunked(d, budget) : kvm_grid_layout(d);
-  if (total < 0) { fprintf(stderr, "a shape the grid step does not take (kvm_grid_layout%s): H a multiple of 8, E of 16 (E at most 128), V a multiple of 4 (padded at most 128), depth 1-%d, T = 96\n", virt ? "_chunked" : "", KVM_GRID_MAXL); return 2; }
+  const int total = virt ? mvm_grid_layout_chunked(d, budget) : mvm_grid_layout(d);
+  if (total < 0) { fprintf(stderr, "a shape the grid step does not take (mvm_grid_layout%s): H a multiple of 8, E of 16 (E at most 128), V a multiple of 4 (padded at most 128), depth 1-%d, T = 96\n", virt ? "_chunked" : "", MVM_GRID_MAXL); return 2; }
   const auto kern = virt ? grid_kernel<true> : grid_kernel<false>;
   const size_t smem_bytes = (size_t)total * sizeof(float);
   cudaDeviceProp prop; CK(cudaGetDeviceProperties(&prop, 0));
@@ -109,17 +109,17 @@ int main(int argc, char** argv) {
   const mlp_ref::Data data = mlp_ref::draw(d, seed, nsteps);   // the model and the steps' tokens, drawn as every fused MLP bed draws them
   auto dalloc = [](size_t n) { float* p; CK(cudaMalloc(&p, std::max<size_t>(n, 1) * sizeof(float))); CK(cudaMemset(p, 0, std::max<size_t>(n, 1) * sizeof(float))); return p; };
   const size_t TH = (size_t)T * d.Hp;   // the step's activations and partials, at the padded width
-  std::vector<KvmGridDesc> ds((size_t)runs, d);   // run r: the same layout and model, a model and scratch of its own
-  const size_t lines = kvm_gang::line_words(phys) * sizeof(unsigned);
-  for (KvmGridDesc& x : ds) {
+  std::vector<MvmGridDesc> ds((size_t)runs, d);   // run r: the same layout and model, a model and scratch of its own
+  const size_t lines = mvm_gang::line_words(phys) * sizeof(unsigned);
+  for (MvmGridDesc& x : ds) {
     for (int l = 0; l < x.L; ++l) { x.w[l] = dalloc(data.W[l].size()); x.b[l] = dalloc(x.H); x.Y[l] = dalloc(TH); }
     x.wh = dalloc(data.Wh.size()); x.emb = dalloc(data.emb.size());
     x.part = dalloc(x.L > 1 ? (size_t)x.ka * TH : 1); x.hpart = dalloc((size_t)x.kah * T * x.VP); x.dlog = dalloc((size_t)T * x.VP);
     x.dyp = dalloc((size_t)std::max(x.nb, 1) * TH); x.dz = dalloc(TH); x.dx0 = dalloc((size_t)x.nb0 * T * x.E); x.rloss = dalloc(T);
     x.gq = virt ? dalloc((size_t)phys * x.gqs) : nullptr;   // each physical member's gelu' (the chunked layout's gqs)
-    CK(cudaMalloc(&x.ctl, lines)); CK(cudaMemset(x.ctl, 0, lines));   // once: the gang's control words (kvm_gang::cross) need no reset between launches
+    CK(cudaMalloc(&x.ctl, lines)); CK(cudaMemset(x.ctl, 0, lines));   // once: the gang's control words (mvm_gang::cross) need no reset between launches
   }
-  KvmGridDesc* gd; CK(cudaMalloc(&gd, ds.size() * sizeof(KvmGridDesc))); CK(cudaMemcpy(gd, ds.data(), ds.size() * sizeof(KvmGridDesc), cudaMemcpyHostToDevice));
+  MvmGridDesc* gd; CK(cudaMalloc(&gd, ds.size() * sizeof(MvmGridDesc))); CK(cudaMemcpy(gd, ds.data(), ds.size() * sizeof(MvmGridDesc), cudaMemcpyHostToDevice));
   int *dids, *dtgt; CK(cudaMalloc(&dids, data.ids.size() * sizeof(int))); CK(cudaMalloc(&dtgt, data.tgt.size() * sizeof(int)));
   CK(cudaMemcpy(dids, data.ids.data(), data.ids.size() * sizeof(int), cudaMemcpyHostToDevice)); CK(cudaMemcpy(dtgt, data.tgt.data(), data.tgt.size() * sizeof(int), cudaMemcpyHostToDevice));
   const int lstride = nsteps * 2;   // each run's loss slots
@@ -128,7 +128,7 @@ int main(int argc, char** argv) {
   const size_t phase_words = NPH + (size_t)nsteps * NALL;   // the phases' sums, then every step's raw stamps
   CK(cudaMalloc(&tm.phase, phase_words * sizeof(long long))); CK(cudaMalloc(&tm.gtime, 2 * sizeof(unsigned long long))); CK(cudaMalloc(&tm.smid, (size_t)runs * phys * sizeof(unsigned)));
   auto upload = [&]() {
-    for (const KvmGridDesc& x : ds) {
+    for (const MvmGridDesc& x : ds) {
       for (int l = 0; l < x.L; ++l) { CK(cudaMemcpy(x.w[l], data.W[l].data(), data.W[l].size() * 4, cudaMemcpyHostToDevice)); CK(cudaMemcpy(x.b[l], data.b[l].data(), data.b[l].size() * 4, cudaMemcpyHostToDevice)); }
       CK(cudaMemcpy(x.wh, data.Wh.data(), data.Wh.size() * 4, cudaMemcpyHostToDevice)); CK(cudaMemcpy(x.emb, data.emb.data(), data.emb.size() * 4, cudaMemcpyHostToDevice));
     }
@@ -139,7 +139,7 @@ int main(int argc, char** argv) {
     CK(cudaLaunchCooperativeKernel((const void*)kern, dim3(runs * phys), dim3(NT), args, smem_bytes, 0)); CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
   };
   // A run's state after the check's steps, as --dump writes it: its losses, then every layer's W and b, the head and the embedding.
-  auto state_of = [&](const KvmGridDesc& x, int run) {
+  auto state_of = [&](const MvmGridDesc& x, int run) {
     std::vector<float> out((size_t)check * 2);
     CK(cudaMemcpy(out.data(), dloss + (size_t)run * lstride, out.size() * 4, cudaMemcpyDeviceToHost));
     auto take = [&](const float* p, size_t n) { const size_t o = out.size(); out.resize(o + n); CK(cudaMemcpy(out.data() + o, p, n * 4, cudaMemcpyDeviceToHost)); };
@@ -151,7 +151,7 @@ int main(int argc, char** argv) {
   if (check > 0) {   // the first `check` steps against fp64
     upload(); launch(check);
     std::vector<float> loss((size_t)check * 2), gW[mlp_ref::MAXL], gb[mlp_ref::MAXL], gWh(data.Wh.size()), gemb(data.emb.size());
-    const KvmGridDesc& x0 = ds[0];   // run 0 against fp64; every other run against run 0, byte for byte
+    const MvmGridDesc& x0 = ds[0];   // run 0 against fp64; every other run against run 0, byte for byte
     CK(cudaMemcpy(loss.data(), dloss, loss.size() * 4, cudaMemcpyDeviceToHost));
     for (int l = 0; l < d.L; ++l) { gW[l].resize(data.W[l].size()); gb[l].resize(d.H); CK(cudaMemcpy(gW[l].data(), x0.w[l], gW[l].size() * 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(gb[l].data(), x0.b[l], gb[l].size() * 4, cudaMemcpyDeviceToHost)); }
     CK(cudaMemcpy(gWh.data(), x0.wh, gWh.size() * 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(gemb.data(), x0.emb, gemb.size() * 4, cudaMemcpyDeviceToHost));
@@ -199,12 +199,12 @@ int main(int argc, char** argv) {
   printf("block 0 by phase (cycles a step; each phase ends at a barrier, which its time includes):\n");
   for (int i = 0; i < NPH; ++i) printf("  %-38s %8.0f  (%4.1f%%)\n", names[i], (double)hph[i] / steps, 100.0 * hph[i] / std::max(1ll, tot));
   printf("  %-38s %8.0f cycles\n", "total", (double)tot / steps);
-  {   // the sub-phases (kvm_fused_grid.cuh: sub_f0, sub_fh, sub_bh), each step's raw stamps walked in execution order from the step before's last stamp
-    using kvm_fgrid::sub_f0; using kvm_fgrid::sub_fh; using kvm_fgrid::sub_bh;
+  {   // the sub-phases (mvm_fused_grid.cuh: sub_f0, sub_fh, sub_bh), each step's raw stamps walked in execution order from the step before's last stamp
+    using mvm_fgrid::sub_f0; using mvm_fgrid::sub_fh; using mvm_fgrid::sub_bh;
     std::vector<int> order{0, sub_f0(0), sub_f0(1)};
-    for (int l = 1; l < d.L; ++l) for (int k = 0; k < kvm_fgrid::NSUB_FH; ++k) order.push_back(sub_fh(l, k));
+    for (int l = 1; l < d.L; ++l) for (int k = 0; k < mvm_fgrid::NSUB_FH; ++k) order.push_back(sub_fh(l, k));
     for (int i : {1, 2, 3, 4}) order.push_back(i);
-    for (int q = 0; q + 1 < d.L; ++q) for (int k = 0; k < kvm_fgrid::NSUB_BH; ++k) order.push_back(sub_bh(q, k));
+    for (int q = 0; q + 1 < d.L; ++q) for (int k = 0; k < mvm_fgrid::NSUB_BH; ++k) order.push_back(sub_bh(q, k));
     for (int i : {5, 6, 7}) order.push_back(i);
     std::vector<double> dur(NALL, 0.0); long long negative = 0; int walked = 0;
     const unsigned long long* rows = reinterpret_cast<const unsigned long long*>(hall.data() + NPH);

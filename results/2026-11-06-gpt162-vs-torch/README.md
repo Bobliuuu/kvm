@@ -11,14 +11,14 @@ and 69.6 ms for eager. README goal 3 is not met at this size either, and the gap
 |---|---|
 | GPU | NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver 580.105.08, CUDA 12.8 (nvcc 12.8.93), max SM clock 1410 MHz; shared box, GPU lock held for every timed run |
 | PyTorch | 2.7.0+cu128, Triton 3.3.0; TF32 matmuls (`allow_tf32`), fused AdamW (`fused=True, capturable=True`), SDPA attention |
-| Executor | `kvm_exec` built `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 kvm_exec.cu`; default grid (108 blocks); 1xTF32 GEMMs; frontend `compile_training`, tiling `a100`, `reuse='shape'`, no fusion; 317-318k tasks and 21.7 edges/task per step |
+| Executor | `mvm_exec` built `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 mvm_exec.cu`; default grid (108 blocks); 1xTF32 GEMMs; frontend `compile_training`, tiling `a100`, `reuse='shape'`, no fusion; 317-318k tasks and 21.7 edges/task per step |
 | Training | identical on both sides: initial weights and token stream from the executor's `workload.json` (bit-identical generator), AdamW lr 3e-3 (timing and the 3-step loss check) / 3e-4 + 2 warmup steps (the step-1 gradient check), betas (0.9, 0.95), eps 1e-8, wd 0.01 on matrices, global grad-norm clip 1.0 |
 | Code | `bench/vs_pytorch/` at commit 129dca8 plus the scripts added in this change (`exec_bench.py`, `exec_losses.py`, `campaign162.sh`, `executor162.sh`, `sweep162.sh`, `grads162.sh`); reference `tests/gpt162/torch_ref.py` (from `test/gpt162-vs-torch`) |
 
 Commands (box side, repository root, each in one `flock ~/.gpu.lock` hold; workloads from `gen.py`, which takes 14 min for 3 steps on the CPU):
 `python3 bench/vs_pytorch/gen.py w_162m --model gpt_162m --steps 3 --mode tf32 --tiling a100` (and `w_162m_1` with `--steps 1`);
 `bash bench/vs_pytorch/campaign162.sh` (PyTorch modes, executor, traced run); `bash bench/vs_pytorch/executor162.sh OUT torch_eager.json`;
-`python3 bench/vs_pytorch/exec_bench.py w_162m_1 ./kvm_exec --reps 5`; `bash bench/vs_pytorch/sweep162.sh w_162m_1 OUT`; `bash bench/vs_pytorch/grads162.sh WORK OUT`.
+`python3 bench/vs_pytorch/exec_bench.py w_162m_1 ./mvm_exec --reps 5`; `bash bench/vs_pytorch/sweep162.sh w_162m_1 OUT`; `bash bench/vs_pytorch/grads162.sh WORK OUT`.
 Raw outputs: `raw/` (the 30 MB `trace.csv` files stay out of the repository; the kernel trace is `--trace-csv`, one row per task).
 
 ## 1. Numerics (the open gap of `2026-11-06-demo-large`): closed for step 1
@@ -51,8 +51,8 @@ curves vs torch over 40-50 steps) were not run here.
 
 ## 2. Speed, same model, same optimizer (best of 5; median and worst in `raw/`)
 
-Per optimizer step. PyTorch: 3 steps timed with CUDA events, state reset before each rep, separate process per mode. Executor: `kernel_ms` of a `kvm_exec` launch
-(separate processes, same lock hold, minutes apart; `kvm_exec` has no PyTorch hook), which includes persistent-kernel start and host admission of the whole tape.
+Per optimizer step. PyTorch: 3 steps timed with CUDA events, state reset before each rep, separate process per mode. Executor: `kernel_ms` of a `mvm_exec` launch
+(separate processes, same lock hold, minutes apart; `mvm_exec` has no PyTorch hook), which includes persistent-kernel start and host admission of the whole tape.
 
 | implementation | ms / step best (median / worst) | tokens/s | x floor (21.2 ms) | executor / this |
 |---|---|---|---|---|

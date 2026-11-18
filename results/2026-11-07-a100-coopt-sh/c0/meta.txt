@@ -12,8 +12,8 @@ mode 0
 target 0
 divthr 1
 prune 1e+09
-kvm_full_ms 6.9345
-kvm_sh_ms 6.7820
+mvm_full_ms 6.9345
+mvm_sh_ms 6.7820
 lr 0.00999999978
 lr 0.0179482289
 lr 0.0322138928

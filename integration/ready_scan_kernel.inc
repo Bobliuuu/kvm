@@ -1,7 +1,7 @@
-// Experimental ready-only scheduler for the original KVM instruction tape.
+// Experimental ready-only scheduler for the original Magni VM instruction tape.
 // Keeps operator execution and dependency semantics identical to vm_kernel.
 // This is intentionally a scanning reference scheduler, not the production queue.
-__device__ __forceinline__ bool kvm_ready(const Instr& in, const int* ctr) {
+__device__ __forceinline__ bool mvm_ready(const Instr& in, const int* ctr) {
   if (in.w0c >= 0 && ld_acquire(ctr + in.w0c) < in.w0v) return false;
   if (in.w1c >= 0 && ld_acquire(ctr + in.w1c) < in.w1v) return false;
   return true;
@@ -26,7 +26,7 @@ __global__ void __launch_bounds__(NT) ready_scan_kernel(
           if (atomicAdd(states + idx, 0) != 0) continue;
           const int step = idx / g_kp.perStep;
           Instr in = inst_at(tape, idx - step * g_kp.perStep, step);
-          if (!kvm_ready(in, ctr)) continue;
+          if (!mvm_ready(in, ctr)) continue;
           if (atomicCAS(states + idx, 0, 1) == 0) {
             chosen = idx;
             break;

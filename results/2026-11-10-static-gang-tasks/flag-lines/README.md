@@ -1,6 +1,6 @@
 # The gang barriers on an RTX 5070 Laptop (sm_120, 36 SMs)
 
-`kvm_gang::barrier_lines` (flag lines) beside `kvm_gang::barrier` (the counter), as this branch has them: both return through the block's OR
+`mvm_gang::barrier_lines` (flag lines) beside `mvm_gang::barrier` (the counter), as this branch has them: both return through the block's OR
 (`__syncthreads_or`), with no static shared memory. Built with `nvcc -O3 -std=c++17 -arch=sm_120`. Every figure here is (unverified) until
 the team's verifier names it.
 

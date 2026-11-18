@@ -1,4 +1,4 @@
-# KVM framework: host compiler, ABI v2, weight versioning
+# Magni VM framework: host compiler, ABI v2, weight versioning
 
 Workload JSON -> `runtime/compile_workload.py` -> bundle -> GPU executor (and the CPU reference `runtime/workload_vm.py`).
 The device never parses JSON; it reads typed 32-bit words.
@@ -13,8 +13,8 @@ workload.json --compile--> tasks.bin  successors.bin  args.bin  metadata.json --
 
 | What | File | Parsed by |
 |---|---|---|
-| Descriptor layout (`KvmTaskDesc`, 64 B), `KVM_ABI_VERSION`, `KVM_NO_VAR` | `include/kvm_task_abi.h` | `runtime/abi.py` |
-| Operators: name, id, `arg:type` list (`buf`/`buf?`/`i32`/`f32`) | `include/kvm_ops.def`, then `kvm_ops_gpt.def`, `kvm_ops_extra.def` (ids 96-122, generic model-zoo ops, `matmul_mma_bf16` = 122), `kvm_ops_game.def`, `kvm_ops_comm.def` when present (executor order) | `runtime/abi.py` |
+| Descriptor layout (`MvmTaskDesc`, 64 B), `MVM_ABI_VERSION`, `MVM_NO_VAR` | `include/mvm_task_abi.h` | `runtime/abi.py` |
+| Operators: name, id, `arg:type` list (`buf`/`buf?`/`i32`/`f32`) | `include/mvm_ops.def`, then `mvm_ops_gpt.def`, `mvm_ops_extra.def` (ids 96-122, generic model-zoo ops, `matmul_mma_bf16` = 122), `mvm_ops_game.def`, `mvm_ops_comm.def` when present (executor order) | `runtime/abi.py` |
 | What an op does + buffer extents / dtypes it needs | `runtime/ref_ops.py` (core), `ref_gpt.py` (GPT) | compiler (bounds), CPU VM |
 
 Ids are sparse and unique across registry files. `buf?` marks an optional buffer argument: the workload passes JSON `null`
@@ -35,8 +35,8 @@ Add an op: append an `X(...)` line to a registry (never renumber), add its CUDA 
        "reads": [{"var": "weight", "policy": "exact", "version": 1}]}]}] }
 ```
 
-Buffer args are buffer names or `null` (absent optional); they resolve to `KvmBuf` table indices = declaration order.
-`i32`/`f32` are JSON numbers. A buffer has `dtype` `f32` (default, `KvmBuf.dtype` 0) or `i32` (1, index and counter
+Buffer args are buffer names or `null` (absent optional); they resolve to `MvmBuf` table indices = declaration order.
+`i32`/`f32` are JSON numbers. A buffer has `dtype` `f32` (default, `MvmBuf.dtype` 0) or `i32` (1, index and counter
 buffers) or `bf16` (2, raw 16-bit storage, 2 bytes per element; init `fill` / `values` / `file`, values rounded to bf16; a bundle without a bf16 buffer is
 unchanged, so the ABI stays backward compatible). Each op declares which of its buffer args are `i32` (checked at compile time, e.g. `ids`, `tgt`, `step`)
 and which may be `bf16` (`anydt` in `runtime/ref_*.py`: the matmul pair `matmul_tile_bf16` / `matmul_mma_bf16`, `round_bf16`, and the storage-aware norms, rope,
@@ -63,7 +63,7 @@ the workload's directory) and `write_bundle` copies them into the bundle.
 
 | File | Content |
 |---|---|
-| `tasks.bin` | `task_count` x 64-byte `KvmTaskDesc` in header field order |
+| `tasks.bin` | `task_count` x 64-byte `MvmTaskDesc` in header field order |
 | `successors.bin` | int32 batch-local task indices, CSR via `succ_off`/`succ_cnt` |
 | `args.bin` | int32 words; `f32` args are bit-cast; a task's words start at `args_off`, count = operator arity |
 | `metadata.json` | `abi_version, task_count, edge_count, args_words, task_names, initial_ready, operator_ids, buffers (name, index, rows, cols, dtype 0/1/2, init), variables, publishers`, plus `reads` (`task, var, policy, version, observed, gate`) and `final_versions` |
@@ -136,9 +136,9 @@ Three features would change that. Smallest first; only the first is built.
 
 | # | Feature | Where it acts | Cost | Status |
 |---|---|---|---|---|
-| 1 | **Admission guards**: an admission runs only if a scalar of a buffer passes a comparison (`while` = a chain of guarded admissions, early exit = the next chunk's guard reads the previous chunk's `done` flag) | host, between admissions (the point where `observe` already reads buffers after a completion) | one host completion-and-admit round trip per decision (not measured here); no device change | semantics + CPU reference + tests built (`kvmfe/run_manifest.py`, `tests/frontend/test_guard.py`); `kvm_run` rejects it |
+| 1 | **Admission guards**: an admission runs only if a scalar of a buffer passes a comparison (`while` = a chain of guarded admissions, early exit = the next chunk's guard reads the previous chunk's `done` flag) | host, between admissions (the point where `observe` already reads buffers after a completion) | one host completion-and-admit round trip per decision (not measured here); no device change | semantics + CPU reference + tests built (`mvmfe/run_manifest.py`, `tests/frontend/test_guard.py`); `mvm_run` rejects it |
 | 2 | **Variable sequence length by masked tiles**: row-tile tasks read a `lens` buffer and return at once when their first row is past it | device op wrappers (every row-tiled op of the packs) | padded tiles cost a read and a branch instead of a tile; needs one ABI argument per op | not built (below) |
-| 3 | **A task that conditionally admits follow-up tasks** (device-side `if`/`while`, no host hop) | the admitter's ingest path and `kvm_claim` | removes the host round trip; adds a producer to the admission ring | not attempted: that path belongs to branch `perf/admission-bottleneck` |
+| 3 | **A task that conditionally admits follow-up tasks** (device-side `if`/`while`, no host hop) | the admitter's ingest path and `mvm_claim` | removes the host round trip; adds a producer to the admission ring | not attempted: that path belongs to branch `perf/admission-bottleneck` |
 
 ### 1. Admission guards (manifest_version 2)
 
@@ -160,8 +160,8 @@ Three features would change that. Smallest first; only the first is built.
   `while w > 0.1: w -= 0.25` this way: trip counts 0, 1, 2, 4 and `MAX` for five initial values, with the skipped admissions listed.
 - Granularity is one admission (a bundle, usually a window of steps or a decode chunk): a guard is not a per-task `if`. For early-exit
   decoding the chunk size trades wasted steps after EOS against the number of host decisions.
-- Fail-safe by version: `demo/kvm_run.cu` accepts only `manifest_version` 1 (`manifest_version must be 1`), so a guarded manifest stops
-  there with a message instead of running every admission unconditionally. Support in `kvm_run` is a small change (evaluate the guard in
+- Fail-safe by version: `demo/mvm_run.cu` accepts only `manifest_version` 1 (`manifest_version must be 1`), so a guarded manifest stops
+  there with a message instead of running every admission unconditionally. Support in `mvm_run` is a small change (evaluate the guard in
   the same host loop that calls `observe()` after a completion, read one element with `read_buffer`, mark the admission and its
   dependents skipped); it is not made here because it needs a 15-minute device build and an A100 run to test, and the runner is shared.
 
@@ -172,14 +172,14 @@ Today a variable-length batch is padded to the static `seq`: with causal attenti
 wasted**. The masked-tile feature recovers that work: give every row-tiled op (`matmul_tile`, norms, activations, attention blocks, softmax-CE)
 an optional `lens` buffer argument (i32, one element per sequence, or one scalar); a task whose first row `r0` is at or past
 `lens[sequence of r0]` returns before loading anything. The DAG and the dependency counts do not change (the skipped task still completes and
-releases its successors), so neither the admitter nor `kvm_claim` is touched; the cost is an ABI argument per op and one test per op that
+releases its successors), so neither the admitter nor `mvm_claim` is touched; the cost is an ABI argument per op and one test per op that
 a masked tile leaves its output rows untouched (the padded rows must be zero or ignored downstream: `ce` already ignores them). Expected
 gain is the padded fraction of the tile work on a batch of unequal lengths, at the price of the dependency hops, which do not shrink. Not measured.
 
 ### 3. Device-side conditional admission (not attempted)
 
 A task that admits follow-up tasks needs a producer on the admission ring that is not the host, and ordering against the admitter's pop
-and `kvm_claim`. That path is being rebuilt on `perf/admission-bottleneck`; designing against it before it lands would only be rework. The
+and `mvm_claim`. That path is being rebuilt on `perf/admission-bottleneck`; designing against it before it lands would only be rework. The
 guard of section 1 is the contract such a feature must keep: same condition, same skip semantics, no publishes.
 
 ## Honest limits
@@ -196,7 +196,7 @@ guard of section 1 is the contract such a feature must keep: same condition, sam
 - `golden.json` buffers are schedule-independent only if the workload orders conflicting accesses and its `at_least`
   readers can observe a single version (the live example does).
 - `runtime/lower.py` (counter waits/signals -> DAG, used by the queue integration) is separate and unchanged.
-- `.gitignore` hides `kvm_*` build outputs; `!include/kvm_*` keeps the headers and `.def` files tracked. `tests/gpu/kvm_ops_test.def|.cuh`
+- `.gitignore` hides `mvm_*` build outputs; `!include/mvm_*` keeps the headers and `.def` files tracked. `tests/gpu/mvm_ops_test.def|.cuh`
   were once lost to that pattern and are force-added.
 
 ## Status of the layers this document describes
@@ -204,11 +204,11 @@ guard of section 1 is the contract such a feature must keep: same condition, sam
 | Layer | State | Evidence |
 |---|---|---|
 | ABI v2, compiler, CPU VM, golden, `seeded`/`file` init | implemented + tested: 145 Python tests (about 3 s); an ABI v2 bundle runs on the A100 and matches its golden 10/10 buffers bitwise | `tests/`, `results/2026-11-03-a100-exec` |
-| Executor (`kvm_exec.cu`) consuming bundles: admission, slot recycling, version waits, error codes | implemented + measured: 8582 checks, 0 failed (two recorded runs); recycling streams a 2.1M-task DAG through 65,536 slots | `results/2026-11-04-a100-exec-recycling`, `results/2026-11-04-a100-sched-integrated` |
+| Executor (`mvm_exec.cu`) consuming bundles: admission, slot recycling, version waits, error codes | implemented + measured: 8582 checks, 0 failed (two recorded runs); recycling streams a 2.1M-task DAG through 65,536 slots | `results/2026-11-04-a100-exec-recycling`, `results/2026-11-04-a100-sched-integrated` |
 | Known executor failure | `recycle` long-running admission (3M tasks) failed 2 of 3 runs once on the adaptive tree, same flake on its base commit; not root-caused | `results/2026-11-04-a100-adaptive` |
 | Cross-bundle `exact` isolation | not built (documented limit above); the GPU does not check it | this file |
-| Several admissions / `base_versions` from MANIFEST.json in the CLI | not consumed by `kvm_exec`; the CPU runner `kvmfe.run_manifest` is the reference | `results/2026-11-04-a100-exec-recycling` |
-| Registry packs | core 0-31, GPT 32-63 (`ref_gpt.py`), comm 64-95 and Doom/game ops (opaque on the CPU), extra 96-122 (`ref_extra.py`) | `include/kvm_ops_list.inc` |
+| Several admissions / `base_versions` from MANIFEST.json in the CLI | not consumed by `mvm_exec`; the CPU runner `mvmfe.run_manifest` is the reference | `results/2026-11-04-a100-exec-recycling` |
+| Registry packs | core 0-31, GPT 32-63 (`ref_gpt.py`), comm 64-95 and Doom/game ops (opaque on the CPU), extra 96-122 (`ref_extra.py`) | `include/mvm_ops_list.inc` |
 
 ## Run the tests
 

@@ -1,4 +1,4 @@
-// CPU tests of gang tasks in the static-schedule compiler (include/kvm_static.h): a gang op's members run at once on distinct workers and
+// CPU tests of gang tasks in the static-schedule compiler (include/mvm_static.h): a gang op's members run at once on distinct workers and
 // meet at barriers inside the op.
 //   g++ -std=c++17 -O2 -Iinclude tests/static/test_static_gang.cpp -o /tmp/test_static_gang && /tmp/test_static_gang
 // Bundles are synthetic: chains of gangs (a fused step's members, step after step) with ordinary tasks around them, in three wirings
@@ -18,7 +18,7 @@
 #include <set>
 #include <string>
 #include <vector>
-#include "kvm_static.h"
+#include "mvm_static.h"
 #include "replay.h"
 
 namespace {
@@ -27,22 +27,22 @@ constexpr int OP_NOOP = 0, OP_WORK = 1, OP_GANG = 2;
 int g_fail = 0;
 #define EXPECT(c, ...) do { if (!(c)) { ++g_fail; printf("FAIL %s:%d: ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); } } while (0)
 
-KvmSOpInfo op_info(int id) {
-    KvmSOpInfo o;
+MvmSOpInfo op_info(int id) {
+    MvmSOpInfo o;
     if (id == OP_NOOP) { o.arity = 0; }
     else if (id == OP_WORK) { o.arity = 1; o.types = 1; }   // x:i32
-    else if (id == OP_GANG) { o.arity = 3; o.types = 1 | (1 << 3) | (1 << 6); kvm_static_gang_args("gang:i32,member:i32,members:i32", o); }
+    else if (id == OP_GANG) { o.arity = 3; o.types = 1 | (1 << 3) | (1 << 6); mvm_static_gang_args("gang:i32,member:i32,members:i32", o); }
     return o;
 }
 double op_cost(int id, const int32_t* a) { return id == OP_GANG ? 20.0 : id == OP_WORK ? 1.0 + (double)((uint32_t)a[0] % 40) : 0.1; }
 
 struct Bundle {
-    std::vector<KvmTaskDesc> tasks;
+    std::vector<MvmTaskDesc> tasks;
     std::vector<int32_t> succ, args;
     std::vector<std::vector<int>> out;   // edges as built (before the CSR)
     int add(int op, std::vector<int32_t> a) {
-        KvmTaskDesc d{}; d.op_id = op; d.args_off = (int)args.size(); d.args_words = (int)a.size();
-        d.wait_var = d.pub_var = KVM_NO_VAR;
+        MvmTaskDesc d{}; d.op_id = op; d.args_off = (int)args.size(); d.args_words = (int)a.size();
+        d.wait_var = d.pub_var = MVM_NO_VAR;
         for (int32_t x : a) args.push_back(x);
         tasks.push_back(d); out.emplace_back();
         return (int)tasks.size() - 1;
@@ -116,14 +116,14 @@ std::vector<int> gangs_of(const Bundle& b) {
 }
 
 // Replays the emitted records as the device runs them (tests/static/replay.h). Returns false on a deadlock or a broken edge.
-bool replay(const Bundle& b, const KvmSPlan& p, int W, std::string& why) {
+bool replay(const Bundle& b, const MvmSPlan& p, int W, std::string& why) {
     if (p.workers != W) { why = "the plan has " + std::to_string(p.workers) + " workers, not " + std::to_string(W); return false; }
-    const kvm_test_replay::Result r = kvm_test_replay::replay(b.tasks, b.args, b.out, p, op_info);
+    const mvm_test_replay::Result r = mvm_test_replay::replay(b.tasks, b.args, b.out, p, op_info);
     why = r.why;
     return r.ok;
 }
 
-bool distinct_workers(const KvmSPlan& p, const Bundle& b, std::string& why) {
+bool distinct_workers(const MvmSPlan& p, const Bundle& b, std::string& why) {
     const std::vector<int> gang_of = gangs_of(b);
     std::map<int, std::set<int>> ws;
     std::map<int, int> count;
@@ -133,8 +133,8 @@ bool distinct_workers(const KvmSPlan& p, const Bundle& b, std::string& why) {
 }
 
 bool refused(const Bundle& b, int W, const char* expect) {
-    KvmSConfig cfg; cfg.workers = W;
-    try { kvm_static_plan(b.tasks, b.succ, b.args, cfg, op_info, op_cost); }
+    MvmSConfig cfg; cfg.workers = W;
+    try { mvm_static_plan(b.tasks, b.succ, b.args, cfg, op_info, op_cost); }
     catch (const std::invalid_argument& e) {
         const bool ok = std::string(e.what()).find(expect) != std::string::npos;
         if (!ok) printf("  refused with \"%s\", expected \"%s\"\n", e.what(), expect);
@@ -155,9 +155,9 @@ int main() {
                   for (unsigned seed = 0; seed < (wiring == 3 ? 8u : 1u); ++seed) {
                     if (W < members) continue;
                     const Bundle b = make(6, members, extra, wiring, 1000u * wiring + 10u * members + extra + 100000u * seed);
-                    KvmSConfig cfg; cfg.workers = W;
-                    KvmSPlan p;
-                    try { p = kvm_static_plan(b.tasks, b.succ, b.args, cfg, op_info, op_cost); }
+                    MvmSConfig cfg; cfg.workers = W;
+                    MvmSPlan p;
+                    try { p = mvm_static_plan(b.tasks, b.succ, b.args, cfg, op_info, op_cost); }
                     catch (const std::exception& e) { EXPECT(false, "wiring %d members %d extra %d W %d: refused: %s", wiring, members, extra, W, e.what()); continue; }
                     std::string why;
                     EXPECT(p.gangs == 6, "wiring %d members %d W %d: %d gangs, expected 6", wiring, members, W, p.gangs);
@@ -174,11 +174,11 @@ int main() {
         Bundle o = b;
         for (auto& t : o.tasks) if (t.op_id == OP_GANG) { t.op_id = OP_WORK; t.args_words = 1; }   // reads the gang id as x
         // costs differ (a gang costs 20, the stand-in 1 + x % 7), so compare against a cost function that charges the same
-        KvmSCostFn same = [&](int id, const int32_t* a) { return id == OP_GANG || id == OP_WORK ? 1.0 + (a[0] % 7) : 0.1; };
+        MvmSCostFn same = [&](int id, const int32_t* a) { return id == OP_GANG || id == OP_WORK ? 1.0 + (a[0] % 7) : 0.1; };
         for (int W : {1, 4, 108}) {
-            KvmSConfig cfg; cfg.workers = W;
-            const KvmSPlan pg = kvm_static_plan(b.tasks, b.succ, b.args, cfg, op_info, same);
-            const KvmSPlan po = kvm_static_plan(o.tasks, o.succ, o.args, cfg, op_info, same);
+            MvmSConfig cfg; cfg.workers = W;
+            const MvmSPlan pg = mvm_static_plan(b.tasks, b.succ, b.args, cfg, op_info, same);
+            const MvmSPlan po = mvm_static_plan(o.tasks, o.succ, o.args, cfg, op_info, same);
             bool equal = pg.prog == po.prog && pg.worker_of == po.worker_of;
             for (size_t t = 0; equal && t < b.tasks.size(); ++t) {
                 equal = pg.waits[t].size() == po.waits[t].size();

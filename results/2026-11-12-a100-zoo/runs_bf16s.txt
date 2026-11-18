@@ -36,7 +36,7 @@ sanitizer exit 0
 OK: 2037/2037 tasks, 129.611 ms
 ========= ERROR SUMMARY: 0 errors
 sanitizer exit 0
-llama_bf16 kvm_exec: OK: 9559/9559 tasks, 13.666 ms
+llama_bf16 mvm_exec: OK: 9559/9559 tasks, 13.666 ms
 lowp: 1266 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 10 loss buffers
   ok   losses rel L2 <= 0.001: worst 3.18e-04
   ok   119 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act62 4.97e-06
@@ -46,7 +46,7 @@ lowp: 1266 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally
   ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 1.19e-07 (llama.h1.attn.v.w)
   ok   no NaN/Inf in any GPU buffer: []
 PASS
-mlp_bf16 kvm_exec: OK: 2669/2669 tasks, 8.668 ms
+mlp_bf16 mvm_exec: OK: 2669/2669 tasks, 8.668 ms
 lowp: 831 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 30 loss buffers
   ok   losses rel L2 <= 0.001: worst 8.26e-07
   ok   26 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act25 1.31e-07
@@ -56,7 +56,7 @@ lowp: 831 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-
   ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 2.50e-07 (mlp.fc1.w)
   ok   no NaN/Inf in any GPU buffer: []
 PASS
-vit_bf16 kvm_exec: OK: 6499/6499 tasks, 6.338 ms
+vit_bf16 mvm_exec: OK: 6499/6499 tasks, 6.338 ms
 lowp: 863 f32 buffers (14 signal-free skipped: ['act146', 'act225', 'act304', 'act383', 'act462', 'act541']; 1 structurally-zero-gradient parameters judged in absolute terms), 10 loss buffers
   ok   losses rel L2 <= 0.001: worst 6.00e-04
   ok   77 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act66 3.20e-05
@@ -78,7 +78,7 @@ lowp: 863 f32 buffers (14 signal-free skipped: ['act146', 'act225', 'act304', 'a
   ok   act778 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 1.220e-04 (golden 9.358e-05) vs 8.137e-01
   ok   no NaN/Inf in any GPU buffer: []
 PASS
-san_bf16 kvm_exec: OK: 1909/1909 tasks, 2.338 ms
+san_bf16 mvm_exec: OK: 1909/1909 tasks, 2.338 ms
 lowp: 305 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 2 loss buffers
   ok   losses rel L2 <= 0.001: worst 6.07e-08
   ok   119 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act62 4.97e-06
@@ -88,7 +88,7 @@ lowp: 305 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-
   ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 5.38e-08 (llama.h1.attn.q.w)
   ok   no NaN/Inf in any GPU buffer: []
 PASS
-llama_bf16s kvm_exec: OK: 10199/10199 tasks, 9.374 ms
+llama_bf16s mvm_exec: OK: 10199/10199 tasks, 9.374 ms
 lowp: 726 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 10 loss buffers
   ok   losses rel L2 <= 0.001: worst 6.09e-04
   ok   65 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act106 4.81e-03
@@ -98,7 +98,7 @@ lowp: 726 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-
   ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 1.18e-07 (llama.h0.attn.o.w)
   ok   no NaN/Inf in any GPU buffer: []
 PASS
-mlp_bf16s kvm_exec: OK: 3329/3329 tasks, 7.740 ms
+mlp_bf16s mvm_exec: OK: 3329/3329 tasks, 7.740 ms
 lowp: 651 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 30 loss buffers
   ok   losses rel L2 <= 0.001: worst 8.26e-07
   ok   20 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act28 1.31e-07
@@ -108,7 +108,7 @@ lowp: 651 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-
   ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 2.50e-07 (mlp.fc1.w)
   ok   no NaN/Inf in any GPU buffer: []
 PASS
-vit_bf16s kvm_exec: OK: 6879/6879 tasks, 8.758 ms
+vit_bf16s mvm_exec: OK: 6879/6879 tasks, 8.758 ms
 lowp: 633 f32 buffers (14 signal-free skipped: ['act145', 'act224', 'act303', 'act382', 'act461', 'act540']; 1 structurally-zero-gradient parameters judged in absolute terms), 10 loss buffers
   ok   losses rel L2 <= 0.001: worst 2.30e-04
   ok   54 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act52 4.65e-07
@@ -130,7 +130,7 @@ lowp: 633 f32 buffers (14 signal-free skipped: ['act145', 'act224', 'act303', 'a
   ok   act777 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 1.607e-04 (golden 1.436e-04) vs 8.137e-01
   ok   no NaN/Inf in any GPU buffer: []
 PASS
-san_bf16s kvm_exec: OK: 2037/2037 tasks, 2.100 ms
+san_bf16s mvm_exec: OK: 2037/2037 tasks, 2.100 ms
 lowp: 197 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 2 loss buffers
   ok   losses rel L2 <= 0.001: worst 2.82e-05
   ok   65 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act106 4.81e-03

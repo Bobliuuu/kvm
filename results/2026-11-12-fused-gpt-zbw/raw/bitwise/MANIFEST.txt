@@ -1,5 +1,5 @@
 e11a7f3 perf(fused): run the attention items' q-side weight gradients in the waits
-base 7ce20e6; lever2 e11a7f3; attnonly = e11a7f3 with KVM_FGPT_ZBW_OWNERS=0; control2 = e11a7f3 with the doer's dWo at !prec
+base 7ce20e6; lever2 e11a7f3; attnonly = e11a7f3 with MVM_FGPT_ZBW_OWNERS=0; control2 = e11a7f3 with the doer's dWo at !prec
 8bb1377865079c700486d97bb9c1d269  fgpt_bed_base
 8236a1efeb2d55a3068c5dcd3f3218e5  fgpt_bed_lever2
 78ca830c25c1922b96cb8f33d8f5541b  fgpt_bed_attnonly

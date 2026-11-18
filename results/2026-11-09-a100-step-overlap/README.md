@@ -1,6 +1,6 @@
 # Step overlap within one run (goal 5a), A100: bounded result
 
-A100-SXM4-40GB (108 SMs, driver 580.105.08, nvcc 12.8), shared box, one `~/.gpu.lock` hold per job. Code: `kvm.cu --overlap 0|1|2` (this branch), scripts in `bench/step_overlap/`.
+A100-SXM4-40GB (108 SMs, driver 580.105.08, nvcc 12.8), shared box, one `~/.gpu.lock` hold per job. Code: `mvm.cu --overlap 0|1|2` (this branch), scripts in `bench/step_overlap/`.
 
 ## What can legally overlap (first principles)
 One SGD step of the 2-layer MLP: `H1 = relu(X W1)` -> `Y = H1 W2` (reduces over ALL hidden columns) -> `dH = (dY W2^T) * mask` -> `W1 -= lr X^T dH` -> next `H1`.
@@ -16,7 +16,7 @@ Algebraic look-ahead (`Z(s+1) = X' W1 - lr X'X^T dH`) would shorten the chain bu
 - `--overlap 2`: 1 + step-parity double buffers for H1, dY and W2 (W2 updated out of place, new `F_SGDSRC` flag, parity bits in `xflags`). `DW2` waits only for `Y`; `H1(s+1)` waits only for its `W1` column. Each tile's arithmetic is unchanged.
 A/B isolation: same binary, same tiles, same 1000 steps; only wait edges and buffer ids differ. Correctness: final weights hash (FNV-1a) identical for levels 0/1/2 in all 6 runs (`4acfcd7dceb8d98a`) and 0 of 147456 weights differ bitwise between the VM and each of the three launch baselines at every level; loss vs CPU fp32 2.8e-5.
 
-## Result 1: kvm.cu, 1 run, 1000 steps, best of 15 reps, 3 interleaved rounds (`ab/`)
+## Result 1: mvm.cu, 1 run, 1000 steps, best of 15 reps, 3 interleaved rounds (`ab/`)
 | tiles | overlap 0 | overlap 1 | overlap 2 | 2 vs 0 | best launch baseline |
 |---|---|---|---|---|---|
 | default (64x64, kc32) ms/1000 steps | 42.34 | 41.58 | 39.82 | **1.063x** | 45.9 |
@@ -31,7 +31,7 @@ Timestamps tick at 1 us (A100 globaltimer), so sub-us structure is not resolvabl
 Dependency-chain floor, per step (median tile compute, us): H1 4.1 + Y 6.1 + DH1 3.1 + DW1 4.1 = 17.4 us of tile compute on the chain, +~7 us of dependency hops/launch-to-ready = ~24.6 us. The overlap-2 run is AT that floor of its own chain (it cannot go lower without shortening a tile or a hop); only the algebraic look-ahead or column-sliced fusion (`--prog fused`, 1 hop) change the chain itself. Per-column waits alone (level 1) gave only 0.7-2% because every phase has <=8 tiles on 108 SMs: tiles of a phase finish together, so there is nothing to skew.
 
 ## Result 3: executor, isolated (`exec/`)
-`gpt_tiny`, 40 AdamW steps, `--precise`, same `kvm_run` binary (sha256 prefix 82aa75d625440331), same 2 admissions, 5 interleaved reps. A/B pair differs only in the task graph: `w40bar` adds a no-op barrier task per step (all step k-1 tasks -> barrier -> all step k tasks; `bench/step_overlap/mkbar.py`: +39 tasks, +8034 edges), so steps cannot overlap.
+`gpt_tiny`, 40 AdamW steps, `--precise`, same `mvm_run` binary (sha256 prefix 82aa75d625440331), same 2 admissions, 5 interleaved reps. A/B pair differs only in the task graph: `w40bar` adds a no-op barrier task per step (all step k-1 tasks -> barrier -> all step k tasks; `bench/step_overlap/mkbar.py`: +39 tasks, +8034 edges), so steps cannot overlap.
 | variant | admissions | kernel_ms (5 reps) | median |
 |---|---|---|---|
 | w40 (steps overlap as the DAG allows) | 2 | 60.3 59.7 59.8 60.4 59.8 | 59.77 |
@@ -40,4 +40,4 @@ Dependency-chain floor, per step (median tile compute, us): H1 4.1 + Y 6.1 + DH1
 Isolated step overlap in the executor = 62.92 / 59.77 = **1.053x** (includes the barrier's own hop). The closeout's 1.41x (82.5 -> 59.8 here) is therefore ~87% host admission (82.5 -> 62.9 = 1.31x) and ~13% overlap. Final weight buffers: all 21 files byte-identical across w40, w40bar and w1.
 
 ## Verdict
-5a: no cross-step pipelining exists in an SGD chain (floor above), so "overlap" cannot be more than removing false (WAR) and over-coarse waits. That is worth a measured, bitwise-equal 1.045-1.063x in `kvm.cu` (overlap 2) and 1.05x in the executor DAG; the earlier `pbt-overlap` negative (0.8-1.0x) is reproduced for per-column waits alone (level 1: 1.02x) and explained: it needs the double buffers to matter. Not tested: larger shapes with more tiles per phase, multi-run, the fused programs (already 1 hop). Executor logs list each task; `trace.csv` not committed (size).
+5a: no cross-step pipelining exists in an SGD chain (floor above), so "overlap" cannot be more than removing false (WAR) and over-coarse waits. That is worth a measured, bitwise-equal 1.045-1.063x in `mvm.cu` (overlap 2) and 1.05x in the executor DAG; the earlier `pbt-overlap` negative (0.8-1.0x) is reproduced for per-column waits alone (level 1: 1.02x) and explained: it needs the double buffers to matter. Not tested: larger shapes with more tiles per phase, multi-run, the fused programs (already 1 hop). Executor logs list each task; `trace.csv` not committed (size).

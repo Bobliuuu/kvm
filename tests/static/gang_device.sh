@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # The gang barriers' device test (test_gang_device.cu) built with every arrival-fence form and with the mutants it must catch, then run
-# and judged. A mutant is a copy of include/kvm_gang.cuh with exactly one step removed (the litmus suite's convention): a test that cannot
+# and judged. A mutant is a copy of include/mvm_gang.cuh with exactly one step removed (the litmus suite's convention): a test that cannot
 # fail proves nothing.
-#   prod_f0, prod_f1, prod_f2   the header as it ships, KVM_GANG_FENCE = 0, 1, 2: must pass (no wrong value, clean control words, the
+#   prod_f0, prod_f1, prod_f2   the header as it ships, MVM_GANG_FENCE = 0, 1, 2: must pass (no wrong value, clean control words, the
 #                               abort path ends);
 #   nowait                      both barriers' polls removed, so a member never waits: must read wrong values, from L2 and through L1;
 #   relaxedpoll_f0, _f1, _f2    the waiters' acquire loads made relaxed, so no L1 invalidate follows a poll. Form 1's arrival invalidates
 #                               nothing either, so its reads through L1 must see the round before. Forms 0 and 2 keep an invalidate at
 #                               the arrival (sm_80: the CCTL.IVALL of MEMBAR.SC's fence and of fence.acq_rel), so theirs are reported,
 #                               not judged: the PTX model does not promise what that hardware step gives.
-# Usage (repository root): [KVM_ARCH=sm_80] [NVCC=nvcc] [NVCC_FLAGS=...] tests/static/gang_device.sh build|run|all OUTDIR [ROUNDS=2000]
+# Usage (repository root): [MVM_ARCH=sm_80] [NVCC=nvcc] [NVCC_FLAGS=...] tests/static/gang_device.sh build|run|all OUTDIR [ROUNDS=2000]
 # `run` exits 0 when every judged binary behaved as it must, 1 otherwise; every run's output is OUTDIR/<name>.log.
 set -euo pipefail
 STEP="${1:?build, run or all}"; OUT="${2:?outdir}"; ROUNDS="${3:-2000}"
 HERE="$(cd "$(dirname "$0")" && pwd)"; ROOT="$(cd "$HERE/../.." && pwd)"
-ARCH="${KVM_ARCH:-sm_80}"
+ARCH="${MVM_ARCH:-sm_80}"
 read -r -a EXTRA <<< "${NVCC_FLAGS:-}"
 NAMES=(prod_f0 prod_f1 prod_f2 nowait relaxedpoll_f0 relaxedpoll_f1 relaxedpoll_f2)
 mkdir -p "$OUT"
@@ -27,14 +27,14 @@ find_nvcc() {  # $NVCC, else the one on PATH, else the newest /usr/local/cuda*/b
   NVCC="$found"
 }
 compile() {  # name, include dir, fence form
-  "$NVCC" -O3 -arch="$ARCH" -std=c++17 -lineinfo "${EXTRA[@]}" -DKVM_GANG_FENCE="$3" -I"$2" "$HERE/test_gang_device.cu" -o "$OUT/$1"
-  echo "built $1 ($ARCH, KVM_GANG_FENCE=$3)"
+  "$NVCC" -O3 -arch="$ARCH" -std=c++17 -lineinfo "${EXTRA[@]}" -DMVM_GANG_FENCE="$3" -I"$2" "$HERE/test_gang_device.cu" -o "$OUT/$1"
+  echo "built $1 ($ARCH, MVM_GANG_FENCE=$3)"
 }
 mutant() {  # name, sed expression, lines it must change: prints the include dir that holds the mutated header
   local d="$OUT/hdr_$1"
   rm -rf -- "${d:?}"; mkdir -p "$d"; cp -r "$ROOT"/include/* "$d/"
-  sed -E "$2" "$ROOT/include/kvm_gang.cuh" > "$d/kvm_gang.cuh"
-  local n; n=$(diff "$ROOT/include/kvm_gang.cuh" "$d/kvm_gang.cuh" | grep -c '^>' || true)
+  sed -E "$2" "$ROOT/include/mvm_gang.cuh" > "$d/mvm_gang.cuh"
+  local n; n=$(diff "$ROOT/include/mvm_gang.cuh" "$d/mvm_gang.cuh" | grep -c '^>' || true)
   if [ "$n" != "$3" ]; then echo "mutant $1: the sed changed $n line(s), not $3: the header moved under it" >&2; exit 2; fi
   echo "$d"
 }

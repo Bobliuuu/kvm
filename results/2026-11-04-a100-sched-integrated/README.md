@@ -1,31 +1,31 @@
 # feat/sched merged onto feat/integration (slot recycling), review fixes, real Doom under the scheduler, A100 (2026-11-04)
 
 - GPU: NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver 580.105.08 (CUDA 13.0), nvcc 12.8.93. Shared box, every run under the GPU lock
-  (`run_all.sh` takes it once and runs the stages with `KVM_NO_LOCK=1`). Commit shown in each file's first line (`+dirty` = only test/runner edits after the device code).
-- Build flags: `tests/gpu/build.sh` / `build_sched.sh` (`-O3 -arch=sm_80 -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -lineinfo`, GPT pack present, game pack only for Doom with `-rdc=true -DKVM_WITH_GAME`).
+  (`run_all.sh` takes it once and runs the stages with `MVM_NO_LOCK=1`). Commit shown in each file's first line (`+dirty` = only test/runner edits after the device code).
+- Build flags: `tests/gpu/build.sh` / `build_sched.sh` (`-O3 -arch=sm_80 -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -lineinfo`, GPT pack present, game pack only for Doom with `-rdc=true -DMVM_WITH_GAME`).
 - Entry points: `run_exec_tests.sh [--negative|--negative-park|--sanitize|--litmus|--fuzz|--gpt|--bench]`, `run_sched_tests.sh [--negative|--sanitize|--bench]`, `doom/tests/run_sched.sh`, `run_all.sh <group>`.
 - IMPORTANT for comparing with the earlier sched results (`../2026-11-03-a100-sched`): the merged kernel carries the GPT pack and 48 KiB of dynamic shared memory, so only 1 block fits an SM:
   the default grid is 108 blocks (was 324). "Whole GPU" runs below therefore have a third of the workers and about half the streaming bandwidth (478 against 1017 GB/s);
   absolute numbers are not comparable with the 2026-11-03 file, ratios are.
 
 ## Merge
-`git merge feat/integration` into feat/sched: 16 conflict hunks in `include/kvm_exec.cuh` and `kvm_exec.cu`, resolved as follows.
-- Class-aware ready rings are fed by recycled slots: `kvm_enqueue` takes the slot, the class is `workload_id`; per-slot side arrays (`info`, cost, preference) are re-initialised at admission, and
-  `kvm_sched_done` runs BEFORE `kvm_free_slot` (after the slot is recycled its trace/info belong to the next task).
-- Parking: `kvm_release_task` pushes onto the list and calls B's `kvm_scan_parked`; the SCHED hooks are `kvm_sched_park` before the push (waiter counted before it is reachable) and
-  `kvm_sched_unpark` at the single CAS winner inside `kvm_scan_parked` (the node is owned by whoever detached it, so the count cannot be taken twice). Priority inheritance is unchanged.
+`git merge feat/integration` into feat/sched: 16 conflict hunks in `include/mvm_exec.cuh` and `mvm_exec.cu`, resolved as follows.
+- Class-aware ready rings are fed by recycled slots: `mvm_enqueue` takes the slot, the class is `workload_id`; per-slot side arrays (`info`, cost, preference) are re-initialised at admission, and
+  `mvm_sched_done` runs BEFORE `mvm_free_slot` (after the slot is recycled its trace/info belong to the next task).
+- Parking: `mvm_release_task` pushes onto the list and calls B's `mvm_scan_parked`; the SCHED hooks are `mvm_sched_park` before the push (waiter counted before it is reachable) and
+  `mvm_sched_unpark` at the single CAS winner inside `mvm_scan_parked` (the node is owned by whoever detached it, so the count cannot be taken twice). Priority inheritance is unchanged.
 - `registry_ok()`: B's sparse-id version taken. The cost table is keyed by name, so GPT/game ops use the default (MIXED, 0 bytes) and never conflict with the `.def` files.
-- Hygiene fix found on the way: `tests/gpu/kvm_ops_test.def|.cuh` (needed by B's `build.sh`) were ignored by `.gitignore` (`kvm_*`) and never committed; they are force-added here.
+- Hygiene fix found on the way: `tests/gpu/mvm_ops_test.def|.cuh` (needed by B's `build.sh`) were ignored by `.gitignore` (`mvm_*`) and never committed; they are force-added here.
 
 ## Review findings fixed (R's REVIEW.md, verified against the merged code; each has a test that failed before)
 | ID | Fix | Evidence |
 |----|-----|----------|
 | C1 | `timeout` is a stall detector: pending work and no task finished or admitted for `timeout` (the admitter waiting for room also counts); idle never times out; checked at most once per ms | probe_timeout (idle 3.5 s, timeout 2 s): ok; probe_timeout_busy (40 x 100 ms tasks, timeout 2 s): 40/40 done |
 | C2 | Parked tasks have their own budget (`live_cap`), not counted in the runnable window; ready rings are `4 * live_cap` deep so they cannot fill (bound in the header comment); more than `live_cap` parked is the explicit `PARK_STALL` | probe_deadlock (8 waiters then the publisher bundle, live_cap 8): 9/9 done; test_exec `cross-bundle wait`; test_exec stall test now ends in PARK_STALL |
-| C3 | 64-bit range checks on host (`validate`) and device (`kvm_admit_record`) | fuzz targeted T01/T03/T04: rejected, no crash |
+| C3 | 64-bit range checks on host (`validate`) and device (`mvm_admit_record`) | fuzz targeted T01/T03/T04: rejected, no crash |
 | C4 | JSON depth limit, `need()` for required keys, bounds check of `reads[].task` | T06-T12 rejected with a message; random corpus 0 crashes |
 | C5 | `spin` is bounded (10 s, else BOUNDS); `task_limit` (default 30 s) reports a task that ran longer as `TASK_LIMIT` (after the fact: tasks are not interruptible) | probe_spin: spin(2e9) rejected in 0.00 s; 1.5 s task with a 0.5 s limit -> TASK_LIMIT |
-| C6 | CLI numbers parsed strictly with ranges; `KvmExec` rejects negative `aging_us` and out-of-range `timeout_us` | T15-T17, T19, T20 -> usage errors; probe_aging: -5 and -2e6 rejected, 0/1e6 give priority order 11..0 |
+| C6 | CLI numbers parsed strictly with ranges; `MvmExec` rejects negative `aging_us` and out-of-range `timeout_us` | T15-T17, T19, T20 -> usage errors; probe_aging: -5 and -2e6 rejected, 0/1e6 give priority order 11..0 |
 | C7 | `submit()` returns `DEVICE_ERROR` once the device has failed | test_exec errors/admission |
 | C8 | `validate()` rejects a version-wait cycle inside one bundle (publisher -> waiter edges added to Kahn) and a task waiting for a version it publishes itself | test_exec; cross-bundle waits stay legal (undecidable here: T14 wait_ver=INT_MAX is still found by the stall timeout after 3 s, reported SLOW_REJECT) |
 | S1 | no `8 * max_tasks` product exists in the merged code; `--max-tasks` range-checked | T19 |
@@ -35,8 +35,8 @@
 | Suite | Result |
 |---|---|
 | B's `run_exec_tests.sh` functional (ops, types, init, errors, dag incl. 267k tasks, sched, admission, versions, recycle incl. 2M-task DAG and 3M-task long admission, litmus) | **8582 checks, 0 failed** (exec-functional.txt; was 8578 + 4 new: PARK_STALL, cross-bundle wait) |
-| `--negative` (KVM_BREAK_FENCE) | 7497 checks, 118 failed: the harness detects it, `NEGATIVE TEST PASS` |
-| `--negative-park` (KVM_BREAK_PARK_RECHECK) | litmus suite fails (10 checks), `NEGATIVE TEST PASS` |
+| `--negative` (MVM_BREAK_FENCE) | 7497 checks, 118 failed: the harness detects it, `NEGATIVE TEST PASS` |
+| `--negative-park` (MVM_BREAK_PARK_RECHECK) | litmus suite fails (10 checks), `NEGATIVE TEST PASS` |
 | `--sanitize` (memcheck, racecheck, synccheck, smoke) | 0 errors, 0 hazards |
 | R's litmus harness (`--litmus`) on the merged headers | **15 properties/scenarios/probes passed, 7 mutants/controls detected, 0 failures** (litmus.txt) |
 | fuzz, random corpus | 300 cases: 58 OK, 231 REJECT, 10 USAGE, 1 SLOW_REJECT, **0 crashes, 0 hangs**, 0 sanity failures |
@@ -45,7 +45,7 @@
 | `run_sched_tests.sh` (cost, share, reserve, edf, inherit, rand) | **497 checks, 0 failed**; `--negative`: starvation and deadlock both detected; `--sanitize`: 0 errors/hazards |
 
 Litmus detail. Required-detect mutants: exchbefore (52,005 and 161,136 violations), norecheck (207,484 and 81,455), weakpub/mp (77), popplain/queue (the broken claim livelocks the queue: killed by the 120 s timeout, counted as detected),
-`KVM_BREAK_FENCE` e2e control (751 stale reads). Documented as NOT observable on the A100 (R's rows 1 and 4, S4; reported, not required to fail): nodekkerfence (0/500k, 0/125k), nofence/mp (0/1.6M), qrelax (0/1M).
+`MVM_BREAK_FENCE` e2e control (751 stale reads). Documented as NOT observable on the A100 (R's rows 1 and 4, S4; reported, not required to fail): nodekkerfence (0/500k, 0/125k), nofence/mp (0/1.6M), qrelax (0/1M).
 Production headers: sb 2.5M rounds, dekker1 500k, dekker3 250k, mp 2M, queue 1.0M pops: 0 violations. e2e dag/versions/ring/bigrecord/closerace: 0 failures, 0 findings.
 
 ## Real Doom beside a saturating bursty compute load (doom-sched.txt; single runs, not best-of-N)

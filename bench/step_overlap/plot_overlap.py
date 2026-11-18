@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step-overlap timeline + stats from kvm.cu --timeline CSVs (tiles program).
+"""Step-overlap timeline + stats from mvm.cu --timeline CSVs (tiles program).
 
   python3 plot_overlap.py L0.csv L2.csv --labels "overlap 0" "overlap 2" --out fig.png --stats stats.json [--steps a:b]
 

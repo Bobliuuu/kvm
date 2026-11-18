@@ -3,8 +3,8 @@
 // "single-op" = the same device code in a kernel that contains only that op (register/occupancy upper bound).
 // A100 peaks: TF32 tensor 156 TFLOP/s, FP32 19.5 TFLOP/s, HBM 1555 GB/s (40 GB SXM4).
 #include <algorithm>
-#ifndef KVM_GPT_MAX_HD
-#define KVM_GPT_MAX_HD 128   // these tests and benchmarks cover hd=128 attention (-DKVM_GPT_MAX_HD=64 builds the hd<=64 union)
+#ifndef MVM_GPT_MAX_HD
+#define MVM_GPT_MAX_HD 128   // these tests and benchmarks cover hd=128 attention (-DMVM_GPT_MAX_HD=64 builds the hd<=64 union)
 #endif
 #include "harness.cuh"
 #include "refs.hpp"
@@ -13,20 +13,20 @@
 #endif
 
 template <int ID>
-__global__ void __launch_bounds__(256) k_one(KvmCtx c, const int32_t* w, const int* off) { kvm_gpt_dispatch(c, ID, w + off[blockIdx.x]); }
+__global__ void __launch_bounds__(256) k_one(MvmCtx c, const int32_t* w, const int* off) { mvm_gpt_dispatch(c, ID, w + off[blockIdx.x]); }
 
-struct Staged { int32_t* w; int* op; int* off; int n; KvmCtx c; };
+struct Staged { int32_t* w; int* op; int* off; int n; MvmCtx c; };
 static Staged stage(Dev& d, const Batch& b) {
-    static int attr = 0; if (!attr) { CK(cudaFuncSetAttribute(k_run, cudaFuncAttributeMaxDynamicSharedMemorySize, kvm_test_smem_cap())); attr = 1; }
+    static int attr = 0; if (!attr) { CK(cudaFuncSetAttribute(k_run, cudaFuncAttributeMaxDynamicSharedMemorySize, mvm_test_smem_cap())); attr = 1; }
     d.sync_table(); Staged s{}; s.n = (int)b.op.size();
     CK(cudaMalloc(&s.w, b.w.size() * 4 + 4)); CK(cudaMalloc(&s.op, s.n * 4)); CK(cudaMalloc(&s.off, s.n * 4));
     CK(cudaMemcpy(s.w, b.w.data(), b.w.size() * 4, cudaMemcpyHostToDevice)); CK(cudaMemcpy(s.op, b.op.data(), s.n * 4, cudaMemcpyHostToDevice));
-    CK(cudaMemcpy(s.off, b.off.data(), s.n * 4, cudaMemcpyHostToDevice)); s.c = KvmCtx{d.tab_d, (int32_t)d.tab.size(), d.err};
+    CK(cudaMemcpy(s.off, b.off.data(), s.n * 4, cudaMemcpyHostToDevice)); s.c = MvmCtx{d.tab_d, (int32_t)d.tab.size(), d.err};
     return s;
 }
 template <int ID> static void launch_one(const Staged& s, int smem) {
     static bool attr = false;
-    if (!attr) { CK(cudaFuncSetAttribute(k_one<ID>, cudaFuncAttributeMaxDynamicSharedMemorySize, kvm_test_smem_cap())); attr = true; }
+    if (!attr) { CK(cudaFuncSetAttribute(k_one<ID>, cudaFuncAttributeMaxDynamicSharedMemorySize, mvm_test_smem_cap())); attr = true; }
     k_one<ID><<<s.n, 256, smem>>>(s.c, s.w, s.off);
 }
 static void launch_full(const Staged& s, int smem) { k_run<<<s.n, 256, smem>>>(s.c, s.w, s.op, s.off); }
@@ -61,7 +61,7 @@ template <int ID> static void bench_mm(int M, int N, int K, int ta, int tb, int 
     Batch b; auto addt = [&](int m0, int n0) { b.add(OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(m0).i(n0).i(M).i(N).i(K).i(ta | (tb << 1) | (prec << 4) | (big == 1 ? 32 : big == 2 ? 64 : 0)).f(1.f)); };
     if (!grp) { for (int m0 = 0; m0 < M; m0 += stepm) for (int n0 = 0; n0 < N; n0 += step) addt(m0, n0); }
     else for (int g0 = 0; g0 < M; g0 += grp * step) for (int n0 = 0; n0 < N; n0 += step) for (int m0 = g0; m0 < std::min(M, g0 + grp * step); m0 += step) addt(m0, n0);
-    auto s = stage(dv, b); launch_full(s, kvm_gpt_smem_bytes(64)); CK(cudaDeviceSynchronize());
+    auto s = stage(dv, b); launch_full(s, mvm_gpt_smem_bytes(64)); CK(cudaDeviceSynchronize());
     auto o = dv.down(io); Rng rs(9); double me = 0, mx = 0;   // sampled elements vs double dot products
     for (int t = 0; t < 400; t++) {
         int m = rs.u32() % M, n = rs.u32() % N; double acc = 0;
@@ -72,9 +72,9 @@ template <int ID> static void bench_mm(int M, int N, int K, int ta, int tb, int 
     double tol = prec ? 2e-6 * sqrt((double)K) : 6e-3; char d[64]; snprintf(d, sizeof d, "400 sampled elements relerr %.2e", me / mx);
     verdict(std::string("bench check: ") + nm, me / mx < tol, d);
     double flops = 2.0 * M * N * K;   // nominal 2MNK (3xTF32 performs 3x the tensor work)
-    double ms = time_ms([&] { launch_full(s, kvm_gpt_smem_bytes(64)); }, 10); report(nm, "full dispatch", ms, flops, "GFLOP/s", prec ? 156000 / 3.0 : 156000);
+    double ms = time_ms([&] { launch_full(s, mvm_gpt_smem_bytes(64)); }, 10); report(nm, "full dispatch", ms, flops, "GFLOP/s", prec ? 156000 / 3.0 : 156000);
     const double ms_full = ms;
-    ms = time_ms([&] { launch_one<ID>(s, kvm_gpt_smem_bytes(64)); }, 10); report(nm, "single-op", ms, flops, "GFLOP/s", prec ? 156000 / 3.0 : 156000);
+    ms = time_ms([&] { launch_one<ID>(s, mvm_gpt_smem_bytes(64)); }, 10); report(nm, "single-op", ms, flops, "GFLOP/s", prec ? 156000 / 3.0 : 156000);
 #ifdef BENCH_CUBLAS
     {   // cuBLAS in the same process: row-major C = op(A) op(B) is column-major C^T = op(B)^T op(A)^T
         static cublasHandle_t h = nullptr; if (!h) cublasCreate(&h);
@@ -84,7 +84,7 @@ template <int ID> static void bench_mm(int M, int N, int K, int ta, int tb, int 
         const float one = 1.f, zero = 0.f;
         auto f = [&] { cublasSgemm(h, tb ? CUBLAS_OP_T : CUBLAS_OP_N, ta ? CUBLAS_OP_T : CUBLAS_OP_N, N, M, K, &one, db, tb ? K : N, da, ta ? M : K, &zero, dc, N); };
         double cms = time_ms(f, 10); report(nm, "cuBLAS", cms, flops, "GFLOP/s", prec ? 156000 / 3.0 : 156000);
-        printf("RATIO  %-46s kvm/cuBLAS %.3f (full dispatch) %.3f (single-op)\n", nm, cms / ms_full, cms / ms);
+        printf("RATIO  %-46s mvm/cuBLAS %.3f (full dispatch) %.3f (single-op)\n", nm, cms / ms_full, cms / ms);
         cudaFree(da); cudaFree(db); cudaFree(dc);
     }
 #endif
@@ -98,16 +98,16 @@ template <int HD> static void bench_attn(int B, int T, int H, int Hkv) {
     dv.up(q, hq); dv.up(k, hk); dv.up(v, hv); dv.up(dO, hdo);
     float sc = 1.f / sqrtf((float)HD);
     Batch f, bd, bq, bkv;   // heaviest (latest) query blocks first
-    for (int q0 = ((T - 1) / KVM_GPT_ATTN_ROWS) * KVM_GPT_ATTN_ROWS; q0 >= 0; q0 -= KVM_GPT_ATTN_ROWS) for (int b = 0; b < B; b++) {
+    for (int q0 = ((T - 1) / MVM_GPT_ATTN_ROWS) * MVM_GPT_ATTN_ROWS; q0 >= 0; q0 -= MVM_GPT_ATTN_ROWS) for (int b = 0; b < B; b++) {
         for (int h = 0; h < H; h++) {
             f.add(OP_attn_fwd, A().b(q).b(k).b(v).b(o).b(lse).i(b).i(h).i(q0).i(T).i(H).i(Hkv).i(HD).f(sc));
             bq.add(OP_attn_bwd_dq, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dq).i(b).i(h).i(q0).i(T).i(H).i(Hkv).i(HD).f(sc));
         }
     }
-    for (int k0 = 0; k0 < T; k0 += KVM_GPT_ATTN_ROWS) for (int b = 0; b < B; b++) for (int h = 0; h < Hkv; h++)   // dkv: early key blocks are heaviest
+    for (int k0 = 0; k0 < T; k0 += MVM_GPT_ATTN_ROWS) for (int b = 0; b < B; b++) for (int h = 0; h < Hkv; h++)   // dkv: early key blocks are heaviest
         bkv.add(OP_attn_bwd_dkv, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dk).b(dvv).i(b).i(h).i(k0).i(T).i(H).i(HD).f(sc));
     for (int r0 = 0; r0 < R; r0 += 128) bd.add(OP_attn_bwd_delta, A().b(o).b(dO).b(delta).i(r0).i(std::min(R, r0 + 128)).i(T).i(H).i(HD));
-    int smem = kvm_gpt_smem_bytes(HD);
+    int smem = mvm_gpt_smem_bytes(HD);
     auto sf = stage(dv, f), sd = stage(dv, bd), sq = stage(dv, bq), skv = stage(dv, bkv);
     const char* stage_names[4] = {"fwd", "delta", "dq", "dkv"}; const Staged* sts[4] = {&sf, &sd, &sq, &skv};
     for (int i = 0; i < 4; i++) { launch_full(*sts[i], smem); CK(cudaDeviceSynchronize()); int e = dv.geterr(); if (e) { printf("FAIL  attn bench: %s stage device error %d\n", stage_names[i], e); g_fail++; } }

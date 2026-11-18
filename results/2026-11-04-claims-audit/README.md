@@ -1,4 +1,4 @@
-# KVM claims audit vs Flapping Airplanes (2026-11-04/05)
+# Magni VM claims audit vs Flapping Airplanes (2026-11-04/05)
 
 Auditor X (independent). Branch `review/claims-audit` = `feat/integration` 0d945bc + this directory. GPU: A100-SXM4-40GB (108 SMs, sm_80), a shared box:
 other users' jobs ran around mine, so absolute numbers are indicative; ratios are what to read. FA's published numbers (none, see below) are for H100/B200; nothing here is
@@ -33,20 +33,20 @@ Status: **IM** = implemented + measured; **I** = implemented, not measured (by m
 
 | Claim | Status | Evidence (file:line; results) | Re-run by me |
 |---|---|---|---|
-| F1 whole training run in one persistent kernel | IM | `kvm_exec.cu:803` `kvm_exec_kernel`, workers `include/kvm_exec.cuh:593` `kvm_worker`; training bundles up to 43,650 tasks / 50 steps ran in one launch (`logs/merged-0d945bc/time_kvm.txt`) | yes |
+| F1 whole training run in one persistent kernel | IM | `mvm_exec.cu:803` `mvm_exec_kernel`, workers `include/mvm_exec.cuh:593` `mvm_worker`; training bundles up to 43,650 tasks / 50 steps ran in one launch (`logs/merged-0d945bc/time_mvm.txt`) | yes |
 | Correct vs independent reference | IM | 4 NEW models vs CPU golden (section 4); `exec_functional.txt` 8582 checks 0 failed; model-zoo subset 7/7 PASS (`models-subset-check.txt`); litmus 15 passed | yes |
-| F6 not hardwired to one model | IM, with limits | executor/scheduler/ABI/compiler have no model or game names (`logs/hardcoding-grep.txt`, `hardcoding-grep-merged.txt`); new model shapes + an MLP pass on the A100 (section 4). Limits: op registries are compile-time CUDA, game ops need a separate `-rdc` build (`include/kvm_exec.cuh:389-404`), the training builder is LM-only (`frontend/kvmfe/train.py:86,108`), `ModelConfig` rejects non-attention shapes even for an MLP (`nn.py:30-34`) | yes |
-| F7 ops fast with no hand-written kernels | **M / contradicted** | Every op is a hand-written CUDA body (83 registered ops in `include/kvm_ops*.def`); there is no kernel generator. Quality: TF32 matmul 4096^3 = 27.6 TFLOP/s default build, 41.2 with the 128-register cap, vs cuBLAS 105.6 (0.26x / 0.39x) (`ops_bench_*.txt`, `time_torch.txt`) | yes |
+| F6 not hardwired to one model | IM, with limits | executor/scheduler/ABI/compiler have no model or game names (`logs/hardcoding-grep.txt`, `hardcoding-grep-merged.txt`); new model shapes + an MLP pass on the A100 (section 4). Limits: op registries are compile-time CUDA, game ops need a separate `-rdc` build (`include/mvm_exec.cuh:389-404`), the training builder is LM-only (`frontend/mvmfe/train.py:86,108`), `ModelConfig` rejects non-attention shapes even for an MLP (`nn.py:30-34`) | yes |
+| F7 ops fast with no hand-written kernels | **M / contradicted** | Every op is a hand-written CUDA body (83 registered ops in `include/mvm_ops*.def`); there is no kernel generator. Quality: TF32 matmul 4096^3 = 27.6 TFLOP/s default build, 41.2 with the 128-register cap, vs cuBLAS 105.6 (0.26x / 0.39x) (`ops_bench_*.txt`, `time_torch.txt`) | yes |
 | F3 train + serve + game together in one kernel | IM (by D, not by me) | Real Doom + GPT train + GPT serve in one executor: `results/2026-11-04-a100-adaptive/README.md`, harness `adaptive/adaptive_run.cu`; Doom + synthetic load: `results/2026-11-04-a100-sched-integrated/`. Not on the integ demo runner (`demo/` is agent H's, uncommitted at audit time) | only `test_adaptive` suites + gpt modes |
-| F8a dynamic SM sharing | IM, narrow | per-class queues, weights, reservations, EDF: `include/kvm_sched.cuh:196-340`; `sched_functional.txt` 499 checks 0 failed; sharing is at task boundaries on whole CTAs (tasks are not preemptible) | yes |
-| static SM split only a baseline | confirmed | `kvm_static_split` callers: `kvm_exec.cu:705` (`--shares`, needs `--sched static`), tests and `doom/tests/run_sched.sh:50-51` only; CLI default is scheduler off (`include/kvm_sched.h:106`); frontend/manifest code has no reference (`hardcoding-grep.txt`). H's runner (not audited) defaults to `dynamic` | grep |
-| F8b memory-bandwidth arbitration | C-ish: implemented, blind to the main ops, no measured benefit | arbiter `include/kvm_sched.cuh:234-290,437`; input is a hand-written byte-cost table `include/kvm_ops_cost.inc` with 20 entries; `matmul_tile`, all attention, all norms, rope, MoE ops, Doom ops have NO entry (default MIXED, 0 bytes, never throttled) (`hardcoding-grep-merged.txt`). D's own result: "The arbiter did not win" (adaptive README). My re-run of the synthetic bench: arbiter ON (60 us target) p99 660 -> 654 us (1.01x) at 99.8% stream retained; the 25 us target costs 29% of stream throughput for 1.08x | static + prior bench |
-| F8c work rebalancing | IM (synthetic) | host controller `include/kvm_sched.h:135`, `kvm_adapt.h`; `test_adaptive` telemetry/loop/floor PASS, floor_neg detected (`adaptive*.txt`); real-mix result: controller did NOT beat hand-set fixed priority (D: 470 vs 353 late frames) | suites yes, real mix no |
-| F9 weight sync train -> live inference | IM | version variables, `exact`/`at_least`, FRAMEWORK.md; `exec_functional.txt` versions suite + `KVM_BREAK_FENCE` negative; demo bundles serve from training versions (`frontend/kvmfe/train.py:1-15`) | functional yes |
-| F10a multi-GPU / multi-node without NCCL | C (single GPU only) | `runtime/partition.py`, `include/kvm_ops_comm.*`, `dist/`; `results/2026-11-03-dist-singlebox/README.md`: 14 stages pass on ONE A100, 4 stages needing 2 GPUs/nodes skipped; "Nothing here shows multi-GPU, NVLink, multi-node or WAN behaviour" | CPU partitioner/sim tests only (python suite 145 OK); GPU dist stages NOT re-run |
+| F8a dynamic SM sharing | IM, narrow | per-class queues, weights, reservations, EDF: `include/mvm_sched.cuh:196-340`; `sched_functional.txt` 499 checks 0 failed; sharing is at task boundaries on whole CTAs (tasks are not preemptible) | yes |
+| static SM split only a baseline | confirmed | `mvm_static_split` callers: `mvm_exec.cu:705` (`--shares`, needs `--sched static`), tests and `doom/tests/run_sched.sh:50-51` only; CLI default is scheduler off (`include/mvm_sched.h:106`); frontend/manifest code has no reference (`hardcoding-grep.txt`). H's runner (not audited) defaults to `dynamic` | grep |
+| F8b memory-bandwidth arbitration | C-ish: implemented, blind to the main ops, no measured benefit | arbiter `include/mvm_sched.cuh:234-290,437`; input is a hand-written byte-cost table `include/mvm_ops_cost.inc` with 20 entries; `matmul_tile`, all attention, all norms, rope, MoE ops, Doom ops have NO entry (default MIXED, 0 bytes, never throttled) (`hardcoding-grep-merged.txt`). D's own result: "The arbiter did not win" (adaptive README). My re-run of the synthetic bench: arbiter ON (60 us target) p99 660 -> 654 us (1.01x) at 99.8% stream retained; the 25 us target costs 29% of stream throughput for 1.08x | static + prior bench |
+| F8c work rebalancing | IM (synthetic) | host controller `include/mvm_sched.h:135`, `mvm_adapt.h`; `test_adaptive` telemetry/loop/floor PASS, floor_neg detected (`adaptive*.txt`); real-mix result: controller did NOT beat hand-set fixed priority (D: 470 vs 353 late frames) | suites yes, real mix no |
+| F9 weight sync train -> live inference | IM | version variables, `exact`/`at_least`, FRAMEWORK.md; `exec_functional.txt` versions suite + `MVM_BREAK_FENCE` negative; demo bundles serve from training versions (`frontend/mvmfe/train.py:1-15`) | functional yes |
+| F10a multi-GPU / multi-node without NCCL | C (single GPU only) | `runtime/partition.py`, `include/mvm_ops_comm.*`, `dist/`; `results/2026-11-03-dist-singlebox/README.md`: 14 stages pass on ONE A100, 4 stages needing 2 GPUs/nodes skipped; "Nothing here shows multi-GPU, NVLink, multi-node or WAN behaviour" | CPU partitioner/sim tests only (python suite 145 OK); GPU dist stages NOT re-run |
 | F10b trillion-parameter training | **M** | largest model anywhere is the 162M GPT compile shape (`nn.py:64`), no GPU run of it on this tree; no sharded-optimizer run | - |
 | F11 any quoted number | n/a | FA gives none | - |
-| Timeline from VM timestamps (AGENTS.md goal 4) | I/IM | per-task trace exists (`--trace-csv`, `kvm_exec.cu`); not audited | no |
+| Timeline from VM timestamps (AGENTS.md goal 4) | I/IM | per-task trace exists (`--trace-csv`, `mvm_exec.cu`); not audited | no |
 
 ## 3. Honest gap list, ranked by importance
 
@@ -57,14 +57,14 @@ Status: **IM** = implemented + measured; **I** = implemented, not measured (by m
 5. **Bandwidth arbiter is blind to the ops that matter** (F8b): no cost entry for `matmul_tile`, attention, norms, rope, MoE, Doom; and it showed no measurable benefit on real tenants.
 6. **Game side is one serial CTA.** Doom's tick is a single-block 5.4 ms task (`doom/exec_main.cu`, one tick in flight); "playing a game" uses ~1 SM, the other 105 are idle in the alone run. Fine as a latency tenant, weak as evidence of whole-GPU co-optimisation. Multi-instance Doom is capped at 8.
 7. **Generic frontend, but not generic training.** `build_training` hard-wires token stream + softmax-CE + select_window (`train.py:86-108`); an MLP/regression/RL-style loop needs a new builder (I wrote one, 30 lines, `newmodel/gen.py`). `ModelConfig` validates attention geometry (head dim 16/32/64/128, seq % 32) even for an MLP. No dynamic shapes or data-dependent control flow (models README). bf16 is emulated in fp32 storage.
-8. **Test-suite hygiene on the integration tip.** (a) `tests/frontend/test_models.py::test_vit_two_layers_patch2` fails deterministically (autodiff -1.5e-19 vs finite difference 1.1e-11 for an attention *key bias* whose true gradient is exactly zero; the relative-error check divides by ~0; absolute error 1e-11, so numerically benign but the committed test is red and the models README's "worst 1.1e-6" excludes it). (b) litmus mutant `weakpub/mp` was not built in two A100 attempts (binary `litmus_weakpub` missing, exit 127; first attempt shows `Killed`, probably an OOM kill of the parallel nvcc on the loaded box): litmus reports 15 passed, 6 of 7 mutants detected, 1 failure (`litmus.txt`, `litmus_rerun.txt`); the same harness passed 7/7 on 1d3c15a (`logs/prior/exec-litmus-1d3c15a.txt`). Unresolved here; could be environment, could be the merged `kvm_exec.cuh` no longer matching the mutant's sed pattern (that would give "sed matched nothing", which I did not see).
+8. **Test-suite hygiene on the integration tip.** (a) `tests/frontend/test_models.py::test_vit_two_layers_patch2` fails deterministically (autodiff -1.5e-19 vs finite difference 1.1e-11 for an attention *key bias* whose true gradient is exactly zero; the relative-error check divides by ~0; absolute error 1e-11, so numerically benign but the committed test is red and the models README's "worst 1.1e-6" excludes it). (b) litmus mutant `weakpub/mp` was not built in two A100 attempts (binary `litmus_weakpub` missing, exit 127; first attempt shows `Killed`, probably an OOM kill of the parallel nvcc on the loaded box): litmus reports 15 passed, 6 of 7 mutants detected, 1 failure (`litmus.txt`, `litmus_rerun.txt`); the same harness passed 7/7 on 1d3c15a (`logs/prior/exec-litmus-1d3c15a.txt`). Unresolved here; could be environment, could be the merged `mvm_exec.cuh` no longer matching the mutant's sed pattern (that would give "sed matched nothing", which I did not see).
 9. Verified-weak claims: flaky `recycle` long-admission run reported by D (2 of 3 failures on their tree) passed for me (`exec_functional.txt` recycle PASS 14.4 s, one run only); dist negative stage originally counted any failure as detection (since tightened).
 10. Timing caveat: the shared box added noise (zoo subset times 10-25% above the models README's: llama_f32 33.7 vs 32.1 ms, moe_f32 43.9 vs 38.9, llama_bf16 47.3 vs 39.5).
 
 ## 4. New-model test (does the frontend generalise? what breaks)
 
 `newmodel/gen.py` (public frontend API only, nothing in `frontend/` edited) builds four models the repo never shipped, compiles bundle + CPU golden, runs on the A100 with
-`kvm_exec --blocks 4 --dump-buffers`, compares every f32 buffer (`newmodel/compare.py`; SGD, so no Adam sign-flip noise; 1xTF32 GEMMs).
+`mvm_exec --blocks 4 --dump-buffers`, compares every f32 buffer (`newmodel/compare.py`; SGD, so no Adam sign-flip noise; 1xTF32 GEMMs).
 
 | case | what it is | tasks (3 steps) | max weight rel L2 | max loss rel err | verdict |
 |---|---|---|---|---|---|
@@ -81,7 +81,7 @@ Refusals are clean `FrontendError`s (`logs/newmodel-bad_head.txt`), no silent mi
 
 ## 5. Closest comparable benchmark (A100; ratios, not absolutes)
 
-FA gave no numbers, so the comparison is the repo's own premise: a whole N-step training run in one `kvm_exec` launch vs PyTorch 2.13 on the same GPU, same shapes
+FA gave no numbers, so the comparison is the repo's own premise: a whole N-step training run in one `mvm_exec` launch vs PyTorch 2.13 on the same GPU, same shapes
 (`newmodel/torch_bench.py`, TF32 on, SGD, best of 5; VM time = executor's own "kernel done" ms, includes streaming admission, excludes process start and bundle load; merged tree).
 
 | run | VM total (min of 5) | VM us/step | PyTorch eager | whole-step CUDA graph | `torch.compile` | VM vs graph | VM vs eager |
@@ -91,7 +91,7 @@ FA gave no numbers, so the comparison is the repo's own premise: a whole N-step 
 
 (Pre-merge repeat: 143.0 ms / 189.9 ms VM, 744 / 8,097 eager, 132.2 / 1,029 graph: `bench-newmodel-vs-torch-1d3c15a.txt`.) Admission floor: 27,600 tasks x 1.96 us = 54 ms (38%) and 43,650 x 1.96 = 86 ms (45%). Why the VM loses: ~100-150 tiny tiles per step with a ~5 us dependency hop each (AGENTS.md: ~5 us/hop), and a graph replays the same 300 launches at ~1.3 us. Where it should win (many independent runs, data-dependent control) was not tested here. Not comparable to Hazy's numbers (B200/H100, bandwidth-bound decode).
 
-Library reference points (same box): cuBLAS TF32 4096^3 105.6 TFLOP/s; ATen layernorm 1,120 GB/s. KVM ops (re-run of ops-perf headline numbers, `ops_bench_*.txt`): matmul TF32 NN 27.6 (claimed 27.0), 41.2 with `BENCH_MINB=2` (claimed 42.7); layernorm fwd 1,141 GB/s (claimed 1,127); adamw 1,181 (1,171); gelu 1,181 (1,180). `test_ops` 1396 passed, 0 failed. Claims reproduce; the claims are modest and honest, and say the same gap to cuBLAS I measured.
+Library reference points (same box): cuBLAS TF32 4096^3 105.6 TFLOP/s; ATen layernorm 1,120 GB/s. Magni VM ops (re-run of ops-perf headline numbers, `ops_bench_*.txt`): matmul TF32 NN 27.6 (claimed 27.0), 41.2 with `BENCH_MINB=2` (claimed 42.7); layernorm fwd 1,141 GB/s (claimed 1,127); adamw 1,181 (1,171); gelu 1,181 (1,180). `test_ops` 1396 passed, 0 failed. Claims reproduce; the claims are modest and honest, and say the same gap to cuBLAS I measured.
 
 ## 6. Other agents' claims, re-checked
 
@@ -102,14 +102,14 @@ Library reference points (same box): cuBLAS TF32 4096^3 105.6 TFLOP/s; ATen laye
 - **Sched/exec suites on the merged tree**: exec 8582/0, sched 499/0, negatives detected, gpt modes byte-identical across 6 scheduler modes (md5 `40d3cfa93158`) + sanitizers clean, python 145 + frontend 59 (1 red).
 
 ## 7. Process notes (what I did wrong)
-- My first launch of `examples/models/run_box.sh` inside an already-held lock deadlocked on its own `flock` and held the shared A100 lock for about 4 hours before timing out; the rerun used `run_all_full.sh` directly. I also rsynced an early run into two shared scratch dirs (`kvm-exec-scratch`, `kvm-sched-scratch`) before switching to private ones; the tree was the integration tree. Two orphaned flock waiters from that remain on the box (a remote `kill` was refused by the permission layer).
+- My first launch of `examples/models/run_box.sh` inside an already-held lock deadlocked on its own `flock` and held the shared A100 lock for about 4 hours before timing out; the rerun used `run_all_full.sh` directly. I also rsynced an early run into two shared scratch dirs (`mvm-exec-scratch`, `mvm-sched-scratch`) before switching to private ones; the tree was the integration tree. Two orphaned flock waiters from that remain on the box (a remote `kill` was refused by the permission layer).
 - x.com pages could not be fetched; F1 is quoted from AGENTS.md, F5 is from a search snippet.
 
 ## Reproduce
 ```
 python3 -I -m unittest discover -s tests; python3 -I -m unittest discover -s tests/frontend
 python3 -I results/2026-11-04-claims-audit/newmodel/gen.py OUT xfmr_odd      # or mlp_ce resmlp_rms bad_dims bad_head
-KVM_HOST=user@host PYBIN=<python with torch on the box> results/2026-11-04-claims-audit/run_audit_job.sh WORK PREBUILT_MODELS NEWMODEL_BUNDLES   # detached, one lock hold
+MVM_HOST=user@host PYBIN=<python with torch on the box> results/2026-11-04-claims-audit/run_audit_job.sh WORK PREBUILT_MODELS NEWMODEL_BUNDLES   # detached, one lock hold
 ```
 Files: `newmodel/` (generator, comparer, torch bench, libref), `logs/` (raw), `run_audit_job.sh`.
 

@@ -1,6 +1,6 @@
 """Reference (CPU) semantics of the communication operators.
 
-include/kvm_ops_comm.def is the single source of truth for ids/signatures (parsed by runtime/abi.py, never copied here).
+include/mvm_ops_comm.def is the single source of truth for ids/signatures (parsed by runtime/abi.py, never copied here).
 `install()` replaces the opaque placeholders for them in runtime/ref_ops.py by real semantics + extents, so shards compile to
 the very bytes the GPU executor receives and the simulator can run them.
 Remote buffers, inboxes and send queues are resolved by the caller (tests/dist/sim.py) to ordinary Python lists, so a
@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / 'runtime'))
 import abi          # noqa: E402
 import ref_ops      # noqa: E402
 
-COMM_DEF = ROOT / 'include' / 'kvm_ops_comm.def'
+COMM_DEF = ROOT / 'include' / 'mvm_ops_comm.def'
 _installed = False
 
 

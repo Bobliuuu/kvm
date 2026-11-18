@@ -6,7 +6,7 @@ host RAM: 1024 GB, cores: 16
 initgen vectors identical
 BUILD: tests/gpu/build.sh
 prebuild exit 0
-kvm_exec build 0
+mvm_exec build 0
       const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, wm = warp >> 2, wn = warp & 3, g = lane >> 2, t = lane & 3;
       const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, wm = warp >> 2, wn = warp & 3, g = lane >> 2, t = lane & 3;
 
@@ -15,32 +15,32 @@ user	42m22.780s
 sys	0m6.800s
 -rwxr-xr-x 1 root root 11242712 Nov 10 09:38 test_exec
 == test_exec
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring wrap: 64 pad words
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring wrap: 64 pad words
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][D] ring full (32768/32768 words used): backpressure
-[kvm_exec][I] kernel done: 156000/156000 tasks in 1490.051 ms, 6000 records, 82 ring wraps, 1283 backpressure waits
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring wrap: 64 pad words
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring wrap: 64 pad words
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][D] ring full (32768/32768 words used): backpressure
+[mvm_exec][I] kernel done: 156000/156000 tasks in 1490.051 ms, 6000 records, 82 ring wraps, 1283 backpressure waits
   litmus: 12 runs, 1872000 tasks; each iteration races a waiter's park against the publish of its version; no lost wakeup, early run or double run
 == litmus: PASS (22.3s, 0 new failures)
 8609 checks, 1 failed, 1 suites failed
@@ -93,7 +93,7 @@ sanitizer exit 0
 OK: 2046/2046 tasks, 154.477 ms
 ========= ERROR SUMMARY: 0 errors
 sanitizer exit 0
-llama_bf16 kvm_exec: OK: 9600/9600 tasks, 22.562 ms
+llama_bf16 mvm_exec: OK: 9600/9600 tasks, 22.562 ms
 lowp: 1266 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 10 loss buffers
   ok   losses rel L2 <= 0.001: worst 3.18e-04
   ok   119 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act62 4.97e-06
@@ -103,7 +103,7 @@ lowp: 1266 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally
   ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 1.19e-07 (llama.h1.attn.v.w)
   ok   no NaN/Inf in any GPU buffer: []
 PASS
-mlp_bf16 kvm_exec: OK: 2790/2790 tasks, 16.134 ms
+mlp_bf16 mvm_exec: OK: 2790/2790 tasks, 16.134 ms
 lowp: 831 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 30 loss buffers
   ok   losses rel L2 <= 0.001: worst 8.26e-07
   ok   26 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act25 1.31e-07
@@ -113,7 +113,7 @@ lowp: 831 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-
   ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 2.50e-07 (mlp.fc1.w)
   ok   no NaN/Inf in any GPU buffer: []
 PASS
-vit_bf16 kvm_exec: OK: 6510/6510 tasks, 14.675 ms
+vit_bf16 mvm_exec: OK: 6510/6510 tasks, 14.675 ms
 lowp: 863 f32 buffers (14 signal-free skipped: ['act146', 'act225', 'act304', 'act383', 'act462', 'act541']; 1 structurally-zero-gradient parameters judged in absolute terms), 10 loss buffers
   ok   losses rel L2 <= 0.001: worst 6.00e-04
   ok   77 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act66 3.20e-05
@@ -135,7 +135,7 @@ lowp: 863 f32 buffers (14 signal-free skipped: ['act146', 'act225', 'act304', 'a
   ok   act778 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 1.220e-04 (golden 9.358e-05) vs 8.137e-01
   ok   no NaN/Inf in any GPU buffer: []
 PASS
-san_bf16 kvm_exec: OK: 1918/1918 tasks, 6.623 ms
+san_bf16 mvm_exec: OK: 1918/1918 tasks, 6.623 ms
 lowp: 305 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 2 loss buffers
   ok   losses rel L2 <= 0.001: worst 6.07e-08
   ok   119 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act62 4.97e-06
@@ -145,7 +145,7 @@ lowp: 305 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-
   ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 5.38e-08 (llama.h1.attn.q.w)
   ok   no NaN/Inf in any GPU buffer: []
 PASS
-llama_bf16s kvm_exec: OK: 10240/10240 tasks, 22.521 ms
+llama_bf16s mvm_exec: OK: 10240/10240 tasks, 22.521 ms
 lowp: 726 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 10 loss buffers
   ok   losses rel L2 <= 0.001: worst 6.09e-04
   ok   65 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act106 4.81e-03
@@ -155,7 +155,7 @@ lowp: 726 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-
   ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 1.18e-07 (llama.h0.attn.o.w)
   ok   no NaN/Inf in any GPU buffer: []
 PASS
-mlp_bf16s kvm_exec: OK: 3450/3450 tasks, 18.349 ms
+mlp_bf16s mvm_exec: OK: 3450/3450 tasks, 18.349 ms
 lowp: 651 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 30 loss buffers
   ok   losses rel L2 <= 0.001: worst 8.26e-07
   ok   20 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act28 1.31e-07
@@ -165,7 +165,7 @@ lowp: 651 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-
   ok   AdamW replayed on the GPU's own gradients reproduces the GPU weights <= 1e-05: worst 2.50e-07 (mlp.fc1.w)
   ok   no NaN/Inf in any GPU buffer: []
 PASS
-vit_bf16s kvm_exec: OK: 6890/6890 tasks, 18.373 ms
+vit_bf16s mvm_exec: OK: 6890/6890 tasks, 18.373 ms
 lowp: 633 f32 buffers (14 signal-free skipped: ['act145', 'act224', 'act303', 'act382', 'act461', 'act540']; 1 structurally-zero-gradient parameters judged in absolute terms), 10 loss buffers
   ok   losses rel L2 <= 0.001: worst 2.30e-04
   ok   54 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act52 4.65e-07
@@ -187,7 +187,7 @@ lowp: 633 f32 buffers (14 signal-free skipped: ['act145', 'act224', 'act303', 'a
   ok   act777 (gradient of a structurally-zero-gradient parameter) at the noise level: |g_gpu| max 1.607e-04 (golden 1.436e-04) vs 8.137e-01
   ok   no NaN/Inf in any GPU buffer: []
 PASS
-san_bf16s kvm_exec: OK: 2046/2046 tasks, 5.857 ms
+san_bf16s mvm_exec: OK: 2046/2046 tasks, 5.857 ms
 lowp: 197 f32 buffers (1 signal-free skipped: ['version_token']; 0 structurally-zero-gradient parameters judged in absolute terms), 2 loss buffers
   ok   losses rel L2 <= 0.001: worst 2.82e-05
   ok   65 step-1 activation/gradient buffers max|err|/max|ref| <= 0.006: worst act106 4.81e-03

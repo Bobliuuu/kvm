@@ -37,7 +37,7 @@
  },
  "args": {
   "work": "out/final2/work_h1024_d2",
-  "exe": "./kvm_exec",
+  "exe": "./mvm_exec",
   "hidden": 1024,
   "depth": 2,
   "steps": 50,

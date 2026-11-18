@@ -1,4 +1,4 @@
-"""The PyTorch twins of the hold-out's zoo rows (Llama / grouped-query, ViT): the forward passes of frontend/kvmfe/models.py in float32 on the GPU, on the executor's own bytes.
+"""The PyTorch twins of the hold-out's zoo rows (Llama / grouped-query, ViT): the forward passes of frontend/mvmfe/models.py in float32 on the GPU, on the executor's own bytes.
 
 torch_bench.Trainer reads the initial weights, data streams and optimizer from the workload (one code path with the GPT row) and calls `loss(p, ids, tgt)` here. The math is the same as
 the frontend's float64 reference (examples/models/torch_models.py): RMSNorm or LayerNorm (eps 1e-5), RoPE (rotate-half), scaled dot product attention (scale hd^-0.5), SwiGLU or tanh-GELU,
@@ -96,7 +96,7 @@ STREAMS = {'llama': ('stream_ids', 'stream_tgt'), 'vit': ('stream_patches', 'str
 
 def twin(family, model_cfg, dev):
     """(config, parameter specs, twin, (data stream, target stream)) of a zoo row's info.json."""
-    from kvmfe import models
+    from mvmfe import models
     if family not in TWINS:
         raise SystemExit(f'zoo_torch: no twin for family {family!r} (have {sorted(TWINS)})')
     model = models.build({'family': family, **model_cfg})

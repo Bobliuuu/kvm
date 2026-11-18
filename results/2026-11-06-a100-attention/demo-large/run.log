@@ -1,4 +1,4 @@
-# demo attn-large2  host=<KVM_HOST>  commit=3089f9e  preset=large model=gpt_162m steps=6 window=1 serve_every=2 frames=700 tiling=a100 precise=0 lr=3e-4 warmup=2 sanitize=0
+# demo attn-large2  host=<MVM_HOST>  commit=3089f9e  preset=large model=gpt_162m steps=6 window=1 serve_every=2 frames=700 tiling=a100 precise=0 lr=3e-4 warmup=2 sanitize=0
 
 === 2026-11-07T00:11:17Z  environment
 Build cuda_12.8.r12.8/compiler.35583870_0
@@ -9,8 +9,8 @@ commit: 3089f9e
 -rw-rw-r-- 1 user user 1308688 Nov  3 23:37 doom/build/doom_dev.o
 -rw-rw-r-- 1 user user 4196020 Nov  3 23:17 doom/third_party/doom1.wad
 
-=== 2026-11-07T00:11:17Z  build kvm_run
-/usr/bin/nvcc -O3 -arch=sm_80 -std=c++17 -rdc=true -DKVM_WITH_GAME -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 demo/kvm_run.cu doom/build/doom_dev.o -o demo/kvm_run
+=== 2026-11-07T00:11:17Z  build mvm_run
+/usr/bin/nvcc -O3 -arch=sm_80 -std=c++17 -rdc=true -DMVM_WITH_GAME -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 demo/mvm_run.cu doom/build/doom_dev.o -o demo/mvm_run
 
 === 2026-11-07T00:29:53Z  CPU oracle for Doom (700 frames)
 
@@ -21,24 +21,24 @@ INFO demo: {'train': (276668, 5280486), 'serve_s0': (8432, 96222), 'serve_s2': (
 INFO manifest: 11 admissions, 1888 buffers (196 shared) -> ../runs/attn-large2/demo/MANIFEST.json
 
 === 2026-11-07T00:32:36Z  CPU-only manifest check (parse, version flow, every bundle loads/remaps/validates)
-[kvm_exec][D] bundle train_w5       276668 tasks (precompiled)
-[kvm_exec][D] bundle serve_s6         8432 tasks (precompiled)
-[kvm_exec][I] check-only: 11 bundles load, remap and validate
-[kvm_exec][I] check-only: manifest, bundles and version flow are consistent
+[mvm_exec][D] bundle train_w5       276668 tasks (precompiled)
+[mvm_exec][D] bundle serve_s6         8432 tasks (precompiled)
+[mvm_exec][I] check-only: 11 bundles load, remap and validate
+[mvm_exec][I] check-only: manifest, bundles and version flow are consistent
 
 === 2026-11-07T00:32:39Z  golden skipped (pure-Python CPU VM cannot run this model)
 
 === 2026-11-07T00:32:39Z  GPU: one lock hold (7200 s max wait)
 lock acquired 2026-11-07T00:32:39Z
-kvm_run exit 0
+mvm_run exit 0
 lock released 2026-11-07T00:32:57Z
-[kvm_exec][I] version check: 22935 version-carrying tasks (22935 exact), 0 violations, 0 at_least readers saw the version advance while they ran; 7645 reads of version 0 carry no tag (ordered by the host barrier only)
-[kvm_exec][I] workload 0: 1660008 tasks, 91.589 CTA-s, queue wait p50 1204.2 p99 34364.4 max 39310.3 us, 0 deadline misses, 29.75 GB moved (2.5 GB/s over the run)
-[kvm_exec][I] workload 1: 33728 tasks, 1.048 CTA-s, queue wait p50 32.8 p99 1269.8 max 1319.9 us, 33728 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
-[kvm_exec][I] workload 2: 5600 tasks, 4.248 CTA-s, queue wait p50 13.3 p99 21.5 max 31.7 us, 56 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
-[kvm_exec][I] trace: 1699336 tasks -> runs/attn-large2/out/trace.csv
-[kvm_exec][I] dumped 701 buffers to runs/attn-large2/out/buffers
-[kvm_exec][I] wrote runs/attn-large2/out/run.json
+[mvm_exec][I] version check: 22935 version-carrying tasks (22935 exact), 0 violations, 0 at_least readers saw the version advance while they ran; 7645 reads of version 0 carry no tag (ordered by the host barrier only)
+[mvm_exec][I] workload 0: 1660008 tasks, 91.589 CTA-s, queue wait p50 1204.2 p99 34364.4 max 39310.3 us, 0 deadline misses, 29.75 GB moved (2.5 GB/s over the run)
+[mvm_exec][I] workload 1: 33728 tasks, 1.048 CTA-s, queue wait p50 32.8 p99 1269.8 max 1319.9 us, 33728 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[mvm_exec][I] workload 2: 5600 tasks, 4.248 CTA-s, queue wait p50 13.3 p99 21.5 max 31.7 us, 56 deadline misses, 0.00 GB moved (0.0 GB/s over the run)
+[mvm_exec][I] trace: 1699336 tasks -> runs/attn-large2/out/trace.csv
+[mvm_exec][I] dumped 701 buffers to runs/attn-large2/out/buffers
+[mvm_exec][I] wrote runs/attn-large2/out/run.json
 OK: 1699336/1699336 tasks, 12045.158 ms, 11 admissions
 
 === 2026-11-07T00:32:57Z  verify

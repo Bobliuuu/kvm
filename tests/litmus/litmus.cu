@@ -1,5 +1,5 @@
-// Adversarial litmus harness for the KVM executor's lock-free protocols. It drives the REAL device functions from
-// include/kvm_exec.cuh (kvm_release_task / kvm_park / kvm_publish / kvm_enqueue / kvm_pop) in isolation, with thousands of
+// Adversarial litmus harness for the Magni VM executor's lock-free protocols. It drives the REAL device functions from
+// include/mvm_exec.cuh (mvm_release_task / mvm_park / mvm_publish / mvm_enqueue / mvm_pop) in isolation, with thousands of
 // CTAs, millions of rounds and randomized per-round delays. build.sh also builds MUTANTS (header copies with one ordering
 // step removed): a litmus that cannot fail proves nothing, so every property has at least one mutant that must be caught.
 //   nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude tests/litmus/litmus.cu -o litmus
@@ -13,9 +13,9 @@
 #ifdef LIT_NOFENCE            // ablation of every __threadfence in the production header (macro applies after cuda_runtime.h)
 #define __threadfence() ((void)0)
 #endif
-#include "kvm_exec.cuh"
-#define NSLOTS_SET(nt) (S.nslots = 0)   /* slot-recycling executor: no free ring here (kvm_init_kernel must not touch fcells) */
-__device__ __forceinline__ int lit_pop(const KvmDevState& S) { int how, dw; return kvm_pop(S, kvm_now(), -1, how, dw); }   // scheduler off: one class
+#include "mvm_exec.cuh"
+#define NSLOTS_SET(nt) (S.nslots = 0)   /* slot-recycling executor: no free ring here (mvm_init_kernel must not touch fcells) */
+__device__ __forceinline__ int lit_pop(const MvmDevState& S) { int how, dw; return mvm_pop(S, mvm_now(), -1, how, dw); }   // scheduler off: one class
 
 #define CK(x) do { cudaError_t e_ = (x); if (e_ != cudaSuccess) { fprintf(stderr, "%s:%d %s -> %s\n", __FILE__, __LINE__, #x, cudaGetErrorString(e_)); exit(3); } } while (0)
 
@@ -67,10 +67,10 @@ __global__ void k_sb(int v, int R, unsigned seed, int* X, int* Y, int* R0, int* 
   }
 }
 
-// ================= Dekker: real kvm_release_task (waiter) vs real kvm_publish (publisher) =================
+// ================= Dekker: real mvm_release_task (waiter) vs real mvm_publish (publisher) =================
 // nw=1: waiter A needs v>=1, publisher P1 sets 1.  nw=3: A needs 1; B,C need 2; P1 sets 1; P2 (waits for 1) sets 2 (re-park path).
 // Roles per round: CTA 2g = waiters (warp i = waiter i), CTA 2g+1 = publishers (warp 0 = P1, warp 1 = P2).
-__global__ void k_dekker(KvmDevState S, int nw, int R, unsigned seed, int* arr, int* abort_flag) {
+__global__ void k_dekker(MvmDevState S, int nw, int R, unsigned seed, int* arr, int* abort_flag) {
   int pair = blockIdx.x >> 1, role = blockIdx.x & 1, npairs = gridDim.x >> 1;
   int warp = threadIdx.x >> 5; if (threadIdx.x & 31) return;
   int nparts = nw + (nw == 1 ? 1 : 2);
@@ -82,18 +82,18 @@ __global__ void k_dekker(KvmDevState S, int nw, int R, unsigned seed, int* arr, 
     int myrole = role ? 4 + warp : warp;
     if (role == 0 && warp < nw) {
       lit_delay(lit_skew(seed, r, myrole, nparts));
-      kvm_release_task(S, base + warp);              // production path: enqueue if satisfied else park (+ Dekker recheck)
+      mvm_release_task(S, base + warp);              // production path: enqueue if satisfied else park (+ Dekker recheck)
     } else if (role == 1 && warp == 0) {
       lit_delay(lit_skew(seed, r, myrole, nparts));
-      kvm_publish(S, 0, r, 1);
+      mvm_publish(S, 0, r, 1);
     } else if (role == 1 && warp == 1 && nw == 3) {
       while (ld_acq(S.version + r) < 1) {}           // graph order: P2 after P1
       lit_delay(lit_skew(seed, r, myrole, nparts));
-      kvm_publish(S, 0, r, 2);
+      mvm_publish(S, 0, r, 2);
     }
   }
 }
-__global__ void k_drain(KvmDevState S, int* seen, int nslots, int* popped) {
+__global__ void k_drain(MvmDevState S, int* seen, int nslots, int* popped) {
   if (blockIdx.x || threadIdx.x >= 32) return;
   for (;;) {
     int s = lit_pop(S);
@@ -101,36 +101,36 @@ __global__ void k_drain(KvmDevState S, int* seen, int nslots, int* popped) {
     if (threadIdx.x == 0 && s >= 0 && s < nslots) { seen[s]++; (*popped)++; }
   }
 }
-__global__ void k_init_tasks(KvmDevState S, int nw, int R) {
+__global__ void k_init_tasks(MvmDevState S, int nw, int R) {
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < nw * R; i += gridDim.x * blockDim.x) {
     int r = i / nw, w = i % nw;
-    KvmTaskDesc t{}; t.wait_var = r; t.wait_ver = (nw == 1 || w == 0) ? 1 : 2; t.priority = 0; t.pub_var = -1;
+    MvmTaskDesc t{}; t.wait_var = r; t.wait_ver = (nw == 1 || w == 0) ? 1 : 2; t.priority = 0; t.pub_var = -1;
     S.tasks[i] = t; S.state[i] = 0; S.park_next[i] = -1;
   }
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < R; i += gridDim.x * blockDim.x) { S.version[i] = 0; S.park_head[i] = -1; }
 }
 
 struct Dev {  // minimal executor state for the lock-free primitives
-  KvmDevState S{}; int live_cap = 0, nvars = 0, ntasks = 0;
+  MvmDevState S{}; int live_cap = 0, nvars = 0, ntasks = 0;
   void alloc(int cap, int nv, int nt) {
     live_cap = cap; nvars = nv; ntasks = nt; S.live_cap = cap; S.rcap = 4 * cap; S.sp.nc = 1; S.sp.on = 0; S.num_vars = nv; NSLOTS_SET(nt); S.aging_ns = 1ll << 50; S.timeout_ns = ~0ull; S.trace_on = 1;
-    CK(cudaMalloc(&S.tasks, (size_t)nt * sizeof(KvmTaskDesc))); CK(cudaMalloc(&S.state, nt * 4)); CK(cudaMalloc(&S.park_next, nt * 4));
+    CK(cudaMalloc(&S.tasks, (size_t)nt * sizeof(MvmTaskDesc))); CK(cudaMalloc(&S.state, nt * 4)); CK(cudaMalloc(&S.park_next, nt * 4));
     CK(cudaMalloc(&S.version, nv * 4)); CK(cudaMalloc(&S.park_head, nv * 4));
-    CK(cudaMalloc(&S.cells, (size_t)KVM_NBUCKETS * 4 * cap * sizeof(KvmCell))); CK(cudaMalloc(&S.qctl, KVM_NBUCKETS * sizeof(KvmQCtl)));
-    CK(cudaMalloc(&S.trace, (size_t)nt * sizeof(KvmTrace))); CK(cudaMalloc(&S.cnt, sizeof(KvmCounters))); CK(cudaMalloc(&S.herr, sizeof(KvmHostErr)));
+    CK(cudaMalloc(&S.cells, (size_t)MVM_NBUCKETS * 4 * cap * sizeof(MvmCell))); CK(cudaMalloc(&S.qctl, MVM_NBUCKETS * sizeof(MvmQCtl)));
+    CK(cudaMalloc(&S.trace, (size_t)nt * sizeof(MvmTrace))); CK(cudaMalloc(&S.cnt, sizeof(MvmCounters))); CK(cudaMalloc(&S.herr, sizeof(MvmHostErr)));
   }
   void reset() {
-    CK(cudaMemset(S.qctl, 0, KVM_NBUCKETS * sizeof(KvmQCtl))); CK(cudaMemset(S.cnt, 0, sizeof(KvmCounters))); CK(cudaMemset(S.herr, 0, sizeof(KvmHostErr)));
-    CK(cudaMemset(S.trace, 0, (size_t)ntasks * sizeof(KvmTrace)));
-    kvm_init_kernel<<<256, KVM_THREADS>>>(S); CK(cudaGetLastError());   // production init: cells seq/slot, park_head
+    CK(cudaMemset(S.qctl, 0, MVM_NBUCKETS * sizeof(MvmQCtl))); CK(cudaMemset(S.cnt, 0, sizeof(MvmCounters))); CK(cudaMemset(S.herr, 0, sizeof(MvmHostErr)));
+    CK(cudaMemset(S.trace, 0, (size_t)ntasks * sizeof(MvmTrace)));
+    mvm_init_kernel<<<256, MVM_THREADS>>>(S); CK(cudaGetLastError());   // production init: cells seq/slot, park_head
     CK(cudaDeviceSynchronize());
   }
-  int err() { KvmCounters c; CK(cudaMemcpy(&c, S.cnt, sizeof c, cudaMemcpyDeviceToHost)); return c.err_code; }
+  int err() { MvmCounters c; CK(cudaMemcpy(&c, S.cnt, sizeof c, cudaMemcpyDeviceToHost)); return c.err_code; }
 };
-static const char* lit_err_name(int c) {   // the executor's error names (KVM_ERRORS in kvm_exec.cuh): a detail line reads err=16(QUEUE_OVERFLOW)
+static const char* lit_err_name(int c) {   // the executor's error names (MVM_ERRORS in mvm_exec.cuh): a detail line reads err=16(QUEUE_OVERFLOW)
   static const char* nm[] = {
 #define E(n, s) #n,
-      KVM_ERRORS(E)
+      MVM_ERRORS(E)
 #undef E
   };
   return c >= 0 && c < (int)(sizeof nm / sizeof nm[0]) ? nm[c] : "UNKNOWN";
@@ -188,11 +188,11 @@ static void run_dekker(int nw, int Rk, int launches, unsigned seed) {
 
 // ================= MP: publish-before-data. writer CTA stores a block, publishes; reader CTA primes L1 with the OLD data, spins =================
 // on the version with the production acquire (thread 0), bar.sync, then ALL threads read with plain loads. variants:
-// 0 production kvm_publish   1 mutant: publish via relaxed CAS, no fence (needs -DLIT_MP_WEAK to differ in reader too)
-// 2 negative control: thread 0 publishes BEFORE the other threads store (KVM_BREAK_FENCE shape)   3 reader uses relaxed version read
+// 0 production mvm_publish   1 mutant: publish via relaxed CAS, no fence (needs -DLIT_MP_WEAK to differ in reader too)
+// 2 negative control: thread 0 publishes BEFORE the other threads store (MVM_BREAK_FENCE shape)   3 reader uses relaxed version read
 #define MPW 1024
 __device__ __forceinline__ unsigned ldg_plain(const unsigned* p) { unsigned v; asm volatile("ld.global.u32 %0,[%1];" : "=r"(v) : "l"(p) : "memory"); return v; }
-__global__ void k_mp(KvmDevState S, int v, int R, unsigned seed, unsigned* data, int* arr, int* bad_words, int* bad_rounds, int* abort_flag) {
+__global__ void k_mp(MvmDevState S, int v, int R, unsigned seed, unsigned* data, int* arr, int* bad_words, int* bad_rounds, int* abort_flag) {
   int pair = blockIdx.x >> 1, role = blockIdx.x & 1, npairs = gridDim.x >> 1;
   for (int r = pair; r < R; r += npairs) {
     unsigned* dp = data + (size_t)r * MPW;
@@ -219,12 +219,12 @@ __global__ void k_mp(KvmDevState S, int v, int R, unsigned seed, unsigned* data,
       if (threadIdx.x == 0 && !lit_rendezvous(arr, r, 2)) { atomicAdd(abort_flag, 1); }
       __syncthreads();
       lit_delay(lit_skew(seed, r, 1, 2) + (lit_hash(seed, r, threadIdx.x) & 63));
-      if (v == 2 && threadIdx.x == 0) kvm_publish(S, 0, r, 1);                  // negative control: version first
+      if (v == 2 && threadIdx.x == 0) mvm_publish(S, 0, r, 1);                  // negative control: version first
       for (int i = threadIdx.x; i < MPW; i += blockDim.x) dp[i] = pat + i;      // plain stores, like the ops
       __syncthreads();
       if (threadIdx.x == 0 && v != 2) {
         if (v == 1) { int o = atomicCAS(S.version + r, 0, 1); (void)o; }        // relaxed CAS, no fence (mutant)
-        else kvm_publish(S, 0, r, 1);                                           // production
+        else mvm_publish(S, 0, r, 1);                                           // production
       }
     }
   }
@@ -240,15 +240,15 @@ static void run_mp(int v, int Rk, int launches, unsigned seed) {
     int a, b, c; CK(cudaMemcpy(&a, bw, 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(&b, br, 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(&c, ab, 4, cudaMemcpyDeviceToHost));
     badw += a; badr += b; ab_total += c; (void)D.err();
   }
-  static const char* nm[] = {"PROD kvm_publish + acquire", "MUTANT relaxed CAS no fence", "NEGATIVE publish-before-stores", "MUTANT reader relaxed version"};
+  static const char* nm[] = {"PROD mvm_publish + acquire", "MUTANT relaxed CAS no fence", "NEGATIVE publish-before-stores", "MUTANT reader relaxed version"};
   char buf[96]; snprintf(buf, sizeof buf, "mp[%s]", nm[v]); report(buf, (long long)R * launches, badr + ab_total, "stale_rounds+aborts", v != 0);
   printf("       detail: stale_words=%lld stale_rounds=%lld aborts=%lld (grid %d CTAs x 256 thr, %d words/round)\n", badw, badr, ab_total, grid, MPW);
 }
 
-// ================= Queue: real kvm_enqueue / kvm_pop with token recirculation, wraparound, ABA =================
+// ================= Queue: real mvm_enqueue / mvm_pop with token recirculation, wraparound, ABA =================
 // ntok = live_cap tokens circulate (the executor's in-flight bound). A popper checks the token was queued exactly once (flag CAS),
 // increments a PLAIN per-token counter (lost updates => handoff visibility bug), picks a new priority and re-enqueues.
-__global__ void k_queue2(KvmDevState S, int ntok, long long budget, unsigned seed, int* inq, unsigned* payload, long long* pops, int* dbl, int* abort_flag) {
+__global__ void k_queue2(MvmDevState S, int ntok, long long budget, unsigned seed, int* inq, unsigned* payload, long long* pops, int* dbl, int* abort_flag) {
   const int lane = threadIdx.x;
   long long it = 0;
   for (;;) {
@@ -256,7 +256,7 @@ __global__ void k_queue2(KvmDevState S, int ntok, long long budget, unsigned see
     if (s < 0) {
       if (++it > (1ll << 21)) { if (lane == 0) atomicAdd(abort_flag, 1); return; }
       int fin = lane == 0 ? (*(volatile long long*)pops >= budget) : 0;
-      if (__shfl_sync(0xffffffffu, fin, 0)) return;       // warp-uniform: kvm_pop is warp-collective
+      if (__shfl_sync(0xffffffffu, fin, 0)) return;       // warp-uniform: mvm_pop is warp-collective
       __nanosleep(lit_hash(seed, blockIdx.x, (unsigned)it) & 63);
       continue;
     }
@@ -268,17 +268,17 @@ __global__ void k_queue2(KvmDevState S, int ntok, long long budget, unsigned see
       payload[s] = payload[s] + 1;
       unsigned h = lit_hash(seed, s, (unsigned)n);
       if (h & 1) lit_delay((h >> 3) & 255);
-      S.tasks[s].priority = lit_hash(seed + 5, s, (unsigned)n) % KVM_NBUCKETS;
+      S.tasks[s].priority = lit_hash(seed + 5, s, (unsigned)n) % MVM_NBUCKETS;
       atomicExch(inq + s, 1);
-      kvm_enqueue(S, s);
+      mvm_enqueue(S, s);
     }
     __syncwarp();
     if (__shfl_sync(0xffffffffu, (int)(n >= budget), 0)) return;   // budget spent (the token above is back in its queue)
   }
 }
-__global__ void k_queue_init(KvmDevState S, int ntok, int* inq, unsigned* payload) {
+__global__ void k_queue_init(MvmDevState S, int ntok, int* inq, unsigned* payload) {
   if (blockIdx.x || threadIdx.x) return;
-  for (int i = 0; i < ntok; ++i) { KvmTaskDesc t{}; t.priority = i % KVM_NBUCKETS; S.tasks[i] = t; inq[i] = 1; payload[i] = 0; kvm_enqueue(S, i); }
+  for (int i = 0; i < ntok; ++i) { MvmTaskDesc t{}; t.priority = i % MVM_NBUCKETS; S.tasks[i] = t; inq[i] = 1; payload[i] = 0; mvm_enqueue(S, i); }
 }
 static void run_queue(int cap, int blocks, long long budget_k, unsigned seed) {
   Dev D; D.alloc(cap, 1, cap); D.reset();
@@ -294,24 +294,24 @@ static void run_queue(int cap, int blocks, long long budget_k, unsigned seed) {
   CK(cudaMemcpy(h.data(), pay, cap * 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(sn.data(), seen, cap * 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(&np, popped, 4, cudaMemcpyDeviceToHost));
   long long sum = 0, lostq = 0, dupq = 0; for (int i = 0; i < cap; ++i) { sum += h[i]; if (sn[i] == 0) ++lostq; else if (sn[i] > 1) ++dupq; }
   long long lostupd = p - sum;
-  char buf[96]; snprintf(buf, sizeof buf, "queue[cap=%d,ctas=%d,ticket]", cap, blocks);   // kvm_claim: a reservation on avail, then a ticket on head (no CAS path)
+  char buf[96]; snprintf(buf, sizeof buf, "queue[cap=%d,ctas=%d,ticket]", cap, blocks);   // mvm_claim: a reservation on avail, then a ticket on head (no CAS path)
   const int e = D.err();   // a device error counts once, whatever its code
   report(buf, p, d + (lostupd > 0 ? lostupd : -lostupd) + a + lostq + dupq + (e != 0), "double_pop+lost_update+abort+drain_err+err");
   printf("       detail: pops=%lld (wraps/bucket ~%lld) double_pop=%d lost_updates=%lld aborts=%d drain_lost=%lld drain_dup=%lld err=%d(%s)\n", p, p / (cap ? cap : 1), d, lostupd, a, lostq, dupq, e, lit_err_name(e));
 }
 
-// ================= Queue, FIFO mode: real kvm_enqueue (fifo branch) / kvm_fifo_pop, the one ready ring of every scheduler-off CLI run =================
+// ================= Queue, FIFO mode: real mvm_enqueue (fifo branch) / mvm_fifo_pop, the one ready ring of every scheduler-off CLI run =================
 // The same token recirculation as k_queue2 on the FIFO ring: a popper's lane 0 takes a ticket and watches that cell, a producer takes a tail
 // ticket and publishes the slot with its sequence in one release store. The budget's last pop closes the run the executor's way (admit_final
-// with every admitted task done, so kvm_should_exit fires); from then on a popped token retires instead of returning to the ring, so every
+// with every admitted task done, so mvm_should_exit fires); from then on a popped token retires instead of returning to the ring, so every
 // block finds its ticket unfilled and leaves. A block may leave holding a ticket: the drain reads every position nobody consumed (each held
 // ticket below the tail, and [head, tail)) straight from the ring. Each token must end exactly once: retired, or unconsumed in the ring.
-__global__ void k_queue_fifo(KvmDevState S, long long budget, unsigned seed, int* inq, unsigned* payload, long long* pops, int* dbl, int* retired, long long* held) {
+__global__ void k_queue_fifo(MvmDevState S, long long budget, unsigned seed, int* inq, unsigned* payload, long long* pops, int* dbl, int* retired, long long* held) {
   const int lane = threadIdx.x;
-  KvmWatch t0{}; long long ticket = -1; int dw;
+  MvmWatch t0{}; long long ticket = -1; int dw;
   for (;;) {
-    const int s = kvm_fifo_pop(S, t0, ticket, dw);   // warp-wide; every lane gets the same value
-    if (s < 0) break;                                // KVM_POP_EXIT: the run was closed (or an error ended it)
+    const int s = mvm_fifo_pop(S, t0, ticket, dw);   // warp-wide; every lane gets the same value
+    if (s < 0) break;                                // MVM_POP_EXIT: the run was closed (or an error ended it)
     if (lane == 0) {
       const long long n = (long long)atomicAdd((unsigned long long*)pops, 1ull);
       if (atomicCAS(inq + s, 1, 0) != 1) atomicAdd(dbl, 1);
@@ -319,41 +319,41 @@ __global__ void k_queue_fifo(KvmDevState S, long long budget, unsigned seed, int
       const unsigned h = lit_hash(seed, s, (unsigned)n);
       if (h & 1) lit_delay((h >> 3) & 255);
       if (ld_acq(&S.cnt->admit_final)) atomicAdd(retired + s, 1);   // closed: the token leaves the ring
-      else { atomicExch(inq + s, 1); kvm_enqueue(S, s); }           // fifo_only: a tail ticket and one release store
-      if (n + 1 == budget) st_rel(&S.cnt->admit_final, 1);         // admitted == done == 0: kvm_should_exit fires for every waiter
+      else { atomicExch(inq + s, 1); mvm_enqueue(S, s); }           // fifo_only: a tail ticket and one release store
+      if (n + 1 == budget) st_rel(&S.cnt->admit_final, 1);         // admitted == done == 0: mvm_should_exit fires for every waiter
     }
     __syncwarp();
   }
   if (lane == 0) held[blockIdx.x] = ticket;          // -1, or the ticket this block took and found unfilled at the close
 }
-__global__ void k_queue_fifo_init(KvmDevState S, int ntok, int* inq, unsigned* payload) {
+__global__ void k_queue_fifo_init(MvmDevState S, int ntok, int* inq, unsigned* payload) {
   if (blockIdx.x || threadIdx.x) return;
-  for (int i = 0; i < ntok; ++i) { KvmTaskDesc t{}; S.tasks[i] = t; inq[i] = 1; payload[i] = 0; kvm_enqueue(S, i); }
+  for (int i = 0; i < ntok; ++i) { MvmTaskDesc t{}; S.tasks[i] = t; inq[i] = 1; payload[i] = 0; mvm_enqueue(S, i); }
 }
 static void run_queue_fifo(int cap, int blocks, long long budget_k, unsigned seed, int force_lc = 0) {
   // The FIFO ring never waits for a free cell: it relies on rcap (4 x live_cap) exceeding every ticket in flight plus every token, as the
-  // executor ensures (KvmExec::fifo_fits). So live_cap here is the power of two at or above tokens + blocks, unless the probe forces it.
+  // executor ensures (MvmExec::fifo_fits). So live_cap here is the power of two at or above tokens + blocks, unless the probe forces it.
   int lc = force_lc; if (!lc) { lc = 2; while (lc < cap + blocks) lc <<= 1; }
-  Dev D; D.alloc(lc, 1, cap); D.S.fifo_only = 1; D.S.no_waits = 1; D.reset();   // fifo_only before reset: kvm_init_kernel lays out the one ring
+  Dev D; D.alloc(lc, 1, cap); D.S.fifo_only = 1; D.S.no_waits = 1; D.reset();   // fifo_only before reset: mvm_init_kernel lays out the one ring
   int *inq, *dbl, *ret; unsigned* pay; long long *pops, *held;
   CK(cudaMalloc(&inq, cap * 4)); CK(cudaMalloc(&pay, cap * 4)); CK(cudaMalloc(&pops, 8)); CK(cudaMalloc(&dbl, 4)); CK(cudaMalloc(&ret, cap * 4)); CK(cudaMalloc(&held, blocks * 8));
   CK(cudaMemset(pops, 0, 8)); CK(cudaMemset(dbl, 0, 4)); CK(cudaMemset(ret, 0, cap * 4)); CK(cudaMemset(held, 0xff, blocks * 8));
   k_queue_fifo_init<<<1, 1>>>(D.S, cap, inq, pay); CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
   const long long budget = budget_k * 1000;
   k_queue_fifo<<<blocks, 32>>>(D.S, budget, seed, inq, pay, pops, dbl, ret, held); CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
-  long long p; int d; std::vector<unsigned> pv(cap); std::vector<int> rv(cap); std::vector<long long> hv(blocks); KvmQCtl q;
+  long long p; int d; std::vector<unsigned> pv(cap); std::vector<int> rv(cap); std::vector<long long> hv(blocks); MvmQCtl q;
   CK(cudaMemcpy(&p, pops, 8, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(&d, dbl, 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(&q, D.S.qctl, sizeof q, cudaMemcpyDeviceToHost));
   CK(cudaMemcpy(pv.data(), pay, cap * 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(rv.data(), ret, cap * 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(hv.data(), held, blocks * 8, cudaMemcpyDeviceToHost));
   // the drain: every published position nobody consumed holds a token; read their cells (generation pos + 1, the slot in the low bits)
-  const unsigned long long rcap = (unsigned long long)D.S.rcap, mask = (1ull << KVM_FIFO_SHIFT) - 1;
+  const unsigned long long rcap = (unsigned long long)D.S.rcap, mask = (1ull << MVM_FIFO_SHIFT) - 1;
   std::vector<unsigned long long> unread;
   for (long long h : hv) if (h >= 0 && (unsigned long long)h < q.tail) unread.push_back((unsigned long long)h);
   for (unsigned long long pos = q.head; pos < q.tail; ++pos) unread.push_back(pos);
   std::vector<int> seen(rv);   // retired tokens, then each unconsumed position's token
   long long badcell = 0;
   for (unsigned long long pos : unread) {
-    KvmCell c; CK(cudaMemcpy(&c, D.S.cells + (pos & (rcap - 1)), sizeof c, cudaMemcpyDeviceToHost));
-    if ((c.seq >> KVM_FIFO_SHIFT) != pos + 1) { ++badcell; continue; }   // a later generation overwrote it, or it was never published
+    MvmCell c; CK(cudaMemcpy(&c, D.S.cells + (pos & (rcap - 1)), sizeof c, cudaMemcpyDeviceToHost));
+    if ((c.seq >> MVM_FIFO_SHIFT) != pos + 1) { ++badcell; continue; }   // a later generation overwrote it, or it was never published
     const long long s = (long long)(c.seq & mask);
     if (s >= 0 && s < cap) ++seen[s]; else ++badcell;
   }

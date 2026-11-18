@@ -1,4 +1,4 @@
-# the bed, 50 steps, G 32, us a step; A = the counter barrier (kvm_gang::barrier), B = the flag line (kvm_fgpt::cross_line); rounds alternate which runs first
+# the bed, 50 steps, G 32, us a step; A = the counter barrier (mvm_gang::barrier), B = the flag line (mvm_fgpt::cross_line); rounds alternate which runs first
 tiny round 0 A 92.1
 tiny round 0 B 87.0
 tiny round 1 B 99.2

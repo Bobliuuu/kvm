@@ -25,8 +25,8 @@ bed tf32 k1 G32: rc=0
 executor tf32 3 steps: rc=0
   VM reference: running the bundle's first 3 step(s) on the workload VM (pure Python; minutes on gpt-small)
   VM reference: done in 295 s, cached as vm-26c34e3e54386c1d-k3.json
-    [kvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang)
-    [kvm_exec][I] fuse gpt: run 0: a gang of 32, 3 steps, attention in 4 query block(s) a unit, rows in chunks of 64 of 128, 21.95 MB of scratch, 89696 bytes of shared memory a member
+    [mvm_exec][I] path: fused GPT kernel (every task belongs to a GPT training run that fuses into one gang)
+    [mvm_exec][I] fuse gpt: run 0: a gang of 32, 3 steps, attention in 4 query block(s) a unit, rows in chunks of 64 of 128, 21.95 MB of scratch, 89696 bytes of shared memory a member
   exec: losses: 5.535552, 5.250449, 5.060037 (VM 5.535549, 5.250423, 5.061368): worst of 3 2.63e-04 relative, 1/count off by 0.0e+00: ok
 d128: 2 failure(s)
 # 2. precise, one step (before AdamW's first update parts the trajectories)

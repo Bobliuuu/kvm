@@ -1,9 +1,9 @@
 """gpt_162m executor-vs-PyTorch correctness check on an A100 via Modal (nothing in the file names a host or key).
 Usage (repo root):  modal run --detach tests/modal/run_gpt162.py --stage build|check|grads|learn --tag NAME [--n1 40 --n2 50] [--prec f32|bf16s]
-  [--bin-dir BIN-x]  (build writes, and the GPU stages read, /logs/<bin-dir>/kvm_run; give each tree its own)  [--gpu40] (learn on an A100-40GB)
-  build: compile demo/kvm_run (no game pack) for sm_80 on a CPU container into the volume.
+  [--bin-dir BIN-x]  (build writes, and the GPU stages read, /logs/<bin-dir>/mvm_run; give each tree its own)  [--gpu40] (learn on an A100-40GB)
+  build: compile demo/mvm_run (no game pack) for sm_80 on a CPU container into the volume.
   check: step-1 loss/gradients vs torch (reuse none, 1 step), then loss curves vs torch for the chain stream and for a repeated batch.
-Logs and JSON land in volume 'kvm-gpt162' under /<tag>/ ; fetch with: modal volume get kvm-gpt162 /<tag> results/<dir>/raw
+Logs and JSON land in volume 'mvm-gpt162' under /<tag>/ ; fetch with: modal volume get mvm-gpt162 /<tag> results/<dir>/raw
 """
 import modal, os, pathlib
 
@@ -14,13 +14,13 @@ image = (modal.Image.from_registry("nvidia/cuda:12.4.1-devel-ubuntu22.04", add_p
          .pip_install("torch", "numpy")
          .add_local_dir(str(ROOT), "/src", copy=True,
                         ignore=[".tmp", "results", "logs", ".git", "docs", "**/__pycache__", "doom/third_party", "doom/build"]))
-app = modal.App("kvm-gpt162", image=image)
-vol = modal.Volume.from_name("kvm-gpt162", create_if_missing=True)
+app = modal.App("mvm-gpt162", image=image)
+vol = modal.Volume.from_name("mvm-gpt162", create_if_missing=True)
 
 BUILD = r'''
 mkdir -p /logs/$BIN
 nvcc --version | tail -1
-time nvcc -O3 -arch=sm_80 -std=c++17 -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 demo/kvm_run.cu -o /logs/$BIN/kvm_run 2>&1 | grep -v "warning #\|Remark\|^\s*\^\|^$" | tail -40
+time nvcc -O3 -arch=sm_80 -std=c++17 -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 demo/mvm_run.cu -o /logs/$BIN/mvm_run 2>&1 | grep -v "warning #\|Remark\|^\s*\^\|^$" | tail -40
 ls -la /logs/$BIN
 '''
 
@@ -29,7 +29,7 @@ ls -la /logs/$BIN
 CHECK = r'''
 set -u
 OUT=/logs/$TAG; mkdir -p $OUT
-cp /logs/$BIN/kvm_run demo/kvm_run
+cp /logs/$BIN/mvm_run demo/mvm_run
 echo "== environment"; nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
 python3 - <<PY
 import torch; p = torch.cuda.get_device_properties(0)
@@ -38,12 +38,12 @@ PY
 M162='{"name":"gpt_162m","vocab":50304,"d_model":768,"layers":12,"heads":12,"seq":1024,"batch":4}'
 M162R='{"name":"gpt_162m","vocab":50304,"d_model":768,"layers":12,"heads":12,"seq":1024,"batch":4,"repeat_batch":true}'
 gen() { # dir model steps lr warmup reuse
-  ( cd frontend && python3 -m kvmfe.demo --out $1 --model "$2" --train-steps $3 --window 1 --serve-every 0 --game-frames 0 --tiling a100 \
+  ( cd frontend && python3 -m mvmfe.demo --out $1 --model "$2" --train-steps $3 --window 1 --serve-every 0 --game-frames 0 --tiling a100 \
       --lr $4 --warmup $5 --reuse $6 --max-bundles 8 ) 2>&1 | tail -3
 }
-run() { # demo out [extra kvm_run args]
+run() { # demo out [extra mvm_run args]
   d=$1; o=$2; shift 2
-  timeout 3000 ./demo/kvm_run $d --out $o --observe '^loss\.' --compile-cmd "python3 runtime/compile_workload.py" "$@" > $o.log 2>&1; echo "kvm_run exit $?"; tail -5 $o.log
+  timeout 3000 ./demo/mvm_run $d --out $o --observe '^loss\.' --compile-cmd "python3 runtime/compile_workload.py" "$@" > $o.log 2>&1; echo "mvm_run exit $?"; tail -5 $o.log
 }
 echo "== A: step-1 gradients (1 step, reuse none, lr 3e-4 warmup 2)"
 gen /work/g1 "$M162" 1 3e-4 2 none
@@ -55,23 +55,23 @@ print('^(' + '|'.join(re.escape(x) for x in g) + r'|loss\.0|clip_coef|m\..*|w\..
 PY
 )
 mkdir -p /work/g1out; run /work/g1 /work/g1out --dump "$DUMP"
-cp /work/g1out.log $OUT/A_kvm_run.log; cp /work/g1out/observations.jsonl $OUT/A_observations.jsonl; cp /work/g1out/run.json $OUT/A_run.json 2>/dev/null
+cp /work/g1out.log $OUT/A_mvm_run.log; cp /work/g1out/observations.jsonl $OUT/A_observations.jsonl; cp /work/g1out/run.json $OUT/A_run.json 2>/dev/null
 python3 tests/gpt162/torch_ref.py /work/g1 --model "$M162" --steps 1 --lr 3e-4 --warmup 2 --grads /work/g1out/buffers --out $OUT/A_grads.json 2>&1 | tee $OUT/A_grads.log
 rm -rf /work/g1out/buffers
 echo "== B1: chain stream (preset: lr 3e-4, warmup 2), $N1 steps"
 gen /work/c1 "$M162" $N1 3e-4 2 shape
 mkdir -p /work/c1out; run /work/c1 /work/c1out
-cp /work/c1out.log $OUT/B1_kvm_run.log; cp /work/c1out/observations.jsonl $OUT/B1_observations.jsonl
+cp /work/c1out.log $OUT/B1_mvm_run.log; cp /work/c1out/observations.jsonl $OUT/B1_observations.jsonl
 python3 tests/gpt162/torch_ref.py /work/c1 --model "$M162" --steps $N1 --lr 3e-4 --warmup 2 --curve --obs /work/c1out/observations.jsonl --out $OUT/B1_curve.json 2>&1 | tee $OUT/B1_curve.log
 echo "== B2: one repeated batch, lr 3e-4 warmup 2, $N2 steps"
 gen /work/o1 "$M162R" $N2 3e-4 2 shape
 mkdir -p /work/o1out; run /work/o1 /work/o1out
-cp /work/o1out.log $OUT/B2_kvm_run.log; cp /work/o1out/observations.jsonl $OUT/B2_observations.jsonl
+cp /work/o1out.log $OUT/B2_mvm_run.log; cp /work/o1out/observations.jsonl $OUT/B2_observations.jsonl
 python3 tests/gpt162/torch_ref.py /work/o1 --model "$M162R" --steps $N2 --lr 3e-4 --warmup 2 --curve --obs /work/o1out/observations.jsonl --out $OUT/B2_curve.json 2>&1 | tee $OUT/B2_curve.log
 echo "== B3: one repeated batch, lr 1e-3 warmup 5, $N2 steps"
 gen /work/o2 "$M162R" $N2 1e-3 5 shape
 mkdir -p /work/o2out; run /work/o2 /work/o2out
-cp /work/o2out.log $OUT/B3_kvm_run.log; cp /work/o2out/observations.jsonl $OUT/B3_observations.jsonl
+cp /work/o2out.log $OUT/B3_mvm_run.log; cp /work/o2out/observations.jsonl $OUT/B3_observations.jsonl
 python3 tests/gpt162/torch_ref.py /work/o2 --model "$M162R" --steps $N2 --lr 1e-3 --warmup 5 --curve --obs /work/o2out/observations.jsonl --out $OUT/B3_curve.json 2>&1 | tee $OUT/B3_curve.log
 echo "== done"
 '''
@@ -82,11 +82,11 @@ GRADS = CHECK.split('echo "== B1:')[0].replace(
 
 # learn: the executor and torch on a low-entropy noisy-bigram stream (tests/gpt162/learning.sh; no shared-box lock on a private GPU), then the plot.
 LEARN = r'''
-cp /logs/$BIN/kvm_run demo/kvm_run
+cp /logs/$BIN/mvm_run demo/mvm_run
 OUT=/logs/$TAG; mkdir -p $OUT
 M='{"name":"gpt_162m","vocab":50304,"d_model":768,"layers":12,"heads":12,"seq":1024,"batch":4,"data_vocab":'$K',"data_noise":'$NOISE',"precision":"'$PREC'"}'
 echo "$M" > $OUT/model.json
-CURVE_LABELS=$CURVE_LABELS KVM_NO_LOCK=1 KVM_SCRATCH=/work/scr bash tests/gpt162/learning.sh $OUT/run "$M" $STEPS $LR $WARMUP 8
+CURVE_LABELS=$CURVE_LABELS MVM_NO_LOCK=1 MVM_SCRATCH=/work/scr bash tests/gpt162/learning.sh $OUT/run "$M" $STEPS $LR $WARMUP 8
 pip list 2>/dev/null | grep -i matplotlib || pip install -q matplotlib
 python3 tests/gpt162/learning_plot.py $OUT/run --model-json "$M" --png $OUT/run/loss.png --csv $OUT/run/loss.csv
 echo "== done"

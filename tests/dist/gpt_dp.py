@@ -7,7 +7,7 @@ DP over P ranks with per-rank batch b is gradient accumulation over P microbatch
 compiled with accum=P on one device. The per-rank program is the accum=1 compile; its data streams are replaced by the accum=P
 compile's streams (P x the windows), and the dp planner (runtime/partition.py, DPPlanner) points rank r at window r of each group.
 Writes OUT_DIR/plan (per-rank bundles, dist.txt with `expect` lines from the CPU golden when --golden), OUT_DIR/ref (the accum=P
-workload + bundle, for a single-GPU kvm_exec reference run) and OUT_DIR/info.json.
+workload + bundle, for a single-GPU mvm_exec reference run) and OUT_DIR/info.json.
 """
 import argparse
 import copy

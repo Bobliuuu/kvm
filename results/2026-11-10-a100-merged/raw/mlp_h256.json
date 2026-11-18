@@ -38,7 +38,7 @@
  },
  "args": {
   "work": "/root/cache/wl/d4445a3c4b2c2a3e793308d3/work_h256",
-  "exe": "/root/builds/25bc08fd2871bf30667d4d23/kvm_exec",
+  "exe": "/root/builds/25bc08fd2871bf30667d4d23/mvm_exec",
   "hidden": 256,
   "depth": 4,
   "steps": 50,

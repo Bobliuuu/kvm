@@ -1,13 +1,13 @@
-// One phase of the one-block step alone (kvm_fgpt1.cuh's own functions), timed in one block of NT threads on gpt-tiny's shapes: does a
+// One phase of the one-block step alone (mvm_fgpt1.cuh's own functions), timed in one block of NT threads on gpt-tiny's shapes: does a
 // phase cost what its dependent chain predicts when nothing else shares the kernel? The forward's phase clock reads the softmax at 5.1 us,
 // the norm at 2.4, the logits and CE at 5.5, the q|k|v GEMM at 1.8.
 //   nvcc <kbuild's flags> -Iinclude bench/fused_gpt/fgpt1_iso.cu -o fgpt1_iso && ./fgpt1_iso
 #include <cstdio>
 #include <cuda_runtime.h>
-#include "kvm_fgpt1.cuh"
+#include "mvm_fgpt1.cuh"
 
 #define CK(x) do { cudaError_t e_ = (x); if (e_ != cudaSuccess) { printf("CUDA error %s at %s\n", cudaGetErrorString(e_), #x); return 1; } } while (0)
-using namespace kvm_fgpt1;
+using namespace mvm_fgpt1;
 
 __device__ __forceinline__ unsigned long long gt() { unsigned long long t; asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(t)); return t; }
 
@@ -17,7 +17,7 @@ __global__ void __launch_bounds__(NT, 1) iso(int reps, unsigned long long* ns, f
   extern __shared__ float sm[];
   const int tid = threadIdx.x;
   constexpr int N = 32, T = 32, H = 2, D = 32, V = 64, T16 = 32;
-  const int ldS = kvm_fgpt_ldk(T16), ldd = kvm_fgpt_ldk(D), ldw = kvm_fgpt_ldmn(3 * D), ldq = kvm_fgpt_ldk(3 * D);
+  const int ldS = mvm_fgpt_ldk(T16), ldd = mvm_fgpt_ldk(D), ldw = mvm_fgpt_ldmn(3 * D), ldq = mvm_fgpt_ldk(3 * D);
   float* const A = sm;                   // up to 16 K floats of operands and outputs
   float* const B = sm + 16384;
   float* const C = sm + 24576;
@@ -42,7 +42,7 @@ __global__ void __launch_bounds__(NT, 1) iso(int reps, unsigned long long* ns, f
 __global__ void __launch_bounds__(NT, 1) sm_check(int* bad) {
   extern __shared__ float sm[];
   constexpr int T = 32, H = 2, T16 = 32;
-  const int ldS = kvm_fgpt_ldk(T16), n = H * T16 * ldS;
+  const int ldS = mvm_fgpt_ldk(T16), n = H * T16 * ldS;
   float* const A = sm; float* const B = sm + n; float* const la = sm + 2 * n; float* const lb = la + H * T;
   for (int i = threadIdx.x; i < n; i += NT) { const float x = 0.37f * (float)((i * 2654435761u) % 1000) / 1000.f - 0.1f; A[i] = x; B[i] = x; }
   __syncthreads();
@@ -78,7 +78,7 @@ int main() {
   CK(cudaMalloc(&dns, 6 * sizeof(unsigned long long))); CK(cudaMalloc(&sink, 16));
   {
     int* dbad; CK(cudaMalloc(&dbad, 8)); CK(cudaMemset(dbad, 0, 8));
-    const int smem = (2 * 2 * 32 * kvm_fgpt_ldk(32) + 4 * 64) * 4;
+    const int smem = (2 * 2 * 32 * mvm_fgpt_ldk(32) + 4 * 64) * 4;
     CK(cudaFuncSetAttribute(sm_check, cudaFuncAttributeMaxDynamicSharedMemorySize, smem));
     sm_check<<<1, NT, smem>>>(dbad); CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
     int bad[2]; CK(cudaMemcpy(bad, dbad, 8, cudaMemcpyDeviceToHost));

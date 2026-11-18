@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Add the dependency-driven queue to the ready-scan patched KVM source.
+"""Add the dependency-driven queue to the ready-scan patched Magni VM source.
 
-Usage: python3 integration/apply.py upstream/kvm.cu
-       python3 integration/apply_queue.py upstream/kvm_ready.cu
-Writes upstream/kvm_queued.cu without modifying inputs.
+Usage: python3 integration/apply.py upstream/mvm.cu
+       python3 integration/apply_queue.py upstream/mvm_ready.cu
+Writes upstream/mvm_queued.cu without modifying inputs.
 """
 from pathlib import Path
 import sys
@@ -23,7 +23,7 @@ def integrate_queue(source: str, kernel: str, lowering: str, windowing: str = ""
             kernel + '\n// ---- baseline: one launch per phase, block i runs tape[off+i], no waits')
     replace('// ================= host =================',
             lowering + '\n' + windowing + '\n// ================= host =================')
-    replace('  Instr* dtapeP; int *dhead, *dctr; float* dloss;', '''  KvmReadyGraph qgraph = kvm_compile_ready_graph(tapeP, steps, SC);
+    replace('  Instr* dtapeP; int *dhead, *dctr; float* dloss;', '''  MvmReadyGraph qgraph = mvm_compile_ready_graph(tapeP, steps, SC);
   printf("queue DAG: %d tasks, %zu edges, %zu initially ready\\n", ntape,
          qgraph.successors.size(), qgraph.initial.size());
   int *q_offsets, *q_successors, *q_remaining, *q_tasks, *q_ready;
@@ -71,12 +71,12 @@ def integrate_queue(source: str, kernel: str, lowering: str, windowing: str = ""
     replace('  double t[5]; Out o[5];', (runner or '// window runner omitted by fixture') + '\n  double t[7]; Out o[7];')
 
     replace('  best(run_ready, 4);', '  best(run_ready, 4);\n  best(run_queue, 5);\n  best(run_queue_window, 6);')
-    replace('  const char* nm[5] = {"sequential, launch-per-op", "sequential, CUDA graph/run", "batched across runs (vmap-like graph)", "KVM: claim-and-wait", "KVM: ready-only scan"};',
-            '  const char* nm[7] = {"sequential, launch-per-op", "sequential, CUDA graph/run", "batched across runs (vmap-like graph)", "KVM: claim-and-wait", "KVM: ready-only scan", "KVM: ready queue", "KVM: windowed queue"};')
+    replace('  const char* nm[5] = {"sequential, launch-per-op", "sequential, CUDA graph/run", "batched across runs (vmap-like graph)", "Magni VM: claim-and-wait", "Magni VM: ready-only scan"};',
+            '  const char* nm[7] = {"sequential, launch-per-op", "sequential, CUDA graph/run", "batched across runs (vmap-like graph)", "Magni VM: claim-and-wait", "Magni VM: ready-only scan", "Magni VM: ready queue", "Magni VM: windowed queue"};')
     replace('  for (int i = 0; i < 5; i++) printf("%-40s %10.2f %14.2f %11.0f %8.2fx\\n",',
             '  for (int i = 0; i < 7; i++) printf("%-40s %10.2f %14.2f %11.0f %8.2fx\\n",')
-    replace('  printf("KVM ready vs claim: %.2fx\\n", t[3] / t[4]);',
-            '  printf("KVM ready vs claim: %.2fx\\n", t[3] / t[4]);\n  printf("KVM queue vs claim: %.2fx\\n", t[3] / t[5]);')
+    replace('  printf("Magni VM ready vs claim: %.2fx\\n", t[3] / t[4]);',
+            '  printf("Magni VM ready vs claim: %.2fx\\n", t[3] / t[4]);\n  printf("Magni VM queue vs claim: %.2fx\\n", t[3] / t[5]);')
     replace('  for (int i = 0; i < 5; i++) { e_ref =', '  for (int i = 0; i < 7; i++) { e_ref =')
     replace('  for (int i = 0; i < 5; i++) for (size_t j = 0; j < o[3].w.size(); j++)',
             '  for (int i = 0; i < 7; i++) for (size_t j = 0; j < o[3].w.size(); j++)')
@@ -87,7 +87,7 @@ def integrate_queue(source: str, kernel: str, lowering: str, windowing: str = ""
 
 def main():
     src = Path(sys.argv[1])
-    output = src.with_name('kvm_queued.cu')
+    output = src.with_name('mvm_queued.cu')
     output.write_text(integrate_queue(src.read_text(),
                                      (HERE / 'ready_queue_kernel.inc').read_text(),
                                      (HERE / 'queue_lowering.inc').read_text(),

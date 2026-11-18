@@ -1,6 +1,6 @@
 # FRONTEND.md: from a model description to a task DAG
 
-`frontend/kvmfe` is the Python layer above the scheduler. It turns a declarative model config into the workload JSON that
+`frontend/mvmfe` is the Python layer above the scheduler. It turns a declarative model config into the workload JSON that
 `runtime/compile_workload.py` packs into an ABI v2 bundle for the persistent kernel. The scheduler below it sees tasks, buffers,
 edges and weight versions. It has no notion of train, serve or game, and nothing in it is specific to one model.
 
@@ -34,10 +34,10 @@ optimizer=OptimConfig(..), steps=N)` (section "Generic training" below). `ModelC
 Tools (run from `frontend/`, or put it on `PYTHONPATH`):
 
 ```
-python3 -m kvmfe.demo --all --out DIR                  # train windows + serving requests + Doom -> compiled bundles + MANIFEST.json
-python3 -m kvmfe.run_manifest DIR --allow-opaque       # reference host runner: executes DIR on the CPU VM from MANIFEST.json alone
-python3 -m kvmfe.inspect --model gpt_162m --steps 1 --tiling a100   # tasks, edges, critical path, memory plan (no JSON)
-python3 -m kvmfe.check_defs                            # .def registry vs frontend references
+python3 -m mvmfe.demo --all --out DIR                  # train windows + serving requests + Doom -> compiled bundles + MANIFEST.json
+python3 -m mvmfe.run_manifest DIR --allow-opaque       # reference host runner: executes DIR on the CPU VM from MANIFEST.json alone
+python3 -m mvmfe.inspect --model gpt_162m --steps 1 --tiling a100   # tasks, edges, critical path, memory plan (no JSON)
+python3 -m mvmfe.check_defs                            # .def registry vs frontend references
 python3 -I -m unittest discover -s tests/frontend      # from the repo root
 ```
 
@@ -51,8 +51,8 @@ python3 -I -m unittest discover -s tests/frontend      # from the repo root
 | Builder, autodiff, tiling, dataflow, memory plan, emit (GPT, Llama/GQA, MoE, MLP, ViT) | implemented + tested: 124 frontend tests (about 55 s) against independent numpy float64 oracles, finite-difference gradients, any-topological-order bitwise state | `tests/frontend/`, `results/2026-11-04-a100-models` |
 | Fusion, remat, gradient accumulation, device LR schedule, loss scaling, bf16 | implemented + measured on the A100 (fusion -3% Llama / -11% MoE time, remat pool -41 to -59% for +36% tasks); bf16 is emulated in fp32 buffers; `precision='bf16s'` stores bf16 for real (ABI dtype 2) and runs the bf16 tensor-core GEMM, see below | `results/2026-11-04-a100-models` |
 | GPT bundles on the executor | implemented + measured; 1xTF32 GEMMs are compared on losses and step-1 buffers, 3xTF32 (flag 16, `gen_bundle.py --precise`) to fp32 level | `results/2026-11-04-a100-gpt-golden` |
-| Generic training (`generic.py`): any traced module + `CrossEntropy`/`MSE` + `ArrayData`/`GeneratedData` + SGD/AdamW | implemented + CPU-tested: 4 never-shipped models (regression MLP, residual RMSNorm MLP, 1-D CNN, transformer encoder) vs numpy float64 oracles. **A100 run NOT yet done** (`tests/generic/run.sh`: bundles vs CPU golden at 3xTF32, 2 MANIFEST demos through `demo/kvm_run`; the box's GPU lock was held by an idle session for 3+ h); until it passes, the MSE device path (`scale_flat`/`row_dot`/`colsum`) and the gather-based conv are verified only against the CPU reference | `tests/frontend/test_generic.py`, `tests/generic/` |
-| Windows / MANIFEST runner | CPU reference runner only; the GPU CLI runs single bundles | `kvmfe.run_manifest`, `results/2026-11-04-a100-exec-recycling` |
+| Generic training (`generic.py`): any traced module + `CrossEntropy`/`MSE` + `ArrayData`/`GeneratedData` + SGD/AdamW | implemented + CPU-tested: 4 never-shipped models (regression MLP, residual RMSNorm MLP, 1-D CNN, transformer encoder) vs numpy float64 oracles. **A100 run NOT yet done** (`tests/generic/run.sh`: bundles vs CPU golden at 3xTF32, 2 MANIFEST demos through `demo/mvm_run`; the box's GPU lock was held by an idle session for 3+ h); until it passes, the MSE device path (`scale_flat`/`row_dot`/`colsum`) and the gather-based conv are verified only against the CPU reference | `tests/frontend/test_generic.py`, `tests/generic/` |
+| Windows / MANIFEST runner | CPU reference runner only; the GPU CLI runs single bundles | `mvmfe.run_manifest`, `results/2026-11-04-a100-exec-recycling` |
 | `gpt_162m` | runs on the A100 (demo `large`: 6 steps, 1.8 s/step = 2,260 tokens/s, 30x its 60 ms critical path; task-throughput bound); no CPU golden at this size | `results/2026-11-06-demo-large` |
 | Not built | dynamic shapes, data-dependent control flow, MoE serving, dropout, fp16, a frontend switch for 3xTF32, 128x128 / 256x128 matmul tile stepping in the lowering (the device tiles exist) | below, `results/2026-11-04-a100-ops-perf` |
 | Open test item | `norm_bwd_params` wants >= 64 tasks (16 columns each) to use the GPU; the partition here does not yet give that | `results/2026-11-04-a100-ops-perf` |
@@ -65,16 +65,16 @@ Run the frontend tests: `python3 -I -m unittest discover -s tests/frontend` (rep
 |---|---|
 | any model from ops | `Builder` methods + `nn.py` modules; a new architecture is a new module, nothing else changes |
 | backward pass | `autodiff.py`: one `@vjp` per differentiable logical op, composed of other registered ops |
-| fast without a hand-written kernel | every task is a registered device op (`include/kvm_ops*.def`); the frontend only chooses tiles and edges |
+| fast without a hand-written kernel | every task is a registered device op (`include/mvm_ops*.def`); the frontend only chooses tiles and edges |
 | fine-grain overlap | edges come from tile regions, so a step's tile starts when the tiles it reads are done, across layers and steps |
 | train + serve + game together | three builders, three graph names, one scheduler; they meet only at the `weights` and `frame` variables |
 
 ## Add an op in 3 places
 
-1. `include/kvm_ops_*.def`: `X(name, id, "arg:type,...")` (ids append-only) and the CUDA implementation. The frontend reads
+1. `include/mvm_ops_*.def`: `X(name, id, "arg:type,...")` (ids append-only) and the CUDA implementation. The frontend reads
    signatures from the `.def`; it never repeats them.
-2. `kvmfe/opset.py`: `@impl('name', flops=...)` with the float64 CPU reference (this is the golden path the GPU is diffed against).
-3. `kvmfe/lower.py`: `@lowers('logical_kind')` yielding `_task('name', reads=[regions], writes=[regions], **args)` per tile; add a
+2. `mvmfe/opset.py`: `@impl('name', flops=...)` with the float64 CPU reference (this is the golden path the GPU is diffed against).
+3. `mvmfe/lower.py`: `@lowers('logical_kind')` yielding `_task('name', reads=[regions], writes=[regions], **args)` per tile; add a
    `Builder` method in `ir.py` for shape inference; if differentiable, `@vjp('logical_kind')` in `autodiff.py`.
 
 `check_defs` flags ops the frontend references that the `.def` does not define. A wrong argument set is rejected at lowering,
@@ -109,12 +109,12 @@ an under-declared region shows up as a result change between program order and r
   (`attn_decode`, `kv_append`, `counter_inc` on the cache length). Greedy only (`argmax`).
 * Game: `doom_tick(f) -> doom_status(f) -> doom_present(f, row blocks)` per frame, tick f+1 after tick f through the state
   buffer, `deadline_us = (f+1)/35 s`, frames double-buffered and published as versions of `frame`. Ops come from
-  `include/kvm_ops_game.def`; if absent, building fails with the op name. The Doom engine itself is the port in `include/`.
+  `include/mvm_ops_game.def`; if absent, building fails with the op name. The Doom engine itself is the port in `include/`.
 
 ## Model zoo and generality (nothing here is a hand-written kernel)
 
 `models.py` implements the training protocol `train.build_training` consumes: `cfg`, `specs`, `batch_streams(micros)`,
-`losses(b, batch, w, grad_scale)`. The extra generic op pack `include/kvm_ops_extra.def` (ids 96-121; `.cuh` device code,
+`losses(b, batch, w, grad_scale)`. The extra generic op pack `include/mvm_ops_extra.def` (ids 96-121; `.cuh` device code,
 `runtime/ref_extra.py` float32 golden, `opset.py` float64 oracle semantics) adds only shape-parametrized building blocks:
 activations (relu/silu/tanh/sigmoid), SwiGLU, row softmax, `gather_rows_scaled` / `scatter_add_rows` / `row_dot` (each other's VJP),
 MoE routing (`moe_route`, `moe_gates_*`, `moe_balance_*`), bidirectional attention, bf16 matmul and rounding, `adamw_lr` /
@@ -160,14 +160,14 @@ Before this, `compile_training` took a GPT/zoo config, `build_training` hard-wir
 (`results/2026-11-04-claims-audit`, gap 7) had to call `build_training` / `lower_program` / `to_workload` by hand. Now:
 
 ```python
-from kvmfe.generic import MLP, MSE, CrossEntropy, ArrayData, GeneratedData, Conv1D, SequencePool
-from kvmfe.optim import OptimConfig
-from kvmfe.pipeline import compile_training
+from mvmfe.generic import MLP, MSE, CrossEntropy, ArrayData, GeneratedData, Conv1D, SequencePool
+from mvmfe.optim import OptimConfig
+from mvmfe.pipeline import compile_training
 c = compile_training(MLP('reg', [11, 24, 13, 3], act='tanh'),            # any module: .specs + __call__(b, *inputs, w)
                      loss=MSE(), data=ArrayData(6, {'x': X, 'y': Y}),    # batch 6 per step, wraps around the samples
                      optimizer=OptimConfig(kind='sgd', lr=0.05), steps=20, tiling=Tiling.preset('a100'))
 c.run()                                                                  # CPU golden;  c.spec -> workload JSON -> bundle
-demo.write_training_demo('out/', module, loss=.., data=.., steps=200, window=10, precise=True)   # MANIFEST.json + bundles for demo/kvm_run
+demo.write_training_demo('out/', module, loss=.., data=.., steps=200, window=10, precise=True)   # MANIFEST.json + bundles for demo/mvm_run
 ```
 
 | Piece | Contract |
@@ -181,8 +181,8 @@ demo.write_training_demo('out/', module, loss=.., data=.., steps=200, window=10,
 The GPT path is the same code: `compile_training(GPT(cfg), tc, tiling, loss=CrossEntropy(), data=<token ArrayData>)` equals the
 built-in run bit for bit (`test_gpt_through_the_generic_api_equals_the_builtin_path`), and `compile_training(cfg, tc, tiling)` is
 unchanged. Checks: `tests/frontend/test_generic.py` (19 tests: loss and finite-difference gradients of every parameter against numpy
-float64 oracles, any dataflow order bitwise equal, accumulation == big batch, manifest through `kvmfe.run_manifest`, refusals) and
-`tests/generic/run.sh` (A100, not yet run: 4 models x {cpu, a100} tiling, 3xTF32, golden_check precise; 2 MANIFEST demos through `demo/kvm_run` and
+float64 oracles, any dataflow order bitwise equal, accumulation == big batch, manifest through `mvmfe.run_manifest`, refusals) and
+`tests/generic/run.sh` (A100, not yet run: 4 models x {cpu, a100} tiling, 3xTF32, golden_check precise; 2 MANIFEST demos through `demo/mvm_run` and
 `demo/check_demo.py`).
 
 Limits of this layer (not fixed here): no auxiliary-loss roots from inside a generic module (use a `models.py`-style model for those),
@@ -212,7 +212,7 @@ named buffers. There is no loop opcode: the host re-admits the template bundle (
 executor add the version offset). Overlap between consecutive windows is therefore limited to what the executor streams within one
 bundle; across bundles the manifest's `after_bundles` is a full barrier.
 
-`MANIFEST.json` (version 1) is all a host runner needs; `kvmfe.run_manifest` is the reference implementation:
+`MANIFEST.json` (version 1) is all a host runner needs; `mvmfe.run_manifest` is the reference implementation:
 
 ```
 workloads{name: file, tasks, edges, priority, deadline_us[min,max], variables, graphs}
@@ -261,7 +261,7 @@ curve against the independent float64 oracle (rel. 2e-5) and served tokens again
 
 ## Real bf16 storage (`precision='bf16s'`)
 
-`kvmfe/storage.py` rewrites the finished op list so the roundings of `precision='bf16'` become real 2-byte storage (ABI `KvmBuf.dtype` 2,
+`mvmfe/storage.py` rewrites the finished op list so the roundings of `precision='bf16'` become real 2-byte storage (ABI `MvmBuf.dtype` 2,
 workload dtype `"bf16"`; GPT, Llama, MLP and ViT families; the ABI is backward compatible, a bundle without dtype 2 is unchanged):
 
 * cast outputs are bf16 tensors; a cast after a producer that can store bf16 is folded into it (a bf16 matmul epilogue: fp32 math, one rounding;

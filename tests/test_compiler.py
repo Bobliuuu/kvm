@@ -373,11 +373,11 @@ class ExampleAndCliTests(unittest.TestCase):
         with contextlib.redirect_stderr(err):
             import logging
             h = logging.StreamHandler(err)
-            logging.getLogger('kvm').addHandler(h)
+            logging.getLogger('mvm').addHandler(h)
             try:
                 code = cw.main(list(map(str, argv)))
             finally:
-                logging.getLogger('kvm').removeHandler(h)
+                logging.getLogger('mvm').removeHandler(h)
         return code, err.getvalue()
 
     def test_live_example_structure(self):

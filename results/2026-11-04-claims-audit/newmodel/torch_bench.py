@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Same training problems as gen.py's mlp_ce / xfmr_odd in PyTorch, for a timing ratio against one kvm_exec launch.
+"""Same training problems as gen.py's mlp_ce / xfmr_odd in PyTorch, for a timing ratio against one mvm_exec launch.
   python3 torch_bench.py CASE STEPS [REPS]  -> eager / whole-step CUDA graph / torch.compile (default mode), us per step.
 Same shapes, SGD lr 0.05, 1xTF32 GEMMs (allow_tf32), tanh GELU, mean CE. Not bit-identical init (timing only)."""
 import sys, time, torch, torch.nn.functional as F

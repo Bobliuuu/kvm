@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""compare.py CASE_DIR DUMP: GPU buffers (kvm_exec --dump-buffers) vs the compiler's CPU golden: relative L2 per f32 buffer."""
+"""compare.py CASE_DIR DUMP: GPU buffers (mvm_exec --dump-buffers) vs the compiler's CPU golden: relative L2 per f32 buffer."""
 import json, math, sys
 from pathlib import Path
 d = Path(sys.argv[1]); meta = json.loads((d / 'bundle/metadata.json').read_text()); gold = json.loads((d / 'bundle/golden.json').read_text())

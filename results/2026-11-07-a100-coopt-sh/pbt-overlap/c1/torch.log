@@ -15,7 +15,7 @@
  },
  "correctness": {
   "same_pbt_decisions_all_rungs": false,
-  "rungs_where_kvm_decision_equals_fp32_oracle": 8,
+  "rungs_where_mvm_decision_equals_fp32_oracle": 8,
   "rungs_total": 11,
   "forced_replay_max_rel_train_loss_err": 0.0008935402147471905,
   "forced_replay_max_rel_eval_loss_err": 0.000257450039498508,
@@ -30,7 +30,7 @@
   "final_median_train_loss_pbt_ref": 0.012900481931865215,
   "final_median_train_loss_no_pbt_ref": 0.06430162489414215,
   "final_best_heldout_pbt_ref": 0.0656726211309433,
-  "kvm_final_best_train_loss": 0.012335196137428284,
+  "mvm_final_best_train_loss": 0.012335196137428284,
   "final_lrs_ref": [
    3.18505,
    4.58647,
@@ -138,14 +138,14 @@
    ]
   }
  },
- "kvm_ms": {
+ "mvm_ms": {
   "no_pbt": 7.8899,
   "pbt": 9.1556
  },
  "speedup": {
-  "kvm_pbt_vs_B1_eager": 1.823171010372174,
-  "kvm_pbt_vs_B3_eager": 2.1320843666386984,
-  "kvm_pbt_vs_best_valid_torch": 1.2848652113811536,
-  "kvm_nopbt_vs_B0_eager": 1.9654819231936609
+  "mvm_pbt_vs_B1_eager": 1.823171010372174,
+  "mvm_pbt_vs_B3_eager": 2.1320843666386984,
+  "mvm_pbt_vs_best_valid_torch": 1.2848652113811536,
+  "mvm_nopbt_vs_B0_eager": 1.9654819231936609
  }
 }

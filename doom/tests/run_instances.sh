@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
 # N independent Doom engines in one process: every instance must be byte-identical to the CPU oracle, alone and beside a matmul load.
-#   KVM_HOST=user@host doom/tests/run_instances.sh [frames=300] [maxN=8]
+#   MVM_HOST=user@host doom/tests/run_instances.sh [frames=300] [maxN=8]
 # Builds (no GPU lock) DOOM_INSTANCES=maxN objects into a separate build dir, then runs everything under ONE lock hold.
-# Engine sources/WAD are reused from ~/kvm-doom-scratch/doom/third_party on the box.
+# Engine sources/WAD are reused from ~/mvm-doom-scratch/doom/third_party on the box.
 set -euo pipefail
-: "${KVM_HOST:?set KVM_HOST=user@host}"
+: "${MVM_HOST:?set MVM_HOST=user@host}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; FR="${1:-300}"; MAXN="${2:-8}"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"; LOGDIR="$ROOT/logs/$TS-doominst"; mkdir -p "$LOGDIR"
-SSH="ssh -o StrictHostKeyChecking=no -o BatchMode=yes"; REMOTE="${KVM_REMOTE:-kvm-adaptive-doom-scratch}"
-rsync -az -e "$SSH" --delete --include 'include/***' --include 'runtime/***' --include 'doom/' --include 'doom/*.py' --include 'doom/*.cu' --include 'doom/*.sh' --include 'doom/glue/***' --include 'doom/player/***' --include 'doom/tests/***' --include 'kvm_exec.cu' --exclude '*' "$ROOT/" "$KVM_HOST:$REMOTE/"
-$SSH "$KVM_HOST" "KVM_NO_LOCK=${KVM_NO_LOCK:-} FR=$FR MAXN=$MAXN REMOTE=$REMOTE bash -s" <<'REMOTE_SCRIPT' 2>&1 | tee "$LOGDIR/run.log"
+SSH="ssh -o StrictHostKeyChecking=no -o BatchMode=yes"; REMOTE="${MVM_REMOTE:-mvm-adaptive-doom-scratch}"
+rsync -az -e "$SSH" --delete --include 'include/***' --include 'runtime/***' --include 'doom/' --include 'doom/*.py' --include 'doom/*.cu' --include 'doom/*.sh' --include 'doom/glue/***' --include 'doom/player/***' --include 'doom/tests/***' --include 'mvm_exec.cu' --exclude '*' "$ROOT/" "$MVM_HOST:$REMOTE/"
+$SSH "$MVM_HOST" "MVM_NO_LOCK=${MVM_NO_LOCK:-} FR=$FR MAXN=$MAXN REMOTE=$REMOTE bash -s" <<'REMOTE_SCRIPT' 2>&1 | tee "$LOGDIR/run.log"
 set -euo pipefail
-cd ~/$REMOTE; ln -sfn ~/kvm-doom-scratch/doom/third_party doom/third_party
+cd ~/$REMOTE; ln -sfn ~/mvm-doom-scratch/doom/third_party doom/third_party
 NVCC=$(ls /usr/local/cuda*/bin/nvcc | tail -1); export NVCC
 export BUILD=$PWD/doom/build_n$MAXN
 echo "# $(date -u +%FT%TZ) $($NVCC --version | tail -1) $(nvidia-smi --query-gpu=name,driver_version --format=csv,noheader)"
 T0=$(date +%s); DOOM_INSTANCES=$MAXN bash doom/build.sh 2>&1 | grep -E "INFO|WARN|ERROR|prefix" | tail -12; echo "engine build: $(( $(date +%s) - T0 )) s"
 ls -l $BUILD/doom_dev*.o | awk '{print $5, $9}'
-cp ~/kvm-doom-scratch/doom/build/libdoom_cpu.so $BUILD/ 2>/dev/null || true
+cp ~/mvm-doom-scratch/doom/build/libdoom_cpu.so $BUILD/ 2>/dev/null || true
 OBJS="$BUILD/doom_dev.o"; for k in $(seq 1 $((MAXN-1))); do OBJS="$OBJS $BUILD/doom_dev_i$k.o"; done
 OUT=$PWD/logs/doominst; rm -rf $OUT; mkdir -p $OUT
 python3 doom/cpu_run.py --frames $FR --lib $BUILD/libdoom_cpu.so --out $OUT/cpu --log info 2>&1 | tail -1
 build() { # N
-  $NVCC -O3 -arch=sm_80 -std=c++17 -rdc=true -DKVM_WITH_GAME -DKVM_DOOM_INSTANCES=$1 -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -Xptxas -v doom/exec_main.cu $(echo $OBJS | tr ' ' '\n' | head -$1 | tr '\n' ' ') -o $BUILD/doom_exec_n$1 2> $OUT/build_n$1.txt || { tail -20 $OUT/build_n$1.txt; exit 1; }
-  echo "build N=$1: $(grep -A1 'kvm_exec_kernel' $OUT/build_n$1.txt | grep -E 'registers|stack' | tail -1 | sed 's/^ *//') size $(stat -c %s $BUILD/doom_exec_n$1)"
+  $NVCC -O3 -arch=sm_80 -std=c++17 -rdc=true -DMVM_WITH_GAME -DMVM_DOOM_INSTANCES=$1 -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -Xptxas -v doom/exec_main.cu $(echo $OBJS | tr ' ' '\n' | head -$1 | tr '\n' ' ') -o $BUILD/doom_exec_n$1 2> $OUT/build_n$1.txt || { tail -20 $OUT/build_n$1.txt; exit 1; }
+  echo "build N=$1: $(grep -A1 'mvm_exec_kernel' $OUT/build_n$1.txt | grep -E 'registers|stack' | tail -1 | sed 's/^ *//') size $(stat -c %s $BUILD/doom_exec_n$1)"
 }
 for n in 1 2 4 8; do [ $n -le $MAXN ] && build $n; done
 # the GPU phase, one script so that the lock is taken exactly once
@@ -49,7 +49,7 @@ python3 runtime/compile_workload.py $OUT/mc.json $OUT/mc.bundle --allow-opaque 2
 compute-sanitizer --tool memcheck --error-exitcode 9 $BUILD/doom_exec_n2 $OUT/mc.bundle --wad doom/third_party/doom1.wad --out $OUT/mc --timeout-s 300 2>&1 | grep -E "ERROR SUMMARY|Error|OK:|FAIL" | head
 echo "sanitizer exit: \${PIPESTATUS[0]}"
 HOLD
-FLK="flock -w 900 $HOME/.gpu.lock"; [ -z "${KVM_NO_LOCK:-}" ] || FLK=""   # KVM_NO_LOCK=1: an outer hold exists
+FLK="flock -w 900 $HOME/.gpu.lock"; [ -z "${MVM_NO_LOCK:-}" ] || FLK=""   # MVM_NO_LOCK=1: an outer hold exists
 $FLK timeout 3000 bash $OUT/hold.sh 2>&1 || echo "run failed"
 REMOTE_SCRIPT
 echo "log: $LOGDIR/run.log"

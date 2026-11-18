@@ -10,29 +10,29 @@ say() { printf '\n=== %s  %s\n' "$(date -u +%FT%TZ)" "$*"; }
 
 say "environment"
 echo "$($NVCC --version | tail -1)"; nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
-git -C . rev-parse --short HEAD 2>/dev/null || echo "commit: ${KVM_COMMIT:-unknown}"
+git -C . rev-parse --short HEAD 2>/dev/null || echo "commit: ${MVM_COMMIT:-unknown}"
 
 say "Doom engine objects + WAD"
 if [ ! -f doom/build/doom_dev.o ]; then
-  DS="${KVM_DOOM_SCRATCH:-$HOME/kvm-doom-scratch}"
+  DS="${MVM_DOOM_SCRATCH:-$HOME/mvm-doom-scratch}"
   if [ -f "$DS/doom/build/doom_dev.o" ]; then for d in build third_party; do ln -sfn "$DS/doom/$d" "doom/$d"; done
   else bash doom/setup.sh && bash doom/build.sh && bash doom/cpu_build.sh; fi
 fi
 ls -la doom/build/doom_dev.o doom/third_party/doom1.wad
 
-say "build kvm_run"
-BUILD="$NVCC -O3 -arch=${NVCC_ARCH:-sm_80} -std=c++17 -rdc=true -DKVM_WITH_GAME -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177"
-if [ -x demo/kvm_run ] && [ -z "$(find demo/kvm_run.cu kvm_exec.cu include doom/build/doom_dev.o -newer demo/kvm_run 2>/dev/null)" ]; then
-  echo "demo/kvm_run is newer than its sources: reusing it (the build takes ~15 min on a busy box)"
+say "build mvm_run"
+BUILD="$NVCC -O3 -arch=${NVCC_ARCH:-sm_80} -std=c++17 -rdc=true -DMVM_WITH_GAME -I. -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177"
+if [ -x demo/mvm_run ] && [ -z "$(find demo/mvm_run.cu mvm_exec.cu include doom/build/doom_dev.o -newer demo/mvm_run 2>/dev/null)" ]; then
+  echo "demo/mvm_run is newer than its sources: reusing it (the build takes ~15 min on a busy box)"
 else
-  echo "$BUILD demo/kvm_run.cu doom/build/doom_dev.o -o demo/kvm_run"
-  $BUILD demo/kvm_run.cu doom/build/doom_dev.o -o demo/kvm_run 2>&1 | grep -v "cannot be statically determined" || true
+  echo "$BUILD demo/mvm_run.cu doom/build/doom_dev.o -o demo/mvm_run"
+  $BUILD demo/mvm_run.cu doom/build/doom_dev.o -o demo/mvm_run 2>&1 | grep -v "cannot be statically determined" || true
 fi
-test -x demo/kvm_run
+test -x demo/mvm_run
 
 gen() {  # dir model steps window serve_every frames
   local d="$1"; shift
-  ( cd frontend && python3 -m kvmfe.demo --all --out "../$d" --model "$1" --train-steps "$2" --window "$3" --serve-every "$4" --serve-policy exact \
+  ( cd frontend && python3 -m mvmfe.demo --all --out "../$d" --model "$1" --train-steps "$2" --window "$3" --serve-every "$4" --serve-policy exact \
       --game-frames "$5" --game-fb-slots 0 --tiling "$TILING" --max-bundles "$MAXB" $( [ "$PRECISE" = 1 ] && echo --precise ) $( [ -n "${LR:-}" ] && echo --lr "$LR" ) $( [ -n "${WARMUP:-}" ] && echo --warmup "$WARMUP" ) ) 2>&1 | tail -4
   # the engine's data file travels with the demo (the manifest names it; the runner resolves it in --assets)
 }
@@ -50,7 +50,7 @@ DUMP='^(doom_state|doom_frame\.)'
 [ "${GOLDEN:-1}" = 1 ] || DUMP='^(doom_state|doom_frame\.|w\.)'
 
 say "CPU-only manifest check (parse, version flow, every bundle loads/remaps/validates)"
-./demo/kvm_run "$RUN/demo" --check-only --assets "$ASSETS" --compile-cmd "$COMPILE" 2>&1 | tee "$RUN/check_only.log" | tail -4
+./demo/mvm_run "$RUN/demo" --check-only --assets "$ASSETS" --compile-cmd "$COMPILE" 2>&1 | tee "$RUN/check_only.log" | tail -4
 
 if [ "$SANITIZE" = 1 ]; then
   say "generate the small demo for compute-sanitizer (4 steps, 8 frames)"
@@ -78,19 +78,19 @@ say "GPU: one lock hold ($LOCK_WAIT s max wait)"
 cat > "$RUN/gpu.sh" <<GPU
 set -uo pipefail
 echo "lock acquired \$(date -u +%FT%TZ)"
-timeout 3600 ./demo/kvm_run "$RUN/demo" --out "$RUN/out" --assets "$ASSETS" --observe '$OBS' --dump '$DUMP' --compile-cmd "$COMPILE" ${RUN_ARGS:-} > "$RUN/kvm_run.log" 2>&1
-echo "kvm_run exit \$?"
+timeout 3600 ./demo/mvm_run "$RUN/demo" --out "$RUN/out" --assets "$ASSETS" --observe '$OBS' --dump '$DUMP' --compile-cmd "$COMPILE" ${RUN_ARGS:-} > "$RUN/mvm_run.log" 2>&1
+echo "mvm_run exit \$?"
 if [ "$SANITIZE" = 1 ]; then
   for tool in memcheck racecheck synccheck; do
     echo "== compute-sanitizer \$tool on the small demo"
-    timeout 3000 compute-sanitizer --tool \$tool --error-exitcode 9 ./demo/kvm_run "$RUN/demo_small" --out "$RUN/san_\$tool" --assets "$ASSETS" --compile-cmd "$COMPILE" --timeout-s 600 --stall-s 600 > "$RUN/sanitizer_\$tool.log" 2>&1
+    timeout 3000 compute-sanitizer --tool \$tool --error-exitcode 9 ./demo/mvm_run "$RUN/demo_small" --out "$RUN/san_\$tool" --assets "$ASSETS" --compile-cmd "$COMPILE" --timeout-s 600 --stall-s 600 > "$RUN/sanitizer_\$tool.log" 2>&1
     echo "sanitizer \$tool exit \$?"; tail -4 "$RUN/sanitizer_\$tool.log"
   done
 fi
 echo "lock released \$(date -u +%FT%TZ)"
 GPU
 flock -w "$LOCK_WAIT" ~/.gpu.lock bash "$RUN/gpu.sh" || { echo "could not take the GPU lock within $LOCK_WAIT s"; exit 75; }
-tail -8 "$RUN/kvm_run.log"
+tail -8 "$RUN/mvm_run.log"
 
 say "verify"
 python3 demo/check_demo.py "$RUN/demo" "$RUN/out" --doom-oracle "$RUN/oracle" $GOLDEN_ARGS --observe "$OBS" --report "$RUN/report.json" 2>&1 | tee "$RUN/check.log"

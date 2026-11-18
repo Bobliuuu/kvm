@@ -3,7 +3,7 @@
 tiny G 32: bitwise equal (1c8d107fbc3d05bd)
 tiny G 8: bitwise equal (89033a737ae8cd2f)
 small G 32: bitwise equal (a96d16df3646e95e)
-== the gang's abort: fault=M:F gives member M only F floats of shared memory (error 5, KVM_FGPT_E_SCRATCH); every other member must leave at its next crossing
+== the gang's abort: fault=M:F gives member M only F floats of shared memory (error 5, MVM_FGPT_E_SCRATCH); every other member must leave at its next crossing
 small G 32 fault 5:14800 (after ~10 crossings, at the MLP backward): rc=1, 0.90 s wall; error word 5, 0 of 32 members finished
 small G 32 fault 0:100 (before the first crossing): rc=1, 0.90 s wall; error word 5, 0 of 32 members finished
 small G 32 fault -1:0 (control, no fault): rc=0, 0.86 s wall; error word 0, 32 of 32 members finished

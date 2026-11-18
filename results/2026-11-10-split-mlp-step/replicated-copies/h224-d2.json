@@ -27,7 +27,7 @@
  },
  "args": {
   "work": "/root/reads/gangfix/form1-20261111T115958Z/h224-d2",
-  "exe": "/root/builds/052204dffcda37f8bbd99109/kvm_exec",
+  "exe": "/root/builds/052204dffcda37f8bbd99109/mvm_exec",
   "hidden": 224,
   "depth": 2,
   "steps": 50,

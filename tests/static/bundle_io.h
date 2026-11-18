@@ -12,7 +12,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include "kvm_fuse.h"
+#include "mvm_fuse.h"
 
 namespace bundle_io {
 
@@ -31,7 +31,7 @@ template <class T> std::vector<T> load(const std::string& p) {
 }
 
 // The buffer table from metadata.json: every {"name": ..., "index": N, "rows": R, "cols": C, "dtype": D} entry of "buffers".
-struct Buffers { std::vector<KvmFuseBuf> shape; std::vector<std::string> name; };
+struct Buffers { std::vector<MvmFuseBuf> shape; std::vector<std::string> name; };
 inline Buffers load_buffers(const std::string& meta) {
     Buffers b;
     const size_t start = meta.find("\"buffers\"");
@@ -41,7 +41,7 @@ inline Buffers load_buffers(const std::string& meta) {
         const int idx = std::stoi((*it)[2].str());
         if (idx >= (int)b.shape.size()) { b.shape.resize(idx + 1); b.name.resize(idx + 1); }
         const int rows = std::stoi((*it)[3].str()), cols = std::stoi((*it)[4].str());
-        b.shape[idx] = KvmFuseBuf{rows, cols, cols, std::stoi((*it)[5].str())};
+        b.shape[idx] = MvmFuseBuf{rows, cols, cols, std::stoi((*it)[5].str())};
         b.name[idx] = (*it)[1].str();
     }
     return b;

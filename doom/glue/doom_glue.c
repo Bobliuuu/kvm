@@ -42,7 +42,7 @@ void doom_tic(uint32_t input) {
   if (gamestate == GS_INTERMISSION && g_finished_tic < 0) g_finished_tic = (int)g_tic;
 }
 
-// Layout = the header of the doom_tick state buffer (include/kvm_ops_game.cuh KVM_DOOM_ST_*).
+// Layout = the header of the doom_tick state buffer (include/mvm_ops_game.cuh MVM_DOOM_ST_*).
 void doom_state(int32_t* o) {
   const player_t* p = &players[consoleplayer];
   o[0] = 1; o[1] = (int32_t)g_tic; o[2] = (int32_t)gamestate; o[3] = p->health; o[4] = p->armorpoints; o[5] = p->killcount;

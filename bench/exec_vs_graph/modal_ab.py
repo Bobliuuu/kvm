@@ -1,12 +1,12 @@
 """A/B executor variants against PyTorch on ONE Modal A100-40GB container (same GPU state for every number). Nothing here names a host or key.
 
-  python3 bench/exec_vs_graph/stage_variants.py STAGE name=gitref[:kvm_exec args] ...   # git-archive each ref into STAGE/<tree>/
+  python3 bench/exec_vs_graph/stage_variants.py STAGE name=gitref[:mvm_exec args] ...   # git-archive each ref into STAGE/<tree>/
   modal run --detach bench/exec_vs_graph/modal_ab.py --stage STAGE --tag NAME [--configs "tiny small"] [--rounds 3] [--reps 5]
-         [--nvcc "-DKVM_LEAN"] [--steps 50] [--modes graph,compile_graph] [--post 'bash cmd run in /work after the bench']
-  modal volume get kvm-suite /NAME results/<dir>/raw
+         [--nvcc "-DMVM_LEAN"] [--steps 50] [--modes graph,compile_graph] [--post 'bash cmd run in /work after the bench']
+  modal volume get mvm-suite /NAME results/<dir>/raw
 
-Builds (kvm_exec.cu, -O3 sm_80, --fmad=false -ffp-contract=off as in bench/exec_vs_graph) run first on a CPU-only container with enough
-host RAM for the full-ops ptxas (~35 GB each), into the volume (/NAME/bin/<tree>/kvm_exec); the GPU container only measures. Configs:
+Builds (mvm_exec.cu, -O3 sm_80, --fmad=false -ffp-contract=off as in bench/exec_vs_graph) run first on a CPU-only container with enough
+host RAM for the full-ops ptxas (~35 GB each), into the volume (/NAME/bin/<tree>/mvm_exec); the GPU container only measures. Configs:
 tiny / small (gpt_tiny / gpt_small, TF32, --steps), b16 / f32 (gpt_162m bf16s / f32, a 1-step tape; torch runs autocast-bf16 / TF32).
 Workloads come from bench/vs_pytorch/gen.py of the FIRST variant's tree. Every round times torch (MODES) once, then every variant REPS
 launches in a rotated order, so clock drift hits all variants alike. Per-round JSON, summary.json and table.txt land in the volume.
@@ -19,8 +19,8 @@ import modal
 
 image = (modal.Image.from_registry("nvidia/cuda:12.8.1-devel-ubuntu22.04", add_python="3.11")
          .pip_install("numpy", "torch==2.7.0"))
-app = modal.App("kvm-exec-ab", image=image)
-vol = modal.Volume.from_name("kvm-suite", create_if_missing=True)
+app = modal.App("mvm-exec-ab", image=image)
+vol = modal.Volume.from_name("mvm-suite", create_if_missing=True)
 
 M162 = '{"name":"gpt_162m","vocab":50304,"d_model":768,"layers":12,"heads":12,"seq":1024,"batch":4,"precision":"%s"}'
 CONFIGS = {  # name: (gen --model, steps override or None, torch precision)
@@ -44,7 +44,7 @@ def build(tag: str, tarball: bytes, trees: list, nvcc: str):
     t0 = time.time(); procs = []
     for t in trees:
         os.makedirs(f"{bdir}/{t}", exist_ok=True)
-        procs.append((t, subprocess.Popen(["bash", "-c", f"export PATH=$PATH:/usr/local/cuda/bin; nvcc {FLAGS} {nvcc} kvm_exec.cu -o {bdir}/{t}/kvm_exec > {bdir}/{t}/build.log 2>&1; echo rc=$?"],
+        procs.append((t, subprocess.Popen(["bash", "-c", f"export PATH=$PATH:/usr/local/cuda/bin; nvcc {FLAGS} {nvcc} mvm_exec.cu -o {bdir}/{t}/mvm_exec > {bdir}/{t}/build.log 2>&1; echo rc=$?"],
                                           cwd=f"/work/{t}", stdout=subprocess.PIPE, text=True)))
     out = []
     for t, p in procs:
@@ -70,8 +70,8 @@ def run(tag: str, tarball: bytes, variants: list, configs: str, rounds: int, rep
     _untar(tarball, "/work")
     sh("nvidia-smi --query-gpu=name,driver_version,clocks.max.sm --format=csv,noheader; nvcc --version | tail -1; cat " + f"{out}/bin/builds.txt")
     for v in variants:
-        if not os.path.exists(f"{out}/bin/{v['tree']}/kvm_exec"): raise SystemExit(f"no binary for {v['tree']} (build failed?)")
-        sh(f"cp {out}/bin/{v['tree']}/kvm_exec {v['tree']}/kvm_exec; chmod +x {v['tree']}/kvm_exec")
+        if not os.path.exists(f"{out}/bin/{v['tree']}/mvm_exec"): raise SystemExit(f"no binary for {v['tree']} (build failed?)")
+        sh(f"cp {out}/bin/{v['tree']}/mvm_exec {v['tree']}/mvm_exec; chmod +x {v['tree']}/mvm_exec")
     first = variants[0]["tree"]
     st = {}
     for c in configs.split():
@@ -88,7 +88,7 @@ def run(tag: str, tarball: bytes, variants: list, configs: str, rounds: int, rep
             order = variants[r % len(variants):] + variants[:r % len(variants)]
             for v in order:
                 extra = v.get("args", "")
-                sh(f"python3 -I {first}/bench/vs_pytorch/exec_bench.py w_{c} {v['tree']}/kvm_exec --reps {reps} --out {out}/r{r}_{c}_{v['name']}.json" + (f" -- {extra}" if extra else ""))
+                sh(f"python3 -I {first}/bench/vs_pytorch/exec_bench.py w_{c} {v['tree']}/mvm_exec --reps {reps} --out {out}/r{r}_{c}_{v['name']}.json" + (f" -- {extra}" if extra else ""))
                 try:
                     rr.setdefault(c, {})[v["name"]] = json.load(open(f"{out}/r{r}_{c}_{v['name']}.json")).get("ms_total", [])
                 except Exception as e:
@@ -117,7 +117,7 @@ def run(tag: str, tarball: bytes, variants: list, configs: str, rounds: int, rep
 
 
 @app.local_entrypoint()
-def main(stage: str, tag: str, configs: str = "tiny small", rounds: int = 3, reps: int = 5, nvcc: str = "-DKVM_LEAN", steps: int = 50,
+def main(stage: str, tag: str, configs: str = "tiny small", rounds: int = 3, reps: int = 5, nvcc: str = "-DMVM_LEAN", steps: int = 50,
          modes: str = "graph,compile_graph", post: str = "", skip_build: bool = False, build_only: bool = False):
     import io, tarfile
     st = pathlib.Path(stage)
@@ -128,7 +128,7 @@ def main(stage: str, tag: str, configs: str = "tiny small", rounds: int = 3, rep
         for t in trees:
             tf.add(st / t, arcname=t)
     tb = buf.getvalue()
-    print(f"{len(variants)} variants over {len(trees)} trees, tarball {len(tb) / 1e6:.1f} MB -> volume kvm-suite:/{tag}")
+    print(f"{len(variants)} variants over {len(trees)} trees, tarball {len(tb) / 1e6:.1f} MB -> volume mvm-suite:/{tag}")
     if not skip_build:
         print(build.remote(tag, tb, trees, nvcc))
     if build_only:

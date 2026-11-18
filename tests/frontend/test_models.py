@@ -7,10 +7,10 @@ import numpy as np
 
 import _path  # noqa: F401
 import oracle_models as om
-from kvmfe import models
-from kvmfe.lower import Tiling
-from kvmfe.pipeline import build_model, compile_training
-from kvmfe.train import Schedule, TrainConfig
+from mvmfe import models
+from mvmfe.lower import Tiling
+from mvmfe.pipeline import build_model, compile_training
+from mvmfe.train import Schedule, TrainConfig
 
 CPU = Tiling.preset('cpu')
 # small variants keep the pure-Python golden VM fast; the presets are exercised by OracleChecks and on the GPU
@@ -123,8 +123,8 @@ class Features(unittest.TestCase):
             self.assertEqual(losses(a, ma, 2), losses(b, mb, 2), cfg.name)
 
     def test_fusion_gpt_gelu_backward(self):
-        from kvmfe.nn import PRESETS as GPT
-        fuse_mod = importlib.import_module('kvmfe.fuse')
+        from mvmfe.nn import PRESETS as GPT
+        fuse_mod = importlib.import_module('mvmfe.fuse')
         defaults, fuse_mod.DEFAULT_PATTERNS = fuse_mod.DEFAULT_PATTERNS, ()      # the same model with the default fusions off
         try:
             a = compiled(GPT['gpt_tiny'], 1, reuse='shape')
@@ -135,7 +135,7 @@ class Features(unittest.TestCase):
         self.assertEqual(weights(a.run()), weights(b.run()))
 
     def test_fused_gelu_backward_is_a_matmul_tile_epilogue(self):
-        from kvmfe.nn import PRESETS as GPT
+        from mvmfe.nn import PRESETS as GPT
         tiling = Tiling.preset('cpu', mm_tile=128, mm_min_tiles=1, mm_min_eff=0.0, tf32_trunc=True)
         spec = compile_training(GPT['gpt_tiny'], TrainConfig(steps=1), tiling, reuse='shape', fuse=True).spec
         fused = [t for t in spec['graphs'][0]['tasks'] if t['op'] == 'matmul_tile' and t['args']['flags'] & 512]
@@ -217,7 +217,7 @@ class Features(unittest.TestCase):
     def test_tf32_preround_reaches_the_fused_dgelu_gemm(self):
         # the default fusion turns a GELU MLP's backward mm into mm_dgelu after tf32.apply; it keeps the mm's copies, so its tiles must
         # read them as exact operands (flag 1024 beside 512), or every copy it reads is wasted rounding
-        from kvmfe.nn import ModelConfig
+        from mvmfe.nn import ModelConfig
         cfg = ModelConfig('gpt_wide', vocab=256, d_model=256, layers=1, heads=4, seq=32, batch=8)   # 256 tokens: the MLP's GEMMs take 256x128 tiles
         tiling = Tiling.preset('cpu', mm_tile=256, mm_min_tiles=1, mm_min_eff=0.0, mm_huge_min_tiles=1, mm_huge_min_k=1, tf32_preround=True)
         tasks = compile_training(cfg, TrainConfig(steps=1), tiling).spec['graphs'][0]['tasks']
@@ -226,7 +226,7 @@ class Features(unittest.TestCase):
         self.assertTrue(all(f & 1024 for f in dgelu if f & 64), dgelu)
         huge = [t['args']['flags'] for t in tasks if t['op'] == 'matmul_tile' and t['args']['flags'] & 64]
         self.assertTrue(huge and all(f & 1024 for f in huge), huge)
-        from kvmfe.demo import make_precise
+        from mvmfe.demo import make_precise
         with self.assertRaises(Exception):
             make_precise(compile_training(cfg, TrainConfig(steps=1), tiling).spec)
 
@@ -300,8 +300,8 @@ class Features(unittest.TestCase):
             np.testing.assert_allclose(b[k], a[k], atol=1e-8, rtol=1e-6, err_msg=k)
 
     def test_loss_scale_requires_adamw(self):
-        from kvmfe.ir import FrontendError
-        from kvmfe.optim import OptimConfig
+        from mvmfe.ir import FrontendError
+        from mvmfe.optim import OptimConfig
         with self.assertRaises(FrontendError):
             compiled(models.PRESETS['mlp_tiny'], 1, loss_scale=8.0, optim=OptimConfig('sgd'))
 
@@ -353,8 +353,8 @@ class CheckedInGolden(unittest.TestCase):
 
 class Registry(unittest.TestCase):
     def test_new_ops_defined_and_have_references(self):
-        from kvmfe import opset
-        from kvmfe.defs import read_defs
+        from mvmfe import opset
+        from mvmfe.defs import read_defs
         defs = read_defs()
         for n in ('act_fwd', 'moe_route', 'attn_full_fwd', 'matmul_tile_bf16', 'adamw_lr', 'matmul_tile_silu_mul_bwd'):
             self.assertIn(n, defs)
@@ -370,10 +370,10 @@ class Decode(unittest.TestCase):
     """KV-cache decode of the Llama family (GQA, RoPE offset by the cache length, SwiGLU) against full-forward greedy decode."""
 
     def run_case(self, cfg, steps, prompt, n_new):
-        from kvmfe.emit import merge
-        from kvmfe.refvm import execute
-        from kvmfe.serve import ServeRequest, compile_serving
-        from kvmfe.train import weights_version
+        from mvmfe.emit import merge
+        from mvmfe.refvm import execute
+        from mvmfe.serve import ServeRequest, compile_serving
+        from mvmfe.train import weights_version
         model = build_model(cfg)
         train = compile_training(cfg, TrainConfig(steps=steps), CPU, reuse='shape')
         reqs = [ServeRequest(f'sv{k}', prompt, n_new, weights_version(k)) for k in (0, steps)]

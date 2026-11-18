@@ -1,4 +1,4 @@
-# Executor (`kvm_exec`) vs PyTorch eager / whole-step CUDA graph / `torch.compile`, small dependent workloads and the 162M GPT (A100, 2026-11-09)
+# Executor (`mvm_exec`) vs PyTorch eager / whole-step CUDA graph / `torch.compile`, small dependent workloads and the 162M GPT (A100, 2026-11-09)
 
 > **Superseded (2026-11-11).** Measured on the executor before #13/#22. Main's current read is `results/2026-11-10-a100-merged` (executor 2.2-3.8x faster than PyTorch's fastest variant on small MLPs, slower on GEMM-bound rows). Kept as the record of that executor; its verdict below is not main's.
 
@@ -6,7 +6,7 @@
 or many runs, 10 to 1000 steps) the executor is correct and **beats only PyTorch eager (1.1x to 3.9x) and `torch.compile` without CUDA graphs (1.2-1.9x at R=1)**.
 It **loses to a whole-step CUDA graph by 1.9x (R=32) to 4.8x (R=1), to R graphs on R streams by 5.7x to 7.2x, and to a batched graph by 5.5x to 33x and a compiled
 batched graph by 9x to 69x**; at hidden 256-1024 it loses to eager too. At 162M it is 17.7x slower than eager and 21x slower than `torch.compile` + graph.
-The one VM result that stands is `kvm.cu`'s MLP (README). Where the time goes (measured, "Why"): the executor admits the whole tape before the first task can
+The one VM result that stands is `mvm.cu`'s MLP (README). Where the time goes (measured, "Why"): the executor admits the whole tape before the first task can
 run (2.4-3.1 us per task), runs one resident block per SM and pays about 28 us per dependency level; a graph runs the same step at about 8 us per level.
 
 ## Setup
@@ -15,11 +15,11 @@ run (2.4-3.1 us per task), runs one resident block per SM and pays about 28 us p
 |---|---|
 | GPU | NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, driver 580.105.08, CUDA 12.8 (nvcc 12.8), max SM clock 1410 MHz; shared box, every stage inside one `flock ~/.gpu.lock` hold |
 | PyTorch | 2.7.0+cu128, Triton 3.3.0; TF32 matmuls (`allow_tf32`); `torch.compile(mode='max-autotune-no-cudagraphs', fullgraph=True)`; SDPA attention and fused AdamW for the GPT |
-| Executor | `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -diag-suppress 177 kvm_exec.cu` (`raw/env.txt`) on `origin/main` 1c2111b; default grid, 1xTF32 GEMMs, frontend tiling `a100`. MLP bundles are run with the whole tape as ONE admission record (`--max-tasks/--live-cap/--ring-words` sized to the tape): measured 2.0-2.2x faster than the default windowing at R >= 8 ("Why", item 2) |
+| Executor | `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -diag-suppress 177 mvm_exec.cu` (`raw/env.txt`) on `origin/main` 1c2111b; default grid, 1xTF32 GEMMs, frontend tiling `a100`. MLP bundles are run with the whole tape as ONE admission record (`--max-tasks/--live-cap/--ring-words` sized to the tape): measured 2.0-2.2x faster than the default windowing at R >= 8 ("Why", item 2) |
 | Code / commit | `bench/exec_vs_torch/` (driver commit ad9ec50 on branch `bench/exec-vs-torch-v2`; `tables.py`, `dag_depth.py`, `ab_occupancy.sh` were added after the runs and touch no measured path); GPT side reuses `bench/vs_pytorch/torch_bench.py` (one fix: the graphed warm-up reset the step counter, needed for 1-3 step tapes) |
 | Command | `bash bench/exec_vs_torch/box_job.sh OUT` on the box (builds outside the lock, one lock hold per stage; `REPS=7`); tables: `python3 bench/exec_vs_torch/tables.py raw > tables.md`; raw output in `raw/` (JSON per stage, `stage_logs/` per stage, `env.txt`) |
 
-**Same process.** `kvm_exec` has no in-process API, so "same process" is: ONE driver process owns the GPU and every PyTorch variant (built, compiled, captured
+**Same process.** `mvm_exec` has no in-process API, so "same process" is: ONE driver process owns the GPU and every PyTorch variant (built, compiled, captured
 first), and per rep it times each variant once and then launches the executor as a child, all inside one lock hold, so every ratio in a row comes from one time
 window (spread: in `tables.md`, `[median .. worst]`). The executor time is the kernel's own cudaEvent `OK: n/n tasks, X ms` of one launch running all N steps
 of all R runs (persistent-kernel start, host admission of the tape included; process start and bundle load excluded). PyTorch time is CUDA events around N
@@ -113,7 +113,7 @@ As the GEMMs grow the executor loses even to eager (h256 R=1 0.91x, h1024 0.27x)
 
 ## Why (the AGENTS.md cost model, measured)
 
-`kvm_exec`'s two costs are the dependency hop through global memory and the per-task admission/dispatch; the graph's are one launch edge per dependent kernel.
+`mvm_exec`'s two costs are the dependency hop through global memory and the per-task admission/dispatch; the graph's are one launch edge per dependent kernel.
 
 1. **Admission precedes execution.** One MLP run is 2550 tasks for 50 steps; the trace (`--trace-csv`) shows the first task becomes ready 8.0 ms after kernel start (3.1 us per task) and, at
    R=32 (81,600 tasks), 199.7 ms after (2.45 us per task) while the last task ends at 319 ms and the kernel at 344 ms. So 58% of the executor's time at R=32 (200 of 344 ms) is the submit/admit of the record before any
@@ -123,10 +123,10 @@ As the GEMMs grow the executor loses even to eager (h256 R=1 0.91x, h1024 0.27x)
    28-29 ms): `raw/stage_logs/flags_*.txt`. The tape is sized to one record in every timed run, i.e. the executor is given its best known configuration.
 3. **The dependency hop is about 25 us per level, not 5.** R=1: 2550 tasks, chain of 15 tasks per step; `trace_r1`: mean task 13.8 us, mean ready-to-start wait 12.5 us, workers busy 1.5%, span 21.6 ms = 432 us per step
    (+8.0 ms admission, +2 ms other = 31.8 ms kernel time) = 15 levels x 29 us. A graph runs the same step in 109-121 us (about 8 us per chain level).
-   The README's 5 us hop (`kvm.cu`) is for one tiny dependent op on a persistent block; here the wait includes the ready-queue pickup, and the 1-CTA matmul tiles alone are 15.3 us each (69% of task time).
-4. **One resident block per SM (hypothesis tested, NOT the cause).** `kvm_exec` reports `1 resident blocks/SM with 98304 B dynamic smem -> grid 108 (1 admitter + 107 workers)`; the 96 KiB is
-   `KVM_GPT_MMA_SMEM` (bf16 matmul stage buffers, merged after the 2026-11-06 vm-wins run, which had 72 KiB). A/B on the same bundles (`ab_occupancy.sh`, `raw/stage_logs/ab_occupancy.txt`): a build with
-   `-DKVM_GPT_MMA_SMEM=0` (73,728 B, `include/kvm_mma_bf16.cuh`'s static_assert removed; the bf16 op is never run here; final buffers bitwise equal) STILL reports 1 block/SM and times the same:
+   The README's 5 us hop (`mvm.cu`) is for one tiny dependent op on a persistent block; here the wait includes the ready-queue pickup, and the 1-CTA matmul tiles alone are 15.3 us each (69% of task time).
+4. **One resident block per SM (hypothesis tested, NOT the cause).** `mvm_exec` reports `1 resident blocks/SM with 98304 B dynamic smem -> grid 108 (1 admitter + 107 workers)`; the 96 KiB is
+   `MVM_GPT_MMA_SMEM` (bf16 matmul stage buffers, merged after the 2026-11-06 vm-wins run, which had 72 KiB). A/B on the same bundles (`ab_occupancy.sh`, `raw/stage_logs/ab_occupancy.txt`): a build with
+   `-DMVM_GPT_MMA_SMEM=0` (73,728 B, `include/mvm_mma_bf16.cuh`'s static_assert removed; the bf16 op is never run here; final buffers bitwise equal) STILL reports 1 block/SM and times the same:
    R=1 27.1 vs 27.2 ms, R=8 94.2 vs 94.0 ms, R=32 331.8 vs 332.3 ms (best of 5). Some other per-block limit (registers or the static smem of the union) caps residency; 6.9% utilisation at R=32 with a 217 us
    ready-to-start wait says the workers wait for admission, not for each other. The 2.3x gap to the older `bench/vm-wins` executor (R=32: 2896 vs 6615 us/step) is therefore unexplained here (different tree, different box load; not re-run).
 5. **Big GEMMs.** From h256 up the 1-CTA tiles at 0.5x cuBLAS decide it (section 3), as for the 162M GPT: 276k tasks/step, 21.2 ms floor in `2026-11-06-gpt162-vs-torch`, 1.25 s measured.
@@ -135,12 +135,12 @@ As the GEMMs grow the executor loses even to eager (h256 R=1 0.91x, h1024 0.27x)
 
 ## Honest limits
 
-- The executor ratio compares a child process's kernel time with in-process CUDA events (same lock hold, interleaved reps); `kvm_exec` has no in-process API. Fixed costs inside the executor's time (admission of the tape,
+- The executor ratio compares a child process's kernel time with in-process CUDA events (same lock hold, interleaved reps); `mvm_exec` has no in-process API. Fixed costs inside the executor's time (admission of the tape,
   persistent-kernel start) are real and are counted; a hypothetical in-process API would not remove them.
 - `torch.compile` here is `max-autotune-no-cudagraphs` (+ our own whole-step graph for `compile + graph`); `reduce-overhead` and a `--fuse` executor bundle were not run (the 2026-11-06 campaign had `reduce-overhead`: it was
   slower than `compile + graph`). The executor runs unfused bundles and 1xTF32 GEMMs only.
 - The MLP bundle trains on batch 0 at every step (finding above; a defect of the audit generator's token stream, not corrected: both sides do the same work). Heterogeneous runs (different shapes, where the
-  batched graph does not apply), data-dependent control flow, an H100/B200 and the `KVM_CHAIN` / predicated-task branch (`bench/vm-wins`, not on main) were not measured.
+  batched graph does not apply), data-dependent control flow, an H100/B200 and the `MVM_CHAIN` / predicated-task branch (`bench/vm-wins`, not on main) were not measured.
 - `--no-golden` at hidden 256/1024: no CPU golden gate (hangs in the pure-Python CPU VM, `worker did not stop`); gates 2-4 stand. 162M uses a 3-step tape (loss trajectory of 3 steps, not a learning curve; learning at 162M
   is `2026-11-06-a100-learning-162m`).
 - Shared box: other agents' jobs hold the lock in turn; the first pass and the repeat of section 1 agree within 3%, the box was never contended while a stage held the lock.

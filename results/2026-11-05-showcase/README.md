@@ -12,7 +12,7 @@ the claims audit, cited on the figure).
 Each directory: `trace.csv.gz` (one row per task: `%smid`, start/end `%globaltimer` in us, queue wait, weight versions read/published, class),
 `run.json`, `report.json` (the checks of `demo/check_demo.py`), `observations.jsonl` (loss and served tokens as each admission finished).
 
-Command: `KVM_HOST=... demo/run_demo.sh tiny --tag t3 --sanitize` with `--steps 200 --window 4 --serve-every 20 --frames 700` (preset tiny, those two flags
+Command: `MVM_HOST=... demo/run_demo.sh tiny --tag t3 --sanitize` with `--steps 200 --window 4 --serve-every 20 --frames 700` (preset tiny, those two flags
 overridden), 1xTF32-exact (3xTF32) GEMMs. 27,003 tasks in 4231 ms.
 
 ## What the run showed (report.json)

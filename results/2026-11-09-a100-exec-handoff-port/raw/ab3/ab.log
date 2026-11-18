@@ -5,11 +5,11 @@ build 93f727c: rc=0
 build d12c206: rc=0
 build origin_perf_chunked-release: rc=0
 builds done in 1875 s (flags -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 )
-$ cp /logs/ab3-final/bin/93f727c/kvm_exec 93f727c/kvm_exec; chmod +x 93f727c/kvm_exec
-$ cp /logs/ab3-final/bin/d12c206/kvm_exec d12c206/kvm_exec; chmod +x d12c206/kvm_exec
-$ cp /logs/ab3-final/bin/origin_perf_chunked-release/kvm_exec origin_perf_chunked-release/kvm_exec; chmod +x origin_perf_chunked-release/kvm_exec
-$ cp /logs/ab3-final/bin/93f727c/kvm_exec 93f727c/kvm_exec; chmod +x 93f727c/kvm_exec
-$ cp /logs/ab3-final/bin/93f727c/kvm_exec 93f727c/kvm_exec; chmod +x 93f727c/kvm_exec
+$ cp /logs/ab3-final/bin/93f727c/mvm_exec 93f727c/mvm_exec; chmod +x 93f727c/mvm_exec
+$ cp /logs/ab3-final/bin/d12c206/mvm_exec d12c206/mvm_exec; chmod +x d12c206/mvm_exec
+$ cp /logs/ab3-final/bin/origin_perf_chunked-release/mvm_exec origin_perf_chunked-release/mvm_exec; chmod +x origin_perf_chunked-release/mvm_exec
+$ cp /logs/ab3-final/bin/93f727c/mvm_exec 93f727c/mvm_exec; chmod +x 93f727c/mvm_exec
+$ cp /logs/ab3-final/bin/93f727c/mvm_exec 93f727c/mvm_exec; chmod +x 93f727c/mvm_exec
 $ python3 -I 93f727c/bench/vs_pytorch/gen.py w_tiny --model 'gpt_tiny' --steps 50 --mode tf32 --tiling a100 > /logs/ab3-final/gen_tiny.json 2>&1
 $ python3 -I 93f727c/bench/vs_pytorch/gen.py w_small --model 'gpt_small' --steps 50 --mode tf32 --tiling a100 > /logs/ab3-final/gen_small.json 2>&1
 $ python3 -I 93f727c/bench/vs_pytorch/gen.py w_b16 --model '{"name":"gpt_162m","vocab":50304,"d_model":768,"layers":12,"heads":12,"seq":1024,"batch":4,"precision":"bf16s"}' --steps 1 --mode tf32 --tiling a100 > /logs/ab3-final/gen_b16.json 2>&1
@@ -177,27 +177,27 @@ AUTOTUNE mm(32x32, 32x32)
   mm 0.0113 ms 72.7% 
 SingleProcess AUTOTUNE benchmarking takes 0.1522 seconds and 0.0004 seconds precompiling for 7 choices
 compile_graph: best 203.6 us/step  median 203.7  worst 204.2  loss 4.1461 -> 1.2462  (setup 42s)
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_tiny_port.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r0_tiny_port.json
 rep 1/3: 41.0 ms (0.82 ms/step), wall 0.6 s
 rep 2/3: 41.3 ms (0.83 ms/step), wall 0.5 s
 rep 3/3: 42.0 ms (0.84 ms/step), wall 0.6 s
 executor: best 821 us/step  median 826  worst 840
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny d12c206/kvm_exec --reps 3 --out /logs/ab3-final/r0_tiny_main.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny d12c206/mvm_exec --reps 3 --out /logs/ab3-final/r0_tiny_main.json
 rep 1/3: 55.8 ms (1.12 ms/step), wall 0.6 s
 rep 2/3: 44.9 ms (0.90 ms/step), wall 0.5 s
 rep 3/3: 43.3 ms (0.87 ms/step), wall 0.5 s
 executor: best 867 us/step  median 898  worst 1117
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny origin_perf_chunked-release/kvm_exec --reps 3 --out /logs/ab3-final/r0_tiny_chunk.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny origin_perf_chunked-release/mvm_exec --reps 3 --out /logs/ab3-final/r0_tiny_chunk.json
 rep 1/3: 42.6 ms (0.85 ms/step), wall 0.5 s
 rep 2/3: 43.1 ms (0.86 ms/step), wall 0.5 s
 rep 3/3: 42.3 ms (0.85 ms/step), wall 0.6 s
 executor: best 846 us/step  median 852  worst 862
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_tiny_port_cas.json -- --claim cas
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r0_tiny_port_cas.json -- --claim cas
 rep 1/3: 42.3 ms (0.85 ms/step), wall 0.6 s
 rep 2/3: 42.3 ms (0.85 ms/step), wall 0.6 s
 rep 3/3: 42.1 ms (0.84 ms/step), wall 0.5 s
 executor: best 842 us/step  median 846  worst 846
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_tiny_port_nc.json -- --no-cont
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r0_tiny_port_nc.json -- --no-cont
 rep 1/3: 41.9 ms (0.84 ms/step), wall 0.5 s
 rep 2/3: 42.1 ms (0.84 ms/step), wall 0.6 s
 rep 3/3: 42.0 ms (0.84 ms/step), wall 0.6 s
@@ -421,27 +421,27 @@ AUTOTUNE addmm(128x64, 128x64, 64x64)
   triton_mm_442 0.0102 ms 80.0% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=64, BLOCK_M=64, BLOCK_N=64, EVEN_K=True, GROUP_M=8, num_stages=4, num_warps=4
 SingleProcess AUTOTUNE benchmarking takes 0.4628 seconds and 0.0003 seconds precompiling for 19 choices
 compile_graph: best 429.1 us/step  median 429.3  worst 429.4  loss 4.8782 -> 0.0960  (setup 71s)
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_small_port.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r0_small_port.json
 rep 1/3: 105.3 ms (2.11 ms/step), wall 0.7 s
 rep 2/3: 92.3 ms (1.85 ms/step), wall 0.6 s
 rep 3/3: 93.9 ms (1.88 ms/step), wall 0.6 s
 executor: best 1845 us/step  median 1878  worst 2106
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small d12c206/kvm_exec --reps 3 --out /logs/ab3-final/r0_small_main.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small d12c206/mvm_exec --reps 3 --out /logs/ab3-final/r0_small_main.json
 rep 1/3: 112.2 ms (2.24 ms/step), wall 0.7 s
 rep 2/3: 104.1 ms (2.08 ms/step), wall 0.7 s
 rep 3/3: 96.2 ms (1.92 ms/step), wall 0.6 s
 executor: best 1923 us/step  median 2082  worst 2245
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small origin_perf_chunked-release/kvm_exec --reps 3 --out /logs/ab3-final/r0_small_chunk.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small origin_perf_chunked-release/mvm_exec --reps 3 --out /logs/ab3-final/r0_small_chunk.json
 rep 1/3: 109.6 ms (2.19 ms/step), wall 0.6 s
 rep 2/3: 91.6 ms (1.83 ms/step), wall 0.6 s
 rep 3/3: 94.3 ms (1.89 ms/step), wall 0.6 s
 executor: best 1832 us/step  median 1886  worst 2192
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_small_port_cas.json -- --claim cas
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r0_small_port_cas.json -- --claim cas
 rep 1/3: 109.5 ms (2.19 ms/step), wall 1.4 s
 rep 2/3: 91.9 ms (1.84 ms/step), wall 1.7 s
 rep 3/3: 113.5 ms (2.27 ms/step), wall 1.5 s
 executor: best 1839 us/step  median 2191  worst 2270
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_small_port_nc.json -- --no-cont
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r0_small_port_nc.json -- --no-cont
 rep 1/3: 107.6 ms (2.15 ms/step), wall 0.7 s
 rep 2/3: 85.4 ms (1.71 ms/step), wall 0.6 s
 rep 3/3: 84.4 ms (1.69 ms/step), wall 0.6 s
@@ -606,26 +606,26 @@ AUTOTUNE mm(768x4096, 4096x768)
   triton_mm_1521 0.0717 ms 50.0% ACC_TYPE='tl.float32', ALLOW_TF32=False, BLOCK_K=128, BLOCK_M=32, BLOCK_N=32, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=4
 SingleProcess AUTOTUNE benchmarking takes 0.6174 seconds and 0.0004 seconds precompiling for 20 choices
 compile_graph: FAILED IndexError: index 1 is out of bounds for dimension 0 with size 1
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_b16_port.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r0_b16_port.json
 rep 1/3: 136.4 ms (136.41 ms/step), wall 3.3 s
 rep 2/3: 126.8 ms (126.83 ms/step), wall 3.5 s
 rep 3/3: 126.8 ms (126.76 ms/step), wall 3.7 s
 executor: best 126757 us/step  median 126835  worst 136409
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 d12c206/kvm_exec --reps 3 --out /logs/ab3-final/r0_b16_main.json
-rep 1/3: FAILED rc=1 '' '[kvm_exec][E] bad buffer shape or dtype\n'
-rep 2/3: FAILED rc=1 '' '[kvm_exec][E] bad buffer shape or dtype\n'
-rep 3/3: FAILED rc=1 '' '[kvm_exec][E] bad buffer shape or dtype\n'
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 origin_perf_chunked-release/kvm_exec --reps 3 --out /logs/ab3-final/r0_b16_chunk.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 d12c206/mvm_exec --reps 3 --out /logs/ab3-final/r0_b16_main.json
+rep 1/3: FAILED rc=1 '' '[mvm_exec][E] bad buffer shape or dtype\n'
+rep 2/3: FAILED rc=1 '' '[mvm_exec][E] bad buffer shape or dtype\n'
+rep 3/3: FAILED rc=1 '' '[mvm_exec][E] bad buffer shape or dtype\n'
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 origin_perf_chunked-release/mvm_exec --reps 3 --out /logs/ab3-final/r0_b16_chunk.json
 rep 1/3: 139.0 ms (138.96 ms/step), wall 3.7 s
 rep 2/3: 138.7 ms (138.73 ms/step), wall 3.0 s
 rep 3/3: 145.1 ms (145.10 ms/step), wall 3.2 s
 executor: best 138726 us/step  median 138961  worst 145105
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_b16_port_cas.json -- --claim cas
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r0_b16_port_cas.json -- --claim cas
 rep 1/3: 139.7 ms (139.70 ms/step), wall 2.4 s
 rep 2/3: 136.4 ms (136.42 ms/step), wall 2.4 s
 rep 3/3: 136.2 ms (136.22 ms/step), wall 3.3 s
 executor: best 136222 us/step  median 136424  worst 139700
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_b16_port_nc.json -- --no-cont
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r0_b16_port_nc.json -- --no-cont
 rep 1/3: 133.6 ms (133.58 ms/step), wall 3.0 s
 rep 2/3: 131.9 ms (131.90 ms/step), wall 2.8 s
 rep 3/3: 134.1 ms (134.09 ms/step), wall 2.8 s
@@ -982,27 +982,27 @@ AUTOTUNE addmm(4096x768, 4096x768, 768x768)
   triton_mm_1621 0.1096 ms 61.7% ACC_TYPE='tl.float32', ALLOW_TF32=True, BLOCK_K=32, BLOCK_M=128, BLOCK_N=128, EVEN_K=True, GROUP_M=8, num_stages=2, num_warps=8
 SingleProcess AUTOTUNE benchmarking takes 0.5826 seconds and 0.0004 seconds precompiling for 20 choices
 compile_graph: FAILED IndexError: index 1 is out of bounds for dimension 0 with size 1
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_f32_port.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r0_f32_port.json
 rep 1/3: 249.1 ms (249.12 ms/step), wall 3.0 s
 rep 2/3: 249.3 ms (249.34 ms/step), wall 3.5 s
 rep 3/3: 247.0 ms (246.97 ms/step), wall 3.2 s
 executor: best 246973 us/step  median 249121  worst 249338
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 d12c206/kvm_exec --reps 3 --out /logs/ab3-final/r0_f32_main.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 d12c206/mvm_exec --reps 3 --out /logs/ab3-final/r0_f32_main.json
 rep 1/3: 776.3 ms (776.29 ms/step), wall 3.7 s
 rep 2/3: 779.2 ms (779.24 ms/step), wall 3.9 s
 rep 3/3: 772.5 ms (772.48 ms/step), wall 3.7 s
 executor: best 772476 us/step  median 776289  worst 779239
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 origin_perf_chunked-release/kvm_exec --reps 3 --out /logs/ab3-final/r0_f32_chunk.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 origin_perf_chunked-release/mvm_exec --reps 3 --out /logs/ab3-final/r0_f32_chunk.json
 rep 1/3: 274.8 ms (274.78 ms/step), wall 2.6 s
 rep 2/3: 272.3 ms (272.30 ms/step), wall 3.7 s
 rep 3/3: 270.1 ms (270.09 ms/step), wall 2.6 s
 executor: best 270090 us/step  median 272296  worst 274784
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_f32_port_cas.json -- --claim cas
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r0_f32_port_cas.json -- --claim cas
 rep 1/3: 462.1 ms (462.07 ms/step), wall 3.8 s
 rep 2/3: 462.4 ms (462.41 ms/step), wall 3.2 s
 rep 3/3: 467.4 ms (467.44 ms/step), wall 3.8 s
 executor: best 462066 us/step  median 462411  worst 467435
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r0_f32_port_nc.json -- --no-cont
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r0_f32_port_nc.json -- --no-cont
 rep 1/3: 252.0 ms (251.97 ms/step), wall 3.5 s
 rep 2/3: 248.7 ms (248.65 ms/step), wall 3.5 s
 rep 3/3: 247.9 ms (247.90 ms/step), wall 3.5 s
@@ -1011,27 +1011,27 @@ $ python3 -I 93f727c/bench/vs_pytorch/torch_bench.py w_tiny --reps 3 --precision
 eager: best 3900.0 us/step  median 3924.6  worst 3944.8  loss 4.1460 -> 1.2453  (setup 1s)
 graph: best 433.0 us/step  median 433.1  worst 433.5  loss 4.1460 -> 1.2453  (setup 0s)
 compile_graph: best 203.2 us/step  median 203.2  worst 203.5  loss 4.1461 -> 1.2462  (setup 4s)
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny d12c206/kvm_exec --reps 3 --out /logs/ab3-final/r1_tiny_main.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny d12c206/mvm_exec --reps 3 --out /logs/ab3-final/r1_tiny_main.json
 rep 1/3: 43.1 ms (0.86 ms/step), wall 0.5 s
 rep 2/3: 42.8 ms (0.86 ms/step), wall 0.5 s
 rep 3/3: 43.8 ms (0.88 ms/step), wall 0.6 s
 executor: best 857 us/step  median 863  worst 876
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny origin_perf_chunked-release/kvm_exec --reps 3 --out /logs/ab3-final/r1_tiny_chunk.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny origin_perf_chunked-release/mvm_exec --reps 3 --out /logs/ab3-final/r1_tiny_chunk.json
 rep 1/3: 43.2 ms (0.86 ms/step), wall 0.6 s
 rep 2/3: 44.4 ms (0.89 ms/step), wall 0.5 s
 rep 3/3: 42.5 ms (0.85 ms/step), wall 0.6 s
 executor: best 849 us/step  median 864  worst 889
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_tiny_port_cas.json -- --claim cas
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r1_tiny_port_cas.json -- --claim cas
 rep 1/3: 42.4 ms (0.85 ms/step), wall 0.6 s
 rep 2/3: 42.5 ms (0.85 ms/step), wall 0.5 s
 rep 3/3: 42.3 ms (0.85 ms/step), wall 0.5 s
 executor: best 846 us/step  median 848  worst 850
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_tiny_port_nc.json -- --no-cont
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r1_tiny_port_nc.json -- --no-cont
 rep 1/3: 41.7 ms (0.83 ms/step), wall 0.6 s
 rep 2/3: 42.1 ms (0.84 ms/step), wall 0.6 s
 rep 3/3: 42.4 ms (0.85 ms/step), wall 0.6 s
 executor: best 835 us/step  median 842  worst 848
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_tiny_port.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_tiny 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r1_tiny_port.json
 rep 1/3: 41.2 ms (0.82 ms/step), wall 0.5 s
 rep 2/3: 43.9 ms (0.88 ms/step), wall 0.6 s
 rep 3/3: 42.2 ms (0.84 ms/step), wall 0.6 s
@@ -1040,27 +1040,27 @@ $ python3 -I 93f727c/bench/vs_pytorch/torch_bench.py w_small --reps 3 --precisio
 eager: best 6319.4 us/step  median 6500.6  worst 6503.9  loss 4.8782 -> 0.0957  (setup 2s)
 graph: best 649.8 us/step  median 763.5  worst 835.5  loss 4.8782 -> 0.0957  (setup 0s)
 compile_graph: best 428.8 us/step  median 428.8  worst 429.3  loss 4.8782 -> 0.0960  (setup 5s)
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small d12c206/kvm_exec --reps 3 --out /logs/ab3-final/r1_small_main.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small d12c206/mvm_exec --reps 3 --out /logs/ab3-final/r1_small_main.json
 rep 1/3: 115.3 ms (2.31 ms/step), wall 0.6 s
 rep 2/3: 93.2 ms (1.86 ms/step), wall 0.6 s
 rep 3/3: 92.6 ms (1.85 ms/step), wall 0.6 s
 executor: best 1852 us/step  median 1865  worst 2306
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small origin_perf_chunked-release/kvm_exec --reps 3 --out /logs/ab3-final/r1_small_chunk.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small origin_perf_chunked-release/mvm_exec --reps 3 --out /logs/ab3-final/r1_small_chunk.json
 rep 1/3: 105.9 ms (2.12 ms/step), wall 0.6 s
 rep 2/3: 106.7 ms (2.13 ms/step), wall 0.6 s
 rep 3/3: 104.8 ms (2.10 ms/step), wall 0.6 s
 executor: best 2097 us/step  median 2118  worst 2134
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_small_port_cas.json -- --claim cas
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r1_small_port_cas.json -- --claim cas
 rep 1/3: 107.2 ms (2.14 ms/step), wall 0.6 s
 rep 2/3: 106.0 ms (2.12 ms/step), wall 0.6 s
 rep 3/3: 121.0 ms (2.42 ms/step), wall 0.6 s
 executor: best 2121 us/step  median 2144  worst 2420
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_small_port_nc.json -- --no-cont
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r1_small_port_nc.json -- --no-cont
 rep 1/3: 107.0 ms (2.14 ms/step), wall 0.8 s
 rep 2/3: 87.6 ms (1.75 ms/step), wall 0.6 s
 rep 3/3: 86.6 ms (1.73 ms/step), wall 0.6 s
 executor: best 1732 us/step  median 1752  worst 2139
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_small_port.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_small 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r1_small_port.json
 rep 1/3: 107.8 ms (2.16 ms/step), wall 0.6 s
 rep 2/3: 87.1 ms (1.74 ms/step), wall 0.6 s
 rep 3/3: 87.5 ms (1.75 ms/step), wall 0.6 s
@@ -1069,26 +1069,26 @@ $ python3 -I 93f727c/bench/vs_pytorch/torch_bench.py w_b16 --reps 3 --precision 
 eager: best 57620.5 us/step  median 58447.9  worst 65936.4  loss 10.9793 -> 10.9793  (setup 1s)
 graph: best 44733.4 us/step  median 44786.7  worst 44817.4  loss 10.9793 -> 10.9793  (setup 1s)
 compile_graph: FAILED IndexError: index 1 is out of bounds for dimension 0 with size 1
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 d12c206/kvm_exec --reps 3 --out /logs/ab3-final/r1_b16_main.json
-rep 1/3: FAILED rc=1 '' '[kvm_exec][E] bad buffer shape or dtype\n'
-rep 2/3: FAILED rc=1 '' '[kvm_exec][E] bad buffer shape or dtype\n'
-rep 3/3: FAILED rc=1 '' '[kvm_exec][E] bad buffer shape or dtype\n'
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 origin_perf_chunked-release/kvm_exec --reps 3 --out /logs/ab3-final/r1_b16_chunk.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 d12c206/mvm_exec --reps 3 --out /logs/ab3-final/r1_b16_main.json
+rep 1/3: FAILED rc=1 '' '[mvm_exec][E] bad buffer shape or dtype\n'
+rep 2/3: FAILED rc=1 '' '[mvm_exec][E] bad buffer shape or dtype\n'
+rep 3/3: FAILED rc=1 '' '[mvm_exec][E] bad buffer shape or dtype\n'
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 origin_perf_chunked-release/mvm_exec --reps 3 --out /logs/ab3-final/r1_b16_chunk.json
 rep 1/3: 138.9 ms (138.89 ms/step), wall 3.1 s
 rep 2/3: 142.4 ms (142.39 ms/step), wall 3.0 s
 rep 3/3: 138.8 ms (138.77 ms/step), wall 2.7 s
 executor: best 138769 us/step  median 138888  worst 142392
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_b16_port_cas.json -- --claim cas
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r1_b16_port_cas.json -- --claim cas
 rep 1/3: 151.5 ms (151.54 ms/step), wall 3.3 s
 rep 2/3: 139.9 ms (139.92 ms/step), wall 3.4 s
 rep 3/3: 136.3 ms (136.34 ms/step), wall 2.7 s
 executor: best 136343 us/step  median 139920  worst 151541
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_b16_port_nc.json -- --no-cont
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r1_b16_port_nc.json -- --no-cont
 rep 1/3: 130.4 ms (130.36 ms/step), wall 3.5 s
 rep 2/3: 132.9 ms (132.91 ms/step), wall 3.6 s
 rep 3/3: 133.7 ms (133.68 ms/step), wall 3.2 s
 executor: best 130357 us/step  median 132913  worst 133680
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_b16_port.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_b16 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r1_b16_port.json
 rep 1/3: 126.2 ms (126.19 ms/step), wall 3.3 s
 rep 2/3: 127.4 ms (127.38 ms/step), wall 3.4 s
 rep 3/3: 127.9 ms (127.94 ms/step), wall 3.2 s
@@ -1097,27 +1097,27 @@ $ python3 -I 93f727c/bench/vs_pytorch/torch_bench.py w_f32 --reps 3 --precision 
 eager: best 76315.7 us/step  median 84806.7  worst 85024.8  loss 10.9790 -> 10.9790  (setup 1s)
 graph: best 68497.4 us/step  median 68521.0  worst 68605.9  loss 10.9790 -> 10.9790  (setup 1s)
 compile_graph: FAILED IndexError: index 1 is out of bounds for dimension 0 with size 1
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 d12c206/kvm_exec --reps 3 --out /logs/ab3-final/r1_f32_main.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 d12c206/mvm_exec --reps 3 --out /logs/ab3-final/r1_f32_main.json
 rep 1/3: 781.2 ms (781.20 ms/step), wall 3.6 s
 rep 2/3: 772.4 ms (772.42 ms/step), wall 3.9 s
 rep 3/3: 767.3 ms (767.28 ms/step), wall 3.8 s
 executor: best 767285 us/step  median 772422  worst 781202
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 origin_perf_chunked-release/kvm_exec --reps 3 --out /logs/ab3-final/r1_f32_chunk.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 origin_perf_chunked-release/mvm_exec --reps 3 --out /logs/ab3-final/r1_f32_chunk.json
 rep 1/3: 269.4 ms (269.37 ms/step), wall 3.3 s
 rep 2/3: 279.6 ms (279.58 ms/step), wall 2.6 s
 rep 3/3: 274.3 ms (274.31 ms/step), wall 3.5 s
 executor: best 269373 us/step  median 274314  worst 279576
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_f32_port_cas.json -- --claim cas
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r1_f32_port_cas.json -- --claim cas
 rep 1/3: 462.1 ms (462.13 ms/step), wall 3.7 s
 rep 2/3: 466.6 ms (466.64 ms/step), wall 3.4 s
 rep 3/3: 461.3 ms (461.33 ms/step), wall 3.1 s
 executor: best 461331 us/step  median 462128  worst 466643
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_f32_port_nc.json -- --no-cont
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r1_f32_port_nc.json -- --no-cont
 rep 1/3: 246.3 ms (246.26 ms/step), wall 3.0 s
 rep 2/3: 252.0 ms (252.04 ms/step), wall 3.8 s
 rep 3/3: 244.7 ms (244.70 ms/step), wall 3.6 s
 executor: best 244703 us/step  median 246261  worst 252041
-$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 93f727c/kvm_exec --reps 3 --out /logs/ab3-final/r1_f32_port.json
+$ python3 -I 93f727c/bench/vs_pytorch/exec_bench.py w_f32 93f727c/mvm_exec --reps 3 --out /logs/ab3-final/r1_f32_port.json
 rep 1/3: 248.3 ms (248.33 ms/step), wall 3.3 s
 rep 2/3: 250.2 ms (250.19 ms/step), wall 3.2 s
 rep 3/3: 250.7 ms (250.73 ms/step), wall 3.1 s

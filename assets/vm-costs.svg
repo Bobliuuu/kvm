@@ -988,7 +988,7 @@ z
       </g>
      </g>
      <g id="text_11">
-      <!-- dependent hop through global memory, kvm.cu (A100) -->
+      <!-- dependent hop through global memory, mvm.cu (A100) -->
       <g style="fill: #8b949e" transform="translate(10.861719 102.486528) scale(0.085 -0.085)">
        <defs>
         <path id="DejaVuSans-62" d="M 3116 1747 
@@ -1449,7 +1449,7 @@ z
     </g>
    </g>
    <g id="text_17">
-    <!-- 5 us   (README, kvm.cu findings) -->
+    <!-- 5 us   (README, mvm.cu findings) -->
     <g style="fill: #8b949e" transform="translate(413.726375 101.326723) scale(0.075 -0.075)">
      <defs>
       <path id="DejaVuSans-35" d="M 691 4666 

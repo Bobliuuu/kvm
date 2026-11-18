@@ -5,12 +5,12 @@
 #   dist/run_multigpu_tests.sh                run on THIS machine (needs nvcc + a GPU for the GPU stages)
 #   dist/run_multigpu_tests.sh --dry-run      print every stage and command, execute nothing
 #   dist/run_multigpu_tests.sh --cpu-only     stages that need no GPU (laptop)
-#   KVM_HOST=user@gpu-box dist/run_multigpu_tests.sh --remote     rsync the sources to the box and run it there
-#   KVM_NODES=nodeA,nodeB dist/run_multigpu_tests.sh              also run the multi-node TCP stage
-#                      (nodes: [user@]host[:ranks]; ssh key login; same CUDA arch; the sources are rsynced to ~/kvm-dist-run)
-# Env: KVM_ARCH (default: detected, else sm_80), KVM_GPU_LOCK (flock file, taken once for the whole run; default ~/.gpu.lock if it
-#      exists), KVM_LOCK_WAIT (seconds to wait for it, default 3000), KVM_STAGE_TIMEOUT
-#      (seconds per stage, default 600), KVM_ONLY="ops pingpong" (run just those stages by name substring).
+#   MVM_HOST=user@gpu-box dist/run_multigpu_tests.sh --remote     rsync the sources to the box and run it there
+#   MVM_NODES=nodeA,nodeB dist/run_multigpu_tests.sh              also run the multi-node TCP stage
+#                      (nodes: [user@]host[:ranks]; ssh key login; same CUDA arch; the sources are rsynced to ~/mvm-dist-run)
+# Env: MVM_ARCH (default: detected, else sm_80), MVM_GPU_LOCK (flock file, taken once for the whole run; default ~/.gpu.lock if it
+#      exists), MVM_LOCK_WAIT (seconds to wait for it, default 3000), MVM_STAGE_TIMEOUT
+#      (seconds per stage, default 600), MVM_ONLY="ops pingpong" (run just those stages by name substring).
 # Stages that need more than one physical GPU print "SKIP: needs 2 GPUs" on a smaller machine and run automatically otherwise.
 # Logs: logs/<UTC>-dist/<stage>.log (git-ignored).
 set -o pipefail
@@ -19,54 +19,54 @@ DRY=0; CPU_ONLY=0; REMOTE=0
 for a in "$@"; do case "$a" in --dry-run) DRY=1;; --cpu-only) CPU_ONLY=1;; --remote) REMOTE=1;; -h|--help) sed -n '2,16p' "$0"; exit 0;; *) echo "unknown option $a" >&2; exit 2;; esac; done
 
 if [ "$REMOTE" = 1 ]; then
-  HOST="${KVM_HOST:?set KVM_HOST=user@host (an environment variable, never a committed file)}"
-  SSH="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new ${KVM_KEY:+-i $KVM_KEY}"
-  RDIR='~/kvm-dist-run'
+  HOST="${MVM_HOST:?set MVM_HOST=user@host (an environment variable, never a committed file)}"
+  SSH="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new ${MVM_KEY:+-i $MVM_KEY}"
+  RDIR='~/mvm-dist-run'
   fwd=(); [ "$DRY" = 1 ] && fwd+=(--dry-run); [ "$CPU_ONLY" = 1 ] && fwd+=(--cpu-only)
   COMMIT="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo '?')$(git -C "$ROOT" diff --quiet HEAD 2>/dev/null || echo '+dirty')"
   echo "[remote] rsync -> $HOST:$RDIR"
   [ "$DRY" = 1 ] || rsync -az --delete -e "$SSH" --include 'include/***' --include 'dist/***' --include 'runtime/***' --include 'examples/***' \
-      --include 'tests/' --include 'tests/dist/***' --include 'tests/gpu/***' --include 'kvm_exec.cu' --exclude '*' "$ROOT/" "$HOST:$RDIR/"
-  exec $SSH "$HOST" "cd $RDIR && KVM_LOCK_HELD='${KVM_LOCK_HELD:-}' KVM_COMMIT='$COMMIT' KVM_NODES='${KVM_NODES:-}' KVM_ARCH='${KVM_ARCH:-}' KVM_ONLY='${KVM_ONLY:-}' KVM_STAGE_TIMEOUT='${KVM_STAGE_TIMEOUT:-600}' bash dist/run_multigpu_tests.sh ${fwd[*]:-}"
+      --include 'tests/' --include 'tests/dist/***' --include 'tests/gpu/***' --include 'mvm_exec.cu' --exclude '*' "$ROOT/" "$HOST:$RDIR/"
+  exec $SSH "$HOST" "cd $RDIR && MVM_LOCK_HELD='${MVM_LOCK_HELD:-}' MVM_COMMIT='$COMMIT' MVM_NODES='${MVM_NODES:-}' MVM_ARCH='${MVM_ARCH:-}' MVM_ONLY='${MVM_ONLY:-}' MVM_STAGE_TIMEOUT='${MVM_STAGE_TIMEOUT:-600}' bash dist/run_multigpu_tests.sh ${fwd[*]:-}"
 fi
 
 cd "$ROOT"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"; LOG="$ROOT/logs/$STAMP-dist"; B="$ROOT/logs/dist-build"
 mkdir -p "$LOG" "$B"
-TMO="${KVM_STAGE_TIMEOUT:-600}"
-PY="${KVM_PYTHON:-python3} -I"   # 3.10+
+TMO="${MVM_STAGE_TIMEOUT:-600}"
+PY="${MVM_PYTHON:-python3} -I"   # 3.10+
 TIMEOUT=timeout; command -v timeout >/dev/null 2>&1 || TIMEOUT="perl -e alarm(shift);exec(@ARGV)"   # macOS launch node: no coreutils timeout
 NGPU=0; if command -v nvidia-smi >/dev/null 2>&1; then NGPU="$(nvidia-smi -L 2>/dev/null | grep -c '^GPU')"; fi
 NVCC="$(command -v nvcc || ls /usr/local/cuda*/bin/nvcc 2>/dev/null | tail -1 || true)"; HAVE_NVCC=1; [ -z "$NVCC" ] && { HAVE_NVCC=0; NVCC=nvcc; }
-ARCH="${KVM_ARCH:-}"
+ARCH="${MVM_ARCH:-}"
 if [ -z "$ARCH" ] && [ "$NGPU" -gt 0 ]; then cc="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -1 | tr -d '.')"; [ -n "$cc" ] && ARCH="sm_$cc"; fi
 ARCH="${ARCH:-sm_80}"
-LOCKF="${KVM_GPU_LOCK:-$HOME/.gpu.lock}"; LOCKWAIT="${KVM_LOCK_WAIT:-3000}"     # a shared box serialises GPU users with flock
+LOCKF="${MVM_GPU_LOCK:-$HOME/.gpu.lock}"; LOCKWAIT="${MVM_LOCK_WAIT:-3000}"     # a shared box serialises GPU users with flock
 # One acquisition for the whole run: the stages (and the two-executor tests in particular, which need both kernels resident at
 # once) must not be interleaved with other users' jobs, and queueing per stage can take far longer than the run itself.
-if [ "$DRY" = 0 ] && [ "$CPU_ONLY" = 0 ] && [ "$NGPU" -gt 0 ] && [ -e "$LOCKF" ] && command -v flock >/dev/null 2>&1 && [ -z "${KVM_LOCK_HELD:-}" ]; then
+if [ "$DRY" = 0 ] && [ "$CPU_ONLY" = 0 ] && [ "$NGPU" -gt 0 ] && [ -e "$LOCKF" ] && command -v flock >/dev/null 2>&1 && [ -z "${MVM_LOCK_HELD:-}" ]; then
   echo "== waiting for $LOCKF (up to ${LOCKWAIT}s); held for the whole run"
-  exec flock -w "$LOCKWAIT" "$LOCKF" env KVM_LOCK_HELD=1 bash "$0" "$@"
+  exec flock -w "$LOCKWAIT" "$LOCKF" env MVM_LOCK_HELD=1 bash "$0" "$@"
 fi
-NVFLAGS="-O3 -arch=$ARCH -std=c++17 -I$ROOT/include --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DKVM_EXEC_NO_MAIN"
+NVFLAGS="-O3 -arch=$ARCH -std=c++17 -I$ROOT/include --fmad=false -Xcompiler -ffp-contract=off -lineinfo -DMVM_EXEC_NO_MAIN"
 # sm_86 / sm_89 / sm_120 allow 99 KiB of opt-in shared memory per block (sm_80: 163 KiB): the GPT pack's default 4-stage bf16 MMA
 # buffers (96 KiB) plus the kernel's static shared memory do not fit, so those parts build the 3-stage variant (72 KiB).
-case "$ARCH" in sm_86|sm_87|sm_89|sm_120|sm_121) NVFLAGS="$NVFLAGS -DKVM_MMA_NST=3 -DKVM_GPT_MMA_SMEM=73728";; esac
+case "$ARCH" in sm_86|sm_87|sm_89|sm_120|sm_121) NVFLAGS="$NVFLAGS -DMVM_MMA_NST=3 -DMVM_GPT_MMA_SMEM=73728";; esac
 
-echo "== KVM distributed test run $STAMP  commit ${KVM_COMMIT:-$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo '?')}  GPUs: $NGPU  arch: $ARCH  nvcc: $([ "$HAVE_NVCC" = 1 ] && echo "$NVCC" || echo none)  dry-run: $DRY"
+echo "== Magni VM distributed test run $STAMP  commit ${MVM_COMMIT:-$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo '?')}  GPUs: $NGPU  arch: $ARCH  nvcc: $([ "$HAVE_NVCC" = 1 ] && echo "$NVCC" || echo none)  dry-run: $DRY"
 declare -a NAMES RESULTS NOTES
 FAILED=0
 
-# stage NAME NEEDS CMD   NEEDS: cpu | gpu | gpu2 (>= 2 GPUs) | nodes (KVM_NODES with >= 2 nodes)
+# stage NAME NEEDS CMD   NEEDS: cpu | gpu | gpu2 (>= 2 GPUs) | nodes (MVM_NODES with >= 2 nodes)
 stage() {
   local name="$1" needs="$2" cmd="$3" reason=""
-  if [ -n "${KVM_ONLY:-}" ]; then local hit=0; for k in $KVM_ONLY; do [[ "$name" == *"$k"* ]] && hit=1; done; [ "$hit" = 0 ] && return; fi
+  if [ -n "${MVM_ONLY:-}" ]; then local hit=0; for k in $MVM_ONLY; do [[ "$name" == *"$k"* ]] && hit=1; done; [ "$hit" = 0 ] && return; fi
   case "$needs" in
     gpu)   [ "$CPU_ONLY" = 1 ] && reason="--cpu-only"; [ -z "$reason" ] && [ "$NGPU" -lt 1 ] && reason="no GPU"; [ -z "$reason" ] && [ "$HAVE_NVCC" = 0 ] && reason="no nvcc";;
     gpu2)  [ "$CPU_ONLY" = 1 ] && reason="--cpu-only"; [ -z "$reason" ] && [ "$NGPU" -lt 2 ] && reason="needs 2 GPUs (found $NGPU)"; [ -z "$reason" ] && [ "$HAVE_NVCC" = 0 ] && reason="no nvcc";;
     ibv)   [ -e /usr/include/infiniband/verbs.h ] || reason="no libibverbs headers (apt install libibverbs-dev)";;
     rdmadev) [ "$CPU_ONLY" = 1 ] && reason="--cpu-only"; [ -z "$reason" ] && [ -z "$(ls /dev/infiniband/uverbs* 2>/dev/null)" ] && reason="no RDMA device node (/dev/infiniband/uverbs*): none passed into this container (sysfs may still list the host's NIC); Soft-RoCE needs CAP_NET_ADMIN";;
-    nodes) [ "$CPU_ONLY" = 1 ] && reason="--cpu-only"; [ -z "$reason" ] && [ "$(echo "${KVM_NODES:-}" | tr ',' '\n' | grep -c .)" -lt 2 ] && reason="needs KVM_NODES with 2+ nodes"; [ -z "$reason" ] && [ "$NGPU" -lt 1 ] && [ -z "${KVM_PREBUILT:-}" ] && reason="no GPU on the launch node (or KVM_PREBUILT=1 with $TD present)";;
+    nodes) [ "$CPU_ONLY" = 1 ] && reason="--cpu-only"; [ -z "$reason" ] && [ "$(echo "${MVM_NODES:-}" | tr ',' '\n' | grep -c .)" -lt 2 ] && reason="needs MVM_NODES with 2+ nodes"; [ -z "$reason" ] && [ "$NGPU" -lt 1 ] && [ -z "${MVM_PREBUILT:-}" ] && reason="no GPU on the launch node (or MVM_PREBUILT=1 with $TD present)";;
   esac
   if [ "$DRY" = 1 ]; then
     echo "DRY  [$needs] $name${reason:+  (would SKIP: $reason)}"; echo "       \$ $cmd"
@@ -77,7 +77,7 @@ stage() {
   fi
   echo "---- RUN  $name  (timeout ${TMO}s)"
   local t0=$SECONDS rc
-  local tmo="$TMO"; [ "$name" = gpu-build ] && tmo="${KVM_BUILD_TIMEOUT:-3600}"   # four nvcc builds of the full op set: tens of minutes
+  local tmo="$TMO"; [ "$name" = gpu-build ] && tmo="${MVM_BUILD_TIMEOUT:-3600}"   # four nvcc builds of the full op set: tens of minutes
   $TIMEOUT "$tmo" bash -c "$cmd" > "$LOG/$name.log" 2>&1; rc=$?
   local dt=$((SECONDS - t0))
   if [ $rc -eq 0 ]; then echo "PASS $name (${dt}s)"; RESULTS+=("PASS"); NOTES+=("${dt}s")
@@ -89,12 +89,12 @@ TT="$B/test_transport"; TD="$B/test_dist"; TDN="$B/test_dist_neg"; TDB="$B/test_
 
 # ---- CPU stages (laptop-safe) -------------------------------------------------------------------------------------------------
 stage cpu-partitioner-sim cpu "cd $ROOT && $PY -m unittest discover -s tests/dist -p 'test_partition.py' 2>&1 | tail -15; exit \${PIPESTATUS[0]}"
-stage cpu-transport-proxy cpu "g++ -O2 -std=c++17 -pthread -I$ROOT/dist $ROOT/tests/dist/test_transport.cpp -o $TT && KVM_DIST_LOG=1 $TT"
-stage cpu-rdma-shim cpu "g++ -O2 -std=c++17 -pthread -I$ROOT/dist $ROOT/tests/dist/test_rdma.cpp -o $B/test_rdma && KVM_DIST_LOG=1 $B/test_rdma"
+stage cpu-transport-proxy cpu "g++ -O2 -std=c++17 -pthread -I$ROOT/dist $ROOT/tests/dist/test_transport.cpp -o $TT && MVM_DIST_LOG=1 $TT"
+stage cpu-rdma-shim cpu "g++ -O2 -std=c++17 -pthread -I$ROOT/dist $ROOT/tests/dist/test_rdma.cpp -o $B/test_rdma && MVM_DIST_LOG=1 $B/test_rdma"
 # the real libibverbs backend (IbvVerbs): compiled and linked against rdma-core when its headers exist; running it needs an RDMA device
-stage cpu-rdma-ibverbs-build ibv "g++ -O2 -std=c++17 -pthread -DHAVE_IBVERBS -I$ROOT/dist $ROOT/tests/dist/test_rdma.cpp -o $B/test_rdma_ibv -libverbs && KVM_DIST_LOG=1 $B/test_rdma_ibv"
+stage cpu-rdma-ibverbs-build ibv "g++ -O2 -std=c++17 -pthread -DHAVE_IBVERBS -I$ROOT/dist $ROOT/tests/dist/test_rdma.cpp -o $B/test_rdma_ibv -libverbs && MVM_DIST_LOG=1 $B/test_rdma_ibv"
 stage rdma-device-present rdmadev "ibv_devices && ibv_devinfo | grep -E 'hca_id|state|link_layer'"
-stage cpu-xdc-wan cpu "g++ -O2 -std=c++17 -pthread -I$ROOT/dist $ROOT/tests/dist/test_xdc.cpp -o $B/test_xdc && KVM_DIST_LOG=1 $B/test_xdc"
+stage cpu-xdc-wan cpu "g++ -O2 -std=c++17 -pthread -I$ROOT/dist $ROOT/tests/dist/test_xdc.cpp -o $B/test_xdc && MVM_DIST_LOG=1 $B/test_xdc"
 stage cpu-scaleout-sim cpu "cd $ROOT && $PY -m unittest discover -s tests/dist -p 'test_scaleout*.py' 2>&1 | tail -15; exit \${PIPESTATUS[0]}"
 stage cpu-fault-recovery cpu "cd $ROOT && $PY -m unittest discover -s tests/dist -p 'test_fault*.py' 2>&1 | tail -15; exit \${PIPESTATUS[0]}"
 stage cpu-launcher-dry-run cpu "cd $ROOT && $PY dist/launch.py --dry-run --nodes a@h1:2,h2 -- ./prog --rank {rank} --peers {peers} | grep -c '^DRY rank' | grep -qx 3"
@@ -102,13 +102,13 @@ stage cpu-multiprocess-tcp cpu "cd $ROOT && PORTS=\$($PY -c \"import socket;s=[s
   $PY dist/launch.py --local 3 --timeout 120 -- $TT proc {rank} {world} \"\$PORTS,drop=0.1,dup=0.1,delay=0.2\""
 
 # ---- single-GPU stages (everything here is real device code; remote memory = another allocation) ------------------------------
-# The four builds run in parallel (each is one long single-threaded cicc/ptxas), at most KVM_BUILD_JOBS at a time: ptxas peaks at
-# ~45 GB per full-op-set binary (measured on two Vast hosts), so the default is MemAvailable / 48 GB, 1..4. KVM_PREBUILT=1 reuses
+# The four builds run in parallel (each is one long single-threaded cicc/ptxas), at most MVM_BUILD_JOBS at a time: ptxas peaks at
+# ~45 GB per full-op-set binary (measured on two Vast hosts), so the default is MemAvailable / 48 GB, 1..4. MVM_PREBUILT=1 reuses
 # binaries already in $B.
-JOBS="${KVM_BUILD_JOBS:-$(awk '/MemAvailable/ {j = int($2 / (48 * 1024 * 1024)); print (j < 1 ? 1 : (j > 4 ? 4 : j))}' /proc/meminfo 2>/dev/null || echo 1)}"
-printf '%s\n' "$NVFLAGS tests/dist/test_dist.cu -o $TD" "$NVFLAGS -DKVM_DIST_BREAK_ORDER tests/dist/test_dist.cu -o $TDN" \
-  "$NVFLAGS -DKVM_DIST_NO_BP_POLL tests/dist/test_dist.cu -o $TDB" "$NVFLAGS tests/gpu/test_exec.cu -o $B/test_exec" > "$B/builds.txt" 2>/dev/null || true
-stage gpu-build gpu "cd $ROOT && if [ -n \"\${KVM_PREBUILT:-}\" ] && [ -x $TD ] && [ -x $TDN ] && [ -x $TDB ] && [ -x $B/test_exec ]; then echo 'prebuilt binaries reused'; exit 0; fi; \
+JOBS="${MVM_BUILD_JOBS:-$(awk '/MemAvailable/ {j = int($2 / (48 * 1024 * 1024)); print (j < 1 ? 1 : (j > 4 ? 4 : j))}' /proc/meminfo 2>/dev/null || echo 1)}"
+printf '%s\n' "$NVFLAGS tests/dist/test_dist.cu -o $TD" "$NVFLAGS -DMVM_DIST_BREAK_ORDER tests/dist/test_dist.cu -o $TDN" \
+  "$NVFLAGS -DMVM_DIST_NO_BP_POLL tests/dist/test_dist.cu -o $TDB" "$NVFLAGS tests/gpu/test_exec.cu -o $B/test_exec" > "$B/builds.txt" 2>/dev/null || true
+stage gpu-build gpu "cd $ROOT && if [ -n \"\${MVM_PREBUILT:-}\" ] && [ -x $TD ] && [ -x $TDN ] && [ -x $TDB ] && [ -x $B/test_exec ]; then echo 'prebuilt binaries reused'; exit 0; fi; \
   echo 'build jobs: $JOBS'; xargs -P $JOBS -I{} sh -c '$NVCC {} -lpthread' < $B/builds.txt"
 stage gpu-executor-regression gpu "$B/test_exec smoke"
 stage gpu-ops gpu "$TD ops"
@@ -116,7 +116,7 @@ stage gpu-pingpong-versions gpu "$TD pingpong"
 stage gpu-errors-no-hang gpu "$TD errors && $TD backpressure"
 stage gpu-negative-break-order gpu "$TDN --expect-fail=stale pingpong && $TDB --expect-fail=timeout backpressure"
 # (no two-executor suite under the sanitizer: it serialises kernel launches, and two persistent kernels waiting on each other would deadlock by construction)
-stage gpu-sanitizer gpu "export KVM_DIST_QUICK=1; compute-sanitizer --error-exitcode 9 --tool memcheck $TD ops && compute-sanitizer --error-exitcode 9 --tool racecheck $TD ops && compute-sanitizer --error-exitcode 9 --tool synccheck $TD ops"
+stage gpu-sanitizer gpu "export MVM_DIST_QUICK=1; compute-sanitizer --error-exitcode 9 --tool memcheck $TD ops && compute-sanitizer --error-exitcode 9 --tool racecheck $TD ops && compute-sanitizer --error-exitcode 9 --tool synccheck $TD ops"
 stage gpu-plans-in-process gpu "cd $ROOT && $PY tests/dist/make_plans.py $PLANS --devices $((NGPU>1?NGPU:2)) && for p in tp_direct tp_ring tp_tree zero_mixed zero_net zero_bf16_net dp_fp_net pipe_net pipe_p2p; do \
   tol=0; [ \$p = dp_fp_net ] && tol=1e-5; echo \"== plan \$p\"; $TD plan $PLANS/\$p --tol \$tol || exit 1; done"
 stage gpu-plans-tcp-faults gpu "cd $ROOT && for p in zero_net tp_ring_net pipe_net zero_mixed; do echo \"== plan \$p over TCP with drop/dup/delay\"; $TD plan $PLANS/\$p --net tcp --fault drop=0.05,dup=0.05,delay=0.1 || exit 1; done"
@@ -131,12 +131,12 @@ stage multigpu-plans-one-rank-per-gpu gpu2 "cd $ROOT && $PY tests/dist/make_plan
 stage multigpu-model-plans gpu2 "cd $ROOT && bash dist/run_model_plans.sh $TD $LOG/model-plans correctness"
 
 # ---- needs several hosts ------------------------------------------------------------------------------------------------------------
-# KVM_PREBUILT=1: ship this node's test_dist binary (same CUDA major arch on every node; an sm_80 build runs on sm_86) instead of
-# compiling on every node. Nodes behind NAT / container port maps: KVM_ADVERTISE='host:port[/port],...' + KVM_LISTEN_BASE (dist/launch.py).
-stage multinode-tcp-plans nodes "if [ -n \"\${KVM_PREBUILT:-}\" ]; then BUILD=(--rsync $TD kvm-dist-run/test_dist); else BUILD=(--setup \"$NVCC $NVFLAGS tests/dist/test_dist.cu -o test_dist -lpthread\"); fi; cd $ROOT && rm -rf $B/src && mkdir -p $B/src && cp -R include dist runtime examples tests kvm_exec.cu $B/src/ && WORLD=\$(echo \"\$KVM_NODES\" | tr ',' '\n' | awk -F: 'NF>1 && \$NF ~ /^[0-9]+\$/ {s+=\$NF; next} {s+=1} END {print s}') && \
+# MVM_PREBUILT=1: ship this node's test_dist binary (same CUDA major arch on every node; an sm_80 build runs on sm_86) instead of
+# compiling on every node. Nodes behind NAT / container port maps: MVM_ADVERTISE='host:port[/port],...' + MVM_LISTEN_BASE (dist/launch.py).
+stage multinode-tcp-plans nodes "if [ -n \"\${MVM_PREBUILT:-}\" ]; then BUILD=(--rsync $TD mvm-dist-run/test_dist); else BUILD=(--setup \"$NVCC $NVFLAGS tests/dist/test_dist.cu -o test_dist -lpthread\"); fi; cd $ROOT && rm -rf $B/src && mkdir -p $B/src && cp -R include dist runtime examples tests mvm_exec.cu $B/src/ && WORLD=\$(echo \"\$MVM_NODES\" | tr ',' '\n' | awk -F: 'NF>1 && \$NF ~ /^[0-9]+\$/ {s+=\$NF; next} {s+=1} END {print s}') && \
   $PY tests/dist/make_plans.py $B/plans_nodes --devices \$WORLD >/dev/null && PLIST=\$($PY tests/dist/make_plans.py $B/plans_nodes --devices \$WORLD --print-proxy-only \$WORLD | tail -1) && [ -n \"\$PLIST\" ] && \
-  for p in \$PLIST; do echo \"== plan \$p across \$WORLD ranks on the KVM_NODES hosts\"; \
-    $PY dist/launch.py --timeout 400 --workdir '~/kvm-dist-run' --rsync $B/src/ '~/kvm-dist-run/' --rsync $B/plans_nodes/ '~/kvm-dist-run/plans_nodes/' \
+  for p in \$PLIST; do echo \"== plan \$p across \$WORLD ranks on the MVM_NODES hosts\"; \
+    $PY dist/launch.py --timeout 400 --workdir '~/mvm-dist-run' --rsync $B/src/ '~/mvm-dist-run/' --rsync $B/plans_nodes/ '~/mvm-dist-run/plans_nodes/' \
       \"\${BUILD[@]}\" -- ./test_dist plan plans_nodes/\$p --rank {rank} --peers {peers} || exit 1; done"
 
 # ---- summary --------------------------------------------------------------------------------------------------------------------------

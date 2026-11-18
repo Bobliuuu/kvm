@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Per-step losses of a kvm_exec run on a gen.py bundle and their difference to a torch_bench result, read with --dump-bin.
+"""Per-step losses of a mvm_exec run on a gen.py bundle and their difference to a torch_bench result, read with --dump-bin.
 
-  python3 exec_losses_bin.py WORKLOAD_DIR ./kvm_exec [--torch torch.json --mode eager] [--out losses.json]
+  python3 exec_losses_bin.py WORKLOAD_DIR ./mvm_exec [--torch torch.json --mode eager] [--out losses.json]
 
 Same output as bench/vs_pytorch/exec_losses.py, but the executor writes only the pinned `loss.<step>` buffers (--dump-bin DIR indices) instead of
 printing every buffer as text (about 11 bytes per element: tens of GB for a 162M-parameter model).

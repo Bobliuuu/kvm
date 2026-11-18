@@ -3,7 +3,7 @@ import random
 import unittest
 
 import _path  # noqa: F401
-from kvmfe import dataflow
+from mvmfe import dataflow
 
 
 def hazards(acc):

@@ -1,4 +1,4 @@
-// The gang barriers alone (include/kvm_gang.cuh): the shipped crossing (`cross`), its two forms (the counted barrier and the flag lines)
+// The gang barriers alone (include/mvm_gang.cuh): the shipped crossing (`cross`), its two forms (the counted barrier and the flag lines)
 // and the counter form they replaced, kept here as a reference, so a new GPU re-measures the size rule. K rounds of two crossings by G
 // co-resident blocks of 256 threads, for every G up to the SM count that the gangs of a fused step use; ns a crossing from block 0's
 // globaltimer, the median of 5 launches after one warm-up. Each round also checks that the barrier orders data: every block writes a
@@ -8,7 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
-#include "kvm_gang.cuh"
+#include "mvm_gang.cuh"
 #define CK(x) do { cudaError_t e = (x); if (e != cudaSuccess) { fprintf(stderr, "%s:%d %s\n", __FILE__, __LINE__, cudaGetErrorString(e)); exit(1); } } while (0)
 __device__ __forceinline__ unsigned long long gtimer() { unsigned long long t; asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(t)); return t; }
 
@@ -20,12 +20,12 @@ __device__ __forceinline__ void counter(unsigned* ctl, int members) {
   __syncthreads();
   if (threadIdx.x == 0) {
     __threadfence();
-    const unsigned g0 = kvm_gang::ld_acquire(ctl + 1);
+    const unsigned g0 = mvm_gang::ld_acquire(ctl + 1);
     if (atom_add_acq_rel(ctl, 1u) + 1u == (unsigned)members) {
       asm volatile("st.relaxed.gpu.global.u32 [%0], %1;" ::"l"(ctl), "r"(0u) : "memory");
-      kvm_gang::st_release(ctl + 1, g0 + 1u);
+      mvm_gang::st_release(ctl + 1, g0 + 1u);
     } else {
-      while (kvm_gang::ld_acquire(ctl + 1) == g0) {}
+      while (mvm_gang::ld_acquire(ctl + 1) == g0) {}
     }
   }
   __syncthreads();
@@ -37,12 +37,12 @@ constexpr int kForms = 4;
 constexpr const char* kFormNames[kForms] = {"cross", "counted", "flag lines", "counter"};
 template <int FORM>
 __global__ void __launch_bounds__(256, 1) bench(unsigned* ctl, int* data, int K, int G, unsigned long long* ns, int* errors) {
-  unsigned long long at = FORM == 0 ? kvm_gang::cross_start(ctl, blockIdx.x, G) : FORM == 1 ? kvm_gang::counted_base(ctl, G)
-                        : FORM == 2 ? (unsigned long long)kvm_gang::lines_epoch(ctl, blockIdx.x) : 0ull;
+  unsigned long long at = FORM == 0 ? mvm_gang::cross_start(ctl, blockIdx.x, G) : FORM == 1 ? mvm_gang::counted_base(ctl, G)
+                        : FORM == 2 ? (unsigned long long)mvm_gang::lines_epoch(ctl, blockIdx.x) : 0ull;
   const auto cross = [&]() {
-    if (FORM == 0) kvm_gang::cross(ctl, blockIdx.x, G, at);
-    else if (FORM == 1) kvm_gang::barrier_counted(ctl, G, at);
-    else if (FORM == 2) { unsigned e = (unsigned)at; kvm_gang::barrier_lines(ctl, blockIdx.x, G, e); at = e; }
+    if (FORM == 0) mvm_gang::cross(ctl, blockIdx.x, G, at);
+    else if (FORM == 1) mvm_gang::barrier_counted(ctl, G, at);
+    else if (FORM == 2) { unsigned e = (unsigned)at; mvm_gang::barrier_lines(ctl, blockIdx.x, G, e); at = e; }
     else ref::counter(ctl, G);
   };
   const unsigned long long t0 = gtimer();
@@ -60,12 +60,12 @@ __global__ void __launch_bounds__(256, 1) bench(unsigned* ctl, int* data, int K,
 int main(int argc, char** argv) {
   const int K = argc > 1 ? atoi(argv[1]) : 2000;
   cudaDeviceProp p; CK(cudaGetDeviceProperties(&p, 0));
-  const int sms = p.multiProcessorCount, words = kvm_gang::line_words(sms);
+  const int sms = p.multiProcessorCount, words = mvm_gang::line_words(sms);
   unsigned* ctl; int *data, *errors; unsigned long long* ns;
   CK(cudaMalloc(&ctl, words * sizeof(unsigned))); CK(cudaMalloc(&data, sms * sizeof(int)));
   CK(cudaMalloc(&errors, sizeof(int))); CK(cudaMalloc(&ns, sizeof(unsigned long long)));
   printf("%s (sm_%d%d, %d SMs): %d crossings a launch (two a round, data checked between), ns a crossing (median of 5 launches)\n", p.name, p.major, p.minor, sms, 2 * K);
-  printf("crossing: the flag lines up to KVM_GANG_LINES_MAX = %d members, the counted barrier past them\n", KVM_GANG_LINES_MAX);
+  printf("crossing: the flag lines up to MVM_GANG_LINES_MAX = %d members, the counted barrier past them\n", MVM_GANG_LINES_MAX);
   printf("%5s", "G");
   for (int f = 0; f < kForms; ++f) printf(" %11s", kFormNames[f]);
   printf("  errors (in that order)\n");

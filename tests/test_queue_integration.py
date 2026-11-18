@@ -24,9 +24,9 @@ class QueueIntegrationTests(unittest.TestCase):
         out = integrate_queue(self.source(), QUEUE, LOWERING)
         self.assertIn('ready_queue_kernel<<<queue_grid', out)
         self.assertIn('best(run_queue, 5);', out)
-        self.assertIn('KVM queue vs claim', out)
+        self.assertIn('Magni VM queue vs claim', out)
         self.assertIn('for (int mode : {3, 4, 5, 6})', out)
-        self.assertIn('qgraph = kvm_compile_ready_graph(tapeP, steps, SC)', out)
+        self.assertIn('qgraph = mvm_compile_ready_graph(tapeP, steps, SC)', out)
         self.assertIn('for (int i = 0; i < 7; i++)', out)
         self.assertIn('best(run_vm, 3)', out)
 
@@ -38,8 +38,8 @@ class QueueIntegrationTests(unittest.TestCase):
         with self.assertRaises(ValueError): integrate_queue(self.source().replace('  double t[5]; Out o[5];',''), QUEUE, LOWERING)
 
     def test_queue_publication_order(self):
-        self.assertLess(QUEUE.index('queue_task[slot] = succ;'), QUEUE.index('kvm_q_publish(queue_ready + slot, 1);'))
-        self.assertLess(QUEUE.index('exec_instr(in, sm, loss);'), QUEUE.index('kvm_q_dec(remaining + succ)'))
+        self.assertLess(QUEUE.index('queue_task[slot] = succ;'), QUEUE.index('mvm_q_publish(queue_ready + slot, 1);'))
+        self.assertLess(QUEUE.index('exec_instr(in, sm, loss);'), QUEUE.index('mvm_q_dec(remaining + succ)'))
 
     def test_queue_capacity_invariant(self):
         self.assertIn('capacity >= n', QUEUE)

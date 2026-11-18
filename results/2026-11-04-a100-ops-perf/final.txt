@@ -1,11 +1,11 @@
       6     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
       1     32 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
- Function k_oneILi48EEv6KvmCtxPKiS2_:	  REG:241 STACK:0 SHARED:0 LOCAL:0 CONSTANT[2]:12 CONSTANT[0]:392 TEXTUR
- Function k_oneILi47EEv6KvmCtxPKiS2_:	  REG:166 STACK:0 SHARED:0 LOCAL:0 CONSTANT[2]:12 CONSTANT[0]:392 TEXTUR
- Function k_oneILi46EEv6KvmCtxPKiS2_:	  REG:32 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:392 TEXTURE:0 SURFACE:0 SA
- Function k_oneILi45EEv6KvmCtxPKiS2_:	  REG:212 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:392 TEXTURE:0 SURFACE:0 S
- Function k_oneILi34EEv6KvmCtxPKiS2_:	  REG:200 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:392 TEXTURE:0 SURFACE:0 S
- Function k_run6KvmCtxPKiS1_S1_:	  REG:255 STACK:32 SHARED:0 LOCAL:0 CONSTANT[2]:368 CONSTANT[0]:400 TEXTURE:0
+ Function k_oneILi48EEv6MvmCtxPKiS2_:	  REG:241 STACK:0 SHARED:0 LOCAL:0 CONSTANT[2]:12 CONSTANT[0]:392 TEXTUR
+ Function k_oneILi47EEv6MvmCtxPKiS2_:	  REG:166 STACK:0 SHARED:0 LOCAL:0 CONSTANT[2]:12 CONSTANT[0]:392 TEXTUR
+ Function k_oneILi46EEv6MvmCtxPKiS2_:	  REG:32 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:392 TEXTURE:0 SURFACE:0 SA
+ Function k_oneILi45EEv6MvmCtxPKiS2_:	  REG:212 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:392 TEXTURE:0 SURFACE:0 S
+ Function k_oneILi34EEv6MvmCtxPKiS2_:	  REG:200 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:392 TEXTURE:0 SURFACE:0 S
+ Function k_run6MvmCtxPKiS1_S1_:	  REG:255 STACK:32 SHARED:0 LOCAL:0 CONSTANT[2]:368 CONSTANT[0]:400 TEXTURE:0
 test_ops exit 0
 1104 passed, 0 failed
 device: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz
@@ -189,7 +189,7 @@ BENCH  softmax_ce fwd 8192x50304                      full dispatch    1.211 ms 
 BENCH  softmax_ce bwd 8192x50304                      full dispatch    2.484 ms [2.480..2.492]     1327.1 GB/s (read+write)  (85.3% of 1555)
 
 31 passed, 0 failed
-VARIANT KVM_GPT_MAX_HD=64
+VARIANT MVM_GPT_MAX_HD=64
 device: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz
 PASS  bench check: matmul TF32 NN 4096x4096x4096  400 sampled elements relerr 2.67e-04
 BENCH  matmul TF32 NN 4096x4096x4096                  full dispatch    4.328 ms [4.328..5.566]    31752.5 GFLOP/s  (20.4% of 156000)

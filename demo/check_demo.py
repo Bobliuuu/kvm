@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Verify one kvm_run output against independent references. Every check prints PASS / FAIL / SKIP with the measured numbers; the exit
+"""Verify one mvm_run output against independent references. Every check prints PASS / FAIL / SKIP with the measured numbers; the exit
 status is 0 only when no check FAILed.
 
   check_demo.py DEMO_DIR RUN_DIR [--doom-oracle DIR] [--golden FILE] [--report OUT.json] [--loss-tol R] [--no-golden --model M [--precise]]
 
-DEMO_DIR  the directory kvm_run ran (MANIFEST.json, workloads/, bundles/)
-RUN_DIR   kvm_run --out directory (run.json, trace.csv, observations.jsonl, buffers/)
+DEMO_DIR  the directory mvm_run ran (MANIFEST.json, workloads/, bundles/)
+RUN_DIR   mvm_run --out directory (run.json, trace.csv, observations.jsonl, buffers/)
 
 Checks (nothing here is specific to a model; names come from the manifest):
   executor      the kernel finished without a device error and every admission completed
   versions      the executor's trace shows every version-carrying task saw the requested version: `exact` readers saw the same version at
                 start and end (a torn mix of two weight versions is impossible), `at_least` readers saw >= the version
-  training      observed per-window loss buffers against the CPU golden (kvmfe.run_manifest, float32 reference VM), and that the loss falls
+  training      observed per-window loss buffers against the CPU golden (mvmfe.run_manifest, float32 reference VM), and that the loss falls
   serving       served token buffers equal the golden decode of the weights snapshot at the version the request read: the CPU VM's, or
                 with --no-golden --model M a PyTorch float64 decode (serve_golden.py) of the requests whose weights are known (version 0, final)
   game          per-frame fingerprints, game state and (when every frame was kept) raw frame bytes equal the CPU build of the same engine
@@ -56,7 +56,7 @@ def pct(v, p):
 def golden_observations(demo: Path, observe: str, cache: Path | None):
     if cache and cache.exists():
         return load_json(cache)
-    from kvmfe.run_manifest import run_manifest
+    from mvmfe.run_manifest import run_manifest
     rx = re.compile(observe)
     manifest = load_json(demo / 'MANIFEST.json')
     names = {w: [b['name'] for b in json.loads((demo / info['file']).read_text())['buffers']] for w, info in manifest['workloads'].items()}
@@ -288,10 +288,10 @@ def main(argv=None):
     ap.add_argument('run')
     ap.add_argument('--doom-oracle', default=None, help='cpu_run.py output directory (frames.bin + summary.json)')
     ap.add_argument('--golden', default=None, help='cache file for the CPU golden observations (computed once with the CPU VM)')
-    ap.add_argument('--observe', default=r'^(loss\.|.*\.cur[0-9]+$)', help='must equal the regex kvm_run observed with')
+    ap.add_argument('--observe', default=r'^(loss\.|.*\.cur[0-9]+$)', help='must equal the regex mvm_run observed with')
     ap.add_argument('--no-golden', action='store_true', help='no CPU reference (model too large): loss must fall, tokens are not compared')
     ap.add_argument('--model', default=None, help='the demo\'s model (preset, JSON file or string): without a CPU golden, serving is checked against a PyTorch decode '
-                    '(needs torch; weights: initial values for version 0, RUN/buffers/w.*.bin from kvm_run --dump \'^w\\.\' for the final version)')
+                    '(needs torch; weights: initial values for version 0, RUN/buffers/w.*.bin from mvm_run --dump \'^w\\.\' for the final version)')
     ap.add_argument('--precise', action='store_true', help='the demo ran 3xTF32 tiles (tokens must equal the float64 argmax, no near-tie slack)')
     ap.add_argument('--loss-tol', type=float, default=2e-3)
     ap.add_argument('--report', default=None)

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Executor (`kvm_exec`) vs PyTorch eager / whole-step CUDA graph / torch.compile on a small MLP trained for N steps, R independent runs.
+"""Executor (`mvm_exec`) vs PyTorch eager / whole-step CUDA graph / torch.compile on a small MLP trained for N steps, R independent runs.
 
-  python3 -I run_mlp.py WORK_DIR --exe ./kvm_exec --hidden 72 --depth 2 --steps 50 --runs 1,2,4,8,16,32 --reps 7 --out OUT.json
+  python3 -I run_mlp.py WORK_DIR --exe ./mvm_exec --hidden 72 --depth 2 --steps 50 --runs 1,2,4,8,16,32 --reps 7 --out OUT.json
 
-One driver process owns the GPU context and the PyTorch variants; every executor measurement is a `kvm_exec` child launched from the same
-driver, right after each PyTorch variant's timing, inside the same lock hold (kvm_exec has no in-process API). Per rep every variant is timed
+One driver process owns the GPU context and the PyTorch variants; every executor measurement is a `mvm_exec` child launched from the same
+driver, right after each PyTorch variant's timing, inside the same lock hold (mvm_exec has no in-process API). Per rep every variant is timed
 once, in fixed order, so all ratios come from one time window; the result is the best of reps with the full spread.
 Correctness gates run first and a failure aborts before any timing (a number from a run that did not pass is not a result):
   1. executor, 3-step bundle: final buffers within 1e-3 relative L2 of the CPU golden;
@@ -105,7 +105,7 @@ def rel(a, b):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('work')
-    ap.add_argument('--exe', default='./kvm_exec')
+    ap.add_argument('--exe', default='./mvm_exec')
     ap.add_argument('--hidden', type=int, default=72)
     ap.add_argument('--depth', type=int, default=2)
     ap.add_argument('--steps', type=int, default=50)

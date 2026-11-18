@@ -2,13 +2,13 @@
 """Launch one command per rank across nodes with plain ssh + environment variables. No MPI, no scheduler, no daemon.
 
     dist/launch.py --nodes host1:2,host2:2 [--port-base 29500] [--timeout 600] [--rsync SRC DEST] [--setup CMD] -- CMD ARG...
-    KVM_NODES=host1,host2 dist/launch.py -- ./test_dist plan plan_dir --rank {rank} --peers {peers}
+    MVM_NODES=host1,host2 dist/launch.py -- ./test_dist plan plan_dir --rank {rank} --peers {peers}
     dist/launch.py --local 2 -- CMD ...            # ranks as local subprocesses (tests, single box)
     dist/launch.py --dry-run ...                   # print every command, run nothing
 
 Nodes are `[user@]host[:slots]` (slots = ranks on that node, default 1); `localhost` runs without ssh. Hosts come from the
-command line or $KVM_NODES, never from a file in the repository. Each rank gets
-    KVM_RANK, KVM_WORLD, KVM_LOCAL_RANK, KVM_NODE, KVM_PORT (= port_base + rank), KVM_PEERS ("host:port,host:port,...")
+command line or $MVM_NODES, never from a file in the repository. Each rank gets
+    MVM_RANK, MVM_WORLD, MVM_LOCAL_RANK, MVM_NODE, MVM_PORT (= port_base + rank), MVM_PEERS ("host:port,host:port,...")
 and `{rank} {world} {local_rank} {peers} {port}` in the command are substituted. Rank order = node order, then slot order.
 
 Output is prefixed [rank N]. The launcher waits for every rank, kills all of them on the first failure or on --timeout (remote
@@ -48,7 +48,7 @@ def parse_nodes(text):
             raise SystemExit(f'bad node spec {item!r}; expected [user@]host[:slots]')
         nodes.append((host, slots))
     if not nodes:
-        raise SystemExit('no nodes: pass --nodes or set KVM_NODES')
+        raise SystemExit('no nodes: pass --nodes or set MVM_NODES')
     return nodes
 
 
@@ -58,7 +58,7 @@ def hostname_of(host):
 
 def parse_advertise(text, nodes):
     """'host:p0/p1,host2:p0' (node order, one port per slot): the address peers DIAL for each rank, when it is not the ssh target and
-    the launch port (NAT, container port mapping). Comes from --advertise / KVM_ADVERTISE, never from a committed file."""
+    the launch port (NAT, container port mapping). Comes from --advertise / MVM_ADVERTISE, never from a committed file."""
     items = [x.strip() for x in text.split(',') if x.strip()]
     if len(items) != len(nodes):
         raise SystemExit(f'--advertise needs one entry per node ({len(nodes)}), got {len(items)}')
@@ -93,8 +93,8 @@ def peers_for(me, ranks, peers, listen_base):
 
 
 def rank_env(r, world, peers):
-    return {'KVM_RANK': str(r['rank']), 'KVM_WORLD': str(world), 'KVM_LOCAL_RANK': str(r['local']), 'KVM_NODE': str(r['node']),
-            'KVM_PORT': str(r['port']), 'KVM_PEERS': peers}
+    return {'MVM_RANK': str(r['rank']), 'MVM_WORLD': str(world), 'MVM_LOCAL_RANK': str(r['local']), 'MVM_NODE': str(r['node']),
+            'MVM_PORT': str(r['port']), 'MVM_PEERS': peers}
 
 
 def subst(arg, r, world, peers):
@@ -108,7 +108,7 @@ SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '
 def build_cmd(r, world, peers, cmd, workdir, timeout, extra_env, listen_base=0):
     env = dict(rank_env(r, world, peers), **extra_env)
     if listen_base:
-        env['KVM_DIST_LISTEN_PORT'] = str(listen_base + r['local'])   # bind here; peers dial the advertised port
+        env['MVM_DIST_LISTEN_PORT'] = str(listen_base + r['local'])   # bind here; peers dial the advertised port
     argv = [subst(a, r, world, peers) for a in cmd]
     line = shlex.join(argv)
     envs = ' '.join(f'{k}={shlex.quote(v)}' for k, v in env.items())
@@ -174,17 +174,17 @@ def run_all(ranks, world, peers, cmd, args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0], formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
-    ap.add_argument('--nodes', default=os.environ.get('KVM_NODES', ''))
+    ap.add_argument('--nodes', default=os.environ.get('MVM_NODES', ''))
     ap.add_argument('--local', type=int, help='N ranks as local subprocesses')
-    ap.add_argument('--port-base', type=int, default=int(os.environ.get('KVM_PORT_BASE', '29500')))
+    ap.add_argument('--port-base', type=int, default=int(os.environ.get('MVM_PORT_BASE', '29500')))
     ap.add_argument('--workdir', default='', help='directory on every node (default: $HOME remotely, cwd locally)')
     ap.add_argument('--timeout', type=int, default=600)
     ap.add_argument('--env', action='append', default=[], metavar='K=V')
     ap.add_argument('--rsync', nargs=2, metavar=('SRC', 'DEST'), action='append', default=[], help='copy SRC to DEST on every remote node first')
     ap.add_argument('--setup', action='append', default=[], help='shell command run once on every node (after --rsync) in --workdir')
-    ap.add_argument('--advertise', default=os.environ.get('KVM_ADVERTISE', ''), help="per node 'host:port[/port..]' that peers dial (NAT/port mapping)")
-    ap.add_argument('--listen-base', type=int, default=int(os.environ.get('KVM_LISTEN_BASE', '0')),
-                    help='with --advertise: rank in slot s binds port LISTEN_BASE + s inside its node (KVM_DIST_LISTEN_PORT)')
+    ap.add_argument('--advertise', default=os.environ.get('MVM_ADVERTISE', ''), help="per node 'host:port[/port..]' that peers dial (NAT/port mapping)")
+    ap.add_argument('--listen-base', type=int, default=int(os.environ.get('MVM_LISTEN_BASE', '0')),
+                    help='with --advertise: rank in slot s binds port LISTEN_BASE + s inside its node (MVM_DIST_LISTEN_PORT)')
     ap.add_argument('--dry-run', action='store_true')
     ap.add_argument('--quiet', action='store_true')
     ap.add_argument('cmd', nargs=argparse.REMAINDER)

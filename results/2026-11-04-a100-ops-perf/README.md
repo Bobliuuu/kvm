@@ -2,11 +2,11 @@
 
 GPU: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz, driver 580.105.08, CUDA 12.8, sm_80, `nvcc -O2`. Shared box (GPU lock held, but
 other jobs run unlocked around it: spreads are real). Code: branch `perf/ops`, commits f34bbd9..cd56ffe. Command:
-`KVM_HOST=... TEST=1 REF=1 VARIANTS="BENCH_MINB=2" ./run_gpu_perf.sh <tag>` (7 repetitions per number, median [min..max]).
+`MVM_HOST=... TEST=1 REF=1 VARIANTS="BENCH_MINB=2" ./run_gpu_perf.sh <tag>` (7 repetitions per number, median [min..max]).
 "Full dispatch" = the all-ops kernel (what a megakernel compiles: registers are the union's), as in the executor.
 
 Logs: `baseline.txt` (before, plus torch/cuBLAS/FlashAttention reference lines `REF`), `final.txt` (after; default build, then
-`BENCH_MINB=2` = all-ops kernel capped at 128 registers, then `KVM_GPT_MAX_HD=64`), `sanitizers_and_e2e.txt`, `gptdiff_run.txt`,
+`BENCH_MINB=2` = all-ops kernel capped at 128 registers, then `MVM_GPT_MAX_HD=64`), `sanitizers_and_e2e.txt`, `gptdiff_run.txt`,
 `exec_suite_tail.txt`, `gelu_vec_intermediate.txt`.
 
 ## Results (full dispatch, median)
@@ -43,10 +43,10 @@ were NOT added (no bf16 goldens or tolerances exist, and a bf16 buffer dtype nee
 
 Per-op registers (`cuobjdump -res-usage`, final.txt): matmul 200, attn_fwd 212, attn_bwd_dq 166, attn_bwd_dkv 241, all-ops kernel 255
 (before: 171). All of them are above 128, so the persistent kernel runs ONE block per SM before and after (65536 / (256 x 171) = 1).
-Dynamic shared memory: KVM_GPT_SMEM_BYTES 48 KiB -> 56 KiB (hd <= 64) or 80 -> 104 KiB (hd = 128); two blocks per SM still fit
+Dynamic shared memory: MVM_GPT_SMEM_BYTES 48 KiB -> 56 KiB (hd <= 64) or 80 -> 104 KiB (hd = 128); two blocks per SM still fit
 (164 KiB). Capping the all-ops kernel with `__launch_bounds__(256, 2)` (128 registers, ~1 KiB of spill, `BENCH_MINB=2`) is
 the single largest remaining lever and is the executor's call: it gave +50% on 64-tile matmul, +25% attn bwd T2048, +10-30% on the
-memory-bound ops here, and -15% on hd=128 attention. `-DKVM_GPT_MAX_HD=64` (default) already keeps hd=128 out of the build.
+memory-bound ops here, and -15% on hd=128 attention. `-DMVM_GPT_MAX_HD=64` (default) already keeps hd=128 out of the build.
 
 ## What did not work or did not help (honest list)
 
@@ -78,17 +78,17 @@ memory-bound ops here, and -15% on hd=128 attention. `-DKVM_GPT_MAX_HD=64` (defa
 # Round 2 (2026-11-04, same box; commits after d5fe58b on perf/ops)
 
 ## Merge and bf16
-- Merged feat/integration (107a276). M's `include/kvm_ops_extra.cuh` still compiled against the old SIMT attention helpers (kept, unused by
-  the new kernels) but its `mm_tile_bf16` used removed wmma/tile_async code: replaced by `kvmgpt::mm_tile<TA,TB,false,true>`, a real
+- Merged feat/integration (107a276). M's `include/mvm_ops_extra.cuh` still compiled against the old SIMT attention helpers (kept, unused by
+  the new kernels) but its `mm_tile_bf16` used removed wmma/tile_async code: replaced by `mvmgpt::mm_tile<TA,TB,false,true>`, a real
   bf16 tensor-core tile (operands rounded RNE to bf16 with `cvt.rn.bf16x2.f32` when read from shared memory, `mma.m16n8k16.bf16`, fp32
   accumulate, fp32 containers). The extra pack's attn_full_* now use the separate dq/dk/dv leading dimensions (same bug as in the
-  main attention) and are compiled out above KVM_GPT_MAX_HD. `test_extra` 2089 passed / 0 failed on the merged tree (r2b.txt, r2d.txt);
+  main attention) and are compiled out above MVM_GPT_MAX_HD. `test_extra` 2089 passed / 0 failed on the merged tree (r2b.txt, r2d.txt);
   `test_ops` 1396 passed (256x128 tile added to all transposes/edges/odd origins).
 - bf16 speed was NOT measured separately (no bench entry yet); the 2x claim is untested. Attention in bf16 was not written.
 
 ## Matmul vs cuBLAS (target >= 70%): NOT reached
 Best result: new `matmul_tile` flag 64 = 256x128 tile, warp tile 64x64 (smem-wavefront ratio 1.0 instead of 1.5 per mma), 72 KiB smem
-(KVM_GPT_SMEM_BYTES becomes 72 KiB for hd<=64 builds). Median of 7, full dispatch, busy box (r2d.txt); cuBLAS TF32 (torch) from baseline.txt:
+(MVM_GPT_SMEM_BYTES becomes 72 KiB for hd<=64 builds). Median of 7, full dispatch, busy box (r2d.txt); cuBLAS TF32 (torch) from baseline.txt:
 
 | shape | 64x64 | 128x128 | 256x128 | cuBLAS | best / cuBLAS |
 |---|---|---|---|---|---|
@@ -103,11 +103,11 @@ launch-order grouping of 8 row tiles for L2: no change; 128-register cap: +30-50
 13 TFLOP/s under a cap (128 accumulator registers spill), so the cap and the huge tile are mutually exclusive; ldmatrix.trans for
 [k][n] operands is impossible for 32-bit data (it transposes 16-bit elements). r2b.txt (first 256x128 run) is INVALID: the epilogue stored
 only half of the column tiles (test and bench check failed, fixed before r2d); its apparent 73-78 TFLOP/s are not real.
-End-to-end (`r2_regsweep.txt`, kvm_exec on the 206-task gpt_tiny a100 bundle, 7 runs each): 3.04-3.08 ms for base, maxrregcount 128, 168
+End-to-end (`r2_regsweep.txt`, mvm_exec on the 206-task gpt_tiny a100 bundle, 7 runs each): 3.04-3.08 ms for base, maxrregcount 128, 168
 and 200: this bundle is latency/dependency-bound, so op throughput and the register cap are invisible; a larger bundle is needed for a
 real end-to-end number (not generated).
 
-## Attention (r2c.txt): compile-time `KVM_GPT_ATTN_MMA` (default 3 = the 2e-5 contract)
+## Attention (r2c.txt): compile-time `MVM_GPT_ATTN_MMA` (default 3 = the 2e-5 contract)
 | hd64 T2048 / hd128 | 3xTF32 (default) | 2xTF32 | 1xTF32 | torch fp32 SDPA |
 |---|---|---|---|---|
 | fwd hd64 | 13.6 | 16.8 (relerr 4.6e-4) | 19.5 (7e-4) | 19.7 |
@@ -119,7 +119,7 @@ real end-to-end number (not generated).
 backward (a fused dq/dkv needs atomics or a second pass; deterministic order was kept).
 
 ## Scratch directories I overwrote (rsync --delete), disclosed in the integration log
-~/kvm-gptdiff-scratch (gptdiff run) and ~/kvm-exec-scratch (exec run), both ~08:28 UTC; all later runs used private dirs.
+~/mvm-gptdiff-scratch (gptdiff run) and ~/mvm-exec-scratch (exec run), both ~08:28 UTC; all later runs used private dirs.
 
 ## Round-2 verification (final tree)
 test_ops 1396 and test_extra 2089 passed; compute-sanitizer memcheck/racecheck/synccheck/initcheck on test_ops and memcheck/racecheck on

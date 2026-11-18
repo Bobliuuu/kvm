@@ -1,10 +1,10 @@
-// batch_bed: the batched MLP step, R runs of one MLP carried by one gang (include/kvm_fused_batch.h has the design).
+// batch_bed: the batched MLP step, R runs of one MLP carried by one gang (include/mvm_fused_batch.h has the design).
 //   nvcc -O3 -arch=sm_80 -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -Iinclude bench/fused_mlp/batch_bed.cu -o batch_bed
 //   ./batch_bed [--hidden 640] [--depth 4] [--runs 16] [--members 0 (every SM)] [--steps 50] [--check 3] [--seed 1] [--warm-ms 500] [--bwd auto|fused|split] [--fm 1|2|3|6] [--nw 16|32|64|128] [--virtual SV | --grid P] [--dump FILE]
-// --virtual SV computes the split step's arithmetic for SV virtual shares (kvm_fused_batch.h: KvmBatchDesc::Sv), so the dump equals split_bed's
+// --virtual SV computes the split step's arithmetic for SV virtual shares (mvm_fused_batch.h: MvmBatchDesc::Sv), so the dump equals split_bed's
 // at --virtual SV for any of its share counts; 0 (the default) keeps the op's own arithmetic, each output over its whole K in one chain.
-// --grid P computes the grid step's arithmetic at a gang of P members (kvm_fused_batch.h: KvmBatchDesc::gHp, the partition kvm_grid_layout takes),
-// so the dump equals grid_bed's at --members P; it runs the fused backward and tiles of at most KVM_BATCH_GRID_MAXRB (3) row blocks a warp.
+// --grid P computes the grid step's arithmetic at a gang of P members (mvm_fused_batch.h: MvmBatchDesc::gHp, the partition mvm_grid_layout takes),
+// so the dump equals grid_bed's at --members P; it runs the fused backward and tiles of at most MVM_BATCH_GRID_MAXRB (3) row blocks a warp.
 // --fm and --nw force the forward tiles' rows (fm x 16) and columns, and the split backward's tiles with them; --kw the fused backward's row
 // blocks (16, 32 or 64 rows); like --bwd, they change only how the step is spread over the gang, so a dump must not change with them (and a
 // card with less shared memory a block than the A100's, the laptop's 99 KB, takes the smaller tiles).
@@ -23,48 +23,48 @@
 
 #define CK(x) do { cudaError_t e_ = (x); if (e_ != cudaSuccess) { fprintf(stderr, "CUDA error %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(e_)); exit(1); } } while (0)
 
-#include "kvm_fused_batch.h"
-// the item clock (kvm_fused_batch.cuh): block 0's thread 0 adds each item's segments: operand loop, epilogue, end barrier
+#include "mvm_fused_batch.h"
+// the item clock (mvm_fused_batch.cuh): block 0's thread 0 adds each item's segments: operand loop, epilogue, end barrier
 __device__ long long g_item_clk[CK_KINDS][3];
 __device__ long long g_item_last;
 __device__ int g_item_n[CK_KINDS];
-#define KVM_BATCH_CLOCK(kind, mark) do { if (blockIdx.x == 0 && threadIdx.x == 0) { const long long n_ = clock64(); \
+#define MVM_BATCH_CLOCK(kind, mark) do { if (blockIdx.x == 0 && threadIdx.x == 0) { const long long n_ = clock64(); \
     if ((mark) == 0) ++g_item_n[kind]; else g_item_clk[kind][(mark) - 1] += n_ - g_item_last; g_item_last = n_; } } while (0)
-// the chunk clock (kvm_fused_batch.cuh's k_loop), in a build with -DBED_CHUNK_CLOCK only (its stamps cost every warp a few instructions a chunk):
+// the chunk clock (mvm_fused_batch.cuh's k_loop), in a build with -DBED_CHUNK_CLOCK only (its stamps cost every warp a few instructions a chunk):
 // block 0's warp 0 (an MMA warp) and warp 7 (on small tiles, a copier) add each item's chunk intervals: wait + barrier, copies, k-steps, chunks
 __device__ long long g_chunk_clk[CK_KINDS][2][4];
 #ifdef BED_CHUNK_CLOCK
-#define KVM_BATCH_CHUNK_CLOCK(kind, t) do { if (blockIdx.x == 0 && (threadIdx.x == 0 || threadIdx.x == 224)) { const int w_ = threadIdx.x ? 1 : 0; \
+#define MVM_BATCH_CHUNK_CLOCK(kind, t) do { if (blockIdx.x == 0 && (threadIdx.x == 0 || threadIdx.x == 224)) { const int w_ = threadIdx.x ? 1 : 0; \
     for (int i_ = 0; i_ < 4; ++i_) atomicAdd((unsigned long long*)&g_chunk_clk[kind][w_][i_], (unsigned long long)(t)[i_]); } } while (0)
 #endif
-#include "kvm_fused_batch.cuh"
-#include "kvm_fused_grid.h"
+#include "mvm_fused_batch.cuh"
+#include "mvm_fused_grid.h"
 #include "bed_clock.cuh"
 #include "mlp_ref.h"
-using kvm_fmlp::NT;
+using mvm_fmlp::NT;
 
 constexpr float LR = 0.05f;
-constexpr int MAXPH = 2 * KVM_BATCH_MAXL + 3;
+constexpr int MAXPH = 2 * MVM_BATCH_MAXL + 3;
 extern __shared__ __align__(128) float smem[];
 
 struct Shape { int V, E, H, T, L; };   // what mlp_ref reads
 
-template <bool GRID>   // the grid step's arithmetic or not: a kernel and a call tree each (kvm_fused_batch.cuh: run_item)
-__global__ void __launch_bounds__(NT, 1) batch_kernel(const KvmBatchDesc* gd, int steps, Timing tm) {
-  const KvmBatchDesc d = *gd;
+template <bool GRID>   // the grid step's arithmetic or not: a kernel and a call tree each (mvm_fused_batch.cuh: run_item)
+__global__ void __launch_bounds__(NT, 1) batch_kernel(const MvmBatchDesc* gd, int steps, Timing tm) {
+  const MvmBatchDesc d = *gd;
   if (threadIdx.x == 0) tm.smid[blockIdx.x] = sm_id();
-  const int np = kvm_batch_phases(d.L);
+  const int np = mvm_batch_phases(d.L);
   __shared__ long long ph_acc[MAXPH];
   __shared__ long long last;
   if (threadIdx.x < MAXPH) ph_acc[threadIdx.x] = 0;
-  unsigned long long at = kvm_gang::cross_start(d.ctl, blockIdx.x, d.members);   // this member's place in the gang's crossings
+  unsigned long long at = mvm_gang::cross_start(d.ctl, blockIdx.x, d.members);   // this member's place in the gang's crossings
   __syncthreads();
   if (blockIdx.x == 0 && threadIdx.x == 0) { tm.gtime[0] = global_ns(); last = clock64(); }
   auto ph = [&](int p) {
     if (blockIdx.x == 0 && threadIdx.x == 0) { const long long n = clock64(); ph_acc[p] += n - last; last = n; }
   };
   for (int s = 0; s < steps; ++s)
-    if (!kvm_fbatch::batch_step<GRID>(blockIdx.x, d, s, smem, at, nullptr, ph)) break;   // a bed has no error word: a crossing cannot abort
+    if (!mvm_fbatch::batch_step<GRID>(blockIdx.x, d, s, smem, at, nullptr, ph)) break;   // a bed has no error word: a crossing cannot abort
   __syncthreads();
   if (blockIdx.x == 0 && threadIdx.x == 0) {
     tm.gtime[1] = global_ns();
@@ -73,7 +73,7 @@ __global__ void __launch_bounds__(NT, 1) batch_kernel(const KvmBatchDesc* gd, in
 }
 
 int main(int argc, char** argv) {
-  KvmBatchDesc d{}; d.E = 48; d.V = 100; d.H = 640; d.L = 4; d.T = KVM_BATCH_T; d.R = 16; d.members = 0; d.lr = LR;
+  MvmBatchDesc d{}; d.E = 48; d.V = 100; d.H = 640; d.L = 4; d.T = MVM_BATCH_T; d.R = 16; d.members = 0; d.lr = LR;
   int steps = 50, check = 3, warm_ms = 500, bwd = -1, fm = 0, nw = 0, xfm = 0, xnw = 0, wfm = 0, wnw = 0, kw = 0, grid_p = 0; unsigned seed = 1; std::string dump;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
@@ -92,34 +92,34 @@ int main(int argc, char** argv) {
   }
   cudaDeviceProp prop; CK(cudaGetDeviceProperties(&prop, 0));
   if (d.members <= 0) d.members = prop.multiProcessorCount;
-  if (grid_p) {   // the grid step's arithmetic at a gang of grid_p members: its partition, as kvm_grid_layout takes it (grid_bed --members grid_p)
+  if (grid_p) {   // the grid step's arithmetic at a gang of grid_p members: its partition, as mvm_grid_layout takes it (grid_bed --members grid_p)
     if (d.Sv) { fprintf(stderr, "--grid and --virtual exclude each other: a shape's arithmetic is the split step's or the grid step's\n"); return 2; }
     if (bwd == 1) { fprintf(stderr, "--grid runs the fused backward only (--bwd split is the split step's tiles)\n"); return 2; }
-    KvmGridDesc g{}; g.V = d.V; g.E = d.E; g.L = d.L; g.H = d.H; g.T = d.T; g.P = grid_p;
-    if (kvm_grid_layout(g) < 0) { fprintf(stderr, "--grid %d: a shape the grid step does not take (kvm_grid_layout)\n", grid_p); return 2; }
+    MvmGridDesc g{}; g.V = d.V; g.E = d.E; g.L = d.L; g.H = d.H; g.T = d.T; g.P = grid_p;
+    if (mvm_grid_layout(g) < 0) { fprintf(stderr, "--grid %d: a shape the grid step does not take (mvm_grid_layout)\n", grid_p); return 2; }
     d.gHp = g.Hp; d.gka = g.ka; d.gnb = g.nb; d.gnb0 = g.nb0; d.gkah = g.kah;
     printf("grid arithmetic at %d members: Hp %d, layer 0 in %d column blocks, hidden %d x %d, head %d row blocks\n", grid_p, g.Hp, g.nb0, g.ka, g.nb, g.kah);
   }
-  const int floats = kvm_batch_layout(d);
-  if (floats < 0) { fprintf(stderr, "a shape the batched step does not take (kvm_batch_layout): H a multiple of 8 up to 4096, E 48, V up to 112, T 96, depth 1-%d, runs 1-%d, --virtual 0-%d\n", KVM_BATCH_MAXL, KVM_BATCH_MAXR, KVM_BATCH_MAXS); return 2; }
+  const int floats = mvm_batch_layout(d);
+  if (floats < 0) { fprintf(stderr, "a shape the batched step does not take (mvm_batch_layout): H a multiple of 8 up to 4096, E 48, V up to 112, T 96, depth 1-%d, runs 1-%d, --virtual 0-%d\n", MVM_BATCH_MAXL, MVM_BATCH_MAXR, MVM_BATCH_MAXS); return 2; }
   if (fm || nw || xfm || xnw || wfm || wnw || kw) {   // forced tile shapes: recompute what depends on them (the split backward's follow fm and nw unless given)
     auto row_blocks = [](int x) { return x == 1 || x == 2 || x == 3 || x == 6; };
     auto width = [](int x) { return x == 16 || x == 32 || x == 64 || x == 128; };
     if ((fm && !row_blocks(fm)) || (xfm && !row_blocks(xfm)) || (wfm && !row_blocks(wfm))) { fprintf(stderr, "--fm, --xfm and --wfm take 1, 2, 3 or 6\n"); return 2; }
     if ((nw && !width(nw)) || (xnw && !width(xnw)) || (wnw && !width(wnw))) { fprintf(stderr, "--nw, --xnw and --wnw take 16, 32, 64 or 128\n"); return 2; }
     if (kw && kw != 16 && kw != 32 && kw != 64) { fprintf(stderr, "--kw takes 16, 32 or 64\n"); return 2; }
-    if (grid_p && kvm_batch_warp_rb(fm ? fm : d.fm, (nw ? nw : d.nw) / 16) > KVM_BATCH_GRID_MAXRB) {   // the grid path's row blocks a warp (kvm_batch_layout)
-      fprintf(stderr, "--grid takes forward tiles of at most %d row blocks of 16 a warp (fm 6 with nw <= 64, fm 3 with nw <= 128, fm 1-2 any)\n", KVM_BATCH_GRID_MAXRB); return 2; }
+    if (grid_p && mvm_batch_warp_rb(fm ? fm : d.fm, (nw ? nw : d.nw) / 16) > MVM_BATCH_GRID_MAXRB) {   // the grid path's row blocks a warp (mvm_batch_layout)
+      fprintf(stderr, "--grid takes forward tiles of at most %d row blocks of 16 a warp (fm 6 with nw <= 64, fm 3 with nw <= 128, fm 1-2 any)\n", MVM_BATCH_GRID_MAXRB); return 2; }
     if (kw) { d.kw = kw; d.kt = (d.H + kw - 1) / kw; }
     if (fm) { d.fm = fm; d.fr = 6 / fm; }
     if (nw) { d.nw = nw; d.nt = (d.H + nw - 1) / nw; }
     d.xfm = xfm ? xfm : d.fm; d.xnw = xnw ? xnw : d.nw; d.wfm = wfm ? wfm : d.fm; d.wnw = wnw ? wnw : d.nw;
-    d.smem_floats = kvm_batch_smem(d.nw, d.fm, d.kw, d.xfm, d.xnw, d.wfm, d.wnw);
+    d.smem_floats = mvm_batch_smem(d.nw, d.fm, d.kw, d.xfm, d.xnw, d.wfm, d.wnw);
   }
   const int floats_used = d.smem_floats;
-  if (bwd >= 0) d.bsplit = bwd;   // both modes fit the layout's shared memory (kvm_batch_smem takes the larger)
+  if (bwd >= 0) d.bsplit = bwd;   // both modes fit the layout's shared memory (mvm_batch_smem takes the larger)
   const size_t smem_bytes = (size_t)floats_used * sizeof(float);
-  const int np = kvm_batch_phases(d.L);
+  const int np = mvm_batch_phases(d.L);
   printf("%s, %d SMs, %zu KB shared memory a block (opt-in); model E %d V %d H %d depth %d, T %d; %d runs on one gang of %d members; "
          "forward tiles %d x %d rows x %d x %d columns a run, backward %s; %.1f KB a member; %d phases (crossings) a step\n",
          prop.name, prop.multiProcessorCount, (size_t)prop.sharedMemPerBlockOptin / 1024, d.E, d.V, d.H, d.L, d.T, d.R, d.members, d.fr, 16 * d.fm, d.nt, d.nw,
@@ -127,9 +127,9 @@ int main(int argc, char** argv) {
                      std::to_string(d.wnw) + ")").c_str() : ("fused, " + std::to_string(d.kt) + " row blocks of " + std::to_string(d.kw) + " a run").c_str(),
          smem_bytes / 1024.0, np);
   printf("items a phase:");
-  for (int p = 0; p < np; ++p) printf(" %d", kvm_batch_items(d, p));
+  for (int p = 0; p < np; ++p) printf(" %d", mvm_batch_items(d, p));
   printf("\n");
-  void (*const kernel)(const KvmBatchDesc*, int, Timing) = d.gHp > 0 ? batch_kernel<true> : batch_kernel<false>;
+  void (*const kernel)(const MvmBatchDesc*, int, Timing) = d.gHp > 0 ? batch_kernel<true> : batch_kernel<false>;
   cudaFuncAttributes fa; CK(cudaFuncGetAttributes(&fa, kernel));
   if (smem_bytes + fa.sharedSizeBytes > prop.sharedMemPerBlockOptin) { printf("does not fit: %zu dynamic + %zu static > %zu bytes a block\n", smem_bytes, (size_t)fa.sharedSizeBytes, (size_t)prop.sharedMemPerBlockOptin); return 3; }
   CK(cudaFuncSetAttribute((const void*)kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)smem_bytes));
@@ -155,9 +155,9 @@ int main(int argc, char** argv) {
   const int32_t* const* ids_s = ptrs((const int32_t*)dids, d.T);
   const int32_t* const* tgt_s = ptrs((const int32_t*)dtgt, d.T);
   std::vector<float*> loss_store(d.R);
-  std::vector<KvmBatchRun> runs(d.R);
+  std::vector<MvmBatchRun> runs(d.R);
   for (int g = 0; g < d.R; ++g) {
-    KvmBatchRun& r = runs[g];
+    MvmBatchRun& r = runs[g];
     r.emb = dalloc(data.emb.size());
     for (int l = 0; l < d.L; ++l) { r.w[l] = dalloc(data.W[l].size()); r.b[l] = dalloc(d.H); r.y[l] = dalloc(TH); r.g[l] = dalloc(TH); }
     r.wh = dalloc(data.Wh.size());
@@ -166,21 +166,21 @@ int main(int argc, char** argv) {
     r.x0 = dalloc((size_t)d.T * d.E); r.dlog = dalloc((size_t)d.T * d.VP); r.dz[0] = dalloc(TH); r.dz[1] = dalloc(TH); r.dz[2] = dalloc(TH);
     r.dx0 = dalloc((size_t)d.T * d.E); r.rloss = dalloc(d.T);
   }
-  KvmBatchRun* druns; CK(cudaMalloc(&druns, runs.size() * sizeof(KvmBatchRun))); CK(cudaMemcpy(druns, runs.data(), runs.size() * sizeof(KvmBatchRun), cudaMemcpyHostToDevice));
+  MvmBatchRun* druns; CK(cudaMalloc(&druns, runs.size() * sizeof(MvmBatchRun))); CK(cudaMemcpy(druns, runs.data(), runs.size() * sizeof(MvmBatchRun), cudaMemcpyHostToDevice));
   d.runs = druns;
-  const size_t lines = kvm_gang::line_words(d.members) * sizeof(unsigned);
-  CK(cudaMalloc(&d.ctl, lines)); CK(cudaMemset(d.ctl, 0, lines));   // once: the gang's control words need no reset between launches (kvm_gang::cross)
-  if (d.gHp > 0) {   // the grid sums' walks, one word a piece (kvm_batch_grid_table)
-    std::vector<unsigned> tab((size_t)kvm_batch_grid_words(d));
-    const int words = kvm_batch_grid_table(d, tab.data());
+  const size_t lines = mvm_gang::line_words(d.members) * sizeof(unsigned);
+  CK(cudaMalloc(&d.ctl, lines)); CK(cudaMemset(d.ctl, 0, lines));   // once: the gang's control words need no reset between launches (mvm_gang::cross)
+  if (d.gHp > 0) {   // the grid sums' walks, one word a piece (mvm_batch_grid_table)
+    std::vector<unsigned> tab((size_t)mvm_batch_grid_words(d));
+    const int words = mvm_batch_grid_table(d, tab.data());
     unsigned* dtab; CK(cudaMalloc(&dtab, (size_t)words * sizeof(unsigned))); CK(cudaMemcpy(dtab, tab.data(), (size_t)words * sizeof(unsigned), cudaMemcpyHostToDevice));
     d.gtab = dtab;
   }
-  KvmBatchDesc* gd; CK(cudaMalloc(&gd, sizeof(KvmBatchDesc))); CK(cudaMemcpy(gd, &d, sizeof(KvmBatchDesc), cudaMemcpyHostToDevice));
+  MvmBatchDesc* gd; CK(cudaMalloc(&gd, sizeof(MvmBatchDesc))); CK(cudaMemcpy(gd, &d, sizeof(MvmBatchDesc), cudaMemcpyHostToDevice));
   Timing tm{};
   CK(cudaMalloc(&tm.phase, MAXPH * sizeof(long long))); CK(cudaMalloc(&tm.gtime, 2 * sizeof(unsigned long long))); CK(cudaMalloc(&tm.smid, (size_t)d.members * sizeof(unsigned)));
   auto upload = [&]() {
-    for (const KvmBatchRun& r : runs) {
+    for (const MvmBatchRun& r : runs) {
       for (int l = 0; l < d.L; ++l) { CK(cudaMemcpy(r.w[l], data.W[l].data(), data.W[l].size() * 4, cudaMemcpyHostToDevice)); CK(cudaMemcpy(r.b[l], data.b[l].data(), data.b[l].size() * 4, cudaMemcpyHostToDevice)); }
       CK(cudaMemcpy(r.wh, data.Wh.data(), data.Wh.size() * 4, cudaMemcpyHostToDevice)); CK(cudaMemcpy(r.emb, data.emb.data(), data.emb.size() * 4, cudaMemcpyHostToDevice));
     }
@@ -265,7 +265,7 @@ int main(int argc, char** argv) {
     else if (p <= 2 * d.L) name = "B" + std::to_string(2 * d.L + 1 - p) + " hidden backward";
     else if (p == 2 * d.L + 1) name = "BX dX0";
     else name = "BU W0, b0, embedding, loss";
-    printf("  %-30s %3d items  %9.0f  (%4.1f%%)\n", name.c_str(), kvm_batch_items(d, p), (double)hph[p] / steps, 100.0 * hph[p] / std::max(1ll, tot));
+    printf("  %-30s %3d items  %9.0f  (%4.1f%%)\n", name.c_str(), mvm_batch_items(d, p), (double)hph[p] / steps, 100.0 * hph[p] / std::max(1ll, tot));
   }
   printf("  %-30s            %9.0f cycles\n", "total", (double)tot / steps);
   {

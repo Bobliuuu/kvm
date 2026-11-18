@@ -2,8 +2,8 @@
 the bf16 emulation of the frontend's `precision='bf16'`.
 
 This is the independent reference of goal 2 (not the repo's CPU golden): plain torch ops on the model's initial values and first data
-batch, loss and gradients by torch autograd. Nothing here uses kvmfe's tiles, buffers, ops or autodiff; it shares only the
-deterministic initial values and data streams (kvmfe.emit.init_values, tests/frontend/oracle_models.py) so both sides start at the same point.
+batch, loss and gradients by torch autograd. Nothing here uses mvmfe's tiles, buffers, ops or autodiff; it shares only the
+deterministic initial values and data streams (mvmfe.emit.init_values, tests/frontend/oracle_models.py) so both sides start at the same point.
 
   reference(model) -> (loss dict, {param name: grad})   the gradient of sum(loss dict) (cross entropy + MoE balance loss are both backward roots)
 

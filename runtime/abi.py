@@ -1,6 +1,6 @@
-"""Single-sourced ABI: parses include/kvm_task_abi.h and every operator registry in include/.
+"""Single-sourced ABI: parses include/mvm_task_abi.h and every operator registry in include/.
 
-Registries: the .def files include/kvm_ops_list.inc includes, read from it in its order, so a pack the executor compiles
+Registries: the .def files include/mvm_ops_list.inc includes, read from it in its order, so a pack the executor compiles
 is never invisible here; each is optional except the first (the core registry). Ids are sparse and globally unique. Signature
 grammar: `name:type`, type in buf | buf? | i32 | f32; `buf?` is an optional buffer (word -1 = absent), `buf` is required.
 
@@ -15,11 +15,11 @@ from functools import lru_cache
 from pathlib import Path
 from typing import NamedTuple
 
-log = logging.getLogger('kvm.abi')
+log = logging.getLogger('mvm.abi')
 INCLUDE_DIR = Path(__file__).resolve().parents[1] / 'include'
 ARG_TYPES = ('buf', 'i32', 'f32')
 ABSENT_BUF = -1                  # word of an absent optional buffer argument
-OPS_LIST = 'kvm_ops_list.inc'   # the executor's one list of registry files (the X-macro expansion includes it)
+OPS_LIST = 'mvm_ops_list.inc'   # the executor's one list of registry files (the X-macro expansion includes it)
 _DEF_INCLUDE = re.compile(r'^\s*#\s*include\s+"([^"/]+\.def)"', re.M)
 
 
@@ -44,7 +44,7 @@ class OpSpec:
 class TaskAbi:
     version: int
     no_var: int
-    fields: tuple[str, ...]   # KvmTaskDesc member names in declaration order
+    fields: tuple[str, ...]   # MvmTaskDesc member names in declaration order
     layout: struct.Struct     # little-endian, one int32 per field
 
     @property
@@ -79,10 +79,10 @@ def _parse_registry(path: Path, ops: dict, ids: dict) -> None:
 
 
 def registry_files(include_dir: Path = INCLUDE_DIR) -> tuple[str, ...]:
-    """The registry files `include_dir`'s kvm_ops_list.inc includes, in its order, the first being the core registry.
+    """The registry files `include_dir`'s mvm_ops_list.inc includes, in its order, the first being the core registry.
 
-    Every literal `#include "NAME.def"` counts whatever build condition guards it (KVM_LEAN, KVM_WITH_GAME, __has_include): this is
-    the union over builds, as the operator ids are. The test hook `#include KVM_EXTRA_OPS_DEF` names no file and has no entry.
+    Every literal `#include "NAME.def"` counts whatever build condition guards it (MVM_LEAN, MVM_WITH_GAME, __has_include): this is
+    the union over builds, as the operator ids are. The test hook `#include MVM_EXTRA_OPS_DEF` names no file and has no entry.
     """
     path = Path(include_dir) / OPS_LIST
     if not path.exists():
@@ -97,7 +97,7 @@ def registry_files(include_dir: Path = INCLUDE_DIR) -> tuple[str, ...]:
 
 @lru_cache(maxsize=None)
 def load_ops(include_dir: Path = INCLUDE_DIR) -> dict[str, OpSpec]:
-    """All operators of every registry file kvm_ops_list.inc lists that is present in `include_dir`, in the list's order."""
+    """All operators of every registry file mvm_ops_list.inc lists that is present in `include_dir`, in the list's order."""
     include_dir = Path(include_dir)
     ops: dict[str, OpSpec] = {}
     ids: dict[int, str] = {}
@@ -117,17 +117,17 @@ def load_ops(include_dir: Path = INCLUDE_DIR) -> dict[str, OpSpec]:
 
 
 @lru_cache(maxsize=None)
-def load_task_abi(path: Path = INCLUDE_DIR / 'kvm_task_abi.h') -> TaskAbi:
+def load_task_abi(path: Path = INCLUDE_DIR / 'mvm_task_abi.h') -> TaskAbi:
     text = Path(path).read_text()
     define = lambda key: int(re.search(rf'#define\s+{key}\s+\(?(-?\d+)\)?', text).group(1))
-    body = re.search(r'struct\s+(?:alignas\(\d+\)\s+)?KvmTaskDesc\s*\{(.*?)\};', text, re.S)
+    body = re.search(r'struct\s+(?:alignas\(\d+\)\s+)?MvmTaskDesc\s*\{(.*?)\};', text, re.S)
     if not body:
-        raise AbiError(f'{path}: KvmTaskDesc not found')
+        raise AbiError(f'{path}: MvmTaskDesc not found')
     fields = tuple(re.findall(r'^\s*int32_t\s+(\w+)\s*;', body.group(1), re.M))
     if len(fields) != len(re.findall(r'int32_t', body.group(1))):
-        raise AbiError(f'{path}: KvmTaskDesc must consist of int32_t members only')
+        raise AbiError(f'{path}: MvmTaskDesc must consist of int32_t members only')
     layout = struct.Struct(f'<{len(fields)}i')
-    declared = int(re.search(r'sizeof\(KvmTaskDesc\)\s*==\s*(\d+)', text).group(1))
+    declared = int(re.search(r'sizeof\(MvmTaskDesc\)\s*==\s*(\d+)', text).group(1))
     if layout.size != declared:
         raise AbiError(f'{path}: {len(fields)} int32 fields = {layout.size} bytes, header asserts {declared}')
-    return TaskAbi(define('KVM_ABI_VERSION'), define('KVM_NO_VAR'), fields, layout)
+    return TaskAbi(define('MVM_ABI_VERSION'), define('MVM_NO_VAR'), fields, layout)

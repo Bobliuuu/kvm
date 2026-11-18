@@ -14,8 +14,8 @@ admission and ready-wait. That is also why the step is still 15x slower than PyT
 |---|---|
 | GPU | NVIDIA A100-SXM4-40GB, 108 SMs, sm_80, max SM clock 1410 MHz, driver 580.105.08, CUDA 12.8 (nvcc 12.8.93). Shared box: every timed run held the GPU lock, but other agents compile beside it, so quote ratios from one lock hold |
 | Branch / commit | `perf/attention-162m` on base `origin/main` d657dde; the numbers below are from the device code of commit f8ab4a7 (later commits touch comments and result files only) |
-| Op benchmark | `tests/gpu_ops/bench_attn.cu`: single-op kernels (one block per task, 256 threads, heaviest tasks first), result checked against the fp64 reference before every timing. `nvcc -O2 -arch=sm_80 -std=c++17 -lineinfo -I../../include -I. [-DBENCH_HD=128] bench_attn.cu`; `./bench_attn [B T H Hkv]` (default 4 1024 12 12). "old" = the same file built against `origin/main`'s `kvm_ops_gpt.cuh` with `-DKVM_GPT_ATTN_ROWS=32` |
-| Executor | `kvm_exec` built `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 kvm_exec.cu`; bundle `gen.py w_162m_1 --model gpt_162m --steps 1 --mode tf32 --tiling a100` and `exec_bench.py ... --reps 3` from `bench/exec-vs-torch` |
+| Op benchmark | `tests/gpu_ops/bench_attn.cu`: single-op kernels (one block per task, 256 threads, heaviest tasks first), result checked against the fp64 reference before every timing. `nvcc -O2 -arch=sm_80 -std=c++17 -lineinfo -I../../include -I. [-DBENCH_HD=128] bench_attn.cu`; `./bench_attn [B T H Hkv]` (default 4 1024 12 12). "old" = the same file built against `origin/main`'s `mvm_ops_gpt.cuh` with `-DMVM_GPT_ATTN_ROWS=32` |
+| Executor | `mvm_exec` built `nvcc -O3 -arch=sm_80 -std=c++17 -Iinclude --fmad=false -Xcompiler -ffp-contract=off -lineinfo -diag-suppress 177 mvm_exec.cu`; bundle `gen.py w_162m_1 --model gpt_162m --steps 1 --mode tf32 --tiling a100` and `exec_bench.py ... --reps 3` from `bench/exec-vs-torch` |
 | Reference | PyTorch 2.7.0+cu128 `scaled_dot_product_attention(is_causal=True)`, efficient-attention backend for fp32 (`tests/gpu_ops/ref_torch.py`, `REF_ATTN_ONLY=1`) |
 
 ## 1. Per-op results, 162M shape: B4 T1024 H12 hd64 (`raw/bench_attn_old_vs_new_and_torch.txt`)
@@ -39,7 +39,7 @@ Other shapes (3 rounds each, spread under 1% except where noted):
 |---|---|---|---|
 | B4 T2048 H16 Hkv4 hd64 (GQA 4:1) | fwd | 2635 -> 1217 | 13.0 -> 28.2 |
 | | bwd (delta+dq+dkv) | 6130 -> 4617 | 14.0 -> 18.6 |
-| B2 T2048 H8 hd128 (not built by default: `KVM_GPT_MAX_HD=64`) | fwd | 1437 (1118 in a faster box state) -> 829 | 12.0 (15.4) -> 20.7 |
+| B2 T2048 H8 hd128 (not built by default: `MVM_GPT_MAX_HD=64`) | fwd | 1437 (1118 in a faster box state) -> 829 | 12.0 (15.4) -> 20.7 |
 | | **bwd** | **3100 -> 4071 (slower, 0.76x)** | 13.9 -> 10.5 |
 
 PyTorch in the same lock hold: fp32 and TF32-allowed efficient attention give the same forward (0.54 ms) and backward (1.36 ms); bf16 FlashAttention is 0.093 / 0.306 ms
@@ -94,7 +94,7 @@ The six-loss agreement stands in for them.
   256-draw T=1 noise sweep that counts its checks quietly). `test_e2e` 7 passed (`test_e2e.txt`).
 - compute-sanitizer on the attention cases (`TEST_ONLY=attention`, 1941 checks): memcheck, racecheck, synccheck, initcheck all 0 errors (`sanitizer_*`).
   An earlier racecheck run caught my own test: two overlapping 128-row tasks (origins 33 apart) wrote the same rows from differently grouped sums, so the last bits depended on who wrote last.
-  Production lowering never overlaps; the overlapping cases are gone and the header states the contract (tasks tile rows in steps of `KVM_GPT_ATTN_ROWS`).
+  Production lowering never overlaps; the overlapping cases are gone and the header states the contract (tasks tile rows in steps of `MVM_GPT_ATTN_ROWS`).
 - Bitwise deterministic run to run (every case checks it). Accuracy vs the fp64 reference (bench, relative to max; T=1024 / T=2048): fwd 1.3e-6 / 2.2e-6, dq 4.1e-6 / 2.8e-6, dk 9.0e-6 / 1.1e-5,
   dv 5.7e-6 / 9.2e-6. The old kernels: 1.3e-6 / 1.8e-6, 4.1e-6 / 2.6e-6, 7.2e-6 / 8.1e-6, 5.2e-6 / 7.8e-6. Tolerances are 2e-5 (fwd) and 3e-5 (bwd).
 - **An accuracy regression found and fixed on the way.** The first version of the new backward had dk/dv errors that grew with T (2.1e-5 at 1024, 3.0e-5 at 2048, old 7e-6). The exp (`ex2.approx` vs
@@ -115,7 +115,7 @@ A100 by this branch's runs or by `fix/readme-t1-attn-bwd`, and I cannot see the 
 
 - Heaviest-first block order in the lowering: no gain (above). `attn_bwd_delta` with 8 pairs in flight and hoisted loads: no change (167 vs 188 us), reverted.
 - hd=128 backward is slower than before (0.76x): 255 registers and 1.5 KB of spills, because the resident K/V (or Q/dO) fragments of a 16-row tile are 128 registers at hd=128. It only affects
-  `-DKVM_GPT_MAX_HD=128` builds; the default build compiles hd <= 64. Fixing it needs fragment streaming for hd=128.
+  `-DMVM_GPT_MAX_HD=128` builds; the default build compiles hd <= 64. Fixing it needs fragment streaming for hd=128.
 - 3xTF32 is kept (the 2e-5 contract); a 2xTF32 path is 1.4x faster but breaks the contract, and bf16 storage belongs to the bf16 track. The interface is unchanged (fp32 buffers; a bf16 variant can add a
   dtype next to `Chk::mat`).
 - Larger tasks (256 rows as two sequential halves) would save another ~13 ms of admission per step but leave 192 forward tasks on 108 SMs; not tried.
@@ -129,5 +129,5 @@ nvcc -O2 -arch=sm_80 -std=c++17 -lineinfo -I../../include -I. bench_attn.cu -o b
 nvcc -O2 -arch=sm_80 -std=c++17 -lineinfo -I../../include -I. test_ops.cu -o test_ops && flock ~/.gpu.lock ./test_ops
 TEST_ONLY=attention compute-sanitizer --tool racecheck --error-exitcode 9 ./test_ops
 REF_ATTN_ONLY=1 python3 -I ref_torch.py
-KVM_HOST=... demo/run_demo.sh large
+MVM_HOST=... demo/run_demo.sh large
 ```

@@ -1,4 +1,4 @@
-"""CPU reference VM: executes compiled KVM programs with the executor's semantics.
+"""CPU reference VM: executes compiled Magni VM programs with the executor's semantics.
 
 It runs the *compiler's output* (same tasks, edges, gates and wait/publish slots the GPU receives), so the two
 cannot disagree about structure. Semantics implemented:
@@ -24,7 +24,7 @@ import compile_workload as cw
 import ref_ops
 from ref_types import Buf
 
-log = logging.getLogger('kvm.vm')
+log = logging.getLogger('mvm.vm')
 
 
 class GraphError(ValueError):

@@ -1,31 +1,31 @@
-// Per-op unit tests for the extra generic operator pack (include/kvm_ops_extra.cuh) against independent float64 CPU references,
+// Per-op unit tests for the extra generic operator pack (include/mvm_ops_extra.cuh) against independent float64 CPU references,
 // edge cases and error paths (nonzero code, memory untouched).
 // Build: nvcc -O2 -arch=sm_80 -std=c++17 --fmad=false -Xcompiler -ffp-contract=off -I../../include -I. test_extra.cu -o test_extra
 #include <algorithm>
 #include <map>
 #include <numeric>
-#ifndef KVM_GPT_MAX_HD
-#define KVM_GPT_MAX_HD 128   // hd=128 attention is covered here
+#ifndef MVM_GPT_MAX_HD
+#define MVM_GPT_MAX_HD 128   // hd=128 attention is covered here
 #endif
 #include "harness.cuh"
 #include "refs.hpp"
-#include "kvm_ops_extra.cuh"
+#include "mvm_ops_extra.cuh"
 
 struct OpInfoX { const char* name; int id; const char* sig; };
 static const OpInfoX OPSX[] = {
 #define X(n, id, s) {#n, id, s},
-#include "kvm_ops_extra.def"
+#include "mvm_ops_extra.def"
 #undef X
 };
 enum {
 #define X(n, id, s) OPX_##n = id,
-#include "kvm_ops_extra.def"
+#include "mvm_ops_extra.def"
 #undef X
 };
 
-__global__ void k_runx(KvmCtx c, const int32_t* w, const int* op, const int* off) {
+__global__ void k_runx(MvmCtx c, const int32_t* w, const int* op, const int* off) {
     const int32_t* a = w + off[blockIdx.x];
-    if (!kvm_extra_dispatch(c, op[blockIdx.x], a) && !kvm_gpt_dispatch(c, op[blockIdx.x], a)) atomicCAS(c.err, 0, 99);
+    if (!mvm_extra_dispatch(c, op[blockIdx.x], a) && !mvm_gpt_dispatch(c, op[blockIdx.x], a)) atomicCAS(c.err, 0, 99);
 }
 struct BatchX {
     std::vector<int> op, off; std::vector<int32_t> w;
@@ -41,15 +41,15 @@ struct BatchX {
 };
 static int g_attr = 0;
 static int runx(Dev& d, const BatchX& b, int smem = 104 * 1024) {
-    if (!g_attr) { CK(cudaFuncSetAttribute(k_runx, cudaFuncAttributeMaxDynamicSharedMemorySize, kvm_test_smem_cap())); kvm_hopper_host_init(); g_attr = 1; }
+    if (!g_attr) { CK(cudaFuncSetAttribute(k_runx, cudaFuncAttributeMaxDynamicSharedMemorySize, mvm_test_smem_cap())); mvm_hopper_host_init(); g_attr = 1; }
     d.sync_table();
     int32_t* w; int *op, *off;
     CK(cudaMalloc(&w, b.w.size() * 4 + 4)); CK(cudaMalloc(&op, b.op.size() * 4)); CK(cudaMalloc(&off, b.off.size() * 4));
     CK(cudaMemcpy(w, b.w.data(), b.w.size() * 4, cudaMemcpyHostToDevice));
     CK(cudaMemcpy(op, b.op.data(), b.op.size() * 4, cudaMemcpyHostToDevice));
     CK(cudaMemcpy(off, b.off.data(), b.off.size() * 4, cudaMemcpyHostToDevice));
-    KvmCtx c{d.tab_d, (int32_t)d.tab.size(), d.err};
-    k_runx<<<(unsigned)b.op.size(), KVM_GPT_THREADS, smem>>>(c, w, op, off);
+    MvmCtx c{d.tab_d, (int32_t)d.tab.size(), d.err};
+    k_runx<<<(unsigned)b.op.size(), MVM_GPT_THREADS, smem>>>(c, w, op, off);
     CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
     cudaFree(w); cudaFree(op); cudaFree(off);
     return d.geterr();
@@ -331,9 +331,9 @@ static void t_moe() {
     }
     {   // limits: E=65 and k=9 are rejected
         Dev dv; int probs = dv.addf(4, 65), sel = dv.addi(4 * 9), slot = dv.addi(4 * 9), eidx = dv.addi(65 * 2);
-        check_true("moe_route E=65 -> E_SHAPE", run1x(dv, OPX_moe_route, A().b(probs).b(sel).b(slot).b(eidx).i(4).i(65).i(2).i(2)) == KVM_GPT_E_SHAPE);
-        check_true("moe_route k=9 -> E_SHAPE", run1x(dv, OPX_moe_route, A().b(probs).b(sel).b(slot).b(eidx).i(4).i(30).i(9).i(2)) == KVM_GPT_E_SHAPE);
-        check_true("moe_route k>E -> E_SHAPE", run1x(dv, OPX_moe_route, A().b(probs).b(sel).b(slot).b(eidx).i(4).i(3).i(4).i(2)) == KVM_GPT_E_SHAPE);
+        check_true("moe_route E=65 -> E_SHAPE", run1x(dv, OPX_moe_route, A().b(probs).b(sel).b(slot).b(eidx).i(4).i(65).i(2).i(2)) == MVM_GPT_E_SHAPE);
+        check_true("moe_route k=9 -> E_SHAPE", run1x(dv, OPX_moe_route, A().b(probs).b(sel).b(slot).b(eidx).i(4).i(30).i(9).i(2)) == MVM_GPT_E_SHAPE);
+        check_true("moe_route k>E -> E_SHAPE", run1x(dv, OPX_moe_route, A().b(probs).b(sel).b(slot).b(eidx).i(4).i(3).i(4).i(2)) == MVM_GPT_E_SHAPE);
     }
 }
 
@@ -371,9 +371,9 @@ static void attn_case(int B, int T, int H, int Hkv, int hd) {
     Rng r(141 + hd + T + H);
     int R = B * T;
     float scale = (float)(1.0 / sqrt((double)hd));
-    int smem = kvm_gpt_smem_bytes(hd);
+    int smem = mvm_gpt_smem_bytes(hd);
     std::string nm = "attn_full B=" + S(B) + " T=" + S(T) + " H=" + S(H) + " Hkv=" + S(Hkv) + " hd=" + S(hd);
-    if (hd > KVM_GPT_MAX_HD) { skip(nm, "head size above this build's KVM_GPT_MAX_HD (not compiled)"); return; }
+    if (hd > MVM_GPT_MAX_HD) { skip(nm, "head size above this build's MVM_GPT_MAX_HD (not compiled)"); return; }
     Dev dv;
     int q = dv.addf(R, H * hd, H * hd + 4), k = dv.addf(R, Hkv * hd, Hkv * hd + 4), v = dv.addf(R, Hkv * hd), o = dv.addf(R, H * hd, H * hd + 4);
     int lse = dv.addf(1, B * H * T), dlt = dv.addf(1, B * H * T), dO = dv.addf(R, H * hd), dq = dv.addf(R, H * hd, H * hd + 4), dk = dv.addf(R, Hkv * hd, Hkv * hd + 4), dvv = dv.addf(R, Hkv * hd);
@@ -478,7 +478,7 @@ static void t_matmul_bf16() {
     }
 }
 
-// ---- bf16 STORAGE (KvmBuf.dtype 2): round_bf16 as narrow/widen, matmul_tile_bf16 with bf16 a/b/out/res/pre, dtype errors ---------------------------
+// ---- bf16 STORAGE (MvmBuf.dtype 2): round_bf16 as narrow/widen, matmul_tile_bf16 with bf16 a/b/out/res/pre, dtype errors ---------------------------
 static void t_bf16_storage() {
     Rng r(171);
     {   // narrow f32 -> bf16 storage is bitwise the RNE reference; widen is exact; bf16 -> bf16 copies
@@ -539,7 +539,7 @@ static void t_bf16_storage() {
         Dev dv; int xb = dv.addb(1, 64), o = dv.addf(1, 64); dv.upb(xb, std::vector<float>(64, 1.f));
         int e = run1x(dv, OPX_act_fwd, A().b(xb).b(o).i(1).i(0).i(64));
         auto g = dv.down(o); bool zero = true; for (float v : g) zero &= v == 0.f;
-        check_true("act_fwd rejects a bf16 buffer (E_DTYPE), memory untouched", e == KVM_GPT_E_DTYPE && zero, ("got code " + S(e)).c_str());
+        check_true("act_fwd rejects a bf16 buffer (E_DTYPE), memory untouched", e == MVM_GPT_E_DTYPE && zero, ("got code " + S(e)).c_str());
     }
 }
 
@@ -649,7 +649,7 @@ static void t_wrappers() {
             int e2 = run1x(dv, OPX_matmul_tile_silu_mul, A().b(ia).b(ib).b(o).b(g).b(u).i(0).i(0).i(M).i(N).i(K).i(fl).f(1.f));
             int e3 = run1x(dv, OPX_matmul_tile_silu_mul_bwd, A().b(ia).b(ib).b(g).b(u).b(d1).b(d2).i(0).i(0).i(M).i(N).i(K).i(fl).f(1.f));
             bool same = true; int k = 0; for (int t : {o, u, d1, d2}) same &= dv.down(t) == before[k++];
-            check_true("wrappers reject flags " + S(fl) + " (E_SHAPE) and leave memory untouched", e1 == KVM_GPT_E_SHAPE && e2 == KVM_GPT_E_SHAPE && e3 == KVM_GPT_E_SHAPE && same);
+            check_true("wrappers reject flags " + S(fl) + " (E_SHAPE) and leave memory untouched", e1 == MVM_GPT_E_SHAPE && e2 == MVM_GPT_E_SHAPE && e3 == MVM_GPT_E_SHAPE && same);
         }
     }
 }
@@ -710,8 +710,8 @@ static void t_errors() {
                 if (kinds[pos].second && mode == 1 && c.a.w[pos] < 0) continue;
                 if (kinds[pos].second && c.a.w[pos] < 0 && mode == 0) { /* absent optional: out-of-table index is still an error */ }
                 A m = c.a; int want;
-                if (mode == 0) { m.w[pos] = 999; want = KVM_GPT_E_BUF; }
-                else { int orig = c.a.w[pos]; bool isint = dv.tab[orig].dtype == 1; m.w[pos] = isint ? fx : idx; want = KVM_GPT_E_DTYPE; }
+                if (mode == 0) { m.w[pos] = 999; want = MVM_GPT_E_BUF; }
+                else { int orig = c.a.w[pos]; bool isint = dv.tab[orig].dtype == 1; m.w[pos] = isint ? fx : idx; want = MVM_GPT_E_DTYPE; }
                 auto before = snapshot();
                 int e = run1x(dv, c.id, m);
                 bool same = snapshot() == before; ncases++;
@@ -723,44 +723,44 @@ static void t_errors() {
     // dedicated range / shape errors
     struct Mut { const char* what; int id; A a; int want; };
     std::vector<Mut> ms = {
-        {"act_fwd e1 beyond buffer", OPX_act_fwd, A().b(fx).b(fy).i(1).i(0).i(65), KVM_GPT_E_RANGE},
-        {"act_fwd e0 > e1", OPX_act_fwd, A().b(fx).b(fy).i(1).i(10).i(5), KVM_GPT_E_RANGE},
-        {"act_fwd bad kind", OPX_act_fwd, A().b(fx).b(fy).i(4).i(0).i(64), KVM_GPT_E_SHAPE},
-        {"act_bwd negative kind", OPX_act_bwd, A().b(fx).b(fy).b(fz).i(-1).i(0).i(64).i(0), KVM_GPT_E_SHAPE},
-        {"silu_mul_bwd e1 beyond", OPX_silu_mul_bwd, A().b(fx).b(fy).b(fz).b(fw).b(fv).i(0).i(65).i(0), KVM_GPT_E_RANGE},
-        {"softmax rows beyond", OPX_softmax_rows_fwd, A().b(mat).b(mat2).i(0).i(N + 1).i(d).f(1.f), KVM_GPT_E_RANGE},
-        {"softmax d beyond cols", OPX_softmax_rows_fwd, A().b(mat).b(mat2).i(0).i(N).i(d + 1).f(1.f), KVM_GPT_E_RANGE},
-        {"softmax d=0", OPX_softmax_rows_fwd, A().b(mat).b(mat2).i(0).i(N).i(0).f(1.f), KVM_GPT_E_RANGE},
-        {"softmax_bwd rows beyond", OPX_softmax_rows_bwd, A().b(mat).b(mat2).b(mat3).i(0).i(N + 1).i(d).f(1.f).i(0), KVM_GPT_E_RANGE},
-        {"gather r1 beyond idx", OPX_gather_rows_scaled, A().b(mat).b(idx).b(sc).b(mat2).i(0).i(N + 1).i(d).i(0).i(0), KVM_GPT_E_RANGE},
-        {"gather d beyond cols", OPX_gather_rows_scaled, A().b(mat).b(idx).b(-1).b(mat2).i(0).i(N).i(d + 1).i(0).i(0), KVM_GPT_E_RANGE},
-        {"scatter N beyond src", OPX_scatter_add_rows, A().b(mat).b(idx).b(-1).b(mat2).i(N + 1).i(0).i(N).i(d).i(0).i(0), KVM_GPT_E_RANGE},
-        {"scatter v1 beyond dst", OPX_scatter_add_rows, A().b(mat).b(idx).b(-1).b(mat2).i(N).i(0).i(N + 1).i(d).i(0).i(0), KVM_GPT_E_RANGE},
-        {"row_dot r1 beyond out", OPX_row_dot, A().b(mat).b(mat2).b(-1).b(sc).i(0).i(N + 1).i(d).i(0).i(0), KVM_GPT_E_RANGE},
-        {"moe E=65", OPX_moe_route, A().b(probs).b(sel).b(slot).b(eidx).i(N).i(65).i(K).i(C), KVM_GPT_E_SHAPE},
-        {"moe_route N beyond probs", OPX_moe_route, A().b(probs).b(sel).b(slot).b(eidx).i(N + 1).i(E).i(K).i(C), KVM_GPT_E_RANGE},
-        {"moe_route C too large for eidx", OPX_moe_route, A().b(probs).b(sel).b(slot).b(eidx).i(N).i(E).i(K).i(C + 1), KVM_GPT_E_RANGE},
-        {"moe_route k=0", OPX_moe_route, A().b(probs).b(sel).b(slot).b(eidx).i(N).i(E).i(0).i(C), KVM_GPT_E_SHAPE},
-        {"moe_gates_fwd k=9", OPX_moe_gates_fwd, A().b(probs).b(sel).b(slot).b(gs).i(N).i(E).i(9).i(1), KVM_GPT_E_SHAPE},
-        {"moe_balance_fwd sel too short", OPX_moe_balance_fwd, A().b(probs).b(sel).b(vec1).i(N).i(E).i(K + 1).f(.1f), KVM_GPT_E_RANGE},
-        {"attn_full hd=24", OPX_attn_full_fwd, A().b(aq).b(ak).b(av).b(ao).b(alse).i(0).i(0).i(0).i(T).i(H).i(H).i(24).f(.25f), KVM_GPT_E_SHAPE},
-        {"attn_full q0 >= T", OPX_attn_full_fwd, A().b(aq).b(ak).b(av).b(ao).b(alse).i(0).i(0).i(T).i(T).i(H).i(H).i(hd).f(.25f), KVM_GPT_E_RANGE},
-        {"attn_full batch beyond buffers", OPX_attn_full_fwd, A().b(aq).b(ak).b(av).b(ao).b(alse).i(1).i(0).i(0).i(T).i(H).i(H).i(hd).f(.25f), KVM_GPT_E_RANGE},
-        {"attn_full H % Hkv", OPX_attn_full_fwd, A().b(aq).b(ak).b(av).b(ao).b(alse).i(0).i(0).i(0).i(T).i(H).i(3).i(hd).f(.25f), KVM_GPT_E_RANGE},
-        {"attn_full dq head beyond", OPX_attn_full_bwd_dq, A().b(aq).b(ak).b(av).b(ao).b(alse).b(adl).b(adq).i(0).i(H).i(0).i(T).i(H).i(H).i(hd).f(.25f), KVM_GPT_E_RANGE},
-        {"attn_full dkv kvh beyond", OPX_attn_full_bwd_dkv, A().b(aq).b(ak).b(av).b(ao).b(alse).b(adl).b(adk).b(adv).i(0).i(H).i(0).i(T).i(H).i(hd).f(.25f), KVM_GPT_E_RANGE},
-        {"round_bf16 beyond", OPX_round_bf16, A().b(fx).b(fy).i(0).i(65), KVM_GPT_E_RANGE},
-        {"matmul_bf16 flags", OPX_matmul_tile_bf16, A().b(ma).b(mb).b(mo).b(-1).b(-1).b(-1).i(0).i(0).i(8).i(8).i(8).i(64).f(1.f), KVM_GPT_E_SHAPE},
-        {"matmul_bf16 m0 >= M", OPX_matmul_tile_bf16, A().b(ma).b(mb).b(mo).b(-1).b(-1).b(-1).i(8).i(0).i(8).i(8).i(8).i(0).f(1.f), KVM_GPT_E_RANGE},
-        {"matmul_bf16 K beyond A", OPX_matmul_tile_bf16, A().b(ma).b(mb).b(mo).b(-1).b(-1).b(-1).i(0).i(0).i(8).i(8).i(9).i(0).f(1.f), KVM_GPT_E_RANGE},
-        {"matmul_tile dgelu M beyond", OP_matmul_tile, A().b(ma).b(mb).b(mo).b(-1).b(-1).b(mpre).i(0).i(0).i(9).i(8).i(8).i(512).f(1.f), KVM_GPT_E_RANGE},
-        {"lr_schedule bad kind", OPX_lr_schedule, A().b(stp).b(lr).i(3).f(1e-3f).i(2).i(10).f(.1f), KVM_GPT_E_SHAPE},
-        {"lr_schedule step buffer wrong size", OPX_lr_schedule, A().b(fx).b(lr).i(1).f(1e-3f).i(2).i(10).f(.1f), KVM_GPT_E_DTYPE},
-        {"adamw_lr e1 beyond", OPX_adamw_lr, A().b(fx).b(fy).b(fz).b(fw).b(-1).b(stp).i(0).i(65).b(lr).f(.9f).f(.99f).f(1e-8f).f(0.f), KVM_GPT_E_RANGE},
+        {"act_fwd e1 beyond buffer", OPX_act_fwd, A().b(fx).b(fy).i(1).i(0).i(65), MVM_GPT_E_RANGE},
+        {"act_fwd e0 > e1", OPX_act_fwd, A().b(fx).b(fy).i(1).i(10).i(5), MVM_GPT_E_RANGE},
+        {"act_fwd bad kind", OPX_act_fwd, A().b(fx).b(fy).i(4).i(0).i(64), MVM_GPT_E_SHAPE},
+        {"act_bwd negative kind", OPX_act_bwd, A().b(fx).b(fy).b(fz).i(-1).i(0).i(64).i(0), MVM_GPT_E_SHAPE},
+        {"silu_mul_bwd e1 beyond", OPX_silu_mul_bwd, A().b(fx).b(fy).b(fz).b(fw).b(fv).i(0).i(65).i(0), MVM_GPT_E_RANGE},
+        {"softmax rows beyond", OPX_softmax_rows_fwd, A().b(mat).b(mat2).i(0).i(N + 1).i(d).f(1.f), MVM_GPT_E_RANGE},
+        {"softmax d beyond cols", OPX_softmax_rows_fwd, A().b(mat).b(mat2).i(0).i(N).i(d + 1).f(1.f), MVM_GPT_E_RANGE},
+        {"softmax d=0", OPX_softmax_rows_fwd, A().b(mat).b(mat2).i(0).i(N).i(0).f(1.f), MVM_GPT_E_RANGE},
+        {"softmax_bwd rows beyond", OPX_softmax_rows_bwd, A().b(mat).b(mat2).b(mat3).i(0).i(N + 1).i(d).f(1.f).i(0), MVM_GPT_E_RANGE},
+        {"gather r1 beyond idx", OPX_gather_rows_scaled, A().b(mat).b(idx).b(sc).b(mat2).i(0).i(N + 1).i(d).i(0).i(0), MVM_GPT_E_RANGE},
+        {"gather d beyond cols", OPX_gather_rows_scaled, A().b(mat).b(idx).b(-1).b(mat2).i(0).i(N).i(d + 1).i(0).i(0), MVM_GPT_E_RANGE},
+        {"scatter N beyond src", OPX_scatter_add_rows, A().b(mat).b(idx).b(-1).b(mat2).i(N + 1).i(0).i(N).i(d).i(0).i(0), MVM_GPT_E_RANGE},
+        {"scatter v1 beyond dst", OPX_scatter_add_rows, A().b(mat).b(idx).b(-1).b(mat2).i(N).i(0).i(N + 1).i(d).i(0).i(0), MVM_GPT_E_RANGE},
+        {"row_dot r1 beyond out", OPX_row_dot, A().b(mat).b(mat2).b(-1).b(sc).i(0).i(N + 1).i(d).i(0).i(0), MVM_GPT_E_RANGE},
+        {"moe E=65", OPX_moe_route, A().b(probs).b(sel).b(slot).b(eidx).i(N).i(65).i(K).i(C), MVM_GPT_E_SHAPE},
+        {"moe_route N beyond probs", OPX_moe_route, A().b(probs).b(sel).b(slot).b(eidx).i(N + 1).i(E).i(K).i(C), MVM_GPT_E_RANGE},
+        {"moe_route C too large for eidx", OPX_moe_route, A().b(probs).b(sel).b(slot).b(eidx).i(N).i(E).i(K).i(C + 1), MVM_GPT_E_RANGE},
+        {"moe_route k=0", OPX_moe_route, A().b(probs).b(sel).b(slot).b(eidx).i(N).i(E).i(0).i(C), MVM_GPT_E_SHAPE},
+        {"moe_gates_fwd k=9", OPX_moe_gates_fwd, A().b(probs).b(sel).b(slot).b(gs).i(N).i(E).i(9).i(1), MVM_GPT_E_SHAPE},
+        {"moe_balance_fwd sel too short", OPX_moe_balance_fwd, A().b(probs).b(sel).b(vec1).i(N).i(E).i(K + 1).f(.1f), MVM_GPT_E_RANGE},
+        {"attn_full hd=24", OPX_attn_full_fwd, A().b(aq).b(ak).b(av).b(ao).b(alse).i(0).i(0).i(0).i(T).i(H).i(H).i(24).f(.25f), MVM_GPT_E_SHAPE},
+        {"attn_full q0 >= T", OPX_attn_full_fwd, A().b(aq).b(ak).b(av).b(ao).b(alse).i(0).i(0).i(T).i(T).i(H).i(H).i(hd).f(.25f), MVM_GPT_E_RANGE},
+        {"attn_full batch beyond buffers", OPX_attn_full_fwd, A().b(aq).b(ak).b(av).b(ao).b(alse).i(1).i(0).i(0).i(T).i(H).i(H).i(hd).f(.25f), MVM_GPT_E_RANGE},
+        {"attn_full H % Hkv", OPX_attn_full_fwd, A().b(aq).b(ak).b(av).b(ao).b(alse).i(0).i(0).i(0).i(T).i(H).i(3).i(hd).f(.25f), MVM_GPT_E_RANGE},
+        {"attn_full dq head beyond", OPX_attn_full_bwd_dq, A().b(aq).b(ak).b(av).b(ao).b(alse).b(adl).b(adq).i(0).i(H).i(0).i(T).i(H).i(H).i(hd).f(.25f), MVM_GPT_E_RANGE},
+        {"attn_full dkv kvh beyond", OPX_attn_full_bwd_dkv, A().b(aq).b(ak).b(av).b(ao).b(alse).b(adl).b(adk).b(adv).i(0).i(H).i(0).i(T).i(H).i(hd).f(.25f), MVM_GPT_E_RANGE},
+        {"round_bf16 beyond", OPX_round_bf16, A().b(fx).b(fy).i(0).i(65), MVM_GPT_E_RANGE},
+        {"matmul_bf16 flags", OPX_matmul_tile_bf16, A().b(ma).b(mb).b(mo).b(-1).b(-1).b(-1).i(0).i(0).i(8).i(8).i(8).i(64).f(1.f), MVM_GPT_E_SHAPE},
+        {"matmul_bf16 m0 >= M", OPX_matmul_tile_bf16, A().b(ma).b(mb).b(mo).b(-1).b(-1).b(-1).i(8).i(0).i(8).i(8).i(8).i(0).f(1.f), MVM_GPT_E_RANGE},
+        {"matmul_bf16 K beyond A", OPX_matmul_tile_bf16, A().b(ma).b(mb).b(mo).b(-1).b(-1).b(-1).i(0).i(0).i(8).i(8).i(9).i(0).f(1.f), MVM_GPT_E_RANGE},
+        {"matmul_tile dgelu M beyond", OP_matmul_tile, A().b(ma).b(mb).b(mo).b(-1).b(-1).b(mpre).i(0).i(0).i(9).i(8).i(8).i(512).f(1.f), MVM_GPT_E_RANGE},
+        {"lr_schedule bad kind", OPX_lr_schedule, A().b(stp).b(lr).i(3).f(1e-3f).i(2).i(10).f(.1f), MVM_GPT_E_SHAPE},
+        {"lr_schedule step buffer wrong size", OPX_lr_schedule, A().b(fx).b(lr).i(1).f(1e-3f).i(2).i(10).f(.1f), MVM_GPT_E_DTYPE},
+        {"adamw_lr e1 beyond", OPX_adamw_lr, A().b(fx).b(fy).b(fz).b(fw).b(-1).b(stp).i(0).i(65).b(lr).f(.9f).f(.99f).f(1e-8f).f(0.f), MVM_GPT_E_RANGE},
         {"adamw_lr lr buffer too small", OPX_adamw_lr, A().b(fx).b(fy).b(fz).b(fw).b(-1).b(stp).i(0).i(64).b(vec1).f(.9f).f(.99f).f(1e-8f).f(0.f), 0},
-        {"scale_flat beyond", OPX_scale_flat, A().b(fx).b(fy).f(2.f).i(0).i(65), KVM_GPT_E_RANGE},
-        {"add_rowtile T beyond pos", OPX_add_rowtile, A().b(mat).b(mat2).b(mat3).i(0).i(N).i(N + 1).i(d), KVM_GPT_E_RANGE},
-        {"add_rowtile T=0", OPX_add_rowtile, A().b(mat).b(mat2).b(mat3).i(0).i(N).i(0).i(d), KVM_GPT_E_RANGE},
+        {"scale_flat beyond", OPX_scale_flat, A().b(fx).b(fy).f(2.f).i(0).i(65), MVM_GPT_E_RANGE},
+        {"add_rowtile T beyond pos", OPX_add_rowtile, A().b(mat).b(mat2).b(mat3).i(0).i(N).i(N + 1).i(d), MVM_GPT_E_RANGE},
+        {"add_rowtile T=0", OPX_add_rowtile, A().b(mat).b(mat2).b(mat3).i(0).i(N).i(0).i(d), MVM_GPT_E_RANGE},
     };
     for (auto& m : ms) {
         if (m.want == 0) continue;   // placeholder entries: valid

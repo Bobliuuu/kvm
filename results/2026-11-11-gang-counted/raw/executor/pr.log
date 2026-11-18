@@ -1,30 +1,30 @@
 PR-READ: run /root/work/gangcnt/pr/run-20261111T142648Z, bundles /root/work/gangcnt/pr/bundles-6528ca77af9f9191
 PR-READ: cand 5e1dd02e0fc8e944 tree ?, control 228dc8df86f39cf9 tree ?, 2026-11-11T14:26:48Z
 SASS (registers, then the loop with the most reloads a pass):
-  kvm_static_kernel:   (kernel)                           269     0     4     2      15     237  kvm_dispatch 237, mm_tile_big_ni 256x128 TN 190, mm_tile_big_ni 256x128 TT rz 187
-  kvm_static_kernel:     (kernel)                     -> kvm_fail                                        1 site(s)    2-  2 live, widest at 0x0008f0
-  kvm_static_kernel:     (kernel)                     -> kvm_dispatch                                    1 site(s)    2-  2 live, widest at 0x000b10
-  kvm_static_kernel:   the loop with the most reloads, at 0x018bb0 (HMMA 3784, LDL 5034): 0 passengers
-  kvm_static_block:   (kernel)                           298     0     0     5      40     210  kvm_s_fmlp_slice 137, kvm_s_fmlp_sgd 62, kvm_dispatch_fused 3; held by none 30
-  kvm_static_block:   kvm_s_fmlp_sgd                     889     0     0     0      99     151  kvm_s_fmlp_slice 115, (kernel) 12; held by none 24
-  kvm_static_block:   kvm_s_fmlp_slice                 10920   512    15     0     206      44  kvm_s_fmlp_sgd 32, (kernel) 12
-  kvm_static_block:   the loop with the most reloads, at 0x027e50 (HMMA 8, LDL 0): 117 passengers
-  kvm_static_gang_grid:   (kernel)                           347     0     0     5      44     205  kvm_s_fmlp_grid 157, kvm_dispatch_fused 4; held by none 48
-  kvm_static_gang_grid:   kvm_s_fmlp_grid                  25592   976     3     0     231      18  (kernel) 18
-  kvm_static_gang_grid:     kvm_s_fmlp_grid              -> __internal_69_$__cuda_sm70_votesync_any        10 site(s)   10-140 live, widest at 0x0652c0
-  kvm_static_gang_grid:   the loop with the most reloads, at 0x044ad0 (HMMA 352, LDL 2): 43 passengers
-  kvm_static_gang_splitILi18E:   (kernel)                           273     0     0     5      37     202  kvm_s_fmlp_split 139, kvm_dispatch_fused 5; held by none 63
-  kvm_static_gang_splitILi18E:   kvm_s_fmlp_split                 10879   494     5    30     225      14  (kernel) 14
-  kvm_static_gang_splitILi18E:     kvm_s_fmlp_split             -> __internal_11_$__cuda_sm20_rcp_rn_f32_slowpa    4 site(s)   72- 74 live, widest at 0x007ec0
-  kvm_static_gang_splitILi18E:   the loop with the most reloads, at 0x00e0f0 (HMMA 470, LDL 4): 0 passengers
-  kvm_static_gang_splitILi4E:   (kernel)                           273     0     0     5      37     204  kvm_s_fmlp_split 137, kvm_dispatch_fused 5; held by none 67
-  kvm_static_gang_splitILi4E:   kvm_s_fmlp_split                 10905   494     5    30     227      14  (kernel) 14
-  kvm_static_gang_splitILi4E:     kvm_s_fmlp_split             -> __internal_49_$__cuda_sm70_votesync_any         5 site(s)   10-119 live, widest at 0x02b8f0
-  kvm_static_gang_splitILi4E:   the loop with the most reloads, at 0x01f040 (HMMA 158, LDL 4): 45 passengers
-  kvm_static_gang_splitILi2E:   (kernel)                           273     0     0     5      37     202  kvm_s_fmlp_split 129, kvm_dispatch_fused 5; held by none 73
-  kvm_static_gang_splitILi2E:   kvm_s_fmlp_split                 10884   494     5    30     225      14  (kernel) 14
-  kvm_static_gang_splitILi2E:     kvm_s_fmlp_split             -> __internal_61_$__cuda_sm70_votesync_any         5 site(s)   10-112 live, widest at 0x02b7a0
-  kvm_static_gang_splitILi2E:   the loop with the most reloads, at 0x01f0f0 (HMMA 158, LDL 4): 45 passengers
+  mvm_static_kernel:   (kernel)                           269     0     4     2      15     237  mvm_dispatch 237, mm_tile_big_ni 256x128 TN 190, mm_tile_big_ni 256x128 TT rz 187
+  mvm_static_kernel:     (kernel)                     -> mvm_fail                                        1 site(s)    2-  2 live, widest at 0x0008f0
+  mvm_static_kernel:     (kernel)                     -> mvm_dispatch                                    1 site(s)    2-  2 live, widest at 0x000b10
+  mvm_static_kernel:   the loop with the most reloads, at 0x018bb0 (HMMA 3784, LDL 5034): 0 passengers
+  mvm_static_block:   (kernel)                           298     0     0     5      40     210  mvm_s_fmlp_slice 137, mvm_s_fmlp_sgd 62, mvm_dispatch_fused 3; held by none 30
+  mvm_static_block:   mvm_s_fmlp_sgd                     889     0     0     0      99     151  mvm_s_fmlp_slice 115, (kernel) 12; held by none 24
+  mvm_static_block:   mvm_s_fmlp_slice                 10920   512    15     0     206      44  mvm_s_fmlp_sgd 32, (kernel) 12
+  mvm_static_block:   the loop with the most reloads, at 0x027e50 (HMMA 8, LDL 0): 117 passengers
+  mvm_static_gang_grid:   (kernel)                           347     0     0     5      44     205  mvm_s_fmlp_grid 157, mvm_dispatch_fused 4; held by none 48
+  mvm_static_gang_grid:   mvm_s_fmlp_grid                  25592   976     3     0     231      18  (kernel) 18
+  mvm_static_gang_grid:     mvm_s_fmlp_grid              -> __internal_69_$__cuda_sm70_votesync_any        10 site(s)   10-140 live, widest at 0x0652c0
+  mvm_static_gang_grid:   the loop with the most reloads, at 0x044ad0 (HMMA 352, LDL 2): 43 passengers
+  mvm_static_gang_splitILi18E:   (kernel)                           273     0     0     5      37     202  mvm_s_fmlp_split 139, mvm_dispatch_fused 5; held by none 63
+  mvm_static_gang_splitILi18E:   mvm_s_fmlp_split                 10879   494     5    30     225      14  (kernel) 14
+  mvm_static_gang_splitILi18E:     mvm_s_fmlp_split             -> __internal_11_$__cuda_sm20_rcp_rn_f32_slowpa    4 site(s)   72- 74 live, widest at 0x007ec0
+  mvm_static_gang_splitILi18E:   the loop with the most reloads, at 0x00e0f0 (HMMA 470, LDL 4): 0 passengers
+  mvm_static_gang_splitILi4E:   (kernel)                           273     0     0     5      37     204  mvm_s_fmlp_split 137, mvm_dispatch_fused 5; held by none 67
+  mvm_static_gang_splitILi4E:   mvm_s_fmlp_split                 10905   494     5    30     227      14  (kernel) 14
+  mvm_static_gang_splitILi4E:     mvm_s_fmlp_split             -> __internal_49_$__cuda_sm70_votesync_any         5 site(s)   10-119 live, widest at 0x02b8f0
+  mvm_static_gang_splitILi4E:   the loop with the most reloads, at 0x01f040 (HMMA 158, LDL 4): 45 passengers
+  mvm_static_gang_splitILi2E:   (kernel)                           273     0     0     5      37     202  mvm_s_fmlp_split 129, mvm_dispatch_fused 5; held by none 73
+  mvm_static_gang_splitILi2E:   mvm_s_fmlp_split                 10884   494     5    30     225      14  (kernel) 14
+  mvm_static_gang_splitILi2E:     mvm_s_fmlp_split             -> __internal_61_$__cuda_sm70_votesync_any         5 site(s)   10-112 live, widest at 0x02b7a0
+  mvm_static_gang_splitILi2E:   the loop with the most reloads, at 0x01f0f0 (HMMA 158, LDL 4): 45 passengers
 /root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/w_tiny/bundle: 21 op ids used, each both trees' id for its name
 /root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/w_small/bundle: 21 op ids used, each both trees' id for its name
 /root/work/gangcnt/pr/bundles-6528ca77af9f9191/panel/w_162m_3/bundle: 21 op ids used, each both trees' id for its name

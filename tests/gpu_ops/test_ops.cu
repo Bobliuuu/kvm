@@ -4,15 +4,15 @@
 #include <cstring>
 #include <limits>
 #include <map>
-#ifndef KVM_GPT_MAX_HD
-#define KVM_GPT_MAX_HD 128   // these tests and benchmarks cover hd=128 attention (-DKVM_GPT_MAX_HD=64 builds the hd<=64 union)
+#ifndef MVM_GPT_MAX_HD
+#define MVM_GPT_MAX_HD 128   // these tests and benchmarks cover hd=128 attention (-DMVM_GPT_MAX_HD=64 builds the hd<=64 union)
 #endif
 #include "harness.cuh"
 #include "refs.hpp"
-// The bf16 split's own case: attention's products as a bf16 hi/lo split (KVM_GPT_ATTN_BF2) have a worst product error of 3 x 2^-16,
+// The bf16 split's own case: attention's products as a bf16 hi/lo split (MVM_GPT_ATTN_BF2) have a worst product error of 3 x 2^-16,
 // against 3xTF32's 3 x 2^-20, so attn_case's fixed bounds are 3xTF32's times 16, and its T=1 noise bound adds the split's own terms.
 // The default build (3xTF32) keeps every bound exactly as it was.
-#if KVM_GPT_ATTN_BF2
+#if MVM_GPT_ATTN_BF2
 static constexpr double kAttnTol = 16.0;
 #else
 static constexpr double kAttnTol = 1.0;
@@ -64,7 +64,7 @@ static void t_embedding() {
         }
         if (variant == 0) {   // out-of-range token id -> error 5
             hid[2] = V + 5; dv.upi(ids, hid);
-            check_true("embedding_fwd bad token -> err 5", run1(dv, OP_embedding_fwd, A().b(ids).b(wte).b(wpe).b(out).i(0).i(N).i(T).i(d)) == KVM_GPT_E_TOKEN);
+            check_true("embedding_fwd bad token -> err 5", run1(dv, OP_embedding_fwd, A().b(ids).b(wte).b(wpe).b(out).i(0).i(N).i(T).i(d)) == MVM_GPT_E_TOKEN);
         }
     }
 }
@@ -162,14 +162,14 @@ static void t_matmul() {
         for (auto& c : bad) {
             auto o0 = dv.down(io), p0 = dv.down(ipre);
             int e = run1(dv, OP_matmul_tile, A().b(ia).b(ib).b(io).b(c.bias).b(c.res).b(c.pre).i(0).i(0).i(M).i(N).i(K).i(c.fl).f(1.f));
-            check_true("matmul_tile dgelu flags " + std::to_string(c.fl) + " bias " + std::to_string(c.bias) + " res " + std::to_string(c.res) + " pre " + std::to_string(c.pre) + " -> shape error, memory untouched", e == KVM_GPT_E_SHAPE && dv.down(io) == o0 && dv.down(ipre) == p0);
+            check_true("matmul_tile dgelu flags " + std::to_string(c.fl) + " bias " + std::to_string(c.bias) + " res " + std::to_string(c.res) + " pre " + std::to_string(c.pre) + " -> shape error, memory untouched", e == MVM_GPT_E_SHAPE && dv.down(io) == o0 && dv.down(ipre) == p0);
         }
     }
     for (int fl : {256 | 16, 256 | 128, 256 | 32 | 16, 256 | 32 | 128, 256 | 32 | 64, 2048 | 32}) {   // flag 256 needs at most one big tile and plain 1xTF32; bits above 1024 are unknown
         int M = 16, N = 16, K = 16; Dev dv; int ia = dv.addf(M, K), ib = dv.addf(K, N), io = dv.addf(M, N);
         dv.up(ia, rnd(r_main, M * K)); dv.up(ib, rnd(r_main, K * N));
         check_true("matmul_tile flags " + std::to_string(fl) + " -> shape error",
-                   run1(dv, OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(0).i(0).i(M).i(N).i(K).i(fl).f(1.f)) == KVM_GPT_E_SHAPE);
+                   run1(dv, OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(0).i(0).i(M).i(N).i(K).i(fl).f(1.f)) == MVM_GPT_E_SHAPE);
     }
     {   // in-place residual: res aliases out, accumulate off
         int M = 33, N = 40, K = 20; Dev dv;
@@ -280,7 +280,7 @@ static void t_elementwise() {
 }
 
 static uint32_t f2u(float x) { uint32_t u; memcpy(&u, &x, 4); return u; }
-static float tf32_host(float x) {   // f2tf32 in kvm_ops_gpt.cuh: to nearest, ties away, low 13 bits cleared; a NaN keeps its high bits
+static float tf32_host(float x) {   // f2tf32 in mvm_ops_gpt.cuh: to nearest, ties away, low 13 bits cleared; a NaN keeps its high bits
     uint32_t u = f2u(x);
     if ((u & 0x7fffffffu) <= 0x7f800000u) u += 0x1000u;
     u &= 0xffffe000u;
@@ -335,7 +335,7 @@ static void t_tf32_exact() {
         Dev dv; const int M = 64, N = 64, K = 32;
         int ia = dv.addf(M, K), ib = dv.addf(K, N), io = dv.addf(M, N);
         for (int fl : {1024 | 256, 1024 | 16, 1024 | 128, 2048})
-            check_true("matmul_tile flags " + std::to_string(fl) + " -> shape error", run1(dv, OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(0).i(0).i(M).i(N).i(K).i(fl).f(1.f)) == KVM_GPT_E_SHAPE);
+            check_true("matmul_tile flags " + std::to_string(fl) + " -> shape error", run1(dv, OP_matmul_tile, A().b(ia).b(ib).b(io).b(-1).b(-1).b(-1).i(0).i(0).i(M).i(N).i(K).i(fl).f(1.f)) == MVM_GPT_E_SHAPE);
     }
 }
 
@@ -368,13 +368,13 @@ static void t_rope() {
 // ---- attention --------------------------------------------------------------------------------------------------------
 static double g_t1_ratio = 0;        // T=1 backward: largest |dq or dk element| / its derived rounding bound (must stay < 1; exact value of every element is 0)
 static double g_t1_abs = 0;          // largest |dq|, |dk| element seen in T=1 cases, for the log
-struct AttnCfg { int B, T, H, Hkv, hd, seed = 0; };   // tasks tile the rows in steps of KVM_GPT_ATTN_ROWS (overlapping tasks would race on the shared output rows)
+struct AttnCfg { int B, T, H, Hkv, hd, seed = 0; };   // tasks tile the rows in steps of MVM_GPT_ATTN_ROWS (overlapping tasks would race on the shared output rows)
 static void attn_case(AttnCfg c) {
     Rng r(61 + c.hd + c.T + 7919 * c.seed);
     int B = c.B, T = c.T, H = c.H, Hkv = c.Hkv, hd = c.hd, R = B * T;
     double scale = 1.0 / sqrt((double)hd);
-    char nm[96]; snprintf(nm, sizeof nm, "attn%s B=%d T=%d H=%d Hkv=%d hd=%d", KVM_GPT_ATTN_BF2 ? " [bf2]" : "", B, T, H, Hkv, hd);
-    if (hd > KVM_GPT_MAX_HD) { skip(nm, "head size above this build's KVM_GPT_MAX_HD (not compiled)"); return; }
+    char nm[96]; snprintf(nm, sizeof nm, "attn%s B=%d T=%d H=%d Hkv=%d hd=%d", MVM_GPT_ATTN_BF2 ? " [bf2]" : "", B, T, H, Hkv, hd);
+    if (hd > MVM_GPT_MAX_HD) { skip(nm, "head size above this build's MVM_GPT_MAX_HD (not compiled)"); return; }
     Dev dv;
     int q = dv.addf(R, H * hd, H * hd + 4), k = dv.addf(R, Hkv * hd, Hkv * hd + 4), v = dv.addf(R, Hkv * hd, Hkv * hd + 8), o = dv.addf(R, H * hd);
     int lse = dv.addf(1, B * H * T), dO = dv.addf(R, H * hd), delta = dv.addf(1, B * H * T), dq = dv.addf(R, H * hd, H * hd + 12);   // outputs get different leading dimensions than q/k/v
@@ -383,7 +383,7 @@ static void attn_case(AttnCfg c) {
     for (auto& x : hq) x *= 1.5f;
     dv.up(q, hq); dv.up(k, hk); dv.up(v, hv); dv.up(dO, hdo);
     Batch b;
-    for (int bb = 0; bb < B; bb++) for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += KVM_GPT_ATTN_ROWS)
+    for (int bb = 0; bb < B; bb++) for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += MVM_GPT_ATTN_ROWS)
         b.add(OP_attn_fwd, A().b(q).b(k).b(v).b(o).b(lse).i(bb).i(h).i(q0).i(T).i(H).i(Hkv).i(hd).f((float)scale));
     int e = run(dv, b);
     D ro, rl, rdq, rdk, rdv;
@@ -395,9 +395,9 @@ static void attn_case(AttnCfg c) {
     e |= run(dv, b2);
     Batch b3;
     for (int bb = 0; bb < B; bb++) {
-        for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += KVM_GPT_ATTN_ROWS)
+        for (int h = 0; h < H; h++) for (int q0 = 0; q0 < T; q0 += MVM_GPT_ATTN_ROWS)
             b3.add(OP_attn_bwd_dq, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dq).i(bb).i(h).i(q0).i(T).i(H).i(Hkv).i(hd).f((float)scale));
-        for (int h = 0; h < Hkv; h++) for (int k0 = 0; k0 < T; k0 += KVM_GPT_ATTN_ROWS)
+        for (int h = 0; h < Hkv; h++) for (int k0 = 0; k0 < T; k0 += MVM_GPT_ATTN_ROWS)
             b3.add(OP_attn_bwd_dkv, A().b(q).b(k).b(v).b(dO).b(lse).b(delta).b(dk).b(dvv).i(bb).i(h).i(k0).i(T).i(H).i(hd).f((float)scale));
     }
     e |= run(dv, b3);
@@ -407,7 +407,7 @@ static void attn_case(AttnCfg c) {
         // |dP - delta| <= eps * sum_d |dO_d v_d| with eps = (hd + 8) 2^-22: hd terms of a 3xTF32 product (2^-22 per term, the dropped
         // low*low term) plus the fp32 delta dot and o's own 2^-23 deviation from v (the +8). Then dq_d = scale dS k_d and dk_d = sum over the
         // heads of the kv group scale dS_h q_{h,d}, so each element's bound is that sum times the other operand's magnitude.
-#if KVM_GPT_ATTN_BF2
+#if MVM_GPT_ATTN_BF2
         // The bf16 split: dP's products carry up to 3 x 2^-16 of sum |dO_d v_d|, and o = v_hi + v_lo (p = 1 is exact in bf16) deviates
         // from v by up to 2^-16 |v|, which delta carries: 4 x 2^-16 more.
         const double eps = (hd + 8) * std::ldexp(1.0, -22) + 4 * std::ldexp(1.0, -16); const int grp = H / Hkv;
@@ -451,12 +451,12 @@ static void t_attention() {
                       AttnCfg{2, 1, 4, 2, 64}, AttnCfg{1, 1, 2, 1, 128}, AttnCfg{1, 300, 4, 2, 64}, AttnCfg{2, 257, 2, 1, 32}, AttnCfg{1, 129, 2, 2, 128}})   // multi-block, partial last block, GQA 2:1
         attn_case(c);
     {   // T=1 noise sweep: many draws per head size; every dq/dk element must stay inside its derived rounding bound
-        const char* e = getenv("KVM_T1_SEEDS"); const int seeds = e ? atoi(e) : 64;   // KVM_T1_SEEDS=N: a deeper sweep for tail statistics
+        const char* e = getenv("MVM_T1_SEEDS"); const int seeds = e ? atoi(e) : 64;   // MVM_T1_SEEDS=N: a deeper sweep for tail statistics
         g_t1_ratio = 0; g_t1_abs = 0; g_quiet = true; int f0 = g_fail;
         for (int sd = 1; sd <= seeds; sd++) for (int hd : {16, 32, 64, 128}) attn_case(AttnCfg{1, 1, 4, 2, hd, sd});
         g_quiet = false;
         char d[128]; snprintf(d, sizeof d, "worst |noise|/bound %.3f, max |dq|,|dk| %.2e", g_t1_ratio, g_t1_abs);
-        std::string hds; for (int hd : {16, 32, 64, 128}) if (hd <= KVM_GPT_MAX_HD) hds += (hds.empty() ? "" : "/") + std::to_string(hd);
+        std::string hds; for (int hd : {16, 32, 64, 128}) if (hd <= MVM_GPT_MAX_HD) hds += (hds.empty() ? "" : "/") + std::to_string(hd);
         char nmv[96]; snprintf(nmv, sizeof nmv, "attn T=1 backward noise sweep (%d seeds x hd %s)", seeds, hds.c_str());
         check_true(nmv, g_fail == f0 && g_t1_ratio < 1.0, d);
     }
@@ -519,7 +519,7 @@ static void t_decode() {
     for (int b2 = 0; b2 < 2; b2++) for (int t = 0; t < 5; t++) for (int c = 0; c < hd; c++) ok &= c2[(b2 * Tmax + (b2 ? 10 : 3) + t) * hd + c] == hk2[(b2 * 5 + t) * hd + c];
     check_true("kv_append n_new=5 at per-sequence offsets", ok);
     d2.upi(ln, {3, 66});
-    check_true("kv_append overflow -> err 6", run1(d2, OP_kv_append, A().b(kn2).b(vn2).b(kc2).b(vc2).b(ln).i(0).i(2).i(5).i(1).i(hd).i(Tmax)) == KVM_GPT_E_KVLEN);
+    check_true("kv_append overflow -> err 6", run1(d2, OP_kv_append, A().b(kn2).b(vn2).b(kc2).b(vc2).b(ln).i(0).i(2).i(5).i(1).i(hd).i(Tmax)) == MVM_GPT_E_KVLEN);
 }
 
 // ---- loss -------------------------------------------------------------------------------------------------------------
@@ -583,7 +583,7 @@ static void t_adamw() {
     }
     char d[64]; snprintf(d, sizeof d, "max abs param diff %.2e after 6 steps", me);
     verdict("adamw (bias correction, decoupled wd, gscale) vs double reference", ok && me < 2e-6, d);
-    check_true("adamw step=0 -> err 3", [&] { dv.upi(st, {0}); return run1(dv, OP_adamw, A().b(p).b(g).b(m).b(v).b(-1).b(st).i(0).i(10).f(1e-3f).f(.9f).f(.99f).f(1e-8f).f(0.f)) == KVM_GPT_E_RANGE; }());
+    check_true("adamw step=0 -> err 3", [&] { dv.upi(st, {0}); return run1(dv, OP_adamw, A().b(p).b(g).b(m).b(v).b(-1).b(st).i(0).i(10).f(1e-3f).f(.9f).f(.99f).f(1e-8f).f(0.f)) == MVM_GPT_E_RANGE; }());
     // grad norm / clip
     auto g1 = rnd(r, 700), g2 = rnd(r, 300); int ga = dv.addf(1, 700), gb = dv.addf(1, 300); dv.up(ga, g1); dv.up(gb, g2);
     Batch b; b.add(OP_gradnorm_partial, A().b(ga).b(part).i(0).i(0).i(350)); b.add(OP_gradnorm_partial, A().b(ga).b(part).i(1).i(350).i(700));
@@ -650,7 +650,7 @@ static void t_sample() {
         check_true("sample topk=" + std::to_string(topk) + " V=" + std::to_string(V) + " matches double CDF reference exactly (96 draws)", ok);
     }
     if (g_vec) {   // test vectors for independent reimplementations (verified above: GPU == double CPU reference)
-        fprintf(g_vec, "{\n \"spec\": \"See include/kvm_ops_gpt.def (sample) and the sample reference in tests/gpu_ops/test_ops.cu. Philox4x32-10: counter=(row,ctr,0,0) uint32, key=(seed,0x9E3779B9); rounds: p0=0xD2511F53*c0, p1=0xCD9E8D57*c2 (64-bit products); c=(hi(p1)^c1^k0, lo(p1), hi(p0)^c3^k1, lo(p0)); k0+=0x9E3779B9, k1+=0xBB67AE85; 10 rounds. u=float32(out0>>8)*2^-24. temp<=0: argmax, lowest index on ties. Else mx=max logit; topk in (0,V): threshold = topk-th largest logit, candidates = logits >= threshold (ties kept), else all; w_j=exp(double(float32(x_j-mx))/double(temp)) for candidates; Z=sum w (index order, double); target=double(u)*Z; token = first candidate j whose inclusive prefix sum of w (index order) is > target, else the last candidate.\",\n");
+        fprintf(g_vec, "{\n \"spec\": \"See include/mvm_ops_gpt.def (sample) and the sample reference in tests/gpu_ops/test_ops.cu. Philox4x32-10: counter=(row,ctr,0,0) uint32, key=(seed,0x9E3779B9); rounds: p0=0xD2511F53*c0, p1=0xCD9E8D57*c2 (64-bit products); c=(hi(p1)^c1^k0, lo(p1), hi(p0)^c3^k1, lo(p0)); k0+=0x9E3779B9, k1+=0xBB67AE85; 10 rounds. u=float32(out0>>8)*2^-24. temp<=0: argmax, lowest index on ties. Else mx=max logit; topk in (0,V): threshold = topk-th largest logit, candidates = logits >= threshold (ties kept), else all; w_j=exp(double(float32(x_j-mx))/double(temp)) for candidates; Z=sum w (index order, double); target=double(u)*Z; token = first candidate j whose inclusive prefix sum of w (index order) is > target, else the last candidate.\",\n");
         fprintf(g_vec, " \"philox_kat\": [{\"counter\":[0,0,0,0],\"key\":[0,0],\"out\":[\"0x6627e8d5\",\"0xe169c58d\",\"0xbc57ac4c\",\"0x9b00dbd8\"]},{\"counter\":[\"0xffffffff\",\"0xffffffff\",\"0xffffffff\",\"0xffffffff\"],\"key\":[\"0xffffffff\",\"0xffffffff\"],\"out\":[\"0x408f276d\",\"0x41c83b0e\",\"0xa20bc7c6\",\"0x6d5451fd\"]}],\n \"cases\": [\n");
         bool first = true, vok = true;
         for (int V : {16, 50}) for (int topk : {0, 5}) for (double temp : {0.0, 0.7, 1.0}) for (int sd : {1, 4242}) {
@@ -697,7 +697,7 @@ static void t_batch() {
     auto o = dv.downi(dst); ok = true; for (int i = 0; i < N - 1; i++) ok &= o[i] == hs[3 * N + 1 + i];
     check_true("select_window: offset window (targets = tokens shifted by one)", ok);
     dv.upi(st, {5});
-    check_true("select_window: step past the buffer -> err 3", run1(dv, OP_select_window, A().b(src).b(st).b(dst).i(0).i(N).i(N).i(0)) == KVM_GPT_E_RANGE);
+    check_true("select_window: step past the buffer -> err 3", run1(dv, OP_select_window, A().b(src).b(st).b(dst).i(0).i(N).i(N).i(0)) == MVM_GPT_E_RANGE);
     auto ht = rnd(r, V * d); dv.up(tab, ht); dv.upi(idx, std::vector<int32_t>(hs.begin(), hs.begin() + N));
     run1(dv, OP_gather_rows, A().b(tab).b(idx).b(g).i(0).i(N).i(d));
     D ref(N * d); for (int i = 0; i < N; i++) for (int c = 0; c < d; c++) ref[i * d + c] = ht[hs[i] * d + c];
@@ -708,10 +708,10 @@ static void t_batch() {
 static void t_errors() {
     Dev dv; int f = dv.addf(4, 8), i = dv.addi(4), g = dv.addf(4, 8);
     int n = 4 * 8;
-    check_true("gelu_fwd bad buf index -> err 1", run1(dv, OP_gelu_fwd, A().b(99).b(g).i(0).i(n)) == KVM_GPT_E_BUF);
-    check_true("gelu_fwd int buffer passed as f32 -> err 2", run1(dv, OP_gelu_fwd, A().b(i).b(g).i(0).i(4)) == KVM_GPT_E_DTYPE);
-    check_true("gelu_fwd range beyond buffer -> err 3", run1(dv, OP_gelu_fwd, A().b(f).b(g).i(0).i(n + 1)) == KVM_GPT_E_RANGE);
-    check_true("attn_fwd unsupported hd -> err 4", run1(dv, OP_attn_fwd, A().b(f).b(f).b(f).b(g).b(g).i(0).i(0).i(0).i(4).i(1).i(1).i(48).f(1.f)) == KVM_GPT_E_SHAPE);
+    check_true("gelu_fwd bad buf index -> err 1", run1(dv, OP_gelu_fwd, A().b(99).b(g).i(0).i(n)) == MVM_GPT_E_BUF);
+    check_true("gelu_fwd int buffer passed as f32 -> err 2", run1(dv, OP_gelu_fwd, A().b(i).b(g).i(0).i(4)) == MVM_GPT_E_DTYPE);
+    check_true("gelu_fwd range beyond buffer -> err 3", run1(dv, OP_gelu_fwd, A().b(f).b(g).i(0).i(n + 1)) == MVM_GPT_E_RANGE);
+    check_true("attn_fwd unsupported hd -> err 4", run1(dv, OP_attn_fwd, A().b(f).b(f).b(f).b(g).b(g).i(0).i(0).i(0).i(4).i(1).i(1).i(48).f(1.f)) == MVM_GPT_E_SHAPE);
     auto before = dv.down(g);
     run1(dv, OP_gelu_fwd, A().b(99).b(g).i(0).i(n));
     check_true("failed op leaves outputs untouched", before == dv.down(g));

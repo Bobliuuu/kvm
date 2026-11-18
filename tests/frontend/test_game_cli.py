@@ -7,17 +7,17 @@ import unittest
 from pathlib import Path
 
 import _path  # noqa: F401
-from kvmfe import game
-from kvmfe.ir import FrontendError
-from kvmfe.lower import Tiling
-from kvmfe.refvm import execute
+from mvmfe import game
+from mvmfe.ir import FrontendError
+from mvmfe.lower import Tiling
+from mvmfe.refvm import execute
 
 ROOT = Path(__file__).resolve().parents[2]
 FRONTEND = ROOT / 'frontend'
-HAS_DOOM = any((ROOT / 'include').glob('kvm_ops_game.def'))
+HAS_DOOM = any((ROOT / 'include').glob('mvm_ops_game.def'))
 
 
-@unittest.skipUnless(HAS_DOOM, 'include/kvm_ops_game.def not present')
+@unittest.skipUnless(HAS_DOOM, 'include/mvm_ops_game.def not present')
 class Game(unittest.TestCase):
     def setUp(self):
         self.low, self.spec = game.compile_game(game.GameConfig(frames=4, present_rows=50), Tiling())
@@ -58,17 +58,17 @@ class Game(unittest.TestCase):
 
     def test_missing_defs_fail_clearly(self):
         with tempfile.TemporaryDirectory() as d:
-            (Path(d) / 'kvm_ops.def').write_text('X(noop, 0, "")\n')
-            old = os.environ.get('KVM_INCLUDE')
-            os.environ['KVM_INCLUDE'] = d
+            (Path(d) / 'mvm_ops.def').write_text('X(noop, 0, "")\n')
+            old = os.environ.get('MVM_INCLUDE')
+            os.environ['MVM_INCLUDE'] = d
             try:
                 with self.assertRaisesRegex(FrontendError, 'doom_tick'):
                     game.build_game(game.GameConfig())
             finally:
                 if old is None:
-                    os.environ.pop('KVM_INCLUDE')
+                    os.environ.pop('MVM_INCLUDE')
                 else:
-                    os.environ['KVM_INCLUDE'] = old
+                    os.environ['MVM_INCLUDE'] = old
 
 
 class Cli(unittest.TestCase):
@@ -79,7 +79,7 @@ class Cli(unittest.TestCase):
 
     def test_demo_all_emits_bundles_and_manifest(self):
         with tempfile.TemporaryDirectory() as d:
-            self.run_cli('kvmfe.demo', '--all', '--train-steps', '4', '--out', d)
+            self.run_cli('mvmfe.demo', '--all', '--train-steps', '4', '--out', d)
             root = Path(d)
             m = json.loads((root / 'MANIFEST.json').read_text())
             names = [a['name'] for a in m['admissions']]
@@ -95,19 +95,19 @@ class Cli(unittest.TestCase):
     def test_demo_lr_and_warmup_reach_the_device_schedule(self):
         """--lr / --warmup (the 'large' demo preset needs them: the default 3e-3 without warmup does not train gpt_162m)."""
         with tempfile.TemporaryDirectory() as d:
-            self.run_cli('kvmfe.demo', '--all', '--model', 'gpt_tiny', '--train-steps', '2', '--game-frames', '0', '--lr', '1e-3', '--warmup', '2', '--out', d)
+            self.run_cli('mvmfe.demo', '--all', '--model', 'gpt_tiny', '--train-steps', '2', '--game-frames', '0', '--lr', '1e-3', '--warmup', '2', '--out', d)
             spec = json.loads((Path(d) / 'workloads' / 'train.json').read_text())
             sched = [t['args'] for g in spec['graphs'] for t in g['tasks'] if t['op'] == 'lr_schedule']
             self.assertTrue(sched)
             self.assertEqual({(a['base'], a['warmup'], a['kind']) for a in sched}, {(1e-3, 2, 0)})
 
     def test_inspect_reports_counts(self):
-        r = self.run_cli('kvmfe.inspect', '--model', 'gpt_tiny', '--steps', '2')
+        r = self.run_cli('mvmfe.inspect', '--model', 'gpt_tiny', '--steps', '2')
         self.assertIn('critical path', r.stdout)
         self.assertIn('memory:', r.stdout)
 
     def test_check_defs(self):
-        self.run_cli('kvmfe.check_defs')
+        self.run_cli('mvmfe.check_defs')
 
 
 if __name__ == '__main__':

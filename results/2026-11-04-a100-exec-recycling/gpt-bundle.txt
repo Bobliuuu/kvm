@@ -1,5 +1,5 @@
-[kvm_exec][I] golden: 86868 buffer values compared, 5255 bitwise equal, worst buffer relative L2 error 0.0809 (tolerance 1e-09)
-[kvm_exec][I] golden: 0 reads checked, final versions compared; 105 mismatches
+[mvm_exec][I] golden: 86868 buffer values compared, 5255 bitwise equal, worst buffer relative L2 error 0.0809 (tolerance 1e-09)
+[mvm_exec][I] golden: 0 reads checked, final versions compared; 105 mismatches
 FAIL: 544/544 tasks, 7.819 ms, golden MISMATCH
 == memcheck
 OK: 544/544 tasks, 68.580 ms

@@ -1,7 +1,7 @@
 # The gang crossing by size: flag lines up to 64 members, the counter past them (A100)
 
-`kvm_gang::cross` (include/kvm_gang.cuh) picks one of the two gang barriers by the gang's size: the flag-line form (`barrier_lines`) up to
-`KVM_GANG_LINES_MAX` = 64 members, the counter form (`barrier`) past them. The split and grid MLP steps cross through it. Both forms are exact
+`mvm_gang::cross` (include/mvm_gang.cuh) picks one of the two gang barriers by the gang's size: the flag-line form (`barrier_lines`) up to
+`MVM_GANG_LINES_MAX` = 64 members, the counter form (`barrier`) past them. The split and grid MLP steps cross through it. Both forms are exact
 barriers with the same ordering and abort contract, so the choice changes cost only, never a result: every check line below repeats digit
 for digit across the arms.
 
@@ -86,7 +86,7 @@ below 8 shares, do not fit a member's shared memory; the sweep's verdict lists t
     `bba414c` adds the grid's padding, and both barriers answer the abort through `__syncthreads_or` instead of static shared memory. Which
     of these costs what is not measured here.
 - **Builds:** each was made on the host from `bba414c` plus the change, its trees checked by git's hashes against the laptop's
-  (`raw/builds/build_*.log`). This commit's `include/` differs from the shipped build's only in one comment of `kvm_gang.cuh`.
+  (`raw/builds/build_*.log`). This commit's `include/` differs from the shipped build's only in one comment of `mvm_gang.cuh`.
 - **Two cross builds were read** (`raw/builds/build_cross1.log`, `build_cross.log`). The first read every member's flag-line word at a step's
   start, a volatile load, even on the counter path (`raw/cross1-vs-counter/`, `raw/cross1-vs-lines/`).
   - The shipped build reads it only on the flag-line path (`cross_epoch`). Against the counter build (`raw/cross-vs-counter/`) its

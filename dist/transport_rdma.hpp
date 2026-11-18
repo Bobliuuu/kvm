@@ -63,7 +63,7 @@
 //      the NIC doorbell itself (via a mapped doorbell register), so the host proxy and the send queue copy go away. This needs the
 //      QP/CQ/WQ buffers allocated in GPU memory (mlx5dv / DOCA APIs, not plain libibverbs) and a NIC that supports it (ConnectX-6 Dx
 //      and newer in DOCA's list). Not designed further here: it replaces post_send, not the credit / inbox protocol above.
-//   3. Ordering of NIC writes vs GPU consumers. The device inbox is polled with ld.acquire.sys (kvm_dist.cuh). The argument we
+//   3. Ordering of NIC writes vs GPU consumers. The device inbox is polled with ld.acquire.sys (mvm_dist.cuh). The argument we
 //      would rely on: RC delivers the data RDMA_WRITE before the later RDMA_WRITE(_WITH_IMM) that carries the version, so a GPU
 //      thread that observes the new version can read the data. CAVEATS TO VERIFY ON HARDWARE, not facts established here:
 //        * "NIC write complete" is a statement about the PCIe/BAR write being posted, and whether the data is visible to SMs by the
@@ -90,7 +90,7 @@
 #include "transport.hpp"
 #include "verbs_shim.hpp"
 
-namespace kvmd {
+namespace mvmd {
 
 using shim::AsyncEvent;
 using shim::QpAttr;
@@ -700,7 +700,7 @@ class RdmaVersionInbox {
   std::atomic<bool> connected_{false}, closing_{false};
 };
 
-}  // namespace kvmd
+}  // namespace mvmd
 
 // ===================================================================================================== IbvVerbs (real NIC)
 // UNTESTED ON REAL NICs. NOT COMPILED unless HAVE_IBVERBS is defined (needs <infiniband/verbs.h>, link with -libverbs).
@@ -723,7 +723,7 @@ class RdmaVersionInbox {
 #include <infiniband/verbs.h>
 #include <poll.h>
 
-namespace kvmd {
+namespace mvmd {
 class IbvVerbs : public Verbs {
   static_assert((int)IBV_ACCESS_LOCAL_WRITE == shim::ACCESS_LOCAL_WRITE && (int)IBV_ACCESS_REMOTE_WRITE == shim::ACCESS_REMOTE_WRITE, "access flag values");
  public:
@@ -881,5 +881,5 @@ class IbvVerbs : public Verbs {
   int port_, gid_index_;
   std::mutex mu_; std::vector<ibv_mr*> mrs_; std::vector<ibv_qp*> qps_; std::vector<Cq> cqs_;
 };
-}  // namespace kvmd
+}  // namespace mvmd
 #endif  // HAVE_IBVERBS

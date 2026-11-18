@@ -19,10 +19,10 @@ F_PRECISE = 16
 
 
 def build_spec(steps: int, precise: bool, model: str = 'gpt_tiny', tiling: str = 'cpu') -> dict:
-    from kvmfe.lower import Tiling
-    from kvmfe.nn import ModelConfig
-    from kvmfe.pipeline import compile_training
-    from kvmfe.train import TrainConfig
+    from mvmfe.lower import Tiling
+    from mvmfe.nn import ModelConfig
+    from mvmfe.pipeline import compile_training
+    from mvmfe.train import TrainConfig
     c = compile_training(ModelConfig.load(model), TrainConfig(steps=steps), Tiling.preset(tiling), reuse='none')
     if c.low.data_files:
         raise SystemExit('gen_bundle: file-initialised buffers are not supported here')

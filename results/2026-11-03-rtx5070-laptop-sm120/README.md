@@ -1,12 +1,12 @@
-# kvm on an RTX 5070 Laptop GPU (sm_120), 2026-11-03
+# Magni VM on an RTX 5070 Laptop GPU (sm_120), 2026-11-03
 
-`kvm.cu` at 1079f6e. NVIDIA GeForce RTX 5070 Laptop GPU (36 SMs, compute capability 12.0, 3,090 MHz maximum SM clock, 8 GB),
+`mvm.cu` at 1079f6e. NVIDIA GeForce RTX 5070 Laptop GPU (36 SMs, compute capability 12.0, 3,090 MHz maximum SM clock, 8 GB),
 driver 610.74, under WSL2 with the display attached and clocks not locked; nvcc 12.9.86, host g++ 13.3.
 
 ```bash
-nvcc -O3 -arch=sm_120 -std=c++17 -DKTILE=32 -DKKC=<KKC> -DKSTG=<KSTG> kvm.cu -o kvm
-./kvm --selftest
-./kvm --runs R --steps 300     # MLP B=128 D=128 H=256 O=64
+nvcc -O3 -arch=sm_120 -std=c++17 -DKTILE=32 -DKKC=<KKC> -DKSTG=<KSTG> mvm.cu -o mvm
+./mvm --selftest
+./mvm --runs R --steps 300     # MLP B=128 D=128 H=256 O=64
 ```
 
 The selftest passes all 16 cases (largest error 6.6e-3). All 30 runs end in `PASS`, and in every one the final weights are

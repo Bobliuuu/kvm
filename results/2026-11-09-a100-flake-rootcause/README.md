@@ -15,13 +15,13 @@ see the same box load.
 
 ## What changed in this commit
 
-- `kvm_exec.cu`: `window_mark()`, `window_why_not_done()`; the `submit_stream` timeout error now carries the raw mark.
+- `mvm_exec.cu`: `window_mark()`, `window_why_not_done()`; the `submit_stream` timeout error now carries the raw mark.
   A mark above `wid+1` (negative "windows behind") means the table wrapped over `wid`; below means the window really is unfinished.
 - `tests/gpu/test_exec.cu` (`recycle`): producers record their first failure (producer, bundle, set, raw mark) into the verdict line; before, they
   returned silently and the only symptom was `submitted 50277 of 100000`.
 - `tests/gpu_ops/test_ops.cu`: T=1 dq/dk checked elementwise against `eps * sum_d|dO_d v_d| * scale * |other operand|`, `eps=(hd+8) 2^-22`
   (hd terms of a 3xTF32 product, the fp32 delta dot, o's 2^-23 deviation from v), summed over the heads of a kv group for dk. The verdict prints the
-  worst noise/bound ratio; a real bug (dropped term, wrong scale) is O(1) against a bound of ~1e-5, i.e. 1e5 times over. `KVM_T1_SEEDS=N` deepens the sweep.
+  worst noise/bound ratio; a real bug (dropped term, wrong scale) is O(1) against a bound of ~1e-5, i.e. 1e5 times over. `MVM_T1_SEEDS=N` deepens the sweep.
 
 ## Reproduce
 
@@ -29,7 +29,7 @@ see the same box load.
 # recycle, alternated pre-fix (1e58c69) vs fixed, 25 rounds:   ./test_exec_core recycle
 # revert control: main with window_done changed back to `== wid + 1`
 # versions, alternated pre-fix (f595945^) vs fixed:             ./test_exec_core versions   (500 + 100 rounds)
-# attention:  TEST_ONLY=attention KVM_T1_SEEDS=2000 ./test_ops
+# attention:  TEST_ONLY=attention MVM_T1_SEEDS=2000 ./test_ops
 ```
 Files: `recycle/` (summary + one failing, one passing pre-fix log, one fixed log; `[D]` ring lines stripped), `recycle-negative/`,
 `attention/`, `versions/summary-100.txt`, `versions/summary-500.txt` (columns: tree, run, exit code, FAIL lines).

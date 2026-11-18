@@ -1,11 +1,11 @@
       6     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
       1     32 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
- Function k_oneILi48EEv6KvmCtxPKiS2_:	  REG:238 STACK:0 SHARED:0 LOCAL:0 CONSTANT[2]:12 CONSTANT[0]:392 TEXTUR
- Function k_oneILi47EEv6KvmCtxPKiS2_:	  REG:162 STACK:0 SHARED:0 LOCAL:0 CONSTANT[2]:12 CONSTANT[0]:392 TEXTUR
- Function k_oneILi46EEv6KvmCtxPKiS2_:	  REG:32 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:392 TEXTURE:0 SURFACE:0 SA
- Function k_oneILi45EEv6KvmCtxPKiS2_:	  REG:210 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:392 TEXTURE:0 SURFACE:0 S
- Function k_oneILi34EEv6KvmCtxPKiS2_:	  REG:254 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:392 TEXTURE:0 SURFACE:0 S
- Function k_run6KvmCtxPKiS1_S1_:	  REG:255 STACK:32 SHARED:0 LOCAL:0 CONSTANT[2]:368 CONSTANT[0]:400 TEXTURE:0
+ Function k_oneILi48EEv6MvmCtxPKiS2_:	  REG:238 STACK:0 SHARED:0 LOCAL:0 CONSTANT[2]:12 CONSTANT[0]:392 TEXTUR
+ Function k_oneILi47EEv6MvmCtxPKiS2_:	  REG:162 STACK:0 SHARED:0 LOCAL:0 CONSTANT[2]:12 CONSTANT[0]:392 TEXTUR
+ Function k_oneILi46EEv6MvmCtxPKiS2_:	  REG:32 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:392 TEXTURE:0 SURFACE:0 SA
+ Function k_oneILi45EEv6MvmCtxPKiS2_:	  REG:210 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:392 TEXTURE:0 SURFACE:0 S
+ Function k_oneILi34EEv6MvmCtxPKiS2_:	  REG:254 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:392 TEXTURE:0 SURFACE:0 S
+ Function k_run6MvmCtxPKiS1_S1_:	  REG:255 STACK:32 SHARED:0 LOCAL:0 CONSTANT[2]:368 CONSTANT[0]:400 TEXTURE:0
 device: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz
 PASS  bench check: attn fwd B=4 T=1024 H=16 Hkv=16 hd=64 (b0,h0 all rows)  relerr 9.34e-07
 PASS  bench check: attn bwd dq B=4 T=1024 H=16 hd=64 (b0,h0)  relerr 3.20e-06
@@ -28,7 +28,7 @@ BENCH  attn bwd B=2 T=2048 H=8 Hkv=8 hd=128           full dispatch    2.996 ms 
 BENCH  attn bwd B=2 T=2048 H=8 Hkv=8 hd=128           single-op        3.091 ms [3.089..3.093]    13893.9 GFLOP/s  (71.3% of 19500)
 
 7 passed, 0 failed
-VARIANT KVM_GPT_ATTN_MMA=2
+VARIANT MVM_GPT_ATTN_MMA=2
 device: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz
 FAIL  bench check: attn fwd B=4 T=1024 H=16 Hkv=16 hd=64 (b0,h0 all rows)  relerr 5.45e-04
 FAIL  bench check: attn bwd dq B=4 T=1024 H=16 hd=64 (b0,h0)  relerr 1.09e-03
@@ -51,7 +51,7 @@ BENCH  attn bwd B=2 T=2048 H=8 Hkv=8 hd=128           full dispatch    2.430 ms 
 BENCH  attn bwd B=2 T=2048 H=8 Hkv=8 hd=128           single-op        2.552 ms [2.550..2.553]    16831.1 GFLOP/s  (86.3% of 19500)
 
 0 passed, 7 failed
-VARIANT KVM_GPT_ATTN_MMA=1
+VARIANT MVM_GPT_ATTN_MMA=1
 device: NVIDIA A100-SXM4-40GB, 108 SMs, 1410 MHz
 FAIL  bench check: attn fwd B=4 T=1024 H=16 Hkv=16 hd=64 (b0,h0 all rows)  relerr 6.86e-04
 FAIL  bench check: attn bwd dq B=4 T=1024 H=16 hd=64 (b0,h0)  relerr 1.99e-03

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """PyTorch golden for the demo's serving requests at any size (the CPU reference VM cannot run gpt_162m).
 
-A serving request (frontend/kvmfe/serve.py) prefills the prompt, then greedily decodes `max_new` tokens with a KV cache on the
+A serving request (frontend/mvmfe/serve.py) prefills the prompt, then greedily decodes `max_new` tokens with a KV cache on the
 `weights` snapshot it read. Its result is the token buffers `<req>.cur1 .. <req>.cur<max_new>`. This module recomputes them with
-PyTorch, without a KV cache and without any kvmfe op, from the model config and the weight values:
+PyTorch, without a KV cache and without any mvmfe op, from the model config and the weight values:
 
   * version 0 (an untrained snapshot): the weights are the executor's own counter-based initial values, rebuilt from the config
     (bench/vs_pytorch/torch_bench.py, self-checked against runtime/initgen.py), so nothing has to be dumped;
-  * the last version: the weights the executor holds at the end of the run, read from `kvm_run --dump '^w\\.'` (RUN/buffers/w.*.bin).
+  * the last version: the weights the executor holds at the end of the run, read from `mvm_run --dump '^w\\.'` (RUN/buffers/w.*.bin).
     The decode is then checked against the weights the executor produced; how the executor trained is the training check's job.
   * a middle version is not checked: no snapshot of it survives, and a CPU re-training cannot reproduce it (AdamW amplifies the
     1xTF32 noise, results/2026-11-04-a100-gpt-golden).
@@ -38,8 +38,8 @@ sys.path.insert(0, str(ROOT / 'frontend'))
 sys.path.insert(0, str(ROOT / 'runtime'))
 import initgen  # noqa: E402
 import torch_bench as tb  # noqa: E402
-from kvmfe.nn import GPT, ModelConfig  # noqa: E402
-from kvmfe.train import param_init  # noqa: E402
+from mvmfe.nn import GPT, ModelConfig  # noqa: E402
+from mvmfe.train import param_init  # noqa: E402
 
 SLACK = 2.0          # a tie is legitimate within SLACK * 2 * E (two logits, each off by at most E)
 
@@ -60,12 +60,12 @@ def init_weights(cfg: ModelConfig) -> dict[str, np.ndarray]:
 
 
 def load_dumped(cfg: ModelConfig, weights_dir) -> dict[str, np.ndarray]:
-    """`kvm_run --dump '^w\\.'` output: raw little-endian float32 files RUN/buffers/w.<param>.bin."""
+    """`mvm_run --dump '^w\\.'` output: raw little-endian float32 files RUN/buffers/w.<param>.bin."""
     out = {}
     for n, s in GPT(cfg).specs.items():
         f = Path(weights_dir) / f'w.{n}.bin'
         if not f.exists():
-            raise FileNotFoundError(f'{f}: dump the weights with kvm_run --dump "^w\\."')
+            raise FileNotFoundError(f'{f}: dump the weights with mvm_run --dump "^w\\."')
         out[n] = np.fromfile(f, dtype='<f4').reshape(s.rows, s.cols)
     return out
 
@@ -136,7 +136,7 @@ def check_request(cfg, w, prompt, tokens, precise=False):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--model', required=True, help='preset name, JSON file or JSON string (kvmfe.nn.ModelConfig.load)')
+    ap.add_argument('--model', required=True, help='preset name, JSON file or JSON string (mvmfe.nn.ModelConfig.load)')
     ap.add_argument('--prompt', type=int, nargs='+', required=True)
     ap.add_argument('--tokens', type=int, nargs='+', required=True, help='the executor\'s generated tokens (cur1 ..)')
     ap.add_argument('--weights-dir', help='RUN/buffers with w.*.bin (default: the initial weights, i.e. version 0)')

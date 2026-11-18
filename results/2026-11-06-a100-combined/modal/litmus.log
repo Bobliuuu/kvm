@@ -3,7 +3,7 @@ Cuda compilation tools, release 12.8, V12.8.93
 Build cuda_12.8.r12.8/compiler.35583870_0
 NVIDIA A100-SXM4-40GB, 610.57.04, 1410 MHz
 host RAM: 1024 GB, cores: 16
-BUILD: tests/litmus/build.sh (prod + 6 mutants), e2e, e2e -DKVM_BREAK_FENCE, kvm_exec
+BUILD: tests/litmus/build.sh (prod + 6 mutants), e2e, e2e -DMVM_BREAK_FENCE, mvm_exec
 
 built in /src/out
 == properties on the production headers (must be 0 violations)
@@ -24,7 +24,7 @@ mutant nofence/mp (informational, expected NOT detected on A100): TOTAL rounds=1
 mutant popplain/queue:  (exit 124)
   (hung: the broken claim livelocks the queue; counted as detected)
 mutant qrelax/queue (S4, expected NOT detected on A100: the release store is required by the model, not observable here): TOTAL rounds=1000072 violations=0
-== e2e scenarios with slot recycling and windows (each must pass), and the KVM_BREAK_FENCE control (must report stale reads)
+== e2e scenarios with slot recycling and windows (each must pass), and the MVM_BREAK_FENCE control (must report stale reads)
 e2e dag: E2E summary: failures=0 findings=0 (exit 0)
 e2e versions: E2E summary: failures=0 findings=0 (exit 0)
 e2e ring: E2E summary: failures=0 findings=0 (exit 0)

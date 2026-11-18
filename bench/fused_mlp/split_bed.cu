@@ -3,11 +3,11 @@
 //   ./split_bed [--hidden 576] [--depth 1] [--shares 5] [--virtual SV] [--slices 6] [--steps 50] [--check 3] [--embed 48] [--vocab 100] [--seed 1]
 //               [--warm-ms 500] [--dump FILE] [--stream 0|1] [--budget FLOATS] [--kc ROWS] [--runs R]
 //
-// --virtual SV runs the step's arithmetic at SV virtual shares (kvm_fused_split.h) carried by the --shares physical ones (default: SV = shares).
+// --virtual SV runs the step's arithmetic at SV virtual shares (mvm_fused_split.h) carried by the --shares physical ones (default: SV = shares).
 // Every physical count up to SV computes the same bits: --dump writes the losses and the model after the check's steps as raw floats, for a
 // byte comparison across physical counts. --warm-ms runs warm launches until that long has passed (the SM clock ramps on short runs).
-// --stream 1 runs the streamed member (kvm_fused_split.h: no weights held for the step, two staging tiles), its tile rows the largest that fits
-// --budget floats of shared memory (default the executor's, KVM_FMLP_SMEM_FLOATS), or --kc rows when given (16, 32 or 64, within the budget);
+// --stream 1 runs the streamed member (mvm_fused_split.h: no weights held for the step, two staging tiles), its tile rows the largest that fits
+// --budget floats of shared memory (default the executor's, MVM_FMLP_SMEM_FLOATS), or --kc rows when given (16, 32 or 64, within the budget);
 // its bits are the resident member's, so --dump compares them.
 // --runs R runs R copies of the run at once, each its own gang of Q x S blocks (as a bundle of R runs puts R gangs on the workers): the
 // check also compares every copy's model with the first's, byte for byte, and the timing is block 0's (the first copy's).
@@ -16,7 +16,7 @@
 // softmax cross-entropy over the batch's T = 16 x slices tokens, SGD (lr 0.05). Block (q, s) of the Q x S grid takes slice q's 16 rows and
 // share s's hidden units [h_s, h_s + w_s) of every layer: its columns of each layer's weights and bias, and its rows of the head, loaded from
 // global memory each step, so a share's data is 1/S of the model. The blocks of a slice exchange activations through L2, each crossing a
-// grid barrier (kvm_gang.cuh's form); a step has 2 x depth + 1 of them:
+// grid barrier (mvm_gang.cuh's form); a step has 2 x depth + 1 of them:
 //   * forward, layer l: Z = A W_l,s + b_l,s and H = gelu(Z) are local. Below the top layer, each block writes its columns of H, and after the
 //     barrier every block of the slice reads the whole H, the next layer's input A (the all-gather).
 //   * head: the logits are a sum over shares, so each block writes its partial (16 x V); after the barrier, every block of the slice sums its
@@ -27,7 +27,7 @@
 //     partial is the embedding's, dX0.
 //   * owners, after a barrier: the Q blocks holding share s split its parameters, sum the Q slices' partials in slice order and write the
 //     updated values; every block also owns a few embedding rows and applies the tokens' gradients in token order. A last barrier ends the step.
-// Fixed summation orders throughout, so a run is deterministic. The step is include/kvm_fused_split.cuh's split_run, the body of the executor's
+// Fixed summation orders throughout, so a run is deterministic. The step is include/mvm_fused_split.cuh's split_run, the body of the executor's
 // gang op `fmlp_split`, so this bed times and checks exactly the code the op runs; the kernel only loops it over the steps on one gang.
 // Prints block 0's per-phase cycles (each phase ends at its last warp's end), the step time by the kernel's own %globaltimer, and, with
 // --check K, the first K steps against an fp64 CPU reference.
@@ -44,22 +44,22 @@
 
 #define CK(x) do { cudaError_t e_ = (x); if (e_ != cudaSuccess) { fprintf(stderr, "CUDA error %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(e_)); exit(1); } } while (0)
 
-#include "kvm_fused_split.cuh"
+#include "mvm_fused_split.cuh"
 #include "bed_clock.cuh"
 #include "mlp_ref.h"
-using kvm_fmlp::NT;
+using mvm_fmlp::NT;
 
 constexpr float LR = 0.05f;
-constexpr int R = KVM_SPLIT_R;
-constexpr int MAXL = KVM_SPLIT_MAXL;
-constexpr int NPH = kvm_fsplit::NPH;
-constexpr int NALL = NPH + kvm_fsplit::NPH_SUB;   // every stamp index: the phases, then the sub-phases (kvm_fused_split.cuh)
+constexpr int R = MVM_SPLIT_R;
+constexpr int MAXL = MVM_SPLIT_MAXL;
+constexpr int NPH = mvm_fsplit::NPH;
+constexpr int NALL = NPH + mvm_fsplit::NPH_SUB;   // every stamp index: the phases, then the sub-phases (mvm_fused_split.cuh)
 extern __shared__ __align__(128) float smem[];
 
 // R gangs of Q x S blocks, gang r = blocks [r nslot, r nslot + nslot), each running split_run over the steps on its own run (descriptor gd[r],
 // loss slots loss + r * lstride); the descriptor is prefetched before each step, as the static worker does.
 template <int S, int Q, bool STREAM>
-__global__ void __launch_bounds__(NT, 1) split_kernel(const KvmSplitDesc* gd, int nslot, const int* ids, const int* tgt, float* loss, int lstride, int steps, int T, Timing tm) {
+__global__ void __launch_bounds__(NT, 1) split_kernel(const MvmSplitDesc* gd, int nslot, const int* ids, const int* tgt, float* loss, int lstride, int steps, int T, Timing tm) {
   const int tid = threadIdx.x, run = blockIdx.x / nslot, member = blockIdx.x % nslot;
   gd += run; loss += (size_t)run * lstride;
   if (tid == 0) tm.smid[blockIdx.x] = sm_id();
@@ -80,8 +80,8 @@ __global__ void __launch_bounds__(NT, 1) split_kernel(const KvmSplitDesc* gd, in
   for (int step = 0; step < steps; ++step) {
     if (step > 0 && blockIdx.x == 0 && tid == 0) take(step - 1);   // every warp of block 0 is past step - 1's last stamp: it passed the last barrier
     if (step > 0 && blockIdx.x == 0 && tid < 32) for (int i = tid; i < NALL; i += 32) raw[(size_t)(step - 1) * NALL + i] = stamp[(step - 1) & 1][i];
-    kvm_fsplit::prefetch_desc(gd, smem);
-    kvm_fsplit::split_run<S, Q, STREAM>(member, ids + (size_t)step * T, tgt + (size_t)step * T, loss + 2 * step, smem, nullptr, Stamps{stamp[step & 1]});
+    mvm_fsplit::prefetch_desc(gd, smem);
+    mvm_fsplit::split_run<S, Q, STREAM>(member, ids + (size_t)step * T, tgt + (size_t)step * T, loss + 2 * step, smem, nullptr, Stamps{stamp[step & 1]});
   }
   __syncthreads();
   if (blockIdx.x == 0 && tid == 0) {
@@ -92,22 +92,22 @@ __global__ void __launch_bounds__(NT, 1) split_kernel(const KvmSplitDesc* gd, in
   }
 }
 
-// The instantiated (virtual shares, slices) pairs, the op's own (KVM_SPLIT_SHARE_LIST x KVM_SPLIT_Q): a run-time bound on the partial-sum loops would serialize
+// The instantiated (virtual shares, slices) pairs, the op's own (MVM_SPLIT_SHARE_LIST x MVM_SPLIT_Q): a run-time bound on the partial-sum loops would serialize
 // each cell's loads (measured on the fused slice's owners: about 7.6 GB/s an SM, latency-bound).
-using KernelFn = void (*)(const KvmSplitDesc*, int, const int*, const int*, float*, int, int, int, Timing);
+using KernelFn = void (*)(const MvmSplitDesc*, int, const int*, const int*, float*, int, int, int, Timing);
 static KernelFn pick_kernel(int S, int Q, bool stream) {
-  if (Q != KVM_SPLIT_Q) return nullptr;
+  if (Q != MVM_SPLIT_Q) return nullptr;
   switch (S) {
-#define X(S_) case S_: return stream ? split_kernel<S_, KVM_SPLIT_Q, true> : split_kernel<S_, KVM_SPLIT_Q, false>;
-    KVM_SPLIT_SHARE_LIST
+#define X(S_) case S_: return stream ? split_kernel<S_, MVM_SPLIT_Q, true> : split_kernel<S_, MVM_SPLIT_Q, false>;
+    MVM_SPLIT_SHARE_LIST
 #undef X
     default: return nullptr;
   }
 }
 
 int main(int argc, char** argv) {
-  KvmSplitDesc d{}; d.V = 100; d.E = 48; d.L = 1; d.H = 576; d.S = 5; d.Sv = 0; d.Q = 6; d.lr = LR;
-  int steps = 50, check = 3, warm_ms = 500, stream = 0, budget = KVM_FMLP_SMEM_FLOATS, runs = 1, force_kc = 0; unsigned seed = 1; std::string dump;
+  MvmSplitDesc d{}; d.V = 100; d.E = 48; d.L = 1; d.H = 576; d.S = 5; d.Sv = 0; d.Q = 6; d.lr = LR;
+  int steps = 50, check = 3, warm_ms = 500, stream = 0, budget = MVM_FMLP_SMEM_FLOATS, runs = 1, force_kc = 0; unsigned seed = 1; std::string dump;
   for (int i = 1; i + 1 < argc; i += 2) {
     const std::string a = argv[i]; const int v = atoi(argv[i + 1]);
     if (a == "--hidden") d.H = v; else if (a == "--depth") d.L = v; else if (a == "--shares") d.S = v; else if (a == "--virtual") d.Sv = v; else if (a == "--slices") d.Q = v;
@@ -119,19 +119,19 @@ int main(int argc, char** argv) {
   if (!dump.empty() && check < 1) { fprintf(stderr, "--dump writes the model after the check's steps: give --check 1 or more\n"); return 2; }
   if (stream != 0 && stream != 1) { fprintf(stderr, "--stream takes 0 or 1\n"); return 2; }
   if (runs < 1) { fprintf(stderr, "--runs takes 1 or more\n"); return 2; }
-  int total = kvm_split_layout(d);   // fills Sv = S when --virtual is not given
+  int total = mvm_split_layout(d);   // fills Sv = S when --virtual is not given
   int kc = 0;
   if (stream && total > 0) {
     if (force_kc) {
-      kc = force_kc; total = kvm_split_layout(d, kc);
+      kc = force_kc; total = mvm_split_layout(d, kc);
       if (total < 0 || total > budget) { fprintf(stderr, "--kc %d: the streamed layout %s %d floats\n", kc, total < 0 ? "refuses it (16, 32 or 64 rows);" : "needs", total < 0 ? 0 : total); return 3; }
     } else {
-      kc = kvm_split_stream_kc(d, budget);
-      if (!kc) { fprintf(stderr, "the streamed member does not fit %d floats at 16 staging rows or more (kvm_split_stream_kc)\n", budget); return 3; }
+      kc = mvm_split_stream_kc(d, budget);
+      if (!kc) { fprintf(stderr, "the streamed member does not fit %d floats at 16 staging rows or more (mvm_split_stream_kc)\n", budget); return 3; }
       total = d.total;
     }
   }
-  if (total < 0) { fprintf(stderr, "a shape fmlp_split does not take (kvm_split_layout): H a multiple of 8, E of 16 (at most 128), V of 4 (padded at most 128), the widest share at most 128, depth 1-%d, 1 <= shares <= virtual shares <= %d\n", MAXL, KVM_SPLIT_MAXS); return 2; }
+  if (total < 0) { fprintf(stderr, "a shape fmlp_split does not take (mvm_split_layout): H a multiple of 8, E of 16 (at most 128), V of 4 (padded at most 128), the widest share at most 128, depth 1-%d, 1 <= shares <= virtual shares <= %d\n", MAXL, MVM_SPLIT_MAXS); return 2; }
   int wmax = 0; for (int s = 0; s < d.S; ++s) wmax = std::max(wmax, d.share0[d.vs0[s + 1]] - d.share0[d.vs0[s]]);
   const KernelFn kern = pick_kernel(d.Sv, d.Q, stream);
   if (!kern) { fprintf(stderr, "no kernel instantiated for %d virtual shares and %d slices (pick_kernel: Sv in 2-6, 8, 9, 10, 12, 16, 18 with 6 slices)\n", d.Sv, d.Q); return 2; }
@@ -156,9 +156,9 @@ int main(int argc, char** argv) {
   const std::vector<int>& ids = data.ids; const std::vector<int>& tgt = data.tgt;
 
   auto dalloc = [](size_t n) { float* p; CK(cudaMalloc(&p, std::max<size_t>(n, 1) * sizeof(float))); CK(cudaMemset(p, 0, std::max<size_t>(n, 1) * sizeof(float))); return p; };
-  std::vector<KvmSplitDesc> ds((size_t)runs, d);   // run r: the same layout and model, buffers of its own
-  const size_t lines = kvm_gang::line_words(nslot) * sizeof(unsigned);
-  for (KvmSplitDesc& x : ds) {
+  std::vector<MvmSplitDesc> ds((size_t)runs, d);   // run r: the same layout and model, buffers of its own
+  const size_t lines = mvm_gang::line_words(nslot) * sizeof(unsigned);
+  for (MvmSplitDesc& x : ds) {
     for (int l = 0; l < x.L; ++l) {
       x.w[l] = dalloc(W[l].size()); x.b[l] = dalloc(x.H);
       x.dW[l] = dalloc((size_t)nslot * (l ? x.HR : x.E) * x.HP); x.db[l] = dalloc((size_t)nslot * x.HP);
@@ -168,9 +168,9 @@ int main(int argc, char** argv) {
     x.P = dalloc((size_t)vslot * R * x.VP); x.dWh = dalloc((size_t)nslot * x.HP * x.VP); x.dX0 = dalloc((size_t)vslot * R * x.E);
     for (int k = 0; k < 2; ++k) x.XD[k] = x.L > 1 ? dalloc((size_t)vslot * R * x.HR) : nullptr;   // layer l's reduce-scatter in XD[l & 1]
     x.loss_part = dalloc(x.Q);
-    CK(cudaMalloc(&x.ctl, lines)); CK(cudaMemset(x.ctl, 0, lines));   // once: the gang's control words (kvm_gang::cross) need no reset between launches
+    CK(cudaMalloc(&x.ctl, lines)); CK(cudaMemset(x.ctl, 0, lines));   // once: the gang's control words (mvm_gang::cross) need no reset between launches
   }
-  KvmSplitDesc* gd; CK(cudaMalloc(&gd, ds.size() * sizeof(KvmSplitDesc))); CK(cudaMemcpy(gd, ds.data(), ds.size() * sizeof(KvmSplitDesc), cudaMemcpyHostToDevice));
+  MvmSplitDesc* gd; CK(cudaMalloc(&gd, ds.size() * sizeof(MvmSplitDesc))); CK(cudaMemcpy(gd, ds.data(), ds.size() * sizeof(MvmSplitDesc), cudaMemcpyHostToDevice));
   int *dids, *dtgt; CK(cudaMalloc(&dids, ids.size() * sizeof(int))); CK(cudaMalloc(&dtgt, tgt.size() * sizeof(int)));
   CK(cudaMemcpy(dids, ids.data(), ids.size() * sizeof(int), cudaMemcpyHostToDevice)); CK(cudaMemcpy(dtgt, tgt.data(), tgt.size() * sizeof(int), cudaMemcpyHostToDevice));
   const int lstride = nsteps * 2;   // each run's loss slots
@@ -179,7 +179,7 @@ int main(int argc, char** argv) {
   const size_t phase_words = NPH + (size_t)nsteps * NALL;   // the phases' sums, then every step's raw stamps
   CK(cudaMalloc(&tm.phase, phase_words * sizeof(long long))); CK(cudaMalloc(&tm.gtime, 2 * sizeof(unsigned long long))); CK(cudaMalloc(&tm.smid, (size_t)runs * nslot * sizeof(unsigned)));
   auto upload = [&]() {
-    for (const KvmSplitDesc& x : ds) {
+    for (const MvmSplitDesc& x : ds) {
       for (int l = 0; l < x.L; ++l) { CK(cudaMemcpy(x.w[l], W[l].data(), W[l].size() * 4, cudaMemcpyHostToDevice)); CK(cudaMemcpy(x.b[l], bvec[l].data(), bvec[l].size() * 4, cudaMemcpyHostToDevice)); }
       CK(cudaMemcpy(x.wh, Wh.data(), Wh.size() * 4, cudaMemcpyHostToDevice)); CK(cudaMemcpy(x.we, emb.data(), emb.size() * 4, cudaMemcpyHostToDevice));
     }
@@ -190,7 +190,7 @@ int main(int argc, char** argv) {
     CK(cudaLaunchCooperativeKernel((void*)kern, dim3(runs * nslot), dim3(NT), args, smem_bytes, 0)); CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
   };
   // A run's state after the check's steps, as --dump writes it: its losses, then every layer's W and b, the head and the embedding.
-  auto state_of = [&](const KvmSplitDesc& x, int run) {
+  auto state_of = [&](const MvmSplitDesc& x, int run) {
     std::vector<float> out((size_t)check * 2);
     CK(cudaMemcpy(out.data(), dloss + (size_t)run * lstride, out.size() * 4, cudaMemcpyDeviceToHost));
     auto take = [&](const float* p, size_t n) { const size_t o = out.size(); out.resize(o + n); CK(cudaMemcpy(out.data() + o, p, n * 4, cudaMemcpyDeviceToHost)); };
@@ -201,7 +201,7 @@ int main(int argc, char** argv) {
   int bad = 0;
   if (check > 0) {   // the first `check` steps against fp64
     upload(); launch(check);
-    const KvmSplitDesc& d0 = ds[0];
+    const MvmSplitDesc& d0 = ds[0];
     std::vector<float> loss((size_t)check * 2), gW[MAXL], gb[MAXL], gWh(Wh.size()), gemb(emb.size());
     CK(cudaMemcpy(loss.data(), dloss, loss.size() * 4, cudaMemcpyDeviceToHost));
     for (int l = 0; l < d.L; ++l) { gW[l].resize(W[l].size()); gb[l].resize(d.H); CK(cudaMemcpy(gW[l].data(), d0.w[l], gW[l].size() * 4, cudaMemcpyDeviceToHost)); CK(cudaMemcpy(gb[l].data(), d0.b[l], gb[l].size() * 4, cudaMemcpyDeviceToHost)); }
@@ -255,8 +255,8 @@ int main(int argc, char** argv) {
   for (int i = 0; i < NPH; ++i) printf("  %-38s %8.0f  (%4.1f%%)\n", names[i], (double)hph[i] / steps, 100.0 * hph[i] / std::max(1ll, tot));
   printf("  %-38s %8.0f cycles\n", "total", (double)tot / steps);
   printf("block 0's phases: from the last warp's end of the previous phase to the last warp's end of this one (per-warp stamps)\n");
-  {   // the sub-phases (kvm_fused_split.cuh: sub_f, sub_head, sub_b), each step's raw stamps walked in execution order from the step before's last stamp
-    using kvm_fsplit::sub_f; using kvm_fsplit::sub_b; using kvm_fsplit::sub_head; using kvm_fsplit::NSUB_F; using kvm_fsplit::NSUB_B;
+  {   // the sub-phases (mvm_fused_split.cuh: sub_f, sub_head, sub_b), each step's raw stamps walked in execution order from the step before's last stamp
+    using mvm_fsplit::sub_f; using mvm_fsplit::sub_b; using mvm_fsplit::sub_head; using mvm_fsplit::NSUB_F; using mvm_fsplit::NSUB_B;
     std::vector<int> order{0};
     for (int l = 0; l < d.L; ++l) for (int k = 0; k < NSUB_F; ++k) order.push_back(sub_f(l, k));
     for (int i : {1, 2, 3, 4}) order.push_back(i);

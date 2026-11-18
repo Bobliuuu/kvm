@@ -13,8 +13,8 @@ import unittest
 import numpy as np
 
 import _path  # noqa: F401
-from kvmfe import models
-from kvmfe.pipeline import build_model
+from mvmfe import models
+from mvmfe.pipeline import build_model
 from test_models import SMALL, SMALL_MOE, compiled, grad_of, losses
 
 try:
@@ -47,7 +47,7 @@ class TorchReference(unittest.TestCase):
     def check(self, name):
         cfg, tol_loss, tol_grad = CASES[name]
         if isinstance(cfg, str) and cfg == 'gpt_tiny':
-            from kvmfe.nn import PRESETS
+            from mvmfe.nn import PRESETS
             cfg = PRESETS['gpt_tiny']
         elif isinstance(cfg, str):
             cfg = models.PRESETS[cfg]

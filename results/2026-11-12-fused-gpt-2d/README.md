@@ -58,7 +58,7 @@ bitwise equal to the base, and the geometric mean of the paired medians is x1.00
 
 ## Numerics
 
-- **The device program** (`include/kvm_f2d.cuh`) is generated from the development beds the step was verified on.
+- **The device program** (`include/mvm_f2d.cuh`) is generated from the development beds the step was verified on.
   - On the A100, its d384 1xTF32 step writes the same five files as the bed's step, byte for byte: losses, parameters, both moments and
     gradients (`raw/numerics/outputs.md5`).
   - The bed's other layout of the gradient norm's partial sums adds the squares in other shares. With clipping engaged, its parameters

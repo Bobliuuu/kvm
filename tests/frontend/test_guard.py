@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 
 import _path  # noqa: F401
-from kvmfe import run_manifest
-from kvmfe.ir import FrontendError
+from mvmfe import run_manifest
+from mvmfe.ir import FrontendError
 
 MAX = 5
 

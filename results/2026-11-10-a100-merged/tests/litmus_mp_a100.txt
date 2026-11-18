@@ -1,5 +1,5 @@
 GPU NVIDIA A100-SXM4-40GB sm_80, 108 SMs  [build: production header]
-LITMUS mp[PROD kvm_publish + acquire]     rounds=500000  stale_rounds+aborts=0  none
+LITMUS mp[PROD mvm_publish + acquire]     rounds=500000  stale_rounds+aborts=0  none
        detail: stale_words=0 stale_rounds=0 aborts=0 (grid 648 CTAs x 256 thr, 1024 words/round)
 LITMUS mp[MUTANT reader relaxed version]  rounds=500000  stale_rounds+aborts=9631  CONTROL: failure detected (harness is sensitive)
        detail: stale_words=6950144 stale_rounds=9631 aborts=0 (grid 648 CTAs x 256 thr, 1024 words/round)

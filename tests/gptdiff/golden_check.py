@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare a GPU run of a gpt_tiny AdamW bundle with the compiler's CPU golden, with an error model that fits AdamW.
 
-  kvm_exec --dump-buffers BUNDLE > dump.txt ;  python3 golden_check.py WORKLOAD.json BUNDLE dump.txt --mode tf32|precise
+  mvm_exec --dump-buffers BUNDLE > dump.txt ;  python3 golden_check.py WORKLOAD.json BUNDLE dump.txt --mode tf32|precise
 
 Why not one relative-L2 tolerance on the final weights: AdamW's first update is u = g/(|g|+eps) ~ sign(g) (eps = 1e-8), a step
 function of the gradient. With 1xTF32 GEMMs the gradients carry ~5e-4 relative error, so every element with |g| below that noise
@@ -126,7 +126,7 @@ def main():
               'different, equally valid trajectories under 1xTF32 gradient noise; see the 1-step model check')
         return finish(rep)
 
-    from kvmfe.refvm import Memory
+    from mvmfe.refvm import Memory
     mem = Memory(spec, False, {})
     init = {n: [x for r in range(b.rows) for x in b.row(r)] for n, b in mem.bufs.items()}
     cg, cc = gpu['clip_coef'][0], gold['clip_coef'][0]

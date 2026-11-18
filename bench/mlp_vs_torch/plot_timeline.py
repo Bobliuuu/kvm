@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Timeline figure (goal 4) from the VM's OWN per-instruction timestamps (kvm.cu --timeline).
+"""Timeline figure (goal 4) from the VM's OWN per-instruction timestamps (mvm.cu --timeline).
 
   python3 plot_timeline.py timeline_R1_tiles.csv [more.csv ...] --out timeline.png [--steps 100:102]
 

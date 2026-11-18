@@ -151,7 +151,7 @@ Lf_, EVf_, SRCf_, W1f_, W2f_, lrf_ = run_pbt(False, False, True, force=kforce)
 rel = lambda a, b: float(((a - b).abs() / (b.abs() + 1e-6)).max())
 agree = [bool((torch.where(torch.from_numpy(ksrc[e].astype(np.int64)).to(dev) < 0, idx, torch.from_numpy(ksrc[e].astype(np.int64)).to(dev)) == SRCr[e]).all()) for e in range(1, K + 1)]
 same_src = all(agree)
-c = dict(same_pbt_decisions_all_rungs=same_src, rungs_where_kvm_decision_equals_fp32_oracle=sum(agree), rungs_total=K,
+c = dict(same_pbt_decisions_all_rungs=same_src, rungs_where_mvm_decision_equals_fp32_oracle=sum(agree), rungs_total=K,
          forced_replay_max_rel_train_loss_err=rel(kloss.T, Lf_), forced_replay_max_rel_eval_loss_err=(rel(kev[:K], EVf_[:K]) if EVAL else None),
          forced_replay_max_rel_final_lr_err=float(((torch.from_numpy(klr).to(dev) - lrf_.view(R)).abs() / lrf_.view(R).abs()).max()),
          forced_replay_max_rel_weight_l2=max(float((kw[r] - torch.cat([W1f_[r].flatten(), W2f_[r].flatten()])).norm() / torch.cat([W1f_[r].flatten(), W2f_[r].flatten()]).norm()) for r in range(R)),
@@ -160,7 +160,7 @@ c = dict(same_pbt_decisions_all_rungs=same_src, rungs_where_kvm_decision_equals_
          max_rel_weight_l2=max(float((kw[r] - torch.cat([W1r[r].flatten(), W2r[r].flatten()])).norm() / torch.cat([W1r[r].flatten(), W2r[r].flatten()]).norm()) for r in range(R)),
          final_best_train_loss_pbt_ref=float(Lr[-1].min()), final_best_train_loss_no_pbt_ref=float(Lnp[-1].min()),
          final_median_train_loss_pbt_ref=float(Lr[-1].median()), final_median_train_loss_no_pbt_ref=float(Lnp[-1].median()),
-         final_best_heldout_pbt_ref=float(eval_loss(W1r, W2r).min()), kvm_final_best_train_loss=float(kloss[:, -1].min()),
+         final_best_heldout_pbt_ref=float(eval_loss(W1r, W2r).min()), mvm_final_best_train_loss=float(kloss[:, -1].min()),
          final_lrs_ref=[round(float(x), 5) for x in lrr.view(R)])
 res["correctness"] = c
 res["torch_ms"] = {}
@@ -182,7 +182,7 @@ except Exception as ex: res["compiled_error"] = repr(ex)[:300]; b1C, vC = b1E, F
 tm = res["torch_ms"]
 valid = [tm["B1_graph_in_graph_pbt"]["best_ms"], tm["B3_host_synced_pbt"]["best_ms"]]
 if vC and "B1_graph_in_graph_pbt_compiled" in tm: valid += [tm["B1_graph_in_graph_pbt_compiled"]["best_ms"], tm["B3_host_synced_pbt_compiled"]["best_ms"]]
-res["kvm_ms"] = dict(no_pbt=meta["kvm_full_ms"], pbt=meta["kvm_sh_ms"])
-res["speedup"] = dict(kvm_pbt_vs_B1_eager=tm["B1_graph_in_graph_pbt"]["best_ms"] / meta["kvm_sh_ms"], kvm_pbt_vs_B3_eager=tm["B3_host_synced_pbt"]["best_ms"] / meta["kvm_sh_ms"],
-    kvm_pbt_vs_best_valid_torch=min(valid) / meta["kvm_sh_ms"], kvm_nopbt_vs_B0_eager=tm["B0_graph_no_pbt"]["best_ms"] / meta["kvm_full_ms"])
+res["mvm_ms"] = dict(no_pbt=meta["mvm_full_ms"], pbt=meta["mvm_sh_ms"])
+res["speedup"] = dict(mvm_pbt_vs_B1_eager=tm["B1_graph_in_graph_pbt"]["best_ms"] / meta["mvm_sh_ms"], mvm_pbt_vs_B3_eager=tm["B3_host_synced_pbt"]["best_ms"] / meta["mvm_sh_ms"],
+    mvm_pbt_vs_best_valid_torch=min(valid) / meta["mvm_sh_ms"], mvm_nopbt_vs_B0_eager=tm["B0_graph_no_pbt"]["best_ms"] / meta["mvm_full_ms"])
 print(json.dumps(res, indent=1)); json.dump(res, open(f"{d}/torch_result.json", "w"), indent=1)

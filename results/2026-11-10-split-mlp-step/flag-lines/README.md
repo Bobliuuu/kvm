@@ -1,8 +1,8 @@
 # The split step on flag lines: an A/B on an RTX 5070 Laptop
 
-The split bed (`bench/fused_mlp/split_bed.cu`) on the counter barrier (the code of `5c56c90`, "old") against `kvm_gang::barrier_lines`
+The split bed (`bench/fused_mlp/split_bed.cu`) on the counter barrier (the code of `5c56c90`, "old") against `mvm_gang::barrier_lines`
 ("new"):
-- Both are scratch builds with `KVM_SPLIT_Q 2`, so 2 x 18 blocks fit the 5070's 36 SMs (run with `--slices 2`).
+- Both are scratch builds with `MVM_SPLIT_Q 2`, so 2 x 18 blocks fit the 5070's 36 SMs (run with `--slices 2`).
 - Built with the panel's numerics flags (`--fmad=false -Xcompiler -ffp-contract=off`) for sm_120.
 - 20 steps, the first 3 against float64.
 - Two rounds, the arms in alternating order. Figures are (unverified) until the team's verifier names them.

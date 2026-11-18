@@ -3629,7 +3629,7 @@ PASS  attn B=1 T=100 H=4 Hkv=1 hd=64 bwd dk  relerr 3.347e-06 (tol 3e-05)
 PASS  attn B=1 T=100 H=4 Hkv=1 hd=64 bwd dv  relerr 2.544e-06 (tol 3e-05)
 PASS  attn B=1 T=100 H=4 Hkv=1 hd=64 bwd bitwise deterministic  
 PASS  attn B=1 T=100 H=4 Hkv=1 hd=64 err==0  
-SKIP  attn B=1 T=70 H=2 Hkv=2 hd=128  head size above this build's KVM_GPT_MAX_HD (not compiled)
+SKIP  attn B=1 T=70 H=2 Hkv=2 hd=128  head size above this build's MVM_GPT_MAX_HD (not compiled)
 PASS  attn B=2 T=32 H=2 Hkv=2 hd=16 fwd o  relerr 7.441e-07 (tol 2e-05)
 PASS  attn B=2 T=32 H=2 Hkv=2 hd=16 fwd lse  relerr 5.529e-07 (tol 2e-05)
 PASS  attn B=2 T=32 H=2 Hkv=2 hd=16 bwd dq  relerr 1.127e-06 (tol 3e-05)
@@ -3657,7 +3657,7 @@ PASS  attn B=2 T=1 H=4 Hkv=2 hd=64 bwd dq,dk rounding noise within derived bound
 PASS  attn B=2 T=1 H=4 Hkv=2 hd=64 bwd dv  relerr 2.160e-07 (tol 3e-05)
 PASS  attn B=2 T=1 H=4 Hkv=2 hd=64 bwd bitwise deterministic  
 PASS  attn B=2 T=1 H=4 Hkv=2 hd=64 err==0  
-SKIP  attn B=1 T=1 H=2 Hkv=1 hd=128  head size above this build's KVM_GPT_MAX_HD (not compiled)
+SKIP  attn B=1 T=1 H=2 Hkv=1 hd=128  head size above this build's MVM_GPT_MAX_HD (not compiled)
 PASS  attn B=1 T=300 H=4 Hkv=2 hd=64 fwd o  relerr 2.247e-06 (tol 2e-05)
 PASS  attn B=1 T=300 H=4 Hkv=2 hd=64 fwd lse  relerr 1.100e-06 (tol 2e-05)
 PASS  attn B=1 T=300 H=4 Hkv=2 hd=64 bwd dq  relerr 2.173e-06 (tol 3e-05)
@@ -3672,7 +3672,7 @@ PASS  attn B=2 T=257 H=2 Hkv=1 hd=32 bwd dk  relerr 3.301e-06 (tol 3e-05)
 PASS  attn B=2 T=257 H=2 Hkv=1 hd=32 bwd dv  relerr 3.049e-06 (tol 3e-05)
 PASS  attn B=2 T=257 H=2 Hkv=1 hd=32 bwd bitwise deterministic  
 PASS  attn B=2 T=257 H=2 Hkv=1 hd=32 err==0  
-SKIP  attn B=1 T=129 H=2 Hkv=2 hd=128  head size above this build's KVM_GPT_MAX_HD (not compiled)
+SKIP  attn B=1 T=129 H=2 Hkv=2 hd=128  head size above this build's MVM_GPT_MAX_HD (not compiled)
 PASS  attn T=1 backward noise sweep (64 seeds x hd 16/32/64)  worst |noise|/bound 0.089, max |dq|,|dk| 1.37e-05
 PASS  attn B=1 T=2 H=2 Hkv=1 hd=32 fwd o  relerr 3.153e-07 (tol 2e-05)
 PASS  attn B=1 T=2 H=2 Hkv=1 hd=32 fwd lse  relerr 6.983e-07 (tol 2e-05)

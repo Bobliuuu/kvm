@@ -1,8 +1,8 @@
-"""KVM host compiler: declarative workload JSON -> ABI v2 bundle (typed task descriptors + weight versioning).
+"""Magni VM host compiler: declarative workload JSON -> ABI v2 bundle (typed task descriptors + weight versioning).
 
     python3 runtime/compile_workload.py workload.json out_dir [--base-versions weight=3,...] [--emit-golden]
 
-The operator schema comes from include/kvm_ops*.def and the descriptor layout from include/kvm_task_abi.h
+The operator schema comes from include/mvm_ops*.def and the descriptor layout from include/mvm_task_abi.h
 (runtime/abi.py parses them); semantics for range checks come from runtime/ref_ops.py. See FRAMEWORK.md.
 """
 import argparse
@@ -23,12 +23,12 @@ import abi
 import initgen
 import ref_ops
 
-log = logging.getLogger('kvm.compiler')
+log = logging.getLogger('mvm.compiler')
 INT32_MAX = 2**31 - 1
 INT32_MIN = -2**31
 SEED_MAX = 2**63 - 1
 POLICIES = ('exact', 'at_least')
-DTYPES = {'f32': 0, 'i32': 1, 'bf16': 2}   # KvmBuf.dtype (bf16 = raw 16-bit storage; the init values are rounded to bf16)
+DTYPES = {'f32': 0, 'i32': 1, 'bf16': 2}   # MvmBuf.dtype (bf16 = raw 16-bit storage; the init values are rounded to bf16)
 _warned_ops: set = set()
 _F32 = struct.Struct('<f')
 _I32 = struct.Struct('<i')

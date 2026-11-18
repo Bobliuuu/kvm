@@ -6,12 +6,12 @@ from pathlib import Path
 
 import _path  # noqa: F401
 import oracle_gpt
-from kvmfe import demo, run_manifest
-from kvmfe.nn import PRESETS
-from kvmfe.optim import OptimConfig
+from mvmfe import demo, run_manifest
+from mvmfe.nn import PRESETS
+from mvmfe.optim import OptimConfig
 
 CFG = PRESETS['gpt_tiny']
-HAS_DOOM = (Path(__file__).resolve().parents[2] / 'include' / 'kvm_ops_game.def').exists()
+HAS_DOOM = (Path(__file__).resolve().parents[2] / 'include' / 'mvm_ops_game.def').exists()
 
 
 class EndToEnd(unittest.TestCase):

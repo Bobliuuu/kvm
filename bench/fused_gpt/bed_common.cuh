@@ -1,6 +1,6 @@
 #pragma once
 // What the fused GPT beds share (fgpt_bed.cu runs the fused step, f2d_bed.cu runs F): a workload that fgpt_bed.py wrote, loaded into device
-// memory as a bundle's buffers would be (KvmFgptDesc's shape, hyperparameters, parameter slots with their moments and gradients, streams,
+// memory as a bundle's buffers would be (MvmFgptDesc's shape, hyperparameters, parameter slots with their moments and gradients, streams,
 // step counter and loss buffers), the warm-up, the phase clock and the outputs fgpt_bed.py judges. Each bed adds its own form's buffers and
 // launch. A bed defines BED_NAME, the prefix of its messages, before including this.
 //
@@ -17,7 +17,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include "kvm_fused_gpt.h"
+#include "mvm_fused_gpt.h"
 
 #ifndef BED_NAME
 #error "a bed defines BED_NAME, the prefix of its messages, before including bed_common.cuh"
@@ -88,7 +88,7 @@ template <class T> static void write_bin(const std::string& path, const T* p, si
 // meta.txt read into a descriptor's shape, hyperparameters and slot shapes (h's buffers are null until bed_upload), with the run's first
 // step and the slots' total elements.
 struct BedModel {
-  KvmFgptDesc h{};
+  MvmFgptDesc h{};
   int step0 = 0;
   size_t total = 0;                           // the slots' elements: one copy of the parameters
 };
@@ -114,7 +114,7 @@ static BedModel bed_meta(const std::string& dir, int G) {
   }
   auto need = [&](const char* k) { auto it = kv.find(k); if (it == kv.end()) die("meta.txt lacks %s", k); return it->second; };
   BedModel m;
-  KvmFgptDesc& h = m.h;
+  MvmFgptDesc& h = m.h;
   h.N = (int)need("N"); h.T = (int)need("T"); h.B = (int)need("B"); h.d = (int)need("d"); h.H = (int)need("H"); h.hd = (int)need("hd");
   h.F = (int)need("F"); h.V = (int)need("V"); h.L = (int)need("L"); h.G = G; h.steps = (int)need("steps"); h.mm_numerics = (int)need("mm_numerics");
   h.ln_eps = (float)need("ln_eps"); h.theta = (float)need("theta"); h.scale = (float)need("scale"); h.lr = (float)need("lr");
@@ -122,7 +122,7 @@ static BedModel bed_meta(const std::string& dir, int G) {
   h.ids_stride = (int)need("ids_stride"); h.ids_off = (int)need("ids_off"); h.tgt_stride = (int)need("tgt_stride"); h.tgt_off = (int)need("tgt_off");
   h.ids_len = (long long)need("ids_len"); h.tgt_len = (long long)need("tgt_len");
   m.step0 = (int)need("step0");
-  if (h.L < 1 || h.L > KVM_FGPT_MAXL || (int)slots.size() != kvm_fgpt_nparams(h.L)) die("the meta's layers and slots disagree");
+  if (h.L < 1 || h.L > MVM_FGPT_MAXL || (int)slots.size() != mvm_fgpt_nparams(h.L)) die("the meta's layers and slots disagree");
   for (int i = 0; i < (int)slots.size(); ++i) {
     h.prows[i] = slots[i].rows; h.pcols[i] = slots[i].cols; h.wd[i] = slots[i].wd;
     m.total += (size_t)slots[i].rows * slots[i].cols;
@@ -139,7 +139,7 @@ struct BedRun {
   int32_t* dstep = nullptr;
 };
 static BedRun bed_upload(const std::string& dir, BedModel& m, size_t extra_bytes) {
-  KvmFgptDesc& h = m.h;
+  MvmFgptDesc& h = m.h;
   const size_t total = m.total;
   const size_t bytes = 4 * total * 4 + extra_bytes + (size_t)(h.ids_len + h.tgt_len) * 4;
   if (bytes > (1ull << 30)) die("the run needs more than 1 GiB of device memory");
@@ -151,7 +151,7 @@ static BedRun bed_upload(const std::string& dir, BedModel& m, size_t extra_bytes
   CK(cudaMemcpy(r.dv, Vv.data(), total * 4, cudaMemcpyHostToDevice));
   CK(cudaMemset(r.dg, 0xff, total * 4));   // NaN: a gradient element no member wrote shows in the comparison
   size_t off = 0;
-  for (int i = 0; i < kvm_fgpt_nparams(h.L); ++i) {
+  for (int i = 0; i < mvm_fgpt_nparams(h.L); ++i) {
     h.p[i] = r.dp + off; h.m[i] = r.dm + off; h.v[i] = r.dv + off; h.g[i] = r.dg + off;
     off += (size_t)h.prows[i] * h.pcols[i];
   }
@@ -208,7 +208,7 @@ static void bed_phase_table(const unsigned long long* dacc, int G, int marks, in
 
 // The outputs fgpt_bed.py reads, into DIR/out-G<G>[-clock]/.
 static void bed_write(const std::string& dir, const BedModel& m, const BedRun& r, bool clocked, int err, int done, int step, float ms) {
-  const KvmFgptDesc& h = m.h;
+  const MvmFgptDesc& h = m.h;
   const size_t total = m.total;
   const std::string out = dir + "/out-G" + std::to_string(h.G) + (clocked ? "-clock" : "");
   mkdir(out.c_str(), 0755);

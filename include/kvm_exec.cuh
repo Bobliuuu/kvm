@@ -155,7 +155,8 @@ static const KvmOpInfo* kvm_op(int id) {  // nullptr if id is not registered
   E(SLOTS, "task slot pool exhausted (max_tasks)") E(POOL, "successor/args pool exhausted") \
   E(BATCH_TOO_LARGE, "bundle larger than live_cap") E(TIMEOUT, "device timeout (deadlock or stalled admission)") \
   E(QUEUE_OVERFLOW, "ready ring invariant violated") E(BAD_CONFIG, "bad launch configuration") \
-  E(PARK_STALL, "more tasks parked on versions than the park budget (live_cap) and admission needs room") E(TASK_LIMIT, "a task ran longer than task_limit")
+  E(PARK_STALL, "more tasks parked on versions than the park budget (live_cap) and admission needs room") E(TASK_LIMIT, "a task ran longer than task_limit") \
+  E(ALIAS_RECORD, "a record other than the prestaged one under an aliased successor ring (succ_alias)")
 enum KvmErr {
 #define E(n, s) KVM_ERR_##n,
   KVM_ERRORS(E)
@@ -206,6 +207,8 @@ struct KvmDevState {
   int no_waits;    // 1: no task of the run waits on a version: releasing a task needs no look at its descriptor
   int trace_on;    // 1: per-task timeline and witness in trace[] (needed by --trace-csv, tests and the scheduler); 0: a run that only times keeps none of it off the task path
   int prestaged;   // 1: the host wrote the (single, one-record) run's record into device memory before the kernel started: the admitter skips its staging pass
+  int succ_alias;  // 1: that prestaged record's successor words are the successor ring (succ points at them in stage; the host validated each one): the admitter
+                  //    skips its copy, which is an identity there (slot = record index, ring offset 0) and ran on one block alone (gpt-162m: 8.5M words, 5 ms)
   int warm_only;   // 1: a launch that returns at once: the kernel's code is uploaded and started before the timed launch
 #ifdef KVM_PROF_GAP
   int noop_ops;    // profiling only (--noop-ops): the graph, the dependencies and the dispatcher run as usual but no op body does, to separate the hop's own cost from what the op bodies leave behind
@@ -885,9 +888,15 @@ __device__ void kvm_admit_record(const KvmDevState& S, KvmWatch& t0, KvmAdmitSha
   }
   const unsigned long long now = S.trace_on ? kvm_now() : 0ull;
   const unsigned wid = A.win_next;
+  // An aliased ring (S.succ_alias) is only this record's own successor words, read in place: valid for the first record at ring offset 0 with nothing recycled.
+  // Anything else would read another record's words as successors, so it stops the run instead.
+  if (S.succ_alias && (roff != 0 || fbase != 0 || sbase != 0 || !S.no_recycle)) {
+    if (threadIdx.x == 0) { kvm_fail(S, KVM_ERR_ALIAS_RECORD, -1, (int)roff, (int)sbase); A.action = KVM_ADM_EXIT; }
+    return;
+  }
   // Successor words first, then the window and admitted accounting: a task released below can finish before its own record has been read, and every successor list it decrements through
-  // must already be in place. Eight words per thread in flight; a stage load, then (with recycling) the map from record index to slot.
-  for (int base = threadIdx.x; base < ne; base += 8 * blockDim.x) {
+  // must already be in place. Eight words per thread in flight; a stage load, then (with recycling) the map from record index to slot. An aliased ring is already in place.
+  for (int base = threadIdx.x; !S.succ_alias && base < ne; base += 8 * blockDim.x) {
     int v[8], sl[8];
 #pragma unroll
     for (int u = 0; u < 8; ++u) { const int e = base + u * blockDim.x; v[u] = e < ne ? __ldcg(re + e) : 0; }

@@ -32,7 +32,7 @@ compile() {  # name, include dir, fence form
 }
 mutant() {  # name, sed expression, lines it must change: prints the include dir that holds the mutated header
   local d="$OUT/hdr_$1"
-  rm -rf -- "${d:?}"; mkdir -p "$d"; cp "$ROOT"/include/* "$d/"
+  rm -rf -- "${d:?}"; mkdir -p "$d"; cp -r "$ROOT"/include/* "$d/"
   sed -E "$2" "$ROOT/include/kvm_gang.cuh" > "$d/kvm_gang.cuh"
   local n; n=$(diff "$ROOT/include/kvm_gang.cuh" "$d/kvm_gang.cuh" | grep -c '^>' || true)
   if [ "$n" != "$3" ]; then echo "mutant $1: the sed changed $n line(s), not $3: the header moved under it" >&2; exit 2; fi

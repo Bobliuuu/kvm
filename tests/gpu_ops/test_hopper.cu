@@ -23,7 +23,7 @@
 
 __global__ void __launch_bounds__(256, 1) k_mm(KvmCtx c, const int32_t* w, int which) {
     const int32_t* a = w + 13 * blockIdx.x;
-    if (which == 0) kvmgpt::matmul_tile(c, a); else kvmextra::matmul_mma_bf16(c, a);
+    if (which == 0) kvmgpt::matmul_tile<true>(c, a); else kvmextra::matmul_mma_bf16(c, a);   // matmul_tile: the dynamic kernel's forms
 }
 static void set_ready(int on) { CK(cudaMemcpyToSymbol(kvm_tma_ready, &on, 4)); }
 static unsigned long long counts(int i) { unsigned long long c[4]; kvm_hopper_counts(c, true); return c[i]; }

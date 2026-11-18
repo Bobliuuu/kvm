@@ -155,7 +155,7 @@ __device__ void kvm_static_worker(const KvmStaticDev& Sref, KvmSShared& sh) {
       KvmCtx c{r->bufs, r->nbufs, r->task, S.cnt, S.herr, sh.smem};
       float* const arena = reinterpret_cast<float*>(kvm_gpt_smem);
       if constexpr (E == KvmSEntry::generic) {
-        kvm_dispatch(r->op, c, r->args);
+        kvm_dispatch<KVM_IN_STATIC>(r->op, c, r->args);   // the static kernel's forms (matmul_tile: no 256x128 fast forms)
       } else if constexpr (E == KvmSEntry::block) {
         if (r->op == KVM_OP_fmlp_slice) kvm_s_fmlp_slice(r->args[1], reinterpret_cast<const int32_t*>(r->bufs[r->args[2]].p), reinterpret_cast<const int32_t*>(r->bufs[r->args[3]].p), arena, S.fuse_phases ? S.fuse_phases + (size_t)w * KVM_FMLP_NPHASES : nullptr, &sh.t_phase, &c);
         else if (r->op == KVM_OP_fmlp_sgd) kvm_s_fmlp_sgd(r->args[1], reinterpret_cast<float*>(r->bufs[r->args[2]].p), arena);

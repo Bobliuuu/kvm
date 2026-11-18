@@ -29,6 +29,7 @@
 #include <cstdint>
 #include <cuda_runtime.h>
 #include <type_traits>
+#include "cutlass/gemm/threadblock/default_mma.h"   // mm_cut_mainloop: CUTLASS 2.x's sm80 multistage mainloop (the vendored subset: include/cutlass/VENDORED.md)
 #include "kvm_task_abi.h"
 #include "kvm_hopper.cuh"   // sm_90a TMA + wgmma tiles (no-op on every other target)
 
@@ -811,6 +812,60 @@ KVM_GPT_DEVI void tile_wb(const float* sm, int m0, int n0, int M, int N, float* 
     }
 }
 
+// One pass of the 256x128 tile's own epilogue (huge_epilogue_fast): 128 staged rows, row sr holding tile row (sr >> 5) * 64 + pass * 32 +
+// (sr & 31); each thread one group of 4 columns at 16 rows, unrolled, with the kind fixed at compile time, so nothing is tested per element.
+// Per element the operations and their order are tile_wb's vector path for these kinds (0 + the partial, x alpha, + bias, + res, + out), so
+// the bits are tile_wb's.
+template <int CLD, bool BIAS, bool RES, bool ACC>
+KVM_GPT_DEVI void tile_epi_big(const float* sm, int m0p, int n0, float* out, int ldo, const float* bias, const float* res, int ldr, float alpha) {
+    const int c = (threadIdx.x & 31) * 4, r0 = threadIdx.x >> 5, gn = n0 + c;
+    float4 b4 = make_float4(0.f, 0.f, 0.f, 0.f);
+    if constexpr (BIAS) b4 = *reinterpret_cast<const float4*>(bias + gn);
+#pragma unroll
+    for (int s = 0; s < 16; s++) {
+        const int sr = r0 + 8 * s, gm = m0p + (sr >> 5) * 64 + (sr & 31);
+        const float4 t = *reinterpret_cast<const float4*>(sm + sr * CLD + c);
+        float v[4] = {0.f + t.x, 0.f + t.y, 0.f + t.z, 0.f + t.w};
+        v[0] *= alpha; v[1] *= alpha; v[2] *= alpha; v[3] *= alpha;
+        if constexpr (BIAS) { v[0] += b4.x; v[1] += b4.y; v[2] += b4.z; v[3] += b4.w; }
+        if constexpr (RES) { const float4 r4 = *reinterpret_cast<const float4*>(res + (size_t)gm * ldr + gn); v[0] += r4.x; v[1] += r4.y; v[2] += r4.z; v[3] += r4.w; }
+        float4* o = reinterpret_cast<float4*>(out + (size_t)gm * ldo + gn);
+        if constexpr (ACC) { const float4 o4 = *o; v[0] += o4.x; v[1] += o4.y; v[2] += o4.z; v[3] += o4.w; }
+        *o = make_float4(v[0], v[1], v[2], v[3]);
+    }
+}
+// The 256x128 tile's epilogue for the step's common kinds (plain, bias, bias + residual, accumulate: 83% of gpt-162m's 256x128 tasks).
+// tile_wb's form spends most of a short-k tile's epilogue testing each kind for each element and staging with half the warps idle (an A100,
+// a plain K=768 tile: 0.18 of cuBLAS's time in that loop and 0.13 in the staging, 0.01 in the stores). Here every warp stages half
+// its rows in each of two passes, and tile_epi_big writes them with the kind fixed. It returns false, having done nothing, for another kind
+// (gelu, dgelu, the rounded store: those read slower in this form) or a tile that is not whole and aligned; the caller's epilogue takes them.
+template <int CLD>
+KVM_GPT_DEVI bool huge_epilogue_fast(const float (&acc)[4][8][4], int ewm, int ewn, int g, int t, float* sm, int m0, int n0, int M, int N, float* out, int ldo,
+                                     const float* bias, const float* res, int ldr, const float* pre, float alpha, int act, bool accum) {
+    const int kind = (bias ? 1 : 0) | (res ? 2 : 0) | (pre ? 4 : 0) | (accum ? 8 : 0) | (act ? 16 : 0);
+    const bool whole = (n0 & 3) == 0 && m0 + 256 <= M && n0 + 128 <= N && aligned16(out, ldo) && (!bias || aligned16(bias, 0)) && (!res || aligned16(res, ldr));
+    if (!whole || (kind != 0 && kind != 1 && kind != 3 && kind != 8)) return false;
+#pragma unroll
+    for (int pass = 0; pass < 2; pass++) {
+        __syncthreads();   // the last stage (or the previous pass's rows) is read by everyone
+#pragma unroll
+        for (int ii = 0; ii < 2; ii++)
+#pragma unroll
+            for (int j = 0; j < 8; j++) {   // MMA row 2 pass + ii of the warp's tile: staged rows ewm * 32 + ii * 16 + g and + 8
+                const int r = ewm * 32 + ii * 16 + g, c = ewn * 64 + j * 8 + 2 * t;
+                *reinterpret_cast<float2*>(sm + r * CLD + c) = make_float2(acc[2 * pass + ii][j][0], acc[2 * pass + ii][j][1]);
+                *reinterpret_cast<float2*>(sm + (r + 8) * CLD + c) = make_float2(acc[2 * pass + ii][j][2], acc[2 * pass + ii][j][3]);
+            }
+        __syncthreads();
+        const int mp = m0 + pass * 32;
+        if (kind == 0) tile_epi_big<CLD, false, false, false>(sm, mp, n0, out, ldo, bias, res, ldr, alpha);
+        else if (kind == 1) tile_epi_big<CLD, true, false, false>(sm, mp, n0, out, ldo, bias, res, ldr, alpha);
+        else if (kind == 3) tile_epi_big<CLD, true, true, false>(sm, mp, n0, out, ldo, bias, res, ldr, alpha);
+        else tile_epi_big<CLD, false, false, true>(sm, mp, n0, out, ldo, bias, res, ldr, alpha);
+    }
+    return true;
+}
+
 // 64x64 output tile, BK=32, 3-stage cp.async pipeline (3 x 16 KiB = 48 KiB, the epilogue reuses it), 8 warps, mma.sync m16n8k8
 // TF32. Warp (wm, wn, kh): 32x32 sub-tile at (wm*32, wn*32) = 2 m16 x 4 n8 fragments, reducing k8-steps {2kh, 2kh+1} of each BK=32
 // slab; the two k-halves are summed in the epilogue. Shared tiles keep the global orientation (coalesced loads for all four
@@ -950,10 +1005,47 @@ KVM_GPT_DEVI void mm_tile(const float* A, int lda, const float* B, int ldb, floa
     tile_wb<TM, TN, 2, CLD>(sm, m0, n0, M, N, out, ldo, bias, res, ldr, pre, ldp, alpha, act, accum);
 }
 
+// The 256x128 tile's mainloop for rounded operands (plain 1xTF32): CUTLASS 2.x's sm80 MmaMultistage at the tile's own configuration
+// (256x128xBK, 4x2 warps of 64x64, NST stages, the same shared memory). It rounds each operand fragment as CUTLASS does (round_half_ulp_truncate:
+// a half ulp added to a finite value, the low 13 bits dropped by the tensor core), which is how this file's tiles round, and each thread sums k
+// in increasing k8 steps, so with K a multiple of BK (CUTLASS takes a residue slab first) its accumulators are mm_tile_big's own loop's, bit for
+// bit. On an A100 it gives the own loop's bits on every 256x128 class of gpt-162m's step and runs 10-20% faster on rounded
+// operands, where the own loop's rounding pass binds; on operands already TF32 (flags 256, 1024) it is no faster, so those keep the own loop.
+// The accumulators come back in the tile's acc[i][j][4] form (CUTLASS keeps MMA tile (i, j) of a warp at i + 4j); the warp's tile is
+// CUTLASS's, rows (warp % 4) * 64 and columns (warp / 4) * 64.
+template <bool TA, bool TB>
+KVM_GPT_DEVI void mm_cut_mainloop(const float* A, int lda, const float* B, int ldb, int m0, int n0, int M, int N, int K, float (&acc)[4][8][4]) {
+    using LA = std::conditional_t<TA, cutlass::layout::ColumnMajor, cutlass::layout::RowMajor>;   // A [k][m] or [m][k]
+    using LB = std::conditional_t<TB, cutlass::layout::ColumnMajor, cutlass::layout::RowMajor>;   // B [n][k] or [k][n]
+    using Mma = typename cutlass::gemm::threadblock::DefaultMma<float, LA, 4, float, LB, 4, float, cutlass::layout::RowMajor, cutlass::arch::OpClassTensorOp,
+        cutlass::arch::Sm80, cutlass::gemm::GemmShape<256, 128, KVM_GPT_BIG_BK>, cutlass::gemm::GemmShape<64, 64, KVM_GPT_BIG_BK>,
+        cutlass::gemm::GemmShape<16, 8, 8>, KVM_GPT_BIG_NST, cutlass::arch::OpMultiplyAdd>::ThreadblockMma;
+    static_assert(sizeof(typename Mma::SharedStorage) <= kvm_gpt_bigtile_smem(256, 128), "CUTLASS's stages must fit the tile's shared memory");
+    static_assert(sizeof(typename Mma::FragmentC) == sizeof(float) * 128, "a 64x64 warp tile: 128 accumulators a thread");
+    auto& ss = *reinterpret_cast<typename Mma::SharedStorage*>(kvm_gpt_smem);
+    const typename Mma::IteratorA::Params pa{LA(lda)};
+    const typename Mma::IteratorB::Params pb{LB(ldb)};
+    typename Mma::IteratorA ia(pa, const_cast<float*>(A), {M, K}, threadIdx.x, {m0, 0});
+    typename Mma::IteratorB ib(pb, const_cast<float*>(B), {K, N}, threadIdx.x, {0, n0});
+    Mma mma(ss, threadIdx.x, threadIdx.x >> 5, threadIdx.x & 31);
+    typename Mma::FragmentC c;
+    c.clear();
+    mma(K / KVM_GPT_BIG_BK, c, ia, ib, c);
+#pragma unroll
+    for (int i = 0; i < 4; i++)
+#pragma unroll
+        for (int j = 0; j < 8; j++)
+#pragma unroll
+            for (int e = 0; e < 4; e++) acc[i][j][e] = c[(i + 4 * j) * 4 + e];
+}
+
 // 128x128 output tile (flag 32): the same math as mm_tile with a quarter of the shared-to-L2 traffic per FLOP, which is what bounds
 // the 64x64 tile. BK=16, 3-stage cp.async pipeline (3 x 16 KiB = 48 KiB), 8 warps as 2 (m) x 4 (n), each owning a 64x32 sub-tile
 // = 4 m16 x 4 n8 fragments over the whole K (no split-K); the epilogue runs straight from the accumulator registers.
-template <bool TA, bool TB, bool PREC, int WM, int WN, int WTN, bool BF = false, bool RZ = false>   // RZ: operands truncated by the tensor core, not rounded to tf32 (matmul_tile flag 256). BF: bf16 operands (see below). WM x WN warps, each owning a 64 x WTN sub-tile; tile = 64*WM x WTN*WN
+// CUT: the mainloop is CUTLASS's (mm_cut_mainloop: the 256x128 tile, rounded operands, K a multiple of BK, aligned; mm_tile_big_ni checks).
+// HUGE_FAST: the 256x128 tile's fast forms (CUT through mm_tile_big_ni, the unguarded next-stage load, its own epilogue), compiled only where
+// matmul_tile is asked for them (see matmul_tile). Every form gives the same bits.
+template <bool TA, bool TB, bool PREC, int WM, int WN, int WTN, bool BF = false, bool RZ = false, bool CUT = false, bool HUGE_FAST = false>   // RZ: operands truncated by the tensor core, not rounded to tf32 (matmul_tile flag 256). BF: bf16 operands (see below). WM x WN warps, each owning a 64 x WTN sub-tile; tile = 64*WM x WTN*WN
 KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, float* out, int ldo, const float* bias, const float* res,
                               int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, int act, bool accum) {
     constexpr int BK = KVM_GPT_BIG_BK, NST = KVM_GPT_BIG_NST, BM = 64 * WM, BN = WTN * WN, NJ = WTN / 8, ATILE = BM * BK, TILE = ATILE, STAGE = (BM + BN) * BK;
@@ -961,6 +1053,8 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
     static_assert(NST * STAGE * 4 <= kvm_gpt_bigtile_smem(BM, BN), "the launch is sized by kvm_gpt_bigtile_smem");
     float* sm = reinterpret_cast<float*>(kvm_gpt_smem);   // [stage][A | B]
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, wmi = warp / WN, wni = warp % WN, g = lane >> 2, t = lane & 3;
+    static_assert(!CUT || (HUGE_FAST && WM == 4 && WN == 2 && WTN == 64 && !PREC && !BF && !RZ), "CUTLASS's mainloop: the 256x128 tile's fast form, rounded operands");
+    const int ewm = CUT ? warp % WM : wmi, ewn = CUT ? warp / WM : wni;   // the warp's tile in the epilogue: this loop's, or CUTLASS's (mm_cut_mainloop)
     const bool va = aligned16(A, lda) && (!TA || (m0 & 3) == 0), vb = aligned16(B, ldb) && (TB || (n0 & 3) == 0);   // tile origin column too
     float acc[4][NJ][4];
 #pragma unroll
@@ -969,128 +1063,138 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
         for (int j = 0; j < NJ; j++)
 #pragma unroll
             for (int e = 0; e < 4; e++) acc[i][j][e] = 0.f;
-    const int nk = (K + BK - 1) / BK;
-    using SA = TileStream<!TA, TA ? BK : BM, TA ? BM : BK>; using SB = TileStream<TB, TB ? BN : BK, TB ? BK : BN>;
-    SA sa; SB sb;
-    const bool stream = K <= KVM_GPT_BIG_STREAM_KMAX;
-    const bool fa = stream && va && (TA ? (M & 3) == 0 : (K & 3) == 0), fb = stream && vb && (TB ? (K & 3) == 0 : (N & 3) == 0);   // whole chunks in range along k and along the operand's other dimension: TileStream path (edge tiles included: their outside chunks zero-fill)
-    if (fa) { if (TA) sa.init(A, lda, 0, m0, BK, M); else sa.init(A, lda, m0, 0, BK, M); }
-    if (fb) { if (TB) sb.init(B, ldb, n0, 0, BK, N); else sb.init(B, ldb, 0, n0, BK, N); }
-    auto issue = [&](int it) {
-        float* As = sm + (it % NST) * STAGE; float* Bs = As + ATILE;
-        const int kk = it * BK, kv = min(BK, K - kk);
-        if (fa) sa.issue(As, kv);
-        else if (TA) tile_async<false, BK, BM>(As, A, lda, kk, m0, K, M, va); else tile_async<true, BM, BK>(As, A, lda, m0, kk, M, K, va);
-        if (fb) sb.issue(Bs, kv);
-        else if (TB) tile_async<true, BN, BK>(Bs, B, ldb, n0, kk, N, K, vb); else tile_async<false, BK, BN>(Bs, B, ldb, kk, n0, K, N, vb);
-    };
-    if constexpr (KVM_GPT_BIG_PIPE2 && !PREC && !BF && (RZ || KVM_GPT_BIG_PIPE_RND)) {   // the k-step pipeline: a step's fragments are in registers before its MMAs start and the next step's load overlaps them; the next stage's copies are issued after the first step's MMAs; the wait and barrier for the next stage come before the last step
-        constexpr int K8 = BK / 8;
-        unsigned rA[2][4][4], rAl[2][4][4], rB[2][NJ][2], rBl[2][NJ][2];
-        auto load_step = [&](int st, int kq, int buf) {
-            const float* As = sm + (st % NST) * STAGE; const float* Bs = As + ATILE;
-            slab_load<TA, TB, false, RZ, BK, BM, BN, 4, NJ>(As, Bs, rA[buf], rAl[buf], rB[buf], rBl[buf], wmi * 64, wni * WTN, kq * 8);
+    if constexpr (CUT) {
+        mm_cut_mainloop<TA, TB>(A, lda, B, ldb, m0, n0, M, N, K, acc);
+    } else {
+        const int nk = (K + BK - 1) / BK;
+        using SA = TileStream<!TA, TA ? BK : BM, TA ? BM : BK>; using SB = TileStream<TB, TB ? BN : BK, TB ? BK : BN>;
+        SA sa; SB sb;
+        const bool stream = K <= KVM_GPT_BIG_STREAM_KMAX;
+        const bool fa = stream && va && (TA ? (M & 3) == 0 : (K & 3) == 0), fb = stream && vb && (TB ? (K & 3) == 0 : (N & 3) == 0);   // whole chunks in range along k and along the operand's other dimension: TileStream path (edge tiles included: their outside chunks zero-fill)
+        if (fa) { if (TA) sa.init(A, lda, 0, m0, BK, M); else sa.init(A, lda, m0, 0, BK, M); }
+        if (fb) { if (TB) sb.init(B, ldb, n0, 0, BK, N); else sb.init(B, ldb, 0, n0, BK, N); }
+        auto issue = [&](int it) {
+            float* As = sm + (it % NST) * STAGE; float* Bs = As + ATILE;
+            const int kk = it * BK, kv = min(BK, K - kk);
+            if (fa) sa.issue(As, kv);
+            else if (TA) tile_async<false, BK, BM>(As, A, lda, kk, m0, K, M, va); else tile_async<true, BM, BK>(As, A, lda, m0, kk, M, K, va);
+            if (fb) sb.issue(Bs, kv);
+            else if (TB) tile_async<true, BN, BK>(Bs, B, ldb, n0, kk, N, K, vb); else tile_async<false, BK, BN>(Bs, B, ldb, kk, n0, K, N, vb);
         };
-        auto round_stage = [&](int st) {   // rounded tiles: this thread's chunks of stage st, which cp_wait made visible to it, rounded in place; the barrier after it publishes them
-            if constexpr (!RZ) {
-                float* Aw = sm + (st % NST) * STAGE; float* Bw = Aw + ATILE;
-                if (fa) sa.cvt(Aw); else if (TA) tile_cvt<false, BK, BM>(Aw); else tile_cvt<true, BM, BK>(Aw);
-                if (fb) sb.cvt(Bw); else if (TB) tile_cvt<true, BN, BK>(Bw); else tile_cvt<false, BK, BN>(Bw);
-            }
-        };
+        if constexpr (KVM_GPT_BIG_PIPE2 && !PREC && !BF && (RZ || KVM_GPT_BIG_PIPE_RND)) {   // the k-step pipeline: a step's fragments are in registers before its MMAs start and the next step's load overlaps them; the next stage's copies are issued after the first step's MMAs; the wait and barrier for the next stage come before the last step
+            constexpr int K8 = BK / 8;
+            unsigned rA[2][4][4], rAl[2][4][4], rB[2][NJ][2], rBl[2][NJ][2];
+            auto load_step = [&](int st, int kq, int buf) {
+                const float* As = sm + (st % NST) * STAGE; const float* Bs = As + ATILE;
+                slab_load<TA, TB, false, RZ, BK, BM, BN, 4, NJ>(As, Bs, rA[buf], rAl[buf], rB[buf], rBl[buf], wmi * 64, wni * WTN, kq * 8);
+            };
+            auto round_stage = [&](int st) {   // rounded tiles: this thread's chunks of stage st, which cp_wait made visible to it, rounded in place; the barrier after it publishes them
+                if constexpr (!RZ) {
+                    float* Aw = sm + (st % NST) * STAGE; float* Bw = Aw + ATILE;
+                    if (fa) sa.cvt(Aw); else if (TA) tile_cvt<false, BK, BM>(Aw); else tile_cvt<true, BM, BK>(Aw);
+                    if (fb) sb.cvt(Bw); else if (TB) tile_cvt<true, BN, BK>(Bw); else tile_cvt<false, BK, BN>(Bw);
+                }
+            };
+#pragma unroll
+            for (int p = 0; p < NST - 1; p++) { if (p < nk) issue(p); cp_commit(); }
+            cp_wait<NST - 2>();
+            round_stage(0);
+            __syncthreads();
+            KVM_GPT_PROBE(1);
+            load_step(0, 0, 0);
+            // Whole, in-range chunks along both operands (the common tile: checked once per task) take the loop with the next stage's copies spread over the k-steps, each step issuing its share between its MMAs: issued in one burst after the first step, the 8 warps' 12 copies each leave the tensor units idle (measured: 0.77 → 0.94x of cuBLAS at 4096x3072x768). Spread copies need NST >= 3, so that the group committed before the wait is not the one the wait must drain.
+            const bool spread = NST >= 3 && fa && fb && (K % BK) == 0 && m0 + BM <= M && n0 + BN <= N;
+            auto k_loop = [&](auto spread_tag) {
+                for (int it = 0; it < nk; it++) {
+#pragma unroll
+                    for (int kq = 0; kq < K8; kq++) {
+                        if (kq + 1 < K8) load_step(it, kq + 1, (kq + 1) % 2);
+                        // The 256x128 tile loads the next stage's first fragments on its last stage too (unused, from the ring's next slot):
+                        // unguarded, those loads share the step's basic block with its MMAs and interleave with them, where the guard set them
+                        // apart after the barrier (an A100: x1.10 on gpt-162m's 256x128 tiles, the same bits). Other tiles keep it.
+                        else if ((HUGE_FAST && WM == 4) || it + 1 < nk) load_step(it + 1, 0, (kq + 1) % 2);
+                        slab_mma<false, 4, NJ>(acc, rA[kq % 2], rAl[kq % 2], rB[kq % 2], rBl[kq % 2]);
+                        if constexpr (decltype(spread_tag)::value) {
+                            if (kq + 1 < K8 && it + NST - 1 < nk) {
+                                float* As = sm + ((it + NST - 1) % NST) * STAGE;
+                                sa.issue_part(As, kq, K8 - 1); sb.issue_part(As + ATILE, kq, K8 - 1);
+                            }
+                            if (kq + 2 == K8) { cp_commit(); cp_wait<NST - 2>(); if (it + 1 < nk) round_stage(it + 1); __syncthreads(); }
+                        } else {
+                            if (kq == 0) { if (it + NST - 1 < nk) issue(it + NST - 1); cp_commit(); }
+                            if (kq + 2 == K8) { cp_wait<NST - 2>(); if (it + 1 < nk) round_stage(it + 1); __syncthreads(); }
+                        }
+                    }
+                }
+            };
+            if (spread) k_loop(std::true_type{}); else k_loop(std::false_type{});
+        } else {
 #pragma unroll
         for (int p = 0; p < NST - 1; p++) { if (p < nk) issue(p); cp_commit(); }
-        cp_wait<NST - 2>();
-        round_stage(0);
-        __syncthreads();
-        KVM_GPT_PROBE(1);
-        load_step(0, 0, 0);
-        // Whole, in-range chunks along both operands (the common tile: checked once per task) take the loop with the next stage's copies spread over the k-steps, each step issuing its share between its MMAs: issued in one burst after the first step, the 8 warps' 12 copies each leave the tensor units idle (measured: 0.77 → 0.94x of cuBLAS at 4096x3072x768). Spread copies need NST >= 3, so that the group committed before the wait is not the one the wait must drain.
-        const bool spread = NST >= 3 && fa && fb && (K % BK) == 0 && m0 + BM <= M && n0 + BN <= N;
-        auto k_loop = [&](auto spread_tag) {
-            for (int it = 0; it < nk; it++) {
-#pragma unroll
-                for (int kq = 0; kq < K8; kq++) {
-                    if (kq + 1 < K8) load_step(it, kq + 1, (kq + 1) % 2);
-                    else if (it + 1 < nk) load_step(it + 1, 0, (kq + 1) % 2);
-                    slab_mma<false, 4, NJ>(acc, rA[kq % 2], rAl[kq % 2], rB[kq % 2], rBl[kq % 2]);
-                    if constexpr (decltype(spread_tag)::value) {
-                        if (kq + 1 < K8 && it + NST - 1 < nk) {
-                            float* As = sm + ((it + NST - 1) % NST) * STAGE;
-                            sa.issue_part(As, kq, K8 - 1); sb.issue_part(As + ATILE, kq, K8 - 1);
-                        }
-                        if (kq + 2 == K8) { cp_commit(); cp_wait<NST - 2>(); if (it + 1 < nk) round_stage(it + 1); __syncthreads(); }
-                    } else {
-                        if (kq == 0) { if (it + NST - 1 < nk) issue(it + NST - 1); cp_commit(); }
-                        if (kq + 2 == K8) { cp_wait<NST - 2>(); if (it + 1 < nk) round_stage(it + 1); __syncthreads(); }
-                    }
-                }
+        for (int it = 0; it < nk; it++) {
+            cp_wait<NST - 2>();
+            const float* As = sm + (it % NST) * STAGE; const float* Bs = As + ATILE;
+            if constexpr (!PREC && !BF && KVM_GPT_SMEM_CVT) {   // round the operands once per CTA, in shared memory (see tile_cvt)
+                float* Aw = sm + (it % NST) * STAGE; float* Bw = Aw + ATILE;
+                if constexpr (!RZ) { if (fa) sa.cvt(Aw); else if (TA) tile_cvt<false, BK, BM>(Aw); else tile_cvt<true, BM, BK>(Aw); }
+                if constexpr (!RZ) { if (fb) sb.cvt(Bw); else if (TB) tile_cvt<true, BN, BK>(Bw); else tile_cvt<false, BK, BN>(Bw); }
             }
-        };
-        if (spread) k_loop(std::true_type{}); else k_loop(std::false_type{});
-    } else {
+            __syncthreads();
+            if (it == 0) KVM_GPT_PROBE(1);
+            if (it + NST - 1 < nk) issue(it + NST - 1);
+            cp_commit();
+            if constexpr (BF) {
+                // bf16 operands, m16n8k16: fragments are read from the fp32 tiles exactly like the tf32 path (ldmatrix / scalar loads), then
+                // packed to bf16x2 (round to nearest even). One k16 step = two k8 halves; mma pair (k, k+4) of a half becomes one bf16x2, i.e.
+                // the k index of every k16 step is permuted the same way in A and B, which a sum over k does not care about. The tensor work
+                // per k is half the tf32 path's and the shared-memory traffic is the same, so it runs at up to twice the tf32 rate.
+                static_assert(BK % 16 == 0, "bf16 steps are k16");
 #pragma unroll
-    for (int p = 0; p < NST - 1; p++) { if (p < nk) issue(p); cp_commit(); }
-    for (int it = 0; it < nk; it++) {
-        cp_wait<NST - 2>();
-        const float* As = sm + (it % NST) * STAGE; const float* Bs = As + ATILE;
-        if constexpr (!PREC && !BF && KVM_GPT_SMEM_CVT) {   // round the operands once per CTA, in shared memory (see tile_cvt)
-            float* Aw = sm + (it % NST) * STAGE; float* Bw = Aw + ATILE;
-            if constexpr (!RZ) { if (fa) sa.cvt(Aw); else if (TA) tile_cvt<false, BK, BM>(Aw); else tile_cvt<true, BM, BK>(Aw); }
-            if constexpr (!RZ) { if (fb) sb.cvt(Bw); else if (TB) tile_cvt<true, BN, BK>(Bw); else tile_cvt<false, BK, BN>(Bw); }
+                for (int kb = 0; kb < BK / 16; kb++) {
+                    unsigned af[4][4], bfr[NJ][2];
+#pragma unroll
+                    for (int h = 0; h < 2; h++) {
+                        const int kk = kb * 16 + h * 8;
+#pragma unroll
+                        for (int i = 0; i < 4; i++) {
+                            const int mb = wmi * 64 + i * 16;
+                            unsigned r[4];
+                            if (!TA) ldmatrix_x4(r, As + sw_kc<BK>(mb + (lane & 7) + 8 * ((lane >> 3) & 1), kk + 4 * (lane >> 4)));
+                            else {
+                                r[0] = __float_as_uint(As[sw_mc<BM>(kk + t, mb + g)]);     r[1] = __float_as_uint(As[sw_mc<BM>(kk + t, mb + g + 8)]);
+                                r[2] = __float_as_uint(As[sw_mc<BM>(kk + t + 4, mb + g)]); r[3] = __float_as_uint(As[sw_mc<BM>(kk + t + 4, mb + g + 8)]);
+                            }
+                            af[i][2 * h] = pack_bf16(__uint_as_float(r[0]), __uint_as_float(r[2]));
+                            af[i][2 * h + 1] = pack_bf16(__uint_as_float(r[1]), __uint_as_float(r[3]));
+                        }
+#pragma unroll
+                        for (int jp = 0; jp < NJ / 2; jp++) {
+                            const int nb = wni * WTN + jp * 16;
+                            unsigned r[4];
+                            if (TB) ldmatrix_x4(r, Bs + sw_kc<BK>(nb + (lane & 7) + 8 * (lane >> 4), kk + 4 * ((lane >> 3) & 1)));
+                            else {
+                                r[0] = __float_as_uint(Bs[sw_mc<BN>(kk + t, nb + g)]);     r[1] = __float_as_uint(Bs[sw_mc<BN>(kk + t + 4, nb + g)]);
+                                r[2] = __float_as_uint(Bs[sw_mc<BN>(kk + t, nb + 8 + g)]); r[3] = __float_as_uint(Bs[sw_mc<BN>(kk + t + 4, nb + 8 + g)]);
+                            }
+                            bfr[2 * jp][h] = pack_bf16(__uint_as_float(r[0]), __uint_as_float(r[1]));
+                            bfr[2 * jp + 1][h] = pack_bf16(__uint_as_float(r[2]), __uint_as_float(r[3]));
+                        }
+                    }
+#pragma unroll
+                    for (int i = 0; i < 4; i++)
+#pragma unroll
+                        for (int j = 0; j < NJ; j++) mma_bf16(acc[i][j], af[i], bfr[j][0], bfr[j][1]);
+                }
+            } else tile_slab<TA, TB, PREC, RZ, BK, BM, BN, 4, NJ, BK / 8>(As, Bs, acc, wmi * 64, wni * WTN, 0);
         }
-        __syncthreads();
-        if (it == 0) KVM_GPT_PROBE(1);
-        if (it + NST - 1 < nk) issue(it + NST - 1);
-        cp_commit();
-        if constexpr (BF) {
-            // bf16 operands, m16n8k16: fragments are read from the fp32 tiles exactly like the tf32 path (ldmatrix / scalar loads), then
-            // packed to bf16x2 (round to nearest even). One k16 step = two k8 halves; mma pair (k, k+4) of a half becomes one bf16x2, i.e.
-            // the k index of every k16 step is permuted the same way in A and B, which a sum over k does not care about. The tensor work
-            // per k is half the tf32 path's and the shared-memory traffic is the same, so it runs at up to twice the tf32 rate.
-            static_assert(BK % 16 == 0, "bf16 steps are k16");
-#pragma unroll
-            for (int kb = 0; kb < BK / 16; kb++) {
-                unsigned af[4][4], bfr[NJ][2];
-#pragma unroll
-                for (int h = 0; h < 2; h++) {
-                    const int kk = kb * 16 + h * 8;
-#pragma unroll
-                    for (int i = 0; i < 4; i++) {
-                        const int mb = wmi * 64 + i * 16;
-                        unsigned r[4];
-                        if (!TA) ldmatrix_x4(r, As + sw_kc<BK>(mb + (lane & 7) + 8 * ((lane >> 3) & 1), kk + 4 * (lane >> 4)));
-                        else {
-                            r[0] = __float_as_uint(As[sw_mc<BM>(kk + t, mb + g)]);     r[1] = __float_as_uint(As[sw_mc<BM>(kk + t, mb + g + 8)]);
-                            r[2] = __float_as_uint(As[sw_mc<BM>(kk + t + 4, mb + g)]); r[3] = __float_as_uint(As[sw_mc<BM>(kk + t + 4, mb + g + 8)]);
-                        }
-                        af[i][2 * h] = pack_bf16(__uint_as_float(r[0]), __uint_as_float(r[2]));
-                        af[i][2 * h + 1] = pack_bf16(__uint_as_float(r[1]), __uint_as_float(r[3]));
-                    }
-#pragma unroll
-                    for (int jp = 0; jp < NJ / 2; jp++) {
-                        const int nb = wni * WTN + jp * 16;
-                        unsigned r[4];
-                        if (TB) ldmatrix_x4(r, Bs + sw_kc<BK>(nb + (lane & 7) + 8 * (lane >> 4), kk + 4 * ((lane >> 3) & 1)));
-                        else {
-                            r[0] = __float_as_uint(Bs[sw_mc<BN>(kk + t, nb + g)]);     r[1] = __float_as_uint(Bs[sw_mc<BN>(kk + t + 4, nb + g)]);
-                            r[2] = __float_as_uint(Bs[sw_mc<BN>(kk + t, nb + 8 + g)]); r[3] = __float_as_uint(Bs[sw_mc<BN>(kk + t + 4, nb + 8 + g)]);
-                        }
-                        bfr[2 * jp][h] = pack_bf16(__uint_as_float(r[0]), __uint_as_float(r[1]));
-                        bfr[2 * jp + 1][h] = pack_bf16(__uint_as_float(r[2]), __uint_as_float(r[3]));
-                    }
-                }
-#pragma unroll
-                for (int i = 0; i < 4; i++)
-#pragma unroll
-                    for (int j = 0; j < NJ; j++) mma_bf16(acc[i][j], af[i], bfr[j][0], bfr[j][1]);
-            }
-        } else tile_slab<TA, TB, PREC, RZ, BK, BM, BN, 4, NJ, BK / 8>(As, Bs, acc, wmi * 64, wni * WTN, 0);
-    }
+        }
     }
     KVM_GPT_PROBE(2);
     cp_wait<0>();
     constexpr int CLD = BN + 8;   // row stride of the accumulator tile in shared memory (padded against bank conflicts)
+    if constexpr (HUGE_FAST && WM == 4 && WN == 2 && WTN == 64) {   // the 256x128 tile's fast form: its own epilogue for the step's common kinds
+        if (huge_epilogue_fast<CLD>(acc, ewm, ewn, g, t, sm, m0, n0, M, N, out, ldo, bias, res, ldr, pre, alpha, act, accum)) return;
+    }
     // Accumulators through shared memory (the register epilogue below costs one 8-byte store per accumulator pair, in instructions the
     // block's 8 warps share): the whole tile in one pass when its rows fit the launch's shared memory, else in two passes of BM/2 rows
     // (the 256 x 128 tile at 96 KiB: 2 x 69,632 B instead of 139,264). Each element gets the same operations in the same order either way.
@@ -1101,12 +1205,12 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
 #pragma unroll
         for (int pass = 0; pass < PASSES; pass++) {
             __syncthreads();   // the last stage (or the previous pass's rows) is read by everyone; shared memory now takes this pass's accumulators
-            if (wmi / PW == pass) {
+            if (ewm / PW == pass) {
 #pragma unroll
                 for (int i = 0; i < 4; i++)
 #pragma unroll
                     for (int j = 0; j < NJ; j++) {   // c0,c1 = (row g, cols 2t,2t+1); c2,c3 = (row g+8, ...)
-                        const int r = (wmi % PW) * 64 + i * 16 + g, c = wni * WTN + j * 8 + 2 * t;
+                        const int r = (ewm % PW) * 64 + i * 16 + g, c = ewn * WTN + j * 8 + 2 * t;
                         *reinterpret_cast<float2*>(sm + r * CLD + c) = make_float2(acc[i][j][0], acc[i][j][1]);
                         *reinterpret_cast<float2*>(sm + (r + 8) * CLD + c) = make_float2(acc[i][j][2], acc[i][j][3]);
                     }
@@ -1126,7 +1230,7 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
         for (int j = 0; j < NJ; j++)
 #pragma unroll
             for (int hf = 0; hf < 2; hf++) {
-        const int gm = m0 + wmi * 64 + i * 16 + g + hf * 8, gn = n0 + wni * WTN + j * 8 + 2 * t;
+        const int gm = m0 + ewm * 64 + i * 16 + g + hf * 8, gn = n0 + ewn * WTN + j * 8 + 2 * t;
         if (gm >= M || gn >= N) continue;
         float v[2] = {acc[i][j][2 * hf] * alpha, acc[i][j][2 * hf + 1] * alpha};
         if (pair && gn + 1 < N) {
@@ -1159,10 +1263,16 @@ KVM_GPT_DEVI void mm_tile_big(const float* A, int lda, const float* B, int ldb, 
 
 // Out-of-line copy of the 256x128 tile (see matmul_tile): inlined, it shares the register budget with everything around it; as a function
 // it keeps its own, as long as no call site in the kernel holds values live across a call (see mm_tile_big_2pass_ni).
-template <bool TA, bool TB, bool PREC, int WM, int WN, int WTN, bool BF, bool RZ>
+template <bool TA, bool TB, bool PREC, int WM, int WN, int WTN, bool BF, bool RZ, bool HUGE_FAST = false>
 __device__ __noinline__ void mm_tile_big_ni(const float* A, int lda, const float* B, int ldb, float* out, int ldo, const float* bias, const float* res,
                                             int ldr, float* pre, int ldp, int m0, int n0, int M, int N, int K, float alpha, int act, bool accum) {
-    mm_tile_big<TA, TB, PREC, WM, WN, WTN, BF, RZ>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, act, accum);
+    if constexpr (HUGE_FAST && WM == 4 && WN == 2 && WTN == 64 && !PREC && !BF && !RZ) {   // rounded operands: CUTLASS's mainloop where it gives this loop's bits
+        if (K % KVM_GPT_BIG_BK == 0 && aligned16(A, lda) && aligned16(B, ldb) && ((TA ? M : K) & 3) == 0 && ((TB ? K : N) & 3) == 0) {
+            mm_tile_big<TA, TB, PREC, WM, WN, WTN, BF, RZ, true, HUGE_FAST>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, act, accum);
+            return;
+        }
+    }
+    mm_tile_big<TA, TB, PREC, WM, WN, WTN, BF, RZ, false, HUGE_FAST>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, act, accum);
 }
 
 // Both passes of a 256x128 task with bf16 operands or 3xTF32 (two 128x128 tiles, rows m0 and m0 + 128) in one out-of-line function, with
@@ -1179,6 +1289,11 @@ __device__ __noinline__ void mm_tile_big_2pass_ni(const float* A, int lda, const
     mm_tile_big<TA, TB, PREC, 2, 4, 32, BF, false>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0 + 128, n0, M, N, K, alpha, act, accum);
 }
 
+// HUGE_FAST compiles the 256x128 tile's fast forms (CUTLASS's mainloop for rounded operands, the unguarded next-stage load, its own epilogue)
+// into this instantiation; without it the 256x128 tile is the plain form, with the same bits. The executor asks for them in its dynamic kernel
+// only: the static kernel's rows never take the 256x128 tile, and compiled into it the forms re-dealt its register allocation, so its other
+// tiles spilled more (1.2-2.9% slower on three static-path rows of the A100 panel). The tests and benches ask for them explicitly.
+template <bool HUGE_FAST = false>
 KVM_GPT_DEVI void matmul_tile_ours(const KvmCtx& ctx, const int32_t* a) {   // this set's tiles, every task; the op is matmul_tile below
     Chk k(ctx);
     int m0 = a[6], n0 = a[7], M = a[8], N = a[9], K = a[10], fl = a[11];
@@ -1215,7 +1330,7 @@ KVM_GPT_DEVI void matmul_tile_ours(const KvmCtx& ctx, const int32_t* a) {   // t
 // no 3xTF32 form and RZ only exists for the big tiles (validated above).
 #define KVM_GPT_ARGS A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, mm0, n0, M, N, K, alpha, act, accum
 #define KVM_GPT_ONE_BIG(F, TA, TB, P, BF, RZ) F<TA, TB, P, 2, 4, 32, BF, RZ>(KVM_GPT_ARGS)   // 8 warps as 2 (m) x 4 (n), 64 x 32 each
-#define KVM_GPT_ONE_HUGE(F, TA, TB, P, BF, RZ) F<TA, TB, P, 4, 2, 64, BF, RZ>(KVM_GPT_ARGS)   // 8 warps as 4 (m) x 2 (n), 64 x 64 each
+#define KVM_GPT_ONE_HUGE(F, TA, TB, P, BF, RZ) F<TA, TB, P, 4, 2, 64, BF, RZ, HUGE_FAST>(KVM_GPT_ARGS)   // 8 warps as 4 (m) x 2 (n), 64 x 64 each
 #define KVM_GPT_ONE_64(F, TA, TB, P, BF, RZ) F<TA, TB, P, BF, RZ>(KVM_GPT_ARGS)
 #define KVM_GPT_ONE_2PASS(F, TA, TB, P, BF, RZ) F<TA, TB, P, BF>(A, lda, B, ldb, out, ldo, bias, res, ldr, pre, ldp, m0, n0, M, N, K, alpha, act, accum)
 #define KVM_GPT_MM_T(ONE, F, P, BF, RZ)                                                                                         \
@@ -1568,8 +1683,9 @@ KVM_GPT_DEVI bool matmul_tile(const KvmCtx& ctx, const int32_t* a) {
 // The matmul_tile op. A plain 1xTF32 128x128 (flag 32) or 256x128 (flag 64) task runs #16's mm_tf32_tile (j16::matmul_tile, which hands
 // unaligned operands to ours) where that tile measured faster than ours in this op's own kernel; every other task runs ours. Both sets
 // round every operand the same way (to nearest, ties away) and accumulate each output in increasing k, so they give the same bits.
-// A100, the 162M shapes, tests/gpu_ops/bench_mm.cu (j16 over ours, both rounded, same kernel): 256x128 TN x1.65-1.78, NN x1.37-1.51,
-// NT x1.10-1.20 up to K = 3072 but x0.92 at K = 50304 (the head's input gradient, which ours keeps); 128x128 x1.04-1.27.
+// A100, the 162M shapes, tests/gpu_ops/bench_mm.cu (j16 over ours, both rounded, same kernel): 128x128 x1.01-1.27 (TN x1.25-1.27), so
+// those go to #16's tile. 256x128 tasks stay with ours: with CUTLASS's mainloop for rounded operands and its own epilogue, ours runs them
+// 1.21-1.35 times faster than #16's tile (j16 over ours x0.74-0.83: NN, NT and TN at K 768-4096).
 // j16 reads its epilogue operands from the task words after its k loop, as an out-of-line function, so its loop keeps its registers.
 // -DKVM_GPT_J16_ROUTE=0 runs ours for every task. On sm_90a, ours sends plain 1xTF32 tasks to the TMA + wgmma path, so the route is off.
 #ifndef KVM_GPT_J16_ROUTE
@@ -1586,11 +1702,12 @@ KVM_GPT_DEVI bool j16_route(const int32_t* a) {
     const bool ta = fl & 1, tb = fl & 2, big = fl & 32, huge = fl & 64;
     if (!KVM_GPT_J16_ROUTE || (fl & ~(1 | 2 | 4 | 8 | 32 | 64)) != 0 || big == huge || (ta && tb)) return false;   // TT was not measured
     if (M <= 0 || N <= 0 || K <= 0 || m0 < 0 || m0 >= M || n0 < 0 || n0 >= N) return false;
-    return !(huge && tb && K > 4096);
+    return big;   // the 128x128 tile only (see above); a 256x128 task runs ours
 }
+template <bool HUGE_FAST = false>   // see matmul_tile_ours
 KVM_GPT_DEVI void matmul_tile(const KvmCtx& ctx, const int32_t* a) {
     if (j16_route(a) && j16::matmul_tile(ctx, a)) return;
-    matmul_tile_ours(ctx, a);   // the one call to ours: one inlined copy a matmul site
+    matmul_tile_ours<HUGE_FAST>(ctx, a);   // the one call to ours: one inlined copy a matmul site
 }
 
 // ---- normalization: one warp per row ----------------------------------------------------------------------------------
@@ -3379,12 +3496,23 @@ KVM_GPT_DEVI void gather_rows(const KvmCtx& ctx, const int32_t* a) {
 }  // namespace kvmgpt
 
 // ---- per-op entry points (same X-macro convention as the executor) -------------------------------------------------------
-#ifdef KVM_OP   // inside kvm_exec.cuh: the executor's dispatcher calls op_<name>
-#define X(name, id, sig) KVM_OP(name) { kvmgpt::name(c, a); }
+// Each entry calls its op; matmul_tile's also says whether its 256x128 fast forms are compiled in (see matmul_tile): in the executor's
+// dynamic kernel and in the tests, not in the executor's static kernel.
+namespace kvmgpt {
+enum KvmGptOpId : int {
+#define X(name, id, sig) kOp_##name = id,
 #include "kvm_ops_gpt.def"
 #undef X
-#else           // standalone (tests): kvm_op_<name> and a switch dispatcher
-#define X(name, id, sig) KVM_GPT_DEVI void kvm_op_##name(const KvmCtx& ctx, const int32_t* args) { kvmgpt::name(ctx, args); }
+};
+}  // namespace kvmgpt
+#ifdef KVM_OP   // inside kvm_exec.cuh: the executor's dispatcher calls op_<name>, once for each kernel it is compiled into (KVM_KERNEL)
+#define X(name, id, sig) KVM_OP(name) {                                                                                          \
+    if constexpr (id == kvmgpt::kOp_matmul_tile) kvmgpt::matmul_tile<KVM_KERNEL == KVM_IN_EXEC>(c, a); else kvmgpt::name(c, a); }
+#include "kvm_ops_gpt.def"
+#undef X
+#else           // standalone (tests): kvm_op_<name> and a switch dispatcher, with the dynamic kernel's forms
+#define X(name, id, sig) KVM_GPT_DEVI void kvm_op_##name(const KvmCtx& ctx, const int32_t* args) {                                \
+    if constexpr (id == kvmgpt::kOp_matmul_tile) kvmgpt::matmul_tile<true>(ctx, args); else kvmgpt::name(ctx, args); }
 #include "kvm_ops_gpt.def"
 #undef X
 // Returns false for an op id outside the GPT library (ids 32..63).

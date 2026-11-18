@@ -1278,36 +1278,57 @@ class KvmExec {
          lines && counted ? "both forms (each gang's own)" : counted ? "the counted barrier" : "the flag lines",
          (form_used[2] || form_used[3]) && (form_used[0] || form_used[1]) ? "ZBW's instance for the runs it engages, the plain step for the rest"
                                                                            : form_used[2] || form_used[3] ? "every fused-step run on ZBW's instance" : "no run on ZBW's instance");
-    // Warm-up launches (a null or gangless descriptor: every block returns at once), so each instance's code is loaded outside the timed window, as run_static does.
-    if (form_used[0]) kvm_fgpt_kernel<false, false><<<1, KVM_FGPT_NT, st.smem_bytes, stream_>>>(nullptr, dcnt, S_.herr, 0);
-    if (form_used[1]) kvm_fgpt_kernel<true, false><<<1, KVM_FGPT_NT, st.smem_bytes, stream_>>>(nullptr, dcnt, S_.herr, 0);
-    if (form_used[2]) kvm_fgpt_kernel<false, true><<<1, KVM_FGPT_NT, st.smem_bytes, stream_>>>(nullptr, dcnt, S_.herr, 0);
-    if (form_used[3]) kvm_fgpt_kernel<true, true><<<1, KVM_FGPT_NT, st.smem_bytes, stream_>>>(nullptr, dcnt, S_.herr, 0);
-    if (form_used[4]) kvm_f2d_kernel<false><<<1, KVM_F2D_NT, st.smem_bytes, stream_>>>(kvm_f2d::SDesc{}, dcnt, S_.herr, 0);
-    if (form_used[5]) kvm_f2d_kernel<true><<<1, KVM_F2D_NT, st.smem_bytes, stream_>>>(kvm_f2d::SDesc{}, dcnt, S_.herr, 0);
-    if (form_used[6]) kvm_fgpt1_kernel<<<1, KVM_FGPT_NT, st.smem1_bytes, stream_>>>(nullptr, dcnt, S_.herr, 0);
+    // A gang's members (the fused step's and F's 2-D form's) and a one-block run's helpers wait on one another, so their launches are cooperative: a GPU that cannot hold every
+    // block at once refuses the launch (cudaErrorCooperativeLaunchTooLarge), where a plain launch could hang beside a co-tenant or under MPS.
+    // The residency checks above hold either way. KVM_FGPT_COOP=0 launches them plainly, for the A/B of the attribute's cost.
+    const char* const coop_env = std::getenv("KVM_FGPT_COOP");
+    const bool coop = !(coop_env && std::atoi(coop_env) == 0);
+    KLOG(2, "fused GPT kernel: gangs (the fused step's, F's) and one-block runs with helpers launch %s", coop ? "cooperatively" : "plainly (KVM_FGPT_COOP=0)");
+    const auto launch_waiting = [&](auto kern, int blocks, int threads, int smem, auto... args) {   // args as the kernel takes them
+      if (coop) {
+        cudaLaunchConfig_t lc = {}; lc.gridDim = dim3(blocks); lc.blockDim = dim3(threads); lc.dynamicSmemBytes = smem; lc.stream = stream_;
+        cudaLaunchAttribute at = {}; at.id = cudaLaunchAttributeCooperative; at.val.cooperative = 1; lc.attrs = &at; lc.numAttrs = 1;
+        CK(cudaLaunchKernelEx(&lc, kern, args...));
+      } else {
+        kern<<<blocks, threads, smem, stream_>>>(args...);
+      }
+    };
+    // Every run's launch as it is timed. `warm` passes the warm-up descriptor instead (null, or F's gangless one), on which every block returns
+    // at once: the same kernel, grid, shared memory and launch attribute, and no work.
+    const auto launch_runs = [&](bool warm) {
+      for (size_t r = 0, slot0 = 0; r < plan.runs.size(); slot0 += plan.gang[r], ++r) {
+        const KvmFgptDesc* const dr = warm ? nullptr : st.desc + r;
+        switch (instance(r)) {
+          case 0: launch_waiting(kvm_fgpt_kernel<false, false>, plan.gang[r], KVM_FGPT_NT, st.smem_bytes, dr, dcnt, S_.herr, (int)slot0); break;
+          case 1: launch_waiting(kvm_fgpt_kernel<true, false>, plan.gang[r], KVM_FGPT_NT, st.smem_bytes, dr, dcnt, S_.herr, (int)slot0); break;
+          case 2: launch_waiting(kvm_fgpt_kernel<false, true>, plan.gang[r], KVM_FGPT_NT, st.smem_bytes, dr, dcnt, S_.herr, (int)slot0); break;
+          case 3: launch_waiting(kvm_fgpt_kernel<true, true>, plan.gang[r], KVM_FGPT_NT, st.smem_bytes, dr, dcnt, S_.herr, (int)slot0); break;
+          case 6:
+            if (st.helpers) launch_waiting(kvm_fgpt1_kernel, 1 + st.helpers, KVM_FGPT_NT, st.smem1_bytes, dr, dcnt, S_.herr, (int)slot0);
+            else kvm_fgpt1_kernel<<<1, KVM_FGPT_NT, st.smem1_bytes, stream_>>>(dr, dcnt, S_.herr, (int)slot0);   // one block waits on nothing
+            break;
+          default: {   // F's form: its descriptor by value, with the run's error word, which every crossing reads
+            kvm_f2d::SDesc fd = warm ? kvm_f2d::SDesc{} : st.f2d[r];
+            if (!warm) kvm_f2d::set_abort(fd, &dcnt->err_code);
+            if (instance(r) == 5) launch_waiting(kvm_f2d_kernel<true>, plan.gang[r], KVM_F2D_NT, st.smem_bytes, fd, dcnt, S_.herr, (int)slot0);
+            else launch_waiting(kvm_f2d_kernel<false>, plan.gang[r], KVM_F2D_NT, st.smem_bytes, fd, dcnt, S_.herr, (int)slot0);
+          }
+        }
+      }
+    };
+    // The warm-ups, twice, so the timed window holds no launch's one-time cost. The first, before the clock warm-up, takes each kernel's first
+    // launch (its code load) and each launch path's first use, a cooperative one's included. The second, after it, makes each timed launch follow
+    // a launch of its own kind, not the clock warm-up's plain ones.
+    launch_runs(true);
     CK(cudaGetLastError()); CK(cudaStreamSynchronize(stream_));
     for (unsigned* c : st.upd_ctl)   // the helper update's words at zero before each launch: go and done count this launch's steps from 0
       if (c) CK(cudaMemsetAsync(c, 0, 32 * sizeof(unsigned), stream_));
     CK(cudaStreamSynchronize(stream_));
     clock_warmup();
+    launch_runs(true);
+    CK(cudaGetLastError()); CK(cudaStreamSynchronize(stream_));
     CK(cudaEventRecord(e0_, stream_));
-    for (size_t r = 0, slot0 = 0; r < plan.runs.size(); slot0 += plan.gang[r], ++r) {
-      KvmFgptDesc* const dr = st.desc + r;
-      switch (instance(r)) {
-        case 0: kvm_fgpt_kernel<false, false><<<plan.gang[r], KVM_FGPT_NT, st.smem_bytes, stream_>>>(dr, dcnt, S_.herr, (int)slot0); break;
-        case 1: kvm_fgpt_kernel<true, false><<<plan.gang[r], KVM_FGPT_NT, st.smem_bytes, stream_>>>(dr, dcnt, S_.herr, (int)slot0); break;
-        case 2: kvm_fgpt_kernel<false, true><<<plan.gang[r], KVM_FGPT_NT, st.smem_bytes, stream_>>>(dr, dcnt, S_.herr, (int)slot0); break;
-        case 3: kvm_fgpt_kernel<true, true><<<plan.gang[r], KVM_FGPT_NT, st.smem_bytes, stream_>>>(dr, dcnt, S_.herr, (int)slot0); break;
-        case 6: kvm_fgpt1_kernel<<<1 + st.helpers, KVM_FGPT_NT, st.smem1_bytes, stream_>>>(dr, dcnt, S_.herr, (int)slot0); break;
-        default: {   // F's form: its descriptor by value, with the run's error word, which every crossing reads
-          kvm_f2d::SDesc fd = st.f2d[r];
-          kvm_f2d::set_abort(fd, &dcnt->err_code);
-          if (instance(r) == 5) kvm_f2d_kernel<true><<<plan.gang[r], KVM_F2D_NT, st.smem_bytes, stream_>>>(fd, dcnt, S_.herr, (int)slot0);
-          else kvm_f2d_kernel<false><<<plan.gang[r], KVM_F2D_NT, st.smem_bytes, stream_>>>(fd, dcnt, S_.herr, (int)slot0);
-        }
-      }
-    }
+    launch_runs(false);
     CK(cudaGetLastError());
     CK(cudaEventRecord(e1_, stream_));
     started_ = true;
@@ -1412,13 +1433,33 @@ class KvmExec {
       throw std::runtime_error("static kernel: entry " + kvm_fuse_entry_name(o.entry) + " holds " + std::to_string(occ) + " block(s) an SM at " + std::to_string(static_smem) + " bytes of dynamic shared memory, " +
                                std::to_string((long long)occ * sms_) + " resident in all, fewer than the plan's " + std::to_string(sc.workers) + " workers");
     KLOG(2, "static kernel: entry %s, %d resident blocks/SM, %zu bytes of dynamic shared memory, launching %d workers", kvm_fuse_entry_name(o.entry).c_str(), occ, static_smem, sc.workers);
-    // Warm-up launch with nworkers = 0: every block returns at once, but the entry's code is uploaded and started outside the timed window (like a graph captured
-    // before timing): the very first launch of a kernel costs ~1.5 ms before any record runs.
-    { KvmStaticDev warm = S; warm.nworkers = 0; entry<<<1, KVM_THREADS, static_smem, stream_>>>(warm); CK(cudaGetLastError()); CK(cudaStreamSynchronize(stream_)); }
+    // Every worker of a static schedule waits on others (a gang's crossings, the schedule's task flags), so the launch is cooperative: a GPU that
+    // cannot hold every worker at once refuses it (cudaErrorCooperativeLaunchTooLarge), where a plain launch could hang beside a co-tenant or
+    // under MPS. The residency check above holds either way. KVM_FGPT_COOP=0 launches plainly, the fused GPT kernel's switch, so one A/B prices
+    // both kinds of gang (a row runs one or the other).
+    const char* const coop_env = std::getenv("KVM_FGPT_COOP");
+    const bool coop = !(coop_env && std::atoi(coop_env) == 0);
+    KLOG(2, "static kernel: workers launch %s", coop ? "cooperatively" : "plainly (KVM_FGPT_COOP=0)");
+    const auto launch_workers = [&](const KvmStaticDev& d) {   // the schedule's one launch, as it is timed
+      if (coop) {
+        cudaLaunchConfig_t lc = {}; lc.gridDim = dim3(sc.workers); lc.blockDim = dim3(KVM_THREADS); lc.dynamicSmemBytes = static_smem; lc.stream = stream_;
+        cudaLaunchAttribute at = {}; at.id = cudaLaunchAttributeCooperative; at.val.cooperative = 1; lc.attrs = &at; lc.numAttrs = 1;
+        CK(cudaLaunchKernelEx(&lc, entry, d));
+      } else {
+        entry<<<sc.workers, KVM_THREADS, static_smem, stream_>>>(d);
+      }
+      CK(cudaGetLastError());
+    };
+    // The warm-ups: the timed launch itself with nworkers = 0, on which every block returns at once (the same entry, grid, shared memory and
+    // launch attribute, and no work), twice, so the timed window holds no launch's one-time cost. The first, before the clock warm-up, takes the
+    // entry's first launch (its code load: ~1.5 ms before any record runs) and the launch path's first use, a cooperative one's included. The
+    // second, after it, makes the timed launch follow a launch of its own kind, not the clock warm-up's plain ones.
+    KvmStaticDev warm = S; warm.nworkers = 0;
+    launch_workers(warm); CK(cudaStreamSynchronize(stream_));
     clock_warmup();
+    launch_workers(warm); CK(cudaStreamSynchronize(stream_));
     CK(cudaEventRecord(e0_, stream_));
-    entry<<<sc.workers, KVM_THREADS, static_smem, stream_>>>(S);
-    CK(cudaGetLastError());
+    launch_workers(S);
     CK(cudaEventRecord(e1_, stream_));
     started_ = true;
     CK(cudaStreamSynchronize(stream_));

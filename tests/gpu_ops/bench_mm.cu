@@ -29,7 +29,8 @@ __global__ void __launch_bounds__(256, MM_MINB) k_mm(KvmCtx c, const int32_t* w,
     kvmgpt::matmul_tile(c, w + (size_t)blockIdx.x * words);
 }
 __global__ void __launch_bounds__(256, MM_MINB) k_mm_j16(KvmCtx c, const int32_t* w, int words) {
-    kvmgpt::j16::matmul_tile(c, w + (size_t)blockIdx.x * words);
+    const int32_t* const a = w + (size_t)blockIdx.x * words;
+    if (!kvmgpt::j16::matmul_tile(c, a)) kvmgpt::matmul_tile_ours(c, a);   // the tasks #16's set hands back run on ours, as before
 }
 // MM_DIRECT=1: the #16 256 x 128 fast tile launched as its own kernel (same task words), to separate the tile from the op-kernel context
 template <bool TA, bool TB, int BK, int NST>

@@ -10,14 +10,14 @@ Legend used below: ✅ measured and on main, 🧪 code only (no result measures 
 
 ## 🎬 Take Magni VM for a test drive
 
-Three replays of real A100 runs, each showing something a stack that launches one kernel per operation cannot do. Click
-a picture to play its video.
+[![837 games and a GPT training run, one kernel launch](assets/showcase/the-wall.jpg)](assets/showcase/the-wall.mp4)
 
-| | |
-|---|---|
-| [![One kernel, three workloads](assets/showcase/magni-vm-1-test-drive.jpg)](assets/showcase/magni-vm-1-test-drive.mp4) | **One kernel, three workloads.** This replays all 1,948,168 tasks of a 13.66 s run, on the chip, as they ran. In one launch, a 162M GPT trains, serves requests on the exact weight versions it is training, and runs a game engine on a 35 Hz deadline. Every task, every frame and every version was checked afterwards. |
-| [![A population in one launch](assets/showcase/magni-vm-2-population.jpg)](assets/showcase/magni-vm-2-population.mp4) | **A population in one launch.** 32 training runs share one kernel. At every rung the GPU ranks them and retires the worse half itself, with no host round trip. The sweep runs 1.38× faster than PyTorch's best retiring baseline and makes the same decisions as an fp32 oracle. |
-| [![No gaps](assets/showcase/magni-vm-3-no-gaps.jpg)](assets/showcase/magni-vm-3-no-gaps.mp4) | **No gaps.** The VM's own timestamps for every instruction of 16 training runs on all 108 SMs. Other runs' work fills each run's stalls. It takes 2.03 ms, against 2.59 ms with all runs batched in one CUDA graph: 1.27× at 16 runs, 0.98× at 48. |
+**837 games, one kernel launch.** One A100 runs 837 copies of a real game engine and trains a 162M-parameter GPT at the
+same time, all inside a single Magni VM kernel launch. The GPU renders every frame you see: 1,464,750 of them, each
+byte-identical to a CPU build of the same engine. Each game averages 34.25 to 35.00 fps; with the training running, 80% of frames land
+inside their 28.6 ms slot (96% with the games alone), and the film shows each frame at its scheduled moment. The engine is
+[doomgeneric](https://github.com/ozkl/doomgeneric) playing [Freedoom](https://freedoom.github.io/)'s recorded demos, each
+copy from its own starting point. Click the picture to play (37 s).
 
 ## 📈 Latest results (one A100-SXM4-40GB, Nov 17)
 
@@ -264,6 +264,7 @@ graphs beat it on a 162M GPT (43.1 s vs 48.1 s, B200).
 - The VM is not faster than PyTorch at 162M (6x slower than autocast-bf16 eager in bf16s, 12x slower than TF32 PyTorch in f32) and does not beat a CUDA graph at any size measured; its win region is launch-bound eager execution on tiny models.
 - 162M: it runs and stays finite, nothing more. It is task-throughput bound (30x off its critical path), and its loss has no independent reference.
 - A run with more tasks than slots recycles slots, and the version and cadence checks then skip by design (the 40-step 162M run did; the 6-step one did not).
+- The test-drive film's run (837 games beside 64 training steps of the 162M GPT) used this repository at `592a966` plus code that is not here yet: a three-hook runner patch, an LLVM pass that gives every game instance its own state, and two engine fixes that make its reads past the end of a texture or a table defined (without them the CPU build disagreed with itself).
 
 ## 🏗️ The integrated framework
 

@@ -80,8 +80,15 @@ KVM_SPLIT_HD inline int kvm_split_shares(KvmSplitDesc& d) {
 //  * the widest physical share at most 128 (one GEMM's N);
 //  * 1 <= L <= KVM_SPLIT_MAXL.
 // The embedding owners' scratch [T][E] sits over the weights when they are at least as large (they are dead from the owners to the next step's load).
-KVM_SPLIT_HD inline int kvm_split_layout(KvmSplitDesc& d) {
+//
+// Streamed weights (kc > 0, the member split_run<..., true> runs): a member holds no layer's weights for the step. Ws[0] and Ws[1] are two
+// staging tiles of kc rows x HP, which carry each layer's share kc rows at a time (cp.async, one tile loading while the other is read), in the
+// forward as the GEMM's K rows and in the backward as its N rows. Each GEMM keeps its chains (kvm_fused_split.cuh), so a member computes the
+// resident member's bits; what changes is its memory, which no longer grows with L x HR x HP, so a gang can take fewer physical shares and
+// several runs' gangs fit the workers at once. Ws[l >= 2] are unused (-1). kc is a multiple of 16 (the backward's N), at most 128.
+KVM_SPLIT_HD inline int kvm_split_layout(KvmSplitDesc& d, int kc = 0) {
   if (d.L < 1 || d.L > KVM_SPLIT_MAXL || d.E % 16 || d.E > 128 || d.V % 4 || d.Q < 1) return -1;
+  if (kc < 0 || kc % 16 || kc > 128) return -1;
   d.VP = kvm_split_pad16(d.V); d.HR = kvm_split_pad16(d.H); d.T = KVM_SPLIT_R * d.Q;
   const int wmax = kvm_split_shares(d);
   if (wmax < 0 || d.VP > 128) return -1;
@@ -89,7 +96,8 @@ KVM_SPLIT_HD inline int kvm_split_layout(KvmSplitDesc& d) {
   if (d.HP > 128) return -1;
   const int R = KVM_SPLIT_R;
   int off = kvm_split_desc_floats();
-  for (int l = 0; l < d.L; ++l) { d.Ws[l] = off; off += (l ? d.HR : d.E) * d.HP; }
+  if (kc) { for (int l = 0; l < KVM_SPLIT_MAXL; ++l) d.Ws[l] = -1; for (int b = 0; b < 2; ++b) { d.Ws[b] = off; off += kc * d.HP; } }
+  else for (int l = 0; l < d.L; ++l) { d.Ws[l] = off; off += (l ? d.HR : d.E) * d.HP; }
   d.bs = off; off += d.L * d.HP;
   d.Whs = off; off += d.HP * d.VP;
   const int weights = off - d.Ws[0];
@@ -104,4 +112,37 @@ KVM_SPLIT_HD inline int kvm_split_layout(KvmSplitDesc& d) {
   if (d.T * d.E <= weights) d.gtok = d.Ws[0]; else { d.gtok = off; off += d.T * d.E; }
   d.total = off;
   return off;
+}
+// The streamed member's staging rows for `d` within `budget` floats: the largest of 64, 32 and 16 whose layout fits (more rows a tile, fewer
+// tile waits a GEMM), with `d` laid out at it; 0 (and `d` laid out resident) when none fits. The device reads the rows back from the layout:
+// kvm_split_stream_rows.
+KVM_SPLIT_HD inline int kvm_split_stream_kc(KvmSplitDesc& d, int budget) {
+  for (int kc = 64; kc >= 16; kc -= 16) {
+    if (kc == 48) continue;
+    const int f = kvm_split_layout(d, kc);
+    if (f > 0 && f <= budget) return kc;
+  }
+  kvm_split_layout(d);
+  return 0;
+}
+KVM_SPLIT_HD inline int kvm_split_stream_rows(const KvmSplitDesc& d) { return (d.Ws[1] - d.Ws[0]) / d.HP; }
+// A descriptor laid out for the streamed member: two staging tiles of 16, 32 or 64 rows, back to back, and no weight arrays past them.
+KVM_SPLIT_HD inline bool kvm_split_is_streamed(const KvmSplitDesc& d) {
+  const int kc = d.HP > 0 ? kvm_split_stream_rows(d) : 0;
+  return (kc == 16 || kc == 32 || kc == 64) && (d.Ws[1] - d.Ws[0]) % d.HP == 0 && d.Ws[2] == -1 && d.Ws[3] == -1 && d.bs == d.Ws[1] + kc * d.HP;
+}
+// The virtual share counts the streamed member is built for (the static path's split_stream entries, one kernel a count): 18, the count every
+// split shape the hold-out's drawer makes takes on the A100 (widths 80-640 at depths 1-4, kvm_fuse_split_fits). Each entry costs ptxas
+// minutes, so the list holds what runs; a run at another count keeps the resident member. Add a count here to stream it.
+#define KVM_SPLIT_STREAM_LIST X(18)
+// The fold by which streaming must cut a bundle's waves before the pass takes it (kvm_fuse.h): a streamed wave of narrow members cost x2.65 of
+// a resident one on the A100's split bed, so a 3-fold cut is the measured break-even with a margin.
+#define KVM_SPLIT_STREAM_WAVE_CUT 3
+KVM_SPLIT_HD inline bool kvm_split_stream_built(int Sv) {
+  switch (Sv) {
+#define X(S_) case S_: return true;
+    KVM_SPLIT_STREAM_LIST
+#undef X
+    default: return false;
+  }
 }

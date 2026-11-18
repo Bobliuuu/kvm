@@ -981,7 +981,7 @@ class KvmExec {
       if (r.split) {   // the split form: Q x S members, their partials, the exchanges, the gang's barrier words (kvm_fused_split.h)
         KvmSplitDesc& d = splits[i]; any_split = true;
         d.V = r.V; d.E = r.E; d.L = r.L; d.H = r.H[0]; d.S = r.S; d.Sv = r.Sv; d.Q = r.Q; d.lr = r.lr;
-        const int floats = kvm_split_layout(d);
+        const int floats = kvm_split_layout(d, r.kc);   // r.kc > 0: the streamed member's layout (its staging tiles)
         if (floats < 0 || floats > r.smem_floats) throw std::runtime_error("fuse: a split run's layout does not fit what the pass sized it for");
         st.smem_bytes = std::max(st.smem_bytes, floats * (int)sizeof(float));
         const int nslot = d.Q * d.S, vslot = d.Q * d.Sv, R = KVM_SPLIT_R;   // a member's partials, and a virtual share's
@@ -1302,6 +1302,10 @@ class KvmExec {
       for (size_t t = 0; t < b.tasks.size(); ++t)
         if (b.tasks[t].op_id == KVM_OP_fmlp_slice || b.tasks[t].op_id == KVM_OP_fmlp_sgd || b.tasks[t].op_id == KVM_OP_fmlp_split || b.tasks[t].op_id == KVM_OP_fmlp_grid)
           throw std::logic_error("static kernel: task " + std::to_string(t) + " is a fused op (" + kvm_op(b.tasks[t].op_id)->name + "), which the generic entry refuses");
+    if (o.entry.kind == KvmFuseEntry::split && o.fused)   // the split entry runs one member, resident or streamed: each run's descriptor is laid out for it
+      for (size_t i = 0; i < o.fused->size(); ++i)
+        if ((*o.fused)[i].split && ((*o.fused)[i].kc > 0) != o.entry.stream)
+          throw std::logic_error("static kernel: split run " + std::to_string(i) + (o.entry.stream ? " holds its weights" : " streams its weights") + ", entry " + kvm_fuse_entry_name(o.entry));
     for (size_t t = 0; t < b.tasks.size(); ++t)   // a fused GPT member runs only as its gang's block of the fused GPT kernel (run_fgpt): no entry's dispatch runs it
       if (b.tasks[t].op_id == KVM_OP_fgpt_step)
         throw std::logic_error("static kernel: task " + std::to_string(t) + " is a fused GPT member (fgpt_step), which only the fused GPT kernel runs (run_fgpt)");

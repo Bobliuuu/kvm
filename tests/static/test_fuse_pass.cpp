@@ -1,7 +1,8 @@
 // CPU check of the bundle-level fusion pass (include/kvm_fuse.h) on real bundles: prints the decision for every run and, when it fires, checks the rewritten bundle.
 //   g++ -std=c++17 -O2 -Iinclude tests/static/test_fuse_pass.cpp -o /tmp/test_fuse_pass && /tmp/test_fuse_pass BUNDLE_DIR[@FORM]...   (build from the repo root)
 // FORM, when given, is what the pass must make of every run of the bundle at the largest worker count (108, an A100's default): none (no run fused), block (the one-block
-// form, fmlp_slice and fmlp_sgd), split (the split form's fmlp_split gangs) or grid (the grid form's fmlp_grid gangs). A bundle given without one is only reported.
+// form, fmlp_slice and fmlp_sgd), split (the split form's fmlp_split gangs, its members holding their weights), split-streamed (the same gangs, their
+// members streaming their weights: kvm_fused_split.h) or grid (the grid form's fmlp_grid gangs). A bundle given without one is only reported.
 // Checks on a fired bundle: the DAG is acyclic; every kept task keeps its op and arguments; every replaced step became its slices and groups, each slice before every group; the static
 // planner accepts the result on the bundle's registry signatures, with the fused ops' signatures added; every gang's members sit on distinct workers; and the emitted records
 // replay as the device runs them (tests/static/replay.h): no deadlock through any gang's barrier, every edge of the DAG honoured.
@@ -150,7 +151,7 @@ int main(int argc, char** argv) {
     // --smem FLOATS: the shared-memory budget of a fused block (default: the pass's, an A100's); a smaller GPU's budget changes the forms
     int smem_floats = KvmFuseOptions{}.smem_floats, first_arg = 1;
     if (argc > 2 && !strcmp(argv[1], "--smem")) { smem_floats = atoi(argv[2]); first_arg = 3; }
-    if (argc <= first_arg || smem_floats <= 0) { fprintf(stderr, "usage: %s [--smem FLOATS] BUNDLE_DIR[@none|block|split|grid]...\n", argv[0]); return 2; }
+    if (argc <= first_arg || smem_floats <= 0) { fprintf(stderr, "usage: %s [--smem FLOATS] BUNDLE_DIR[@none|block|split|split-streamed|grid]...\n", argv[0]); return 2; }
     const kvm_test_registry::Registry& R = kvm_test_registry::registry();
     KvmFuseOps ops;
     ops.noop = R.require("noop");
@@ -180,7 +181,7 @@ int main(int argc, char** argv) {
         const std::string spec = argv[ai]; const size_t at = spec.rfind('@');
         const bool has_form = at != std::string::npos && spec.find('/', at) == std::string::npos;
         const std::string dir = has_form ? spec.substr(0, at) : spec, expect = has_form ? spec.substr(at + 1) : "";
-        if (has_form && expect != "none" && expect != "block" && expect != "split" && expect != "grid") { fprintf(stderr, "%s: unknown form \"%s\" (none, block, split or grid)\n", spec.c_str(), expect.c_str()); return 2; }
+        if (has_form && expect != "none" && expect != "block" && expect != "split" && expect != "split-streamed" && expect != "grid") { fprintf(stderr, "%s: unknown form \"%s\" (none, block, split, split-streamed or grid)\n", spec.c_str(), expect.c_str()); return 2; }
         const std::string meta = slurp(dir + "/metadata.json");
         auto tasks = load<KvmTaskDesc>(dir + "/tasks.bin"); auto succ = load<int32_t>(dir + "/successors.bin"); auto args = load<int32_t>(dir + "/args.bin");
         const auto bufs = load_bufs(meta);
@@ -197,11 +198,11 @@ int main(int argc, char** argv) {
         if (!expect.empty() && W == kWorkers[sizeof kWorkers / sizeof kWorkers[0] - 1]) {
             int block = 0, split = 0, grid = 0;
             for (const auto& d : r.tasks) { block += d.op_id == slice_id || d.op_id == sgd_id; split += d.op_id == split_id; grid += d.op_id == grid_id; }
-            const char* got = !r.fused_runs ? "none" : r.unchanged_runs || (block > 0) + (split > 0) + (grid > 0) > 1 ? "mixed" : block ? "block" : split ? "split" : "grid";
+            const char* got = !r.fused_runs ? "none" : r.unchanged_runs || (block > 0) + (split > 0) + (grid > 0) > 1 ? "mixed" : block ? "block" : split ? (r.entry.stream ? "split-streamed" : "split") : "grid";
             if (expect != got) { printf("  FAIL: expected %s at W=%d, got %s (%d of %d runs fused)\n", expect.c_str(), W, got, r.fused_runs, r.fused_runs + r.unchanged_runs); ++failures; }
             else printf("  expected %s at W=%d: ok\n", expect.c_str(), W);
             // the static kernel entry the executor launches (kvm_fuse_entry): each fused form on its own entry, an unfused bundle on the generic one
-            const KvmFuseEntry::Kind want = expect == "split" ? KvmFuseEntry::split : expect == "grid" ? KvmFuseEntry::grid : expect == "block" ? KvmFuseEntry::block : KvmFuseEntry::generic;
+            const KvmFuseEntry::Kind want = expect == "split" || expect == "split-streamed" ? KvmFuseEntry::split : expect == "grid" ? KvmFuseEntry::grid : expect == "block" ? KvmFuseEntry::block : KvmFuseEntry::generic;
             if (r.entry.kind != want) { printf("  FAIL: entry at W=%d is %s\n", W, kvm_fuse_entry_name(r.entry).c_str()); ++failures; }
             else printf("  entry at W=%d: %s: ok\n", W, kvm_fuse_entry_name(r.entry).c_str());
         }
@@ -216,13 +217,19 @@ int main(int argc, char** argv) {
             for (const auto& d : r.tasks) {
                 if (d.op_id != split_id) continue;
                 const int run = r.args[d.args_off], members = r.args[d.args_off + 3];
-                const bool ok = run >= 0 && run < (int)r.runs.size() && r.runs[run].Sv == r.entry.S && r.runs[run].S >= 1 && r.runs[run].S <= r.runs[run].Sv &&
-                                members == KVM_SPLIT_Q * r.runs[run].S;
+                bool ok = run >= 0 && run < (int)r.runs.size() && r.runs[run].Sv == r.entry.S && r.runs[run].S >= 1 && r.runs[run].S <= r.runs[run].Sv &&
+                          members == KVM_SPLIT_Q * r.runs[run].S && (r.runs[run].kc > 0) == r.entry.stream;
+                if (ok) {   // the descriptor the executor lays out for the run (kvm_exec.cu) fits the budget, as the member its entry runs reads it
+                    const KvmFuseRun& u = r.runs[run];
+                    KvmSplitDesc sd{}; sd.V = u.V; sd.E = u.E; sd.L = u.L; sd.H = u.H[0]; sd.S = u.S; sd.Sv = u.Sv; sd.Q = u.Q;
+                    const int f = kvm_split_layout(sd, u.kc);
+                    ok = f > 0 && f <= u.smem_floats && kvm_split_is_streamed(sd) == (u.kc > 0) && (!u.kc || kvm_split_stream_built(u.Sv));
+                }
                 bad += !ok;
                 if (ok) phys.insert(r.runs[run].S);
             }
-            if (bad) { printf("  FAIL: W=%d: %d split member(s) whose gang is not %d x its run's physical shares, up to the entry's %d virtual\n", W, bad, KVM_SPLIT_Q, r.entry.S); ++failures; }
-            else { std::string ps; for (int x : phys) ps += (ps.empty() ? "" : ", ") + std::to_string(x); printf("  split gangs at W=%d: %d virtual shares on %s physical: ok\n", W, r.entry.S, ps.c_str()); }
+            if (bad) { printf("  FAIL: W=%d: %d split member(s) whose gang is not %d x its run's physical shares, up to the entry's %d virtual, with the entry's member and a layout that fits\n", W, bad, KVM_SPLIT_Q, r.entry.S); ++failures; }
+            else { std::string ps; for (int x : phys) ps += (ps.empty() ? "" : ", ") + std::to_string(x); printf("  split gangs at W=%d: %d virtual shares on %s physical, weights %s: ok\n", W, r.entry.S, ps.c_str(), r.entry.stream ? "streamed" : "resident"); }
         }
         if (W == kWorkers[sizeof kWorkers / sizeof kWorkers[0] - 1]) {   // the loss in row blocks (a tiling's Tiling.ce_rows), at the A100's workers:
             // either form fuses to this very bundle; a broken covering stays unfused, with a warning

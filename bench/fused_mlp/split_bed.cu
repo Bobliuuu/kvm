@@ -53,6 +53,7 @@ constexpr float LR = 0.05f;
 constexpr int R = KVM_SPLIT_R;
 constexpr int MAXL = KVM_SPLIT_MAXL;
 constexpr int NPH = kvm_fsplit::NPH;
+constexpr int NALL = NPH + kvm_fsplit::NPH_SUB;   // every stamp index: the phases, then the sub-phases (kvm_fused_split.cuh)
 extern __shared__ __align__(128) float smem[];
 
 // R gangs of Q x S blocks, gang r = blocks [r nslot, r nslot + nslot), each running split_run over the steps on its own run (descriptor gd[r],
@@ -62,8 +63,8 @@ __global__ void __launch_bounds__(NT, 1) split_kernel(const KvmSplitDesc* gd, in
   const int tid = threadIdx.x, run = blockIdx.x / nslot, member = blockIdx.x % nslot;
   gd += run; loss += (size_t)run * lstride;
   if (tid == 0) tm.smid[blockIdx.x] = sm_id();
-  __shared__ unsigned long long stamp[2][NPH];
-  for (int i = tid; i < 2 * NPH; i += NT) stamp[i / NPH][i % NPH] = 0ull;
+  __shared__ unsigned long long stamp[2][NALL];
+  for (int i = tid; i < 2 * NALL; i += NT) stamp[i / NALL][i % NALL] = 0ull;
   __syncthreads();
   unsigned long long prev_end = 0;
   long long acc[NPH];
@@ -74,14 +75,18 @@ __global__ void __launch_bounds__(NT, 1) split_kernel(const KvmSplitDesc* gd, in
 #pragma unroll
     for (int i = 0; i < NPH; ++i) { const unsigned long long e = stamp[step & 1][i]; acc[i] += (long long)(e - prev_end); prev_end = e; }
   };
+  // Each step's every stamp, raw, for the host's sub-phase walk: tm.phase[NPH + step * NALL + i], copied by warp 0's lanes when thread 0 takes the step
+  unsigned long long* const raw = reinterpret_cast<unsigned long long*>(tm.phase + NPH);
   for (int step = 0; step < steps; ++step) {
     if (step > 0 && blockIdx.x == 0 && tid == 0) take(step - 1);   // every warp of block 0 is past step - 1's last stamp: it passed the last barrier
+    if (step > 0 && blockIdx.x == 0 && tid < 32) for (int i = tid; i < NALL; i += 32) raw[(size_t)(step - 1) * NALL + i] = stamp[(step - 1) & 1][i];
     kvm_fsplit::prefetch_desc(gd, smem);
     kvm_fsplit::split_run<S, Q, STREAM>(member, ids + (size_t)step * T, tgt + (size_t)step * T, loss + 2 * step, smem, nullptr, Stamps{stamp[step & 1]});
   }
   __syncthreads();
   if (blockIdx.x == 0 && tid == 0) {
     take(steps - 1); tm.gtime[1] = global_ns();
+    for (int i = 0; i < NALL; ++i) raw[(size_t)(steps - 1) * NALL + i] = stamp[(steps - 1) & 1][i];
 #pragma unroll
     for (int i = 0; i < NPH; ++i) tm.phase[i] = acc[i];
   }
@@ -171,13 +176,14 @@ int main(int argc, char** argv) {
   const int lstride = nsteps * 2;   // each run's loss slots
   float* dloss = dalloc((size_t)runs * lstride);
   Timing tm{};
-  CK(cudaMalloc(&tm.phase, NPH * sizeof(long long))); CK(cudaMalloc(&tm.gtime, 2 * sizeof(unsigned long long))); CK(cudaMalloc(&tm.smid, (size_t)runs * nslot * sizeof(unsigned)));
+  const size_t phase_words = NPH + (size_t)nsteps * NALL;   // the phases' sums, then every step's raw stamps
+  CK(cudaMalloc(&tm.phase, phase_words * sizeof(long long))); CK(cudaMalloc(&tm.gtime, 2 * sizeof(unsigned long long))); CK(cudaMalloc(&tm.smid, (size_t)runs * nslot * sizeof(unsigned)));
   auto upload = [&]() {
     for (const KvmSplitDesc& x : ds) {
       for (int l = 0; l < x.L; ++l) { CK(cudaMemcpy(x.w[l], W[l].data(), W[l].size() * 4, cudaMemcpyHostToDevice)); CK(cudaMemcpy(x.b[l], bvec[l].data(), bvec[l].size() * 4, cudaMemcpyHostToDevice)); }
       CK(cudaMemcpy(x.wh, Wh.data(), Wh.size() * 4, cudaMemcpyHostToDevice)); CK(cudaMemcpy(x.we, emb.data(), emb.size() * 4, cudaMemcpyHostToDevice));
     }
-    CK(cudaMemset(tm.phase, 0, NPH * sizeof(long long)));
+    CK(cudaMemset(tm.phase, 0, phase_words * sizeof(long long)));
   };
   auto launch = [&](int n) {
     int nn = n, TT = T, ns = nslot, ls = lstride; void* args[] = {&gd, &ns, &dids, &dtgt, &dloss, &ls, &nn, &TT, &tm};
@@ -236,7 +242,8 @@ int main(int argc, char** argv) {
   cudaEvent_t e0, e1; CK(cudaEventCreate(&e0)); CK(cudaEventCreate(&e1));
   CK(cudaEventRecord(e0)); launch(steps); CK(cudaEventRecord(e1)); CK(cudaEventSynchronize(e1));
   float ms = 0; CK(cudaEventElapsedTime(&ms, e0, e1));
-  long long hph[NPH]; CK(cudaMemcpy(hph, tm.phase, sizeof(hph), cudaMemcpyDeviceToHost));
+  std::vector<long long> hall(phase_words); CK(cudaMemcpy(hall.data(), tm.phase, phase_words * sizeof(long long), cudaMemcpyDeviceToHost));
+  long long hph[NPH]; std::copy(hall.begin(), hall.begin() + NPH, hph);
   const char* names[NPH] = {"load (weights, embedding rows)", "forward (GEMMs, GELU, all-gathers)", "logits partial GEMM (to L2)", "barrier: logits",
                             "logits summed, cross-entropy", "backward (GEMMs, reduce-scatters)", "barrier: partials", "owners: parameters", "owners: embedding + last barrier"};
   long long tot = 0; for (int i = 0; i < NPH; ++i) tot += hph[i];
@@ -248,6 +255,35 @@ int main(int argc, char** argv) {
   for (int i = 0; i < NPH; ++i) printf("  %-38s %8.0f  (%4.1f%%)\n", names[i], (double)hph[i] / steps, 100.0 * hph[i] / std::max(1ll, tot));
   printf("  %-38s %8.0f cycles\n", "total", (double)tot / steps);
   printf("block 0's phases: from the last warp's end of the previous phase to the last warp's end of this one (per-warp stamps)\n");
+  {   // the sub-phases (kvm_fused_split.cuh: sub_f, sub_head, sub_b), each step's raw stamps walked in execution order from the step before's last stamp
+    using kvm_fsplit::sub_f; using kvm_fsplit::sub_b; using kvm_fsplit::sub_head; using kvm_fsplit::NSUB_F; using kvm_fsplit::NSUB_B;
+    std::vector<int> order{0};
+    for (int l = 0; l < d.L; ++l) for (int k = 0; k < NSUB_F; ++k) order.push_back(sub_f(l, k));
+    for (int i : {1, 2, 3, 4}) order.push_back(i);
+    order.push_back(sub_head());
+    for (int p = 0; p < d.L; ++p) for (int k = 0; k < NSUB_B; ++k) order.push_back(sub_b(p, k));
+    for (int i : {5, 6, 7, 8}) order.push_back(i);
+    std::vector<double> dur(NALL, 0.0); long long negative = 0; int walked = 0;
+    const unsigned long long* rows = reinterpret_cast<const unsigned long long*>(hall.data() + NPH);
+    for (int k = 1; k < steps; ++k, ++walked) {   // step 0 has no step before it in the buffer
+      const unsigned long long* row = rows + (size_t)k * NALL;
+      unsigned long long prev = rows[(size_t)(k - 1) * NALL + 8];
+      for (int idx : order) { const unsigned long long e = row[idx]; if (!e) continue; const long long t = (long long)(e - prev); negative += t < 0; dur[idx] += (double)t; prev = e; }
+    }
+    if (walked > 0) {
+      const char* fname[NSUB_F] = {"GEMM (with its tile waits)", "GELU", "all-gather out + barrier", "slice's H read back"};
+      const char* bname[NSUB_B] = {"gelu'", "db partial", "input read back", "dW partial", "dX partials (tiles, writes)", "barrier", "reduce-scatter"};
+      const double tot_sub = (double)tot / steps;
+      auto line = [&](const std::string& n, int idx) { if (dur[idx] != 0.0) printf("  %-44s %8.0f  (%4.1f%%)\n", n.c_str(), dur[idx] / walked, 100.0 * dur[idx] / walked / std::max(1.0, tot_sub)); };
+      printf("sub-phases (cycles a step over steps 1-%d; each from the last warp's end of the stamp before it):\n", steps - 1);
+      for (int l = 0; l < d.L; ++l) for (int k = 0; k < NSUB_F; ++k) line("forward layer " + std::to_string(l) + ": " + fname[k], sub_f(l, k));
+      line("forward: the rest, to its phase's end", 1);
+      line("backward: the head (dH, dWh)", sub_head());
+      for (int p = 0; p < d.L; ++p) for (int k = 0; k < NSUB_B; ++k) line("backward layer " + std::to_string(d.L - 1 - p) + ": " + bname[k], sub_b(p, k));
+      line("backward: the rest, to its phase's end", 5);
+      printf("sub-phase walk: %d steps, %lld negative intervals%s\n", walked, negative, negative ? " (STAMPS OUT OF ORDER: the table above is not a partition)" : " (a partition of each step)");
+    }
+  }
   {   // one block a SM is the design; say so when blocks shared SMs
     std::vector<unsigned> sids((size_t)runs * nslot); CK(cudaMemcpy(sids.data(), tm.smid, sids.size() * sizeof(unsigned), cudaMemcpyDeviceToHost));
     std::sort(sids.begin(), sids.end());

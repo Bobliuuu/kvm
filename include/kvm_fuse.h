@@ -115,6 +115,7 @@ struct KvmFuseEntry {
                                                                                                     // arithmetic; grid_virtual: grid runs on virtual members
   int S = 0;           // the split entry's virtual share count (its instantiation; each gang's physical count is the descriptor's)
   bool stream = false; // the split entry's member streams its weights (KvmFuseRun::kc > 0): an entry of its own (kvm_static_gang_split_stream)
+  bool odx = false;    // a streamed entry where some gang takes the owner-side dX (kvm_split_odx); where none does, the partials member's own entry
   std::string why;     // mixed: what keeps the bundle off a gang entry
 };
 struct KvmFuseResult {
@@ -132,6 +133,12 @@ struct KvmFuseResult {
   std::string dropped;                 // non-empty: runs fused, but no single entry runs them with the rest of the bundle, so nothing was (why)
 };
 
+// A streamed split run whose gang takes the owner-side dX (kvm_split_odx on its laid-out descriptor; a resident run takes neither path).
+inline bool kvm_fuse_split_odx(const KvmFuseRun& r) {
+  if (!r.split || r.kc <= 0) return false;
+  KvmSplitDesc d{}; d.V = r.V; d.E = r.E; d.L = r.L; d.H = r.H[0]; d.S = r.S; d.Sv = r.Sv; d.Q = r.Q;
+  return kvm_split_layout(d, r.kc) > 0 && kvm_split_odx(d);
+}
 inline KvmFuseEntry kvm_fuse_entry(const KvmFuseResult& r, const KvmFuseOps& ops) {
   KvmFuseEntry e;
   int nsplit = 0, ngrid = 0, nblock = 0, nbatch = 0, nbatch_grid = 0, ngrid_virtual = 0;
@@ -140,7 +147,7 @@ inline KvmFuseEntry kvm_fuse_entry(const KvmFuseResult& r, const KvmFuseOps& ops
     if (run.split) {
       if (nsplit++ && run.Sv != e.S) { e.kind = KvmFuseEntry::mixed; e.why = "split runs at " + std::to_string(e.S) + " and " + std::to_string(run.Sv) + " virtual shares"; return e; }
       if (nsplit > 1 && (run.kc > 0) != e.stream) { e.kind = KvmFuseEntry::mixed; e.why = "split runs with resident and streamed weights"; return e; }
-      e.S = run.Sv; e.stream = run.kc > 0;
+      e.S = run.Sv; e.stream = run.kc > 0; e.odx |= kvm_fuse_split_odx(run);
     }
     else if (run.grid) { ++ngrid; ngrid_virtual += run.phys > 0; }
     else ++nblock;
@@ -166,7 +173,7 @@ inline std::string kvm_fuse_entry_name(const KvmFuseEntry& e) {
   switch (e.kind) {
     case KvmFuseEntry::generic: return "generic";
     case KvmFuseEntry::block: return "one-block";
-    case KvmFuseEntry::split: return "split, " + std::to_string(e.S) + " shares" + (e.stream ? ", weights streamed" : "");
+    case KvmFuseEntry::split: return "split, " + std::to_string(e.S) + " shares" + (e.stream ? (e.odx ? ", weights streamed" : ", weights streamed, dX by partials") : "");
     case KvmFuseEntry::grid: return "grid";
     case KvmFuseEntry::batch: return "batched";
     case KvmFuseEntry::batch_grid: return "batched (grid arithmetic)";
@@ -805,7 +812,7 @@ inline KvmFuseResult kvm_fuse_mlp(const std::vector<KvmTaskDesc>& tasks, const s
         for (int l = 0; l < r.L; ++l) shape += "x" + std::to_string(r.H[l]);
         R.report.push_back("component " + std::to_string(plan_comp[i]) + ": fused, split form (" + plans[i].split_why + "): " + std::to_string(plans[i].steps.size()) + " steps, T=" + std::to_string(r.T) + " V=" + std::to_string(r.V) + " widths " + shape + ", gangs of " + std::to_string(r.Q) + " slices x " + std::to_string(r.S) + " shares = " + std::to_string(r.Q * r.S) + " members, " + std::to_string(floats) + " floats a member" +
                            (r.S < r.Sv ? " (" + std::to_string(r.Sv) + " virtual shares, the run's own)" : "") +
-                           (r.kc ? ", weights streamed in tiles of " + std::to_string(r.kc) + " rows" : ""));
+                           (r.kc ? ", weights streamed in tiles of " + std::to_string(r.kc) + " rows" + (kvm_fuse_split_odx(r) ? ", owner-side dX" : ", dX by partials") : ""));
         continue;
       }
       r.nsl = r.T / r.slice_rows;

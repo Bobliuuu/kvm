@@ -21,6 +21,7 @@
 #define KVM_FGPT_MAXP (4 + KVM_FGPT_PER_LAYER * KVM_FGPT_MAXL)   // + wte, nf (g, b), head
 #define KVM_FGPT_SMEM_FLOATS 38400            // the pass's default budget of shared memory a member, in floats (the executor passes the device's)
 #define KVM_FGPT_MAX_GANG 64                  // the widest gang the policy picks (kvm_fgpt_fit); an A100's 108 SMs seat 64 members
+#define KVM_FGPT_QUARTER_MAX 48               // the widest gang of half a hidden tile a member the policy prefers (kvm_fgpt_fit)
 
 // Parameter slots, in one fixed order: 0 wte; 1 + 16 l + r for layer l's role r (KVM_FGPT_R_*); then nf's g and b; then the head.
 enum KvmFgptRole {
@@ -102,7 +103,7 @@ KVM_FGPT_HD inline long long kvm_fgpt_own_stride(int B, int T, int d, int H, int
 struct KvmFgptScratch {
   long long x[KVM_FGPT_MAXL + 1], h[KVM_FGPT_MAXL], m1[KVM_FGPT_MAXL], r1[KVM_FGPT_MAXL], q[KVM_FGPT_MAXL], k[KVM_FGPT_MAXL], v[KVM_FGPT_MAXL],
       o[KVM_FGPT_MAXL], lse[KVM_FGPT_MAXL], xm[KVM_FGPT_MAXL], h2[KVM_FGPT_MAXL], m2[KVM_FGPT_MAXL], r2[KVM_FGPT_MAXL], pre[KVM_FGPT_MAXL];
-  long long hf, mf, rf, logits, ce, tl, gx, gxk, du, dqk, part, lnp, rpart, hgp, dkv, olist, osrc, gn, dy, total;
+  long long hf, mf, rf, logits, ce, tl, lsec, gx, gxk, du, dqk, part, lnp, rpart, hgp, dkv, olist, osrc, gn, dy, total;
 };
 // The layout written into `s` in place (the program's thread 0 builds the block's shared copy this way, with no local copy to spill); every
 // offset is a long long, so the zeroing loop clears the arrays past L as KvmFgptScratch{} would.
@@ -118,7 +119,7 @@ KVM_FGPT_HD inline void kvm_fgpt_scratch_into(KvmFgptScratch& s, int N, int T, i
     s.lse[l] = take((long long)N * H); s.xm[l] = take(Nd); s.h2[l] = take(Nd); s.m2[l] = take(N); s.r2[l] = take(N); s.pre[l] = take(NF);
   }
   s.hf = take(Nd); s.mf = take(N); s.rf = take(N); s.logits = take((long long)N * V);
-  s.ce = take((long long)G * N * 2); s.tl = take(N); s.gx = take(Nd);
+  s.ce = take((long long)G * N * 2); s.tl = take(N); s.lsec = take(N); s.gx = take(Nd);   // lsec: each row's log-sum-exp, by its owner
   s.gxk = take(Nd); s.du = take(NF);   // ZBW's (kvm_fused_gpt.cuh, the MLP backward): fc2's output gradient kept, and the owners' dU
   s.dqk = take(Nd);                    // ZBW's for the attention: the items' dq after RoPE's backward, for their doers
   s.part = take((long long)(G > H ? G : H) * Nd);
@@ -142,6 +143,10 @@ KVM_FGPT_HD inline int kvm_fgpt_ldmn(int cols) { return ((cols + 15) & ~15) + 8;
 KVM_FGPT_HD inline int kvm_fgpt_r16(int n) { return (n + 15) & ~15; }
 KVM_FGPT_HD inline int kvm_fgpt_r8(int n) { return (n + 7) & ~7; }
 KVM_FGPT_HD inline long long kvm_fgpt_r4(long long n) { return (n + 3) & ~3LL; }
+// The words the embedding gradient's row lists take from a block of NT threads' shared memory before its sums (kvm_fused_gpt.cuh's
+// emb_grad_rows): a chunk's listed token rows and their vocabulary rows (NT ints each) and each warp's count, rounded to a 16-byte line.
+template <int NT>
+KVM_FGPT_HD constexpr int kvm_fgpt_emb_list_floats() { return (2 * NT + NT / 32 + 3) / 4 * 4; }
 // ZBW (kvm_fused_gpt.cuh, the MLP backward): a member without an attention item runs the MLP's weight gradients of up to
 // KVM_FGPT_ZBW_OWNERS owners' fc1 columns in the attention backward's waits (0 turns it off). Four: on an RTX 5070 one pass over four
 // owners' columns cost 2.13x one owner's weight gradients (d 128, w 8 a member), which the hold-out's d128 at G 64 (16 such members for
@@ -216,8 +221,8 @@ KVM_FGPT_HD inline long long kvm_fgpt_smem_floats(int N, int T, int d, int H, in
                           r4((long long)kvm_fgpt_r8(wf) * ldm) + r4(wf);
   const long long mlp_b = 2 * r4((long long)N16 * kvm_fgpt_ldk(wf)) + r4((long long)N16 * kvm_fgpt_ldmn(wf)) + r4((long long)N16 * mx(ldd, ldm)) +
                           mx(r4((long long)kvm_fgpt_r8(wf) * ldd), r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldk(wf)));
-  // the head: hf and its columns (logits); dlogits, hf, its columns again (backward)
-  const long long logit = r4((long long)N16 * ldd) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldmn(wv));
+  // the head: hf, its columns and the chunk's logits (forward); dlogits, hf, its columns again (backward)
+  const long long logit = r4((long long)N16 * ldd) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldmn(wv)) + r4((long long)N16 * wv);   // + the chunk's logits
   const long long headb = r4((long long)N16 * kvm_fgpt_ldk(wv)) + r4((long long)N16 * ldm) + r4((long long)kvm_fgpt_r8(d) * kvm_fgpt_ldk(wv));
   // the embedding's gradient: gx, a row chunk of it (unpadded)
   const long long emb = r4((long long)(R < N ? R : N) * d);
@@ -242,21 +247,40 @@ struct KvmFgptZbwRun {
   bool attn = false;
   KVM_FGPT_HD bool any() const { return mlp.zg > 0 || attn; }
 };
+// Whether ZBW's doers fit the waits they fill. A doer's weight gradients (dW1 and dW2 of `most` owners' fp hidden units over the N rows,
+// 2 most fp d N multiply-adds) are set against one attention item's backward, which the members with an item run meanwhile (its TQ query
+// rows against the T keys in 5 products of width hd, and its projections' 7 of width d: TQ hd (5 T + 7 d)); and a doer whose owners take
+// more than one pass (zg < most) stages every row chunk once a pass, which the count leaves out. On an A100 bed (fifteen
+// hold-out-shaped GPTs at the executor's G, ZBW on against off), ZBW won only in one pass at ratios of 0.42 to 1.41 (its step
+// x1.029-1.057); it lost in two or more passes at 1.41 to 2.77 (x0.81-0.93) and in one at 1.76 to 2.23 (x0.93-1.00). Every output is the
+// same bits either way (a doer sums each owner's gradient in the owner's order), so the rule decides only the step's time.
+KVM_FGPT_HD inline bool kvm_fgpt_zbw_fits(int N, int T, int d, int hd, int QB, int fp, int most) {
+  const long long TQ = QB > 0 ? T / QB : T;
+  const long long doer = 2LL * most * fp * d * N, item = TQ * hd * (5LL * T + 7LL * d);
+  return 10 * doer <= 16 * item;
+}
 KVM_FGPT_HD inline KvmFgptZbwRun kvm_fgpt_zbw_of(int N, int T, int d, int H, int F, int G, int QB, int rows, long long smem_floats) {
   KvmFgptZbwRun z;
   const int B = T > 0 ? N / T : 0, W = B * H * QB, fp = G > 0 ? (F + G - 1) / G : 0, nf = fp > 0 ? (F + fp - 1) / fp : 0;
   const int RC = rows < N ? rows : N, hd = H > 0 ? d / H : 0;
   z.mlp = kvm_fgpt_zbw_plan(G, W, nf, fp, d, kvm_fgpt_r16(RC), smem_floats - kvm_fgpt_smem_head(N, T, hd));
+  if (z.mlp.zg > 0) {
+    const int most = (nf + z.mlp.doers - 1) / z.mlp.doers;
+    if (z.mlp.zg < most || !kvm_fgpt_zbw_fits(N, T, d, hd, QB, fp, most)) z.mlp = KvmFgptZbw{};
+  }
   z.attn = KVM_FGPT_ZBW_ATTN && QB > 1 && W > 0 && 2 * W <= G;
   return z;
 }
-// A shape's fit: the gang width G (a power of two up to min(KVM_FGPT_MAX_GANG, max_g, N)) whose members fit `smem_floats` (the fast form's
-// phases, kvm_fgpt_smem_floats) with the default query blocks and the largest row chunk that fits; G 0 when none does (the run is not
-// fused). The preferred width gives each member two rows at least (G <= N / 2) and one 8-wide MMA tile of the MLP's hidden units (G <= F / 8):
-// below either, a member's GEMM tiles run part empty while each barrier and reduce-scatter pays for every member. On an A100 bed (20 steps,
-// 5 paired rounds): gpt-tiny (N 32, F 128) 199.0k cycles a step at G 16 against 201.9k at 32; gpt-small (N 128, F 256) 314.7 us at 32
-// against 357.3 at 64; a d128 (N 128, F 512) 963.9 us at 64 against 1,037.1 at 32, and the hold-out's d128 (N 192) 1,201.9 against 1,328.9.
-// Where the preferred width does not fit, a wider one may (its weight slices are smaller), then a narrower one.
+// A shape's fit: the gang width G whose members fit `smem_floats` (the fast form's phases, kvm_fgpt_smem_floats) with the default query
+// blocks and the largest row chunk that fits; G 0 when none does (the run is not fused). The preferred width gives each member two rows at
+// least (G <= N / 2) and one 8-wide MMA tile of the MLP's hidden units (G <= F / 8): below either, a member's GEMM tiles run part empty while
+// each barrier and reduce-scatter pays for every member. On an A100 bed (20 steps, 5 paired rounds): gpt-tiny (N 32, F 128) 199.0k cycles a
+// step at G 16 against 201.9k at 32; gpt-small (N 128, F 256) 314.7 us at 32 against 357.3 at 64; a d128 (N 128, F 512) 963.9 us at 64
+// against 1,037.1 at 32, and the hold-out's d128 (N 192) 1,201.9 against 1,328.9. So G = F / 8 comes first, at any width up to
+// KVM_FGPT_MAX_GANG: where F / 8 is no power of two, the powers below it leave a member's second tile part empty. An A100 bed
+// (2 rounds): d96 (F 384) at G 48 against the power of two the search took, x1.306 at N 128 (G 32), x1.165 at N 384 (G 32) and x1.084
+// at N 512 (G 64); d48 (F 192) at N 384 x1.163 at G 24 against G 16. Then the powers of two up to min(KVM_FGPT_MAX_GANG, max_g, N): where
+// the preferred width does not fit, a wider one may (its weight slices are smaller), then a narrower one.
 struct KvmFgptFit { int G = 0, qb = 1, rows = 0; };
 KVM_FGPT_HD inline bool kvm_fgpt_fit_at(int G, int N, int T, int d, int H, int F, int V, int smem_floats, KvmFgptFit& f) {
   const int qb = kvm_fgpt_qblocks(N / T, H, T, G), rows = kvm_fgpt_rows_for(N, T, d, H, F, V, G, qb, smem_floats);
@@ -267,6 +291,14 @@ KVM_FGPT_HD inline bool kvm_fgpt_fit_at(int G, int N, int T, int d, int H, int F
 KVM_FGPT_HD inline KvmFgptFit kvm_fgpt_fit(int N, int T, int d, int H, int F, int V, int smem_floats, int max_g) {
   KvmFgptFit f;
   if (T <= 0 || N % T) return f;
+  // half a tile a member (G = F / 4) wherever that width is at most KVM_FGPT_QUARTER_MAX and still seats two rows a member. On an A100 bed
+  // (20 steps, 2 rounds a point) d48 (F 192) at G 48 against its F / 8 of 24 gains at every N that seats it: x1.115 and x1.121 at N 96,
+  // x1.053 and x1.057 at N 128, x1.065 to x1.146 at N 192 to 384. gpt-small (F 256) at G 64 against 32
+  // reads level (x0.996), so 64 members is past the gain and the panel's rows keep their width and their bits; d96's and d128's
+  // F / 4 lie past KVM_FGPT_MAX_GANG, where the same bed found 96 members no faster. Then one whole 8-wide tile of hidden units a member.
+  const int gq = F / 4, gw = F / 8;
+  if (F % 4 == 0 && gq >= 1 && gq <= KVM_FGPT_QUARTER_MAX && gq <= max_g && 2 * gq <= N && kvm_fgpt_fit_at(gq, N, T, d, H, F, V, smem_floats, f)) return f;
+  if (F % 8 == 0 && gw >= 1 && gw <= KVM_FGPT_MAX_GANG && gw <= max_g && 2 * gw <= N && kvm_fgpt_fit_at(gw, N, T, d, H, F, V, smem_floats, f)) return f;
   int gmax = 1;
   while (gmax * 2 <= KVM_FGPT_MAX_GANG && gmax * 2 <= max_g && gmax * 2 <= N) gmax *= 2;
   int g0 = gmax;

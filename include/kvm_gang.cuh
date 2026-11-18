@@ -127,6 +127,56 @@ __device__ __forceinline__ bool barrier_counted(unsigned* ctl, int members, unsi
     return !__syncthreads_or(gave);
 }
 
+// A crossing in two halves (arrive-early), for a member with work that no other member reads before the gang's next crossing. The arrival
+// is the barrier through this member's release, so it publishes every store the block made before it; the wait is the rest, the poll until
+// every member has arrived, then the block barrier with the abort answer. Stores made between the two are published by this member's next
+// arrival only, so no other member may read them before the gang's next crossing, and the work between them may read nothing another
+// member writes before that crossing. Each half is its barrier's statements in order, so an arrival and its wait are one crossing to every
+// other member: the arrivals release through arrive_line and arrive_count, the barriers' own, and the waits poll through poll_lines and
+// poll_count (each answers whether this member gave up on an abort). A program instantiated per form calls its form's halves (the fused
+// GPT step).
+__device__ __forceinline__ int poll_lines(const unsigned* lines, int members, unsigned epoch, const int* abort) {
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
+    int gave = 0;
+    if (warp < (members + 31) / 32) {
+        const int m = warp * 32 + lane;
+        for (unsigned spin = 1;; ++spin) {
+            const unsigned v = m < members ? ld_acquire(lines + m) : epoch;
+            if (__all_sync(0xffffffffu, (int)(v - epoch) >= 0)) break;
+            if ((spin & 4095u) == 0 && __any_sync(0xffffffffu, abort != nullptr && *(const volatile int*)abort != 0)) {
+                gave = 1;
+                break;
+            }
+        }
+    }
+    return gave;
+}
+__device__ __forceinline__ int poll_count(const unsigned* ctl, unsigned long long target, const int* abort) {
+    int gave = 0;
+    if (threadIdx.x == 0) {
+        const unsigned long long* const count = reinterpret_cast<const unsigned long long*>(ctl);
+        for (unsigned spin = 1; (long long)(ld_acquire(count) - target) < 0; ++spin)
+            if (abort && (spin & 4095u) == 0 && *(const volatile int*)abort) { gave = 1; break; }
+    }
+    return gave;
+}
+__device__ __forceinline__ void arrive_lines(unsigned* lines, int member, unsigned& epoch) {
+    __syncthreads();
+    ++epoch;
+    if (threadIdx.x == 0) arrive_line(lines + member, epoch);
+}
+__device__ __forceinline__ bool wait_lines(const unsigned* lines, int members, unsigned epoch, const int* abort = nullptr) {
+    return !__syncthreads_or(poll_lines(lines, members, epoch, abort));
+}
+__device__ __forceinline__ void arrive_counted(unsigned* ctl, int members, unsigned long long& target) {
+    __syncthreads();
+    target += (unsigned long long)members;
+    if (threadIdx.x == 0) arrive_count(reinterpret_cast<unsigned long long*>(ctl));
+}
+__device__ __forceinline__ bool wait_counted(const unsigned* ctl, unsigned long long target, const int* abort = nullptr) {
+    return !__syncthreads_or(poll_count(ctl, target, abort));
+}
+
 // The gang's crossing: the flag lines up to LinesMax members (by default one line, 32), the counted barrier past them. A flag-line
 // crossing is one round trip, but past one line every member's warps poll members / 32 lines, and the waiters' polls slow the members
 // still working. On the A100 (sm_80, 108 SMs) a flag-line crossing alone took 1,350 ns at 32 members and 3,465 at 108

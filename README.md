@@ -19,6 +19,14 @@ inside their 28.6 ms slot (96% with the games alone), and the film shows each fr
 [doomgeneric](https://github.com/ozkl/doomgeneric) playing [Freedoom](https://freedoom.github.io/)'s recorded demos, each
 copy from its own starting point. Click the picture to play (37 s).
 
+[![One moment of one game, 837 futures](assets/showcase/the-futures.jpg)](assets/showcase/the-futures.mp4)
+
+**One moment, 837 futures.** The same moment of one game, copied 837 times in one Magni VM kernel launch. Every copy plays
+the same frames in perfect lockstep until its fork; then, ring by ring from the centre, each one's controls drift from the
+recording's (a seeded glance aside, a wandering delay) and it plays out its own future, while the centre plays the recording's own. All 1,088,100 frames are rendered by the
+GPU and are byte-identical to a CPU build playing the same forks; 99.6% land inside their 28.6 ms slot, at 35 fps. The run
+starts groups of copies up to 0.6 s apart, and the film lines every copy up by frame number. Click the picture to play (36 s).
+
 ## 📈 Latest results (one A100-SXM4-40GB, Nov 17)
 
 Each ratio is PyTorch's time over Magni VM's for one optimizer step (training) or one decode step, read on the same GPU in
@@ -264,7 +272,7 @@ graphs beat it on a 162M GPT (43.1 s vs 48.1 s, B200).
 - The VM is not faster than PyTorch at 162M (6x slower than autocast-bf16 eager in bf16s, 12x slower than TF32 PyTorch in f32) and does not beat a CUDA graph at any size measured; its win region is launch-bound eager execution on tiny models.
 - 162M: it runs and stays finite, nothing more. It is task-throughput bound (30x off its critical path), and its loss has no independent reference.
 - A run with more tasks than slots recycles slots, and the version and cadence checks then skip by design (the 40-step 162M run did; the 6-step one did not).
-- The test-drive film's run (837 games beside 64 training steps of the 162M GPT) used this repository at `592a966` plus code that is not here yet: a three-hook runner patch, an LLVM pass that gives every game instance its own state, and two engine fixes that make its reads past the end of a texture or a table defined (without them the CPU build disagreed with itself).
+- The test-drive films' runs (The Wall: 837 games beside 64 training steps of the 162M GPT; Futures: 837 forks of one moment) used this repository at `592a966` plus code that is not here yet: a three-hook runner patch, an LLVM pass that gives every game instance its own state, an input hook for the forks, and two engine fixes that make its reads past the end of a texture or a table defined (without them the CPU build disagreed with itself).
 
 ## 🏗️ The integrated framework
 

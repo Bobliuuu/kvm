@@ -1,6 +1,6 @@
 # AGENTS.md
 
-`kvm` is a "kittens"-style GPU virtual machine: one persistent kernel takes over the whole GPU and interprets an instruction tape,
+`mvm` (magni virtual machine; files and env vars keep the `kvm` prefix) is a "kittens"-style GPU virtual machine: one persistent kernel takes over the whole GPU and interprets an instruction tape,
 so a whole training run is one kernel launch. Version 2 of
 [open-flapping-airplanes](https://github.com/Bobliuuu/open-flapping-airplanes); not affiliated with Flapping Airplanes.
 

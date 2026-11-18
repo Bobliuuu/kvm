@@ -1,4 +1,4 @@
-# 🐱⚡ KVM — a "kittens" GPU virtual machine 🖥️🔥
+# 🐱⚡ mvm — magni virtual machine, a "kittens" GPU VM 🖥️🔥
 
 ### 🧠 one kernel · 🎮 real Doom · 🤖 162M GPT training · 🔁 live inference · 🚀 whole GPU
 
@@ -7,6 +7,12 @@
 ![GPU](https://img.shields.io/badge/GPU-A100%20(sm__80)-76b900) ![CUDA](https://img.shields.io/badge/CUDA-12.x-76b900) ![demo](https://img.shields.io/badge/demo-all%20checks%20pass-brightgreen) ![Doom](https://img.shields.io/badge/Doom-700%2F700%20frames%20identical-blue) ![vs PyTorch](https://img.shields.io/badge/vs%20PyTorch-6x%20slower%20(bf16)%20%2F%2012x%20(f32)-red) ![multi-GPU](https://img.shields.io/badge/multi--GPU-not%20run-lightgrey)
 
 Legend used below: ✅ measured and on main, 🧪 code only (no result measures it), ❌ target not met, 🚧 in progress or on an unmerged branch.
+
+## 🎬 Explainer video
+
+<video src="assets/explainer.mp4" controls muted width="100%"></video>
+
+*50 s explainer ([MP4](assets/explainer.mp4)). Its "up to 3.8x faster than PyTorch" is the best row only: small dependent MLPs on an A100. On GEMM-bound work (wide MLPs, GPT) the VM is slower than PyTorch, see "Honest limits" below and the `2026-11-10-a100-merged` panel. The video still shows the former name "KVM"; the code, binaries and env vars (`kvm.cu`, `KVM_HOST`) keep the `kvm` prefix.*
 
 ## 🚀 Demo ready
 

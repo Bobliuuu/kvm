@@ -2076,6 +2076,10 @@ int main(int argc, char** argv) {
       }
       if (auto* vs = m.get("variables")) for (auto& jv : vs->a) { int id = (int)jv.num("id", -1), base = (int)jv.num("base_version", 0); version_base[id] = base; }
       KLOG(2, "%s: %d tasks, %d edges, %d arg words", dir.c_str(), nt, ne, nw);
+      for (const auto& t : b.tasks) {   // a -DKVM_OPS_ONLY build holds only its listed ops: refuse the bundle here, not with a device error mid-run
+        const KvmOpInfo* o = kvm_op(t.op_id);
+        if (o && !kvm_op_built(o->name)) throw std::runtime_error(dir + ": op " + o->name + " is not in this build's KVM_OPS_ONLY list");
+      }
       bundles.push_back(std::move(b));
     }
     // The static schedule is the default for one closed bundle (a compiled DAG, no streaming, no scheduling classes): the ring path remains for several bundles, the per-class scheduler, or an explicit --dynamic.

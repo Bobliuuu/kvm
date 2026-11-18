@@ -3288,10 +3288,11 @@ KVM_GPT_DEVI void kv_append(const KvmCtx& ctx, const int32_t* a) {
     int b0 = a[5], b1 = a[6], nn = a[7], Hkv = a[8], hd = a[9], Tmax = a[10], ldk, ldv;
     k.need(b0 >= 0 && b0 <= b1 && nn > 0 && Hkv > 0 && hd > 0 && Tmax > 0);
     if (k.bad) return;
-    const float* kn = k.mat(a[0], (long)b1 * nn, (long)Hkv * hd, &ldk);
-    const float* vn = k.mat(a[1], (long)b1 * nn, (long)Hkv * hd, &ldv);
-    float* kc = k.mat(a[2], (long)b1 * Hkv * Tmax, hd);
-    float* vc = k.mat(a[3], (long)b1 * Hkv * Tmax, hd);
+    bool knb, vnb, kcb, vcb;   // fp32 or bf16 storage each (a bf16 cache halves the bytes attn_decode streams)
+    const void* kn = k.mat_s(a[0], (long)b1 * nn, (long)Hkv * hd, &ldk, &knb);
+    const void* vn = k.mat_s(a[1], (long)b1 * nn, (long)Hkv * hd, &ldv, &vnb);
+    void* kc = k.mat_s(a[2], (long)b1 * Hkv * Tmax, hd, nullptr, &kcb);
+    void* vc = k.mat_s(a[3], (long)b1 * Hkv * Tmax, hd, nullptr, &vcb);
     const int32_t* lens = k.ivec(a[4], b1);
     if (k.bad) return;
     const int ldc = ctx.bufs[a[2]].ld;
@@ -3301,8 +3302,8 @@ KVM_GPT_DEVI void kv_append(const KvmCtx& ctx, const int32_t* a) {
     for (int e = threadIdx.x; e < (b1 - b0) * nn * Hkv * hd; e += KVM_GPT_THREADS) {
         int c = e % hd, h = (e / hd) % Hkv, t = (e / (hd * Hkv)) % nn, b = b0 + e / (hd * Hkv * nn);
         size_t dst = ((size_t)(b * Hkv + h) * Tmax + lens[b] + t) * ldc + c, src = ((size_t)b * nn + t);
-        kc[dst] = kn[src * ldk + h * hd + c];
-        vc[dst] = vn[src * ldv + h * hd + c];
+        st_s(kc, dst, ld_s(kn, src * ldk + h * hd + c, knb), kcb);
+        st_s(vc, dst, ld_s(vn, src * ldv + h * hd + c, vnb), vcb);
     }
 }
 
@@ -3315,11 +3316,12 @@ KVM_GPT_DEVI void attn_decode(const KvmCtx& ctx, const int32_t* a) {
     k.need(b >= 0 && h >= 0 && h < H && Hkv > 0 && H % Hkv == 0 && Tmax > 0);
     k.need(hd > 0 && hd <= 128, KVM_GPT_E_SHAPE);
     if (k.bad) return;
-    const float* q = k.mat(a[0], b + 1, (long)H * hd, &ldq);
-    const float* kc = k.mat(a[1], (long)(b + 1) * Hkv * Tmax, hd);
-    const float* vc = k.mat(a[2], (long)(b + 1) * Hkv * Tmax, hd);
+    bool qb, kb, vb, ob;   // fp32 or bf16 storage each: q, the cache and o (arithmetic in fp32; o rounded once when bf16)
+    const void* q = k.mat_s(a[0], b + 1, (long)H * hd, &ldq, &qb);
+    const void* kc = k.mat_s(a[1], (long)(b + 1) * Hkv * Tmax, hd, nullptr, &kb);
+    const void* vc = k.mat_s(a[2], (long)(b + 1) * Hkv * Tmax, hd, nullptr, &vb);
     const int32_t* lens = k.ivec(a[3], b + 1);
-    float* o = k.mat(a[4], b + 1, (long)H * hd, &ldo);
+    void* o = k.mat_s(a[4], b + 1, (long)H * hd, &ldo, &ob);
     if (k.bad) return;
     const int ldc = ctx.bufs[a[1]].ld;
     if (ctx.bufs[a[2]].ld != ldc) k.fail(KVM_GPT_E_SHAPE);
@@ -3334,18 +3336,18 @@ KVM_GPT_DEVI void attn_decode(const KvmCtx& ctx, const int32_t* a) {
     const size_t cbase = (size_t)(b * Hkv + kvh) * Tmax;
     float qv[4], acc[4] = {0.f, 0.f, 0.f, 0.f}, m = -INFINITY, l = 0.f;
 #pragma unroll
-    for (int i = 0; i < 4; i++) { int c = lane + 32 * i; qv[i] = c < hd ? q[(size_t)b * ldq + h * hd + c] : 0.f; }
+    for (int i = 0; i < 4; i++) { int c = lane + 32 * i; qv[i] = c < hd ? ld_s(q, (size_t)b * ldq + h * hd + c, qb) : 0.f; }
     for (int j = w; j < n; j += 8) {
-        const float* kr = kc + (cbase + j) * ldc;
+        const size_t kr = (cbase + j) * ldc;
         float s = 0.f;
 #pragma unroll
-        for (int i = 0; i < 4; i++) { int c = lane + 32 * i; if (c < hd) s += qv[i] * kr[c]; }
+        for (int i = 0; i < 4; i++) { int c = lane + 32 * i; if (c < hd) s += qv[i] * ld_s(kc, kr + c, kb); }
         s = wsum(s) * scale;
         float mn = fmaxf(m, s), al = expf(m - mn), p = expf(s - mn);   // m=-inf -> al=0
         l = l * al + p;
-        const float* vr = vc + (cbase + j) * ldc;
+        const size_t vr = (cbase + j) * ldc;
 #pragma unroll
-        for (int i = 0; i < 4; i++) { int c = lane + 32 * i; acc[i] = acc[i] * al + (c < hd ? p * vr[c] : 0.f); }
+        for (int i = 0; i < 4; i++) { int c = lane + 32 * i; acc[i] = acc[i] * al + (c < hd ? p * ld_s(vc, vr + c, vb) : 0.f); }
         m = mn;
     }
     if (lane == 0) { sm_m[w] = m; sm_l[w] = l; }
@@ -3360,7 +3362,7 @@ KVM_GPT_DEVI void attn_decode(const KvmCtx& ctx, const int32_t* a) {
             float e = sm_m[i] == -INFINITY ? 0.f : expf(sm_m[i] - M);
             L += e * sm_l[i]; S += e * sm_a[i * 128 + threadIdx.x];
         }
-        o[(size_t)b * ldo + h * hd + threadIdx.x] = S / L;
+        st_s(o, (size_t)b * ldo + h * hd + threadIdx.x, S / L, ob);
     }
 }
 

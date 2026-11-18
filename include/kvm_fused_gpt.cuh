@@ -118,6 +118,9 @@ __device__ __forceinline__ void mma_tf32(float (&c)[4], const unsigned (&a)[4], 
 // __syncthreads. gemm_on is its tile loop over nw warps (lw the warp's index among them), without the sync: gemm_par runs it on part of
 // the block.
 __device__ __forceinline__ unsigned tf32_rna(float x) { unsigned u; asm("cvt.rna.tf32.f32 %0, %1;\n" : "=r"(u) : "f"(x)); return u; }
+// A value rounded to TF32 as a float (the low 13 mantissa bits zero). Rounding is idempotent, so an operand its producer stores this way
+// gives a 1xTF32 GEMM that skips the rounding at use (RND below) the same products, bit for bit.
+__device__ __forceinline__ float tf32f(float x) { return __uint_as_float(tf32_rna(x)); }
 __device__ __forceinline__ void ldm_x4(unsigned (&r)[4], const float* p) {
   asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0,%1,%2,%3}, [%4];\n" : "=r"(r[0]), "=r"(r[1]), "=r"(r[2]), "=r"(r[3]) : "r"((unsigned)__cvta_generic_to_shared(p)));
 }
@@ -136,6 +139,10 @@ struct Frag {
     else { b[0] = __float_as_uint(pb[0]); b[1] = __float_as_uint(pb[4 * ldb]); }
   }
 };
+// RND (1xTF32 only): bit 1, A's values arrive rounded to TF32 by their producer (tf32f); bit 2, B's. The 1xTF32 path then feeds them as
+// they are, without the four instructions an element a use costs (NOCVT1, Nov 13: A's per-use roundings were 4.3% of gpt-tiny's one-block
+// step). The 3xTF32 path splits each value as before: its callers' producers round only in 1xTF32 runs, so it still sees exact values.
+template <int RND = 0>
 __device__ __forceinline__ void mma_frag(float (&c)[4], const unsigned (&a)[4], const unsigned (&b)[2], bool prec) {
   if (prec) {
     unsigned ah[4], al[4], bh[2], bl[2];
@@ -147,13 +154,15 @@ __device__ __forceinline__ void mma_frag(float (&c)[4], const unsigned (&a)[4], 
     mma_tf32(c, ah, bl[0], bl[1]);
     mma_tf32(c, ah, bh[0], bh[1]);
   } else {
-    const unsigned a2[4] = {tf32_rna(__uint_as_float(a[0])), tf32_rna(__uint_as_float(a[1])), tf32_rna(__uint_as_float(a[2])), tf32_rna(__uint_as_float(a[3]))};
-    mma_tf32(c, a2, tf32_rna(__uint_as_float(b[0])), tf32_rna(__uint_as_float(b[1])));
+    const auto ra = [](unsigned u) { return (RND & 1) ? u : tf32_rna(__uint_as_float(u)); };
+    const auto rb = [](unsigned u) { return (RND & 2) ? u : tf32_rna(__uint_as_float(u)); };
+    const unsigned a2[4] = {ra(a[0]), ra(a[1]), ra(a[2]), ra(a[3])};
+    mma_tf32(c, a2, rb(b[0]), rb(b[1]));
   }
 }
 // Full: the caller guarantees whole tiles (M a multiple of 16, N of 8), so a lane's elements reach `epi` with no bounds branch between them
 // and the compiler can interleave their epilogues (the one-block form, whose run check requires whole tiles; the gang's calls leave it off).
-template <bool TA, bool TB, bool Full = false, class Epi>
+template <bool TA, bool TB, bool Full = false, int RND = 0, class Epi>
 __device__ __forceinline__ void gemm_on(const float* A, int lda, const float* B, int ldb, int M, int N, int K, bool prec, const Epi& epi, int lw, int nw) {
   const int lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3;
   const int tn = (N + 7) >> 3, tiles = ((M + 15) >> 4) * tn, ks = (K + 7) >> 3;
@@ -169,18 +178,44 @@ __device__ __forceinline__ void gemm_on(const float* A, int lda, const float* B,
     const float* pa0 = base_a(m0); const float* pb0 = base_b(n0);
     const float* pa1 = base_a(m1); const float* pb1 = base_b(n1);
     float c0[4] = {0.f, 0.f, 0.f, 0.f}, c1[4] = {0.f, 0.f, 0.f, 0.f};
-#pragma unroll 1
-    for (int k = 0; k < ks; ++k) {
-      Frag<TA, TB> f0;
-      f0.load(pa0, pb0, lda, ldb);
-      if (two) {
-        Frag<TA, TB> f1;
+    if constexpr (Full) {
+      // A whole-tile caller (the one-block form) tests the warp's tile count once and runs a k loop for each case, so no k step branches
+      // around its MMAs (each tile accumulates as before: the same bits).
+      const auto k1 = [&]() {
+        Frag<TA, TB> f0;
+        f0.load(pa0, pb0, lda, ldb);
+        mma_frag<RND>(c0, f0.a, f0.b, prec);
+        pa0 += sa; pb0 += sb;
+      };
+      const auto k2 = [&]() {
+        Frag<TA, TB> f0, f1;
+        f0.load(pa0, pb0, lda, ldb);
         f1.load(pa1, pb1, lda, ldb);
-        mma_frag(c1, f1.a, f1.b, prec);
-        pa1 += sa; pb1 += sb;
+        mma_frag<RND>(c1, f1.a, f1.b, prec);
+        mma_frag<RND>(c0, f0.a, f0.b, prec);
+        pa0 += sa; pb0 += sb; pa1 += sa; pb1 += sb;
+      };
+      if (two) {
+#pragma unroll 1
+        for (int k = 0; k < ks; ++k) k2();
+      } else {
+#pragma unroll 1
+        for (int k = 0; k < ks; ++k) k1();
       }
-      mma_frag(c0, f0.a, f0.b, prec);
-      pa0 += sa; pb0 += sb;
+    } else {
+#pragma unroll 1
+      for (int k = 0; k < ks; ++k) {
+        Frag<TA, TB> f0;
+        f0.load(pa0, pb0, lda, ldb);
+        if (two) {
+          Frag<TA, TB> f1;
+          f1.load(pa1, pb1, lda, ldb);
+          mma_frag<RND>(c1, f1.a, f1.b, prec);
+          pa1 += sa; pb1 += sb;
+        }
+        mma_frag<RND>(c0, f0.a, f0.b, prec);
+        pa0 += sa; pb0 += sb;
+      }
     }
     const int ma = m0 + g, mb = ma + 8, cc = n0 + 2 * t;
     if constexpr (Full) {
@@ -204,9 +239,9 @@ __device__ __forceinline__ void gemm_on(const float* A, int lda, const float* B,
     }
   }
 }
-template <bool TA, bool TB, int BT = NT, bool Full = false, class Epi>
+template <bool TA, bool TB, int BT = NT, bool Full = false, int RND = 0, class Epi>
 __device__ void gemm(const float* A, int lda, const float* B, int ldb, int M, int N, int K, bool prec, Epi epi) {
-  gemm_on<TA, TB, Full>(A, lda, B, ldb, M, N, K, prec, epi, threadIdx.x >> 5, BT / 32);
+  gemm_on<TA, TB, Full, RND>(A, lda, B, ldb, M, N, K, prec, epi, threadIdx.x >> 5, BT / 32);
   __syncthreads();
 }
 
@@ -215,13 +250,13 @@ __device__ void gemm(const float* A, int lda, const float* B, int ldb, int M, in
 #define KVM_FGPT_PAIR 1
 #endif
 // One GEMM for gemm_par: its operands and epilogue, held until its warps run it.
-template <bool TA, bool TB, class Epi, bool Full = false>
+template <bool TA, bool TB, class Epi, bool Full = false, int RND = 0>
 struct GemmJob {
   const float* A; int lda; const float* B; int ldb; int M, N, K; bool prec; Epi epi;
   __device__ int tiles() const { return ((M + 15) >> 4) * ((N + 7) >> 3); }
   __device__ int work() const { return tiles() * ((K + 7) >> 3); }   // tiles x k steps: a warp's share of the job's chain
-  __device__ void on(int lw, int nw) const { gemm_on<TA, TB, Full>(A, lda, B, ldb, M, N, K, prec, epi, lw, nw); }
-  __device__ void alone() const { gemm<TA, TB, NT, Full>(A, lda, B, ldb, M, N, K, prec, epi); }
+  __device__ void on(int lw, int nw) const { gemm_on<TA, TB, Full, RND>(A, lda, B, ldb, M, N, K, prec, epi, lw, nw); }
+  __device__ void alone() const { gemm<TA, TB, NT, Full, RND>(A, lda, B, ldb, M, N, K, prec, epi); }
 };
 template <bool TA, bool TB, bool Full = false, class Epi>
 __device__ __forceinline__ GemmJob<TA, TB, Epi, Full> job(const float* A, int lda, const float* B, int ldb, int M, int N, int K, bool prec, Epi epi) {

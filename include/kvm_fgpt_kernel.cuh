@@ -35,6 +35,7 @@ __global__ void __launch_bounds__(KVM_FGPT_NT, 1) kvm_fgpt1_kernel(const KvmFgpt
   if (!desc) return;
   unsigned dyn;
   asm("mov.u32 %0, %%dynamic_smem_size;" : "=r"(dyn));
+  if (blockIdx.x > 0) { kvm_fgpt1::upd_helper(*desc, reinterpret_cast<float*>(kvm_gpt_smem)); return; }   // the update's helper blocks
   auto ph = [](int) {};
   kvm_fgpt1::run1(*desc, reinterpret_cast<float*>(kvm_gpt_smem), (long long)(dyn / sizeof(float)),
                   [=](int code) { kvm_fail(cnt, herr, KVM_ERR_BOUNDS, slot0, code, 0); }, ph);

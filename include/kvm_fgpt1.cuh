@@ -52,13 +52,17 @@ constexpr int kRowMax = KVM_FGPT1_ROW_MAX;
 using Layout = KvmFgpt1Layout;   // kvm_fgpt1.h: the layout, host and device
 // The form's GEMMs: whole tiles always (kvm_fgpt1_check_layout requires them), so their epilogues take no bounds branches (two
 // epilogue edits of a few instructions an element moved 1.2 us each, the cost of elements a lane runs one at a time between branches).
-template <bool TA, bool TB, class Epi>
-__device__ __forceinline__ GemmJob<TA, TB, Epi, true> fjob(const float* A, int lda, const float* B, int ldb, int M, int N, int K, bool prec, Epi epi) {
+// RND (kvm_fused_gpt.cuh's mma_frag): bit 1 when A's values were stored rounded to TF32 by their producer, bit 2 for B's. The GEMM-only
+// operands are (each written rounded in a 1xTF32 run, exact in a 3xTF32 one): LN1's, LN2's and the final LN's outputs in NH (and their
+// recomputations in the backward), GELU's output U, and the head's dL. Each is read by GEMMs alone, so the rounding moves from every use
+// to its one store and every product keeps its bits.
+template <bool TA, bool TB, int RND = 0, class Epi>
+__device__ __forceinline__ GemmJob<TA, TB, Epi, true, RND> fjob(const float* A, int lda, const float* B, int ldb, int M, int N, int K, bool prec, Epi epi) {
   return {A, lda, B, ldb, M, N, K, prec, epi};
 }
-template <bool TA, bool TB, class Epi>
+template <bool TA, bool TB, int RND = 0, class Epi>
 __device__ __forceinline__ void fgemm(const float* A, int lda, const float* B, int ldb, int M, int N, int K, bool prec, Epi epi) {
-  gemm<TA, TB, NT, true>(A, lda, B, ldb, M, N, K, prec, epi);
+  gemm<TA, TB, NT, true, RND>(A, lda, B, ldb, M, N, K, prec, epi);
 }
 // This instance's layout: its own mask's logits pitch.
 KVM_FGPT_HD inline Layout kvm_fgpt1_layout(int N, int T, int d, int H, int F, int V, int L) {
@@ -77,7 +81,8 @@ __device__ __forceinline__ void warp_max2(float& a, float& b) {
 // and output so the output is a padded GEMM operand. A warp runs two of its rows at once (row r and r + NW, each its own chain, the same
 // expressions and shuffle trees), so their latencies overlap. Ends with __syncthreads.
 template <int BT = NT>
-__device__ void ln_fwd_p(const float* x, int ldx, const float* g, const float* be, float* y, int ldy, float* mean, float* rstd, int N, int d, float eps) {
+__device__ void ln_fwd_p(const float* x, int ldx, const float* g, const float* be, float* y, int ldy, float* mean, float* rstd, int N, int d, float eps,
+                         bool rnd = false) {   // rnd: the outputs rounded to TF32 (a 1xTF32 run's GEMM-only operand, fjob's RND)
   constexpr int NWB = BT / 32;
   const int w = threadIdx.x >> 5, lane = threadIdx.x & 31;
   for (int r = w; r < N; r += 2 * NWB) {
@@ -94,8 +99,9 @@ __device__ void ln_fwd_p(const float* x, int ldx, const float* g, const float* b
     warp_sum2(qa, qb);
     const float rsa = 1.f / sqrtf(qa / (float)d + eps), rsb = 1.f / sqrtf(qb / (float)d + eps);
     for (int c = lane; c < d; c += 32) {
-      y[(size_t)r * ldy + c] = (xa[c] - mua) * rsa * g[c] + be[c];
-      if (two) y[(size_t)r2 * ldy + c] = (xb[c] - mub) * rsb * g[c] + be[c];
+      const float va = (xa[c] - mua) * rsa * g[c] + be[c];
+      y[(size_t)r * ldy + c] = rnd ? tf32f(va) : va;
+      if (two) { const float vb = (xb[c] - mub) * rsb * g[c] + be[c]; y[(size_t)r2 * ldy + c] = rnd ? tf32f(vb) : vb; }
     }
     if (lane == 0) { mean[r] = mua; rstd[r] = rsa; if (two) { mean[r2] = mub; rstd[r2] = rsb; } }
   }
@@ -283,8 +289,9 @@ __device__ __forceinline__ void ce_rows_fast(const float* logits, int ldV, int N
 // expressions, element for element, and stores them there, each lane its own groups. xv4 must capture by value. d a multiple of 4, at
 // most 128 (the caller checks). Whole warps enter the loop. Ends with __syncthreads.
 template <class XV4>
-__device__ void ln_rows_fast(XV4 xv4, const float* g, const float* be, float* y, int ldy, float* mean, float* rstd, int N, int d, float eps) {
-  constexpr int LPR = 8, G4 = 4;   // up to four 16-byte groups a lane: 128 columns
+__device__ void ln_rows_fast(XV4 xv4, const float* g, const float* be, float* y, int ldy, float* mean, float* rstd, int N, int d, float eps,
+                             bool rnd = false) {   // rnd: the outputs rounded to TF32 (a 1xTF32 run's GEMM-only operand, fjob's RND)
+  constexpr int LPR = 8, G4 = KVM_FGPT1_MAXD / 32;   // 16-byte groups a lane, LPR x 4 x G4 = KVM_FGPT1_MAXD columns at most
   const float inv_d = 1.f / (float)d;
   const int U = (LPR * N + 31) & ~31;
   for (int u = threadIdx.x; u < U; u += NT) {
@@ -313,8 +320,9 @@ __device__ void ln_rows_fast(XV4 xv4, const float* g, const float* be, float* y,
         const int c = 4 * (j + LPR * k);
         if (c < d) {
           const float4 gg = *reinterpret_cast<const float4*>(g + c), bb = *reinterpret_cast<const float4*>(be + c);
-          *reinterpret_cast<float4*>(y + (size_t)r * ldy + c) =
-              make_float4((x[k].x - mu) * rs * gg.x + bb.x, (x[k].y - mu) * rs * gg.y + bb.y, (x[k].z - mu) * rs * gg.z + bb.z, (x[k].w - mu) * rs * gg.w + bb.w);
+          float4 o = make_float4((x[k].x - mu) * rs * gg.x + bb.x, (x[k].y - mu) * rs * gg.y + bb.y, (x[k].z - mu) * rs * gg.z + bb.z, (x[k].w - mu) * rs * gg.w + bb.w);
+          if (rnd) o = make_float4(tf32f(o.x), tf32f(o.y), tf32f(o.z), tf32f(o.w));
+          *reinterpret_cast<float4*>(y + (size_t)r * ldy + c) = o;
         }
       }
       if (j == 0) { mean[r] = mu; rstd[r] = rs; }
@@ -396,36 +404,39 @@ __device__ void load_params(const KvmFgptDesc& d, float* sm, const Layout& y) {
 }
 
 // The forward of one step and its loss, from the step's tokens to d.loss[step]. kvm_fgpt::run's forward at G 1, phase for phase.
-template <class PH>
+// PREC, the GEMMs' numerics (3xTF32 when set, else 1xTF32), is fixed at compile time: run1 calls the one instance its run needs, so each
+// linear GEMM's k loop holds one product form, without a run-time branch between the two and the warp sync it costs a tile a k step.
+template <bool PREC, class PH>
 __device__ float forward(const KvmFgptDesc& d, float* sm, const Layout& y, int step, PH& ph) {
   const int tid = threadIdx.x, NW = NT / 32;
   const int N = d.N, T = d.T, B = d.B, D = d.d, H = d.H, hd = d.hd, F = d.F, V = d.V, L = d.L;
-  const bool prec = (d.mm_numerics & 16) != 0;
+  constexpr bool prec = PREC;
   const int* const ids = reinterpret_cast<const int*>(sm + y.ids) + (step & 1) * N;   // this step's slot (run1 fills it)
   const int* const tgt = reinterpret_cast<const int*>(sm + y.tgt) + (step & 1) * N;
   const float* const rtab = sm + y.rtab;
   auto P = [&](int slot) { return sm + y.p[slot]; };
   auto lay = [&](int l, int role) { return kvm_fgpt_slot_layer(l, role); };
   // ---- the embedding: the step's rows of wte, from global (wte is not resident), as run reads them: a warp a row and lanes over its
-  // columns (D at most 128), every row's loads issued before any store, so the gather costs one trip to L2, not three, and no division
+  // columns (D at most KVM_FGPT1_MAXD, CJ a lane), every row's loads issued before any store, so the gather costs one trip to L2, not three,
+  // and no division
   {
-    constexpr int RW = 4;   // rows a warp at a time: 4 x 12 warps cover gpt-tiny's 32 rows in one pass
+    constexpr int RW = 4, CJ = KVM_FGPT1_MAXD / 32;   // rows a warp at a time: 4 x 12 warps cover gpt-tiny's 32 rows in one pass
     const int w = tid >> 5, lane = tid & 31;
     float* const x0 = sm + y.x[0];
     for (int r0 = w; r0 < N; r0 += RW * NW) {
-      float v[RW][4];
+      float v[RW][CJ];
 #pragma unroll
       for (int k = 0; k < RW; ++k) {
         const int r = r0 + k * NW;
         const float* const src = r < N ? d.p[0] + (size_t)ids[r] * D : nullptr;
 #pragma unroll
-        for (int j = 0; j < 4; ++j) { const int c = lane + 32 * j; v[k][j] = r < N && c < D ? __ldcg(src + c) : 0.f; }
+        for (int j = 0; j < CJ; ++j) { const int c = lane + 32 * j; v[k][j] = r < N && c < D ? __ldcg(src + c) : 0.f; }
       }
 #pragma unroll
       for (int k = 0; k < RW; ++k) {
         const int r = r0 + k * NW;
 #pragma unroll
-        for (int j = 0; j < 4; ++j) { const int c = lane + 32 * j; if (r < N && c < D) x0[r * D + c] = v[k][j]; }
+        for (int j = 0; j < CJ; ++j) { const int c = lane + 32 * j; if (r < N && c < D) x0[r * D + c] = v[k][j]; }
       }
     }
   }
@@ -448,16 +459,16 @@ __device__ float forward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
         a.x += mv.x; a.y += mv.y; a.z += mv.z; a.w += mv.w;
         *xr = a;
         return a;
-      }, P(lay(l, KVM_FGPT_R_N1G)), P(lay(l, KVM_FGPT_R_N1B)), h1, y.ldd, sm + y.st1[l], sm + y.st1[l] + N, N, D, d.ln_eps);
+      }, P(lay(l, KVM_FGPT_R_N1G)), P(lay(l, KVM_FGPT_R_N1B)), h1, y.ldd, sm + y.st1[l], sm + y.st1[l] + N, N, D, d.ln_eps, !prec);
     } else {
-      ln_fwd_p(x, D, P(lay(l, KVM_FGPT_R_N1G)), P(lay(l, KVM_FGPT_R_N1B)), h1, y.ldd, sm + y.st1[l], sm + y.st1[l] + N, N, D, d.ln_eps);
+      ln_fwd_p(x, D, P(lay(l, KVM_FGPT_R_N1G)), P(lay(l, KVM_FGPT_R_N1B)), h1, y.ldd, sm + y.st1[l], sm + y.st1[l] + N, N, D, d.ln_eps, !prec);
     }
     ph(MK_LN1);
     // q | k | v of every row and head: one GEMM over the layer's [d x 3d] weights, the bias in the epilogue (run: a + bias[n], per head)
     {
       const float* const bq = sm + y.bqkv + (size_t)l * 3 * D;
       const int ldq = y.ldq;   // epilogues capture plain locals by value: a reference capture puts the local on the stack (L2 here)
-      fgemm<false, false>(h1, y.ldd, sm + y.wqkv + (size_t)l * y.wqkv_stride, kvm_fgpt_ldmn(3 * D), N, 3 * D, D, prec,
+      fgemm<false, false, 1>(h1, y.ldd, sm + y.wqkv + (size_t)l * y.wqkv_stride, kvm_fgpt_ldmn(3 * D), N, 3 * D, D, prec,
                          [=](int m, int n, float a) { qkv[m * ldq + n] = a + bq[n]; });
     }
     ph(MK_UF_QKV);
@@ -525,7 +536,7 @@ __device__ float forward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
         a.x += xv.x; a.y += xv.y; a.z += xv.z; a.w += xv.w;
         *reinterpret_cast<float4*>(xm + e) = a;
         return a;
-      }, P(lay(l, KVM_FGPT_R_N2G)), P(lay(l, KVM_FGPT_R_N2B)), sm + y.nh, y.ldd, sm + y.st2[l], sm + y.st2[l] + N, N, D, d.ln_eps);
+      }, P(lay(l, KVM_FGPT_R_N2G)), P(lay(l, KVM_FGPT_R_N2B)), sm + y.nh, y.ldd, sm + y.st2[l], sm + y.st2[l] + N, N, D, d.ln_eps, !prec);
     } else {
       {
         const float* const bo = P(lay(l, KVM_FGPT_R_BO));
@@ -540,7 +551,7 @@ __device__ float forward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
         }
       }
       __syncthreads();
-      ln_fwd_p(sm + y.xm[l], D, P(lay(l, KVM_FGPT_R_N2G)), P(lay(l, KVM_FGPT_R_N2B)), sm + y.nh, y.ldd, sm + y.st2[l], sm + y.st2[l] + N, N, D, d.ln_eps);
+      ln_fwd_p(sm + y.xm[l], D, P(lay(l, KVM_FGPT_R_N2G)), P(lay(l, KVM_FGPT_R_N2B)), sm + y.nh, y.ldd, sm + y.st2[l], sm + y.st2[l] + N, N, D, d.ln_eps, !prec);
     }
     ph(MK_LN2);
     // fc1 + b1, GELU; fc2 over all F (run at G 1: one owner of every column), then the bias and the residual (rs_sum of one partial)
@@ -549,19 +560,22 @@ __device__ float forward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
       const float* const b1 = P(lay(l, KVM_FGPT_R_B1));
       const int ldF = y.ldF;
       const bool kept = kC3 && l == L - 1;   // C3: the last layer's U stays in A for its backward, which needs only gelu'(z): pre keeps that
-      fgemm<false, false>(sm + y.nh, y.ldd, P(lay(l, KVM_FGPT_R_W1)), y.pld[lay(l, KVM_FGPT_R_W1)], N, F, D, prec, [=](int m, int n, float a) {
+      const bool rnd = !prec;   // U is fc2's and dW2's operand alone: stored rounded in a 1xTF32 run
+      fgemm<false, false, 1>(sm + y.nh, y.ldd, P(lay(l, KVM_FGPT_R_W1)), y.pld[lay(l, KVM_FGPT_R_W1)], N, F, D, prec, [=](int m, int n, float a) {
         const float z = a + b1[n];
+        float g;
         if (kept) {
           const float t = gelu_tanh(z);
           pre[(size_t)m * ldF + n] = gelu_grad_of(z, t);
-          if constexpr ((kFast & 8) != 0) u[m * ldF + n] = gelu_fast(z); else u[m * ldF + n] = gelu_of(z, t);
+          if constexpr ((kFast & 8) != 0) g = gelu_fast(z); else g = gelu_of(z, t);
         } else {
           pre[(size_t)m * ldF + n] = z;
-          if constexpr ((kFast & 8) != 0) u[m * ldF + n] = gelu_fast(z); else u[m * ldF + n] = gelu(z);
+          if constexpr ((kFast & 8) != 0) g = gelu_fast(z); else g = gelu(z);
         }
+        u[m * ldF + n] = rnd ? tf32f(g) : g;
       });
       float* const pt = sm + y.part;
-      fgemm<false, false>(u, y.ldF, P(lay(l, KVM_FGPT_R_W2)), y.pld[lay(l, KVM_FGPT_R_W2)], N, D, F, prec, [=](int m, int n, float a) { pt[(size_t)m * D + n] = a; });
+      fgemm<false, false, 1>(u, y.ldF, P(lay(l, KVM_FGPT_R_W2)), y.pld[lay(l, KVM_FGPT_R_W2)], N, D, F, prec, [=](int m, int n, float a) { pt[(size_t)m * D + n] = a; });
     }
     ph(MK_MLP);
     if constexpr ((kFast & 4) == 0) {   // FAST & 4: the next norm's pass sums it
@@ -593,14 +607,14 @@ __device__ float forward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
       a.x += mv.x; a.y += mv.y; a.z += mv.z; a.w += mv.w;
       *reinterpret_cast<float4*>(xn + r * D + c) = a;
       return a;
-    }, P(nfg), P(nfb), sm + y.nh, y.ldd, sm + y.stf, sm + y.stf + N, N, D, d.ln_eps);
+    }, P(nfg), P(nfb), sm + y.nh, y.ldd, sm + y.stf, sm + y.stf + N, N, D, d.ln_eps, !prec);
   } else {
-    ln_fwd_p(sm + y.x[L], D, P(nfg), P(nfb), sm + y.nh, y.ldd, sm + y.stf, sm + y.stf + N, N, D, d.ln_eps);
+    ln_fwd_p(sm + y.x[L], D, P(nfg), P(nfb), sm + y.nh, y.ldd, sm + y.stf, sm + y.stf + N, N, D, d.ln_eps, !prec);
   }
   ph(MK_LNF);
   float* const logits = sm + y.part;                                                  // the logits in region PART (fc2's partial is summed)
   const int ldV = y.ldV;
-  fgemm<false, false>(sm + y.nh, y.ldd, sm + y.head, y.pld[head], N, V, D, prec, [=](int m, int n, float a) { logits[(size_t)m * ldV + n] = a; });
+  fgemm<false, false, 1>(sm + y.nh, y.ldd, sm + y.head, y.pld[head], N, V, D, prec, [=](int m, int n, float a) { logits[(size_t)m * ldV + n] = a; });
   float* const lse = sm + y.lse; float* const tl = sm + y.tl;
   if constexpr ((kFast & 2) != 0) ce_rows_fast(logits, ldV, N, V, tgt, lse, tl);
   else ce_rows(logits, N, V, tgt, lse, tl);
@@ -658,10 +672,11 @@ __device__ void colsum_qkv(const float* X, int ld, int R, int D, float* oq, floa
 
 // LayerNorm backward, relaxed: eight lanes a row (ln_rows_fast's layout), dx = rstd (dy g - mean(dy g) - xh mean(dy g xh)) with xh =
 // (x - mean) rstd, added to gx when acc, stored otherwise; and the gain's and bias's gradients (sums over the rows of dy xh and of dy) into
-// gG and gB, four threads a column on the threads the rows leave free (or after them). x, dy and gx at pitch d. Ends with __syncthreads.
+// gG and gB, four threads a column on the threads the rows leave free (or after them). x at pitch d, dy and gx at ldg (the layout's
+// ldd: a padded pitch). Ends with __syncthreads.
 __device__ void ln_bwd_fast(const float* x, const float* dy, const float* g, const float* mean, const float* rstd, float* gx, bool acc,
-                            float* gG, float* gB, int N, int d) {
-  constexpr int LPR = 8, G4 = 4;
+                            float* gG, float* gB, int N, int d, int ldg) {
+  constexpr int LPR = 8, G4 = KVM_FGPT1_MAXD / 32;   // as ln_rows_fast's
   const float inv_d = 1.f / (float)d;
   const int U = (LPR * N + 31) & ~31, UC = (4 * d + 31) & ~31;
   const int c0 = NT - U >= UC ? U : 0;                                                 // the column sums' first thread
@@ -675,7 +690,7 @@ __device__ void ln_bwd_fast(const float* x, const float* dy, const float* g, con
     for (int k = 0; k < G4; ++k) {
       const int c = 4 * (j + LPR * k);
       if (on && c < d) {
-        const float4 xv = *reinterpret_cast<const float4*>(x + (size_t)r * d + c), dv = *reinterpret_cast<const float4*>(dy + (size_t)r * d + c),
+        const float4 xv = *reinterpret_cast<const float4*>(x + (size_t)r * d + c), dv = *reinterpret_cast<const float4*>(dy + (size_t)r * ldg + c),
                      gv = *reinterpret_cast<const float4*>(g + c);
         gs[k] = make_float4(dv.x * gv.x, dv.y * gv.y, dv.z * gv.z, dv.w * gv.w);
         xh[k] = make_float4((xv.x - mu) * rs, (xv.y - mu) * rs, (xv.z - mu) * rs, (xv.w - mu) * rs);
@@ -689,7 +704,7 @@ __device__ void ln_bwd_fast(const float* x, const float* dy, const float* g, con
     for (int k = 0; k < G4; ++k) {
       const int c = 4 * (j + LPR * k);
       if (on && c < d) {
-        float4* const o = reinterpret_cast<float4*>(gx + (size_t)r * d + c);
+        float4* const o = reinterpret_cast<float4*>(gx + (size_t)r * ldg + c);
         const float4 v = make_float4(rs * (gs[k].x - s1 - xh[k].x * s2), rs * (gs[k].y - s1 - xh[k].y * s2), rs * (gs[k].z - s1 - xh[k].z * s2),
                                      rs * (gs[k].w - s1 - xh[k].w * s2));
         if (acc) { const float4 w = *o; *o = make_float4(w.x + v.x, w.y + v.y, w.z + v.z, w.w + v.w); } else *o = v;
@@ -701,7 +716,7 @@ __device__ void ln_bwd_fast(const float* x, const float* dy, const float* g, con
     const bool on = c < d;
     float sg = 0.f, sb = 0.f;
     if (on)
-      for (int r = q; r < N; r += 4) { const float dv = dy[(size_t)r * d + c]; sg += dv * (x[(size_t)r * d + c] - mean[r]) * rstd[r]; sb += dv; }
+      for (int r = q; r < N; r += 4) { const float dv = dy[(size_t)r * ldg + c]; sg += dv * (x[(size_t)r * d + c] - mean[r]) * rstd[r]; sb += dv; }
     sg = group_sum<4>(sg); sb = group_sum<4>(sb);
     if (on && q == 0) { gG[c] = sg; gB[c] = sb; }
   }
@@ -716,13 +731,14 @@ struct ParamHome {
   int cols[KVM_FGPT_MAXP]; float inv_cols[KVM_FGPT_MAXP]; float wd[KVM_FGPT_MAXP]; float lrwd[KVM_FGPT_MAXP];   // lr x wd: run's first product
   bool vec4;   // every slot's size, columns and pitch a multiple of 4, every home 16-byte aligned: the update goes float4 a lane
   int off[KVM_FGPT_MAXP + 1];   // one flat index over every parameter element: slot s holds [off[s], off[s + 1])
+  float* home[KVM_FGPT_MAXP];   // each slot's global home (d.p), row-major [rows x cols]: the helper update's reload reads it from here, not from d
 };
 __device__ void param_homes(const KvmFgptDesc& d, float* sm, const Layout& y, ParamHome& h) {
   const int D = d.d, L = d.L;
   h.off[0] = 0;
   for (int s = 0; s < kvm_fgpt_nparams(L); ++s) {
     h.base[s] = y.p[s] >= 0 ? sm + y.p[s] : nullptr; h.pitch[s] = y.pld[s];
-    h.g[s] = d.g[s]; h.m[s] = d.m[s]; h.v[s] = d.v[s]; h.wd[s] = d.wd[s];
+    h.g[s] = d.g[s]; h.m[s] = d.m[s]; h.v[s] = d.v[s]; h.wd[s] = d.wd[s]; h.home[s] = d.p[s];
     h.cols[s] = d.pcols[s]; h.inv_cols[s] = __fdividef(1.f, (float)d.pcols[s]); h.lrwd[s] = __fmul_rn(d.lr, d.wd[s]);
     h.off[s + 1] = h.off[s] + d.prows[s] * d.pcols[s];
   }
@@ -747,11 +763,11 @@ __device__ void param_homes(const KvmFgptDesc& d, float* sm, const Layout& y, Pa
 }
 
 // One step's backward from the forward's state on chip, its gradients into d.g. inv_n: the loss's 1 / (targeted rows).
-template <class PH>
+template <bool PREC, class PH>   // PREC as forward's
 __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int step, float inv_n, PH& ph) {
   const int tid = threadIdx.x;
   const int N = d.N, T = d.T, B = d.B, D = d.d, H = d.H, hd = d.hd, F = d.F, V = d.V, L = d.L;
-  const bool prec = (d.mm_numerics & 16) != 0;
+  constexpr bool prec = PREC, rnd = !prec;   // rnd: the GEMM-only operands are stored rounded (fjob's RND)
   const int* const tgt = reinterpret_cast<const int*>(sm + y.tgt) + (step & 1) * N;
   const int* const ids = reinterpret_cast<const int*>(sm + y.ids) + (step & 1) * N;
   const float* const rtab = sm + y.rtab;
@@ -769,36 +785,39 @@ __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
     const float* const lse = sm + y.lse;
     grid_loop(N16, ldl, [=](int r, int c) {
       const int tg = r < N ? tgt[r] : -1;
-      DL[r * ldl + c] = tg == -1 || c >= V ? 0.f : (__expf(DL[r * ldl + c] - lse[r]) - (c == tg ? 1.f : 0.f)) * inv_n;
+      const float g = tg == -1 || c >= V ? 0.f : (__expf(DL[r * ldl + c] - lse[r]) - (c == tg ? 1.f : 0.f)) * inv_n;
+      DL[r * ldl + c] = rnd ? tf32f(g) : g;
     });
     __syncthreads();
     float* const gh = G(hs); const float* const W = sm + y.head; const int ldw = y.pld[hs];
-    gemm_par(fjob<true, false>(nh, ldd, DL, ldl, D, V, N, prec, [=](int m, int n, float a) { gh[(size_t)m * V + n] = a; }),
-             fjob<false, true>(DL, ldl, W, ldw, N, D, V, prec, [=](int m, int n, float a) { dy[(size_t)m * D + n] = a; }));
+    gemm_par(fjob<true, false, 3>(nh, ldd, DL, ldl, D, V, N, prec, [=](int m, int n, float a) { gh[(size_t)m * V + n] = a; }),
+             fjob<false, true, 1>(DL, ldl, W, ldw, N, D, V, prec, [=](int m, int n, float a) { dy[(size_t)m * ldd + n] = a; }));
     (void)hs;
   }
   ph(MK_HEADB);
   // ---- the final norm: gx = its backward (stored); nf's gradients
   {
     const int nfg = kvm_fgpt_slot_nfg(L), nfb = kvm_fgpt_slot_nfb(L);
-    ln_bwd_fast(sm + y.x[L], dy, P(nfg), sm + y.stf, sm + y.stf + N, gx, false, G(nfg), G(nfb), N, D);
+    ln_bwd_fast(sm + y.x[L], dy, P(nfg), sm + y.stf, sm + y.stf + N, gx, false, G(nfg), G(nfb), N, D, ldd);
   }
   ph(MK_LNFB);
   for (int l = L - 1; l >= 0; --l) {
     // ---- the MLP: b2's gradient is gx's column sums; U = gelu(pre) into A; dW2 = U^T gx and DU = (gx W2^T) gelu'(pre) (into pre, in place)
     float* const pre = sm + y.pre[l]; float* const U = sm + y.a;
-    colsum_fast(gx, D, N, D, G(lay(l, KVM_FGPT_R_B2)), false);
+    colsum_fast(gx, ldd, N, D, G(lay(l, KVM_FGPT_R_B2)), false);
     if (l != L - 1) {   // the last layer's U is still in A from the forward (fc2's operand); an earlier layer's is recomputed
       grid_loop(N16, ldF, [=](int r, int c) {
         const float z = pre[r * ldF + c];
-        if constexpr ((kFast & 8) != 0) U[r * ldF + c] = r < N && c < F ? gelu_fast(z) : 0.f; else U[r * ldF + c] = r < N && c < F ? gelu(z) : 0.f;
+        float g;
+        if constexpr ((kFast & 8) != 0) g = r < N && c < F ? gelu_fast(z) : 0.f; else g = r < N && c < F ? gelu(z) : 0.f;
+        U[r * ldF + c] = rnd ? tf32f(g) : g;
       });
       __syncthreads();
     }
     {
       float* const gw2 = G(lay(l, KVM_FGPT_R_W2)); const float* const W2 = P(lay(l, KVM_FGPT_R_W2)); const int ldw2 = y.pld[lay(l, KVM_FGPT_R_W2)];
-      gemm_par(fjob<true, false>(U, ldF, gx, D, F, D, N, prec, [=](int m, int n, float a) { gw2[(size_t)m * D + n] = a; }),
-               fjob<false, true>(gx, D, W2, ldw2, N, F, D, prec, [=](int m, int n, float a) {
+      gemm_par(fjob<true, false, 1>(U, ldF, gx, ldd, F, D, N, prec, [=](int m, int n, float a) { gw2[(size_t)m * D + n] = a; }),
+               fjob<false, true>(gx, ldd, W2, ldw2, N, F, D, prec, [=](int m, int n, float a) {
                  const float q = pre[m * ldF + n];   // the last layer's pre holds gelu'(z) from the forward, an earlier layer's z
                  pre[m * ldF + n] = a * (l == L - 1 ? q : gelu_grad(q));
                }));
@@ -809,21 +828,21 @@ __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
     {
       const float* const xm = sm + y.xm[l]; const float* const st = sm + y.st2[l];
       const float* const g2 = P(lay(l, KVM_FGPT_R_N2G)); const float* const b2n = P(lay(l, KVM_FGPT_R_N2B));
-      grid_loop(N, D, [=](int r, int c) { nh[r * ldd + c] = (xm[r * D + c] - st[r]) * st[N + r] * g2[c] + b2n[c]; });
+      grid_loop(N, D, [=](int r, int c) { const float v = (xm[r * D + c] - st[r]) * st[N + r] * g2[c] + b2n[c]; nh[r * ldd + c] = rnd ? tf32f(v) : v; });
       __syncthreads();
       ph(MK_MLPB);   // db1, LN2's output again
       float* const gw1 = G(lay(l, KVM_FGPT_R_W1)); const float* const W1 = P(lay(l, KVM_FGPT_R_W1)); const int ldw1 = y.pld[lay(l, KVM_FGPT_R_W1)];
-      gemm_par(fjob<true, false>(nh, ldd, pre, ldF, D, F, N, prec, [=](int m, int n, float a) { gw1[(size_t)m * F + n] = a; }),
-               fjob<false, true>(pre, ldF, W1, ldw1, N, D, F, prec, [=](int m, int n, float a) { dy[(size_t)m * D + n] = a; }));
+      gemm_par(fjob<true, false, 1>(nh, ldd, pre, ldF, D, F, N, prec, [=](int m, int n, float a) { gw1[(size_t)m * F + n] = a; }),
+               fjob<false, true>(pre, ldF, W1, ldw1, N, D, F, prec, [=](int m, int n, float a) { dy[(size_t)m * ldd + n] = a; }));
       ph(MK_X_DH2);   // dW1 | dh2
       // LN2's backward, added to gx (the gradient at xm)
-      ln_bwd_fast(xm, dy, g2, st, st + N, gx, true, G(lay(l, KVM_FGPT_R_N2G)), G(lay(l, KVM_FGPT_R_N2B)), N, D);
+      ln_bwd_fast(xm, dy, g2, st, st + N, gx, true, G(lay(l, KVM_FGPT_R_N2G)), G(lay(l, KVM_FGPT_R_N2B)), N, D, ldd);
     }
     ph(MK_LN2B);   // LN2's backward
     // ---- attention: bo's gradient is gx's column sums; dWo = O^T gx; dO = gx Wo^T (into PART at pitch ldd)
     float* const dO = sm + y.part; const float* const O = sm + y.o[l]; float* const qkv = sm + y.qkv[l];
     float* const dqkv = pre;                                                            // pre (DU) is dead: dq | dk | dv of every row, at pitch ldq
-    colsum_fast(gx, D, N, D, G(lay(l, KVM_FGPT_R_BO)), false);
+    colsum_fast(gx, ldd, N, D, G(lay(l, KVM_FGPT_R_BO)), false);
     float* const gwo = G(lay(l, KVM_FGPT_R_WO)); const float* const Wo = P(lay(l, KVM_FGPT_R_WO)); const int ldwo = y.pld[lay(l, KVM_FGPT_R_WO)];
     // each (sequence, head): P again from q, k and the forward's log-sum-exps; dV = P^T dO; dP = dO V^T; dS = P (dP - delta);
     // dQ = dS K scale; dK = dS^T Q scale. Attention's products are 3xTF32 as the forward's.
@@ -840,8 +859,8 @@ __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
       const float* const O0 = O + (size_t)(0 / H) * T * ldd + (0 % H) * hd; const float* const O1 = O + (size_t)(1 / H) * T * ldd + (1 % H) * hd;
       float* const dq0 = dqkv + (size_t)(0 / H) * T * ldq + (0 % H) * hd; float* const dq1 = dqkv + (size_t)(1 / H) * T * ldq + (1 % H) * hd;
       // dWo and dO, and P again for both blocks (it needs only q, k and the forward's log-sum-exps), in one pass
-      gemm_par(fjob<true, false>(O, ldd, gx, D, D, D, N, prec, [=](int m, int n, float a) { gwo[(size_t)m * D + n] = a; }),
-               fjob<false, true>(gx, D, Wo, ldwo, N, D, D, prec, [=](int m, int n, float a) { dO[m * ldd + n] = a; }),
+      gemm_par(fjob<true, false>(O, ldd, gx, ldd, D, D, N, prec, [=](int m, int n, float a) { gwo[(size_t)m * D + n] = a; }),
+               fjob<false, true>(gx, ldd, Wo, ldwo, N, D, D, prec, [=](int m, int n, float a) { dO[m * ldd + n] = a; }),
                fjob<false, true>(q0, ldq, k0, ldq, T, T, hd, true, [=](int m, int n, float a) { P0[m * ldS + n] = n <= m ? __expf(a * scale - l0[m]) : 0.f; }),
                fjob<false, true>(q1, ldq, k1, ldq, T, T, hd, true, [=](int m, int n, float a) { P1[m * ldS + n] = n <= m ? __expf(a * scale - l1[m]) : 0.f; }));
       ph(MK_UB_STAGE);   // dbo, dWo | dO | P
@@ -886,14 +905,14 @@ __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
         }
         const float* const x = sm + y.x[l]; const float* const st = sm + y.st1[l];   // LN1's output again into NH, in the same pass
         const float* const g1 = P(lay(l, KVM_FGPT_R_N1G)); const float* const b1n = P(lay(l, KVM_FGPT_R_N1B));
-        grid_loop(N, D, [=](int r, int c) { nh[r * ldd + c] = (x[r * D + c] - st[r]) * st[N + r] * g1[c] + b1n[c]; });
+        grid_loop(N, D, [=](int r, int c) { const float v = (x[r * D + c] - st[r]) * st[N + r] * g1[c] + b1n[c]; nh[r * ldd + c] = rnd ? tf32f(v) : v; });
         __syncthreads();
         h1_ready = true;
       }
       ph(MK_UB_DV_DS);   // RoPE back, LN1's output again
     } else {
-      gemm_par(fjob<true, false>(O, ldd, gx, D, D, D, N, prec, [=](int m, int n, float a) { gwo[(size_t)m * D + n] = a; }),
-               fjob<false, true>(gx, D, Wo, ldwo, N, D, D, prec, [=](int m, int n, float a) { dO[m * ldd + n] = a; }));
+      gemm_par(fjob<true, false>(O, ldd, gx, ldd, D, D, N, prec, [=](int m, int n, float a) { gwo[(size_t)m * D + n] = a; }),
+               fjob<false, true>(gx, ldd, Wo, ldwo, N, D, D, prec, [=](int m, int n, float a) { dO[m * ldd + n] = a; }));
       ph(MK_UB_STAGE);   // dbo, dWo | dO
       float* const Pm = sm + y.a; float* const dS = sm + y.a + (size_t)T16 * ldS;
       for (int blk = 0; blk < B * H; ++blk) {
@@ -928,40 +947,43 @@ __device__ void backward(const KvmFgptDesc& d, float* sm, const Layout& y, int s
       const float* const x = sm + y.x[l]; const float* const st = sm + y.st1[l];
       const float* const g1 = P(lay(l, KVM_FGPT_R_N1G)); const float* const b1n = P(lay(l, KVM_FGPT_R_N1B));
       if (!h1_ready) {
-        grid_loop(N, D, [=](int r, int c) { nh[r * ldd + c] = (x[r * D + c] - st[r]) * st[N + r] * g1[c] + b1n[c]; });
+        grid_loop(N, D, [=](int r, int c) { const float v = (x[r * D + c] - st[r]) * st[N + r] * g1[c] + b1n[c]; nh[r * ldd + c] = rnd ? tf32f(v) : v; });
         __syncthreads();
       }
       float* const gq = G(lay(l, KVM_FGPT_R_WQ)); float* const gk = G(lay(l, KVM_FGPT_R_WK)); float* const gv = G(lay(l, KVM_FGPT_R_WV));
       const float* const Wqkv = sm + y.wqkv + (size_t)l * y.wqkv_stride; const int ldw = kvm_fgpt_ldmn(3 * D);
-      gemm_par(fjob<true, false>(nh, ldd, dqkv, ldq, D, 3 * D, N, prec, [=](int m, int n, float a) {
+      gemm_par(fjob<true, false, 1>(nh, ldd, dqkv, ldq, D, 3 * D, N, prec, [=](int m, int n, float a) {
                  const int part = (n >= D) + (n >= 2 * D);   // q, k or v, by compares: no run-time modulo an element
                  float* const o = part == 0 ? gq : part == 1 ? gk : gv;
                  o[(size_t)m * D + (n - part * D)] = a;
                }),
-               fjob<false, true>(dqkv, ldq, Wqkv, ldw, N, D, 3 * D, prec, [=](int m, int n, float a) { dy[(size_t)m * D + n] = a; }));
+               fjob<false, true>(dqkv, ldq, Wqkv, ldw, N, D, 3 * D, prec, [=](int m, int n, float a) { dy[(size_t)m * ldd + n] = a; }));
       ph(MK_UB_DQ_DK);   // dbq dbk dbv, (LN1's output again,) dWqkv | dh1
-      ln_bwd_fast(x, dy, g1, st, st + N, gx, true, G(lay(l, KVM_FGPT_R_N1G)), G(lay(l, KVM_FGPT_R_N1B)), N, D);
+      ln_bwd_fast(x, dy, g1, st, st + N, gx, true, G(lay(l, KVM_FGPT_R_N1G)), G(lay(l, KVM_FGPT_R_N1B)), N, D, ldd);
     }
     ph(MK_ATTNB);
   }
   // ---- the embedding: wte's gradient row v is the sum of gx's rows r with ids[r] == v, in row order
   {   // a warp a vocabulary row at a time, lanes over the columns; each 32-row chunk's matches come from one ballot, taken in row order,
-      // so a row's chain is its matches, not N compares (the compares cost 5 us). D at most 128.
+      // so a row's chain is its matches, not N compares (the compares cost 5 us). D at most KVM_FGPT1_MAXD, CJ a lane.
     float* const gw = G(0);
     const int w = tid >> 5, lane = tid & 31;
     for (int v = w; v < V; v += NT / 32) {
-      float acc[4] = {0.f, 0.f, 0.f, 0.f};
+      constexpr int CJ = KVM_FGPT1_MAXD / 32;
+      float acc[CJ];
+#pragma unroll
+      for (int k = 0; k < CJ; ++k) acc[k] = 0.f;
       for (int r0 = 0; r0 < N; r0 += 32) {
         unsigned m = __ballot_sync(0xffffffffu, r0 + lane < N && ids[r0 + lane] == v);
         while (m) {
           const int rr = r0 + __ffs(m) - 1;
           m &= m - 1;
 #pragma unroll
-          for (int k = 0; k < 4; ++k) if (lane + 32 * k < D) acc[k] += gx[rr * D + lane + 32 * k];
+          for (int k = 0; k < CJ; ++k) if (lane + 32 * k < D) acc[k] += gx[rr * ldd + lane + 32 * k];
         }
       }
 #pragma unroll
-      for (int k = 0; k < 4; ++k) if (lane + 32 * k < D) gw[(size_t)v * D + lane + 32 * k] = acc[k];
+      for (int k = 0; k < CJ; ++k) if (lane + 32 * k < D) gw[(size_t)v * D + lane + 32 * k] = acc[k];
     }
     __syncthreads();
   }
@@ -1127,6 +1149,166 @@ __device__ void adamw(const KvmFgptDesc& d, const ParamHome& h, int step, float*
 
 // C2's run: the run's steps, each the forward and its loss, the parameters resident and unchanged (C3 adds the backward and AdamW). The
 // step counter advances as run's does. False on a fault (fail(code) called once).
+//
+// The helper update: when the launch has blocks beside block 0, they run the update. Block 0 runs the step
+// and its clip's norm (upd_norm: adamw's own norm pass, so the coef bit for bit), publishes go = step + 1 with the coef, and reloads its
+// resident parameters once every helper is done; helper j of the K = gridDim.x - 1 holds p, m and v of a contiguous slice of the flat
+// float4 groups in its own shared memory for the run and updates them with adam1 (the same expression an element, so the same bits),
+// storing p to its global home. The control words are d.ctl's first (the one-block form runs no gang): the mode block 0 picks once,
+// go, done (K (step + 1) once every helper is through step), the coef. A fault in block 0 publishes kUpdAbort, and the helpers leave.
+// The clip's norm stays on block 0: on the helpers (each computing block 0's per-thread partials in its order, then crossing) it cost more
+// than it saved, and with its loads issued together it only matched block 0's pass (both measured on the A100 bed).
+namespace upd {
+constexpr int MODE = 0, GO = 1, DONE = 2, COEF = 3;
+constexpr unsigned kOff = 1, kOn = 2, kAbort = 0xffffffffu;
+__device__ __forceinline__ unsigned ld_acq(const unsigned* p) {
+  unsigned v; asm volatile("ld.acquire.gpu.global.u32 %0, [%1];" : "=r"(v) : "l"(p) : "memory"); return v;
+}
+__device__ __forceinline__ void st_rel(unsigned* p, unsigned v) { asm volatile("st.release.gpu.global.u32 [%0], %1;" :: "l"(p), "r"(v) : "memory"); }
+__device__ __forceinline__ unsigned wait_ge(const unsigned* p, unsigned v) { unsigned x; while ((x = ld_acq(p)) < v) { } return x; }
+// A block's release, after the __syncthreads that orders its threads' stores before thread 0's: one GPU-scope fence by thread 0 (the gang's
+// form, kvm_gang.cuh's form 2), cumulative over what the barrier made thread 0 observe. Every thread's own __threadfence (MEMBAR.SC.GPU,
+// 384 of them a crossing) cost the handoff about 3 us a step on the A100 bed.
+__device__ __forceinline__ void fence_rel() { asm volatile("fence.acq_rel.gpu;" ::: "memory"); }
+__device__ __forceinline__ void slice(int t4, int K, int j, int& g0, int& g1) { const int per = (t4 + K - 1) / K; g0 = min(t4, j * per); g1 = min(t4, g0 + per); }
+// A helper's shared memory in floats (upd_helper's layout): the largest slice's p, m and v (S float4 each), the gradient and home pointers
+// (np each), off (np + 1 ints), lr x wd (np) and its step's two bias corrections. Block 0 offloads only when it fits the launch's dynamic
+// shared memory (one helper and gpt-tiny's 4,216 groups would need 202 KB), so a helper never writes past its own.
+KVM_FGPT_HD inline long long helper_floats(int t4, int K, int np) {
+  const long long S = K > 0 ? (t4 + K - 1) / K : t4;
+  return 3 * 4 * S + 2 * 2 * (long long)np + (np + 1) + np + 2;
+}
+}  // namespace upd
+
+// Block 0's resident copy from the homes the helpers wrote (the helper update), by cp.async over the flat float4 index, adamw's addressing from the
+// shared-memory homes (a GPU-scope acquire leaves L1 cold, so walking the descriptor's tables here cost an L2 round trip a slot: S2,
+// Nov 13 08:46Z, 22 us for the handoff). wte (slot 0) lives in global and is skipped. Committed, not waited.
+__device__ void upd_reload(const ParamHome& h, int np) {
+  const int t4 = h.off[np] / 4, i0 = h.off[1] / 4;
+  int s = 1;
+  for (int i = i0 + threadIdx.x; i < t4; i += NT) {
+    while (4 * i >= h.off[s + 1]) ++s;
+    const int le = 4 * i - h.off[s], cols = h.cols[s];
+    const int r = div_small(le, cols, h.inv_cols[s]), c = le - r * cols;
+    cp16(h.base[s] + (size_t)r * h.pitch[s] + c, h.home[s] + le, true);
+  }
+  asm volatile("cp.async.commit_group;\n" ::: "memory");
+}
+
+// Block 0's clip under the helper update: adamw's vec4 norm pass as it is (each thread's groups tid + k NT in k order, block_sum2, the clip), so the
+// same coef; no ring copies (the helpers hold the moments).
+template <class PH>
+__device__ float upd_norm(const KvmFgptDesc& d, const ParamHome& h, float* red, PH& ph) {
+  constexpr int KG = 12;
+  const int t4 = h.off[kvm_fgpt_nparams(d.L)] / 4, tid = threadIdx.x;
+  float4 gk[KG];
+  float sq = 0.f;
+  int s = 0;
+#pragma unroll
+  for (int k = 0; k < KG; ++k) {
+    const int i = tid + k * NT;
+    if (i < t4) {
+      while (4 * i >= h.off[s + 1]) ++s;
+      gk[k] = __ldcg(reinterpret_cast<const float4*>(h.g[s] + (4 * i - h.off[s])));
+    } else gk[k] = make_float4(0.f, 0.f, 0.f, 0.f);
+  }
+#pragma unroll
+  for (int k = 0; k < KG; ++k) sq += (gk[k].x * gk[k].x + gk[k].y * gk[k].y) + (gk[k].z * gk[k].z + gk[k].w * gk[k].w);
+  double sd = sq, dummy = 0.0;
+  block_sum2(sd, dummy, reinterpret_cast<double*>(red));
+  const float norm = sqrtf((float)sd);
+  const float coef = d.max_norm > 0.f ? fminf(1.f, d.max_norm / (norm + 1e-6f)) : 1.f;
+  ph(MK_SQUARES);
+  return coef;
+}
+
+// A helper's run (blockIdx.x >= 1): its slice of p, m and v into shared memory, then each step's update after go, then m and v home. Every
+// table it walks a step lives in its own shared memory, filled once a run: a GPU-scope acquire leaves L1 cold, and a walk over the
+// descriptor's tables after one cost an L2 round trip a slot (22 us a handoff on the A100 bed). Its shared memory (upd::helper_floats): P, M, V (S float4
+// each), then the gradient and home pointers (np each), off (np + 1 ints), lr x wd (np) and the step's two bias corrections (as adamw takes
+// them), which thread 0 loads a step ahead, after its done: a table of every step's would grow with the run past the shared memory.
+__device__ void upd_helper(const KvmFgptDesc& d, float* sm) {
+  const int tid = threadIdx.x, K = (int)gridDim.x - 1, j = (int)blockIdx.x - 1;
+  unsigned* const ctl = d.ctl;
+  __shared__ unsigned mode;
+  if (tid == 0) mode = upd::wait_ge(ctl + upd::MODE, 1u);
+  __syncthreads();
+  if (mode != upd::kOn) return;   // no offload this run (or block 0 faulted before choosing)
+  const int np = kvm_fgpt_nparams(d.L), steps = d.steps;
+  int t4 = 0;
+  for (int s = 0; s < np; ++s) t4 += d.prows[s] * d.pcols[s] / 4;
+  int g0, g1;
+  upd::slice(t4, K, j, g0, g1);
+  const int S = g1 - g0;
+  float4* const P = reinterpret_cast<float4*>(sm);
+  float4* const M = P + S;
+  float4* const V = M + S;
+  float** const gp = reinterpret_cast<float**>(V + S);
+  float** const pp = gp + np;
+  int* const off = reinterpret_cast<int*>(pp + np);
+  float* const lw = reinterpret_cast<float*>(off + np + 1);
+  float* const bcs = lw + np;
+  // step k's bias corrections from the table block 0 wrote before it released the mode, as adamw takes them
+  const auto load_bc = [&](int k) {
+#pragma unroll
+    for (int e = 0; e < 2; ++e) {
+      float b = __ldcg(d.bc + 2 * k + e);
+      if constexpr ((kFast & 16) != 0) b = __frcp_rn(b);
+      bcs[e] = b;
+    }
+  };
+  if (tid == 0) {
+    off[0] = 0;
+    for (int s = 0; s < np; ++s) { off[s + 1] = off[s] + d.prows[s] * d.pcols[s]; gp[s] = d.g[s]; pp[s] = d.p[s]; lw[s] = __fmul_rn(d.lr, d.wd[s]); }
+    load_bc(0);
+  }
+  __syncthreads();
+  {
+    int s = 0;
+    for (int i = g0 + tid; i < g1; i += NT) {
+      while (4 * i >= off[s + 1]) ++s;
+      const int le = 4 * i - off[s], q = i - g0;
+      P[q] = __ldcg(reinterpret_cast<const float4*>(pp[s] + le));
+      M[q] = __ldcg(reinterpret_cast<const float4*>(d.m[s] + le));
+      V[q] = __ldcg(reinterpret_cast<const float4*>(d.v[s] + le));
+    }
+  }
+  const float b1 = d.beta1, b2 = d.beta2, lr = d.lr, eps = d.adam_eps;
+  const float ob1 = __fsub_rn(1.f, b1), ob2 = __fsub_rn(1.f, b2);
+  __syncthreads();
+  __shared__ unsigned go;
+  for (int step = 0; step < steps; ++step) {
+    if (tid == 0) go = upd::wait_ge(ctl + upd::GO, (unsigned)step + 1);
+    __syncthreads();
+    if (go == upd::kAbort) return;
+    const float coef = __uint_as_float(__ldcg(ctl + upd::COEF));   // block 0's, released with go
+    const float bc1 = bcs[0], bc2 = bcs[1];   // read before the barrier below, after which thread 0 loads the next step's
+    int s = 0;
+    for (int i = g0 + tid; i < g1; i += NT) {
+      while (4 * i >= off[s + 1]) ++s;
+      const int le = 4 * i - off[s], q = i - g0;
+      const float4 g = __ldcg(reinterpret_cast<const float4*>(gp[s] + le));
+      float4 m = M[q], v = V[q], p = P[q];
+      const float w = lw[s];
+      adam1(g.x, m.x, v.x, p.x, coef, b1, ob1, b2, ob2, lr, w, bc1, bc2, eps);
+      adam1(g.y, m.y, v.y, p.y, coef, b1, ob1, b2, ob2, lr, w, bc1, bc2, eps);
+      adam1(g.z, m.z, v.z, p.z, coef, b1, ob1, b2, ob2, lr, w, bc1, bc2, eps);
+      adam1(g.w, m.w, v.w, p.w, coef, b1, ob1, b2, ob2, lr, w, bc1, bc2, eps);
+      M[q] = m; V[q] = v; P[q] = p;
+      __stcg(reinterpret_cast<float4*>(pp[s] + le), p);
+    }
+    __syncthreads();   // the block's p stores, then one release for all of them
+    if (tid == 0) { upd::fence_rel(); atomicAdd(ctl + upd::DONE, 1u); if (step + 1 < steps) load_bc(step + 1); }
+  }
+  int s = 0;
+  for (int i = g0 + tid; i < g1; i += NT) {   // the moments home (the parameters are there already)
+    while (4 * i >= off[s + 1]) ++s;
+    const int le = 4 * i - off[s], q = i - g0;
+    __stcg(reinterpret_cast<float4*>(d.m[s] + le), M[q]);
+    __stcg(reinterpret_cast<float4*>(d.v[s] + le), V[q]);
+  }
+}
+
 template <class FAIL, class PH>
 __device__ bool run1(const KvmFgptDesc& d, float* sm, long long smem_floats, FAIL fail, PH& ph) {
   const int tid = threadIdx.x;
@@ -1140,7 +1322,11 @@ __device__ bool run1(const KvmFgptDesc& d, float* sm, long long smem_floats, FAI
   // the shape, mask and numerics this form takes, and its layout against the shared memory given (kvm_fgpt1.h: the pass and the executor ask
   // the same question before launching)
   const int bad = kvm_fgpt1_check_layout(y, d.N, d.T, d.B, d.d, d.H, d.hd, d.F, d.V, d.mm_numerics, kFast, smem_floats);
-  if (bad) { if (tid == 0) fail(bad); return false; }
+  const bool helpers = gridDim.x > 1;   // the launch's other blocks run the update (upd_helper)
+  if (bad) {
+    if (tid == 0) { fail(bad); if (helpers) { upd::st_rel(d.ctl + upd::GO, upd::kAbort); upd::st_rel(d.ctl + upd::MODE, upd::kAbort); } }
+    return false;
+  }
   zero_n(sm, y.total);                                                                // every pad an exact zero
   __syncthreads();
   rope_table(sm + y.rtab, d.T, d.hd, d.theta);
@@ -1164,6 +1350,20 @@ __device__ bool run1(const KvmFgptDesc& d, float* sm, long long smem_floats, FAI
     if (tid == 0) param_homes(d, sm, y, home);
     __syncthreads();
   }
+  // The helper update's mode, once a run: on when adamw would take its vec4 path (so upd_norm's order is adamw's) and every home and resident copy
+  // moves in 16-byte units (upd_reload's cp.async, all of it through L2)
+  bool offload = false;
+  if constexpr (kC3) {
+    if (helpers) {
+      const int t4 = home.off[kvm_fgpt_nparams(d.L)] / 4;
+      bool al = true;
+      for (int s = 0; s < kvm_fgpt_nparams(d.L); ++s) al = al && (reinterpret_cast<size_t>(d.p[s]) & 15) == 0;
+      offload = home.vec4 && al && t4 <= 12 * NT && y.ring_floats >= 8 * kAdamRing * NT &&
+                upd::helper_floats(t4, (int)gridDim.x - 1, kvm_fgpt_nparams(d.L)) <= smem_floats;
+    }
+  }
+  if (helpers) __syncthreads();   // the bias corrections' table, which the helpers read once they see the mode
+  if (helpers && tid == 0) { upd::fence_rel(); upd::st_rel(d.ctl + upd::MODE, offload ? upd::kOn : upd::kOff); }   // a run without the update releases them too
   int* const ids0 = reinterpret_cast<int*>(sm + y.ids);
   int* const tgt0 = reinterpret_cast<int*>(sm + y.tgt);
   __shared__ int flag, next_flag;
@@ -1182,6 +1382,7 @@ __device__ bool run1(const KvmFgptDesc& d, float* sm, long long smem_floats, FAI
     if (e) { if (tid == 0) next_flag = e; }
     else for (int r = tid; r < N; r += NT) { ids0[r] = __ldcg(d.ids_src + bi + r); tgt0[r] = __ldcg(d.tgt_src + bt + r); }
   }
+  const bool prec_run = (d.mm_numerics & 16) != 0;   // the run's GEMM numerics (matmul_tile's 3xTF32 flag): which instance runs
   for (int step = 0; step < d.steps; ++step) {
     const long long t = (long long)t0 + step;
     int* const ids = ids0 + (step & 1) * N;
@@ -1197,7 +1398,10 @@ __device__ bool run1(const KvmFgptDesc& d, float* sm, long long smem_floats, FAI
         if (tg != -1 && (tg < 0 || tg >= V)) atomicCAS(&flag, 0, KVM_FGPT_E_TARGET);
       }
     __syncthreads();
-    if (flag) { if (tid == 0) fail(flag); return false; }
+    if (flag) {
+      if (tid == 0) { fail(flag); if (offload) upd::st_rel(d.ctl + upd::GO, upd::kAbort); }
+      return false;
+    }
     if (step + 1 < d.steps) {   // the next step's tokens into the other slot, waited for at its start
       long long bi, bt;
       const int e = window_err(t + 1, bi, bt);
@@ -1211,11 +1415,27 @@ __device__ bool run1(const KvmFgptDesc& d, float* sm, long long smem_floats, FAI
         asm volatile("cp.async.commit_group;\n" ::: "memory");
       }
     }
-    const float inv_n = forward(d, sm, y, step, ph);
+    const float inv_n = prec_run ? forward<true>(d, sm, y, step, ph) : forward<false>(d, sm, y, step, ph);
     if constexpr (kC3) {
       __syncthreads();
-      backward(d, sm, y, step, inv_n, ph);
-      adamw(d, home, step, reinterpret_cast<float*>(sm + y.red), sm + y.ring, y.ring_floats, ph);
+      if (prec_run) backward<true>(d, sm, y, step, inv_n, ph); else backward<false>(d, sm, y, step, inv_n, ph);
+      if (offload) {
+        const float coef = upd_norm(d, home, reinterpret_cast<float*>(sm + y.red), ph);
+        __syncthreads();   // the block's gradient stores, then one release for all of them
+        if (tid == 0) {
+          d.ctl[upd::COEF] = __float_as_uint(coef);
+          upd::fence_rel();
+          upd::st_rel(d.ctl + upd::GO, (unsigned)step + 1);
+          upd::wait_ge(d.ctl + upd::DONE, (unsigned)(gridDim.x - 1) * (unsigned)(step + 1));
+        }
+        __syncthreads();
+        upd_reload(home, kvm_fgpt_nparams(d.L));   // the resident copy (the head included) from the homes the helpers just wrote
+        asm volatile("cp.async.wait_all;\n" ::: "memory");
+        __syncthreads();
+        ph(MK_ADAMW);
+      } else {
+        adamw(d, home, step, reinterpret_cast<float*>(sm + y.red), sm + y.ring, y.ring_floats, ph);
+      }
     } else {
       (void)inv_n;
     }

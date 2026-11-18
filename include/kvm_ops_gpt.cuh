@@ -2371,6 +2371,126 @@ KVM_GPT_DEVI void frag_kn(unsigned (&bh)[N][2], unsigned (&bl)[N][2], const floa
 KVM_GPT_DEVI void acc_to_a(const float (&c)[4], unsigned (&h)[4], unsigned (&l)[4]) {
     split_tf32(c[0], h[0], l[0]); split_tf32(c[2], h[1], l[1]); split_tf32(c[1], h[2], l[2]); split_tf32(c[3], h[3], l[3]);
 }
+// ---- attention's products as a bf16 hi/lo split, under KVM_GPT_ATTN_BF2 -----------------------------------------------------------
+// x ~= hi + lo with hi = bf16(x) and lo = bf16(x - hi), both round to nearest even: |x - hi - lo| <= 2^-16 |x|. Three m16n8k16 bf16
+// products (lo-side terms first, then hi*hi; lo*lo dropped, <= 2^-16 of the product) reproduce a product to about 2^-16 (worst 3 x 2^-16),
+// between 3xTF32 (worst 3 x 2^-20) and 1xTF32 (2^-11), at half the tensor issue: bf16 runs at twice TF32's rate on sm_80. bf16 keeps
+// fp32's exponent range, so no operand needs scaling. A k16 step is two of the TF32 path's k8 steps, and every load stays the TF32 path's:
+//   over the head dimension (S, dP, S^T, dP^T) a thread's TF32 columns (t, t+4) of k8 steps 2kk and 2kk+1 serve as bf16 k (2t, 2t+1) and
+//   (2t+8, 2t+9): one permutation of k, on both operands, so the sum is the same sum;
+//   over keys or queries (P V, dS K, P^T dO, dS^T Q) the accumulators of n-tiles 2j and 2j+1 are the bf16 A fragment as they stand, and
+//   frag_kn's rows of k8 steps 2j and 2j+1 (16j + 2t, +1 and 16j + 8 + 2t, +1) its B.
+// KVM_GPT_ATTN_BF2 0 builds 3xTF32 products: every call site keeps that code under #else.
+#ifndef KVM_GPT_ATTN_BF2
+#define KVM_GPT_ATTN_BF2 1   // the default: the per-op paths' attention products as the bf16 split (0: 3xTF32)
+#endif
+#if KVM_GPT_ATTN_BF2
+KVM_GPT_DEVI void split_bf2(float x0, float x1, unsigned& hi, unsigned& lo) {   // x0 in the low half (the even k), x1 in the high half
+    asm("cvt.rn.bf16x2.f32 %0, %1, %2;\n" : "=r"(hi) : "f"(x1), "f"(x0));
+    const float r0 = x0 - __uint_as_float(hi << 16), r1 = x1 - __uint_as_float(hi & 0xffff0000u);   // exact (Sterbenz)
+    asm("cvt.rn.bf16x2.f32 %0, %1, %2;\n" : "=r"(lo) : "f"(r1), "f"(r0));
+}
+// The bf16 A fragment of k16 step kk from the raw fp32 A fragments of k8 steps 2kk (a) and 2kk+1 (b), TF32 layout: [0] (g, t), [1] (g+8, t),
+// [2] (g, t+4), [3] (g+8, t+4).
+KVM_GPT_DEVI void a_bf2(const float (&a)[4], const float (&b)[4], unsigned (&h)[4], unsigned (&l)[4]) {
+    split_bf2(a[0], a[2], h[0], l[0]); split_bf2(a[1], a[3], h[1], l[1]); split_bf2(b[0], b[2], h[2], l[2]); split_bf2(b[1], b[3], h[3], l[3]);
+}
+// A staged tile in bf2 words (tile32_bf2): each fp32 rewritten in place as bf16(x) in the low half and bf16(x - bf16(x)) in the high half,
+// split_bf2's own values, by the thread whose copy wrote it, after its cp.async lands and before the barrier that publishes the tile. Once
+// a CTA instead of once per warp per use (eight warps read every K and V fragment): the fragment loaders below only pair two words' halves.
+KVM_GPT_DEVI void bf2_words(float x0, float x1, unsigned& w0, unsigned& w1) {
+    unsigned hi, lo;
+    split_bf2(x0, x1, hi, lo);                                   // hi = [h1 | h0], lo = [l1 | l0]
+    w0 = __byte_perm(hi, lo, 0x5410); w1 = __byte_perm(hi, lo, 0x7632);   // [l0 | h0], [l1 | h1]
+}
+template <int HD>
+KVM_GPT_DEVI void tile32_bf2(float* dst) {   // the chunks tile32_async gave this thread (the same q mapping), as bf2 words
+    constexpr int CPR = HD / 4;
+    for (int q = threadIdx.x; q < 32 * CPR; q += KVM_GPT_THREADS) {
+        uint4* p = reinterpret_cast<uint4*>(dst + (q / CPR) * (HD + 4) + (q % CPR) * 4);
+        const float4 v = *reinterpret_cast<const float4*>(p);
+        uint4 w;
+        bf2_words(v.x, v.y, w.x, w.y); bf2_words(v.z, v.w, w.z, w.w);
+        *p = w;
+    }
+}
+// The hi and lo bf16x2 of two bf2 words, a (low half of the pair) and b: split_bf2's pair, by byte permutes.
+KVM_GPT_DEVI void pair_w(unsigned a, unsigned b, unsigned& hi, unsigned& lo) { hi = __byte_perm(a, b, 0x5410); lo = __byte_perm(a, b, 0x7632); }
+// B fragments of X * Tl^T for k16 step kk from a bf2 tile: frag_nt's words of k8 steps 2kk and 2kk+1, paired by a_bf2's permutation.
+template <int LD, int N>
+KVM_GPT_DEVI void frag_nt_bf2(unsigned (&bh)[N][2], unsigned (&bl)[N][2], const float* Tl, int n0, int kk, int g, int t) {
+#pragma unroll
+    for (int i = 0; i < N; i++) {
+        const unsigned* r = reinterpret_cast<const unsigned*>(Tl) + ((n0 + i) * 8 + g) * LD + kk * 16 + t;
+        pair_w(r[0], r[4], bh[i][0], bl[i][0]);
+        pair_w(r[8], r[12], bh[i][1], bl[i][1]);
+    }
+}
+// The bf16 A fragment over the 16 keys (or queries) of n-tiles 2j and 2j+1 from their accumulators c0, c1 (rows g, g+8; columns 2t, 2t+1).
+KVM_GPT_DEVI void acc_to_a_bf2(const float (&c0)[4], const float (&c1)[4], unsigned (&h)[4], unsigned (&l)[4]) {
+    split_bf2(c0[0], c0[1], h[0], l[0]); split_bf2(c0[2], c0[3], h[1], l[1]); split_bf2(c1[0], c1[1], h[2], l[2]); split_bf2(c1[2], c1[3], h[3], l[3]);
+}
+// B fragments of P * Tl for k16 step j over the tile's rows: rows 16j + 2t, +1 (b0) and 16j + 8 + 2t, +1 (b1), columns (n0 + i) * 8 + g.
+template <int LD, int N>
+KVM_GPT_DEVI void frag_kn_bf2(unsigned (&bh)[N][2], unsigned (&bl)[N][2], const float* Tl, int j, int n0, int g, int t) {   // from a bf2 tile
+    const unsigned* r = reinterpret_cast<const unsigned*>(Tl) + (j * 16 + 2 * t) * LD + g;
+#pragma unroll
+    for (int i = 0; i < N; i++) {
+        pair_w(r[(n0 + i) * 8], r[LD + (n0 + i) * 8], bh[i][0], bl[i][0]);
+        pair_w(r[8 * LD + (n0 + i) * 8], r[9 * LD + (n0 + i) * 8], bh[i][1], bl[i][1]);
+    }
+}
+// mma3n's and mma3s's products in bf16: the same accumulation order (lo-side terms first; mma3s's to the zeroed t, folded once a tile).
+template <int N, int NA>
+KVM_GPT_DEVI void mma3n_bf2(float (&c)[NA][4], int n0, const unsigned (&ah)[4], const unsigned (&al)[4], const unsigned (&bh)[N][2], const unsigned (&bl)[N][2]) {
+#pragma unroll
+    for (int i = 0; i < N; i++) mma_bf16(c[n0 + i], ah, bl[i][0], bl[i][1]);
+#pragma unroll
+    for (int i = 0; i < N; i++) mma_bf16(c[n0 + i], al, bh[i][0], bh[i][1]);
+#pragma unroll
+    for (int i = 0; i < N; i++) mma_bf16(c[n0 + i], ah, bh[i][0], bh[i][1]);
+}
+template <int N, int NA>
+KVM_GPT_DEVI void mma3s_bf2(float (&c)[NA][4], float (&t)[N][4], int n0, const unsigned (&ah)[4], const unsigned (&al)[4], const unsigned (&bh)[N][2], const unsigned (&bl)[N][2]) {
+#pragma unroll
+    for (int i = 0; i < N; i++) mma_bf16(t[i], ah, bl[i][0], bl[i][1]);
+#pragma unroll
+    for (int i = 0; i < N; i++) mma_bf16(t[i], al, bh[i][0], bh[i][1]);
+#pragma unroll
+    for (int i = 0; i < N; i++) mma_bf16(c[n0 + i], ah, bh[i][0], bh[i][1]);
+}
+// c[kt] += X * Tl^T over the head dimension from a bf2 tile, X's bf16 A fragments already split, by k16 step: af(kk, h, l).
+template <int LD, int NT, class AF>
+KVM_GPT_DEVI void prod_nt_bf2(float (&c)[4][4], AF&& af, const float* Tl, int g, int t) {
+    static_assert(NT % 2 == 0, "the bf16 split pairs the head dimension's k8 steps: hd must be a multiple of 16");
+#pragma unroll
+    for (int kk = 0; kk < NT / 2; kk++) {
+        unsigned ah[4], al[4], bh[4][2], bl[4][2];
+        af(kk, ah, al);
+        frag_nt_bf2<LD, 4>(bh, bl, Tl, 0, kk, g, t);
+        mma3n_bf2<4>(c, 0, ah, al, bh, bl);
+    }
+}
+// A warp's own operand (raw fp32 A fragments by k8 step) split once into bf16 A fragments by k16 step.
+template <int NT>
+KVM_GPT_DEVI void a_bf2_all(const float (&a)[NT][4], unsigned (&h)[NT / 2][4], unsigned (&l)[NT / 2][4]) {
+#pragma unroll
+    for (int kk = 0; kk < NT / 2; kk++) a_bf2(a[2 * kk], a[2 * kk + 1], h[kk], l[kk]);
+}
+// acc[n0 + i] += P * Tl over a 32-row tile (P the four n-tile accumulators p[kt]), n-tiles n0 .. n0 + NF - 1, folded once.
+template <int LD, int NF, int NA>
+KVM_GPT_DEVI void prod_kn_bf2(float (&acc)[NA][4], const float (&p)[4][4], const float* Tl, int n0, int g, int t) {
+    float tf[NF][4] = {};
+#pragma unroll
+    for (int j = 0; j < 2; j++) {
+        unsigned ph[4], pl[4], bh[NF][2], bl[NF][2];
+        acc_to_a_bf2(p[2 * j], p[2 * j + 1], ph, pl);
+        frag_kn_bf2<LD, NF>(bh, bl, Tl, j, n0, g, t);
+        mma3s_bf2<NF>(acc, tf, n0, ph, pl, bh, bl);
+    }
+    fold<NF>(acc, tf, n0);
+}
+#endif
 // Raw fp32 A fragments of the warp's 16 rows of a [rows x HD] head slice: row g / g+8, column ks*8 + t / t+4; rows >= rmax are zero.
 template <int HD>
 KVM_GPT_DEVI void load_a_raw(float (&a)[HD / 8][4], const float* base, int ld, int row, int rmax, int t, bool bf = false) {
@@ -2432,6 +2552,10 @@ KVM_GPT_DEVI void attn_fwd_t(const AttnArgs& A) {
     issue(0); issue(1);
     float aq[NT][4];
     load_a_raw<HD>(aq, eoff(A.q, (size_t)A.b * Tn * A.ldq + A.h * HD, A.sd & KVM_ATT_Q), A.ldq, rowA, Tn, t, A.sd & KVM_ATT_Q);
+#if KVM_GPT_ATTN_BF2
+    unsigned qh[NT / 2][4], ql[NT / 2][4];   // Q split once, not once a key tile
+    a_bf2_all<NT>(aq, qh, ql);
+#endif
     float m0 = -INFINITY, m1 = -INFINITY, l0 = 0.f, l1 = 0.f, o[NT][4];
 #pragma unroll
     for (int n = 0; n < NT; n++)
@@ -2440,6 +2564,9 @@ KVM_GPT_DEVI void attn_fwd_t(const AttnArgs& A) {
     const float c2 = A.scale * KVM_GPT_L2E;
     for (int it = 0; it < nk; it++) {
         cp_wait<1>();
+#if KVM_GPT_ATTN_BF2
+        { float* st = KV + (it % M::NST) * M::STAGE; tile32_bf2<HD>(st); tile32_bf2<HD>(st + M::TILE); }   // this thread's chunks of tile `it`
+#endif
         __syncthreads();   // tile `it` landed; every warp finished tile it-1, so the stage the next issue fills is free
         issue(it + 2);
         const int kbase = it * 32;
@@ -2450,6 +2577,9 @@ KVM_GPT_DEVI void attn_fwd_t(const AttnArgs& A) {
         for (int kt = 0; kt < 4; kt++)
 #pragma unroll
             for (int e = 0; e < 4; e++) s[kt][e] = 0.f;
+#if KVM_GPT_ATTN_BF2
+        prod_nt_bf2<LD, NT>(s, [&](int kk, unsigned (&h)[4], unsigned (&l)[4]) { for (int e = 0; e < 4; e++) { h[e] = qh[kk][e]; l[e] = ql[kk][e]; } }, Ks, g, t);
+#else
 #pragma unroll
         for (int ks = 0; ks < NT; ks++) {
             unsigned ah[4], al[4], bh[4][2], bl[4][2];
@@ -2457,6 +2587,7 @@ KVM_GPT_DEVI void attn_fwd_t(const AttnArgs& A) {
             frag_nt<LD, 4>(bh, bl, Ks, 0, ks, g, t);
             mma3n<4>(s, 0, ah, al, bh, bl);
         }
+#endif
         float r0m = -INFINITY, r1m = -INFINITY;
 #pragma unroll
         for (int kt = 0; kt < 4; kt++) {
@@ -2481,6 +2612,10 @@ KVM_GPT_DEVI void attn_fwd_t(const AttnArgs& A) {
         l0 = l0 * al0 + ps0; l1 = l1 * al1 + ps1;
 #pragma unroll
         for (int n = 0; n < NT; n++) { o[n][0] *= al0; o[n][1] *= al0; o[n][2] *= al1; o[n][3] *= al1; }
+#if KVM_GPT_ATTN_BF2
+#pragma unroll
+        for (int n0 = 0; n0 < NT; n0 += NF) prod_kn_bf2<LD, NF>(o, s, Vs, n0, g, t);
+#else
 #pragma unroll
         for (int n0 = 0; n0 < NT; n0 += NF) {
             float tf[NF][4] = {};
@@ -2493,6 +2628,7 @@ KVM_GPT_DEVI void attn_fwd_t(const AttnArgs& A) {
             }
             fold<NF>(o, tf, n0);
         }
+#endif
     }
     cp_wait<0>();
     if (wrow >= Tn) return;
@@ -2538,6 +2674,10 @@ KVM_GPT_DEVI void attn_dq_t(const AttnArgs& A) {
     float aq[NT][4], ad[NT][4];
     load_a_raw<HD>(aq, eoff(A.q, (size_t)A.b * Tn * A.ldq + A.h * HD, A.sd & KVM_ATT_Q), A.ldq, rowA, Tn, t, A.sd & KVM_ATT_Q);
     load_a_raw<HD>(ad, eoff(A.dout, (size_t)A.b * Tn * A.ldo + A.h * HD, A.sd & KVM_ATT_DO), A.ldo, rowA, Tn, t, A.sd & KVM_ATT_DO);
+#if KVM_GPT_ATTN_BF2
+    unsigned qh[NT / 2][4], ql[NT / 2][4], dh2[NT / 2][4], dl2[NT / 2][4];   // Q and dO split once
+    a_bf2_all<NT>(aq, qh, ql); a_bf2_all<NT>(ad, dh2, dl2);
+#endif
     const size_t hrow = ((size_t)A.b * A.H + A.h) * Tn;
     const float lr0 = rowA < Tn ? A.lse[hrow + rowA] * KVM_GPT_L2E : 0.f, lr1 = rowB < Tn ? A.lse[hrow + rowB] * KVM_GPT_L2E : 0.f;
     const float dr0 = rowA < Tn ? A.delta[hrow + rowA] : 0.f, dr1 = rowB < Tn ? A.delta[hrow + rowB] : 0.f;
@@ -2549,6 +2689,9 @@ KVM_GPT_DEVI void attn_dq_t(const AttnArgs& A) {
     const float c2 = A.scale * KVM_GPT_L2E;
     for (int it = 0; it < nk; it++) {
         cp_wait<1>();
+#if KVM_GPT_ATTN_BF2
+        { float* st = KV + (it % M::NST) * M::STAGE; tile32_bf2<HD>(st); tile32_bf2<HD>(st + M::TILE); }   // this thread's chunks of tile `it`
+#endif
         __syncthreads();
         issue(it + 2);
         const int kbase = it * 32;
@@ -2559,6 +2702,10 @@ KVM_GPT_DEVI void attn_dq_t(const AttnArgs& A) {
         for (int kt = 0; kt < 4; kt++)
 #pragma unroll
             for (int e = 0; e < 4; e++) { s[kt][e] = 0.f; dp[kt][e] = 0.f; }
+#if KVM_GPT_ATTN_BF2
+        prod_nt_bf2<LD, NT>(s, [&](int kk, unsigned (&h)[4], unsigned (&l)[4]) { for (int e = 0; e < 4; e++) { h[e] = qh[kk][e]; l[e] = ql[kk][e]; } }, Ks, g, t);
+        prod_nt_bf2<LD, NT>(dp, [&](int kk, unsigned (&h)[4], unsigned (&l)[4]) { for (int e = 0; e < 4; e++) { h[e] = dh2[kk][e]; l[e] = dl2[kk][e]; } }, Vs, g, t);
+#else
 #pragma unroll
         for (int ks = 0; ks < NT; ks++) {
             unsigned ah[4], al[4], bh[4][2], bl[4][2];
@@ -2569,6 +2716,7 @@ KVM_GPT_DEVI void attn_dq_t(const AttnArgs& A) {
             frag_nt<LD, 4>(bh, bl, Vs, 0, ks, g, t);
             mma3n<4>(dp, 0, ah, al, bh, bl);
         }
+#endif
 #pragma unroll
         for (int kt = 0; kt < 4; kt++) {
             const int key = kbase + kt * 8 + 2 * t;
@@ -2577,6 +2725,10 @@ KVM_GPT_DEVI void attn_dq_t(const AttnArgs& A) {
             s[kt][2] = p_of(s[kt][2], c2, lr1, key <= rowB) * (dp[kt][2] - dr1);
             s[kt][3] = p_of(s[kt][3], c2, lr1, key + 1 <= rowB) * (dp[kt][3] - dr1);
         }
+#if KVM_GPT_ATTN_BF2
+#pragma unroll
+        for (int n0 = 0; n0 < NT; n0 += NF) prod_kn_bf2<LD, NF>(acc, s, Ks, n0, g, t);
+#else
 #pragma unroll
         for (int n0 = 0; n0 < NT; n0 += NF) {
             float tf[NF][4] = {};
@@ -2589,6 +2741,7 @@ KVM_GPT_DEVI void attn_dq_t(const AttnArgs& A) {
             }
             fold<NF>(acc, tf, n0);
         }
+#endif
     }
     cp_wait<0>();
     if (wrow >= Tn) return;
@@ -2635,12 +2788,27 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
         static_assert(M::SMEM + kvm_gpt_dkv_park_bytes(HD) == kvm_gpt_attn_dkv_smem(HD), "the launch is sized by kvm_gpt_attn_dkv_smem");
         float kr[NT][4];
         load_a_raw<HD>(kr, eoff(A.k, (size_t)A.b * Tn * A.ldk + kvh * HD, A.sd & KVM_ATT_K), A.ldk, keyA, Tn, t, A.sd & KVM_ATT_K);
+#if KVM_GPT_ATTN_BF2
+#pragma unroll
+        for (int kk = 0; kk < NT / 2; kk++) {   // K split once: a k16 step's hi fragment in slot 2kk, its lo in 2kk + 1 (the k8 slots' 32 bytes)
+            unsigned h[4], l[4];
+            a_bf2(kr[2 * kk], kr[2 * kk + 1], h, l);
+            kpark[2 * kk * 32 + lane] = make_float4(__uint_as_float(h[0]), __uint_as_float(h[1]), __uint_as_float(h[2]), __uint_as_float(h[3]));
+            kpark[(2 * kk + 1) * 32 + lane] = make_float4(__uint_as_float(l[0]), __uint_as_float(l[1]), __uint_as_float(l[2]), __uint_as_float(l[3]));
+        }
+#else
 #pragma unroll
         for (int ks = 0; ks < NT; ks++) kpark[ks * 32 + lane] = make_float4(kr[ks][0], kr[ks][1], kr[ks][2], kr[ks][3]);
+#endif
     } else {
         load_a_raw<HD>(ak, eoff(A.k, (size_t)A.b * Tn * A.ldk + kvh * HD, A.sd & KVM_ATT_K), A.ldk, keyA, Tn, t, A.sd & KVM_ATT_K);
     }
     load_a_raw<HD>(av, eoff(A.v, (size_t)A.b * Tn * A.ldv + kvh * HD, A.sd & KVM_ATT_V), A.ldv, keyA, Tn, t, A.sd & KVM_ATT_V);
+#if KVM_GPT_ATTN_BF2
+    unsigned vh[NT / 2][4], vl[NT / 2][4], kh[KPARK ? 1 : NT / 2][4], kl[KPARK ? 1 : NT / 2][4];   // V split once; K too when not parked
+    a_bf2_all<NT>(av, vh, vl);
+    if constexpr (!KPARK) a_bf2_all<NT>(ak, kh, kl);
+#endif
     float dk[NT][4], dv[NT][4];
 #pragma unroll
     for (int n = 0; n < NT; n++)
@@ -2649,6 +2817,9 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
     const float c2 = A.scale * KVM_GPT_L2E;
     for (int it = 0; it < nit; it++) {
         cp_wait<1>();
+#if KVM_GPT_ATTN_BF2
+        { float* st = QO + (it % M::NST) * M::STAGE; tile32_bf2<HD>(st); tile32_bf2<HD>(st + M::TILE); }   // this thread's chunks of tile `it`
+#endif
         __syncthreads();
         issue(it + 2);
         const int h = kvh * G + it / nq, q0 = k0 + (it % nq) * 32;
@@ -2669,6 +2840,18 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
         for (int kt = 0; kt < 4; kt++)
 #pragma unroll
             for (int e = 0; e < 4; e++) { s[kt][e] = 0.f; dp[kt][e] = 0.f; }
+#if KVM_GPT_ATTN_BF2
+        prod_nt_bf2<LD, NT>(s, [&](int kk, unsigned (&h)[4], unsigned (&l)[4]) {
+            if constexpr (KPARK) {
+                const float4 a = kpark[2 * kk * 32 + lane], b = kpark[(2 * kk + 1) * 32 + lane];
+                h[0] = __float_as_uint(a.x); h[1] = __float_as_uint(a.y); h[2] = __float_as_uint(a.z); h[3] = __float_as_uint(a.w);
+                l[0] = __float_as_uint(b.x); l[1] = __float_as_uint(b.y); l[2] = __float_as_uint(b.z); l[3] = __float_as_uint(b.w);
+            } else {
+                for (int e = 0; e < 4; e++) { h[e] = kh[kk][e]; l[e] = kl[kk][e]; }
+            }
+        }, Qs, g, t);
+        prod_nt_bf2<LD, NT>(dp, [&](int kk, unsigned (&h)[4], unsigned (&l)[4]) { for (int e = 0; e < 4; e++) { h[e] = vh[kk][e]; l[e] = vl[kk][e]; } }, Os, g, t);
+#else
 #pragma unroll
         for (int ks = 0; ks < NT; ks++) {
             unsigned ah[4], al[4], bh[4][2], bl[4][2];
@@ -2680,6 +2863,7 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
             frag_nt<LD, 4>(bh, bl, Os, 0, ks, g, t);
             mma3n<4>(dp, 0, ah, al, bh, bl);
         }
+#endif
         float p[4][4];
 #pragma unroll
         for (int kt = 0; kt < 4; kt++) {
@@ -2689,6 +2873,10 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
             s[kt][0] = p[kt][0] * (dp[kt][0] - dl_[kt][0]); s[kt][1] = p[kt][1] * (dp[kt][1] - dl_[kt][1]);
             s[kt][2] = p[kt][2] * (dp[kt][2] - dl_[kt][0]); s[kt][3] = p[kt][3] * (dp[kt][3] - dl_[kt][1]);
         }
+#if KVM_GPT_ATTN_BF2
+#pragma unroll
+        for (int n0 = 0; n0 < NT; n0 += NF) { prod_kn_bf2<LD, NF>(dv, p, Os, n0, g, t); prod_kn_bf2<LD, NF>(dk, s, Qs, n0, g, t); }
+#else
 #pragma unroll
         for (int n0 = 0; n0 < NT; n0 += NF) {   // dV then dK of the n-tile chunk, one zeroed small-term accumulator at a time (registers)
             float tf[NF][4] = {};
@@ -2709,6 +2897,7 @@ KVM_GPT_DEVI void attn_dkv_t(const AttnArgs& A) {
             }
             fold<NF>(dk, tf, n0);
         }
+#endif
     }
     cp_wait<0>();
     if (wkey >= Tn) return;

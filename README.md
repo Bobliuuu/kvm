@@ -8,6 +8,17 @@
 
 Legend used below: ✅ measured and on main, 🧪 code only (no result measures it), ❌ target not met, 🚧 in progress or on an unmerged branch.
 
+## 🎬 Take Magni VM for a test drive
+
+Three replays of real A100 runs, each showing something a stack that launches one kernel per operation cannot do. Click
+a picture to play its video.
+
+| | |
+|---|---|
+| [![One kernel, three workloads](assets/showcase/magni-vm-1-test-drive.jpg)](assets/showcase/magni-vm-1-test-drive.mp4) | **One kernel, three workloads.** This replays all 1,948,168 tasks of a 13.66 s run, on the chip, as they ran. In one launch, a 162M GPT trains, serves requests on the exact weight versions it is training, and runs a game engine on a 35 Hz deadline. Every task, every frame and every version was checked afterwards. |
+| [![A population in one launch](assets/showcase/magni-vm-2-population.jpg)](assets/showcase/magni-vm-2-population.mp4) | **A population in one launch.** 32 training runs share one kernel. At every rung the GPU ranks them and retires the worse half itself, with no host round trip. The sweep runs 1.38× faster than PyTorch's best retiring baseline and makes the same decisions as an fp32 oracle. |
+| [![No gaps](assets/showcase/magni-vm-3-no-gaps.jpg)](assets/showcase/magni-vm-3-no-gaps.mp4) | **No gaps.** The VM's own timestamps for every instruction of 16 training runs on all 108 SMs. Other runs' work fills each run's stalls. It takes 2.03 ms, against 2.59 ms with all runs batched in one CUDA graph: 1.27× at 16 runs, 0.98× at 48. |
+
 ## 📈 Latest results (one A100-SXM4-40GB, Nov 17)
 
 Each ratio is PyTorch's time over Magni VM's for one optimizer step (training) or one decode step, read on the same GPU in

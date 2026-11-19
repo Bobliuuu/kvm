@@ -10,7 +10,16 @@ Legend used below: ✅ measured and on main, 🧪 code only (no result measures 
 
 ## 🎬 Take Magni VM for a test drive
 
-Three short films, each made by one Magni VM kernel launch on one A100. Click a picture to play.
+Four short films, each made by one Magni VM kernel launch on one A100. Click a picture to play.
+
+[![16,384 drivers learn to race](assets/showcase/test-drive.jpg)](assets/showcase/test-drive.mp4)
+
+**16,384 drivers learn to race (10 s).** Each car is driven by its own small neural network. One Magni VM kernel launch runs
+the whole evolution, 40 generations of 16,384 cars driving 30 s each, ranked and bred on the GPU, in 0.46 s. The film shows
+the random first generation crashing all round the circuit, generations 1 to 8 getting further each time (each car wears its
+first ancestor's colour, so the rainbow narrows to one family), and generation 20 released all round the circuit. Every streak
+is a car's recorded path; the first generation matches a CPU reference bit for bit (16,380 of 16,384 cars, the rest within a
+quarter of a track unit).
 
 [![837 games and a GPT training run, one kernel launch](assets/showcase/the-wall.jpg)](assets/showcase/the-wall.mp4)
 
@@ -282,7 +291,7 @@ graphs beat it on a 162M GPT (43.1 s vs 48.1 s, B200).
 - The VM is not faster than PyTorch at 162M (6x slower than autocast-bf16 eager in bf16s, 12x slower than TF32 PyTorch in f32) and does not beat a CUDA graph at any size measured; its win region is launch-bound eager execution on tiny models.
 - 162M: it runs and stays finite, nothing more. It is task-throughput bound (30x off its critical path), and its loss has no independent reference.
 - A run with more tasks than slots recycles slots, and the version and cadence checks then skip by design (the 40-step 162M run did; the 6-step one did not).
-- The test-drive films' runs (The Wall: 837 games beside 64 training steps of the 162M GPT; Futures: 837 forks of one moment; A thousand minds: 1,024 coordinate networks through the frontend) used this repository at `592a966` plus code that is not here yet: a three-hook runner patch, an LLVM pass that gives every game instance its own state, an input hook for the forks, two engine fixes that make its reads past the end of a texture or a table defined (without them the CPU build disagreed with itself), and the networks' population, bundle-merge, snapshot and render scripts.
+- The test-drive films' runs (16,384 drivers: 40 generations of evolution; The Wall: 837 games beside 64 training steps of the 162M GPT; Futures: 837 forks of one moment; A thousand minds: 1,024 coordinate networks through the frontend) used this repository at `592a966` plus code that is not here yet: a three-hook runner patch, an LLVM pass that gives every game instance its own state, an input hook for the forks, two engine fixes that make its reads past the end of a texture or a table defined (without them the CPU build disagreed with itself), the networks' population, bundle-merge, snapshot and render scripts, and the drivers' op pack (the episode, ranking and breeding ops) with its generator and renderer.
 
 ## 🏗️ The integrated framework
 

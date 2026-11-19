@@ -9,7 +9,8 @@ educational, research and government organizations the terms list. A larger comp
 first use; to use it in its business after that, it needs a commercial license. Write to <founders@magnihq.com>.
 
 NVIDIA's CUTLASS headers under `include/cutlass/` and `include/cute/` are not covered by these terms. They keep their own
-BSD-3-Clause license (`include/cutlass/LICENSE.txt`).
+BSD-3-Clause license (`include/cutlass/LICENSE.txt`). `doom/patch_engine.py` edits lines of the Doom engine (doomgeneric,
+GPL-2.0-or-later), which `doom/setup.sh` fetches, so it is licensed under GPL-2.0-or-later like the engine, not these terms.
 
 Required Notice: Copyright (c) 2026 Design Labs, Inc. (Magni) (https://magnihq.com)
 

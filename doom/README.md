@@ -40,7 +40,8 @@ Game state is device-global: one Doom per process.
 
 ## License note
 
-The files in `doom/` are under the [Magni Community License](../LICENSE.md) like the rest of the repository. The Doom engine itself
+The files in `doom/` are under the [Magni Community License](../LICENSE.md) like the rest of the repository, except
+`patch_engine.py`, which edits the engine's own lines and is GPL-2.0-or-later like the engine. The Doom engine itself
 (doomgeneric, fetched by `doom/setup.sh` into the git-ignored `doom/third_party/`) is GPL-2.0-or-later, and the shareware WAD has its
 own id Software terms. Neither is committed here. A binary built with the Doom pack (`doom/build.sh`, the demo's game tenant) links
 that GPL code. The GPL lets such a binary be distributed only if the whole is licensed under the GPL's terms, which this repository's

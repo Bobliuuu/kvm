@@ -3,10 +3,10 @@ Magni VM
 Licensor: Design Labs, Inc. (Magni), <https://magnihq.com>
 
 Magni VM is source-available under the Magni Community License 1.0 below. In short (the terms below govern): it is free for
-any company whose annual revenue and annual recurring revenue (ARR) are both 1,000,000 USD or less, counted together with its
-parent and affiliated companies, and for noncommercial and personal use and the charitable, educational, research and
-government organizations the terms list. A larger company may evaluate it free for 31 days from its first use; to use it in
-its business after that, it needs a commercial license. Write to <founders@magnihq.com>.
+any company whose annual revenue, annual recurring revenue (ARR) and total money raised from investors are each 1,000,000 USD
+or less, counted together with its parent and affiliated companies, and for noncommercial and personal use and the charitable,
+educational, research and government organizations the terms list. A larger company may evaluate it free for 31 days from its
+first use; to use it in its business after that, it needs a commercial license. Write to <founders@magnihq.com>.
 
 NVIDIA's CUTLASS headers under `include/cutlass/` and `include/cute/` are not covered by these terms. They keep their own
 BSD-3-Clause license (`include/cutlass/LICENSE.txt`).
@@ -27,7 +27,7 @@ The licensor grants you a copyright license for the software to do everything yo
 
 ## Distribution License
 
-The licensor grants you an additional copyright license to distribute copies of the software.  Your license to distribute covers distributing the software with changes and new works permitted by [Changes and New Works License](#changes-and-new-works-license).  If your company's annual revenue is over 1,000,000 USD, it covers only copies you distribute free of charge, and not as part of any product or service offered for a fee.
+The licensor grants you an additional copyright license to distribute copies of the software.  Your license to distribute covers distributing the software with changes and new works permitted by [Changes and New Works License](#changes-and-new-works-license).  If your company is large, it covers only copies you distribute free of charge, and not as part of any product or service offered for a fee.
 
 ## Notices
 
@@ -49,11 +49,11 @@ You may have "fair use" rights for the software under the law. These terms do no
 
 ## Small Company
 
-Use of the software for the benefit of your company is use for a permitted purpose if your company's annual revenue is 1,000,000 USD or less.  This does not cover use on behalf of another company whose annual revenue is over 1,000,000 USD.
+Use of the software for the benefit of your company is use for a permitted purpose unless your company is large.  This does not cover use on behalf of another company that is large.
 
 ## Noncommercial Purposes
 
-Any noncommercial purpose is a permitted purpose.  Use for the benefit of your company, or on behalf of another company, is not a noncommercial purpose if that company's annual revenue is over 1,000,000 USD.
+Any noncommercial purpose is a permitted purpose.  Use for the benefit of your company, or on behalf of another company, is not a noncommercial purpose if that company is large.
 
 ## Personal Uses
 
@@ -61,7 +61,7 @@ Personal use for research, experiment, and testing for the benefit of public kno
 
 ## Noncommercial Organizations
 
-Use by any charitable organization, nonprofit educational institution, public research organization, public safety or public health organization, environmental protection organization, or government institution is use for a permitted purpose regardless of the source of funding or obligations resulting from the funding.  This does not cover use on behalf of a company whose annual revenue is over 1,000,000 USD.
+Use by any charitable organization, nonprofit educational institution, public research organization, public safety or public health organization, environmental protection organization, or government institution is use for a permitted purpose regardless of the source of funding or obligations resulting from the funding.  This does not cover use on behalf of a large company.
 
 ## Free Trial
 
@@ -69,7 +69,7 @@ Use to evaluate whether the software suits your company's needs is use for a per
 
 ## Commercial License
 
-Anything these terms do not license needs a separate commercial license from the licensor.  For example, a company whose annual revenue is over 1,000,000 USD needs one to use the software in its business after its free trial.  To ask for one, write to founders@magnihq.com.
+Anything these terms do not license needs a separate commercial license from the licensor.  For example, a large company needs one to use the software in its business after its free trial.  To ask for one, write to founders@magnihq.com.
 
 ## No Other Rights
 
@@ -95,7 +95,7 @@ The **licensor** is the individual or entity offering these terms, and the **sof
 
 **Your company** is any legal entity, sole proprietorship, or other kind of organization that you work for, plus all organizations that have control over, are under the control of, or are under common control with that organization.  **Control** means ownership of substantially all the assets of an entity, or the power to direct its management and policies by vote, contract, or otherwise.  Control can be direct or indirect.
 
-A company's **annual revenue** is the greater of its total revenue over the most recent 12 months and its annual recurring revenue (twelve times its recurring revenue in the most recent full month).  Both count revenue from all sources, of the company together with all organizations that have control over, are under the control of, or are under common control with it.  Amounts in other currencies count at their value in US dollars.
+A company is **large** if its annual revenue or its money raised is over 1,000,000 USD.  A company's **annual revenue** is the greater of its total revenue from all sources over the most recent 12 months and its annual recurring revenue (twelve times its recurring revenue in the most recent full month).  A company's **money raised** is the total it has ever raised from investors, in any form, such as equity, SAFEs, convertible notes or debt.  Both count every organization that has control over, is under the control of, or is under common control with the company, and amounts in other currencies count at their value in US dollars.
 
 **Your licenses** are all the licenses granted to you for the software under these terms.
 

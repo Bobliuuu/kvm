@@ -402,9 +402,9 @@ across all four modes (the check is exact equality: it counts differing elements
 
 Magni VM is source-available under the [Magni Community License 1.0](LICENSE.md):
 
-- **Free** for any company whose annual revenue and ARR are both $1M or less, counted together with its parent and affiliated
-  companies, and for noncommercial and personal use and the charitable, educational, research and government organizations the
-  license lists.
+- **Free** for any company whose annual revenue, ARR and total money raised from investors are each $1M or less, counted together
+  with its parent and affiliated companies, and for noncommercial and personal use and the charitable, educational, research and
+  government organizations the license lists.
 - **A larger company** may evaluate it free for 31 days from its first use. To use it in its business after that, it needs a
   commercial license: write to [founders@magnihq.com](mailto:founders@magnihq.com).
 

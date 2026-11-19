@@ -4,7 +4,7 @@
 
 *Version 2 of [open-flapping-airplanes](https://github.com/Bobliuuu/open-flapping-airplanes) 🛩️*
 
-![GPU](https://img.shields.io/badge/GPU-A100%20(sm__80)-76b900) ![CUDA](https://img.shields.io/badge/CUDA-12.x-76b900) ![demo](https://img.shields.io/badge/demo-all%20checks%20pass-brightgreen) ![Doom](https://img.shields.io/badge/Doom-700%2F700%20frames%20identical-blue) ![vs PyTorch](https://img.shields.io/badge/vs%20PyTorch-6x%20slower%20(bf16)%20%2F%2012x%20(f32)-red) ![multi-GPU](https://img.shields.io/badge/multi--GPU-not%20run-lightgrey)
+![GPU](https://img.shields.io/badge/GPU-A100%20(sm__80)-76b900) ![CUDA](https://img.shields.io/badge/CUDA-12.x-76b900) ![demo](https://img.shields.io/badge/demo-all%20checks%20pass-brightgreen) ![Doom](https://img.shields.io/badge/Doom-700%2F700%20frames%20identical-blue) ![small training jobs vs PyTorch](https://img.shields.io/badge/small%20training%20jobs%20vs%20PyTorch-2.35x%20faster-brightgreen) ![train+serve+Doom demo vs PyTorch eager](https://img.shields.io/badge/train%2Bserve%2BDoom%20demo%20vs%20PyTorch%20eager-6x%20slower%20(bf16)%20%2F%2012x%20(f32)-red) ![multi-GPU](https://img.shields.io/badge/multi--GPU-not%20run-lightgrey)
 
 Legend used below: ✅ measured and on main, 🧪 code only (no result measures it), ❌ target not met, 🚧 in progress or on an unmerged branch.
 
@@ -36,6 +36,7 @@ deviation from a higher-precision reference within twice PyTorch's own).
 | Workload | vs PyTorch's best mode | vs eager |
 |---|---:|---:|
 | 9 small training jobs (MLPs, GPT tiny, small and 162M), geomean | **2.35×** | |
+| Best small job: 8 MLPs of different widths training together | **4.05×** | |
 | GPT 355M training, TF32 | **1.10×** | 1.27× |
 | GPT 162M training, TF32 | **1.07×** | 1.25× |
 | GPT 162M training, BF16 | 0.86× | 1.37× |
@@ -44,7 +45,8 @@ deviation from a higher-precision reference within twice PyTorch's own).
 
 - **PyTorch's best mode:**
   - For the small jobs, it is the fastest of eager, torch.compile, CUDA graphs and batched variants on PyTorch 2.15. PyTorch
-    2.11's CUDA-graph path is about 15% faster; against the faster of the two, the small jobs read 2.00× on Nov 16.
+    2.11's CUDA-graph path is about 15% faster; against the faster of the two, the small jobs read 2.00× on Nov 16, and the 8 MLPs 3.08× on an earlier build (Nov 12 and 14).
+    PyTorch 2.11 was not read beside the Nov 17 build.
   - For the larger rows, it is torch.compile with CUDA graphs, the faster of PyTorch 2.11 and 2.15.
 - **Where the numbers come from:** the training rows were read on a development build that carries every merged PR plus
   later levers. The decode rows were read on the decode line built on #79, which #86 brings onto `main`. The remaining work
@@ -130,8 +132,8 @@ frames/s; workers are mostly idle, so it is latency-bound. The axis is split at 
 | ❌ 162M demo loss over the full vocabulary | the demo's own stream (bigram over all 50,304 tokens) only drifts: six steps 10.979 -> 10.924, 40 steps 10.94 -> 10.89 (+-0.3 step noise); it cannot be learned in that many steps | `results/2026-11-06-demo-large` |
 | ✅ Why 162M is slow | task throughput, not compute: 318k tasks/step at about 3.3 us/task end to end (0.3M tasks/s). The admitter alone measures 0.2 us/task; the serialized stage is the worker-side ready-queue pop (about 107 pollers race one head CAS, one wins per L2 round trip), so 9 of 106 workers are busy on average (27% inside a step) | `results/2026-11-06-demo-large`, `2026-11-04-a100-adaptive`, `2026-11-06-gpt162-vs-torch` |
 | ❌ Matmul and attention speed | matmul about 0.5x cuBLAS TF32 (51.0 vs 105.6 TFLOP/s at 4096^3); attention 15-30% below torch fp32 SDPA | `results/2026-11-04-a100-ops-perf` |
-| ✅/❌ Executor vs PyTorch (current: 9-workload panel, geomean 1.090x: 2.2-3.8x faster on the four small MLPs, 0.34-0.73x on wide MLPs and GPT) | **Superseded by `results/2026-11-10-a100-merged`**; the row below is the pre-#13 executor: | same bytes, one driver, interleaved reps, loss and weights within 1e-3 of eager and float64. Executor beats eager 1.1-3.9x and `torch.compile` without graphs 1.2-1.9x on the small MLP, but is 1.9-4.8x slower than a whole-step CUDA graph, 5.7-7x slower than R graphs on R streams and 5.5-69x slower than a batched graph; 17.7x slower than eager at 162M. Why: the tape is admitted (2.4-3.1 us/task) before any task runs, about 28 us per dependency level. | `results/2026-11-09-a100-exec-vs-torch` |
-| ❌ Executor vs PyTorch on the same 162M model and AdamW | **15-18x slower before the merge** (main now: 845 ms f32 = 12x, 293 ms bf16s = 6x vs torch autocast-bf16 eager; see the journey): executor 1042 ms/step (1-step tape) against torch eager 69.6, whole-step CUDA graph 68.2, `torch.compile` 59-60 ms. Why: admission is 604 ms of the 1042 (318k tasks/step at 1.9 us, single FIFO); the workers are only 27% busy; tile work alone would be about 190 ms/step at perfect admission (matmul tiles at 0.5x cuBLAS); the dependency-hop term is 0.5% of the step. At tiny/small sizes it beats eager 1.6-2.3x but never a CUDA graph (3.2-12.6x slower). The demo does not beat PyTorch. | `results/2026-11-06-gpt162-vs-torch`, `results/2026-11-06-vs-pytorch` |
+| ✅/❌ Executor vs PyTorch (at #23's merge, Nov 11: 9-workload panel, geomean 1.090x: 2.2-3.8x faster on the four small MLPs, 0.34-0.73x on wide MLPs and GPT; the Nov 17 read is under Latest results) | **Superseded by `results/2026-11-10-a100-merged`**; the row below is the pre-#13 executor: | same bytes, one driver, interleaved reps, loss and weights within 1e-3 of eager and float64. Executor beats eager 1.1-3.9x and `torch.compile` without graphs 1.2-1.9x on the small MLP, but is 1.9-4.8x slower than a whole-step CUDA graph, 5.7-7x slower than R graphs on R streams and 5.5-69x slower than a batched graph; 17.7x slower than eager at 162M. Why: the tape is admitted (2.4-3.1 us/task) before any task runs, about 28 us per dependency level. | `results/2026-11-09-a100-exec-vs-torch` |
+| ❌ Executor vs PyTorch on the same 162M model and AdamW | **15-18x slower before the merge** (the task-graph executor on Nov 6: 845 ms f32 = 12x, 293 ms bf16s = 6x vs torch autocast-bf16 eager; see the journey): executor 1042 ms/step (1-step tape) against torch eager 69.6, whole-step CUDA graph 68.2, `torch.compile` 59-60 ms. Why: admission is 604 ms of the 1042 (318k tasks/step at 1.9 us, single FIFO); the workers are only 27% busy; tile work alone would be about 190 ms/step at perfect admission (matmul tiles at 0.5x cuBLAS); the dependency-hop term is 0.5% of the step. At tiny/small sizes it beats eager 1.6-2.3x but never a CUDA graph (3.2-12.6x slower). The demo does not beat PyTorch. | `results/2026-11-06-gpt162-vs-torch`, `results/2026-11-06-vs-pytorch` |
 | 🧪 Generic training: any traced module, `CrossEntropy`/`MSE`, SGD/AdamW (`frontend/mvmfe/generic.py`) | four never-shipped models (regression MLP, residual MLP, 1-D CNN, transformer encoder) match numpy float64 oracles on the CPU; the A100 run on the landing branch: 3 of 4 models pass the 2e-4 golden bound, `encoder_reg` fails (worst `v.enc.k.b` 10.5 relative L2) and the MANIFEST stage stopped after the first demo | `results/2026-11-09-landing` |
 | 🚧 Admission change (class-aware / sliced) | **PLACEHOLDER: `perf/admission-bottleneck` (about 1.8x on the f32 bundle) is unmerged; numbers on this page are main's.** | pending |
 | 🧪 Runs on more than one GPU, NVLink or a network | not done (no hardware); the timeline above therefore has no comm ops | `results/2026-11-03-dist-singlebox` |
@@ -269,7 +271,7 @@ graphs beat it on a 162M GPT (43.1 s vs 48.1 s, B200).
 ## ⚠️ What is not shown (read before quoting)
 
 - The tiny demo is far from its limit: 106 workers are mostly idle, the 4.2 s span is Doom ticks (700 frames, one tick task of about 5.9 ms each, plus a 208 ms boot tick), and training plus serving finish in 345 ms.
-- The VM is not faster than PyTorch at 162M (6x slower than autocast-bf16 eager in bf16s, 12x slower than TF32 PyTorch in f32) and does not beat a CUDA graph at any size measured; its win region is launch-bound eager execution on tiny models.
+- Running several workloads in one launch is not where the speed comes from: the train + serve + Doom demo at 162M is still 6x slower than autocast-bf16 eager (bf16s) and 12x slower than TF32 PyTorch (f32). The wins under Latest results are the fused single-job forms, and the training rows' later levers are not on `main` yet.
 - 162M: it runs and stays finite, nothing more. It is task-throughput bound (30x off its critical path), and its loss has no independent reference.
 - A run with more tasks than slots recycles slots, and the version and cadence checks then skip by design (the 40-step 162M run did; the 6-step one did not).
 - The test-drive films' runs used this repository at `592a966` plus code that is not here yet: the drivers' op pack (the episode, ranking and breeding ops) with its workload generator; for the games, a three-hook runner patch, an LLVM pass that gives every game instance its own state, an input hook for the forks, and two engine fixes that make its reads past the end of a texture or a table defined (without them the CPU build disagreed with itself); and the Blender scenes that film both.

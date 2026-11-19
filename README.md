@@ -10,41 +10,22 @@ Legend used below: ✅ measured and on main, 🧪 code only (no result measures 
 
 ## 🎬 Take Magni VM for a test drive
 
-Four short films, each made by one Magni VM kernel launch on one A100. Click a picture to play.
+Two short films, each made from one Magni VM kernel launch on one A100. Click a picture to play.
 
-[![16,384 drivers learn to race](assets/showcase/test-drive.jpg)](assets/showcase/test-drive.mp4)
+[![4,096 AI drivers learn to race](assets/showcase/test-drive.jpg)](assets/showcase/test-drive.mp4)
 
-**16,384 drivers learn to race (10 s).** Each car is driven by its own small neural network. One Magni VM kernel launch runs
-the whole evolution, 40 generations of 16,384 cars driving 30 s each, ranked and bred on the GPU, in 0.46 s. The film shows
-the random first generation crashing all round the circuit, generations 1 to 8 getting further each time (each car wears its
-first ancestor's colour, so the rainbow narrows to one family), and generation 20 released all round the circuit. Every streak
-is a car's recorded path; the first generation matches a CPU reference bit for bit (16,380 of 16,384 cars, the rest within a
-quarter of a track unit).
+**4,096 AI drivers learn to race (15 s).** Each car is driven by its own small neural network. One Magni VM kernel launch runs
+the whole evolution, 30 generations of 4,096 cars driving 30 s each, ranked and bred on the GPU, in 0.28 s. Generation 0
+crashes everywhere; by generation 20 the swarm laps the circuit. Every car sits where the launch recorded it, and generation 0
+matches a CPU reference bit for bit; the cars never collide in the simulation. The circuit, lights and camera are rendered
+with Blender.
 
-[![837 games and a GPT training run, one kernel launch](assets/showcase/the-wall.jpg)](assets/showcase/the-wall.mp4)
+[![One moment of one game, 837 futures](assets/showcase/futures.jpg)](assets/showcase/futures.mp4)
 
-**837 games, one kernel launch (9 s).** One A100 runs 837 copies of a real game engine and trains a 162M-parameter GPT at
-the same time, all inside a single Magni VM kernel launch. The GPU renders every frame: 1,464,750 of them, each
-byte-identical to a CPU build of the same engine. Each game averages 34.25 to 35.00 fps; with the training running, 80% of
-the run's frames land inside their 28.6 ms slot (96% with the games alone), and the film shows each frame at its scheduled
-moment. The engine is [doomgeneric](https://github.com/ozkl/doomgeneric) playing [Freedoom](https://freedoom.github.io/)'s
-recorded demos, each copy from its own starting point.
-
-[![One moment of one game, 837 futures](assets/showcase/the-futures.jpg)](assets/showcase/the-futures.mp4)
-
-**One moment, 837 futures (11 s).** The same moment of one game, copied 837 times in one Magni VM kernel launch. Every copy
-plays the same frames in perfect lockstep until its fork; then, ring by ring from the centre, each one's controls drift from
-the recording's (a seeded glance aside, a wandering delay) and it plays out its own future, while the centre plays the
-recording's own. All 711,450 frames are rendered by the GPU and are byte-identical to a CPU build playing the same forks; 99%
-land inside their 28.6 ms slot, at 35 fps. The run starts groups of copies up to 0.6 s apart, and the film lines every copy up
-by frame number.
-
-[![A thousand networks learning a thousand pictures](assets/showcase/a-thousand-minds.jpg)](assets/showcase/a-thousand-minds.mp4)
-
-**A thousand minds (10 s).** 1,024 neural networks, every one a different shape, each learning its own NASA photo, trained
-together in one Magni VM kernel launch: 500 updates of all of them in 5.96 s. Their pictures tile Apollo 17's Blue Marble.
-Every tile is a real network state from the measured launch, shown at the launch's own speed; the close-ups evaluate the
-same networks at screen resolution.
+**One moment, 837 futures (12 s).** One moment of one game, copied 837 times in one Magni VM kernel launch. Every copy plays
+the same frames until its controls start to drift, ring by ring from the centre, and then it plays out its own future. Every
+screen shows frames the GPU rendered (711,450 in all, each byte-identical to a CPU build playing the same forks); the wall,
+floor and camera are rendered with Blender.
 
 ## 📈 Latest results (one A100-SXM4-40GB, Nov 17)
 
@@ -291,7 +272,7 @@ graphs beat it on a 162M GPT (43.1 s vs 48.1 s, B200).
 - The VM is not faster than PyTorch at 162M (6x slower than autocast-bf16 eager in bf16s, 12x slower than TF32 PyTorch in f32) and does not beat a CUDA graph at any size measured; its win region is launch-bound eager execution on tiny models.
 - 162M: it runs and stays finite, nothing more. It is task-throughput bound (30x off its critical path), and its loss has no independent reference.
 - A run with more tasks than slots recycles slots, and the version and cadence checks then skip by design (the 40-step 162M run did; the 6-step one did not).
-- The test-drive films' runs (16,384 drivers: 40 generations of evolution; The Wall: 837 games beside 64 training steps of the 162M GPT; Futures: 837 forks of one moment; A thousand minds: 1,024 coordinate networks through the frontend) used this repository at `592a966` plus code that is not here yet: a three-hook runner patch, an LLVM pass that gives every game instance its own state, an input hook for the forks, two engine fixes that make its reads past the end of a texture or a table defined (without them the CPU build disagreed with itself), the networks' population, bundle-merge, snapshot and render scripts, and the drivers' op pack (the episode, ranking and breeding ops) with its generator and renderer.
+- The test-drive films' runs used this repository at `592a966` plus code that is not here yet: the drivers' op pack (the episode, ranking and breeding ops) with its workload generator; for the games, a three-hook runner patch, an LLVM pass that gives every game instance its own state, an input hook for the forks, and two engine fixes that make its reads past the end of a texture or a table defined (without them the CPU build disagreed with itself); and the Blender scenes that film both.
 
 ## 🏗️ The integrated framework
 

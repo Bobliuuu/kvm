@@ -397,3 +397,16 @@ across all four modes (the check is exact equality: it counts differing elements
   host-generated (88 MB at 32 runs x 300 steps); a loop opcode would shrink it.
 - Not done: on-chip weight residency across steps, bf16 path, transformer ops, H100 features
   (TMA/wgmma). Those are what a complete VM of this kind would add.
+
+## 📜 License
+
+Magni VM is source-available under the [Magni Community License 1.0](LICENSE.md):
+
+- **Free** for any company whose annual revenue, ARR and total money raised from investors are each $1M or less, counted together
+  with its parent and affiliated companies, and for noncommercial and personal use and the charitable, educational, research and
+  government organizations the license lists.
+- **A larger company** may evaluate it free for 31 days from its first use. To use it in its business after that, it needs a
+  commercial license: write to [founders@magnihq.com](mailto:founders@magnihq.com).
+
+The license text governs. NVIDIA's CUTLASS headers (`include/cutlass/`, `include/cute/`) keep their BSD-3-Clause license, and
+the Doom engine that `doom/setup.sh` fetches is GPL-2.0-or-later ([doom/README.md](doom/README.md#license-note)).
